@@ -243,170 +243,131 @@ describe('setup wizard store', () => {
     })
   })
 
-  describe('persistence rehydration', () => {
-    it('recomputes stepOrder from persisted wizardMode on rehydrate', async () => {
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: {
-          wizardMode: 'quick',
-          currentStep: 'mode',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: false,
-            providers: false,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-        },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
+  describe('reconcileCompletionFromBackend', () => {
+    function stubStatus(over: {
+      has_providers: boolean
+      has_company: boolean
+      has_agents: boolean
+    }): void {
+      server.use(
+        http.get('/api/v1/setup/status', () =>
+          HttpResponse.json(
+            apiSuccess({
+              needs_admin: false,
+              needs_setup: true,
+              has_name_locales: true,
+              min_password_length: 12,
+              ...over,
+            }),
+          ),
+        ),
+      )
+    }
 
-      await useSetupWizardStore.persist.rehydrate()
+    function agentRow(over: Record<string, unknown>): Record<string, unknown> {
+      return {
+        name: 'Agent',
+        role: 'engineer',
+        department: 'engineering',
+        level: 'mid',
+        model_provider: 'provider-default',
+        model_id: 'model-default',
+        tier: 'medium',
+        personality_preset: 'balanced',
+        ...over,
+      }
+    }
+
+    function stubAgents(rows: ReadonlyArray<Record<string, unknown>>): void {
+      // ``getAgents`` paginates, so the roster must arrive in a paginated
+      // envelope (a plain ``apiSuccess`` array trips "Unexpected API response").
+      server.use(
+        http.get('/api/v1/setup/agents', () =>
+          HttpResponse.json({
+            data: rows,
+            error: null,
+            error_detail: null,
+            pagination: { limit: 200, next_cursor: null, has_more: false },
+            success: true,
+            degraded_sources: [],
+          }),
+        ),
+      )
+    }
+
+    it('hydrates agents + marks agents/theme complete when the backend has a roster', async () => {
+      // The root-cause fix: the backend is the single source of truth on
+      // resume. The reconcile must HYDRATE the real roster into the store (so
+      // a resume that lands on Review renders agents, not zero) AND derive the
+      // step flags from has_*. statusReconciled flips only after the data
+      // lands, so the URL-sync never bounces / flashes an empty Complete.
+      stubStatus({ has_providers: true, has_company: true, has_agents: true })
+      stubAgents([
+        agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive', model_id: 'glm-5.2' }),
+        agentRow({ name: 'CTO Agent', role: 'CTO', department: 'executive', model_id: 'deepseek-v4-pro' }),
+      ])
+
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
 
       const state = useSetupWizardStore.getState()
-      expect(state.wizardMode).toBe('quick')
-      // Without the merge function, stepOrder would fall back to GUIDED here.
-      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
+      expect(state.statusReconciled).toBe(true)
+      // Data hydrated, not just flags -- this is what kept Review at 0 agents.
+      expect(state.agents).toHaveLength(2)
+      expect(state.stepsCompleted.providers).toBe(true)
+      expect(state.stepsCompleted.company).toBe(true)
+      expect(state.stepsCompleted.agents).toBe(true)
+      expect(state.stepsCompleted.theme).toBe(true)
+      expect(state.canNavigateTo('complete')).toBe(true)
     })
 
-    it('snaps currentStep to first incomplete when persisted step is outside the recomputed order', async () => {
-      // A v2 payload could have currentStep='agents' (which is not in QUICK_STEP_ORDER).
-      // The merge function must catch this and reset currentStep to the first
-      // incomplete step in the recomputed order rather than landing the user on
-      // a step that does not exist for their mode.
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: {
-          wizardMode: 'quick',
-          currentStep: 'agents',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: false,
-            providers: false,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-        },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
+    it('rehydrates companyResponse + selectedTemplate from the backend (no client copy)', async () => {
+      // On resume the reconcile rebuilds companyResponse from GET /setup/company
+      // so Review renders the real company and the applied template is restored
+      // -- which prevents a blank re-apply from wiping the roster.
+      stubStatus({ has_providers: true, has_company: true, has_agents: true })
+      stubAgents([
+        agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive' }),
+      ])
+      server.use(
+        http.get('/api/v1/setup/company', () =>
+          HttpResponse.json(
+            apiSuccess({
+              company_name: 'Paradisia',
+              description: null,
+              template_applied: 'product_team',
+              department_count: 6,
+              agent_count: 1,
+              agents: [],
+            }),
+          ),
+        ),
+      )
 
-      await useSetupWizardStore.persist.rehydrate()
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
 
       const state = useSetupWizardStore.getState()
-      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
-      expect(state.currentStep).toBe('providers')
+      expect(state.companyResponse?.company_name).toBe('Paradisia')
+      expect(state.companyName).toBe('Paradisia')
+      expect(state.selectedTemplate).toBe('product_team')
+      expect(state.blankSelected).toBe(false)
     })
 
-    it('clamps currentStep back to firstIncomplete when persisted step is later than the earliest incomplete step', async () => {
-      // Pins the regression where stepOrder.includes(currentStep) passed but
-      // an earlier required step was still incomplete: persisted currentStep
-      // = 'company' (index 2 under quick), providers (index 1) still
-      // incomplete, so the wizard must snap back to providers instead of
-      // resuming on company and letting providers be skipped.
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: {
-          wizardMode: 'quick',
-          currentStep: 'company',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: false,
-            providers: false,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-        },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
+    it('self-corrects a stale providers flag when the backend no longer has providers', async () => {
+      // A stale client-side completion flag (step marked done but the backend
+      // data was deleted since last session) must be derived back to incomplete;
+      // the reconcile owns this correction (both-ways derivation from has_*).
+      useSetupWizardStore.setState((s) => ({
+        stepsCompleted: { ...s.stepsCompleted, providers: true, agents: true },
+      }))
+      stubStatus({ has_providers: false, has_company: true, has_agents: false })
 
-      await useSetupWizardStore.persist.rehydrate()
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
 
       const state = useSetupWizardStore.getState()
-      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
-      expect(state.currentStep).toBe('providers')
-    })
-
-    it('does not crash when stepsCompleted is null in the persisted payload', async () => {
-      // localStorage is user-writable, so a hand-edited or legacy payload
-      // could persist `stepsCompleted: null`. Without the null guard in
-      // the merge function this would throw at startup and leave the
-      // wizard unbootable.
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: {
-          wizardMode: 'quick',
-          currentStep: 'mode',
-          stepsCompleted: null,
-        },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
-
-      await expect(useSetupWizardStore.persist.rehydrate()).resolves.not.toThrow()
-
-      const state = useSetupWizardStore.getState()
-      expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
-      // No step is completed, so the wizard lands on the first step.
-      expect(state.currentStep).toBe('mode')
-    })
-
-    it('re-blocks providers and agents steps when the providers map is empty after rehydration', async () => {
-      // The ``providers`` map is not persisted, so it rehydrates to ``{}``.
-      // A payload that persisted ``stepsCompleted.providers/agents = true`` (and
-      // currentStep='complete') must not let the user resume on Complete with an
-      // empty provider map: both steps re-block and the wizard snaps to providers.
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: {
-          wizardMode: 'guided',
-          currentStep: 'complete',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: true,
-            company: true,
-            providers: true,
-            agents: true,
-            theme: true,
-            complete: false,
-          },
-        },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
-
-      await useSetupWizardStore.persist.rehydrate()
-
-      const state = useSetupWizardStore.getState()
-      expect(state.providers).toEqual({})
       expect(state.stepsCompleted.providers).toBe(false)
       expect(state.stepsCompleted.agents).toBe(false)
-      expect(state.currentStep).toBe('providers')
-    })
-
-    it('resets agentsFetched to false after rehydration so the agents step re-fetches', async () => {
-      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
-      const payload = {
-        state: { wizardMode: 'guided', currentStep: 'mode', stepsCompleted: { mode: true } },
-        version: 3,
-      }
-      localStorage.setItem(persistName, JSON.stringify(payload))
-
-      await useSetupWizardStore.persist.rehydrate()
-
-      expect(useSetupWizardStore.getState().agentsFetched).toBe(false)
+      expect(state.stepsCompleted.theme).toBe(false)
+      expect(state.canNavigateTo('complete')).toBe(false)
     })
   })
 

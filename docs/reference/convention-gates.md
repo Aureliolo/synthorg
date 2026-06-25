@@ -62,6 +62,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_bulk_edit.py` | PreToolUse | `Bash` in-place rewrites | n/a | n/a | none | keep |
 | `check_no_central_junk_drawer.py` | commit+push | `core/enums.py` | full | no | none | keep |
 | `check_no_circular_imports.py` | push | `src/synthorg/` | full | no | `_circular_imports_baseline.txt` | harden |
+| `check_no_client_state_persistence.py` | commit+push | `web/src/` outside the auth/CSRF allowlist | full | no | none | add |
 | `check_no_controller_response_for_domain_errors.py` | commit+push | `api/controllers/` | full | no | `no_controller_response_for_domain_errors_baseline.txt` | keep |
 | `check_no_em_dashes.py` | commit+push | all text | staged | yes | none | harden |
 | `check_no_explicit_any_inline_disable.py` | commit+push | `src/` + `tests/` | staged | yes | none | keep |
@@ -104,7 +105,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->82<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->83<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -134,6 +135,7 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 - `check_no_edit_baseline.sh`: blocks `Edit` / `Write` on `tests/baselines/*.json`, `scripts/*_baseline.{txt,json}`, and `scripts/_*_baseline.py`.
 - `check_no_baseline_update.sh`: blocks `Bash` invocations of `scripts/check_*.py --update-baseline` / `--update` / `--refresh-baseline`.
 - `check_no_em_dashes_hook.sh`: blocks `Edit` / `Write` whose candidate content contains a U+2014 em-dash or one of its HTML entities. Mirrors the diff-time `check_no_em_dashes.py` pre-commit gate.
+- `check_no_client_state_persistence_hook.sh`: blocks `Edit` / `Write` to `web/src/` (outside the auth/CSRF allowlist) whose candidate content introduces `localStorage` / `sessionStorage` / `indexedDB` access or a `zustand` `persist(` import. Mirrors the diff-time `check_no_client_state_persistence.py` pre-push gate.
 - `check_no_edit_migration.sh`: blocks `Edit` / `Write` on `src/synthorg/persistence/{sqlite,postgres}/revisions/*.sql` (revisions are immutable once committed; author a new revision file with your delta instead).
 - `check_pre_pr_review_triage_gate.sh`: blocks `Edit` / `Write` outside `_audit/` while a `/pre-pr-review` triage table is pending user approval.
 - `check_mock_spec_ratchet.py`: blocks `Edit` / `Write` to `tests/*.py` that would raise the mock-spec gate's CATCH count for the touched file, and blocks `Edit` / `Write` to `scripts/check_mock_spec.py` that would remove `_Verdict.CATCH` branches. Drives drive-by tightening: every edit reduces or holds the residual.

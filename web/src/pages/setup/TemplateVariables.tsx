@@ -108,17 +108,22 @@ export function TemplateVariables({
   currency,
   disabled,
 }: TemplateVariablesProps) {
-  if (variables.length === 0) return null
+  // Hidden variables are advanced knobs sensibly defaulted by the template
+  // (sprint length, WIP limit, head-counts). They are configurable later in
+  // the dashboard, so the setup wizard does not surface them; when every
+  // variable is hidden, the whole box disappears rather than rendering empty.
+  const visible = variables.filter((v) => !v.hidden)
+  if (visible.length === 0) return null
 
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-card p-card">
+    <div className="space-y-section-gap rounded-lg border border-border bg-card p-card">
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-foreground">Template Variables</h3>
         <p className="text-xs text-muted-foreground">
           Customize how the template generates your company structure.
         </p>
       </div>
-      {variables.map((v) => (
+      {visible.map((v) => (
         <TemplateVariableField
           key={v.name}
           variable={v}

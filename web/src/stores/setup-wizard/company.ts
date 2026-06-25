@@ -6,10 +6,15 @@ import type { CompanySlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:company')
 
+/** Sensible default monthly budget shown until the operator changes it. */
+export const DEFAULT_BUDGET = 500
+
 export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   companyName: '',
   companyDescription: '',
   currency: DEFAULT_CURRENCY,
+  budget: DEFAULT_BUDGET,
+  modelTierProfile: 'balanced',
   budgetCapEnabled: false,
   budgetCap: null,
   companyResponse: null,
@@ -29,6 +34,14 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
     set({ currency })
   },
 
+  setBudget(budget) {
+    set({ budget })
+  },
+
+  setModelTierProfile(profile) {
+    set({ modelTierProfile: profile })
+  },
+
   setBudgetCapEnabled(enabled) {
     set({ budgetCapEnabled: enabled })
   },
@@ -44,13 +57,25 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
     // would otherwise issue a second POST /setup/company that lands
     // 409 or duplicates the template.
     if (get().companyLoading) return
-    const { companyName, companyDescription, selectedTemplate } = get()
+    const {
+      companyName,
+      companyDescription,
+      selectedTemplate,
+      currency,
+      budget,
+      modelTierProfile,
+      templateVariables,
+    } = get()
     set({ companyLoading: true, companyError: null, companyErrorCode: null })
     try {
       const response = await createCompany({
         company_name: companyName.trim(),
         description: companyDescription.trim() || null,
         template_name: selectedTemplate,
+        currency,
+        budget,
+        model_tier_profile: modelTierProfile,
+        template_variables: templateVariables,
       })
       set({
         companyResponse: response,

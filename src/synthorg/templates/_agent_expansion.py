@@ -6,6 +6,7 @@ auto-name generation, name deduplication, personality preset/inline
 resolution, model-requirement resolution, and merge directive handling.
 """
 
+import re
 from collections.abc import Mapping
 from typing import Final
 
@@ -36,7 +37,61 @@ _DEFAULT_MODEL_ALIAS: Final[str] = "medium"
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 
+# Seniority a role title implies, used only to default the DISPLAYED level when
+# a template omits it -- so an exec never silently renders as "mid". This does
+# NOT drive model selection (the matcher tiers by capability demand, not rank).
+_ROLE_LEVEL_DEFAULTS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
+    # VP must precede the c-suite ``president`` rule: a bare ``president`` match
+    # would otherwise classify "Vice President" as c_suite (and force the
+    # strategic priority/reasoning defaults onto every VP title).
+    (re.compile(r"vice president|\bvp\b", re.IGNORECASE), "vp"),
+    (
+        re.compile(r"\bceo\b|chief executive|founder|\bpresident\b", re.IGNORECASE),
+        "c_suite",
+    ),
+    (re.compile(r"^chief|\bc[a-z]o\b", re.IGNORECASE), "c_suite"),
+    (re.compile(r"director|head of", re.IGNORECASE), "director"),
+    (re.compile(r"\blead\b|principal", re.IGNORECASE), "lead"),
+)
+_DEFAULT_LEVEL: Final[str] = "mid"
+
 logger = get_logger(__name__)
+
+
+def _default_level(role: str) -> str:
+    """Infer a sensible level from a role title when none is declared.
+
+    Returns:
+        The role-implied seniority, or ``"mid"`` when nothing matches.
+    """
+    for pattern, level in _ROLE_LEVEL_DEFAULTS:
+        if pattern.search(role):
+            return level
+    return _DEFAULT_LEVEL
+
+
+# Level marking a strategic role whose work (strategy, delegation, trade-offs)
+# is genuinely reasoning-heavy -- so a spec-less one earns the top demand.
+_STRATEGIC_LEVEL: Final[str] = "c_suite"
+
+
+def _is_strategic(agent: dict[str, object]) -> bool:
+    """Return whether an agent occupies a strategic (c-suite) role.
+
+    Strategic by an explicit ``c_suite`` level OR by a role title that implies
+    the c-suite (CEO / CxO / Chief / Founder). Title takes precedence over the
+    level field because a ``head_role`` exec is frequently materialised with a
+    generic ``mid`` level -- keying on the level alone would miss it and the
+    CEO would silently inherit a mid-tier model.
+
+    Returns:
+        True when the agent's level or role title marks it strategic.
+    """
+    level = agent.get("level")
+    if isinstance(level, str) and level == _STRATEGIC_LEVEL:
+        return True
+    role = agent.get("role")
+    return isinstance(role, str) and _default_level(role) == _STRATEGIC_LEVEL
 
 
 def _expand_agents(
@@ -131,7 +186,7 @@ def _expand_single_agent(  # noqa: PLR0913
         "name": name,
         "role": role,
         "department": agent.get("department", _DEFAULT_DEPARTMENT),
-        "level": agent.get("level", "mid"),
+        "level": agent.get("level") or _default_level(role),
     }
 
     personality = resolve_agent_personality(
@@ -180,12 +235,19 @@ def _expand_single_agent(  # noqa: PLR0913
 def _agent_preset_name(agent: dict[str, object]) -> str | None:
     """Return the named personality preset, when the agent uses one.
 
-    A template agent references a preset by a bare ``personality`` string;
-    an inline ``personality`` dict has no preset name.
+    A template agent references a preset either by the explicit
+    ``personality_preset`` field or by a bare ``personality`` string; an
+    inline ``personality`` dict has no preset name. Both reference forms must
+    carry the preset NAME onto the rendered ``AgentConfig`` so the setup
+    wizard's personality dropdown shows the assigned preset (otherwise it
+    renders "Select..." even though the personality was resolved).
 
     Returns:
         The preset name, or ``None`` for inline / absent personality.
     """
+    explicit = agent.get("personality_preset")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
     raw = agent.get("personality")
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
@@ -220,6 +282,13 @@ def _resolve_model_requirement(
         overrides = {"model_id": model_raw.strip()}
     else:
         overrides = {}
+
+    # A strategic role declared only as a department head_role carries no model
+    # block, so it would inherit the generic balanced preset (a mid-tier model).
+    # Strategy work is reasoning-heavy, so default a spec-less exec to the top
+    # capability demand -- a CEO must not silently land below its own CTO.
+    if not overrides and _is_strategic(agent):
+        overrides = {"priority": "quality", "requires_reasoning": True}
 
     try:
         return resolve_model_requirement(preset, overrides)

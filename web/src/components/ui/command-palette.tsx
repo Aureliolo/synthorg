@@ -1,5 +1,5 @@
 import { Command } from 'cmdk-base'
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
@@ -7,93 +7,9 @@ import { getErrorMessage } from '@/utils/errors'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useToastStore } from '@/stores/toast'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 
 const log = createLogger('CommandPalette')
-
-const RECENT_STORAGE_KEY = 'so_recent_commands'
-const MAX_RECENT = 5
-
-function getRecentIds(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    const VALID_ID = /^[\w\-:.]+$/
-    return parsed
-      .filter((v): v is string => typeof v === 'string' && v.length <= 64 && VALID_ID.test(v))
-      .slice(0, MAX_RECENT)
-  } catch (err) {
-    log.warn('Failed to read recent commands from localStorage', err)
-    return []
-  }
-}
-
-// In-process subscribers for the recent-IDs store. ``addRecentId``
-// notifies these so ``useSyncExternalStore`` consumers re-render
-// inside the same tab; cross-tab changes flow through the
-// ``storage`` event registered in ``_subscribeRecentIds``.
-const _recentIdsListeners = new Set<() => void>()
-
-function _notifyRecentIdsListeners(): void {
-  for (const listener of _recentIdsListeners) listener()
-}
-
-function addRecentId(id: string) {
-  try {
-    const recent = getRecentIds().filter((r) => r !== id)
-    recent.unshift(id)
-    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
-    _notifyRecentIdsListeners()
-  } catch (err) {
-    // Best-effort convenience feature -- never block command execution, but
-    // surface the diagnostic so quota/security errors can be correlated with
-    // "my recent commands stopped persisting" bug reports.
-    log.debug('Failed to persist recent commands to localStorage', err)
-  }
-}
-
-// Cached snapshot kept referentially stable across reads when the
-// underlying localStorage value hasn't changed. ``useSyncExternalStore``
-// requires a stable reference between unchanged reads, otherwise it
-// treats every read as a state change and triggers an infinite render
-// loop.
-let _recentIdsSnapshot: readonly string[] = []
-let _recentIdsRawSnapshot: string | null = null
-
-function _readRecentIdsRaw(): string | null {
-  try {
-    return localStorage.getItem(RECENT_STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function _getRecentIdsSnapshot(): readonly string[] {
-  const raw = _readRecentIdsRaw()
-  if (raw === _recentIdsRawSnapshot) return _recentIdsSnapshot
-  _recentIdsRawSnapshot = raw
-  _recentIdsSnapshot = getRecentIds()
-  return _recentIdsSnapshot
-}
-
-const _RECENT_IDS_SERVER_SNAPSHOT: readonly string[] = []
-
-function _getRecentIdsServerSnapshot(): readonly string[] {
-  return _RECENT_IDS_SERVER_SNAPSHOT
-}
-
-function _subscribeRecentIds(callback: () => void): () => void {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === null || event.key === RECENT_STORAGE_KEY) callback()
-  }
-  window.addEventListener('storage', onStorage)
-  _recentIdsListeners.add(callback)
-  return () => {
-    window.removeEventListener('storage', onStorage)
-    _recentIdsListeners.delete(callback)
-  }
-}
 
 export interface CommandPaletteProps {
   className?: string
@@ -151,21 +67,9 @@ function useFilteredCommands(
     [commands, scope],
   )
   const grouped = useMemo(() => _groupCommands(filtered), [filtered])
-  // Route the recent-IDs read through ``useSyncExternalStore`` so the
-  // ``localStorage`` access happens inside the React-blessed snapshot
-  // callback (not in a render body, where ``@eslint-react/globals``
-  // would flag it, nor inside a ``useEffect`` setState, where
-  // ``@eslint-react/set-state-in-effect`` would flag it). The
-  // subscription covers both cross-tab (``storage`` event) and
-  // intra-tab (``addRecentId`` notifies via
-  // ``_notifyRecentIdsListeners``) flows so a freshly-recorded
-  // command appears the next time the palette renders without an
-  // explicit "refresh on open" trigger.
-  const recentIds = useSyncExternalStore(
-    _subscribeRecentIds,
-    _getRecentIdsSnapshot,
-    _getRecentIdsServerSnapshot,
-  )
+  // Recent command ids are backend-owned (dashboard.command_recents); the
+  // dashboard-prefs store hydrates them on mount and re-renders reactively.
+  const recentIds = useDashboardPrefs((s) => s.commandRecents)
   const recentItems = useMemo(() => {
     if (search) return []
     return recentIds
@@ -197,7 +101,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
 
   const handleSelect = useCallback(
     async (cmd: CommandItem) => {
-      addRecentId(cmd.id)
+      useDashboardPrefs.getState().pushCommandRecent(cmd.id)
       try {
         // Await via Promise.resolve so both sync and async actions are
         // handled. A promise rejection from an async action would

@@ -163,7 +163,8 @@ VALID_WORKFLOW_EXECUTION_STATUSES: Final[frozenset[str]] = frozenset(
 #
 # Transient vs non-transient mapping for SLO queries:
 #   transient: rate_limit, timeout, connection, internal
-#   non-transient: invalid_request, auth, content_filter, not_found, other
+#   non-transient: quota_exceeded, invalid_request, auth, content_filter,
+#                  not_found, other
 # PromQL example for transient-error rate:
 #   sum(rate(synthorg_provider_errors_total{
 #       error_class=~"rate_limit|timeout|connection|internal"}[5m]))
@@ -255,6 +256,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
     {
         "a2a",
         "api",
+        "appearance",
         "backup",
         "budget",
         "charter",
@@ -263,6 +265,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "communication",
         "company",
         "coordination",
+        "dashboard",
         "demo",
         "engine",
         "external_api",
@@ -273,6 +276,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "notifications",
         "objectives",
         "observability",
+        "org_chart",
         "providers",
         "research",
         "security",

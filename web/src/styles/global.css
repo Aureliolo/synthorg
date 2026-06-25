@@ -165,6 +165,16 @@ html {
   background: var(--so-text-muted);
 }
 
+/* Scrollbar-free scroll containers (the setup wizard). The container still
+   scrolls; scrollability is conveyed by dynamic top/bottom fades instead of a
+   visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------------
  * React Flow node drag/drop visual feedback
  * --------------------------------------------------------------------------- */
@@ -210,6 +220,15 @@ html {
   body,
   #root {
     height: 100%;
+    /*
+     * The app shell (AppLayout) owns the viewport and scrolls its OWN inner
+     * regions (the `<main>` content area, popovers, drawers). The document
+     * itself must never scroll: otherwise a second, document-level scrollbar
+     * appears on top of the inner content scroll ("2 scrollbars"). Locking
+     * overflow here keeps a single scrollbar -- the inner one that belongs to
+     * whatever region is actually scrolling.
+     */
+    overflow: hidden;
   }
   /*
    * Stop a scroll inside ``#root`` from chaining out to the document.

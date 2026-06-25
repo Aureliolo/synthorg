@@ -4,11 +4,11 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { useTunnelStore } from '@/stores/tunnel'
 import type { TunnelPhase } from '@/stores/tunnel'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { getCsrfToken } from '@/utils/csrf'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('TunnelCard')
-const TUNNEL_INTRO_ACK_KEY = 'synthorg.tunnel.intro.acknowledged'
 
 const CLIPBOARD_ERROR_DESCRIPTIONS: Record<string, string> = {
   NotAllowedError: 'Clipboard access denied. Use Ctrl/Cmd+C to copy the URL manually.',
@@ -37,22 +37,6 @@ function clipboardErrorDescription(err: unknown): string {
     )
   }
   return 'Clipboard not available in this context. Copy the URL manually from the Public URL field.'
-}
-
-function readIntroAck(): boolean {
-  try {
-    return window.localStorage.getItem(TUNNEL_INTRO_ACK_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function writeIntroAck(): void {
-  try {
-    window.localStorage.setItem(TUNNEL_INTRO_ACK_KEY, '1')
-  } catch (err) {
-    log.warn('Failed to persist tunnel intro acknowledgement', sanitizeForLog(err))
-  }
 }
 
 /**
@@ -124,7 +108,7 @@ export function useTunnelCard(): TunnelCardState {
         await stop()
         return
       }
-      if (!readIntroAck()) {
+      if (!useDashboardPrefs.getState().tunnelIntroAcknowledged) {
         setIntroMode('enable')
         setIntroOpen(true)
         return
@@ -135,7 +119,7 @@ export function useTunnelCard(): TunnelCardState {
   )
 
   const handleIntroConfirm = useCallback(async () => {
-    writeIntroAck()
+    useDashboardPrefs.getState().acknowledgeTunnelIntro()
     await start()
   }, [start])
 

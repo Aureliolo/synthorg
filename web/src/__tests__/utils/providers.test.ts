@@ -86,20 +86,20 @@ describe("normalizeProviders", () => {
 
 describe("filterProviders", () => {
   const providers: ProviderWithName[] = [
-    makeProvider("anthropic", {
-      litellm_provider: "anthropic",
-      base_url: "https://api.anthropic.com",
+    makeProvider("example-cloud-a", {
+      litellm_provider: "example-cloud-a",
+      base_url: "https://api.example-cloud-a.com",
     }),
     makeProvider("ollama-local", {
       litellm_provider: "ollama",
       base_url: "http://localhost:11434",
     }),
-    makeProvider("openai", { litellm_provider: "openai" }),
+    makeProvider("example-cloud-b", { litellm_provider: "example-cloud-b" }),
   ];
   const healthMap: Record<string, ProviderHealthSummary> = {
-    anthropic: makeHealth({ health_status: "up" }),
+    "example-cloud-a": makeHealth({ health_status: "up" }),
     "ollama-local": makeHealth({ health_status: "degraded" }),
-    openai: makeHealth({ health_status: "down" }),
+    "example-cloud-b": makeHealth({ health_status: "down" }),
   };
 
   it("returns all providers when no filters", () => {
@@ -114,10 +114,10 @@ describe("filterProviders", () => {
 
   it("filters by litellm_provider search", () => {
     const result = filterProviders(providers, healthMap, {
-      search: "anthropic",
+      search: "example-cloud-a",
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe("anthropic");
+    expect(result[0]!.name).toBe("example-cloud-a");
   });
 
   it("filters by base_url search", () => {
@@ -131,7 +131,7 @@ describe("filterProviders", () => {
   it("filters by health status", () => {
     const result = filterProviders(providers, healthMap, { health: "up" });
     expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe("anthropic");
+    expect(result[0]!.name).toBe("example-cloud-a");
   });
 
   it("combines search and health filters", () => {
@@ -140,7 +140,7 @@ describe("filterProviders", () => {
       health: "down",
     });
     expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe("openai");
+    expect(result[0]!.name).toBe("example-cloud-b");
   });
 
   it("is case-insensitive for search", () => {
@@ -168,6 +168,8 @@ describe("sortProviders", () => {
             supports_vision: false,
             supports_reasoning: false,
             max_output_tokens: null,
+            parameter_count: null,
+            cost_tier: null,
             family: null,
             generation: null,
             release_date: null,
@@ -193,6 +195,8 @@ describe("sortProviders", () => {
             supports_vision: false,
             supports_reasoning: false,
             max_output_tokens: null,
+            parameter_count: null,
+            cost_tier: null,
             family: null,
             generation: null,
             release_date: null,
@@ -213,6 +217,8 @@ describe("sortProviders", () => {
             supports_vision: false,
             supports_reasoning: false,
             max_output_tokens: null,
+            parameter_count: null,
+            cost_tier: null,
             family: null,
             generation: null,
             release_date: null,

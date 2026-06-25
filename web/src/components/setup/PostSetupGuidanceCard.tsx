@@ -36,10 +36,10 @@ const NEXT_STEPS = [
 ] as const
 
 /**
- * One-time guidance banner shown on the dashboard after setup
- * completes.  The visibility flag lives in localStorage under
- * ``synthorg.firstRun`` so the card stays dismissible across reloads
- * and never reappears once the operator clicks "Got it".
+ * One-time guidance banner shown on the dashboard after setup completes.
+ * Its dismissal is backend-owned (``dashboard.post_setup_guidance_dismissed``,
+ * via the dashboard-prefs store): the card shows until the operator clicks
+ * "Got it", then never reappears -- on this device or any other.
  */
 export function PostSetupGuidanceCard({ onDismiss }: PostSetupGuidanceCardProps) {
   return (

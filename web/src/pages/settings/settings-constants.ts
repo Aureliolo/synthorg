@@ -2,12 +2,6 @@
 
 import type { SettingNamespace } from '@/api/types/settings'
 
-/** localStorage key for the basic/advanced toggle state. */
-export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
-
-/** sessionStorage key for the advanced-mode first-toggle warning. */
-export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
-
 /** Display order for setting namespaces shown in the Settings page.
  * Excluded:
  *   - 'providers': the dedicated Providers page surfaces every
@@ -50,6 +44,9 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'hr',
   'workers',
   'client',
+  'appearance',
+  'org_chart',
+  'dashboard',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
@@ -82,6 +79,9 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   external_api: 'External API',
   cockpit: 'Mission Control',
   demo: 'Demo',
+  appearance: 'Appearance',
+  org_chart: 'Org Chart',
+  dashboard: 'Dashboard',
 }
 
 /** Settings that should never be shown in the GUI (internal/system-managed). */

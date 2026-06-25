@@ -79,6 +79,15 @@ class TemplateVariable(BaseModel):
         default=None, description="Default value"
     )
     required: bool = Field(default=False, description="Whether required")
+    hidden: bool = Field(
+        default=False,
+        description=(
+            "When True the setup wizard does not render an input for this "
+            "variable; its default is applied. Reserved for advanced knobs the "
+            "operator can change later in the dashboard, so the wizard stays "
+            "focused on the few choices that matter up front."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_required_has_no_default(self) -> Self:
@@ -92,6 +101,27 @@ class TemplateVariable(BaseModel):
         """
         if self.required and self.default is not None:
             msg = f"Variable {self.name!r} is required but defines a default"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_hidden_is_not_required(self) -> Self:
+        """A hidden variable cannot also be required.
+
+        ``hidden`` means the setup wizard never renders an input and applies the
+        default, while ``required`` means the operator must supply a value -- an
+        unsatisfiable contract (the frontend omits the field the backend still
+        demands).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When a variable is both hidden and required.
+        """
+        if self.hidden and self.required:
+            msg = f"Variable {self.name!r} is hidden and cannot be required"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self

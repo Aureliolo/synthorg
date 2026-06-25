@@ -5,6 +5,8 @@ import type {
   createCompany,
   getAgents,
   getAvailableLocales,
+  getCompany,
+  getModelRecommendations,
   getNameLocales,
   getSetupStatus,
   listPersonalityPresets,
@@ -88,12 +90,30 @@ export const setupHandlers = [
         description: null,
         template_applied: null,
         department_count: 0,
+        currency: 'USD',
+        budget: 500,
+        model_tier_profile: 'balanced',
         agent_count: 0,
         agents: [],
       }),
       { status: 201 },
     )
   }),
+  http.get('/api/v1/setup/company', () =>
+    HttpResponse.json(
+      successFor<typeof getCompany>({
+        company_name: 'Setup Co',
+        description: null,
+        template_applied: 'startup',
+        department_count: 3,
+        currency: 'USD',
+        budget: 500,
+        model_tier_profile: 'balanced',
+        agent_count: 1,
+        agents: [buildAgentSummary()],
+      }),
+    ),
+  ),
   http.post('/api/v1/setup/agent', async ({ request }) => {
     const body = (await request.json()) as {
       name: string
@@ -115,6 +135,17 @@ export const setupHandlers = [
   }),
   http.get('/api/v1/setup/agents', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof getAgents>()),
+  ),
+  http.get('/api/v1/setup/model-recommendations', () =>
+    HttpResponse.json(
+      successFor<typeof getModelRecommendations>({
+        decomposition_recommended: 'model-default',
+        decomposition_candidates: ['model-default'],
+        embedding_recommended: 'embed-default',
+        embedding_recommended_dims: 1024,
+        embedding_candidates: ['embed-default'],
+      }),
+    ),
   ),
   http.put('/api/v1/setup/agents/:index/model', async ({ request }) => {
     const body = (await request.json()) as {
@@ -163,7 +194,9 @@ export const setupHandlers = [
     ),
   ),
   http.get('/api/v1/setup/name-locales', () =>
-    HttpResponse.json(successFor<typeof getNameLocales>({ locales: [] })),
+    // Backend returns the ``__all__`` sentinel (never an empty array) when no
+    // explicit locales are persisted; mirror that so tests exercise the real shape.
+    HttpResponse.json(successFor<typeof getNameLocales>({ locales: ['__all__'] })),
   ),
   http.put('/api/v1/setup/name-locales', async ({ request }) => {
     const body = (await request.json()) as { locales: string[] }

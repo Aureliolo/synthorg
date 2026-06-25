@@ -465,6 +465,24 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="matcher_min_usable_parameters",
+        type=SettingType.INTEGER,
+        default="14000000000",
+        description=(
+            "Model matcher: smallest parameter count a model may have to be"
+            " auto-assigned to an agent. Smaller models cannot reliably run an"
+            " agent loop, so the demand path excludes them; an explicit"
+            " family/pattern/id reference still honours them."
+        ),
+        group="Model Matcher",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+    )
+)
+
 # ── Heuristic grader thresholds ─────────────────────────────────
 # Drives the rule-based ``HeuristicRubricGrader``. Pass-threshold is
 # the probe-pass-ratio cutoff; pass/fail grades are the per-criterion

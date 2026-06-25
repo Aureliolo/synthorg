@@ -31,6 +31,9 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
   description: null,
   template_applied: "startup",
   department_count: 1,
+  currency: "USD",
+  budget: 500,
+  model_tier_profile: "balanced",
   agent_count: 1,
   agents: [],
 });
@@ -56,6 +59,8 @@ const makeProvider = (
       supports_vision: false,
       supports_reasoning: false,
       max_output_tokens: null,
+      parameter_count: null,
+      cost_tier: null,
       family: null,
       generation: null,
       release_date: null,

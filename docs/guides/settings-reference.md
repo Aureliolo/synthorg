@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->31<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 
@@ -45,13 +45,16 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | Namespace | What it configures |
 |-----------|---------------------|
 | `api` | Rate limits, CORS, request timeouts, auth cookie settings |
-| `company` | Company name, autonomy level, monthly budget, communication pattern |
+| `company` | Company name, autonomy level, monthly budget, currency, model-tier profile, communication pattern |
 | `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
 | `memory` | Memory backend, retention, embedding model, consolidation policy |
 | `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget, quota poller |
 | `security` | Autonomy levels, approval policies, output scanner, trust strategy, policy engine |
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |
+| `appearance` | Dashboard theme axes (colour palette, density, typography, animation, sidebar mode) |
+| `dashboard` | Misc dashboard UI preferences (sidebar collapsed, recent commands, advanced-mode toggles, dismissals) |
+| `org_chart` | Org-chart view preferences (particle flow, badges, status dots, minimap, collapsed departments) |
 | `backup` | Enabled, schedule, compression, retention count/age |
 | `cockpit` | Flight-recorder run replay, stuck/runaway thresholds, snapshot cadence, steering proposer and active-directive limits |
 

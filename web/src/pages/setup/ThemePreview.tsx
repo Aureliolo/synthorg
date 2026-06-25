@@ -11,9 +11,12 @@ import { StatPill } from '@/components/ui/stat-pill'
 import type { ThemeSettings } from '@/stores/setup-wizard'
 import { BarChart3, Home, Users, ListChecks, Settings, ChevronRight } from 'lucide-react'
 
-const DENSITY_CLASS: Record<string, string> = {
+// Mirror the theme store: ``balanced`` is the default and carries no override
+// class; ``medium`` is a distinct, denser tier (``density-medium``).
+const DENSITY_CLASS: Record<ThemeSettings['density'], string> = {
   dense: 'density-dense',
-  balanced: 'density-medium',
+  balanced: '',
+  medium: 'density-medium',
   sparse: 'density-sparse',
 }
 

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 from pydantic import JsonValue
 
 from synthorg.api.controllers.setup_models import SetupAgentRequest, SetupAgentSummary
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.schema import ProviderConfig
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_optional_string
@@ -22,13 +23,13 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_READ_FALLBACK,
     SETUP_MODEL_FALLBACK_USED,
     SETUP_PRESET_NOT_FOUND,
-    SETUP_TEMPLATE_INVALID,
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.service_protocol import SettingsServiceProtocol
+from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.model_matcher_config import ModelMatcherConfig
-from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+from synthorg.templates.schema import TemplateDepartmentConfig
 
 if TYPE_CHECKING:
     # Referenced only inside a string-literal ``cast`` annotation, so the name
@@ -43,104 +44,78 @@ _REQUIRED_AGENT_KEYS: frozenset[str] = frozenset({"name", "role"})
 
 
 def expand_template_agents(
-    template: CompanyTemplate,
+    loaded: LoadedTemplate,
     locales: list[str] | None = None,
     *,
     custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+    variables: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
-    """Expand template agent configs into persistable agent dicts.
+    """Expand a template into persistable agent dicts via the renderer.
 
-    Uses the same building blocks as the renderer (personality presets,
-    auto-name generation) but does not require a full ``RootConfig``
-    validation pass.
+    Renders the template through the same pipeline as the engine
+    (:func:`render_template`): resolves ``extends`` / ``_remove`` / department
+    head-roles and runs the shared agent expansion (auto-naming, personality
+    presets, and the strategic-role model default), then projects each
+    validated ``AgentConfig`` into the dict shape the matcher and persistence
+    consume. Routing the wizard through the one renderer pipeline keeps it in
+    lockstep with the engine -- a single source of truth for a template's
+    roster, instead of a parallel load-only expansion that silently skipped
+    inheritance.
 
     Args:
-        template: Parsed ``CompanyTemplate`` from the loader.
+        loaded: Loaded template from the loader.
         locales: Faker locale codes for name generation.  ``None``
             uses all Latin-script locales.
         custom_presets: Optional mapping of custom preset names to
             personality config dicts (checked before builtins).
+        variables: User-supplied template variable overrides (company name,
+            budget, and any genuine template variables) fed to the renderer.
 
     Returns:
-        List of agent config dicts with ``tier`` metadata and, when
-        the template uses structured model requirements, a
-        ``model_requirement`` dict for downstream matching.
+        List of agent config dicts each carrying a ``model_requirement``
+        dict for downstream matching.
 
     Raises:
-        ValidationError: If a structured model requirement dict
-            contains invalid fields.
+        TemplateRenderError: If rendering fails.
+        TemplateValidationError: If the rendered config fails validation.
     """
-    from synthorg.templates.presets import (  # noqa: PLC0415
-        generate_auto_name,
-        get_personality_preset,
+    from synthorg.templates.renderer import render_template  # noqa: PLC0415
+
+    cfg = render_template(
+        loaded,
+        variables=dict(variables) if variables else None,
+        locales=locales,
+        custom_presets=custom_presets,
     )
+    return [_agent_config_to_dict(agent) for agent in cfg.agents]
 
-    agents: list[dict[str, object]] = []
-    used_names: set[str] = set()
 
-    for idx, agent_cfg in enumerate(template.agents):
-        name = agent_cfg.name.strip() if agent_cfg.name else ""
-        if not name or name.startswith("{{") or "__JINJA2__" in name:
-            name = generate_auto_name(agent_cfg.role, seed=idx, locales=locales)
+def _agent_config_to_dict(agent: AgentConfig) -> dict[str, object]:
+    """Project a rendered ``AgentConfig`` into a wizard agent dict.
 
-        # Deduplicate names.
-        base_name = name
-        counter = 2
-        while name in used_names:
-            name = f"{base_name} {counter}"
-            counter += 1
-        used_names.add(name)
-
-        # Resolve personality.
-        preset_name = agent_cfg.personality_preset or "pragmatic_builder"
-        try:
-            personality = get_personality_preset(
-                preset_name,
-                custom_presets=custom_presets,
-            )
-        except KeyError:
-            logger.warning(
-                SETUP_TEMPLATE_INVALID,
-                preset=preset_name,
-                agent_index=idx,
-                reason="unknown_personality_preset",
-            )
-            preset_name = "pragmatic_builder"
-            personality = get_personality_preset(preset_name)
-
-        # Resolve the structured ModelRequirement from the agent's model
-        # reference (an explicit id string or a capability/family dict),
-        # merging the personality preset's affinity defaults.
-        from synthorg.templates.model_requirements import (  # noqa: PLC0415
-            resolve_model_requirement,
-        )
-
-        overrides: dict[str, JsonValue] | None = (
-            {"model_id": agent_cfg.model}
-            if isinstance(agent_cfg.model, str)
-            else agent_cfg.model
-        )
-        model_req = resolve_model_requirement(preset_name, overrides)
-
-        agent_dict: dict[str, object] = {
-            "name": name,
-            "role": agent_cfg.role,
-            "department": agent_cfg.department or "engineering",
-            "level": agent_cfg.level.value,
-            "personality": personality,
-            "personality_preset": preset_name,
-            "model_requirement": model_req.model_dump(),
-            "model": {"provider": "", "model_id": ""},
-        }
-        agents.append(agent_dict)
-
-    return agents
+    Returns:
+        A dict with name/role/department/level/personality and the
+        ``model_requirement`` the matcher reads; ``model`` is a blank
+        placeholder ``match_and_assign_models`` overwrites.
+    """
+    return {
+        "name": agent.name,
+        "role": agent.role,
+        "department": agent.department,
+        "level": agent.level.value,
+        "personality": agent.personality,
+        "personality_preset": agent.personality_preset,
+        "model_requirement": agent.model_requirement,
+        "model": {"provider": "", "model_id": ""},
+    }
 
 
 def match_and_assign_models(
     agents: list[dict[str, object]],
     providers: Mapping[str, ProviderConfig],
     matcher_config: ModelMatcherConfig | None = None,
+    *,
+    tier_profile: str = "balanced",
 ) -> list[dict[str, object]]:
     """Auto-assign models to template agents using the matching engine.
 
@@ -155,6 +130,9 @@ def match_and_assign_models(
             operator-tunable score weights resolved from
             ``EngineBridgeConfig``. ``None`` falls back to the matcher
             defaults that mirror the historical hardcoded values.
+        tier_profile: Company model-tier profile ('economy' | 'balanced' |
+            'premium') biasing every agent's priority cheaper or stronger;
+            'balanced' leaves the template's per-agent priorities intact.
 
     Returns:
         New list of agent dicts with model assignments applied.
@@ -168,6 +146,7 @@ def match_and_assign_models(
         agents,
         cast("Mapping[str, _ProviderWithModels]", providers),
         matcher_config,
+        tier_profile=tier_profile,
     )
     match_map = {
         m.agent_index: {

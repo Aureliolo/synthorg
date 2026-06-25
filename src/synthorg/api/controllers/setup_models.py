@@ -98,6 +98,7 @@ class TemplateVariableResponse(BaseModel):
     var_type: Literal["str", "int", "float", "bool"] = "str"
     default: str | int | float | bool | None = None
     required: bool = False
+    hidden: bool = False
 
 
 class TemplateInfoResponse(BaseModel):
@@ -188,6 +189,31 @@ class SetupCompanyRequest(BaseModel):
         examples=["consulting-firm", "blank"],
         description="Optional company template to apply; None creates a blank company.",
     )
+    currency: NotBlankStr | None = Field(
+        default=None,
+        max_length=10,
+        description="Display-currency code; None means unset (no privileged default).",
+    )
+    budget: float | None = Field(
+        default=None,
+        ge=0,
+        examples=[500.0],
+        description="Monthly budget; None uses the template default.",
+    )
+    model_tier_profile: Literal["economy", "balanced", "premium"] = Field(
+        default="balanced",
+        description=(
+            "Bias for model-tier assignment across agents: economy favours "
+            "cheaper tiers, premium favours stronger ones, balanced is neutral."
+        ),
+    )
+    template_variables: dict[str, str | int | float | bool] = Field(
+        default_factory=dict,
+        description=(
+            "Genuine template-variable overrides (e.g. sprint length, WIP "
+            "limit). Company name + budget are dedicated fields, not variables."
+        ),
+    )
 
 
 class SetupAgentSummary(BaseModel):
@@ -235,6 +261,9 @@ class SetupCompanyResponse(BaseModel):
     description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
+    currency: NotBlankStr | None = None
+    budget: float | None = Field(default=None, ge=0)
+    model_tier_profile: Literal["economy", "balanced", "premium"] = "balanced"
     agents: tuple[SetupAgentSummary, ...] = ()
 
     @computed_field
@@ -246,6 +275,53 @@ class SetupCompanyResponse(BaseModel):
             Resulting integer.
         """
         return len(self.agents)
+
+
+class SetupModelRecommendationsResponse(BaseModel):
+    """Wizard model-selection recommendations + candidate lists.
+
+    Lets the setup wizard prefill the coordinator's decomposition model and the
+    memory embedding model with sensible defaults (best-ranked / most-senior
+    catalogue model) while leaving the operator free to override either from
+    the full configured catalogue.
+
+    Attributes:
+        decomposition_recommended: Suggested decomposition model id, if any.
+        decomposition_candidates: All catalogue model ids selectable for it.
+        embedding_recommended: Suggested embedding model id, if any.
+        embedding_recommended_dims: Output dims for the suggested embedder.
+        embedding_candidates: Catalogue model ids that are embedding-capable.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    decomposition_recommended: NotBlankStr | None = None
+    decomposition_candidates: tuple[str, ...] = ()
+    embedding_recommended: NotBlankStr | None = None
+    embedding_recommended_dims: int | None = Field(default=None, ge=1)
+    embedding_candidates: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_embedding_pairing(self) -> Self:
+        """Dims and a recommended embedder must be present together.
+
+        Returns:
+            The validated instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``embedding_recommended`` and
+                ``embedding_recommended_dims`` is set (the wizard cannot
+                prefill a dimension with no model, or vice versa).
+        """
+        if (self.embedding_recommended is None) != (
+            self.embedding_recommended_dims is None
+        ):
+            msg = (
+                "embedding_recommended and embedding_recommended_dims must be "
+                "set together or both omitted"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class SetupAgentRequest(BaseModel):

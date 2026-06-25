@@ -33,15 +33,41 @@ class TestRenderTemplateBasic:
         loaded = load_template("solo_founder")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert config.company_name == "My Company"
+        assert config.company_name == "Solo Builder"
         assert len(config.agents) == 2
 
     def test_render_builtin_startup(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert config.company_name == "Startup Co"
+        assert config.company_name == "Tech Startup"
         assert len(config.agents) == 5
+
+    def test_personality_preset_name_retained_for_field_form(self) -> None:
+        # Builtins reference presets via the `personality_preset:` FIELD (not a
+        # bare `personality:` string). The rendered AgentConfig must keep the
+        # preset NAME, not just the resolved personality dict, so the setup
+        # wizard's personality dropdown shows the assignment instead of an
+        # empty "Select...".
+        loaded = load_template("product_team")
+        config = render_template(loaded)
+        presets = {agent.personality_preset for agent in config.agents}
+        assert "strategic_planner" in presets
+        for agent in config.agents:
+            if agent.personality_preset is not None:
+                assert agent.personality, agent.name
+
+    @pytest.mark.parametrize("template_name", sorted(BUILTIN_TEMPLATES))
+    def test_every_builtin_agent_has_a_personality(self, template_name: str) -> None:
+        # Every shipped template must assign a personality preset to EVERY
+        # agent. The setup wizard binds its personality dropdown to the preset
+        # name, so an agent without one renders an unconfigured "Select..." and
+        # ships an agent with no personality.
+        config = render_template(load_template(template_name))
+        unassigned = [a.role for a in config.agents if not a.personality_preset]
+        assert not unassigned, (
+            f"{template_name} agents without a personality: {unassigned}"
+        )
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
         from synthorg.engine.workflow.config import WorkflowConfig
@@ -811,3 +837,82 @@ class TestJinja2PlaceholderAutoName:
         assert isinstance(name, str)
         assert "__JINJA2__" not in name
         assert len(name) > 0
+
+
+@pytest.mark.unit
+class TestStrategicModelDefault:
+    def test_spec_less_ceo_defaults_to_quality_reasoning(self) -> None:
+        """A head-role exec with no model block earns the top demand."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "CEO", "department": "executive"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
+    def test_ceo_with_mid_level_still_strategic(self) -> None:
+        """A CEO mislabelled ``mid`` is still recognised by title."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "level": "mid",
+            "department": "executive",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
+    def test_explicit_c_suite_level_without_role_match(self) -> None:
+        """An explicit c_suite level marks a role strategic even off-title."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Head Coach", "level": "c_suite"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
+    def test_non_strategic_role_keeps_preset_default(self) -> None:
+        """A non-exec role is not force-promoted to quality+reasoning."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Developer", "department": "engineering"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        # Not forced to the strategic default (preset/balanced governs instead).
+        assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)
+
+    def test_vice_president_maps_to_vp_not_c_suite(self) -> None:
+        """A VP title resolves to ``vp`` and is not force-promoted to strategic."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Vice President of Sales",
+            "department": "sales",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert result["level"] == "vp"
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)
+
+    def test_explicit_model_block_on_exec_is_respected(self) -> None:
+        """An exec with an explicit model block is not overridden."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "department": "executive",
+            "model": {"priority": "speed"},
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "speed"

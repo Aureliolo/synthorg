@@ -29,6 +29,7 @@ PROVIDER_STREAM_CHUNK_NO_DELTA: Final[str] = "provider.stream.chunk_no_delta"
 PROVIDER_STREAM_CLOSE_FAILED: Final[str] = "provider.stream.close_failed"
 PROVIDER_MODEL_NOT_FOUND: Final[str] = "provider.model.not_found"
 PROVIDER_RATE_LIMITED: Final[str] = "provider.rate.limited"
+PROVIDER_QUOTA_EXCEEDED: Final[str] = "provider.quota.exceeded"
 PROVIDER_AUTH_ERROR: Final[str] = "provider.auth.error"
 PROVIDER_CONNECTION_ERROR: Final[str] = "provider.connection.error"
 PROVIDER_RETRY_AFTER_PARSE_FAILED: Final[str] = "provider.retry_after.parse_failed"
@@ -146,6 +147,21 @@ PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
     "provider.discovery.allowlist_updated"
 )
 PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"
+
+# ── Ollama usage-tier scraping ──────────────────────────────
+
+PROVIDER_OLLAMA_USAGE_TIER_SCRAPE_FAILED: Final[str] = (
+    "provider.ollama.usage_tier_scrape_failed"
+)
+PROVIDER_OLLAMA_USAGE_TIER_APPLY_FAILED: Final[str] = (
+    "provider.ollama.usage_tier_apply_failed"
+)
+
+# ── Capability enrichment ───────────────────────────────────
+
+PROVIDER_CAPABILITY_ENRICHMENT_FAILED: Final[str] = (
+    "provider.capability_enrichment.failed"
+)
 
 # ── LiteLLM model database lookup ───────────────────────────
 

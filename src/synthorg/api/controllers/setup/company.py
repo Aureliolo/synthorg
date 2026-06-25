@@ -8,12 +8,21 @@ matched to the configured provider(s).
 
 import asyncio
 
-from litestar import Controller, post
+from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_201_CREATED
 
+from synthorg.api.controllers.setup._company_read import (
+    build_company_response as _build_company_response,
+)
 from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
+)
+from synthorg.api.controllers.setup._embedder_setup import (
+    collect_model_ids as _collect_model_ids,
+)
+from synthorg.api.controllers.setup._embedder_setup import (
+    pick_decomposition_model,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
@@ -24,34 +33,48 @@ from synthorg.api.controllers.setup._runtime_wiring import (
 from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
 )
+from synthorg.api.controllers.setup._template_helpers import (
+    TemplateResult,
+)
+from synthorg.api.controllers.setup._template_helpers import (
+    resolve_template as _resolve_template,
+)
+from synthorg.api.controllers.setup.company_helpers import (
+    CompanyPersist as _CompanyPersist,
+)
 from synthorg.api.controllers.setup.company_helpers import (
     check_setup_not_complete as _check_setup_not_complete,
 )
 from synthorg.api.controllers.setup.company_helpers import (
     persist_company_settings as _persist_company_settings,
 )
-from synthorg.api.controllers.setup.company_helpers import (
-    resolve_template as _resolve_template,
-)
 from synthorg.api.controllers.setup_agents import (
+    get_existing_agents,
     normalize_description,
 )
 from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
+    SetupModelRecommendationsResponse,
 )
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_ceo
+from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.memory.embedding.selector import (
+    list_embedding_candidates,
+    select_embedding_model,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_COMPANY_CREATED,
     SETUP_POSTURE_SEED_FAILED,
 )
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
@@ -62,6 +85,77 @@ class SetupCompanyController(Controller):
 
     path = "/setup"
     tags = ("setup",)
+
+    @get(
+        "/company",
+        guards=[require_read_access],
+    )
+    async def get_company(
+        self,
+        state: State,
+    ) -> ApiResponse[SetupCompanyResponse]:
+        """Return the persisted company so any client can rehydrate on resume.
+
+        The wizard holds no client-side company copy; it hydrates from here.
+        Rebuilds the same ``SetupCompanyResponse`` shape ``POST /setup/company``
+        returns, from the ``company.*`` settings.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            The persisted company configuration envelope.
+
+        Raises:
+            NotFoundError: When no company has been created yet.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = settings_service_of(app_state)
+        response = await _build_company_response(settings_svc)
+        if response is None:
+            msg = "No company has been created yet"
+            raise NotFoundError(msg)
+        return ApiResponse(data=response)
+
+    @get(
+        "/model-recommendations",
+        guards=[require_read_access],
+    )
+    async def get_model_recommendations(
+        self,
+        state: State,
+    ) -> ApiResponse[SetupModelRecommendationsResponse]:
+        """Recommend + enumerate the wizard's coordinator + embedding models.
+
+        The wizard prefills the coordinator's decomposition model (a
+        top-cost-tier agent's model) and the memory embedding model (the
+        best-ranked embedder in the catalogue) from these, and lets the operator
+        override either from the candidate lists. Read-only: it persists nothing
+        -- the wizard writes any override through the settings API, and
+        completion auto-selects only when the operator left a value unset.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            The recommended models and the candidate lists to choose from.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = settings_service_of(app_state)
+        agents = await get_existing_agents(settings_svc)
+        model_ids = await _collect_model_ids(app_state)
+        selection = select_embedding_model(model_ids)
+        return ApiResponse(
+            data=SetupModelRecommendationsResponse(
+                decomposition_recommended=pick_decomposition_model(agents),
+                decomposition_candidates=model_ids,
+                embedding_recommended=selection.model_id if selection else None,
+                embedding_recommended_dims=(
+                    selection.output_dims if selection else None
+                ),
+                embedding_candidates=list_embedding_candidates(model_ids),
+            )
+        )
 
     @post(
         "/company",
@@ -101,58 +195,9 @@ class SetupCompanyController(Controller):
         tmpl_res = await asyncio.to_thread(_resolve_template, data.template_name)
         description = normalize_description(data.description)
 
-        # Serialise the whole check / persist / agents-write sequence
-        # under _COMPLETE_LOCK so a concurrent ``/setup/complete``
-        # (which holds the same lock) cannot reinit against a
-        # half-written ``company.agents`` array. _AGENT_LOCK is NOT
-        # acquired at this outer scope: ``_auto_create_template_agents``
-        # acquires _AGENT_LOCK internally and ``asyncio.Lock`` is not
-        # reentrant, so holding it here would self-deadlock. The
-        # leaf agents-writes take _AGENT_LOCK at their own narrow scope
-        # instead -- the lock order across the module stays
-        # _COMPLETE_LOCK -> _AGENT_LOCK.
-        async with _COMPLETE_LOCK:
-            await _check_setup_not_complete(settings_svc)
-            await _persist_company_settings(
-                settings_svc,
-                data.company_name,
-                description,
-                tmpl_res.departments_json,
-            )
-
-            agent_summaries: tuple[SetupAgentSummary, ...] = ()
-            if tmpl_res.template is not None:
-                agent_summaries = await _auto_create_template_agents(
-                    tmpl_res.template,
-                    app_state,
-                    settings_svc,
-                )
-                logger.info(
-                    SETUP_AGENTS_AUTO_CREATED,
-                    count=len(agent_summaries),
-                    template=tmpl_res.template_applied,
-                )
-                # Seed the template posture's settings-resident feature flags
-                # before /setup/complete runs post_setup_reinit, so the
-                # rebuilt runtime and boot wiring pick them up. Non-fatal:
-                # the company and agents are already persisted, so a seed
-                # failure logs a WARNING and lets setup succeed (the operator
-                # re-applies the posture) rather than aborting under the lock.
-                try:
-                    await _seed_posture_settings(settings_svc, tmpl_res.template)
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        SETUP_POSTURE_SEED_FAILED,
-                        template=tmpl_res.template_applied,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-            else:
-                # Blank path: clear any agents persisted by a previous
-                # template selection so GET /setup/agents returns empty.
-                async with _AGENT_LOCK:
-                    await settings_svc.set("company", "agents", "[]")
+        agent_summaries = await _persist_and_populate(
+            app_state, settings_svc, data, tmpl_res
+        )
 
         logger.info(
             SETUP_COMPANY_CREATED,
@@ -168,6 +213,149 @@ class SetupCompanyController(Controller):
                 description=description,
                 template_applied=tmpl_res.template_applied,
                 department_count=tmpl_res.department_count,
+                currency=data.currency,
+                budget=data.budget,
+                model_tier_profile=data.model_tier_profile,
                 agents=agent_summaries,
             ),
         )
+
+
+def _build_render_vars(data: SetupCompanyRequest) -> dict[str, object]:
+    """Build the template render variables from the company request.
+
+    Company name + budget are dedicated company-level fields, not template
+    variables, but the template Jinja still references ``{{ company_name }}`` /
+    ``{{ budget }}``. Feed the real company-level values in as render variables
+    alongside the genuine template-variable overrides (sprint length, WIP
+    limit, ...); the company fields win over any stray var.
+
+    Returns:
+        The merged render-variable mapping.
+    """
+    render_vars: dict[str, object] = dict(data.template_variables)
+    render_vars["company_name"] = data.company_name
+    if data.budget is not None:
+        render_vars["budget"] = data.budget
+    return render_vars
+
+
+async def _persist_and_populate(
+    app_state: AppState,
+    settings_svc: SettingsService,
+    data: SetupCompanyRequest,
+    tmpl_res: TemplateResult,
+) -> tuple[SetupAgentSummary, ...]:
+    """Persist the company and (re)populate its agents under ``_COMPLETE_LOCK``.
+
+    Serialise the whole check / persist / agents-write sequence under
+    ``_COMPLETE_LOCK`` so a concurrent ``/setup/complete`` (which holds the same
+    lock) cannot reinit against a half-written ``company.agents`` array.
+    ``_AGENT_LOCK`` is NOT acquired at this outer scope:
+    ``_auto_create_template_agents`` acquires it internally and ``asyncio.Lock``
+    is not reentrant, so holding it here would self-deadlock. The lock order
+    across the module stays ``_COMPLETE_LOCK -> _AGENT_LOCK``.
+
+    Returns:
+        The created agent summaries (empty on the blank path).
+
+    Raises:
+        ConflictError: When setup is already complete, or a blank re-apply
+            would destroy an existing roster.
+    """
+    async with _COMPLETE_LOCK:
+        await _check_setup_not_complete(settings_svc)
+        await _reject_destructive_reapply(settings_svc, tmpl_res)
+        await _persist_company_settings(
+            settings_svc,
+            _CompanyPersist(
+                company_name=data.company_name,
+                description=normalize_description(data.description),
+                departments_json=tmpl_res.departments_json,
+                template_applied=tmpl_res.template_applied,
+                currency=data.currency,
+                budget=data.budget,
+                model_tier_profile=data.model_tier_profile,
+            ),
+        )
+        if tmpl_res.loaded is None or tmpl_res.template is None:
+            # Blank path: clear any agents persisted by a previous template
+            # selection so GET /setup/agents returns empty.
+            async with _AGENT_LOCK:
+                await settings_svc.set("company", "agents", "[]")
+            return ()
+        return await _populate_template_agents(app_state, settings_svc, data, tmpl_res)
+
+
+async def _reject_destructive_reapply(
+    settings_svc: SettingsService,
+    tmpl_res: TemplateResult,
+) -> None:
+    """Reject a blank re-apply over an already-populated company.
+
+    A template-less apply (blank) over an existing populated company would wipe
+    its roster -- the resume data-loss path where a client whose template was
+    not hydrated re-applies as blank and silently destroys every agent. Reject
+    upfront (before any persist); regenerating from a real template, or a blank
+    create on a fresh company, are both still allowed.
+
+    Raises:
+        ConflictError: When a blank apply would remove existing agents.
+    """
+    if tmpl_res.template is not None:
+        return
+    existing_agents = await get_existing_agents(settings_svc)
+    if existing_agents:
+        msg = (
+            f"Re-applying without a template would remove the "
+            f"{len(existing_agents)} existing agent(s). Select a template to "
+            f"regenerate the company, or clear it first to intentionally start "
+            f"blank."
+        )
+        raise ConflictError(msg)
+
+
+async def _populate_template_agents(
+    app_state: AppState,
+    settings_svc: SettingsService,
+    data: SetupCompanyRequest,
+    tmpl_res: TemplateResult,
+) -> tuple[SetupAgentSummary, ...]:
+    """Auto-create the template's agents and seed its posture flags.
+
+    Returns:
+        The created agent summaries (empty when the template path is absent,
+        which the caller has already excluded).
+    """
+    loaded = tmpl_res.loaded
+    template = tmpl_res.template
+    if loaded is None or template is None:
+        return ()
+    agent_summaries = await _auto_create_template_agents(
+        loaded,
+        app_state,
+        settings_svc,
+        variables=_build_render_vars(data),
+        tier_profile=data.model_tier_profile,
+    )
+    logger.info(
+        SETUP_AGENTS_AUTO_CREATED,
+        count=len(agent_summaries),
+        template=tmpl_res.template_applied,
+    )
+    # Seed the template posture's settings-resident feature flags before
+    # /setup/complete runs post_setup_reinit, so the rebuilt runtime and boot
+    # wiring pick them up. Non-fatal: the company and agents are already
+    # persisted, so a seed failure logs a WARNING and lets setup succeed (the
+    # operator re-applies the posture) rather than aborting under the lock.
+    try:
+        await _seed_posture_settings(settings_svc, template)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETUP_POSTURE_SEED_FAILED,
+            template=tmpl_res.template_applied,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    return agent_summaries

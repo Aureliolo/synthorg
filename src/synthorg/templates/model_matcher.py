@@ -9,7 +9,9 @@ to the newest matching configured model and pinning a concrete id, and
 composite.  Selection is pluggable via :class:`ModelSelectionStrategy`.
 """
 
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from fnmatch import fnmatch
 from typing import Final, Protocol, runtime_checkable
@@ -31,20 +33,18 @@ from synthorg.templates.model_matcher_config import (
     ModelMatcherConfig,
     derive_tier,
 )
+from synthorg.templates.model_matcher_priority import priority_ranker, shift_priority
+from synthorg.templates.model_matcher_tiering import (
+    demand_tier,
+    prune_dominated,
+    select_for_demand,
+)
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
 logger = get_logger(__name__)
 
 # Number of known capability flags scored by capability-fit.
 _CAPABILITY_COUNT: Final[int] = 3
-
-# Latency stand-in (ms) for models without a measured latency, so they
-# sort last on the speed axis without using inf (frozen models forbid it).
-_LATENCY_UNKNOWN_MS: Final[int] = 10_000_000
-
-# Weight of the (pool-normalised) generation axis in the balanced blend;
-# the remainder weights cheapness. 0.5 splits quality and cost evenly.
-_BALANCED_GENERATION_WEIGHT: Final[float] = 0.5
 
 
 class _ProviderWithModels(Protocol):
@@ -87,13 +87,51 @@ class ModelSelectionStrategy(Protocol):
         ...
 
 
+def passes_hard_filters(
+    model: ProviderModelConfig,
+    requirement: ModelRequirement,
+) -> bool:
+    """Return ``True`` when *model* clears every hard requirement.
+
+    Optimistic: a required capability is a hard fail only when the model is
+    *known* to lack it (``litellm`` / ``probe`` metadata with the flag False).
+    A model with ``unknown`` metadata is allowed through -- most modern models
+    support tools/reasoning, and excluding every un-probed cloud model would
+    leave agents unassigned.
+
+    Returns:
+        True when the model meets the context floor and every required
+        capability it is known to possess (or has unknown metadata for).
+    """
+    if model.max_context < requirement.min_context:
+        return False
+    meta = model.metadata
+    unknown = meta.metadata_source == "unknown"
+    required_checks = (
+        (requirement.requires_tools, meta.supports_tools),
+        (requirement.requires_vision, meta.supports_vision),
+        (requirement.requires_reasoning, meta.supports_reasoning),
+    )
+    for required, supported in required_checks:
+        if required and not unknown and not supported:
+            logger.debug(
+                TEMPLATE_MODEL_MATCH_SKIPPED,
+                model=model.id,
+                reason="capability_unmet",
+                metadata_unknown=unknown,
+            )
+            return False
+    return True
+
+
 class CapabilityFitStrategy:
     """Default capability-aware selection strategy.
 
-    Phase A hard-filters on declared capability requirements (fail-closed
-    against unknown metadata); phase B pins the newest model matching a
-    family/pattern reference; phase C scores survivors on an absolute
-    capability / context / priority composite.
+    Phase A hard-filters on declared capability requirements (optimistic for
+    un-probed metadata -- a required capability fails only when the model is
+    *known* to lack it; see :func:`passes_hard_filters`); phase B pins the
+    newest model matching a family/pattern reference; phase C scores survivors
+    on an absolute capability / context / priority composite.
     """
 
     def select(
@@ -119,7 +157,7 @@ class CapabilityFitStrategy:
                 return None, 0.0
             return self._newest(pinned), 1.0
 
-        survivors = [m for m in candidates if self._passes_hard_filters(m, requirement)]
+        survivors = [m for m in candidates if passes_hard_filters(m, requirement)]
         if not survivors:
             return None, 0.0
 
@@ -142,36 +180,6 @@ class CapabilityFitStrategy:
             (m, self._score(m, requirement, survivors, config)) for m in survivors
         ]
         return max(scored, key=lambda pair: pair[1])
-
-    def _passes_hard_filters(
-        self,
-        model: ProviderModelConfig,
-        requirement: ModelRequirement,
-    ) -> bool:
-        """Return ``True`` when *model* clears every hard requirement.
-
-        Fail-closed: a required capability against ``unknown`` metadata is
-        a hard fail (we cannot prove the capability is present).
-        """
-        if model.max_context < requirement.min_context:
-            return False
-        meta = model.metadata
-        unknown = meta.metadata_source == "unknown"
-        required_checks = (
-            (requirement.requires_tools, meta.supports_tools),
-            (requirement.requires_vision, meta.supports_vision),
-            (requirement.requires_reasoning, meta.supports_reasoning),
-        )
-        for required, supported in required_checks:
-            if required and (unknown or not supported):
-                logger.debug(
-                    TEMPLATE_MODEL_MATCH_SKIPPED,
-                    model=model.id,
-                    reason="capability_unmet",
-                    metadata_unknown=unknown,
-                )
-                return False
-        return True
 
     def _ref_matches(
         self,
@@ -280,68 +288,13 @@ class CapabilityFitStrategy:
         """
         if len(pool) <= 1:
             return config.priority_max_bonus
-        value_of = _priority_ranker(pool, priority)
+        value_of = priority_ranker(pool, priority)
         values = [value_of(m) for m in pool]
         val_min, val_max = min(values), max(values)
         span = val_max - val_min
         if span <= 0.0:
             return config.priority_max_bonus
         return config.priority_max_bonus * (value_of(model) - val_min) / span
-
-
-def _model_generation(model: ProviderModelConfig) -> float:
-    """Return the model's generation, or ``0.0`` when unknown.
-
-    Returns:
-        The parsed ``metadata.generation`` or ``0.0``.
-    """
-    return model.metadata.generation if model.metadata.generation is not None else 0.0
-
-
-def _priority_ranker(
-    pool: Sequence[ProviderModelConfig],
-    priority: str,
-) -> Callable[[ProviderModelConfig], float]:
-    """Build a higher-is-better value function for *priority* over *pool*.
-
-    For ``balanced`` the generation and cost axes are normalised to
-    ``[0, 1]`` within *pool* before blending, so the two incomparable
-    scales contribute evenly instead of generation dominating.
-
-    Returns:
-        A callable mapping a model to its priority-axis value.
-    """
-    if priority != "balanced":
-        return lambda m: _priority_value(m, priority)
-
-    gens = [_model_generation(m) for m in pool]
-    costs = [m.cost_per_1k_input for m in pool]
-    gen_min, gen_span = min(gens), (max(gens) - min(gens)) or 1.0
-    cost_min, cost_span = min(costs), (max(costs) - min(costs)) or 1.0
-
-    def balanced(model: ProviderModelConfig) -> float:
-        norm_gen = (_model_generation(model) - gen_min) / gen_span
-        norm_cost = (model.cost_per_1k_input - cost_min) / cost_span
-        return _BALANCED_GENERATION_WEIGHT * norm_gen + (
-            1.0 - _BALANCED_GENERATION_WEIGHT
-        ) * (1.0 - norm_cost)
-
-    return balanced
-
-
-def _priority_value(model: ProviderModelConfig, priority: str) -> float:
-    """Higher-is-better value of *model* on a single (non-balanced) axis.
-
-    Returns:
-        ``generation`` for quality (and as the default), negative cost
-        for cost, and negative latency for speed.
-    """
-    if priority == "cost":
-        return -model.cost_per_1k_input
-    if priority == "speed":
-        latency = model.estimated_latency_ms
-        return -float(latency if latency is not None else _LATENCY_UNKNOWN_MS)
-    return _model_generation(model)
 
 
 _DEFAULT_STRATEGY: ModelSelectionStrategy = CapabilityFitStrategy()
@@ -447,6 +400,8 @@ def match_all_agents(
     providers: Mapping[str, _ProviderWithModels],
     matcher_config: ModelMatcherConfig | None = None,
     strategy: ModelSelectionStrategy | None = None,
+    *,
+    tier_profile: str = "balanced",
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
 
@@ -463,12 +418,17 @@ def match_all_agents(
         matcher_config: Operator-tunable score weights. ``None`` uses the
             default projected from ``EngineBridgeConfig``.
         strategy: Selection strategy. ``None`` uses the default.
+        tier_profile: Company model-tier profile ('economy' | 'balanced' |
+            'premium') that nudges each agent's resolved priority one rung
+            along the cost<->quality ladder before matching; 'balanced' is a
+            no-op, so an unset profile leaves matching unchanged.
 
     Returns:
-        List of ``ModelMatch`` results. An agent is omitted when no
-        model clears its hard capability requirements (fail-closed),
-        when no models exist anywhere, or when requirement resolution
-        fails. Callers handle an omitted agent (left unassigned at setup).
+        List of ``ModelMatch`` results. An agent is omitted when no model
+        clears its hard capability requirements (a model the agent's required
+        capability is *known* to lack), when no models exist anywhere, or when
+        requirement resolution fails. Callers handle an omitted agent (left
+        unassigned at setup).
     """
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
         ModelRequirement,
@@ -477,8 +437,15 @@ def match_all_agents(
     )
 
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
-    results: list[ModelMatch] = []
+    selector = strategy if strategy is not None else _DEFAULT_STRATEGY
+    pool, owner = _build_pool(providers)
+    # Domination pruning: drop the older sibling when a same-family model in
+    # the same cost tier is strictly stronger (same price, worse). Tier
+    # overrides apply so a promoted model is compared in its promoted tier.
+    pruned = tuple(prune_dominated(pool, cfg.tier_overrides))
+    ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
 
+    resolved: list[tuple[int, ModelRequirement]] = []
     for idx, agent in enumerate(agents):
         req = _resolve_agent_requirement(
             agent,
@@ -489,56 +456,136 @@ def match_all_agents(
         )
         if req is None:
             continue
-        match = _match_agent(idx, req, providers, cfg, strategy)
-        if match is not None:
-            results.append(match)
+        # The company model-tier profile biases the whole roster cheaper
+        # ('economy') or stronger ('premium') by nudging each agent's resolved
+        # priority one rung along the cost<->quality ladder; 'balanced' is a
+        # no-op, so a profile-less call is unchanged.
+        shifted = shift_priority(req.priority, tier_profile)
+        if shifted != req.priority:
+            req = req.model_copy(update={"priority": shifted})
+        resolved.append((idx, req))
+    # Assign the most-demanding roles first so the strongest models go to the
+    # work that needs them, never wasted on a low-demand role.
+    resolved.sort(key=lambda pair: demand_tier(pair[1]), reverse=True)
 
+    results = [
+        match
+        for idx, req in resolved
+        if (match := _match_agent(idx, req, ctx)) is not None
+    ]
+    results.sort(key=lambda match: match.agent_index)
     return results
+
+
+# Reported match score for a demand-tier assignment: a deliberate tier pick,
+# not a fuzzy capability match, so it carries full confidence.
+_TIERED_MATCH_SCORE: Final[float] = 1.0
+
+
+@dataclass(slots=True)
+class _MatchContext:
+    """Shared batch-matching state: the unified pool + running family spread.
+
+    A dataclass (not a ``NamedTuple``) makes the mutability honest:
+    ``family_usage`` is a live ``Counter`` that ``_match_agent`` increments
+    after each assignment so later agents draw the least-used family.
+    """
+
+    pool: tuple[ProviderModelConfig, ...]
+    owner: dict[int, str]
+    family_usage: Counter[str]
+    config: ModelMatcherConfig
+    strategy: ModelSelectionStrategy
+
+
+def _build_pool(
+    providers: Mapping[str, _ProviderWithModels],
+) -> tuple[tuple[ProviderModelConfig, ...], dict[int, str]]:
+    """Flatten every provider's models into one pool + an id->provider map.
+
+    Returns:
+        ``(pool, owner)`` where ``owner`` maps ``id(model)`` to its provider.
+    """
+    pool: list[ProviderModelConfig] = []
+    owner: dict[int, str] = {}
+    for pname, pcfg in providers.items():
+        for model in pcfg.models:
+            pool.append(model)
+            owner[id(model)] = pname
+    return tuple(pool), owner
+
+
+def _above_usable_floor(
+    models: Sequence[ProviderModelConfig],
+    min_parameters: int,
+) -> list[ProviderModelConfig]:
+    """Drop models with a known parameter count below the usable floor.
+
+    A model too small to run an agent loop (a 1B on QA, say) is never
+    auto-assigned. Size-unknown models pass (cloud models often omit the
+    count). Falls back to the full set when the floor would empty it, so a
+    small-only catalogue still yields a match rather than leaving the agent
+    unassigned.
+
+    Returns:
+        The models at or above the floor, or all of *models* when none clear it.
+    """
+    kept = [
+        m
+        for m in models
+        if m.metadata.parameter_count is None
+        or m.metadata.parameter_count >= min_parameters
+    ]
+    return kept or list(models)
 
 
 def _match_agent(
     idx: int,
     req: ModelRequirement,
-    providers: Mapping[str, _ProviderWithModels],
-    cfg: ModelMatcherConfig,
-    strategy: ModelSelectionStrategy | None,
+    ctx: _MatchContext,
 ) -> ModelMatch | None:
-    """Find the best model for one resolved requirement across providers.
+    """Assign one agent a model across the unified provider pool.
 
-    Fail-closed: when no model clears the requirement's hard capability
-    filters in any provider, returns ``None`` rather than assigning a
-    non-compliant model. The caller leaves such an agent unassigned.
+    An explicit id / family / pattern reference is honoured via the strategy
+    (pin the newest match). Otherwise the role's declared capability demand
+    selects a cost tier, and the agent draws the least-used family at (or
+    nearest) that tier, so the model matches the work's difficulty and the
+    roster fans out across model lines.
 
     Returns:
-        The best ``ModelMatch`` across all providers, or ``None`` when no
-        model satisfies the hard capability requirements.
+        The ``ModelMatch``, or ``None`` when nothing clears the hard filters.
     """
-    best_provider: str | None = None
-    best_model: ProviderModelConfig | None = None
-    best_score = 0.0
-    for pname, pcfg in providers.items():
-        model, score = match_model(req, pcfg.models, cfg, strategy)
-        if model is not None and (best_model is None or score > best_score):
-            best_provider, best_model, best_score = pname, model, score
+    if req.model_id or req.family or req.model_pattern:
+        model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
+    else:
+        eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]
+        eligible = _above_usable_floor(eligible, ctx.config.min_usable_parameters)
+        model = select_for_demand(
+            eligible, demand_tier(req), ctx.family_usage, ctx.config.tier_overrides
+        )
+        score = _TIERED_MATCH_SCORE if model is not None else 0.0
 
-    if best_provider is not None and best_model is not None:
+    provider = ctx.owner.get(id(model)) if model is not None else None
+    if model is None or provider is None:
         logger.debug(
-            TEMPLATE_MODEL_MATCH_SUCCESS,
+            TEMPLATE_MODEL_MATCH_FAILED,
             agent_index=idx,
-            provider=best_provider,
-            model=best_model.id,
-            score=best_score,
+            reason="no_compliant_model",
         )
-        return ModelMatch(
-            agent_index=idx,
-            provider_name=best_provider,
-            model_id=best_model.id,
-            tier=derive_tier(best_model, cfg),
-            score=best_score,
-        )
+        return None
+
+    ctx.family_usage[model.metadata.family or model.id] += 1
     logger.debug(
-        TEMPLATE_MODEL_MATCH_FAILED,
+        TEMPLATE_MODEL_MATCH_SUCCESS,
         agent_index=idx,
-        reason="no_compliant_model",
+        provider=provider,
+        model=model.id,
+        score=score,
     )
-    return None
+    return ModelMatch(
+        agent_index=idx,
+        provider_name=provider,
+        model_id=model.id,
+        tier=derive_tier(model, ctx.config),
+        score=score,
+    )

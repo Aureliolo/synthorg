@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from './guards'
+import { ErrorTest, RouteError } from './RouteError'
 import { ROUTES } from './routes'
 
 // Lazy-loaded pages
@@ -90,9 +91,10 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** Exported for test introspection (e.g. verifying /docs/ is not registered). */
-// eslint-disable-next-line react-refresh/only-export-components
-export const router = createBrowserRouter([
+const appRoutes = [
+  // Dev-only: visit /__error-test to preview the branded RouteError page.
+  // Stripped from production builds.
+  ...(import.meta.env.DEV ? [{ path: '/__error-test', element: <ErrorTest /> }] : []),
   // Public: Login
   {
     path: '/login',
@@ -224,6 +226,14 @@ export const router = createBrowserRouter([
       },
     ],
   },
+]
+
+/** Exported for test introspection (e.g. verifying /docs/ is not registered).
+ *  A single root error boundary renders the branded RouteError for any
+ *  render / lazy-import / loader failure below it. */
+// eslint-disable-next-line react-refresh/only-export-components
+export const router = createBrowserRouter([
+  { errorElement: <RouteError />, children: appRoutes },
 ])
 
 export function AppRouter() {

@@ -8,6 +8,7 @@ import type {
   SetupAgentSummary,
   SetupCompanyRequest,
   SetupCompanyResponse,
+  SetupModelRecommendationsResponse,
   SetupNameLocalesRequest,
   SetupNameLocalesResponse,
   SetupStatusResponse,
@@ -30,6 +31,29 @@ export async function listTemplates(): Promise<TemplateInfoResponse[]> {
 
 export async function createCompany(data: SetupCompanyRequest): Promise<SetupCompanyResponse> {
   const response = await apiClient.post<ApiResponse<SetupCompanyResponse>>('/setup/company', data)
+  return unwrap(response)
+}
+
+/**
+ * Fetch the persisted company so a resumed wizard (or any client) can rehydrate
+ * the company + applied template from the backend rather than a client-side
+ * copy. 404s when no company has been created yet.
+ */
+export async function getCompany(): Promise<SetupCompanyResponse> {
+  const response = await apiClient.get<ApiResponse<SetupCompanyResponse>>('/setup/company')
+  return unwrap(response)
+}
+
+/**
+ * Fetch the wizard's recommended coordinator (decomposition) and memory
+ * (embedding) models plus the candidate lists to override them with. The
+ * wizard prefills the recommendations and writes any override through the
+ * settings API; completion only auto-selects values the operator left unset.
+ */
+export async function getModelRecommendations(): Promise<SetupModelRecommendationsResponse> {
+  const response = await apiClient.get<ApiResponse<SetupModelRecommendationsResponse>>(
+    '/setup/model-recommendations',
+  )
   return unwrap(response)
 }
 

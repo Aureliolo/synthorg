@@ -100,7 +100,7 @@ async def _build_charter_interview(
 
     Returns:
         ``(interview_service, charter_repo, conv_repos)``, or ``None`` when the
-        interview is disabled or the stores / provider are unavailable.
+        stores / provider are unavailable (e.g. before setup completes).
     """
     from synthorg.meta.charter.factory import (  # noqa: PLC0415
         build_charter_interview_strategy,
@@ -115,16 +115,17 @@ async def _build_charter_interview(
         build_conversational_repositories,
     )
 
+    # The charter interview is always available -- it is user-initiated and
+    # harmless, gated only on the provider + persistence the product always
+    # requires. It wires whenever those are present (i.e. post-setup).
     charter_config = si_config.charter
-    if not charter_config.interview_enabled:
-        return None
     charter_repo = build_charter_repository(persistence)
     conv_repos = build_conversational_repositories(persistence)
     available = provider_registry.list_providers()
     if charter_repo is None or conv_repos is None or not available:
         logger.warning(
             CHARTER_SUBSTRATE_UNAVAILABLE,
-            note="charter interview enabled but stores/provider unavailable",
+            note="charter interview stores/provider unavailable (pre-setup?)",
         )
         return None
     provider = provider_registry.get(available[0])

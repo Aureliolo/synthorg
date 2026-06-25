@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 import {
   createFromPreset,
   createProvider as apiCreateProvider,
+  deleteProvider as apiDeleteProvider,
   listPresets,
   listProviders,
   probeLocal,
@@ -85,7 +86,10 @@ async function fetchProvidersImpl(
 // stops the modal fetch effect from self-feeding a request storm even if
 // a caller re-fires it; the modal/component guards are defence in depth.
 async function fetchPresetsImpl(set: WizSet, get: WizGet): Promise<void> {
-  if (get().presets.length > 0 || get().presetsLoading) return
+  // Guard on ``presetsFetched`` (not ``presets.length``) so a backend that
+  // returns an empty preset list is still treated as fetched and the effect
+  // does not re-fire on every mount, matching ``fetchProvidersImpl``.
+  if (get().presetsFetched || get().presetsLoading) return
   set({ presetsLoading: true, presetsError: null })
   try {
     const presets = await listPresets()
@@ -277,6 +281,38 @@ async function testProviderConnectionImpl(
   }
 }
 
+async function deleteProviderImpl(
+  set: WizSet,
+  get: WizGet,
+  name: string,
+): Promise<boolean> {
+  set({ providersMutationError: null })
+  try {
+    await apiDeleteProvider(name)
+    set((s) => ({
+      providers: Object.fromEntries(
+        Object.entries(s.providers).filter(([key]) => key !== name),
+      ),
+    }))
+    get().recomputeAgentsRevalidation()
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Provider '${name}' removed`,
+    })
+    return true
+  } catch (err) {
+    const msg = getErrorMessage(err)
+    log.error('deleteProvider failed:', msg)
+    set({ providersMutationError: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to remove provider'),
+      description: msg,
+    })
+    return false
+  }
+}
+
 async function probeLocalProvidersImpl(
   set: WizSet,
   reset: boolean,
@@ -332,6 +368,8 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (
   providersMutationError: null,
   providersWarning: null,
 
+  clearProvidersError: () => set({ providersError: null }),
+  clearProvidersMutationError: () => set({ providersMutationError: null }),
   fetchProviders: () => fetchProvidersImpl(set, get),
   fetchPresets: () => fetchPresetsImpl(set, get),
   createProviderFromPreset: (presetName, name, apiKey, baseUrl) =>
@@ -345,6 +383,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (
     createProviderFromPresetFullImpl(set, get, data),
   createProviderCustom: (data) => createProviderCustomImpl(set, get, data),
   testProviderConnection: (name) => testProviderConnectionImpl(set, name),
+  deleteProvider: (name) => deleteProviderImpl(set, get, name),
   probeLocalProviders: () =>
     probeLocalProvidersImpl(
       set,

@@ -38,6 +38,9 @@ class SettingNamespace(StrEnum):
     COCKPIT = "cockpit"
     CHARTER = "charter"
     DEMO = "demo"
+    APPEARANCE = "appearance"
+    ORG_CHART = "org_chart"
+    DASHBOARD = "dashboard"
 
 
 class SettingType(StrEnum):

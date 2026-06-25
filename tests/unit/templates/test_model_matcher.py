@@ -31,6 +31,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     reasoning: bool = False,
     family: str | None = None,
     generation: float | None = None,
+    parameter_count: int | None = None,
     release_date: date | None = None,
     source: MetadataSource = "litellm",
 ) -> ProviderModelConfig:
@@ -46,6 +47,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
             supports_reasoning=reasoning,
             family=family,
             generation=generation,
+            parameter_count=parameter_count,
             release_date=release_date,
             metadata_source=source,
         ),
@@ -99,13 +101,27 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "big"
 
-    def test_unknown_metadata_fails_closed_when_required(self) -> None:
-        # Model claims no capabilities AND its metadata is unenriched.
+    def test_unknown_metadata_optimistic_when_required(self) -> None:
+        # Optimistic: an unknown-source model is ALLOWED when a capability is
+        # required (most modern models are capable) rather than fail-closed,
+        # so an un-probed cloud model is usable instead of leaving the agent
+        # unassigned.
         unknown = _make_model("legacy", vision=False, source="unknown")
         req = ModelRequirement(requires_vision=True)
         model, score = match_model(req, (unknown,))
-        assert model is None
-        assert score == 0.0
+        assert model is not None
+        assert model.id == "legacy"
+        assert score > 0.0
+
+    def test_proven_capability_outranks_unknown(self) -> None:
+        # Prefer-proven: a model with proven capabilities ranks above an
+        # unknown-source model for the same requirement.
+        proven = _make_model("proven", vision=True, source="litellm")
+        unknown = _make_model("legacy", vision=False, source="unknown")
+        req = ModelRequirement(requires_vision=True)
+        model, _ = match_model(req, (unknown, proven))
+        assert model is not None
+        assert model.id == "proven"
 
     def test_unknown_metadata_ok_when_not_required(self) -> None:
         unknown = _make_model("legacy", source="unknown")
@@ -193,6 +209,16 @@ class TestPriorityAxis:
         model, _ = match_model(req, (g1, g3))
         assert model is not None
         assert model.id == "g3"
+
+    def test_quality_priority_prefers_larger_parameter_count(self) -> None:
+        # Parameter count is the dominant strength signal: a 700B frontier
+        # model beats a small local one for a quality-priority agent.
+        small = _make_model("small", parameter_count=26_000_000_000)
+        frontier = _make_model("frontier", parameter_count=700_000_000_000)
+        req = ModelRequirement(priority="quality")
+        model, _ = match_model(req, (small, frontier))
+        assert model is not None
+        assert model.id == "frontier"
 
     def test_speed_priority_picks_lowest_latency(self) -> None:
         slow = _make_model("slow", latency_ms=2_000)

@@ -65,21 +65,22 @@ def _auto_select_from_lmeb(
     Returns:
         ``(model_id, dims)`` or ``(None, None)`` if no match.
     """
-    ranking = select_embedding_model(
+    # The selector falls back to all tiers internally when the inferred tier
+    # has no ranked match, so a single call suffices.
+    selection = select_embedding_model(
         available_models,
         deployment_tier=tier,
     )
-    if ranking is None:
-        ranking = select_embedding_model(available_models)
-    if ranking is not None:
+    if selection is not None:
         logger.info(
             MEMORY_EMBEDDER_AUTO_SELECTED,
-            model_id=ranking.model_id,
+            model_id=selection.model_id,
             tier=tier.value,
-            overall_score=ranking.overall,
-            dims=ranking.output_dims,
+            ranking_source=selection.source,
+            ranking_model=selection.ranking_model_id,
+            dims=selection.output_dims,
         )
-        return ranking.model_id, ranking.output_dims
+        return selection.model_id, selection.output_dims
     return None, None
 
 

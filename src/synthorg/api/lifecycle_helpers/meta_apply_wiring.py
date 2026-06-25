@@ -17,6 +17,7 @@ because ``SelfImprovementService`` is the consumer of ``ab_test_repo``.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.pagination import collect_all
 from synthorg.core.role_catalog import BUILTIN_ROLES
 from synthorg.core.role_record import RoleRecord
@@ -54,6 +55,7 @@ async def wire_meta_apply(app_state: AppState) -> None:
     Args:
         app_state: The application state to wire onto.
     """
+    from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
@@ -64,6 +66,22 @@ async def wire_meta_apply(app_state: AppState) -> None:
             API_APP_STARTUP,
             service="self_improvement",
             note="persistence absent; meta-loop apply paths unwired",
+        )
+        return
+    try:
+        # Preflight the ONE dependency a not-yet-set-up company lacks before any
+        # mutable wiring runs. Catching ServiceUnavailableError around the whole
+        # of _wire instead would mask a *different* missing service (e.g. the
+        # agent registry, read before the workflow service) as "expected
+        # pre-setup" after partial side effects -- so preflight it here and let
+        # any deeper ServiceUnavailableError fall to the WARNING branch.
+        workflow_service_of(app_state)
+    except ServiceUnavailableError as exc:
+        logger.info(
+            API_APP_STARTUP,
+            service="self_improvement",
+            note="workflow service absent (pre-setup); meta-loop apply paths unwired",
+            error=safe_error_description(exc),
         )
         return
     try:

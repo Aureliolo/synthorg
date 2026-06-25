@@ -9,6 +9,14 @@ export interface AgentModelPickerProps {
   providers: Readonly<Record<string, ProviderConfig>>
   onChange: (provider: string, modelId: string) => void
   disabled?: boolean
+  /**
+   * Accessible (and visible, unless hidden) field label. Row callers pass a
+   * row-specific label like ``Model for ${agent.name}`` so a hidden label still
+   * gives screen-reader users per-row context. Defaults to ``"Model"``.
+   */
+  label?: string | undefined
+  /** Visually hide the label (e.g. inside a labelled table column). */
+  hideLabel?: boolean | undefined
 }
 
 const OTHER_FAMILY = 'Other'
@@ -99,6 +107,8 @@ export function AgentModelPicker({
   providers,
   onChange,
   disabled,
+  label = 'Model',
+  hideLabel,
 }: AgentModelPickerProps) {
   const groups = useMemo(() => buildModelGroups(providers), [providers])
   const hasModels = groups.some((g) => g.options.length > 0)
@@ -109,7 +119,8 @@ export function AgentModelPicker({
 
   return (
     <SelectField
-      label="Model"
+      label={label}
+      hideLabel={hideLabel}
       groups={groups}
       value={currentValue}
       onChange={(val) => {

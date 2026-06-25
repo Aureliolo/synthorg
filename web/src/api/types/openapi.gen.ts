@@ -4654,7 +4654,8 @@ export type paths = {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /** GetCompany */
+        readonly get: operations["ApiV1SetupCompanyGetCompany"];
         readonly put?: never;
         /** CreateCompany */
         readonly post: operations["ApiV1SetupCompanyCreateCompany"];
@@ -4675,6 +4676,23 @@ export type paths = {
         readonly put?: never;
         /** CompleteSetup */
         readonly post: operations["ApiV1SetupCompleteCompleteSetup"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/setup/model-recommendations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetModelRecommendations */
+        readonly get: operations["ApiV1SetupModelRecommendationsGetModelRecommendations"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -7363,6 +7381,19 @@ export type components = {
         /** ApiResponse[SetupCompleteResponse] */
         readonly ApiResponse_SetupCompleteResponse_: {
             readonly data: components["schemas"]["SetupCompleteResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SetupModelRecommendationsResponse] */
+        readonly ApiResponse_SetupModelRecommendationsResponse_: {
+            readonly data: components["schemas"]["SetupModelRecommendationsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -12387,6 +12418,8 @@ export type components = {
          * @description Capability and family/generation metadata (enriched at ingest)
          */
         readonly ModelMetadata: {
+            /** @description Resource/pricing tier 1-4 (light -> extra heavy) */
+            readonly cost_tier: number | null;
             /** @description Parsed model family (e.g. 'example-large') */
             readonly family: string | null;
             /** @description Sortable generation/recency (higher is newer) */
@@ -12399,6 +12432,8 @@ export type components = {
              * @enum {string}
              */
             readonly metadata_source: "litellm" | "preset" | "probe" | "unknown";
+            /** @description Total model parameters, when known (size/strength signal) */
+            readonly parameter_count: number | null;
             /**
              * Format: date
              * @description Parsed release date, when derivable from the id
@@ -15977,7 +16012,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -16065,22 +16100,39 @@ export type components = {
         /** SetupCompanyRequest */
         readonly SetupCompanyRequest: {
             /**
+             * @description Monthly budget; None uses the template default.
+             * @example 500
+             */
+            readonly budget?: number | null;
+            /**
              * @description Company display name.
              * @example Hooli
              * @example Pied Piper
              */
             readonly company_name: string;
+            /** @description Display-currency code; None means unset (no privileged default). */
+            readonly currency?: string | null;
             /**
              * @description Optional company description.
              * @example Boutique consultancy specializing in agentic ops
              */
             readonly description?: string | null;
             /**
+             * @description Bias for model-tier assignment across agents: economy favours cheaper tiers, premium favours stronger ones, balanced is neutral.
+             * @default balanced
+             * @enum {string}
+             */
+            readonly model_tier_profile: "economy" | "balanced" | "premium";
+            /**
              * @description Optional company template to apply; None creates a blank company.
              * @example consulting-firm
              * @example blank
              */
             readonly template_name?: string | null;
+            /** @description Genuine template-variable overrides (e.g. sprint length, WIP limit). Company name + budget are dedicated fields, not variables. */
+            readonly template_variables?: {
+                readonly [key: string]: string | number | boolean;
+            };
         };
         /** SetupCompanyResponse */
         readonly SetupCompanyResponse: {
@@ -16093,9 +16145,16 @@ export type components = {
             readonly agent_count: number;
             /** @default [] */
             readonly agents: readonly components["schemas"]["SetupAgentSummary"][];
+            readonly budget: number | null;
             readonly company_name: string;
+            readonly currency: string | null;
             readonly department_count: number;
             readonly description: string | null;
+            /**
+             * @default balanced
+             * @enum {string}
+             */
+            readonly model_tier_profile: "economy" | "balanced" | "premium";
             readonly template_applied: string | null;
         };
         /** SetupCompleteResponse */
@@ -16105,6 +16164,16 @@ export type components = {
             readonly embedder_selected: boolean;
             /** @constant */
             readonly setup_complete: true;
+        };
+        /** SetupModelRecommendationsResponse */
+        readonly SetupModelRecommendationsResponse: {
+            /** @default [] */
+            readonly decomposition_candidates: readonly string[];
+            readonly decomposition_recommended: string | null;
+            /** @default [] */
+            readonly embedding_candidates: readonly string[];
+            readonly embedding_recommended: string | null;
+            readonly embedding_recommended_dims: number | null;
         };
         /** SetupNameLocalesRequest */
         readonly SetupNameLocalesRequest: {
@@ -16861,6 +16930,8 @@ export type components = {
             readonly default: string | number | boolean | null;
             /** @default  */
             readonly description: string;
+            /** @default false */
+            readonly hidden: boolean;
             readonly name: string;
             /** @default false */
             readonly required: boolean;
@@ -28459,6 +28530,31 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1SetupCompanyGetCompany: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SetupCompanyResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1SetupCompanyCreateCompany: {
         readonly parameters: {
             readonly query?: never;
@@ -28512,6 +28608,31 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SetupModelRecommendationsGetModelRecommendations: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SetupModelRecommendationsResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

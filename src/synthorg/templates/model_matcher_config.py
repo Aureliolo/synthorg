@@ -6,13 +6,31 @@ config model, its settings-projected default, and the report-only tier
 derivation; the engine re-exports these names.
 """
 
-from typing import Self
+from collections.abc import Mapping
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import ModelTier
 from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.templates.model_matcher_tiering import DEFAULT_TIER_OVERRIDES
+
+# Smallest parameter count a model may have to be auto-assigned to an agent.
+# Sub-this models (e.g. a 1B) cannot reliably run an agent loop (tool calls,
+# multi-step reasoning), so the demand path excludes them; they stay manually
+# selectable and an explicit family/pattern/id reference still honours them.
+_MIN_USABLE_PARAMETERS: Final[int] = 14_000_000_000
+
+
+def _default_tier_overrides() -> dict[str, int]:
+    """Return a fresh mutable copy of the curated tier overrides.
+
+    Returns:
+        A new dict so the frozen-config default is neither shared across
+        instances nor an un-deep-copyable ``mappingproxy``.
+    """
+    return dict(DEFAULT_TIER_OVERRIDES)
 
 
 class ModelMatcherConfig(BaseModel):
@@ -38,6 +56,10 @@ class ModelMatcherConfig(BaseModel):
     headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
     tier_large_min_context: int = Field(default=200_000, gt=0)
     tier_medium_min_context: int = Field(default=32_000, gt=0)
+    min_usable_parameters: int = Field(default=_MIN_USABLE_PARAMETERS, ge=0)
+    tier_overrides: Mapping[str, int] = Field(
+        default_factory=_default_tier_overrides,
+    )
 
     @model_validator(mode="after")
     def _validate_tier_thresholds(self) -> Self:
@@ -75,6 +97,7 @@ class ModelMatcherConfig(BaseModel):
             headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
             tier_large_min_context=bridge.matcher_tier_large_min_context,
             tier_medium_min_context=bridge.matcher_tier_medium_min_context,
+            min_usable_parameters=bridge.matcher_min_usable_parameters,
         )
 
 

@@ -72,7 +72,7 @@ synthorg init --persistence-backend postgres    # auto-provision a Postgres cont
 synthorg start                                  # pull images + start containers
 ```
 
-Open [localhost:3000](http://localhost:3000); the **setup wizard** covers LLM providers, company config, agent setup with personality presets, and theme selection. Choose **Guided Setup** for the full experience or **Quick Setup** (provider + company name only). This brings up the platform and dashboard. Configuring a provider stores the company; running it as an autonomous organisation is the runtime work in active development, so skipping provider setup yields an empty company by design.
+Open [localhost:3000](http://localhost:3000); the **setup wizard** covers LLM providers, company config (currency, budget, model-tier profile), agent setup with personality presets and per-agent model matching, coordinator + embedding model selection, and theme selection. Choose **Guided Setup** for the full experience or **Quick Setup** (provider + company name only). This brings up the platform and dashboard. Configuring a provider stores the company; running it as an autonomous organisation is the runtime work in active development, so skipping provider setup yields an empty company by design.
 
 **Persistence backends:** SQLite (default) for single-node and development, Postgres for multi-instance deployments. The CLI orchestrates both. `--persistence-backend postgres` generates a `dhi.io/postgres` DHI service (image tag pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go`), random credentials, and a named data volume. `synthorg stop` preserves the data volume unless `--volumes` is passed.
 

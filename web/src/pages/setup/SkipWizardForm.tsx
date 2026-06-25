@@ -6,7 +6,6 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
-import { markFirstRunPending } from '@/utils/first-run'
 
 interface SkipWizardSubmit {
   companyName: string
@@ -72,11 +71,10 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
         // surfaces the warning with an explicit continue CTA.
         return
       }
-      useSetupStore.setState({ setupComplete: true })
-      // Surface the post-setup guidance card on the dashboard, exactly
-      // as the full wizard's Complete step does. Without this the quick-
-      // setup path lands on a bare dashboard with no first-run guidance.
-      markFirstRunPending()
+      useSetupStore.getState().markSetupComplete()
+      // The post-setup guidance card shows on the dashboard until dismissed
+      // (backend-owned dashboard.post_setup_guidance_dismissed); no client-side
+      // first-run flag is set here.
       useToastStore.getState().add({
         variant: 'success',
         title: `Welcome to ${trimmed}!`,

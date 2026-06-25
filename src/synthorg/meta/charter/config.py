@@ -32,11 +32,14 @@ _INTERVIEW_MAX_TURNS_MAX: int = 40
 
 
 class CharterConfig(BaseModel):
-    """Configuration for the charter-interview subsystem (opt-in).
+    """Configuration for the charter-interview subsystem.
+
+    The interview is a user-initiated, harmless feature (the operator opens it
+    to scope a project with the CEO); it is always available once a provider
+    and persistence are present -- which the product always requires -- so it
+    carries no enable flag.
 
     Attributes:
-        interview_enabled: Enable the charter-interview interface
-            (``/meta/charters``). Disabled by default.
         interview_strategy: Pluggable interview strategy discriminator.
         interview_model: LLM model identifier for interview turns.
         interview_temperature: Sampling temperature for interview turns.
@@ -52,10 +55,9 @@ class CharterConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    interview_enabled: bool = False
     interview_strategy: Literal["llm"] = "llm"
     interview_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
+        default=NotBlankStr("example-large-001"),
         description="Model for charter-interview LLM calls",
     )
     interview_temperature: float = Field(

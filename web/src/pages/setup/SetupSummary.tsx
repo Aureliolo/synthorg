@@ -79,7 +79,12 @@ export function SetupSummary({
 
       {/* Agent roster */}
       <SectionCard title="Agent Roster" icon={Users}>
-        <div className="max-h-80 space-y-2 overflow-y-auto">
+        <div
+          className="max-h-80 space-y-2 overflow-y-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Agent roster, scrollable"
+        >
           {agents.map((agent, index) => (
             // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
             <SetupAgentRow key={`${agent.name}-${index}`} agent={agent} />

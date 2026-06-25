@@ -15,13 +15,15 @@ from hypothesis import strategies as st
 
 from synthorg.api.controllers.setup_agents import normalize_description
 from synthorg.api.state import AppState
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.hr.state import agent_registry_of
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -120,6 +122,65 @@ class TestSetupCompany:
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
+
+    async def test_get_company_rehydrates_after_create(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """GET /setup/company rebuilds the company from settings for resume."""
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        try:
+            await async_test_client.post(
+                "/api/v1/setup/company",
+                json={"company_name": "Rehydrate Co"},
+            )
+            resp = await async_test_client.get("/api/v1/setup/company")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["company_name"] == "Rehydrate Co"
+            assert data["template_applied"] is None
+            assert data["department_count"] == 0
+            assert data["agents"] == []
+        finally:
+            repo._store.pop(("company", "company_name"), None)
+
+    async def test_get_company_404_when_absent(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """GET /setup/company 404s when no company has been created."""
+        resp = await async_test_client.get("/api/v1/setup/company")
+        assert resp.status_code == 404
+
+    async def test_reapply_without_template_over_populated_company_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A template-less re-apply must not wipe an existing roster.
+
+        This is the resume data-loss guard: a client whose template was not
+        hydrated re-applies as blank; the backend must reject rather than
+        silently regenerating an empty company over the existing agents.
+        """
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Paradisia", now)
+        roster = json.dumps([{"name": "A", "role": "CEO", "department": "executive"}])
+        repo._store[("company", "agents")] = (roster, now)
+        try:
+            resp = await async_test_client.post(
+                "/api/v1/setup/company",
+                json={"company_name": "Paradisia"},
+            )
+            assert resp.status_code == 409
+            assert "agent" in resp.json()["error"].lower()
+            # The roster must be left untouched by the rejected re-apply.
+            assert repo._store[("company", "agents")][0] == roster
+        finally:
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
 
     @pytest.mark.parametrize(
         ("description_input", "expected_response", "expected_stored"),
@@ -387,7 +448,7 @@ class TestSetupComplete:
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
-        """Completion rejects when company and agents exist but no providers."""
+        """Completion rejects when neither runtime nor persisted providers exist."""
         app_state = async_test_client.app.state.app_state
         repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -395,15 +456,65 @@ class TestSetupComplete:
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
         original_registry = app_state.slice(ProvidersStateSlice).registry
-        app_state.wire(ProvidersStateSlice, registry=ProviderRegistry({}))
+        original_mgmt = app_state.slice(ProvidersStateSlice).management
+        # Empty BOTH sources: the runtime registry AND the persisted provider
+        # config (the completion gate accepts a provider from either).
+        empty_mgmt = mock_of[ProviderManagementService](
+            list_providers=AsyncMock(return_value={})
+        )
+        app_state.wire(
+            ProvidersStateSlice, registry=ProviderRegistry({}), management=empty_mgmt
+        )
         try:
             resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
         finally:
-            app_state.wire(ProvidersStateSlice, registry=original_registry)
+            app_state.wire(
+                ProvidersStateSlice,
+                registry=original_registry,
+                management=original_mgmt,
+            )
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
+
+    async def test_complete_accepts_persisted_providers_when_registry_empty(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A restart empties the runtime registry; persisted providers suffice.
+
+        post_setup_reinit rebuilds the registry from the persisted config, so
+        completion must not block on an empty in-memory registry when the
+        provider config is still persisted (the conftest mock supplies one).
+        """
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        # No persisted agents (Quick Setup), so the provider gate is the
+        # decision point. Empty the runtime registry but supply a persisted
+        # provider via management -- the gate must accept the persisted config.
+        mgmt = mock_of[ProviderManagementService](
+            list_providers=AsyncMock(return_value={"test-provider": MagicMock()})
+        )
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        original_mgmt = app_state.slice(ProvidersStateSlice).management
+        app_state.wire(
+            ProvidersStateSlice, registry=ProviderRegistry({}), management=mgmt
+        )
+        try:
+            resp = await async_test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+        finally:
+            app_state.wire(
+                ProvidersStateSlice,
+                registry=original_registry,
+                management=original_mgmt,
+            )
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("api", "setup_complete"), None)
 
     async def test_complete_succeeds_with_all_prerequisites(
         self,
@@ -643,7 +754,7 @@ class TestExtractTemplateDepartments:
     """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup.company_helpers import (
+        from synthorg.api.controllers.setup._template_helpers import (
             load_template_safe as _load_template_safe,
         )
         from synthorg.api.controllers.setup_agents import departments_to_json
@@ -656,7 +767,7 @@ class TestExtractTemplateDepartments:
         assert departments[0]["name"] in {"executive", "engineering"}
 
     def test_invalid_template(self) -> None:
-        from synthorg.api.controllers.setup.company_helpers import (
+        from synthorg.api.controllers.setup._template_helpers import (
             load_template_safe as _load_template_safe,
         )
         from synthorg.core.domain_errors import NotFoundError
@@ -676,6 +787,9 @@ def _setup_mock_providers(
     mock_model.cost_per_1k_output = 0.02
     mock_model.max_context = 200_000
     mock_model.estimated_latency_ms = 100
+    # Real metadata so the matcher's numeric tier/quality reads see int|None,
+    # not MagicMock children (unknown source -> optimistic capability match).
+    mock_model.metadata = ModelMetadata()
     mock_provider_config = MagicMock()
     mock_provider_config.models = (mock_model,)
 

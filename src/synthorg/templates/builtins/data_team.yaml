@@ -22,21 +22,15 @@ template:
   posture: "knowledge_heavy"
 
   variables:
-    - name: "company_name"
-      description: "Name of your data team"
-      default: "Data Team"
-    - name: "budget"
-      description: "Monthly budget in the company's configured currency"
-      var_type: "float"
-      default: 55.0
     - name: "wip_limit"
       description: "Work-in-progress limit per column"
       var_type: "int"
       default: 3
+      hidden: true
 
   company:
     type: "data_team"
-    budget_monthly: {{ budget | default(55.0) }}
+    budget_monthly: {{ budget | default(500.0) }}
     autonomy:
       level: "full"
 
@@ -79,7 +73,7 @@ template:
     - role: "Backend Developer"
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"

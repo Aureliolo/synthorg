@@ -32,6 +32,10 @@ from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_SSRF_BYPASSED,
     PROVIDER_MODELS_DISCOVERED,
 )
+from synthorg.providers.capability_enrichment import (
+    FetchContext,
+    enrich_discovered_models,
+)
 from synthorg.providers.probing import (
     _parse_ollama_models,
     _parse_standard_models,
@@ -268,7 +272,13 @@ async def _discover_ollama(
     data = await _fetch_json(url, "ollama", headers=headers, trust_url=trust_url)
     if data is None:
         return ()
-    return _parse_and_log("ollama", url, data, _parse_ollama_models)
+    base_models = _parse_and_log("ollama", url, data, _parse_ollama_models)
+    return await enrich_discovered_models(
+        base_url,
+        base_models,
+        preset_name="ollama",
+        fetch=FetchContext(headers, trust_url, _fetch_json),
+    )
 
 
 async def _discover_standard_api(
@@ -301,7 +311,13 @@ async def _discover_standard_api(
     )
     if data is None:
         return ()
-    return _parse_and_log(preset_name, url, data, _parse_standard_models)
+    models = _parse_and_log(preset_name, url, data, _parse_standard_models)
+    return await enrich_discovered_models(
+        base_url,
+        models,
+        preset_name=preset_name,
+        fetch=FetchContext(headers, trust_url, _fetch_json),
+    )
 
 
 def _parse_and_log(
@@ -412,6 +428,7 @@ async def _fetch_json_trusted(
     preset_name: str | None,
     *,
     headers: dict[str, str] | None = None,
+    body: dict[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue] | None:
     """Fetch JSON from a trusted URL without SSRF validation.
 
@@ -425,6 +442,7 @@ async def _fetch_json_trusted(
         url: Full URL to fetch.
         preset_name: Preset name for logging context.
         headers: Optional auth headers to include.
+        body: JSON request body; when set, the request is a POST.
 
     Returns:
         Parsed JSON dict, or ``None`` on any failure.
@@ -436,7 +454,7 @@ async def _fetch_json_trusted(
         url=safe_url,
     )
     return await _safe_fetch(
-        _do_fetch_json(url, headers, preset_name=preset_name),
+        _do_fetch_json(url, headers, preset_name=preset_name, body=body),
         preset_name,
         safe_url,
     )
@@ -448,6 +466,7 @@ async def _fetch_json(
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
+    body: dict[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue] | None:
     """Fetch JSON from a URL with timeout and error handling.
 
@@ -463,6 +482,7 @@ async def _fetch_json(
         preset_name: Preset name for logging context.
         headers: Optional auth headers to include.
         trust_url: When True, skip SSRF validation and IP pinning.
+        body: JSON request body; when set, the request is a POST.
 
     Returns:
         Parsed JSON dict, or ``None`` on any failure.
@@ -472,6 +492,7 @@ async def _fetch_json(
             url,
             preset_name,
             headers=headers,
+            body=body,
         )
 
     safe_url = _redact_url(url)
@@ -489,6 +510,7 @@ async def _fetch_json(
             headers,
             host_header=original_host,
             preset_name=preset_name,
+            body=body,
         ),
         preset_name,
         safe_url,
@@ -591,8 +613,12 @@ async def _do_fetch_json(
     *,
     host_header: str = "",
     preset_name: str | None = None,
+    body: dict[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue] | None:
-    """Execute the HTTP GET and parse JSON response.
+    """Execute the HTTP request and parse the JSON response.
+
+    Issues a GET by default, or a JSON POST when ``body`` is supplied
+    (e.g. Ollama's ``/api/show`` capability lookup).
 
     Args:
         url: URL to fetch (may be IP-pinned).
@@ -600,6 +626,7 @@ async def _do_fetch_json(
         host_header: Original hostname for the Host header (when
             the URL has been rewritten with a pinned IP).
         preset_name: Preset name for logging context.
+        body: JSON request body; when set, the request is a POST.
 
     Returns:
         Parsed JSON dict, or ``None`` for non-dict responses.
@@ -611,7 +638,11 @@ async def _do_fetch_json(
         timeout=_DISCOVERY_TIMEOUT_SECONDS,
         follow_redirects=False,
     ) as client:
-        response = await client.get(url, headers=merged_headers)
+        response = (
+            await client.post(url, headers=merged_headers, json=body)
+            if body is not None
+            else await client.get(url, headers=merged_headers)
+        )
         response.raise_for_status()
         result = response.json()
         if not isinstance(result, dict):

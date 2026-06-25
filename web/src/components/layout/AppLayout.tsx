@@ -22,6 +22,8 @@ import { RouteBoundary } from '@/router/RouteBoundary'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
+import { useNotificationsStore } from '@/stores/notifications'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import {
   useThemeStore,
   COLOR_PALETTES,
@@ -232,6 +234,16 @@ export default function AppLayout() {
   useDocumentTitle(location.pathname)
   useNotificationNavigateBridge()
 
+  // Hydrate backend-owned preferences (pure API consumer: no client-side
+  // copies) once the authed shell mounts: appearance/theme axes and the
+  // notification routing preferences. Failures degrade to the defaults already
+  // applied at store init.
+  useEffect(() => {
+    void useThemeStore.getState().hydrate()
+    void useNotificationsStore.getState().hydrate()
+    void useDashboardPrefs.getState().hydrate()
+  }, [])
+
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 
@@ -265,15 +277,26 @@ export default function AppLayout() {
   const globalShortcuts = useMemo(() => GLOBAL_SHORTCUTS.map((s) => ({ ...s, keys: [...s.keys] })), [])
   useRegisterShortcuts(globalShortcuts)
 
+  // ``h-full`` (100% of the ``height:100%`` #root chain), NOT ``h-screen``
+  // (100vh): 100vh ignores the scrollbar/chrome gutter, so the shell would
+  // overrun the real viewport by that sliver and add a SECOND, document-level
+  // scrollbar on top of the inner ``main`` scroll. h-full pins the shell to the
+  // exact viewport so only ``main`` scrolls.
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
-        <main className="flex-1 overflow-y-auto p-card">
+        {/* Padding lives on the animated wrapper (which is ``h-full``), NOT on
+            ``<main>``: an ``h-full`` child plus padding on the scroll parent
+            overflows by the padding amount and yields scrollable dead space
+            below the content. Inside the border-box ``h-full`` wrapper the
+            padding is absorbed, and the Org Chart's concrete-height need (it
+            relies on ``h-full``) is preserved. */}
+        <main className="flex-1 overflow-y-auto">
           <RouteBoundary key={location.pathname}>
             <Suspense fallback={<PageLoadingFallback />}>
-              <AnimatedPresence routeKey={location.pathname}>
+              <AnimatedPresence routeKey={location.pathname} className="p-card">
                 <Outlet />
               </AnimatedPresence>
             </Suspense>

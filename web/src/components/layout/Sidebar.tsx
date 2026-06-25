@@ -12,9 +12,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { Drawer } from '@/components/ui/drawer'
 import { SidebarNav } from './SidebarNav'
 import { SidebarFooter } from './SidebarFooter'
-import { STORAGE_KEY, useCollapsedState } from './sidebar-storage'
-
-export { STORAGE_KEY }
+import { useCollapsedState } from './sidebar-storage'
 
 const log = createLogger('Sidebar')
 
@@ -223,7 +221,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   const shortcutKey = isMacPlatform ? '⌘' : 'Ctrl'
 
   useEffect(() => {
-    if (process.env['NODE_ENV'] !== 'production' && overlayOpen && !onOverlayClose) {
+    if (import.meta.env.DEV && overlayOpen && !onOverlayClose) {
       log.warn('`onOverlayClose` is required when `overlayOpen` is true; dismiss actions will be inert.')
     }
   }, [overlayOpen, onOverlayClose])

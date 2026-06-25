@@ -39,7 +39,7 @@ async function addDetectedLocalProvider(presetName: string, detectedUrl: string)
     preset: sanitizeForLog(presetName),
     error: sanitizeForLog(fetchErrMsg),
   })
-  useSetupWizardStore.setState({ providersError: null })
+  useSetupWizardStore.getState().clearProvidersError()
   useToastStore.getState().add({
     variant: 'warning',
     title: 'Provider added; could not refresh the list',
@@ -111,6 +111,7 @@ interface ProvidersStepController {
   handleAddCloudCounterpart: (cloudPresetName: string) => void
   handleConfigureManually: () => void
   handleReprobe: () => Promise<void>
+  handleDeleteProvider: (name: string) => void
   onRetryProviders: () => void
   onRetryPresets: () => void
 }
@@ -139,7 +140,7 @@ function useProvidersStepController(): ProvidersStepController {
   useEffect(() => {
     const s = useSetupWizardStore.getState()
     if (!s.providersFetched) {
-      useSetupWizardStore.setState({ providersError: null })
+      s.clearProvidersError()
       void s.fetchProviders()
     }
     if (!s.presetsFetched) void s.fetchPresets()
@@ -159,7 +160,7 @@ function useProvidersStepController(): ProvidersStepController {
   // Opening the modal clears the prior mutation error so a stale "could not
   // save" banner from an earlier attempt doesn't greet the next open.
   const openModal = useCallback((presetName: string | null) => {
-    useSetupWizardStore.setState({ providersMutationError: null })
+    useSetupWizardStore.getState().clearProvidersMutationError()
     setModalPreset(presetName)
     setModalOpen(true)
   }, [])
@@ -206,6 +207,9 @@ function useProvidersStepController(): ProvidersStepController {
   const onRetryPresets = useCallback(() => {
     void useSetupWizardStore.getState().fetchPresets()
   }, [])
+  const handleDeleteProvider = useCallback((name: string) => {
+    void useSetupWizardStore.getState().deleteProvider(name)
+  }, [])
 
   return {
     providers, presets, probeResults, probeErrors, probeGlobalError, probing,
@@ -213,6 +217,7 @@ function useProvidersStepController(): ProvidersStepController {
     validation, hasConfiguredProviders,
     modalOpen, modalPreset, setModalOpen, modalOverrides,
     handleSelectCloud, handleAddLocal, handleAddCloudCounterpart, handleConfigureManually, handleReprobe,
+    handleDeleteProvider,
     onRetryProviders,
     onRetryPresets,
   }
@@ -306,6 +311,7 @@ interface ProvidersPresetSectionProps {
   onAddCloudCounterpart: (cloudPresetName: string) => void
   onReprobe: () => Promise<void>
   onConfigureManually: () => void
+  onRemoveProvider: (name: string) => void
   onRetryPresets: () => void
 }
 
@@ -322,6 +328,7 @@ function ProvidersPresetSection({
   onAddCloudCounterpart,
   onReprobe,
   onConfigureManually,
+  onRemoveProvider,
   onRetryPresets,
 }: ProvidersPresetSectionProps) {
   if (presetsLoading) {
@@ -348,6 +355,7 @@ function ProvidersPresetSection({
       onAddCloudCounterpart={onAddCloudCounterpart}
       onReprobe={onReprobe}
       onConfigureManually={onConfigureManually}
+      onRemoveProvider={onRemoveProvider}
     />
   )
 }
@@ -384,7 +392,7 @@ export function ProvidersStep() {
 
   if (c.providersLoading && Object.keys(c.providers).length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <Skeleton className="h-24 rounded-lg" />
         <Skeleton className="h-48 rounded-lg" />
       </div>
@@ -426,6 +434,7 @@ export function ProvidersStep() {
         onAddCloudCounterpart={c.handleAddCloudCounterpart}
         onReprobe={c.handleReprobe}
         onConfigureManually={c.handleConfigureManually}
+        onRemoveProvider={c.handleDeleteProvider}
         onRetryPresets={c.onRetryPresets}
       />
 

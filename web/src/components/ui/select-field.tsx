@@ -29,6 +29,11 @@ export interface SelectFieldProps {
   required?: boolean | undefined
   className?: string | undefined
   placeholder?: string | undefined
+  /**
+   * Visually hide the label (kept for screen readers) when a column header or
+   * adjacent text already names the control -- e.g. dense table rows.
+   */
+  hideLabel?: boolean | undefined
 }
 
 export interface SelectFieldHelpProps {
@@ -147,6 +152,7 @@ export function SelectField({
   required,
   className,
   placeholder,
+  hideLabel,
 }: SelectFieldProps) {
   const id = useId()
   const errorId = `${id}-error`
@@ -154,7 +160,10 @@ export function SelectField({
   const hasError = !!error
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+      <label
+        htmlFor={id}
+        className={hideLabel ? 'sr-only' : 'text-sm font-medium text-foreground'}
+      >
         {label}
         {required && <span className="ml-0.5 text-danger">*</span>}
       </label>

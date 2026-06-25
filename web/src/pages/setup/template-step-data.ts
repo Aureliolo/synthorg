@@ -8,12 +8,21 @@ import {
   getCategoryLabel,
 } from '@/utils/template-categories'
 import { makeEnumParser } from '@/utils/type-guards'
+import {
+  hasIntent,
+  rankTemplates,
+  type BuildGoal,
+  type OversightPref,
+  type RankedTemplate,
+} from './template-recommendation'
+
+export {
+  GOAL_OPTIONS,
+  OVERSIGHT_OPTIONS,
+} from './template-recommendation'
+export type { BuildGoal, OversightPref, RankedTemplate } from './template-recommendation'
 
 export const MAX_COMPARE = 3
-
-/** Template size tags used for recommendation heuristics. */
-const TAG_SOLO = 'solo'
-const TAG_SMALL_TEAM = 'small-team'
 
 /** Agent-count filter buckets. */
 export type SizeFilter = 'all' | 'small' | 'medium' | 'large'
@@ -67,24 +76,6 @@ function filterTemplates(
   return templates.filter((t) => matchesFilters(t, categoryFilter, sizeFilter, query))
 }
 
-/**
- * Recommended templates are derived from tags alone, surfacing
- * approachable starting points (solo / small-team / startup / mvp) so
- * first-time users see a manageable shape before scrolling the grid.
- */
-function computeRecommendedTemplates(
-  templates: readonly TemplateInfoResponse[],
-): ReadonlySet<string> {
-  const recommended = new Set<string>()
-  const smallTags = new Set([TAG_SOLO, TAG_SMALL_TEAM, 'startup', 'mvp'])
-  for (const template of templates) {
-    if (template.tags.some((tag) => smallTags.has(tag))) {
-      recommended.add(template.name)
-    }
-  }
-  return recommended
-}
-
 /** Categories present in the templates, in canonical order, with an "all" head. */
 function computeAvailableCategories(
   templates: readonly TemplateInfoResponse[],
@@ -102,33 +93,16 @@ function computeAvailableCategories(
   return ordered
 }
 
-function splitRecommended(
-  filtered: readonly TemplateInfoResponse[],
-  recommendedTemplates: ReadonlySet<string>,
-): { recommended: TemplateInfoResponse[]; others: TemplateInfoResponse[] } {
-  const recommended: TemplateInfoResponse[] = []
-  const others: TemplateInfoResponse[] = []
-  for (const t of filtered) {
-    if (recommendedTemplates.has(t.name)) {
-      recommended.push(t)
-    } else {
-      others.push(t)
-    }
-  }
-  return { recommended, others }
-}
-
 export interface TemplateStepController {
   templates: readonly TemplateInfoResponse[]
   templatesLoading: boolean
   templatesError: string | null
   selectedTemplate: string | null
+  blankSelected: boolean
   comparedTemplates: readonly string[]
-  recommendedTemplates: ReadonlySet<string>
   availableCategories: { value: string; label: string }[]
   filteredTemplates: readonly TemplateInfoResponse[]
-  recommended: readonly TemplateInfoResponse[]
-  others: readonly TemplateInfoResponse[]
+  matches: readonly RankedTemplate[]
   comparedTemplateObjects: readonly TemplateInfoResponse[]
   searchQuery: string
   setSearchQuery: (value: string) => void
@@ -136,8 +110,14 @@ export interface TemplateStepController {
   setCategoryFilter: (value: string) => void
   sizeFilter: SizeFilter
   setSizeFilter: (value: SizeFilter) => void
+  buildGoal: BuildGoal
+  setBuildGoal: (value: BuildGoal) => void
+  oversight: OversightPref
+  setOversight: (value: OversightPref) => void
+  recommendationPersonalised: boolean
   hasActiveFilters: boolean
   handleSelect: (name: string) => void
+  handleSelectBlank: () => void
   handleToggleCompare: (name: string) => void
   handleRemoveFromCompare: (name: string) => void
   clearFilters: () => void
@@ -145,17 +125,49 @@ export interface TemplateStepController {
   onRetry: () => void
 }
 
-export function useTemplateStepController(): TemplateStepController {
-  const templates = useSetupWizardStore((s) => s.templates)
-  const templatesLoading = useSetupWizardStore((s) => s.templatesLoading)
-  const templatesError = useSetupWizardStore((s) => s.templatesError)
-  const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
-  const comparedTemplates = useSetupWizardStore((s) => s.comparedTemplates)
+interface RecommendationIntentState {
+  buildGoal: BuildGoal
+  setBuildGoal: (value: BuildGoal) => void
+  oversight: OversightPref
+  setOversight: (value: OversightPref) => void
+  matches: readonly RankedTemplate[]
+  recommendationPersonalised: boolean
+}
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [sizeFilter, setSizeFilter] = useState<SizeFilter>('all')
+/** Intent state + the derived ranked matches (extracted to keep the controller
+ * hook under the line cap). Matches are only meaningful once an intent is set;
+ * the caller gates on ``recommendationPersonalised``. */
+function useRecommendationIntent(
+  templates: readonly TemplateInfoResponse[],
+): RecommendationIntentState {
+  const [buildGoal, setBuildGoal] = useState<BuildGoal>('any')
+  const [oversight, setOversight] = useState<OversightPref>('any')
+  const matches = useMemo(
+    () => rankTemplates(templates, { goal: buildGoal, oversight }),
+    [templates, buildGoal, oversight],
+  )
+  return {
+    buildGoal,
+    setBuildGoal,
+    oversight,
+    setOversight,
+    matches,
+    recommendationPersonalised: hasIntent({ goal: buildGoal, oversight }),
+  }
+}
 
+/**
+ * Fetch-on-mount + step-completion tracking + retry (extracted to keep the
+ * controller hook under the line cap). Returns the retry handler, which shares
+ * the fetched-once ref with the mount effect.
+ */
+function useTemplateLifecycle(
+  templates: readonly TemplateInfoResponse[],
+  templatesLoading: boolean,
+  templatesError: string | null,
+  selectedTemplate: string | null,
+  blankSelected: boolean,
+): { onRetry: () => void } {
   const hasFetchedRef = useRef(false)
   useEffect(() => {
     if (!hasFetchedRef.current && !templatesLoading && !templatesError) {
@@ -164,38 +176,48 @@ export function useTemplateStepController(): TemplateStepController {
     }
   }, [templatesLoading, templatesError])
 
-  const recommendedTemplates = useMemo(() => computeRecommendedTemplates(templates), [templates])
-  const availableCategories = useMemo(() => computeAvailableCategories(templates), [templates])
-  const filteredTemplates = useMemo(
-    () => filterTemplates(templates, { searchQuery, categoryFilter, sizeFilter }),
-    [templates, searchQuery, categoryFilter, sizeFilter],
-  )
-
   // Track step completion -- validates against the full template list (not
-  // filtered) so UI filters don't invalidate the selection. Skip while loading
-  // AND while not-yet-fetched (``templates`` is the slice default ``[]`` before
-  // the fetch resolves): on reload ``templatesLoading`` starts false, so
-  // skipping only on loading would demote a previously-selected template to
-  // incomplete every mount before the list arrives.
+  // filtered) so UI filters don't invalidate the selection. A blank "build it
+  // yourself" choice also completes the step. Skip while loading AND while
+  // not-yet-fetched (``templates`` is the slice default ``[]`` before the fetch
+  // resolves): on reload ``templatesLoading`` starts false, so skipping only on
+  // loading would demote a previously-selected template to incomplete every
+  // mount before the list arrives.
   useEffect(() => {
     if (templatesLoading || (templates.length === 0 && !templatesError)) return
     const store = useSetupWizardStore.getState()
-    if (selectedTemplate && templates.some((t) => t.name === selectedTemplate)) {
+    const templateChosen = selectedTemplate != null && templates.some((t) => t.name === selectedTemplate)
+    if (templateChosen || blankSelected) {
       store.markStepComplete('template')
     } else {
       store.markStepIncomplete('template')
     }
-  }, [selectedTemplate, templates, templatesLoading, templatesError])
+  }, [selectedTemplate, blankSelected, templates, templatesLoading, templatesError])
 
-  const { recommended, others } = useMemo(
-    () => splitRecommended(filteredTemplates, recommendedTemplates),
-    [filteredTemplates, recommendedTemplates],
-  )
-
-  const handleSelect = useCallback((name: string) => {
-    useSetupWizardStore.getState().selectTemplate(name)
+  const onRetry = useCallback(() => {
+    // Mark fetched so the mount effect does not fire a second fetch when
+    // the retry succeeds (templatesLoading -> false, templatesError -> null
+    // would otherwise re-satisfy the effect guard when it never ran).
+    hasFetchedRef.current = true
+    void useSetupWizardStore.getState().fetchTemplates()
   }, [])
 
+  return { onRetry }
+}
+
+interface TemplateComparisonState {
+  comparedTemplateObjects: readonly TemplateInfoResponse[]
+  handleToggleCompare: (name: string) => void
+  handleRemoveFromCompare: (name: string) => void
+  clearComparison: () => void
+}
+
+/** Compare-drawer handlers + the resolved compared-template objects
+ * (extracted to keep the controller hook under the line cap). */
+function useTemplateComparison(
+  templates: readonly TemplateInfoResponse[],
+  comparedTemplates: readonly string[],
+): TemplateComparisonState {
   const handleToggleCompare = useCallback((name: string) => {
     const added = useSetupWizardStore.getState().toggleCompare(name)
     if (!added) {
@@ -211,13 +233,64 @@ export function useTemplateStepController(): TemplateStepController {
     useSetupWizardStore.getState().toggleCompare(name)
   }, [])
 
+  const clearComparison = useCallback(() => {
+    useSetupWizardStore.getState().clearComparison()
+  }, [])
+
   const comparedTemplateObjects = useMemo(
     () => templates.filter((t) => comparedTemplates.includes(t.name)),
     [templates, comparedTemplates],
   )
 
+  return { comparedTemplateObjects, handleToggleCompare, handleRemoveFromCompare, clearComparison }
+}
+
+export function useTemplateStepController(): TemplateStepController {
+  const templates = useSetupWizardStore((s) => s.templates)
+  const templatesLoading = useSetupWizardStore((s) => s.templatesLoading)
+  const templatesError = useSetupWizardStore((s) => s.templatesError)
+  const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
+  const blankSelected = useSetupWizardStore((s) => s.blankSelected)
+  const comparedTemplates = useSetupWizardStore((s) => s.comparedTemplates)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [sizeFilter, setSizeFilter] = useState<SizeFilter>('all')
+  const {
+    buildGoal,
+    setBuildGoal,
+    oversight,
+    setOversight,
+    matches,
+    recommendationPersonalised,
+  } = useRecommendationIntent(templates)
+
+  const { onRetry } = useTemplateLifecycle(
+    templates,
+    templatesLoading,
+    templatesError,
+    selectedTemplate,
+    blankSelected,
+  )
+
+  const availableCategories = useMemo(() => computeAvailableCategories(templates), [templates])
+  const filteredTemplates = useMemo(
+    () => filterTemplates(templates, { searchQuery, categoryFilter, sizeFilter }),
+    [templates, searchQuery, categoryFilter, sizeFilter],
+  )
+
   const hasActiveFilters =
     searchQuery.trim() !== '' || categoryFilter !== 'all' || sizeFilter !== 'all'
+
+  const handleSelect = useCallback((name: string) => {
+    useSetupWizardStore.getState().selectTemplate(name)
+  }, [])
+  const handleSelectBlank = useCallback(() => {
+    useSetupWizardStore.getState().selectBlank()
+  }, [])
+
+  const { comparedTemplateObjects, handleToggleCompare, handleRemoveFromCompare, clearComparison } =
+    useTemplateComparison(templates, comparedTemplates)
 
   const clearFilters = useCallback(() => {
     setSearchQuery('')
@@ -225,23 +298,12 @@ export function useTemplateStepController(): TemplateStepController {
     setSizeFilter('all')
   }, [])
 
-  const clearComparison = useCallback(() => {
-    useSetupWizardStore.getState().clearComparison()
-  }, [])
-
-  const onRetry = useCallback(() => {
-    // Mark fetched so the mount effect does not fire a second fetch when
-    // the retry succeeds (templatesLoading -> false, templatesError -> null
-    // would otherwise re-satisfy the effect guard when it never ran).
-    hasFetchedRef.current = true
-    void useSetupWizardStore.getState().fetchTemplates()
-  }, [])
-
   return {
-    templates, templatesLoading, templatesError, selectedTemplate, comparedTemplates,
-    recommendedTemplates, availableCategories, filteredTemplates, recommended, others,
+    templates, templatesLoading, templatesError, selectedTemplate, blankSelected, comparedTemplates,
+    availableCategories, filteredTemplates, matches,
     comparedTemplateObjects, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter,
-    sizeFilter, setSizeFilter, hasActiveFilters, handleSelect, handleToggleCompare,
+    sizeFilter, setSizeFilter, buildGoal, setBuildGoal, oversight, setOversight,
+    recommendationPersonalised, hasActiveFilters, handleSelect, handleSelectBlank, handleToggleCompare,
     handleRemoveFromCompare, clearFilters, clearComparison, onRetry,
   }
 }

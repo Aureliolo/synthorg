@@ -16,7 +16,6 @@ import {
   VALID_CATEGORIES,
   allocateNotificationId,
   countUnread,
-  debouncedPersist,
 } from './persistence'
 import type {
   EnqueueParams,
@@ -133,7 +132,6 @@ function enqueueImpl(
   const existing = findDedupableItem(get().items, params)
   if (existing) {
     bumpDedupedItem(set, existing.id, now)
-    debouncedPersist(get())
     return existing.id
   }
 
@@ -143,7 +141,6 @@ function enqueueImpl(
     return { items: newItems, unreadCount: countUnread(newItems) }
   })
   fanOutToBrowserAndToast(params, routes, item)
-  debouncedPersist(get())
   return item.id
 }
 

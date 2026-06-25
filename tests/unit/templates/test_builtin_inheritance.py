@@ -148,7 +148,7 @@ class TestDevShopExtendsStartup:
 class TestProductTeamExtendsStartup:
     def test_agent_count(self) -> None:
         config = _render("product_team")
-        assert len(config.agents) == 10
+        assert len(config.agents) == 12
 
     def test_agent_roles(self) -> None:
         config = _render("product_team")
@@ -157,6 +157,8 @@ class TestProductTeamExtendsStartup:
             "Automation Engineer",
             "Backend Developer",
             "Backend Developer",
+            "CEO",
+            "CTO",
             "Data Analyst",
             "Frontend Developer",
             "Full-Stack Developer",
@@ -172,24 +174,27 @@ class TestProductTeamExtendsStartup:
         pm = next(a for a in config.agents if a.role == "Product Manager")
         assert pm.level.value == "senior"
 
-    def test_no_executive_agents(self) -> None:
-        """CEO and CTO from startup chain are removed."""
+    def test_has_executive_leadership(self) -> None:
+        """A product studio carries CEO + CTO declared quality+reasoning."""
         config = _render("product_team")
-        roles = {a.role for a in config.agents}
-        assert "CEO" not in roles
-        assert "CTO" not in roles
+        execs = {a.role: a for a in config.agents if a.role in ("CEO", "CTO")}
+        assert set(execs) == {"CEO", "CTO"}
+        for agent in execs.values():
+            req = agent.model_requirement or {}
+            assert req.get("priority") == "quality"
+            assert req.get("requires_reasoning") is True
 
     def test_departments(self) -> None:
         config = _render("product_team")
         names = _dept_names(config)
         assert names == {
+            "executive",
             "engineering",
             "product",
             "design",
             "quality_assurance",
             "data_analytics",
         }
-        assert "executive" not in names
 
     def test_communication_overridden(self) -> None:
         config = _render("product_team")

@@ -115,6 +115,12 @@ export function useOrgChartController(): OrgChartController {
 
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const navigate = useNavigate()
+  // Hydrate org-chart view preferences from the backend (pure API consumer:
+  // the prefs are backend-owned, with no client-side copy) when the chart
+  // mounts. Failures degrade to the defaults already in the store.
+  useEffect(() => {
+    void useOrgChartPrefs.getState().hydrate()
+  }, [])
   const showMinimap = useOrgChartPrefs((s) => s.showMinimap)
   const [viewMode, setViewMode] = useState<'hierarchy' | 'force'>('hierarchy')
 

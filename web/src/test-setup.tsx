@@ -5,8 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
-import { cancelPendingPersist } from '@/stores/notifications'
-import { cancelSetupWizardPersist } from '@/stores/setup-wizard/teardown'
+import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
 // NOTE: meetings, approvals, scaling stores are intentionally NOT
@@ -35,7 +34,8 @@ import { useToastStore } from '@/stores/toast'
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
-import { cancelOrgChartPrefsPersist } from '@/stores/org-chart-prefs-teardown'
+import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
+import { resetDashboardPrefs } from '@/stores/dashboard-prefs'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
@@ -54,15 +54,14 @@ const CSRF_SEED_VALUE = 'test-csrf-token'
 installCookieShim()
 
 // jsdom's `window.localStorage` / `sessionStorage` schedule a
-// `setTimeout(0)` per write to dispatch a `storage` event. The
-// dashboard touches localStorage from two paths: Zustand `persist`
-// middleware (setup-wizard, org-chart-prefs) and direct
-// `localStorage.setItem` calls (theme, notifications), so any test
-// that mutates one of those stores adds dispatch overhead per write.
-// The shim in `@/storage-shim` patches `Storage.prototype` so writes
-// go through a Map-backed in-memory store; no app or test code
-// subscribes to the `storage` event, so the dispatch is dead weight
-// in the test runner.
+// `setTimeout(0)` per write to dispatch a `storage` event. The dashboard is a
+// pure API consumer and persists no app state client-side, but the few
+// allowlisted client-storage paths (the auth/CSRF cookie shim, the
+// build-version check, per-device canvas/draft state) still touch
+// `localStorage`, so a test exercising one adds dispatch overhead per write.
+// The shim in `@/storage-shim` patches `Storage.prototype` so writes go through
+// a Map-backed in-memory store; no app or test code subscribes to the `storage`
+// event, so the dispatch is dead weight in the test runner.
 installStorageShim()
 
 // Global MSW server: every default endpoint handler is registered up front
@@ -299,19 +298,17 @@ beforeEach(() => {
 // listener registers ITS OWN teardown call in this block.
 afterEach(() => {
   useToastStore.getState().dismissAll()
-  // Notifications store debounces localStorage persistence with a 300ms
-  // setTimeout; drop any pending handle so it does not outlive the test.
-  cancelPendingPersist()
-  // Setup-wizard store wraps itself in Zustand ``persist``; clear the
-  // localStorage key directly via the side-effect-free teardown shim
-  // so we do not transitively load ``@/api/client`` (see top-of-file
-  // comment).  The shim is a no-op when localStorage is unavailable.
-  cancelSetupWizardPersist()
-  // Org-chart-prefs store also uses Zustand ``persist``; same
-  // side-effect-free teardown pattern -- drops the persisted key so
-  // toolbar toggles a test sets do not bleed into the next test in
-  // the same Vitest worker.
-  cancelOrgChartPrefsPersist()
+  // Setup-wizard store is backend-sourced (a pure API consumer, no client
+  // persistence); reset its in-memory singleton so a test's wizard state does
+  // not bleed into the next test in the same Vitest worker.
+  useSetupWizardStore.getState().reset()
+  // Org-chart-prefs store is backend-sourced (no client persistence); reset
+  // its in-memory singleton state so toolbar toggles a test sets do not bleed
+  // into the next test in the same Vitest worker.
+  resetOrgChartPrefs()
+  // Dashboard prefs store is backend-sourced; reset its in-memory singleton
+  // so a test's toggles do not bleed into the next test in the same worker.
+  resetDashboardPrefs()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.

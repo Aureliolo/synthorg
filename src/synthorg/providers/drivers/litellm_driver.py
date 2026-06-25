@@ -58,6 +58,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_MODEL_NOT_FOUND,
+    PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
@@ -75,6 +76,7 @@ from synthorg.providers.drivers.litellm_model_info import (
     extract_model_metadata,
     get_litellm_model_info,
 )
+from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
     accumulate_tool_call_deltas,
@@ -758,6 +760,16 @@ class LiteLLMDriver(BaseCompletionProvider):
         for litellm_type, our_type in _EXCEPTION_TABLE:
             if isinstance(exc, litellm_type):
                 if our_type is errors.RateLimitError:
+                    if is_quota_exhaustion(exc):
+                        logger.warning(
+                            PROVIDER_QUOTA_EXCEEDED,
+                            provider=self._provider_name,
+                            model=model,
+                        )
+                        return errors.ProviderQuotaExceededError(
+                            safe_error_description(exc),
+                            context=ctx,
+                        )
                     logger.warning(
                         PROVIDER_RATE_LIMITED,
                         provider=self._provider_name,

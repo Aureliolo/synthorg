@@ -14,145 +14,63 @@ from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import ModelTier
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.organization.enums import CompanyType
+from synthorg.templates.loader import load_template
 from synthorg.templates.model_matcher import ModelMatch
-from synthorg.templates.schema import (
-    CompanyTemplate,
-    TemplateAgentConfig,
-    TemplateMetadata,
-)
 from tests._shared import JsonDict
 
 
-def _make_template(agents: list[JsonDict]) -> CompanyTemplate:
-    """Build a minimal CompanyTemplate with the given agent configs."""
-    agent_cfgs = tuple(TemplateAgentConfig(**a) for a in agents)
-    return CompanyTemplate(
-        metadata=TemplateMetadata(
-            name="test-template",
-            company_type=CompanyType.CUSTOM,
-        ),
-        agents=agent_cfgs,
-    )
-
-
 @pytest.mark.unit
-class TestExpandTemplateAgentsDictModel:
-    def test_capability_dict_produces_model_requirement(self) -> None:
-        """A capability dict populates model_requirement (no tier collapse)."""
-        template = _make_template(
-            [
-                {
-                    "role": "CEO",
-                    "model": {
-                        "priority": "quality",
-                        "min_context": 100_000,
-                        "requires_reasoning": True,
-                    },
-                },
-            ]
+class TestExpandTemplateAgentsRenders:
+    """expand_template_agents renders through the one renderer pipeline.
+
+    The model-block / preset resolution itself is covered at the renderer
+    layer (``test_renderer.py``); these assert the wizard wrapper renders the
+    real, inheritance-resolved roster and projects each agent's
+    ``model_requirement`` for matching.
+    """
+
+    def test_renders_roster_with_requirements(self) -> None:
+        """Every rendered agent carries a model_requirement for the matcher."""
+        agents: list[JsonDict] = expand_template_agents(
+            load_template("startup"), locales=["en_US"]
         )
-        agents: list[JsonDict] = expand_template_agents(template)
-        assert len(agents) == 1
-        agent = agents[0]
-        # Pre-match the agent carries no resolved tier (set by the matcher).
-        assert "tier" not in agent
-        assert "model_requirement" in agent
-        req = agent["model_requirement"]
-        assert "tier" not in req
+        assert agents
+        assert all(a.get("model_requirement") is not None for a in agents)
+
+    def test_head_role_ceo_is_materialised_strategic(self) -> None:
+        """A department head-role CEO is materialised and strategic.
+
+        Proves inheritance + head-role resolution (absent in the old
+        load-only path) and the strategic-role default: a spec-less CEO
+        resolves to quality + reasoning rather than a mid-tier balanced.
+        """
+        agents: list[JsonDict] = expand_template_agents(
+            load_template("startup"), locales=["en_US"]
+        )
+        ceo = next(a for a in agents if a["role"] == "CEO")
+        req = ceo["model_requirement"]
         assert req["priority"] == "quality"
-        assert req["min_context"] == 100_000
         assert req["requires_reasoning"] is True
 
-    def test_string_model_pins_explicit_id(self) -> None:
-        """A string model is an explicit model_id pin in model_requirement."""
-        template = _make_template(
-            [
-                {"role": "Developer", "model": "example-medium-001"},
-            ]
+    def test_inheritance_and_added_execs_resolve(self) -> None:
+        """product_team renders its CEO+CTO with top-tier requirements."""
+        agents: list[JsonDict] = expand_template_agents(
+            load_template("product_team"), locales=["en_US"]
         )
-        agents: list[JsonDict] = expand_template_agents(template)
-        assert len(agents) == 1
-        agent = agents[0]
-        assert "model_requirement" in agent
-        assert agent["model_requirement"]["model_id"] == "example-medium-001"
+        roles = [a["role"] for a in agents]
+        assert "CEO" in roles
+        assert "CTO" in roles
+        cto = next(a for a in agents if a["role"] == "CTO")
+        assert cto["model_requirement"]["priority"] == "quality"
+        assert cto["model_requirement"]["requires_reasoning"] is True
 
-    def test_mixed_models_in_same_template(self) -> None:
-        """Capability-dict and explicit-id models coexist in one template."""
-        template = _make_template(
-            [
-                {
-                    "role": "CEO",
-                    "model": {"priority": "quality", "requires_reasoning": True},
-                },
-                {"role": "Developer", "model": "example-small-001"},
-            ]
-        )
-        agents: list[JsonDict] = expand_template_agents(template)
-        assert len(agents) == 2
-
-        ceo = next(a for a in agents if a["role"] == "CEO")
-        dev = next(a for a in agents if a["role"] == "Developer")
-
-        assert ceo["model_requirement"]["priority"] == "quality"
-        assert ceo["model_requirement"]["model_id"] is None
-        assert dev["model_requirement"]["model_id"] == "example-small-001"
-
-    def test_dict_model_empty_uses_defaults(self) -> None:
-        """An empty dict model resolves to the balanced default requirement."""
-        template = _make_template(
-            [
-                {"role": "Dev", "model": {}},
-            ]
-        )
-        agents: list[JsonDict] = expand_template_agents(template)
-        assert len(agents) == 1
-        agent = agents[0]
-        assert "model_requirement" in agent
-        assert agent["model_requirement"]["priority"] == "balanced"
-        assert agent["model_requirement"]["model_id"] is None
-
-
-@pytest.mark.unit
-class TestExpandTemplateAgentsCustomPresets:
-    def test_custom_preset_resolved(self) -> None:
-        """Custom preset is used when passed to expand_template_agents."""
-        custom: dict[str, JsonDict] = {
-            "my_custom": {
-                "traits": ("custom-trait",),
-                "communication_style": "custom",
-                "description": "Custom",
-                "openness": 0.5,
-                "conscientiousness": 0.5,
-                "extraversion": 0.5,
-                "agreeableness": 0.5,
-                "stress_response": 0.5,
-            },
-        }
-        template = _make_template([{"role": "Dev", "personality_preset": "my_custom"}])
-        agents: list[JsonDict] = expand_template_agents(template, custom_presets=custom)
-        assert len(agents) == 1
-        assert agents[0]["personality"]["communication_style"] == "custom"
-        assert agents[0]["personality_preset"] == "my_custom"
-
-    def test_unknown_preset_falls_back_to_pragmatic_builder(self) -> None:
-        """Unknown preset falls back to pragmatic_builder in setup path."""
-        template = _make_template(
-            [{"role": "Dev", "personality_preset": "nonexistent"}]
-        )
-        agents: list[JsonDict] = expand_template_agents(template)
-        assert len(agents) == 1
-        assert agents[0]["personality_preset"] == "pragmatic_builder"
-
-    def test_builtin_preset_works_with_custom_presets(self) -> None:
-        """Builtin presets still work when custom_presets dict is passed."""
+    def test_custom_presets_accepted(self) -> None:
+        """A custom_presets map passes through render without error."""
         custom: dict[str, JsonDict] = {"other": {"traits": ("a",)}}
-        template = _make_template(
-            [{"role": "Dev", "personality_preset": "pragmatic_builder"}]
+        agents: list[JsonDict] = expand_template_agents(
+            load_template("startup"), locales=["en_US"], custom_presets=custom
         )
-        agents: list[JsonDict] = expand_template_agents(template, custom_presets=custom)
-        assert len(agents) == 1
-        assert agents[0]["personality"]["communication_style"] == "concise"
+        assert agents
 
 
 @pytest.mark.unit
