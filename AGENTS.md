@@ -13,7 +13,7 @@ Read CLAUDE.md for:
 - Logging, resilience, security patterns
 - Convention rollout: every new project-wide convention ships its
   enforcement gate (the "Convention Rollout (MANDATORY)" section)
-- Telemetry (opt-in product telemetry): privacy allowlist + forbidden patterns, environment resolution chain, Docker daemon enrichment
+- Telemetry: opt-in, off by default (privacy allowlist)
 
 ## Memory Directory
 

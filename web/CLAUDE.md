@@ -1,134 +1,63 @@
 # Web Dashboard
 
-React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` helper in `components/ui/slot.tsx` exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx`; details in `docs/security.md`.
+React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` (`components/ui/slot.tsx`) exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx` (see `../docs/security.md`).
 
 ## Pure API Consumer (MANDATORY)
 
-The dashboard is **only an API consumer** and persists **no application state client-side**. The backend is the single source of truth; the SPA hydrates from a backend GET on mount and writes every change through the REST API immediately, exactly like any other client (CLI, scripts, third parties). Every feature MUST be fully usable over the API alone.
+The dashboard is **only an API consumer** and persists **no application state client-side**; the backend is the single source of truth. The SPA hydrates from a backend GET on mount and writes every change through the REST API immediately. Every feature MUST be fully usable over the API alone.
 
-- **No `localStorage` / `sessionStorage` / IndexedDB and no `zustand` `persist`** holding domain/app state. That includes setup-wizard state (company, currency, model-tier profile, selected template + variables, wizard mode, step progress), theme/appearance, and any user/org preference. Each must have a backend settings key + GET/PUT and be hydrated from it, never carried across reloads in the browser.
-- **Step/progress is derived, not stored.** Wizard completion is computed from backend state (the data exists or it does not), never from a persisted client flag that can drift.
-- **Stale client state is the bug class to avoid.** A persisted client copy that disagrees with the backend produces "flag says done but data is empty" contradictions and, on a write path, data loss (e.g. re-applying a wizard step with un-hydrated input). If you find client persistence of domain state, treat it as a defect: move it backend-side.
-- **The only sanctioned client storage** is non-domain transient transport/UX: the auth-token cookie shim and the active CSRF token (see the cookie shim contract). Never store data the backend owns.
-
-Enforced by `scripts/check_no_client_state_persistence.py` (PreToolUse + pre-push): flags `localStorage`/`sessionStorage`/`indexedDB`/`zustand persist(` in `web/src/` outside the auth/CSRF allowlist.
+- **No `localStorage` / `sessionStorage` / IndexedDB and no `zustand` `persist`** holding domain/app state (setup-wizard state, theme/appearance, any user/org preference): each needs a backend settings key + GET/PUT, hydrated from it, never carried across reloads.
+- **Step/progress is derived from backend state, not a persisted client flag.** Stale client state is the bug class to avoid (flag-says-done-but-data-empty, and data loss on re-apply); move any client persistence of domain state backend-side.
+- **The only sanctioned client storage** is non-domain transport/UX: the auth-token cookie shim and the active CSRF token.
+- Enforced by `scripts/check_no_client_state_persistence.py` (PreToolUse + pre-push): flags client storage / `zustand persist(` in `web/src/` outside the auth/CSRF allowlist.
 
 ## Quick Commands
 
 ```bash
-npm --prefix web install                   # install frontend deps
+npm --prefix web install                   # install deps
 npm --prefix web run dev                   # dev server (http://localhost:5173)
 npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
-npm --prefix web run type-check            # TypeScript type checking
-npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
-npm --prefix web run test -- --coverage    # Full suite (matches CI; active-handle gate is built into the setupFiles)
-npm --prefix web run bench                 # Vitest performance benchmarks (CodSpeed simulation + memory; *.bench.ts files under web/src/__tests__/benchmarks/)
-npm --prefix web run size                  # size-limit bundle-size budget check (requires `npm run build` first)
-npm --prefix web run analyze               # bundle size treemap (opens stats.html)
-npm --prefix web run e2e                   # Playwright visual regression tests
-npm --prefix web run e2e:update            # update Playwright screenshot baselines
-npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+; also runs in CI via .github/workflows/lighthouse.yml against vite preview)
-npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
-npm --prefix web run storybook:build       # Storybook production build
+npm --prefix web run type-check            # TypeScript type-check (pre-push runs ESLint but NOT tsc; run this yourself)
+npm --prefix web run test                  # Vitest unit (coverage scoped to files changed vs origin/main)
+npm --prefix web run test -- --coverage    # full suite (matches CI; active-handle gate in setupFiles)
+npm --prefix web run bench                 # Vitest perf benchmarks (*.bench.ts under __tests__/benchmarks/)
+npm --prefix web run size                  # size-limit budget (needs `run build` first)
+npm --prefix web run e2e[:update]          # Playwright visual regression [/ baseline update]
+npm --prefix web run lighthouse            # Lighthouse audit (target 90+)
+npm --prefix web run storybook[:build]     # Storybook dev server (http://localhost:6006)
 ```
-
-## Package Structure
-
-Bench targets (`web/src/__tests__/benchmarks/*.bench.ts`) are pure-compute helpers only: no DOM, no MSW, no store imports that pull in toast/timer side effects. Bundle-size budgets in `web/.size-limit.cjs` are raised only when a feature legitimately requires more shipping JS, never to silence a CI red.
-
-See [docs/reference/web-package-structure.md](../docs/reference/web-package-structure.md) for the per-folder inventory and the store-slicing pattern catalog.
 
 ## Logging
 
-- **Always** use `createLogger` from `@/lib/logger`; never bare `console.warn`/`console.error`/`console.debug` in application code
-- **Variable name**: always `log` (e.g. `const log = createLogger('module-name')`)
-- **Only `logger.ts` itself** may use bare console methods
-- **Levels**: `log.debug()` (DEV-only, stripped in production), `log.warn()`, `log.error()`
-- **Static messages**: pass dynamic/untrusted values as separate args (not interpolated into the message string) so they go through `sanitizeArg`
-- **Attacker-controlled fields** inside structured objects must be wrapped in `sanitizeForLog()` before embedding
+- Always `createLogger` from `@/lib/logger` (never bare `console.*` in app code; only `logger.ts` may); variable name always `log`.
+- Levels: `log.debug()` (DEV-only, stripped in prod), `log.warn()`, `log.error()`. Pass dynamic/untrusted values as separate args (not interpolated) so they go through `sanitizeArg`; wrap attacker-controlled fields in structured objects with `sanitizeForLog()`.
 
 ## Zustand Store Error Handling (MANDATORY)
 
-All store **mutation** actions (create / update / delete) follow the `stores/connections/crud-actions.ts` pattern: wrap the API call in `try` / `catch`, success path updates state + emits a success toast, failure path logs + emits an error toast + returns a sentinel on failure. The sentinel shape mirrors the mutation's return type: `null` for entity-returning mutations (`createDepartment`, `updateAgent`, etc.), `false` for boolean-returning mutations. Every void / boolean-returning mutation uses `false` regardless of whether it deletes, reorders, or updates (so `updateCompany`, `deleteTeam`, and `reorderAgents` all follow the same pattern, not just delete). Optimistic mutations capture `previous` synchronously and restore in `catch`. Use `getCrudErrorTitle(err, fallback)` (from `@/utils/errors`) on every error toast so duplicate-resource / version-conflict / generic-conflict 409s all get distinct titles. **Callers MUST NOT wrap store mutation calls in `try` / `catch`**; the store owns the error UX. List reads (`fetch*`) set `error: string | null` on the store instead of toasting.
-
-**Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging via `PaginationMeta`. Stores keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`. Display counts come from `data.length`; the wire envelope no longer carries `total`.
-
-**Health / readiness endpoints (MANDATORY)**: `getLiveness()` is always 200 while the process is alive; `getReadiness()` (`/readyz`, unauthenticated) is 200 healthy / 503 unavailable (binary `'ok' | 'unavailable'` outcome, no tri-state) with a topology-free body; `getHealthDetail()` (`/health`, requires a read-access role) returns the full per-component breakdown for the health popover. Any new caller must handle the 503 path explicitly.
-
-**MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a default happy-path handler for every exported endpoint. `test-setup.tsx` boots with `onUnhandledRequest: 'error'`; tests override per-case via `server.use(...)`, never `vi.mock('@/api/endpoints/*')`. Typed envelope helpers (`successFor`, `paginatedFor`, `voidSuccess`) keep handlers in lockstep with endpoint return types.
-
-**Test teardown (MANDATORY)**: `web/src/test-setup.tsx` registers a global `afterEach` that runs every cleanup hook (toast `dismissAll()`, MCP-catalog `cancelPendingMcpCatalogSearch()`, the backend-sourced store resets setup-wizard `reset()` / org-chart-prefs `resetOrgChartPrefs()` / dashboard-prefs `resetDashboardPrefs()`, theme `teardown()`, and circuit-breaker `resetCircuitBreaker()`); see `test-setup.tsx` for the authoritative list. Stores that moved to the backend (theme, notifications, setup-wizard, org-chart-prefs, dashboard-prefs) no longer persist to `localStorage`, so their teardown resets in-memory singleton state rather than cancelling a persistence debounce. **Any new store OR stateful singleton that schedules timers, attaches event listeners, or holds mutable state keyed by test inputs must expose an equivalent cleanup hook** and register it in the global `afterEach`. The websocket store is a deliberate exception (file-local `resetStore()` in its test file).
-
-**Active-handle gate (MANDATORY)**: every unit test runs under `web/test-infra/active-handle-tracker.ts`, which hooks Node's `async_hooks` and fails any test that leaks an event-loop-holding resource (`Timeout`, `TCPWRAP`, `PIPEWRAP`, `FSEVENTWRAP`, etc.) attributable to a `web/src/` frame. Zero tolerance, no ceiling, no buffer. The allowlist (`web/test-infra/active-handle-allowlist.ts`) is empty and additions are an audit step (see [docs/design/web-active-handle-detection.md](../docs/design/web-active-handle-detection.md)). A new store that schedules timers / attaches listeners MUST expose a teardown hook and register it in the global `afterEach`; otherwise the gate fails the first test that triggers the schedule.
-
-**WS payload sanitization**: `sanitizeWsString()` and `sanitizeWsEnum()` live in `web/src/utils/ws-sanitize.ts` (pure helpers imported directly from there). `sanitizeWsString()` clamps every WS-supplied string (strips C0 controls + bidi-overrides + caps length). `sanitizeWsEnum<T>(value, allowlist, fallback, { field })` extends that with enum-allowlist validation: on unknown values it emits a structured `ws.enum.unknown` warning and returns the supplied fallback (must be a valid allowlist member), so a backend rolling out a new enum value cannot break UI rendering. Any new WS payload handler that ingests untrusted strings MUST route through one of these; raw `(sanitizeWsString(x, n) ?? '') as EnumType` casts are forbidden. Do NOT confuse this with `makeEnumParser<T>` from `web/src/utils/type-guards.ts`: that is for `SelectField` / `<select>` change handlers (in-app `string` -> union narrowing with an `undefined` no-op on miss), has no warning and no fallback, and must NOT be used at a WS boundary -- WS enum ingestion always uses `sanitizeWsEnum`.
-
-**WS wire protocol (MANDATORY)**: the client-server contract lives in `web/src/utils/ws-constants.ts` (`WS_PROTOCOL_VERSION`, `WS_MAX_MESSAGE_SIZE`, `WS_HEARTBEAT_INTERVAL_MS`, `WS_PONG_TIMEOUT_MS`, `LOG_SANITIZE_MAX_LENGTH`) and MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`. Bump the protocol version on both sides together for breaking payload changes. Drift is enforced at pre-commit / pre-push by `scripts/check_ws_protocol_version_in_sync.py`. The same file also holds client-only transport-tuning constants that are NOT part of the synced contract (WS + SSE reconnect backoff `WS_RECONNECT_*` / `SSE_RECONNECT_*`, and the WS/SSE poll-suppression `FRESHNESS_WINDOW_MS` used by `useFreshnessGate`); keep new transport tuning here rather than scattering it.
-
-**Error-code constants (MANDATORY)**: import `ErrorCode` and `ErrorCategory` from `@/api/types/errors` (re-exported from the generated `web/src/api/types/error-codes.gen.ts`). Discriminate on `ErrorCode.<NAME>`, never on raw integer literals. The generator (`scripts/generate_error_codes_ts.py`) reads `src/synthorg/core/error_taxonomy.py`; drift is enforced at pre-push by `scripts/check_error_codes_ts_in_sync.py`.
-
-**Generated DTO types (MANDATORY)**: NEVER hand-edit `web/src/api/types/*.gen.ts`. Regenerate with `uv run python scripts/generate_dto_types_ts.py`; drift enforced at pre-push by `scripts/check_dto_types_ts_in_sync.py`. Import DTOs via the barrel (`import type { AgentConfig } from '@/api/types'`). The hand-maintained `ApiResponse<T>` / `PaginatedResponse<T>` generics in `web/src/api/types/http.ts` are the call-site shape.
-
-See [docs/reference/web-zustand-stores.md](../docs/reference/web-zustand-stores.md) for the full mutation pattern, the per-PR async-leak audit trail, the structural-floor research, the WebSocket auth handshake / backpressure / single-writer details, and the cookie shim contract.
+- **Mutation error handling**: all create/update/delete actions follow `stores/connections/crud-actions.ts`: try/catch, success updates state + success toast, failure logs + error toast + returns a sentinel (`null` for entity-returning, `false` for void/boolean). Optimistic mutations capture `previous` and restore in catch. Use `getCrudErrorTitle(err, fallback)` from `@/utils/errors`. **Callers MUST NOT wrap store mutation calls in try/catch** (the store owns error UX). List reads set `error: string | null` instead of toasting.
+- **Cursor pagination (MANDATORY)**: list endpoints page via opaque `PaginationMeta` cursors; stores keep `nextCursor` + `hasMore` (no offset arithmetic) and early-return when `!hasMore || !nextCursor`. Counts come from `data.length`.
+- **Health / readiness endpoints (MANDATORY)**: `getLiveness()` always 200; `getReadiness()` (`/readyz`, unauth) is 200/503 binary; `getHealthDetail()` (`/health`, read-role) returns the full breakdown. New callers handle 503 explicitly.
+- **MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a happy-path handler per endpoint; tests override via `server.use(...)`, never `vi.mock('@/api/endpoints/*')`. Use the typed envelope helpers (`successFor`, `paginatedFor`, `voidSuccess`). MSW handlers must `import type` from `@/api/endpoints/*` (a value import breaks unrelated mocks).
+- **Test teardown (MANDATORY)**: `test-setup.tsx` registers a global `afterEach` running every cleanup hook. Any new store / stateful singleton that schedules timers, attaches listeners, or holds test-keyed state MUST expose a cleanup hook and register it there.
+- **Active-handle gate (MANDATORY)**: every unit test runs under `web/test-infra/active-handle-tracker.ts`, failing any test that leaks an event-loop resource from a `web/src/` frame. Zero tolerance; the allowlist is empty and additions are an audit step.
+- **WS sanitization**: route untrusted WS strings through `sanitizeWsString()` / `sanitizeWsEnum<T>()` (`utils/ws-sanitize.ts`); never raw casts. Do NOT use `makeEnumParser<T>` (for `<select>` handlers) at a WS boundary.
+- **WS wire protocol (MANDATORY)**: the synced contract is in `utils/ws-constants.ts` and MUST match `api/ws_models.py` / `api/controllers/ws.py`; bump `WS_PROTOCOL_VERSION` on both sides together (gate `check_ws_protocol_version_in_sync.py`). Client-only transport tuning lives in the same file but is not part of the synced contract.
+- **Error-code constants (MANDATORY)**: import `ErrorCode`/`ErrorCategory` from `@/api/types/errors`; discriminate on `ErrorCode.<NAME>`, never raw integers. Drift enforced at pre-push.
+- **Generated DTO types (MANDATORY)**: NEVER hand-edit `api/types/*.gen.ts`; regenerate via `scripts/generate_dto_types_ts.py` and import via the barrel. Drift enforced at pre-push.
+- Full detail: [web-zustand-stores.md](../docs/reference/web-zustand-stores.md), [web-package-structure.md](../docs/reference/web-package-structure.md).
 
 ## Design System (MANDATORY)
 
-**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. NEVER hardcode hex colours, font-family declarations, pixel spacing, Motion transition durations, BCP 47 locale literals (`'en-US'`), or currency symbols / codes; use design tokens, `@/lib/motion` presets, the helpers in `@/utils/format`, and `DEFAULT_CURRENCY` from `@/utils/currencies`. Every new shared component lives in `web/src/components/ui/` with a sibling `.stories.tsx` covering all states. A shared component is either (a) a flat `web/src/components/ui/<name>.tsx` paired with `<name>.stories.tsx` for single-component primitives, or (b) a sub-package `web/src/components/ui/<name>/` with a barrel `index.ts`, each `<SubName>.tsx` paired with `<SubName>.stories.tsx`, and shared utility / hook `.ts` files alongside (see `health-popover/` for the canonical sub-package layout). Base UI primitives are imported directly from `@base-ui/react/<subpath>` and use the native `render` prop for polymorphism; the local `<Slot>` helper is reserved for `<Button asChild>`.
-
-**Component file conventions** (uniform across all 50+ shared
-components in `web/src/components/ui/`):
-
-1. The Props interface name is `<ComponentName>Props` and is exported
-   from the same file (e.g. `AgentCardProps` in `agent-card.tsx`).
-   This makes the contract greppable (`grep -r '<X>Props'`) and lets
-   callers extend the props without re-typing the shape.
-2. Every shared UI component has a sibling `<ComponentName>.stories.tsx`
-   covering every meaningful state (default, hover, loading, error,
-   empty, disabled where applicable). The PostToolUse hook on
-   `web/src/components/ui/*.tsx` validates the convention.
-3. Base UI primitives compose Portal + Backdrop + Popup explicitly,
-   use the `render` prop for polymorphism, and rely on animation
-   state attributes (`data-[open]`, `data-[closed]`) rather than the
-   older `data-[state=open]` form. Tailwind v4 transition + scale
-   gotchas (CSS layer ordering, `@keyframes` not inheriting layer
-   precedence) are covered in
-   `docs/reference/web-design-system.md` § Creating New Components.
-
-A PostToolUse hook (`scripts/check_web_design_system.py`) runs on every `web/src/` edit and flags hardcoded hex / rgba / fonts / Motion durations / locale literals / bare `.toLocale*String()` calls / missing Storybook stories / duplicate component patterns / complex `.map()` blocks. Fix every violation before proceeding.
-
-See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colours, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
-
-### Anti-patterns (lint-enforced)
-
-- **Icon helpers**: NEVER write `getXIcon(value): LucideIcon` factories called inside JSX bodies (`@eslint-react/static-components` flags them). Export a `<XIcon value={...} />` wrapper that does the lookup via `createElement` inside the wrapper body. Wrapper components live in their own file, not alongside utility exports, so `react-refresh/only-export-components` stays clean. Canonical shape: `web/src/utils/activity-event-icon.tsx`.
-- **Viewport-size reads**: use `useViewportSize()` from `@/hooks/useViewportSize`. NEVER read `window.innerWidth` / `window.innerHeight` directly in a render body or `useMemo`; `@eslint-react/globals` flags it and it would be stale across resizes anyway.
+- **Reuse `web/src/components/ui/` before creating components.** NEVER hardcode hex colours, fonts, pixel spacing, Motion durations, BCP 47 locale literals, or currency symbols; use design tokens, `@/lib/motion` presets, `@/utils/format`, and `DEFAULT_CURRENCY` from `@/utils/currencies`.
+- A shared component is either a flat `ui/<name>.tsx` + `<name>.stories.tsx`, or a sub-package `ui/<name>/` with a barrel + per-sub-component stories (canonical: `health-popover/`). Props interface is exported `<ComponentName>Props`; every component has a sibling `.stories.tsx` covering all states.
+- **Anti-patterns**: no `getXIcon(): LucideIcon` factories called in JSX (export a `<XIcon value={...} />` wrapper, own file); use `useViewportSize()`, never raw `window.innerWidth` in render.
+- Enforced by `scripts/check_web_design_system.py` (PostToolUse on every `web/src/` edit). Full inventory + token recipes + Base UI integration: [web-design-system.md](../docs/reference/web-design-system.md).
 
 ## ESLint (MANDATORY)
 
-`web/tsconfig.app.json` runs full strict mode plus `noUncheckedIndexedAccess`, `noPropertyAccessFromIndexSignature`, and **`exactOptionalPropertyTypes`**. Under the last, `prop?: T` is distinct from `prop: T | undefined`: forwarding an optional value is rejected unless the target also accepts `undefined`. Fix it the way React's own `@types/react` does, by declaring presentational / internal optional props as `prop?: T | undefined`; at data / wire boundaries (request payloads, react-flow handles, lib.dom options) omit the key (conditional spread `...(x !== undefined && { x })`) or coerce (`x ?? null`, a real default) instead of widening. Never reach for `as` / `// @ts-expect-error` to silence it.
+Lint runs with `--max-warnings 0`. The config is strict: `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`, the `strictTypeChecked` preset, and `recommended-type-checked`. Fix types rather than suppressing; `no-unnecessary-condition` flags are usually genuinely dead checks. Key error-level opt-ins: `react-hooks/rules-of-hooks` + `exhaustive-deps`, the leaked-fetch/observer ratchets, `no-leaked-conditional-rendering`, `no-floating-promises`, `no-misused-promises`. Tiered caps (`complexity: 8`, `max-lines: 400`, `max-lines-per-function: 80`, `max-params: 5`) mirror the Python tiers; the canonical under-`complexity` refactor is table-driven `Record` dispatch. Full fix patterns, rule reconciliation, deferred rules, and caps: [web-eslint.md](../docs/reference/web-eslint.md).
 
-`typescript-eslint` runs the **`strictTypeChecked`** preset and `@eslint-react/eslint-plugin` v5+ runs `recommended-type-checked` (both require `parserOptions.projectService: true`, configured in `web/eslint.config.js`). `strictTypeChecked` pulls in `no-unnecessary-condition`: a flagged "always truthy/falsy" / "unnecessary optional chain" / "no overlap" is usually a genuinely dead check (delete it; for an exhaustive `Record<Enum, V>` the lookup is non-undefined and build-time exhaustiveness, not a `?? fallback`, is the protection). When the check is genuinely needed, prefer fixing the type over a suppression. (1) Boundary type-lies (`AxiosResponse.headers`/`.data` typed non-null yet absent on faked / coerced error objects, `navigator.clipboard` in insecure contexts, malformed-envelope fields, backend enum drift on a `Record` lookup): widen the value to its honest runtime type at the boundary by assigning to a `T | undefined` / untrusted-wire view local (or `Boolean(x)` for an unconstrained sentinel) so the guard is type-necessary. (2) Effect cancellation: use `createCancellationToken()` from `@/utils/cancellation`, whose `cancelled()` is a function call so a stale narrowing after an `await` cannot mask a cleanup-time `cancel()`. The one case that still keeps a per-line `// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- <why>` is a CFA-invisible closure mutation with no cleaner abstraction: a flag flipped inside a closure the flow analysis cannot follow (an applied-flag set inside a `set()` updater, an SSE `onProgress` capture, the module-level `shouldBeConnected` toggled by `disconnect()`, a `cancelledRef.current` flipped in effect cleanup). The value's type is correct and eslint's CFA is simply wrong, so the documented disable is the idiomatic fix. Explicit error-level opt-ins beyond the presets:
+## Post-training reference
 
-- `react-hooks/rules-of-hooks` + `react-hooks/exhaustive-deps` (`eslint-plugin-react-hooks` v7, ESLint-10 compatible): the canonical hooks-dependency rule. `@eslint-react/exhaustive-deps` is turned **off** in favour of it, so any justified suppression uses `// eslint-disable-next-line react-hooks/exhaustive-deps -- <reason>`. The `react-hooks/lints` bundle (this app does NOT run the React Compiler) is reconciled per rule: genuine-runtime-correctness rules (`set-state-in-render`, `purity`, `error-boundaries`, `void-use-memo`, `preserve-manual-memoization`, `static-components`, `use-memo`) are **error**; compiler-migration-only / redundant rules (`refs`, `immutability`, the rh-variant `set-state-in-effect`, `config`, `gating`, `incompatible-library`, `unsupported-syntax`, `globals`) are **off** with an inline WHY. Prefer destructuring stable `useCallback`/`useRef` members and listing them over a mount-only `[]` + disable (see the `usePolling` consumers).
-- `@eslint-react/web-api-no-leaked-fetch` / `web-api-no-leaked-intersection-observer` / `web-api-no-leaked-resize-observer`: detect `fetch()` / `IntersectionObserver` / `ResizeObserver` created in effects without the matching `AbortController` / `disconnect()` cleanup. No observer call sites exist today; the two observer rules are forward-looking ratchets.
-- `@eslint-react/no-leaked-conditional-rendering`: catch the `{count && <Foo />}` bug where `0` renders verbatim. For `ReactNode | undefined` props use `{value != null && value !== false && <jsx>}`; for compound truthiness use `Boolean(...)`.
-- `@eslint-react/globals`: restrict `window` / `document` / `localStorage` / etc. inside render. Hoist offenders into a `useCallback` event handler, a `useEffect`, or a `useSyncExternalStore`-backed hook.
-- `@typescript-eslint/no-floating-promises`: forbids unawaited promises so async work cannot survive the test that scheduled it and trip the active-handle gate.
-- `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }`): forbids passing async functions where the callsite ignores the returned promise; React 19 `async` event handlers stay allowed via the `attributes: false` exemption, paired with the global error handler.
-- Promoted from `warn` to `error` (codebase is clean): `@eslint-react/no-unstable-context-value`, `no-unstable-default-props`, `set-state-in-effect` (prop-to-local-state sync is the only sanctioned exception, suppressed per-line with a reason), `jsx-no-useless-fragment` (options pinned), `dom-no-missing-button-type`, and `react-refresh/only-export-components` (`allowConstantExport`; still `off` for the `components/ui/**` shadcn variant co-exports).
-- **Deferred high-churn rules (#2212)**: `@typescript-eslint/no-confusing-void-expression` and `no-non-null-assertion` are `off`, and `restrict-template-expressions` is relaxed back to `{ allowNumber, allowBoolean, allowNullish }` (it still catches the genuine `${object}`/`${any}` to `"[object Object]"` bug). These are a documented scope deferral from the `strictTypeChecked` adoption (low bug-yield, high churn), each with an inline WHY in `eslint.config.js`. Do NOT re-tighten without the follow-up hardening pass.
-
-Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
-
-### Tiered caps + per-bucket ratchet (EPIC #2066)
-
-The four caps (`complexity: 8`, `max-lines: 400`, `max-lines-per-function: 80`, `max-params: 5`) mirror the Python pylint thresholds and the module-size tier table in `docs/decisions/0006-tiered-module-size-policy.md`. They apply globally to all `**/*.{ts,tsx}` files. Two narrow exemptions remain in `web/eslint.config.js`: `src/components/ui/**` disables only `max-lines-per-function` (cva config-heavy variants pre-date the tier policy; new shadcn additions still respect the cap), and the test/bench globs (`test-infra/**`, `**/__tests__/**`, `**/*.test.{ts,tsx}`, `**/*.bench.ts`) disable all four. All `web/src/` production code respects the caps.
-
-The canonical refactor pattern for keeping a function under `complexity: 8` is **table-driven dispatch**: replace a multi-arm `if`/`switch` ladder with a `Readonly<Record<K, V>>` lookup, optionally typed with `as const satisfies Record<K, V>` for exhaustiveness against an enum/union. See `utils/errors.ts` (`CONFLICT_MESSAGES`, `CATEGORY_TITLES`, `STATUS_TITLES`, `STATUS_FALLBACK_MESSAGES`), `utils/provider-status.ts` (`_hasRequiredCredentials` exhaustive `Record<AuthType, boolean>`), `hooks/use-list-shortcuts.ts` (`KEY_TO_ACTION`), and `hooks/useToolbarKeyboardNav.ts` (`TOOLBAR_INDEX_FNS`) for worked examples. For a function whose body is too long, extract per-stage helpers (`utils/fetch-with-retry.ts` splits the retry loop into `_decideRetryWait` / `_performRetrySleep` / `_shouldKeepRetrying`); for an oversized hook, extract sub-hooks (`hooks/usePolling.ts::usePollRefs`, `hooks/useAgentDetailData.ts::{useDetailStoreSlice, useDetailLifecycle, useDetailWebSocket}`). Sub-hook names MUST start with `use` (rules-of-hooks); no leading underscore.
-
-## Post-Training Reference
-
-TypeScript 6 and Storybook 10 were released after Claude's training cutoff. Key gotchas: TS6 `baseUrl` is deprecated and `esModuleInterop` is always true; `types` defaults to `[]` so `vitest/globals` etc. need explicit listing. Storybook 10 is ESM-only; essentials are built into core, but `@storybook/addon-docs` is now separate; imports moved to `storybook/test` and `storybook/actions`.
-
-See [docs/reference/web-post-training.md](../docs/reference/web-post-training.md) for the full TS6 deprecation list, Storybook 10 migration recipe, and minimum versions (Node 20.19+, Vite 5+, Vitest 3+).
+TypeScript 6 and Storybook 10 post-date Claude's cutoff: TS6 `baseUrl` deprecated, `esModuleInterop` always true, `types` defaults to `[]`; Storybook 10 is ESM-only, `@storybook/addon-docs` separate, imports moved to `storybook/test` + `storybook/actions`. Detail + minimum versions: [web-post-training.md](../docs/reference/web-post-training.md).

@@ -258,6 +258,7 @@ nav:
           - CLI Environment Variables: reference/cli-env-vars.md
           - CLI Persistence Backends: reference/cli-persistence-backends.md
       - Conventions & Architecture:
+          - API Startup Lifecycle: reference/api-startup-lifecycle.md
           - Convention Gates: reference/convention-gates.md
           - License Policy: reference/license-policy.md
           - Import Layering: reference/import-layering.md
