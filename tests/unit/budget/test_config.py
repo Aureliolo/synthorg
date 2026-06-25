@@ -98,7 +98,8 @@ class TestAutoDowngradeConfig:
     def test_defaults(self) -> None:
         """Verify default values."""
         cfg = AutoDowngradeConfig()
-        assert cfg.enabled is False
+        # On by default (the budget.auto_downgrade_enabled setting ships "true").
+        assert cfg.enabled is True
         assert cfg.threshold == 85
         assert cfg.downgrade_map == ()
         assert cfg.boundary == "task_assignment"
@@ -218,7 +219,7 @@ class TestBudgetConfig:
         assert cfg.per_task_limit == 5.0
         assert cfg.per_agent_daily_limit == 10.0
         assert cfg.alerts.warn_at == 75
-        assert cfg.auto_downgrade.enabled is False
+        assert cfg.auto_downgrade.enabled is True
         assert cfg.reset_day == 1
         assert cfg.currency == "USD"
 

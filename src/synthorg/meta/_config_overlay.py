@@ -13,6 +13,7 @@ from the blob.
 """
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
 from synthorg.settings.enums import SettingNamespace
@@ -63,7 +64,7 @@ def _as_bool(value: str) -> bool:
     Returns:
         ``True`` when *value* is a recognised true token.
     """
-    return value.strip().lower() in _TRUE_TOKENS
+    return normalize_ascii_lowercase(value) in _TRUE_TOKENS
 
 
 def _nested(overrides: dict[str, object], key: str) -> dict[str, object]:

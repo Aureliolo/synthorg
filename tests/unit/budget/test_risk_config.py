@@ -48,7 +48,8 @@ class TestRiskBudgetConfig:
 
     def test_defaults(self) -> None:
         cfg = RiskBudgetConfig()
-        assert cfg.enabled is False
+        # On by default (the budget.risk_enabled setting ships "true").
+        assert cfg.enabled is True
         assert cfg.per_task_risk_limit == 5.0
         assert cfg.per_agent_daily_risk_limit == 20.0
         assert cfg.total_daily_risk_limit == 100.0
@@ -126,7 +127,7 @@ class TestBudgetConfigRiskIntegration:
     def test_default_risk_budget(self) -> None:
         cfg = BudgetConfig()
         assert isinstance(cfg.risk_budget, RiskBudgetConfig)
-        assert cfg.risk_budget.enabled is False
+        assert cfg.risk_budget.enabled is True
 
     def test_custom_risk_budget(self) -> None:
         risk_cfg = RiskBudgetConfig(enabled=True, per_task_risk_limit=10.0)
