@@ -68,6 +68,12 @@ const GROUPS: readonly CapabilityGroup[] = [
     title: 'Knowledge & research',
     caption: 'Ground work in documents and let agents research.',
     advanced: false,
+    // `research.enabled` / `knowledge.enabled` are intentionally surfaced here
+    // (as grouped capability toggles) AND in WizardModelSelection on the Agents
+    // step (where the research toggle gates its model picker). Both write the
+    // same backend setting and hydrate from it on mount; the backend is the
+    // single source of truth, so the overlap is a deliberate dual entry point,
+    // not divergent state.
     rows: [
       {
         namespace: 'research',

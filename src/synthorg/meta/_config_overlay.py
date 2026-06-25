@@ -155,9 +155,12 @@ async def _read_namespace(
         non-critical read failure.
     """
     try:
+        # Drop entries whose stored value is None: the overlay calls
+        # ``.strip()`` on these, which an unset (None) value would crash on.
         return {
             entry.definition.key: entry.value
             for entry in await settings_service.get_namespace(namespace)
+            if entry.value is not None
         }
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

@@ -254,7 +254,10 @@ async def ensure_per_feature_models(
             settings_svc, "chief_of_staff", "chat_model", cos_model
         )
     except* Exception as eg:
-        reraise_critical(eg)
+        # reraise_critical expects a concrete exception, not the group, so
+        # walk the nested exceptions to surface any MemoryError/RecursionError.
+        for nested in eg.exceptions:
+            reraise_critical(nested)
         exc = eg.exceptions[0]
         logger.warning(
             SETUP_FEATURE_MODEL_SELECT_FAILED,

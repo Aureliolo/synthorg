@@ -1,8 +1,10 @@
 """Knowledge namespace setting definitions.
 
 The knowledge substrate (document ingestion + retrieval over the memory
-backend) is on by default. It has no model of its own: it rides the
-embedding model that powers memory (see ``memory.embedder_model``).
+backend) is on by default. Its retrieval surface has no model of its
+own: it rides the embedding model that powers memory (see
+``memory.embedder_model``). The optional synthesis step below adds a
+separate completion model (see ``knowledge.synthesis_model``).
 
 Also governs the substrate's optional generative-RAG (synthesis) step:
 its enable flag, the provider + model the ``ask`` surface uses, the

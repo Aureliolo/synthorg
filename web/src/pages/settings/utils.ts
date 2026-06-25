@@ -35,7 +35,6 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   meta: true,
   self_improvement: true,
   chief_of_staff: true,
-  knowledge: true,
   charter: true,
   notifications: true,
   objectives: true,
