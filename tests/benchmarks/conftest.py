@@ -14,13 +14,40 @@ Builders + constants live in ``tests/benchmarks/_helpers.py`` so test
 modules can import them directly.
 """
 
+import logging
 from collections.abc import Sequence
 
 import pytest
+import structlog
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.memory.models import MemoryEntry
 from tests.benchmarks._helpers import make_cost_record, make_memory_entry
+
+
+@pytest.fixture(autouse=True)
+def _silence_logging_for_benchmarks(_reset_structlog_state: None) -> None:
+    """Neutralise logging so benches measure compute, not log rendering.
+
+    Hot-path code that logs per call (e.g. ``AgentTaskScorer.score`` emits a
+    ``logger.debug`` for every ``(agent, subtask)`` pair) otherwise has its
+    benchmark dominated by log rendering + the stdout ``write()`` syscall +
+    the malloc churn of building each event, not the function under test.
+    That logging I/O is highly environment-sensitive, so it swung the
+    routing-scorer bench ~28% across CPU/allocator differences and produced
+    spurious CodSpeed regressions.
+
+    The root ``tests/conftest.py`` ``_reset_structlog_state`` fixture resets
+    structlog to its defaults before every test (default factory =
+    ``PrintLogger`` rendering to stdout, no level gate), so this fixture
+    depends on it and re-silences AFTER the reset: a CRITICAL filtering
+    wrapper turns every below-critical call into an immediate no-op, leaving
+    the bench to measure only the code under test, deterministically across
+    runs and hardware.
+    """
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.CRITICAL),
+    )
 
 
 @pytest.fixture(scope="module")
