@@ -69,7 +69,7 @@ async def test_ask_returns_wrapped_answer() -> None:
     result = await _knowledge_ask(app_state=app_state, arguments={"query": "q"})
     body = json.loads(result)
     assert body["status"] == "ok"
-    # Synthesised prose + claim text are fenced as untrusted (SEC-1).
+    # Synthesised prose + claim text are fenced as untrusted corpus-derived output.
     assert f"<{TAG_KNOWLEDGE}>" in body["data"]["answer"]
     assert f"<{TAG_KNOWLEDGE}>" in body["data"]["claims"][0]["text"]
     assert body["data"]["claims"][0]["citations"][0]["chunk_id"] == "chunk-0"
