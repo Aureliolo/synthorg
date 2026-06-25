@@ -3,6 +3,7 @@
 import os
 
 from synthorg.core.auth.config import MIN_SECRET_LENGTH
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -25,7 +26,7 @@ def resolve_dev_auth_bypass() -> bool:
         ``True`` when ``SYNTHORG_DEV_AUTH_BYPASS`` is set to a truthy value.
     """
     raw = os.environ.get(_DEV_BYPASS_ENV_VAR)
-    return raw is not None and raw.strip().lower() in _TRUTHY
+    return raw is not None and normalize_ascii_lowercase(raw) in _TRUTHY
 
 
 def resolve_jwt_secret() -> str:

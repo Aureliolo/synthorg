@@ -234,8 +234,8 @@ async def test_raise_ceiling_clears_halt_and_updates_ceiling() -> None:
         data=RaiseCeilingRequest(new_ceiling=3.0, accumulated_cost=1.5),
         state=state,
     )
-    assert updated.ceiling_amount == 3.0
-    assert updated.halt_context is None
+    assert updated.data.ceiling_amount == 3.0
+    assert updated.data.halt_context is None
     assert len(repo.saved) == 1
 
 
