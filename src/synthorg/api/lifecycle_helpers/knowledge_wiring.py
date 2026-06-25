@@ -102,14 +102,15 @@ async def _maybe_build_knowledge_synthesizer(
     from synthorg.knowledge.synthesis.factory import (  # noqa: PLC0415
         build_knowledge_synthesizer,
     )
+    from synthorg.settings.mirrors import parse_bool  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     runtime_settings = app_state.slice(SettingsStateSlice).settings_service
     if runtime_settings is None or provider_registry is None:
         return None
-    enabled = (
-        await runtime_settings.get("knowledge", "synthesis_enabled")
-    ).value.strip().lower() == "true"
+    enabled = parse_bool(
+        (await runtime_settings.get("knowledge", "synthesis_enabled")).value
+    )
     model = (await runtime_settings.get("knowledge", "synthesis_model")).value.strip()
     if not enabled or not model:
         logger.info(
