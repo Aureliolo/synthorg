@@ -93,6 +93,11 @@ class KnowledgeSynthesizer:
         self._clock = clock if clock is not None else SystemClock()
         self._cost_tracker = cost_tracker
 
+    @property
+    def max_chunks(self) -> int:
+        """Maximum retrieved chunks consulted per answer (the model budget)."""
+        return self._max_chunks
+
     async def synthesize(
         self,
         *,

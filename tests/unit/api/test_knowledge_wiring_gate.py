@@ -22,7 +22,7 @@ pytestmark = pytest.mark.unit
 
 def _settings(values: dict[str, str]) -> SettingsService:
     async def _get(namespace: str, key: str) -> SimpleNamespace:
-        del namespace
+        assert namespace == "knowledge"
         return SimpleNamespace(value=values.get(key, ""))
 
     service: SettingsService = mock_of[SettingsService](get=_get)

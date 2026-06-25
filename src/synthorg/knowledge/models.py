@@ -306,7 +306,7 @@ class KnowledgeAnswer(BaseModel):
         Raises:
             ValueError: When the answer has claims but consulted no chunks.
         """
-        if self.claims and self.chunks_consulted < 1:
+        if self.chunks_consulted < 1:
             msg = "an answer with claims must have consulted at least one chunk"
             raise ValueError(msg)
         return self

@@ -73,7 +73,15 @@ class _AnsweringKnowledgeService:
         self._unavailable = unavailable
         self._synthesis_error = synthesis_error
 
-    async def ask(self, *, query: NotBlankStr, **_: object) -> KnowledgeAnswer:
+    async def ask(
+        self,
+        *,
+        query: NotBlankStr,
+        project_id: NotBlankStr,
+        limit: int | None = None,
+    ) -> KnowledgeAnswer:
+        del limit
+        assert project_id == NotBlankStr("proj-1")
         if self._unavailable:
             msg = "knowledge synthesis is not configured"
             raise KnowledgeSynthesisUnavailableError(msg)

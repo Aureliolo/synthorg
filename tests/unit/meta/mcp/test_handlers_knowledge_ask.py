@@ -55,7 +55,13 @@ def _answer() -> KnowledgeAnswer:
 
 
 def _service_with_ask() -> KnowledgeService:
-    async def _ask(**_: object) -> KnowledgeAnswer:
+    async def _ask(
+        *,
+        query: NotBlankStr,
+        project_id: NotBlankStr | None = None,
+        limit: int | None = None,
+    ) -> KnowledgeAnswer:
+        del query, project_id, limit
         return _answer()
 
     service: KnowledgeService = mock_of[KnowledgeService](ask=_ask)

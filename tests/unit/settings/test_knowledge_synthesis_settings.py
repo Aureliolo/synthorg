@@ -15,17 +15,18 @@ from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings import definitions as _settings_definitions  # noqa: F401
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
 def service() -> SettingsService:
-    repo = AsyncMock(spec=SettingsRepository)
+    repo = mock_of[SettingsRepository]()
     repo.get.return_value = None
     repo.get_namespace.return_value = ()
     repo.list_items.return_value = ()
-    repo.save.return_value = True
+    repo.save.return_value = None
     return SettingsService(repository=repo, registry=get_registry())
 
 
@@ -61,3 +62,7 @@ async def test_synthesis_model_set_succeeds(service: SettingsService) -> None:
     repo: AsyncMock = service._repository  # type: ignore[assignment]
     await service.set("knowledge", "synthesis_model", "example-large-001")
     repo.save.assert_awaited_once()
+    (saved_row,) = repo.save.await_args.args
+    assert saved_row.namespace == "knowledge"
+    assert saved_row.key == "synthesis_model"
+    assert saved_row.value == "example-large-001"

@@ -277,7 +277,13 @@ class KnowledgeService:
                 "synthesis_model to enable the ask surface"
             )
             raise KnowledgeSynthesisUnavailableError(msg)
-        hits = await self.search(query=query, project_id=project_id, limit=limit)
+        # Cap retrieval to the synthesiser's chunk budget: it consults only
+        # the top ``max_chunks`` hits, so recording usage for a larger
+        # retrieved set would bill the run for chunks the model never saw.
+        effective_limit = min(limit, self._synthesizer.max_chunks)
+        hits = await self.search(
+            query=query, project_id=project_id, limit=effective_limit
+        )
         answer, cost = await self._synthesizer.synthesize(
             query=query, hits=hits, project_id=project_id
         )

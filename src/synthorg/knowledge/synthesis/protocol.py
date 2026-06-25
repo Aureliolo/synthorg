@@ -15,6 +15,15 @@ from synthorg.knowledge.models import KnowledgeAnswer, KnowledgeHit
 class Synthesizer(Protocol):
     """Produces a citation-backed answer from retrieved chunks."""
 
+    @property
+    def max_chunks(self) -> int:
+        """Maximum retrieved chunks this synthesiser consults per answer.
+
+        Callers cap retrieval to this budget so usage is recorded only for
+        chunks the synthesiser will actually present to the model.
+        """
+        ...
+
     async def synthesize(
         self,
         *,
