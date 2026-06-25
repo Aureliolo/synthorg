@@ -24,7 +24,12 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
+from synthorg.knowledge.enums import (
+    ContentKind,
+    KnowledgeClaimType,
+    SourceStatus,
+    SourceType,
+)
 
 # ── Field constraints ────────────────────────────────────────────────
 
@@ -39,6 +44,12 @@ UnitText = Annotated[str, StringConstraints(max_length=1048576)]
 
 TitleText = Annotated[str, StringConstraints(min_length=1, max_length=1024)]
 """Bounded non-empty source title."""
+
+ClaimText = Annotated[str, StringConstraints(min_length=1, max_length=4096)]
+"""Bounded non-empty synthesised-claim assertion text."""
+
+AnswerText = Annotated[str, StringConstraints(min_length=1, max_length=16384)]
+"""Bounded non-empty synthesised-answer prose."""
 
 
 def _check_char_range(char_start: int, char_end: int) -> None:
@@ -232,6 +243,73 @@ class KnowledgeHit(BaseModel):
         description="Backend-assigned relevance",
     )
     citation: Citation = Field(description="Resolvable provenance handle")
+
+
+# ── Synthesis (generative RAG) models ────────────────────────────────
+
+
+class KnowledgeAnswerClaim(BaseModel):
+    """One assertion in a synthesised answer, backed by >= 1 citation."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    text: ClaimText = Field(description="The assertion")
+    claim_type: KnowledgeClaimType = Field(description="Nature of the assertion")
+    citations: tuple[Citation, ...] = Field(
+        min_length=1,
+        description="Retrieved chunks backing this claim (at least one)",
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Synthesiser confidence in the claim",
+    )
+
+
+class KnowledgeAnswer(BaseModel):
+    """A grounded, citation-bound answer synthesised over retrieved chunks.
+
+    Every claim resolves to a chunk that retrieval actually returned, so the
+    answer is always verifiable against the corpus; the synthesiser raises
+    rather than emit a claim citing an unknown chunk.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    query: NotBlankStr = Field(description="The question that was asked")
+    answer: AnswerText = Field(description="The synthesised prose answer")
+    claims: tuple[KnowledgeAnswerClaim, ...] = Field(
+        min_length=1,
+        description="Cited claims comprising the answer body",
+    )
+    chunks_consulted: int = Field(
+        ge=0,
+        description="Number of retrieved chunks presented to the synthesiser",
+    )
+    synthesis_model: NotBlankStr = Field(
+        description="Model identifier that produced the answer"
+    )
+    created_at: AwareDatetime = Field(description="Answer creation timestamp")
+
+    @model_validator(mode="after")
+    def _validate_grounding(self) -> Self:
+        """Reject an answer that carries claims but consulted no chunks.
+
+        A cited claim cannot exist without at least one consulted chunk (one
+        chunk may back several claims, so the count is not bounded by the claim
+        count). An answer with claims and ``chunks_consulted == 0`` is
+        incoherent (an adversarial or mis-constructed row).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the answer has claims but consulted no chunks.
+        """
+        if self.chunks_consulted < 1:
+            msg = "an answer with claims must have consulted at least one chunk"
+            raise ValueError(msg)
+        return self
 
 
 # ── Persisted source row ─────────────────────────────────────────────

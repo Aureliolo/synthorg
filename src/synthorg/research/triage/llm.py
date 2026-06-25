@@ -24,8 +24,8 @@ from synthorg.engine.prompt_safety import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.structured_text import complete_text, extract_json_object
 from synthorg.research._args import TriageOutput, TriageVerdictOut
-from synthorg.research._llm import complete_text, extract_json_object
 from synthorg.research.constants import RESEARCH_TRIAGE_BATCH_SIZE
 from synthorg.research.errors import ResearchRunError
 from synthorg.research.models import ResearchBrief, RetrievedItem, SourceCredibility

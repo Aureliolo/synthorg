@@ -25,6 +25,18 @@ class KnowledgeSearchArgs(_ArgsBase):
     )
 
 
+class KnowledgeAskArgs(_ArgsBase):
+    """Args for ``knowledge:ask`` (generative RAG over the corpus)."""
+
+    project_id: NotBlankStr | None = Field(
+        default=None, description="Scope to a project (null searches global only)"
+    )
+    query: NotBlankStr = Field(description="The question to answer")
+    limit: int = Field(
+        default=KNOWLEDGE_SEARCH_DEFAULT_LIMIT, ge=1, le=KNOWLEDGE_SEARCH_MAX_LIMIT
+    )
+
+
 class KnowledgeIngestArgs(AdminGuardrailFields):
     """Args for ``knowledge:ingest`` (destructive admin op)."""
 

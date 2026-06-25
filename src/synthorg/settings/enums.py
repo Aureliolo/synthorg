@@ -35,6 +35,7 @@ class SettingNamespace(StrEnum):
     TELEMETRY = "telemetry"
     EXTERNAL_API = "external_api"
     RESEARCH = "research"
+    KNOWLEDGE = "knowledge"
     COCKPIT = "cockpit"
     CHARTER = "charter"
     DEMO = "demo"

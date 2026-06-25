@@ -28,6 +28,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   backup: true,
   engine: true,
   research: true,
+  knowledge: true,
   communication: true,
   a2a: true,
   integrations: true,

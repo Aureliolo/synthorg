@@ -65,6 +65,16 @@ KNOWLEDGE_LIST_MAX_LIMIT: Final[int] = 500
 cap bounds list-controller latency and keeps the MCP schema in lockstep
 with the args-model :class:`Field` validator."""
 
+KNOWLEDGE_SYNTHESIS_DEFAULT_MAX_CHUNKS: Final[int] = 8
+"""Default number of top-ranked retrieved chunks fed to the synthesis LLM.
+Bounds the synthesis prompt's token budget; an operator can raise it via the
+``knowledge.synthesis_max_chunks`` setting up to the search cap."""
+
+KNOWLEDGE_SYNTHESIS_MIN_HITS: Final[int] = 1
+"""Minimum retrieved chunks required before synthesis runs. Below this the
+``ask`` surface returns an insufficient-grounding error rather than inviting
+the model to confabulate over an empty or near-empty context."""
+
 KNOWLEDGE_REINDEX_PAGE_SIZE: Final[int] = 100
 """Page size when deleting prior chunks for a source during re-index."""
 

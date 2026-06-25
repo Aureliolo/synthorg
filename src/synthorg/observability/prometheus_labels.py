@@ -271,6 +271,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "external_api",
         "hr",
         "integrations",
+        "knowledge",
         "memory",
         "meta",
         "notifications",

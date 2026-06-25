@@ -81,6 +81,35 @@ class KnowledgeDependencyError(KnowledgeError):
     status_code: ClassVar[int] = 500
 
 
+class KnowledgeSynthesisError(KnowledgeError):
+    """Raised when synthesis produces an invalid or unsourced answer.
+
+    Not retryable: the synthesiser violated the citation invariant (a claim
+    cited an unknown chunk or no chunk at all) or returned unparseable
+    output, so the answer must be inspected rather than blindly retried.
+    """
+
+    default_message: ClassVar[str] = "Knowledge synthesis failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.KNOWLEDGE_SYNTHESIS_ERROR
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 500
+
+
+class KnowledgeSynthesisUnavailableError(KnowledgeError):
+    """Raised when the synthesis step is not wired (no model configured).
+
+    The retrieval surface stays available; only the grounded-answer ``ask``
+    surface 503s until an operator sets a synthesis model.
+    """
+
+    default_message: ClassVar[str] = "Knowledge synthesis unavailable"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.KNOWLEDGE_SYNTHESIS_UNAVAILABLE
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 503
+
+
 class KnowledgeSourceUnavailableError(KnowledgeError):
     """Raised when a source cannot be fetched (e.g. no governed connection).
 

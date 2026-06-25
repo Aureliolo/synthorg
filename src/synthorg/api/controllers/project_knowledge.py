@@ -29,7 +29,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
-from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
+from synthorg.knowledge.models import KnowledgeAnswer, KnowledgeHit, KnowledgeSource
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger
@@ -152,6 +152,40 @@ class ProjectKnowledgeController(Controller):
         )
         return Response(
             content=ApiResponse[tuple[KnowledgeHit, ...]](data=hits),
+            status_code=200,
+        )
+
+    @get(
+        "/ask",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("knowledge.ask", key="user"),
+        ],
+    )
+    async def ask(
+        self,
+        state: State,
+        project_id: PathId,
+        q: SearchQuery,
+        limit: SearchLimit = KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+    ) -> Response[ApiResponse[KnowledgeAnswer]]:
+        """Answer a question over the project + global corpus with citations.
+
+        Retrieves cited chunks then synthesises a grounded answer whose every
+        claim resolves to a retrieved chunk. ``KnowledgeSynthesisUnavailableError``
+        (no synthesis model configured) propagates to the global RFC 9457
+        handler as a 503; retrieval (``/search``) stays available regardless.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
+        answer = await _knowledge_service(state).ask(
+            query=q,
+            project_id=NotBlankStr(project_id),
+            limit=limit,
+        )
+        return Response(
+            content=ApiResponse[KnowledgeAnswer](data=answer),
             status_code=200,
         )
 
