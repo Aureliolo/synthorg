@@ -13,7 +13,7 @@ from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 
@@ -59,6 +59,12 @@ class CreateTaskData(BaseModel):
         created_by: Agent name of the creator.
         assigned_to: Optional assignee agent ID.
         estimated_complexity: Complexity estimate.
+        acceptance_criteria: The task's definition of done. Populated by
+            intake from the originating ``WorkItem`` / charter so it
+            survives onto the ``Task`` (the coordinator's clarification
+            gate reads it before decomposing). Not part of the board
+            ``CreateTaskRequest`` payload: an under-specified board task
+            is routed to refinement rather than carrying criteria here.
         budget_limit: Maximum spend in the configured currency;
             displayed using configured currency formatting.
     """
@@ -88,6 +94,10 @@ class CreateTaskData(BaseModel):
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,
         description="Complexity estimate",
+    )
+    acceptance_criteria: tuple[AcceptanceCriterion, ...] = Field(
+        default=(),
+        description="Definition of done, carried from intake onto the task",
     )
     budget_limit: float = Field(
         default=0.0,

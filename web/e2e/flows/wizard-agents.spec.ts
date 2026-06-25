@@ -102,7 +102,7 @@ test.describe('Setup wizard agents step', () => {
     await page.goto('/setup/agents')
 
     // The roster renders the seeded agent's card.
-    await expect(page.getByRole('heading', { name: /customize your agents/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /customise your agents/i })).toBeVisible()
     const editName = page.getByRole('button', { name: 'Edit: Ada' })
     await expect(editName).toBeVisible()
 

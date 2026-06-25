@@ -38,6 +38,7 @@ from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
 from synthorg.api.lifecycle_helpers.org_memory_wiring import (
     wire_org_memory_backend,
 )
+from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -620,6 +621,10 @@ async def wire_features_on_startup(
         effective_approval_store=effective_approval_store,
         si_config=si_config,
     )
+    # After the proposer: the refinement router wraps it and attaches to
+    # the work pipeline so team-bound work with no definition of done is
+    # refined rather than blocked by the coordinator's clarification gate.
+    await wire_refinement_router(app_state)
     await wire_group_chat_service(
         app_state,
         provider_registry=provider_registry,

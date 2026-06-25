@@ -276,6 +276,12 @@ async def test_objective_decomposes_under_always_team_policy(
     irrespective of structure heuristics. The pipeline must take the
     ``TEAM`` path, the multi-agent coordinator must decompose and
     execute, and the root task must reach a post-execution status.
+
+    The objective carries an explicit definition of done so the
+    coordinator's clarification gate (on by default with the coordination
+    middleware) passes. A team-bound objective with *no* definition of
+    done is handed to refinement instead of decomposed; that path is
+    covered in the work-pipeline refinement unit tests.
     """
     adapter = await _build_objective_adapter(
         persistence=persistence,
@@ -287,6 +293,10 @@ async def test_objective_decomposes_under_always_team_policy(
         title="Ship the v0.8 release",
         description="Cut a stable v0.8 release with release notes.",
         requested_by="human-operator",
+        acceptance_criteria=(
+            "The v0.8 release is cut from a green main",
+            "Release notes summarise the user-facing changes",
+        ),
     )
 
     result = await adapter.submit(submission)

@@ -1,7 +1,10 @@
+# module-kind: orchestrator
 """Mutation application logic for TaskEngine.
 
 Each ``apply_*`` function takes the mutation, a persistence backend,
 and a :class:`VersionTracker`, returning a :class:`TaskMutationResult`.
+``dispatch`` routes a mutation to its applier, coordinating persistence,
+version tracking, observability spans, and event emission per mutation.
 """
 
 from typing import TYPE_CHECKING
@@ -154,6 +157,7 @@ async def apply_create(  # noqa: PLR0913 -- engine mutation-apply collaborators
             assigned_to=data.assigned_to,
             dependencies=data.dependencies,
             estimated_complexity=data.estimated_complexity,
+            acceptance_criteria=data.acceptance_criteria,
             budget_limit=data.budget_limit,
         )
     except PydanticValidationError as exc:

@@ -36,6 +36,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import ModelTier
 from synthorg.engine.intake.engine import IntakeEngine
@@ -181,6 +182,10 @@ class _TaskCreatingIntakeStrategy:
                 created_by=str(meta["requested_by"]),
                 priority=Priority.MEDIUM,
                 estimated_complexity=Complexity.MEDIUM,
+                acceptance_criteria=tuple(
+                    AcceptanceCriterion(description=c)
+                    for c in request.requirement.acceptance_criteria
+                ),
             ),
             requested_by=str(meta["requested_by"]),
         )
@@ -338,6 +343,13 @@ async def _run_brief(
         raw_intent="Tidy a log line and migrate the production schema.",
         project=project,
         requested_by="operator",
+        # A definition of done so the coordinator's clarification gate (on
+        # by default) passes and the team path runs; this test exercises
+        # stakes-aware routing, not the under-specified-work refinement path.
+        acceptance_criteria=(
+            "The log line is tidied without changing behaviour",
+            "The production schema migration is applied and verified",
+        ),
     )
     result = await pipeline.run(work_item)
     assert result.verdict is RoutingVerdict.SPLITTABLE

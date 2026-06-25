@@ -33,6 +33,7 @@ from synthorg.engine.pipeline.errors import (
 )
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    RefinementHandoff,
     RoutingVerdict,
     WorkItem,
     WorkPhaseResult,
@@ -41,6 +42,7 @@ from synthorg.engine.pipeline.models import (
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
+from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
@@ -55,6 +57,7 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
     PIPELINE_PROJECT_NOT_FOUND,
+    PIPELINE_REFINEMENT_REQUESTED,
     PIPELINE_ROUTING_UNDECIDABLE,
     PIPELINE_RUN_COMPLETED,
     PIPELINE_RUN_FAILED,
@@ -78,6 +81,7 @@ _PHASE_PROJECTS = "projects"
 _PHASE_DECOMPOSE = "decompose"
 _PHASE_SOLO = "solo_execution"
 _PHASE_TEAM = "team_execution"
+_PHASE_REFINE = "refinement_handoff"
 _PHASE_METRICS = "coordination_metrics"
 
 #: Work sources whose ``requested_by`` is a human user id (not an agent or
@@ -114,6 +118,7 @@ class DefaultWorkPipeline:
         "_intake_engine",
         "_narrator",
         "_project_repository",
+        "_refinement_router",
         "_routing_policy",
         "_scorer",
         "_stakes_assessor",
@@ -152,6 +157,7 @@ class DefaultWorkPipeline:
         # -> the direct-scorer fallback below preserves prior behaviour.
         self._assignment_service = assignment_service
         self._narrator: RunNarrator | None = None
+        self._refinement_router: WorkRefinementRouter | None = None
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
         """Attach the post-run narrator (documentary mode).
@@ -161,6 +167,17 @@ class DefaultWorkPipeline:
         pipeline by the startup hook rather than passed at construction.
         """
         self._narrator = narrator
+
+    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+        """Attach the under-specified-team-work refinement router.
+
+        Late-bind seam: the router wraps the Chief-of-Staff proposer,
+        which wires only after persistence and a provider are available,
+        so it is attached to the already-built pipeline by the startup
+        hook. Absent, team-bound work with no definition of done falls
+        through to the coordinator, where the clarification gate blocks it.
+        """
+        self._refinement_router = router
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Drive *work_item* through the full spine (see module docstring).
@@ -196,17 +213,29 @@ class DefaultWorkPipeline:
             verdict, agents = await self._phase(
                 phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
+            refinement_handoff: RefinementHandoff | None = None
             if verdict is RoutingVerdict.LEAF:
                 path = ExecutionPath.SOLO
                 final_status = await self._phase(
                     phases, _PHASE_SOLO, self._run_solo(work_item, task, agents)
                 )
+                await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
+            elif self._should_refine(task):
+                # Team-bound work with no definition of done: refine with a
+                # human before mobilising a team (the clarification gate
+                # would otherwise block decomposition). No coordination
+                # runs, so the coordination-metrics stage is skipped.
+                path = ExecutionPath.REFINEMENT
+                refinement_handoff = await self._phase(
+                    phases, _PHASE_REFINE, self._refine(work_item, task)
+                )
+                final_status = task.status
             else:
                 path = ExecutionPath.TEAM
                 final_status = await self._phase(
                     phases, _PHASE_TEAM, self._run_team(work_item, task, agents)
                 )
-            await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
+                await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -224,6 +253,7 @@ class DefaultWorkPipeline:
             task_id=str(task.id),
             final_task_status=final_status,
             phases=tuple(phases),
+            refinement_handoff=refinement_handoff,
             total_duration_seconds=total,
         )
         logger.info(
@@ -486,6 +516,47 @@ class DefaultWorkPipeline:
         agents = await self._agent_registry.list_active()
         verdict = await self._routing_policy.decide(task=task, available_agents=agents)
         return verdict, agents
+
+    def _should_refine(self, task: Task) -> bool:
+        """Decide whether team-bound *task* must be refined before dispatch.
+
+        Team work needs a definition of done: the coordinator's
+        clarification gate blocks decomposition of a task with no
+        acceptance criteria. When a refinement router is wired, the spine
+        opens a human-in-the-loop refinement conversation instead of
+        letting the gate raise. Absent a router (e.g. the Chief of Staff is
+        off), the work falls through to the coordinator and the gate blocks
+        it -- the honest "this needs a definition of done" signal.
+
+        Returns:
+            ``True`` when a router is wired and the task carries no
+            acceptance criteria; ``False`` otherwise.
+        """
+        return self._refinement_router is not None and not task.acceptance_criteria
+
+    async def _refine(self, work_item: WorkItem, task: Task) -> RefinementHandoff:
+        """Hand under-specified team work to human-in-the-loop refinement.
+
+        Returns:
+            The :class:`RefinementHandoff` the caller surfaces so the
+            human can continue the refinement conversation.
+        """
+        router = self._refinement_router
+        assert router is not None  # noqa: S101 -- guarded by _should_refine
+        reasons = ("no acceptance criteria defined",)
+        handoff = await router.request_refinement(
+            work_item=work_item,
+            task=task,
+            reasons=reasons,
+        )
+        logger.info(
+            PIPELINE_REFINEMENT_REQUESTED,
+            correlation_id=work_item.correlation_id,
+            task_id=str(task.id),
+            conversation_id=handoff.conversation_id,
+            needs_clarification=handoff.needs_clarification,
+        )
+        return handoff
 
     async def _run_solo(
         self,

@@ -37,11 +37,13 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    RefinementHandoff,
     RoutingVerdict,
     WorkItem,
     WorkSource,
@@ -151,6 +153,10 @@ class _TaskCreatingIntakeStrategy:
                 created_by=str(meta["requested_by"]),
                 priority=Priority.MEDIUM,
                 estimated_complexity=Complexity.MEDIUM,
+                acceptance_criteria=tuple(
+                    AcceptanceCriterion(description=c)
+                    for c in request.requirement.acceptance_criteria
+                ),
             ),
             requested_by=str(meta["requested_by"]),
         )
@@ -313,6 +319,13 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
         raw_intent="Decompose into research and analysis work.",
         project=sid("proj-team"),
         requested_by="operator",
+        # A definition of done so the coordinator's clarification gate (on
+        # by default) passes and the team path runs; this test exercises
+        # the team spine, not the under-specified-work refinement handoff.
+        acceptance_criteria=(
+            "Research findings are documented and cited",
+            "Analysis synthesises the research into a report",
+        ),
     )
     result = await pipeline.run(work_item)
 
@@ -324,6 +337,83 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
     records, total = metrics_store.query(limit=10)
     assert total >= 1
     assert records[0].task_id == result.task_id
+
+
+class _RecordingRefinementRouter:
+    """Captures the refinement call and returns a fixed handoff.
+
+    Structurally satisfies the engine's ``WorkRefinementRouter`` port so
+    the spine routes under-specified team work here instead of the
+    coordinator.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[WorkItem, Task, tuple[str, ...]]] = []
+
+    async def request_refinement(
+        self,
+        *,
+        work_item: WorkItem,
+        task: Task,
+        reasons: tuple[str, ...],
+    ) -> RefinementHandoff:
+        self.calls.append((work_item, task, reasons))
+        return RefinementHandoff(
+            conversation_id="conv-refine-1",
+            needs_clarification=True,
+            detail="What does done look like for this objective?",
+        )
+
+
+async def test_team_work_without_criteria_routes_to_refinement(
+    persistence: FakePersistenceBackend,
+    task_engine: TaskEngine,
+    tmp_path: Path,
+) -> None:
+    """Team-bound work with no definition of done is refined, not run.
+
+    With a refinement router attached, splittable work that carries no
+    acceptance criteria is handed to refinement (the clarification gate
+    would otherwise block it): the run reports the ``REFINEMENT`` path
+    and a handoff, the coordinator never runs, and no coordination
+    metrics are recorded.
+    """
+    await persistence.projects.create(_project("proj-refine"))
+    metrics_store = CoordinationMetricsStore()
+    alice = _make_agent("alice", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    bob = _make_agent("bob", _ANALYSIS_SKILL, level=SeniorityLevel.MID)
+    pipeline = await _build_pipeline(
+        persistence=persistence,
+        task_engine=task_engine,
+        tmp_path=tmp_path,
+        routing_policy="always-team",
+        agents=(alice, bob),
+        metrics_store=metrics_store,
+    )
+    router = _RecordingRefinementRouter()
+    pipeline.attach_refinement_router(router)
+
+    work_item = WorkItem(
+        origin_adapter_id="harness",
+        source=WorkSource.SIMULATION,
+        title="Build something ambitious",
+        raw_intent="Decompose into research and analysis work.",
+        project=sid("proj-refine"),
+        requested_by="operator",
+    )
+    result = await pipeline.run(work_item)
+
+    assert result.verdict is RoutingVerdict.SPLITTABLE
+    assert result.execution_path is ExecutionPath.REFINEMENT
+    assert result.is_success is True
+    assert result.refinement_handoff is not None
+    assert result.refinement_handoff.conversation_id == "conv-refine-1"
+    assert result.refinement_handoff.needs_clarification is True
+    # The router saw the originating work item, and no coordination ran.
+    assert len(router.calls) == 1
+    assert router.calls[0][0].title == "Build something ambitious"
+    _, total = metrics_store.query(limit=10)
+    assert total == 0
 
 
 def _project(project_id: str) -> Project:
