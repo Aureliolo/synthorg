@@ -177,7 +177,11 @@ def create_scaling_context_builder(
     Returns:
         Configured ScalingContextBuilder.
     """
-    workload_src = WorkloadSignalSource() if config.workload.enabled else None
+    workload_src = (
+        WorkloadSignalSource(max_concurrent_tasks=config.workload.max_concurrent_tasks)
+        if config.workload.enabled
+        else None
+    )
     budget_src = BudgetSignalSource() if config.budget_cap.enabled else None
     skill_src = SkillSignalSource() if config.skill_gap.enabled else None
     performance_src = (

@@ -261,6 +261,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="memory_context_token_budget",
+        type=SettingType.INTEGER,
+        default="2000",
+        description=(
+            "Token cap for memories injected into an agent's"
+            " pre-execution context, so the memory section cannot crowd"
+            " out the system prompt and task instruction."
+        ),
+        group="Memory",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="task_assignment_max_concurrent_tasks_per_agent",
         type=SettingType.INTEGER,
         default="5",

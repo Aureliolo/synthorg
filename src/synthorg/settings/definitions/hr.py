@@ -110,6 +110,23 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.HR,
+        key="scaling_workload_max_concurrent_tasks",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Max concurrent tasks per agent used as the utilisation"
+            " denominator when the workload scaler reads agent load."
+        ),
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
         key="scaling_cooldown_seconds",
         type=SettingType.INTEGER,
         default="3600",
