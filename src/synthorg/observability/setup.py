@@ -376,6 +376,49 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     return config.model_copy(update={"sinks": tuple(new_sinks)})
 
 
+def reapply_console_level(raw: str) -> bool:
+    """Re-level the live CONSOLE handler from a runtime-resolved value.
+
+    The console level is first applied at ``configure_logging`` time from
+    the bootstrap chain (env > YAML). Once the DB-backed resolver is wired,
+    the startup ``_apply_observability_settings`` step calls this with the
+    DB-resolved ``observability.log_level_console`` so an operator value
+    takes effect without a full ``configure_logging`` rebuild (which would
+    re-attach every handler, including the audit-chain sink).
+
+    Args:
+        raw: The resolved level string (case-insensitive); blank is a no-op.
+
+    Returns:
+        ``True`` when a console handler was found and re-levelled.
+    """
+    cleaned = raw.strip()
+    if not cleaned:
+        return False
+    try:
+        level = LogLevel(cleaned.upper())
+    except ValueError:
+        valid = ", ".join(lvl.value.lower() for lvl in LogLevel)
+        print(  # noqa: T201
+            f"WARNING: Invalid runtime console-level {cleaned!r}. "
+            f"Valid values: {valid}. Leaving console level unchanged.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    from synthorg.observability.sinks import CONSOLE_HANDLER_NAME  # noqa: PLC0415
+    from synthorg.observability.startup_wiring import (  # noqa: PLC0415
+        _iter_logging_handlers,
+    )
+
+    applied = False
+    for handler in _iter_logging_handlers():
+        if handler.get_name() == CONSOLE_HANDLER_NAME:
+            handler.setLevel(level.value)
+            applied = True
+    return applied
+
+
 def configure_logging(
     config: LogConfig | None = None,
     *,

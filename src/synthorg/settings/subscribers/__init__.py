@@ -15,6 +15,9 @@ from synthorg.settings.subscribers.memory_subscriber import (
 from synthorg.settings.subscribers.meta_self_improvement_subscriber import (
     MetaSelfImprovementSettingsSubscriber,
 )
+from synthorg.settings.subscribers.observability_bridge_subscriber import (
+    ObservabilityBridgeSettingsSubscriber,
+)
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
 )
@@ -37,6 +40,7 @@ __all__ = [
     "MemoryBridgeSettingsSubscriber",
     "MemorySettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",
+    "ObservabilityBridgeSettingsSubscriber",
     "ObservabilitySettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",

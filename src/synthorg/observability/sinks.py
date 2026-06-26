@@ -26,6 +26,10 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.redaction import safe_error_description
 
+# Stable name stamped on the CONSOLE ``StreamHandler`` so the post-resolver
+# observability-settings step can locate and re-level it.
+CONSOLE_HANDLER_NAME = "synthorg-console"
+
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
 # so log entries may never reach disk in a long-running server with
@@ -486,6 +490,11 @@ def build_handler(
     match sink.sink_type:
         case SinkType.CONSOLE:
             handler = logging.StreamHandler(sys.stderr)
+            # Named so the post-resolver ``_apply_observability_settings``
+            # step can find the console handler and re-level it when the
+            # DB-resolved ``observability.log_level_console`` differs from
+            # the boot-time (env > YAML) value.
+            handler.set_name(CONSOLE_HANDLER_NAME)
         case SinkType.FILE:
             handler = _build_file_handler(sink, log_dir)
         case SinkType.SYSLOG:

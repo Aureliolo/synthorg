@@ -334,6 +334,35 @@ async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
     )
 
 
+async def _apply_observability_bridge_config_snapshot(app_state: AppState) -> None:
+    """Snapshot ``ObservabilityBridgeConfig`` onto ``AppState`` at startup.
+
+    Resolves the HTTP-handler / audit-chain / TSA-endpoint knobs once via
+    :meth:`ConfigResolver.get_observability_bridge_config` and atomically
+    swaps the result onto ``app_state`` so observability consumers read the
+    operator-tuned snapshot (DB > env > default). On any non-fatal resolve
+    failure the default ``ObservabilityBridgeConfig()`` snapshot is retained
+    -- the fail-safe rule: a settings-backend hiccup must not perturb the
+    logging/audit knobs.
+
+    The HTTP-batch and TSA-endpoint fields are baked into their handlers at
+    ``configure_logging`` time (pre-resolver), so their DB values apply on
+    the next restart; ``audit_chain_signing_timeout_seconds`` is the one
+    live-settable field and is pushed onto the sink by
+    :func:`_apply_audit_chain_signing_timeout`.
+
+    No-op when no resolver is wired.
+    """
+    await _apply_bridge_snapshot(
+        app_state,
+        bridge="observability",
+        # Lambda is required: ``config_resolver`` raises until wired, so
+        # access must defer past the helper's has_config_resolver guard.
+        getter=lambda: config_resolver_of(app_state).get_observability_bridge_config(),
+        setter=app_state.bridge_config.swap_observability,
+    )
+
+
 async def _apply_ws_ticket_settings(app_state: AppState) -> None:
     """Apply the ticket-store pending-per-user limit from settings.
 
@@ -574,6 +603,47 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
             )
 
 
+async def _apply_observability_settings(app_state: AppState) -> None:
+    """Apply the DB-resolved console level at startup.
+
+    ``log_level_console`` (at ``configure_logging``) is first resolved from
+    the bootstrap chain (env > default) because the DB-backed resolver does
+    not exist that early. Once the settings service is wired this step
+    re-resolves it through ``ConfigResolver`` (DB > env > default) and
+    re-levels the live console handler. A resolver outage leaves the
+    bootstrap-applied value untouched. ``telemetry.enabled`` is applied by
+    the dedicated ``_apply_telemetry_db_layer`` startup closure, which runs
+    adjacent-before the collector ``start`` hook.
+
+    Raises:
+        CancelledError: Propagated when the resolver await is cancelled.
+    """
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
+        return
+    resolver = config_resolver_of(app_state)
+    try:
+        console_level = await resolver.get_str(
+            SettingNamespace.OBSERVABILITY.value,
+            "log_level_console",
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            setting="observability.log_level_console",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    else:
+        from synthorg.observability.setup import (  # noqa: PLC0415
+            reapply_console_level,
+        )
+
+        reapply_console_level(console_level)
+
+
 async def _apply_bridge_config(
     app_state: AppState,
     effective_config: RootConfig | None,
@@ -594,6 +664,7 @@ async def _apply_bridge_config(
     await _apply_api_bridge_config_snapshot(app_state)
     await _apply_workers_bridge_config_snapshot(app_state)
     await _apply_memory_bridge_config_snapshot(app_state)
+    await _apply_observability_bridge_config_snapshot(app_state)
     await _apply_ws_ticket_settings(app_state)
     await _apply_ws_auth_timeout(app_state)
     await _apply_ws_dos_settings(app_state)
@@ -602,6 +673,7 @@ async def _apply_bridge_config(
     await _apply_sandbox_image_cache(app_state)
     _wire_resolver_dependents(app_state)
     await _apply_audit_chain_signing_timeout(app_state)
+    await _apply_observability_settings(app_state)
     await _apply_notification_dispatcher_config(app_state, effective_config)
 
     app_state.bridge_config.mark_applied()

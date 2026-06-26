@@ -224,7 +224,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
                 error=safe_error_description(exc),
             )
             return
-        telemetry_collector.apply_enabled(enabled=enabled)
+        telemetry_collector.apply_resolved_enabled(enabled=enabled)
 
     startup = [*startup, _apply_telemetry_db_layer, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]

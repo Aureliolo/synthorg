@@ -28,6 +28,9 @@ TELEMETRY_REPORTER_CONFIGURE_FAILED: Final[str] = "telemetry.reporter.configure_
 # silently degrading to a noop reporter.
 TELEMETRY_TOKEN_MISSING: Final[str] = "telemetry.token.missing"  # noqa: S105
 TELEMETRY_ENVIRONMENT_RESOLVED: Final[str] = "telemetry.environment.resolved"
+# Emitted once at startup when the DB-backed settings resolver overrides the
+# bootstrap (env > default) ``telemetry.enabled`` the collector booted with.
+TELEMETRY_ENABLED_RESOLVED: Final[str] = "telemetry.enabled.resolved"
 # Emitted when an existing deployment ID is read from disk during start().
 TELEMETRY_DEPLOYMENT_ID_LOADED: Final[str] = "telemetry.deployment_id.loaded"
 # Emitted when a fresh deployment ID is atomically written to disk during start()
