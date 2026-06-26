@@ -163,7 +163,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
         <span className="flex-1 text-sm font-medium">{dept.name}</span>
         <span className="text-xs text-text-muted">
           {p.loading ? (
-            <Skeleton className="h-3 w-14" />
+            <Skeleton as="span" className="inline-block h-3 w-14 align-middle" />
           ) : p.loadFailed ? (
             <span className="text-danger">Unavailable</span>
           ) : p.isEditing ? (

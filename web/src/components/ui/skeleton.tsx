@@ -5,14 +5,26 @@ export interface SkeletonProps {
   /** Whether to show shimmer animation (respects prefers-reduced-motion). Default: true. */
   shimmer?: boolean | undefined
   style?: React.CSSProperties | undefined
+  /**
+   * Element to render as. Default ``'div'``; pass ``'span'`` where phrasing
+   * content is required (e.g. a placeholder inside a ``<button>`` label or
+   * another inline element), pairing it with an ``inline-block`` size class.
+   */
+  as?: 'div' | 'span'
 }
 
 const SHIMMER_CLASSES =
   'so-shimmer bg-gradient-to-r from-border via-border-bright to-border bg-[length:200%_100%] animate-[so-shimmer_1.5s_ease-in-out_infinite]'
 
-export function Skeleton({ className, shimmer = true, style, ...rest }: SkeletonProps & React.HTMLAttributes<HTMLDivElement>) {
+export function Skeleton({
+  className,
+  shimmer = true,
+  style,
+  as: As = 'div',
+  ...rest
+}: SkeletonProps & React.HTMLAttributes<HTMLElement>) {
   return (
-    <div
+    <As
       className={cn(
         'rounded bg-border',
         shimmer && SHIMMER_CLASSES,

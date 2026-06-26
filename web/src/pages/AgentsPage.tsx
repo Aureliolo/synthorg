@@ -100,11 +100,19 @@ interface AgentsBannersProps {
 }
 
 function AgentsBanners({ ctrl }: AgentsBannersProps) {
-  const { error } = ctrl.data
+  const { error, wsSetupError } = ctrl.data
   return (
     <>
       {error && (
         <ErrorBanner severity="error" title="Could not load agents" description={error} />
+      )}
+      {wsSetupError && (
+        <ErrorBanner
+          variant="inline"
+          severity="warning"
+          title="Live updates unavailable"
+          description={wsSetupError}
+        />
       )}
       <WsConnectionBanner />
     </>

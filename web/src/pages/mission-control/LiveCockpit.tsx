@@ -203,20 +203,30 @@ export function LiveCockpit({ onReplay }: LiveCockpitProps) {
           onRetry={() => void useMissionControlStore.getState().fetchSnapshot()}
         />
       )}
-      {/* A missing snapshot is "data unavailable", not "0 active agents":
-          render skeletons whenever there is no real snapshot (first load OR a
-          failed fetch surfaced via the banner above) so deriveCockpitMetrics'
-          synthesized zeros never masquerade as genuine post-load metrics. */}
-      {snapshot == null ? (
-        <CockpitMetricSkeleton />
+      {/* Three explicit states keep "data unavailable" distinct from both
+          "still loading" and genuine post-load zeros: a failed first fetch
+          shows an unavailable empty state (the banner above offers retry), an
+          in-flight first fetch shows skeletons, and a real snapshot renders the
+          metrics + agent list. ``deriveCockpitMetrics'`` synthesized zeros
+          never masquerade as genuine metrics, and the agent list never shows
+          its "Loading activity..." copy after an error. */}
+      {snapshot == null && error != null ? (
+        <EmptyState
+          icon={Activity}
+          title="Activity unavailable"
+          description="Retry to load the live org-activity snapshot."
+        />
+      ) : snapshot == null ? (
+        <>
+          <CockpitMetricSkeleton />
+          <CockpitAgentList agents={metrics.agents} loading onReplay={onReplay} />
+        </>
       ) : (
-        <CockpitMetricCards metrics={metrics} />
+        <>
+          <CockpitMetricCards metrics={metrics} />
+          <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
+        </>
       )}
-      <CockpitAgentList
-        agents={metrics.agents}
-        loading={loading || snapshot == null}
-        onReplay={onReplay}
-      />
     </div>
   )
 }

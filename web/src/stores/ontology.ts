@@ -64,6 +64,24 @@ interface OntologyState {
 type OntologySet = StoreApi<OntologyState>['setState']
 type OntologyGet = StoreApi<OntologyState>['getState']
 
+// Keep the catalog-summary aggregates aligned with an optimistic list mutation
+// so the "N total (X core, Y user)" line does not drift from the rendered grid.
+// ``drift_summary`` is backend-only, so it is preserved untouched.
+function adjustEntityMeta(
+  meta: EntityListMeta | null,
+  entity: EntityResponse,
+  delta: number,
+): EntityListMeta | null {
+  if (meta === null) return null
+  const isCore = entity.tier === 'core'
+  return {
+    ...meta,
+    total_count: Math.max(0, meta.total_count + delta),
+    core_count: isCore ? Math.max(0, meta.core_count + delta) : meta.core_count,
+    user_count: isCore ? meta.user_count : Math.max(0, meta.user_count + delta),
+  }
+}
+
 async function deleteEntityImpl(
   set: OntologySet,
   get: OntologyGet,
@@ -77,6 +95,7 @@ async function deleteEntityImpl(
     mutating: true,
     entities: s.entities.filter((e) => e.name !== name),
     totalEntities: Math.max(0, s.totalEntities - (removed ? 1 : 0)),
+    entityMeta: removed ? adjustEntityMeta(s.entityMeta, removed, -1) : s.entityMeta,
     selectedEntity: s.selectedEntity?.name === name ? null : s.selectedEntity,
   }))
   try {
@@ -95,6 +114,9 @@ async function deleteEntityImpl(
         mutating: false,
         entities: shouldRestore ? [removed, ...s.entities] : s.entities,
         totalEntities: shouldRestore ? s.totalEntities + 1 : s.totalEntities,
+        entityMeta: shouldRestore
+          ? adjustEntityMeta(s.entityMeta, removed, 1)
+          : s.entityMeta,
         selectedEntity: shouldRestore ? previousSelected : s.selectedEntity,
       }
     })

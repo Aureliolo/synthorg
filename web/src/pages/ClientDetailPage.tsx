@@ -190,17 +190,17 @@ function ClientSatisfactionSection({
 }) {
   return (
     <SectionCard title="Satisfaction" icon={Smile}>
-      {satisfactionError && (
-        <div className="mb-card">
-          <ErrorBanner
-            variant="inline"
-            severity="error"
-            title="Could not load satisfaction history"
-            description={satisfactionError}
-          />
-        </div>
-      )}
-      {satisfaction && satisfaction.total_reviews > 0 ? (
+      {/* Mutually exclusive: a failed load must NOT also render the
+          "no reviews recorded yet" empty-state below the error banner, which
+          would read as a successful empty result rather than a fetch failure. */}
+      {satisfactionError ? (
+        <ErrorBanner
+          variant="inline"
+          severity="error"
+          title="Could not load satisfaction history"
+          description={satisfactionError}
+        />
+      ) : satisfaction && satisfaction.total_reviews > 0 ? (
         <div className="space-y-section-gap">
           <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
             <MetricCard label="Reviews" value={satisfaction.total_reviews.toString()} />

@@ -51,14 +51,17 @@ function entityListEnvelope(
   } = {},
 ): EntityListResponse {
   const nextCursor = opts.nextCursor ?? null
+  // Derive the tier counts from the data so the aggregates stay consistent
+  // with total_count by default; opts.meta still overrides for bespoke cases.
+  const coreCount = data.filter((e) => e.tier === 'core').length
   return {
     data: [...data],
     degraded_sources: [],
     error: null,
     error_detail: null,
     meta: {
-      core_count: 0,
-      user_count: 0,
+      core_count: coreCount,
+      user_count: data.length - coreCount,
       total_count: data.length,
       drift_summary: null,
       ...opts.meta,

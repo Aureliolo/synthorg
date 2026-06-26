@@ -28,6 +28,14 @@ export const TextLines: Story = {
   render: () => <SkeletonText lines={3} />,
 }
 
+export const InlineSpan: Story = {
+  render: () => (
+    <span className="text-xs text-text-muted">
+      Loading badge <Skeleton as="span" className="inline-block h-3 w-14 align-middle" />
+    </span>
+  ),
+}
+
 export const MetricCard: Story = {
   render: () => <SkeletonMetric className="w-64" />,
 }

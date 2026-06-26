@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { paginateAll } from '@/api/client'
+import { paginateAll, type PaginatedResult } from '@/api/client'
 import { listAgents } from '@/api/endpoints/agents'
 import type { AgentConfig } from '@/api/types'
 import { createLogger } from '@/lib/logger'
@@ -77,8 +77,26 @@ function loadAgentRoster(
   // page so the roster, its aggregate metrics, and client-side search cover
   // the full company rather than truncating to a fixed cap; the page paginates
   // the loaded set in the browser.
+  // A terminal empty page stops paginateAll cleanly without firing another
+  // cursor request, so the walk can short-circuit the moment the effect is
+  // cleaned up rather than draining every remaining /agents page.
+  const cancelledPage: PaginatedResult<AgentConfig> = {
+    data: [],
+    limit: 0,
+    nextCursor: null,
+    hasMore: false,
+    pagination: { limit: 0, next_cursor: null, has_more: false },
+  }
   void Promise.resolve()
-    .then(() => paginateAll<AgentConfig>((cursor) => listAgents(cursor ? { cursor } : undefined)))
+    .then(() =>
+      paginateAll<AgentConfig>((cursor) =>
+        // Check cancellation BEFORE each page so cleanup halts the cursor walk
+        // mid-flight; the final setAgents below is still token-guarded.
+        token.cancelled()
+          ? Promise.resolve(cancelledPage)
+          : listAgents(cursor ? { cursor } : undefined),
+      ),
+    )
     .then((agents) => {
       if (!token.cancelled()) {
         setAgents(agents)

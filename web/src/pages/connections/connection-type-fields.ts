@@ -312,11 +312,14 @@ const SQLITE_DIALECT: DatabaseDialect = 'sqlite'
  */
 function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
   if (spec.required) return true
-  // host/port/username/password are required for non-SQLite dialects.
+  // host/port/username/password are required for non-SQLite dialects. Trim
+  // the dialect the same way ``validateConnectionField`` does so a padded
+  // ``"sqlite "`` is still recognised as SQLite and does not wrongly mark the
+  // server fields required.
   return (
     DATABASE_SERVER_FIELDS.has(spec.key)
     && dialect !== undefined
-    && dialect.toLowerCase() !== SQLITE_DIALECT
+    && dialect.trim().toLowerCase() !== SQLITE_DIALECT
   )
 }
 

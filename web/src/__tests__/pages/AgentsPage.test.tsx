@@ -21,6 +21,7 @@ const defaultHookReturn: UseAgentsDataReturn = {
   totalAgents: 1,
   loading: false,
   error: null,
+  wsSetupError: null,
 }
 
 let hookReturn = { ...defaultHookReturn }
@@ -81,5 +82,12 @@ describe('AgentsPage', () => {
     renderPage()
     expect(screen.getByText('Agents')).toBeInTheDocument()
     expect(screen.queryByTestId('agents-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('surfaces a WebSocket setup failure so silent loss of live updates is visible', () => {
+    hookReturn = { ...defaultHookReturn, wsSetupError: 'subscribe failed' }
+    renderPage()
+    expect(screen.getByText('Live updates unavailable')).toBeInTheDocument()
+    expect(screen.getByText('subscribe failed')).toBeInTheDocument()
   })
 })
