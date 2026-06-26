@@ -4,12 +4,13 @@ Uses Jinja2 ``SandboxedEnvironment`` for safe variable substitution
 with no arbitrary code execution.
 """
 
-from typing import ClassVar, Final, override
+from typing import ClassVar, override
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
@@ -29,8 +30,6 @@ from synthorg.tools.communication.config import (
 )
 
 logger = get_logger(__name__)
-
-_OUTPUT_FORMATS: Final[frozenset[str]] = frozenset({"text", "html", "markdown"})
 
 
 class TemplateFormatterTool(BaseCommunicationTool):
@@ -96,50 +95,10 @@ class TemplateFormatterTool(BaseCommunicationTool):
         Returns:
             A ``ToolExecutionResult`` with rendered text.
         """
-        template_str = arguments.get("template")
-        variables = arguments.get("variables")
-        if not isinstance(template_str, str):
-            logger.warning(
-                COMM_TOOL_TEMPLATE_RENDER_FAILED,
-                error="missing_or_invalid_template",
-            )
-            return ToolExecutionResult(
-                content="'template' must be a string.",
-                is_error=True,
-            )
-        if not isinstance(variables, dict):
-            logger.warning(
-                COMM_TOOL_TEMPLATE_RENDER_FAILED,
-                error="missing_or_invalid_variables",
-            )
-            return ToolExecutionResult(
-                content="'variables' must be a dict.",
-                is_error=True,
-            )
-        output_format = arguments.get("format", "text")
-        if not isinstance(output_format, str):
-            logger.warning(
-                COMM_TOOL_TEMPLATE_RENDER_FAILED,
-                error="invalid_format_type",
-            )
-            return ToolExecutionResult(
-                content="'format' must be a string.",
-                is_error=True,
-            )
-
-        if output_format not in _OUTPUT_FORMATS:
-            logger.warning(
-                COMM_TOOL_TEMPLATE_RENDER_FAILED,
-                error="invalid_output_format",
-                output_format=output_format,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid format: {output_format!r}. "
-                    f"Must be one of: {sorted(_OUTPUT_FORMATS)}"
-                ),
-                is_error=True,
-            )
+        args = parse_typed("tool.execute", arguments, TemplateFormatterArgs)
+        template_str = args.template
+        variables = args.variables
+        output_format = args.format
 
         logger.info(
             COMM_TOOL_TEMPLATE_RENDER_START,

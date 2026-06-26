@@ -149,6 +149,12 @@ jobs:
           # script, so a toolchain version bump there must bust the cached
           # hook environments alongside a config change.
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml', 'scripts/install_cli_tools.sh') }}
+          # On an exact-key miss (any edit to the config or toolchain
+          # script), fall back to the most recent prior hook-env cache so
+          # only the changed environments rebuild instead of a full cold
+          # rebuild of every hook.
+          restore-keys: |
+            pre-commit-
       - name: All pre-commit-stage gates over the whole tree
         run: uv run pre-commit run --all-files --hook-stage pre-commit --show-diff-on-failure --color always
       - name: All pre-push-stage gates over the whole tree
@@ -1384,21 +1390,25 @@ jobs:
 
   # ── Dashboard: Test ──
   dashboard-test:
-    name: Dashboard Test
+    name: Dashboard Test (shard ${{ matrix.shard }}/4)
     needs: [changes, export-openapi]
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
-    # Re-baselined 2026-05-28 from 15 -> 30 minutes after EPIC #2066 D2a
-    # decomposition (PR #2154) grew the affected vitest universe past the
-    # 15-min wall (per-file gzip overhead from the 24 newly-extracted
-    # controller hooks pulled in more component-render coverage). Two
-    # consecutive Dashboard Test cancellations on dfad8c49 and ccd733ab
-    # both hit exactly 15m13s of wall-clock with vitest still iterating
-    # through the suite -- not a hang, just a budget overrun. Same
-    # justification pattern as the .size-limit.cjs re-baseline.
-    timeout-minutes: 30
+    # Sharded 4 ways with vitest ``--shard`` so each runner executes a
+    # quarter of the unit suite in parallel. This replaced the earlier
+    # 15 -> 30 minute single-runner re-baseline (the affected vitest
+    # universe outgrew the 15-min wall after the EPIC #2066 controller-hook
+    # decomposition): parallelism, not a longer wall, keeps the
+    # correctness gate inside a 15-minute per-shard budget. ``ci-pass``
+    # aggregates the four shards via ``needs.dashboard-test.result``, so
+    # the required check is unchanged.
+    timeout-minutes: 15
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -1417,7 +1427,7 @@ jobs:
       - uses: ./.github/actions/install-js-deps
         with:
           working-directory: web
-      - name: Run Vitest (active-handle detection is part of the test run)
+      - name: Run Vitest (shard ${{ matrix.shard }}/4; active-handle detection is part of the test run)
         working-directory: web
         env:
           # Disable colour output so the active-handle reporter's summary
@@ -1428,12 +1438,12 @@ jobs:
           # default of ACTIVE_HANDLE_MODE=log on the runner cannot
           # silently downgrade the gate from blocking to advisory.
           ACTIVE_HANDLE_MODE: 'fail'
-        run: npm run test -- --coverage
+        run: npm run test -- --coverage --shard=${{ matrix.shard }}/4
       - name: Upload active-handle telemetry artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: web-active-handle-telemetry-${{ github.run_id }}-${{ github.run_attempt }}
+          name: web-active-handle-telemetry-${{ github.run_id }}-${{ github.run_attempt }}-shard${{ matrix.shard }}
           path: web/.test-tmp/handle-telemetry.json
           if-no-files-found: warn
           retention-days: 30

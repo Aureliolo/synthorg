@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -262,6 +264,52 @@ func TestComputePullBackoff(t *testing.T) {
 			}
 			if got < 0 {
 				t.Errorf("computePullBackoff returned negative duration (overflow?): %v", got)
+			}
+		})
+	}
+}
+
+func TestAssertInitialised(t *testing.T) {
+	tests := []struct {
+		name          string
+		writeCompose  bool
+		wantErr       bool
+		wantSubstring string
+	}{
+		{
+			name:          "uninitialised_host_gives_init_hint",
+			writeCompose:  false,
+			wantErr:       true,
+			wantSubstring: "run 'synthorg init'",
+		},
+		{
+			name:         "initialised_host_passes",
+			writeCompose: true,
+			wantErr:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.writeCompose {
+				composePath := filepath.Join(dir, "compose.yml")
+				if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+					t.Fatalf("seeding compose.yml: %v", err)
+				}
+			}
+			err := assertInitialised(dir)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("assertInitialised(%q) = nil, want error", dir)
+				}
+				if !strings.Contains(err.Error(), tc.wantSubstring) {
+					t.Errorf("error %q does not mention %q", err.Error(), tc.wantSubstring)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("assertInitialised(%q) = %v, want nil", dir, err)
 			}
 		})
 	}

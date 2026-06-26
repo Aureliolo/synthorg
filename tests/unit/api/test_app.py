@@ -411,7 +411,7 @@ class TestAppLifecycle:
         root_config: RootConfig,
     ) -> None:
         """Task engine start fails → persistence + bus cleaned up."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_startup
@@ -422,9 +422,12 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
+        # ``TaskEngine.start``/``stop`` are coroutines; the lifecycle
+        # awaits them, so the doubles must be ``AsyncMock`` (a sync
+        # ``MagicMock`` only passed here by raising before the await).
         mock_te = MagicMock()
-        mock_te.start = MagicMock(side_effect=RuntimeError("engine boom"))
-        mock_te.stop = MagicMock()
+        mock_te.start = AsyncMock(side_effect=RuntimeError("engine boom"))
+        mock_te.stop = AsyncMock()
 
         app_state = make_app_state(
             config=root_config,

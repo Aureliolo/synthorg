@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.image_generator import (
@@ -141,18 +142,21 @@ class TestImageGeneratorTool:
         height: int,
     ) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={"prompt": "test", "width": width, "height": height}
-        )
-        assert result.is_error
-        assert "must be between" in result.content
+        # Dimension bounds are enforced by ``ImageGeneratorArgs`` at the
+        # ``parse_typed`` boundary, so malformed input raises before the
+        # provider is ever touched (the invoker maps this to the
+        # invalid_argument envelope in production).
+        with pytest.raises(ValidationError):
+            await tool.execute(
+                arguments={"prompt": "test", "width": width, "height": height}
+            )
         assert len(mock_provider.calls) == 0
 
     @pytest.mark.parametrize(
-        ("key", "value", "expected_msg"),
+        ("key", "value"),
         [
-            ("style", "watercolor", "Invalid style"),
-            ("quality", "ultra", "Invalid quality"),
+            ("style", "watercolor"),
+            ("quality", "ultra"),
         ],
         ids=["invalid_style", "invalid_quality"],
     )
@@ -161,10 +165,8 @@ class TestImageGeneratorTool:
         mock_provider: MockImageProvider,
         key: str,
         value: str,
-        expected_msg: str,
     ) -> None:
         tool = ImageGeneratorTool(provider=mock_provider)
-        result = await tool.execute(arguments={"prompt": "test", key: value})
-        assert result.is_error
-        assert expected_msg in result.content
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"prompt": "test", key: value})
         assert len(mock_provider.calls) == 0

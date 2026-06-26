@@ -140,6 +140,12 @@ type State struct {
 	AttestationHTTPTimeout string `json:"attestation_http_timeout,omitempty"`
 	ImageVerifyTimeout     string `json:"image_verify_timeout,omitempty"`
 	ImagePullRetryDelay    string `json:"image_pull_retry_delay,omitempty"`
+	HealthPollInterval     string `json:"health_poll_interval,omitempty"`
+	HealthInitialDelay     string `json:"health_initial_delay,omitempty"`
+	DHIVerifyTimeout       string `json:"dhi_verify_timeout,omitempty"`
+	UpdateHealthTimeout    string `json:"update_health_timeout,omitempty"`
+	CompletionProbeTimeout string `json:"completion_probe_timeout,omitempty"`
+	DiagnosticsDialTimeout string `json:"diagnostics_dial_timeout,omitempty"`
 
 	// Integer strings parsed by strconv.Atoi. Empty = use compiled-in default.
 	ImagePullAttempts string `json:"image_pull_attempts,omitempty"`
@@ -177,6 +183,27 @@ const (
 	DefaultAttestationHTTPTimeout = 30 * time.Second
 	DefaultImageVerifyTimeout     = 120 * time.Second
 	DefaultImagePullRetryDelay    = 2 * time.Second
+	// Health-readiness poll cadence shared by the start paths:
+	// HealthPollInterval trades responsiveness against backend load (the
+	// /readyz endpoint is cheap, faster polling only shaves sub-second
+	// latency); HealthInitialDelay skips the first few seconds where a
+	// cold compose-up has not bound /readyz yet.
+	DefaultHealthPollInterval = 2 * time.Second
+	DefaultHealthInitialDelay = 5 * time.Second
+	// DHIVerifyTimeout caps DHI cosign + SLSA verification per batch; a
+	// stall past two minutes signals a network / transparency-log outage
+	// rather than a slow CDN.
+	DefaultDHIVerifyTimeout = 120 * time.Second
+	// UpdateHealthTimeout bounds the Docker API calls the update flow makes
+	// to check the current install; kept short so an unresponsive daemon
+	// does not block the update.
+	DefaultUpdateHealthTimeout = 15 * time.Second
+	// CompletionProbeTimeout bounds the one-shot shell-profile probe run by
+	// `synthorg completion install`.
+	DefaultCompletionProbeTimeout = 5 * time.Second
+	// DiagnosticsDialTimeout bounds each per-port TCP dial in the doctor
+	// port-reachability check.
+	DefaultDiagnosticsDialTimeout = 1 * time.Second
 	DefaultImagePullAttempts      = 3
 
 	// MinImageVerifyTimeout is the lower bound operators may set for

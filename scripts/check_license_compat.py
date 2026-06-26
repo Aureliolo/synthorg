@@ -374,10 +374,18 @@ def _run_go_licenses(cli_dir: Path) -> str:
 
     ``go-licenses`` may exit non-zero when a package in the closure cannot
     be analysed (vendored C, a module with no ``LICENSE`` file) while still
-    emitting valid CSV rows for everything it could classify. Those rows
-    are the signal, so a non-zero exit is tolerated as long as stdout
-    carries data; only a missing binary or a truly empty result is a
-    SetupError.
+    emitting valid CSV rows for everything it could classify. A non-zero
+    exit is therefore tolerated as long as stdout carries rows; only a
+    missing binary or a truly empty result is a SetupError.
+
+    The tolerance is NOT a safety claim. A package go-licenses cannot
+    classify is simply absent from the CSV, so this scan does not
+    validate it -- a copyleft module that fails analysis would not appear
+    here at all. The deterministic backstops (the ``_HARD_DENYLIST`` /
+    ``_GO_GPL_TOOLS`` name checks against ``go.mod`` / ``go.sum``, which
+    run unconditionally and do not depend on go-licenses) remain the
+    authoritative guard; this scan only adds coverage for the packages it
+    *can* classify.
 
     Returns:
         The captured CSV stdout.
@@ -592,15 +600,36 @@ def _web_package_license_blob(entry: dict[str, object]) -> str:
     return " ".join(parts).lower()
 
 
-def _check_web_copyleft(repo_root: Path) -> list[Violation]:
+def _web_notice_covers(notice: str, npm_name: str) -> bool:
+    """Whether NOTICE attributes an npm package ``npm_name``.
+
+    npm names are not Python distributions, so the Python-flavoured
+    :func:`_notice_covers` canonicalisation cannot be trusted for scoped
+    names (``@scope/pkg``). Match the raw npm name as a substring, plus
+    the unscoped basename, so an attribution under either spelling
+    counts.
+
+    Returns:
+        ``True`` when an attribution for the package is present.
+    """
+    if npm_name in notice:
+        return True
+    basename = npm_name.rsplit("/", 1)[-1]
+    return bool(basename) and basename in notice
+
+
+def _check_web_copyleft(repo_root: Path, notice: str) -> list[Violation]:
     """Classify every JS dependency in ``web/package-lock.json`` by licence.
 
     The lockfile (v2/v3) records the full resolved closure under
     ``packages`` with a per-package SPDX ``license`` field, so this is a
     transitive scan without needing ``node_modules`` on disk. A strong
-    copyleft (AGPL/GPL non-LGPL) JS dependency is a hard failure; an entry
-    with no recorded licence is skipped (it cannot be classified here).
-    A missing lockfile is tolerated -- the web app is an optional surface.
+    copyleft (AGPL/GPL non-LGPL) JS dependency is a hard failure; a weak
+    copyleft (LGPL) JS dependency ships but MUST be attributed in
+    ``NOTICE`` (the symmetric counterpart to the Python LGPL path in
+    :func:`_check_direct_copyleft`). An entry with no recorded licence is
+    skipped (it cannot be classified here). A missing lockfile is
+    tolerated -- the web app is an optional surface.
     """
     path = repo_root / "web" / "package-lock.json"
     if not path.is_file():
@@ -623,13 +652,21 @@ def _check_web_copyleft(repo_root: Path) -> list[Violation]:
             # "" is the root project; skip it.
             continue
         family = _classify(_web_package_license_blob(entry))
+        name = location.removeprefix("node_modules/")
         if family in {"agpl", "gpl"}:
-            name = location.removeprefix("node_modules/")
             violations.append(
                 Violation(
                     "web/package-lock.json",
                     f"JS dependency {name!r} is {family.upper()}-licensed;"
                     " strong copyleft is incompatible with redistribution",
+                )
+            )
+        elif family == "lgpl" and not _web_notice_covers(notice, name):
+            violations.append(
+                Violation(
+                    "NOTICE",
+                    f"LGPL JS dependency {name!r} ships but is not"
+                    " attributed in NOTICE",
                 )
             )
     return violations
@@ -678,7 +715,7 @@ def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violat
     violations.extend(_check_go_licenses(repo_root, notice, run=scan_go_modules))
     violations.extend(_check_known_lgpl_notice(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
-    violations.extend(_check_web_copyleft(repo_root))
+    violations.extend(_check_web_copyleft(repo_root, notice))
     return violations
 
 

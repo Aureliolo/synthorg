@@ -217,3 +217,93 @@ class TestLastOwnerTriggerPostgres:
 
         assert len(results) == 2, f"Expected 2 results, got {results}"
         assert sum(results) == 1, f"Expected exactly 1 success, got {results}"
+
+
+# ── DELETE-time triggers (CONSTRAINT TRIGGER AFTER DELETE) ──────
+
+
+@pytest.mark.integration
+class TestDeleteTriggersPostgres:
+    """Postgres DELETE-time invariants for CEO/owner minimums.
+
+    Parity with the SQLite ``TestDeleteTriggers`` class: the
+    ``trg_enforce_{ceo,owner}_minimum_delete`` CONSTRAINT TRIGGERs reuse
+    the same enforcement functions as the UPDATE-side triggers, so a
+    DELETE that would drop the last CEO / owner is rejected.
+    """
+
+    async def test_delete_last_ceo_rejected(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        ceo = _make_user(user_id="ceo-only", username="ceo", role=HumanRole.CEO)
+        await postgres_backend.users.save(ceo)
+
+        with pytest.raises(ConstraintViolationError) as exc_info:
+            await postgres_backend.users.delete("ceo-only")
+        assert exc_info.value.constraint == "enforce_ceo_minimum"
+
+    async def test_delete_last_owner_rejected(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        # A CEO must exist so the org satisfies the CEO-minimum invariant
+        # independently of the owner under test.
+        ceo = _make_user(user_id="ceo-1", username="ceo1", role=HumanRole.CEO)
+        owner = _make_user(
+            user_id="owner-1",
+            username="owner1",
+            org_roles=(OrgRole.OWNER,),
+        )
+        await postgres_backend.users.save(ceo)
+        await postgres_backend.users.save(owner)
+
+        with pytest.raises(ConstraintViolationError) as exc_info:
+            await postgres_backend.users.delete("owner-1")
+        assert exc_info.value.constraint == "enforce_owner_minimum"
+
+    async def test_concurrent_owner_delete_one_fails(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+        postgres_backend_factory: Callable[[], Awaitable[PostgresPersistenceBackend]],
+    ) -> None:
+        """Two concurrent owner deletes split across independent pools.
+
+        Each writer uses its own ``PostgresPersistenceBackend`` instance
+        so the race is arbitrated by the DELETE CONSTRAINT TRIGGER, not
+        by coincidentally shared pool state. Exactly one delete survives.
+        """
+        backend_b = await postgres_backend_factory()
+        ceo = _make_user(user_id="ceo-1", username="ceo1", role=HumanRole.CEO)
+        owner1 = _make_user(
+            user_id="owner-1",
+            username="owner1",
+            org_roles=(OrgRole.OWNER,),
+        )
+        owner2 = _make_user(
+            user_id="owner-2",
+            username="owner2",
+            org_roles=(OrgRole.OWNER,),
+        )
+        await postgres_backend.users.save(ceo)
+        await postgres_backend.users.save(owner1)
+        await postgres_backend.users.save(owner2)
+
+        results: list[bool] = []
+
+        async def try_delete(
+            user_id: str,
+            backend: PostgresPersistenceBackend,
+        ) -> None:
+            try:
+                await backend.users.delete(user_id)
+                results.append(True)
+            except ConstraintViolationError:
+                results.append(False)
+
+        async with asyncio.TaskGroup() as tg:
+            _ = tg.create_task(try_delete("owner-1", postgres_backend))
+            _ = tg.create_task(try_delete("owner-2", backend_b))
+
+        assert len(results) == 2, f"Expected 2 results, got {results}"
+        assert sum(results) == 1, f"Expected exactly 1 success, got {results}"

@@ -25,6 +25,7 @@ from pydantic import SecretStr
 from synthorg.persistence import migrations
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests._shared.postgres_proxy import PostgresContainerProxy
 from tests._shared.postgres_proxy import from_env as _proxy_from_env
@@ -220,6 +221,45 @@ async def postgres_backend(
             await backend.disconnect()
         finally:
             await drop_test_database(postgres_container, db_name)
+
+
+@pytest.fixture(params=["sqlite", "postgres"], ids=["sqlite", "postgres"])
+async def backend(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+) -> AsyncIterator[PersistenceBackend]:
+    """Yield a connected, migrated backend parametrized over both impls.
+
+    The shared dual-backend driver for integration tests that assert
+    identical repository behaviour on SQLite and Postgres. Sub-deps are
+    resolved inline (the SQLite backend is built here; only the sync,
+    session-scoped ``postgres_container`` is pulled via
+    ``getfixturevalue``) so pytest-asyncio drives setup and teardown as
+    a single async generator. The "``getfixturevalue`` clashes with
+    pytest-asyncio" caveat only applies to *async* sub-fixtures, which
+    this fixture deliberately avoids -- mirroring the conformance
+    suite's ``backend`` fixture.
+    """
+    if request.param == "sqlite":
+        db_path = str(tmp_path / "dual_backend.db")
+        sqlite_backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
+        await sqlite_backend.connect()
+        try:
+            await _isolated_sqlite_migrate(db_path, tmp_path)
+            yield sqlite_backend
+        finally:
+            await sqlite_backend.disconnect()
+    else:
+        container = request.getfixturevalue("postgres_container")
+        db_name = f"test_{uuid.uuid4().hex}"
+        pg_backend = await clone_from_template(container, db_name)
+        try:
+            yield pg_backend
+        finally:
+            try:
+                await pg_backend.disconnect()
+            finally:
+                await drop_test_database(container, db_name)
 
 
 _TIMESCALEDB_IMAGE = "timescale/timescaledb:2.26.2-pg18-oss"

@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import GuardrailViolationError
@@ -179,6 +180,26 @@ def _actor_has_identifier(actor: object) -> bool:
     return isinstance(name, str) and bool(name.strip())
 
 
+class AdminGuardrailArgs(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- admin envelope carries each tool's own domain fields beside confirm/reason  # noqa: E501
+    """Inbound envelope for the admin-op guardrail triple.
+
+    ``confirm`` / ``reason`` are typed ``object`` (not ``bool`` / ``str``)
+    on purpose: a malformed value must reach the precise
+    :class:`GuardrailViolationError` branch below as
+    ``guardrail_violated`` rather than tripping ``parse_typed`` into the
+    generic ``invalid_argument`` envelope. ``extra="allow"`` lets each
+    admin tool's own domain fields ride through the same ``arguments``
+    dict without rejection.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="allow")
+
+    confirm: object = None
+    reason: object = None
+
+
 def require_admin_guardrails(
     arguments: dict[str, object],
     actor: AgentIdentity | None,
@@ -210,10 +231,10 @@ def require_admin_guardrails(
     """
     if actor is None or not _actor_has_identifier(actor):
         raise GuardrailViolationError(_GR_MISSING_ACTOR, _GR_MSG_ACTOR)
-    confirm = arguments.get("confirm")
-    if not isinstance(confirm, bool) or confirm is not True:
+    parsed = parse_typed("mcp.admin", arguments, AdminGuardrailArgs)
+    if not isinstance(parsed.confirm, bool) or parsed.confirm is not True:
         raise GuardrailViolationError(_GR_MISSING_CONFIRM, _GR_MSG_CONFIRM)
-    reason = arguments.get("reason")
+    reason = parsed.reason
     if not isinstance(reason, str) or not reason.strip():
         raise GuardrailViolationError(_GR_MISSING_REASON, _GR_MSG_REASON)
     return reason, actor

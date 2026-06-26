@@ -1,6 +1,7 @@
 """Unit tests for HtmlParserTool."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.web.html_parser import HtmlParserTool
 
@@ -105,11 +106,11 @@ class TestHtmlParserEdgeCases:
 
     @pytest.mark.unit
     async def test_invalid_mode(self, html_tool: HtmlParserTool) -> None:
-        result = await html_tool.execute(
-            arguments={"html_content": "<p>hi</p>", "extract_mode": "invalid"}
-        )
-        assert result.is_error is True
-        assert "invalid" in result.content.lower()
+        # ``extract_mode`` is a closed Literal on ``HtmlParserArgs``.
+        with pytest.raises(ValidationError):
+            await html_tool.execute(
+                arguments={"html_content": "<p>hi</p>", "extract_mode": "invalid"}
+            )
 
     @pytest.mark.unit
     async def test_default_mode_is_text(self, html_tool: HtmlParserTool) -> None:

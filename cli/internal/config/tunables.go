@@ -29,6 +29,12 @@ const (
 	EnvImageVerifyTimeout     = "SYNTHORG_IMAGE_VERIFY_TIMEOUT"
 	EnvImagePullAttempts      = "SYNTHORG_IMAGE_PULL_ATTEMPTS"
 	EnvImagePullRetryDelay    = "SYNTHORG_IMAGE_PULL_RETRY_DELAY"
+	EnvHealthPollInterval     = "SYNTHORG_HEALTH_POLL_INTERVAL"
+	EnvHealthInitialDelay     = "SYNTHORG_HEALTH_INITIAL_DELAY"
+	EnvDHIVerifyTimeout       = "SYNTHORG_DHI_VERIFY_TIMEOUT"
+	EnvUpdateHealthTimeout    = "SYNTHORG_UPDATE_HEALTH_TIMEOUT"
+	EnvCompletionProbeTimeout = "SYNTHORG_COMPLETION_PROBE_TIMEOUT"
+	EnvDiagnosticsDialTimeout = "SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT"
 	EnvMaxAPIResponseBytes    = "SYNTHORG_MAX_API_RESPONSE_BYTES"
 	EnvMaxBinaryBytes         = "SYNTHORG_MAX_BINARY_BYTES"
 	EnvMaxArchiveEntryBytes   = "SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES"
@@ -56,6 +62,12 @@ type Tunables struct {
 	AttestationHTTPTimeout time.Duration
 	ImageVerifyTimeout     time.Duration
 	ImagePullRetryDelay    time.Duration
+	HealthPollInterval     time.Duration
+	HealthInitialDelay     time.Duration
+	DHIVerifyTimeout       time.Duration
+	UpdateHealthTimeout    time.Duration
+	CompletionProbeTimeout time.Duration
+	DiagnosticsDialTimeout time.Duration
 	ImagePullAttempts      int
 
 	MaxAPIResponseBytes  int64
@@ -90,6 +102,12 @@ func DefaultTunables() Tunables {
 		AttestationHTTPTimeout:  DefaultAttestationHTTPTimeout,
 		ImageVerifyTimeout:      DefaultImageVerifyTimeout,
 		ImagePullRetryDelay:     DefaultImagePullRetryDelay,
+		HealthPollInterval:      DefaultHealthPollInterval,
+		HealthInitialDelay:      DefaultHealthInitialDelay,
+		DHIVerifyTimeout:        DefaultDHIVerifyTimeout,
+		UpdateHealthTimeout:     DefaultUpdateHealthTimeout,
+		CompletionProbeTimeout:  DefaultCompletionProbeTimeout,
+		DiagnosticsDialTimeout:  DefaultDiagnosticsDialTimeout,
 		ImagePullAttempts:       DefaultImagePullAttempts,
 		MaxAPIResponseBytes:     DefaultMaxAPIResponseBytes,
 		MaxBinaryBytes:          DefaultMaxBinaryBytes,
@@ -215,6 +233,10 @@ func resolveDurationTunables(t Tunables, s State) (Tunables, error) {
 	if err != nil {
 		return t, err
 	}
+	t, err = resolveOperationalTimeouts(t, s)
+	if err != nil {
+		return t, err
+	}
 	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
 		return t, fmt.Errorf(
 			"image_verify_timeout: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
@@ -253,6 +275,31 @@ func resolveImageTimeouts(t Tunables, s State) (Tunables, error) {
 		return t, err
 	}
 	t.ImagePullRetryDelay, err = resolveDurationField("image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay)
+	return t, err
+}
+
+// resolveOperationalTimeouts resolves the start-health cadence and the
+// update-health / completion-probe / diagnostics-dial timeouts. Split out
+// of resolveDurationTunables to keep each resolver under the
+// cyclomatic-complexity ceiling without a heap-allocating bindings table.
+func resolveOperationalTimeouts(t Tunables, s State) (Tunables, error) {
+	var err error
+	if t.HealthPollInterval, err = resolveDurationField("health_poll_interval", EnvHealthPollInterval, s.HealthPollInterval, t.HealthPollInterval); err != nil {
+		return t, err
+	}
+	if t.HealthInitialDelay, err = resolveDurationField("health_initial_delay", EnvHealthInitialDelay, s.HealthInitialDelay, t.HealthInitialDelay); err != nil {
+		return t, err
+	}
+	if t.DHIVerifyTimeout, err = resolveDurationField("dhi_verify_timeout", EnvDHIVerifyTimeout, s.DHIVerifyTimeout, t.DHIVerifyTimeout); err != nil {
+		return t, err
+	}
+	if t.UpdateHealthTimeout, err = resolveDurationField("update_health_timeout", EnvUpdateHealthTimeout, s.UpdateHealthTimeout, t.UpdateHealthTimeout); err != nil {
+		return t, err
+	}
+	if t.CompletionProbeTimeout, err = resolveDurationField("completion_probe_timeout", EnvCompletionProbeTimeout, s.CompletionProbeTimeout, t.CompletionProbeTimeout); err != nil {
+		return t, err
+	}
+	t.DiagnosticsDialTimeout, err = resolveDurationField("diagnostics_dial_timeout", EnvDiagnosticsDialTimeout, s.DiagnosticsDialTimeout, t.DiagnosticsDialTimeout)
 	return t, err
 }
 

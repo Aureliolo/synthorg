@@ -7,8 +7,7 @@ on:
   pull_request:
     types: [labeled]
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   # Do NOT cancel in progress: a `labeled` event fires for ANY label, and

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -87,8 +86,9 @@ func detectInstallationIssues(ctx context.Context, state config.State) (corrupti
 	// is noise -- the pull will fix the install regardless.
 	if state.ImageTag != "" && state.ImageTag == targetImageTag(version.Version) {
 		// Use a shorter timeout for health check Docker calls to avoid
-		// blocking the update flow if Docker is unresponsive.
-		healthCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		// blocking the update flow if Docker is unresponsive (resolved
+		// update_health_timeout tunable, default 15s).
+		healthCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.UpdateHealthTimeout)
 		defer cancel()
 
 		// Docker unavailability is handled gracefully by updateContainerImages

@@ -13,9 +13,8 @@ that doubles peak heap (e.g. accidentally building a list when a
 generator would do) is invisible to instruction-counting benches but
 very visible to users running on memory-constrained containers.
 
-Ceilings were captured 2026-04-26 on the first PR-1637 CI run
-(ubuntu-latest x86_64) and carry headroom for variance. Bump only
-with explicit user approval.
+Ceilings were captured on ubuntu-latest x86_64 and carry headroom for
+variance. Bump only with explicit user approval.
 """
 
 import tracemalloc

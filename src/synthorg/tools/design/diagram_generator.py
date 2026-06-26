@@ -5,10 +5,11 @@ by downstream tools or the web dashboard.  No external provider is
 required -- the tool outputs DSL text directly.
 """
 
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
@@ -23,23 +24,6 @@ from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig
 
 logger = get_logger(__name__)
-
-_DIAGRAM_TYPES: Final[frozenset[str]] = frozenset(
-    {
-        "flowchart",
-        "sequence",
-        "class",
-        "state",
-        "architecture",
-    }
-)
-
-_OUTPUT_FORMATS: Final[frozenset[str]] = frozenset(
-    {
-        "mermaid",
-        "graphviz",
-    }
-)
 
 
 class DiagramGeneratorTool(BaseDesignTool):
@@ -101,38 +85,11 @@ class DiagramGeneratorTool(BaseDesignTool):
         Returns:
             A ``ToolExecutionResult`` with the diagram DSL.
         """
-        diagram_type = cast("str", arguments["diagram_type"])
-        description = cast("str", arguments["description"])
-        title = cast("str", arguments.get("title", ""))
-        output_format = cast("str", arguments.get("output_format", "mermaid"))
-
-        if diagram_type not in _DIAGRAM_TYPES:
-            logger.warning(
-                DESIGN_DIAGRAM_GENERATION_FAILED,
-                error="invalid_diagram_type",
-                diagram_type=diagram_type,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid diagram_type: {diagram_type!r}. "
-                    f"Must be one of: {sorted(_DIAGRAM_TYPES)}"
-                ),
-                is_error=True,
-            )
-
-        if output_format not in _OUTPUT_FORMATS:
-            logger.warning(
-                DESIGN_DIAGRAM_GENERATION_FAILED,
-                error="invalid_output_format",
-                output_format=output_format,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid output_format: {output_format!r}. "
-                    f"Must be one of: {sorted(_OUTPUT_FORMATS)}"
-                ),
-                is_error=True,
-            )
+        args = parse_typed("tool.execute", arguments, DiagramGeneratorArgs)
+        diagram_type = args.diagram_type
+        description = args.description
+        title = args.title
+        output_format = args.output_format
 
         logger.info(
             DESIGN_DIAGRAM_GENERATION_START,

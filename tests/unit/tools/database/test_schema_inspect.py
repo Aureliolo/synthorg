@@ -2,6 +2,7 @@
 
 import aiosqlite
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.database.config import DatabaseConnectionConfig
 from synthorg.tools.database.schema_inspect import SchemaInspectTool
@@ -83,9 +84,10 @@ class TestDescribeTable:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SchemaInspectTool(config=read_only_config)
-        result = await tool.execute(arguments={"action": "describe_table"})
-        assert result.is_error is True
-        assert "table_name" in result.content.lower()
+        # ``SchemaInspectArgs`` requires table_name for describe_table at
+        # the ``parse_typed`` boundary.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "describe_table"})
 
 
 class TestEdgeCases:
@@ -96,6 +98,6 @@ class TestEdgeCases:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SchemaInspectTool(config=read_only_config)
-        result = await tool.execute(arguments={"action": "drop_all"})
-        assert result.is_error is True
-        assert "invalid" in result.content.lower()
+        # ``action`` is a closed Literal on ``SchemaInspectArgs``.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "drop_all"})

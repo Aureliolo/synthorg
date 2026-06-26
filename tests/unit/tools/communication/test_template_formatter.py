@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.template_formatter import (
@@ -92,41 +93,34 @@ class TestTemplateFormatterTool:
 
     async def test_execute_invalid_format(self) -> None:
         tool = TemplateFormatterTool()
-        result = await tool.execute(
-            arguments={
-                "template": "test",
-                "variables": {},
-                "format": "yaml",
-            }
-        )
-        assert result.is_error
-        assert "Invalid format" in result.content
+        # ``format`` is a closed Literal on ``TemplateFormatterArgs``; an
+        # out-of-set value is rejected at the ``parse_typed`` boundary.
+        with pytest.raises(ValidationError):
+            await tool.execute(
+                arguments={
+                    "template": "test",
+                    "variables": {},
+                    "format": "yaml",
+                }
+            )
 
     @pytest.mark.parametrize(
-        ("args", "expected_msg"),
+        "args",
         [
-            (
-                {"template": 123, "variables": {}},
-                "'template' must be a string",
-            ),
-            (
-                {"template": "hi", "variables": "notadict"},
-                "'variables' must be a dict",
-            ),
-            (
-                {"template": "hi", "variables": {}, "format": 123},
-                "'format' must be a string",
-            ),
+            {"template": 123, "variables": {}},
+            {"template": "hi", "variables": "notadict"},
+            {"template": "hi", "variables": {}, "format": 123},
         ],
         ids=["template_not_str", "variables_not_dict", "format_not_str"],
     )
     async def test_execute_rejects_invalid_arg_types(
-        self, args: dict[str, object], expected_msg: str
+        self, args: dict[str, object]
     ) -> None:
         tool = TemplateFormatterTool()
-        result = await tool.execute(arguments=args)
-        assert result.is_error
-        assert expected_msg in result.content
+        # Field types are enforced by ``TemplateFormatterArgs`` at the
+        # ``parse_typed`` boundary.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments=args)
 
     async def test_execute_html_template(self) -> None:
         tool = TemplateFormatterTool()

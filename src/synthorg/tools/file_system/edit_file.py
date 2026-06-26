@@ -5,10 +5,11 @@ import os
 import pathlib
 import tempfile
 from pathlib import Path
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FS_EDIT,
@@ -115,16 +116,15 @@ class EditFileTool(BaseFileSystemTool):
         old_text: str,
         new_text: str,
     ) -> ToolExecutionResult | None:
-        """Return an early error result if args are invalid, else None.
+        """Return an early no-op result when the edit changes nothing.
+
+        ``EditFileArgs`` already enforces a non-empty ``old_text`` at the
+        ``parse_typed`` boundary, so the only remaining body-level guard
+        is the identical-text no-op (which has no static counterpart).
 
         Returns:
             The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
-        if not old_text:
-            return ToolExecutionResult(
-                content="old_text cannot be empty",
-                is_error=True,
-            )
         if old_text == new_text:
             logger.debug(
                 TOOL_FS_NOOP,
@@ -257,9 +257,10 @@ class EditFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming the edit or an error.
         """
-        user_path = cast("str", arguments["path"])
-        old_text = cast("str", arguments["old_text"])
-        new_text = cast("str", arguments["new_text"])
+        args = parse_typed("tool.execute", arguments, EditFileArgs)
+        user_path = args.path
+        old_text = args.old_text
+        new_text = args.new_text
 
         if err := self._validate_edit_args(user_path, old_text, new_text):
             return err

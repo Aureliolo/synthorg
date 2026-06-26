@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTool
@@ -134,10 +135,10 @@ class TestReadFileExecution:
     async def test_start_line_greater_than_end_line(
         self, workspace: Path, read_tool: ReadFileTool
     ) -> None:
-        """start_line > end_line returns an error."""
+        """start_line > end_line is rejected at the typed boundary."""
         (workspace / "multi.txt").write_text("a\nb\nc\n", encoding="utf-8")
-        result = await read_tool.execute(
-            arguments={"path": "multi.txt", "start_line": 3, "end_line": 1}
-        )
-        assert result.is_error
-        assert "start_line" in result.content
+        # ``ReadFileArgs._check_line_range`` raises in ``parse_typed``.
+        with pytest.raises(ValidationError):
+            await read_tool.execute(
+                arguments={"path": "multi.txt", "start_line": 3, "end_line": 1}
+            )

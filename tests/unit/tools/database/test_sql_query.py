@@ -2,6 +2,7 @@
 
 import aiosqlite
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.database.config import DatabaseConnectionConfig
 from synthorg.tools.database.sql_query import SqlQueryTool, _classify_statement
@@ -111,9 +112,10 @@ class TestQueryExecution:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SqlQueryTool(config=read_only_config)
-        result = await tool.execute(arguments={"query": ""})
-        assert result.is_error is True
-        assert "empty" in result.content.lower()
+        # ``query`` is ``NotBlankStr`` on ``SqlQueryArgs``; a blank query
+        # is rejected at the ``parse_typed`` boundary before execution.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"query": ""})
 
     @pytest.mark.unit
     async def test_no_results(self, read_only_config: DatabaseConnectionConfig) -> None:

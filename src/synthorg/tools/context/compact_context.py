@@ -7,10 +7,11 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
-from typing import ClassVar, Literal, cast, override
+from typing import ClassVar, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
@@ -85,9 +86,10 @@ class CompactContextTool(BaseTool):
         Returns:
             Result with ``compaction_directive`` metadata key.
         """
-        strategy = cast("str", arguments.get("strategy", "summarize"))
-        reason = cast("str", arguments.get("reason", ""))
-        preserve_markers = cast("bool", arguments.get("preserve_markers", True))
+        args = parse_typed("tool.execute", arguments, CompactContextArgs)
+        strategy = args.strategy
+        reason = args.reason
+        preserve_markers = args.preserve_markers
         sanitized_reason = sanitize_message(reason, max_length=256)
 
         logger.info(

@@ -37,7 +37,14 @@ var timeFilterPattern = regexp.MustCompile(`^[0-9a-zA-Z][0-9a-zA-Z:.+\-TZ]*$`)
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
 	Short: "Show container logs",
-	Long:  "Passes through to 'docker compose logs'. Optionally specify a service (backend, web).",
+	Long: `Stream or tail logs from the SynthOrg compose stack.
+
+Passes through to 'docker compose logs' against the running stack, with
+an optional positional service to scope output to a single container
+(e.g. backend, web). Use --follow to stream live, --tail to bound the
+backlog, --since/--until to window by time, and --timestamps to prefix
+each line with its container clock. Without a service, logs from every
+container are interleaved.`,
 	Example: `  synthorg logs                # show recent logs (last 100 lines)
   synthorg logs -f             # follow log output
   synthorg logs backend        # logs for a specific service

@@ -10,6 +10,7 @@ from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
@@ -30,8 +31,6 @@ from synthorg.tools.database.config import DatabaseConnectionConfig
 logger = get_logger(__name__)
 
 _SAFE_IDENTIFIER_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-
-_ACTIONS: Final[tuple[str, ...]] = ("list_tables", "describe_table")
 
 
 class SchemaInspectTool(BaseDatabaseTool):
@@ -81,20 +80,9 @@ class SchemaInspectTool(BaseDatabaseTool):
         Returns:
             A ``ToolExecutionResult`` with schema information.
         """
-        action = cast("str", arguments["action"])
-        table_name = cast("str | None", arguments.get("table_name"))
-
-        if action not in _ACTIONS:
-            return ToolExecutionResult(
-                content=(f"Invalid action: {action!r}. Must be one of: {_ACTIONS}"),
-                is_error=True,
-            )
-
-        if action == "describe_table" and not table_name:
-            return ToolExecutionResult(
-                content="table_name is required for describe_table",
-                is_error=True,
-            )
+        args = parse_typed("tool.execute", arguments, SchemaInspectArgs)
+        action = args.action
+        table_name = args.table_name
 
         logger.info(
             DB_SCHEMA_INSPECT_START,

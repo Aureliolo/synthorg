@@ -48,6 +48,12 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_IMAGE_VERIFY_TIMEOUT` | CLI | Context timeout for the cosign + SLSA verification pass during `start` and `update`. Duration, default `120s`, hard minimum `1s` (shorter values would bypass verification by silently timing out before cosign / SLSA / TUF completes network I/O). |
 | `SYNTHORG_IMAGE_PULL_ATTEMPTS` | CLI | Retry count for transient `docker pull` failures on standalone images (integer in `[1, 100]`, default `3`) |
 | `SYNTHORG_IMAGE_PULL_RETRY_DELAY` | CLI | Base backoff between pull retries. Exponential: N-th retry waits `delay * 2^(N-1)` seconds (e.g. `2s` base produces 2s, 4s, 8s, 16s, ...), saturated at a 5 min ceiling to guard against overflow when `image_pull_attempts` is large. Duration, default `2s`. |
+| `SYNTHORG_HEALTH_POLL_INTERVAL` | CLI | Interval between backend `/readyz` health polls during `start` (duration, default `2s`) |
+| `SYNTHORG_HEALTH_INITIAL_DELAY` | CLI | Delay before the first `/readyz` poll during `start`, skipping the cold compose-up window (duration, default `5s`) |
+| `SYNTHORG_DHI_VERIFY_TIMEOUT` | CLI | Context timeout for the per-batch DHI cosign + SLSA verification during `start` (duration, default `120s`) |
+| `SYNTHORG_UPDATE_HEALTH_TIMEOUT` | CLI | Timeout for the Docker API calls the `update` flow makes to inspect the current install (duration, default `15s`) |
+| `SYNTHORG_COMPLETION_PROBE_TIMEOUT` | CLI | Timeout for the one-shot shell-profile probe run by `synthorg completion install` (duration, default `5s`) |
+| `SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT` | CLI | Per-port TCP dial timeout in the `synthorg doctor` port-reachability check (duration, default `1s`) |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | container | Fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. Listed here for operator visibility. |
 | `SYNTHORG_FINE_TUNE_HEALTH_HOST` | container | Hostname the main container probes for the fine-tune sidecar health endpoint (default `fine-tune`, the compose service name). Read directly by the fine-tune Python runner; constrained to a hostname / IP literal shape. Override when the sidecar service is renamed or externally hosted. |
 

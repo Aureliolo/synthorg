@@ -6,10 +6,11 @@ file-size guard to prevent loading excessively large files into memory.
 
 import asyncio
 from pathlib import Path
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FS_BINARY_DETECTED,
@@ -99,32 +100,6 @@ class ReadFileTool(BaseFileSystemTool):
             action_type=ActionType.CODE_READ,
             parameters_schema=ReadFileArgs.model_json_schema(),
         )
-
-    @staticmethod
-    def _validate_read_args(
-        start_line: int | None,
-        end_line: int | None,
-    ) -> ToolExecutionResult | None:
-        """Return an error if the line range is invalid.
-
-        ``ReadFileArgs._check_line_range`` raises at validation time
-        when this tool is invoked via :class:`ToolInvoker`; this body
-        guard is the defensive backstop for direct callers that
-        bypass the invoker (tests, internal utilities) and pass an
-        unvalidated dict.
-
-        Returns:
-            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
-        """
-        if start_line is not None and end_line is not None and start_line > end_line:
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid line range: start_line ({start_line}) "
-                    f"must be <= end_line ({end_line})"
-                ),
-                is_error=True,
-            )
-        return None
 
     async def _preflight_check_file(
         self,
@@ -223,12 +198,10 @@ class ReadFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` with the file content or an error.
         """
-        user_path = cast("str", arguments["path"])
-        start_line = cast("int | None", arguments.get("start_line"))
-        end_line = cast("int | None", arguments.get("end_line"))
-
-        if err := self._validate_read_args(start_line, end_line):
-            return err
+        args = parse_typed("tool.execute", arguments, ReadFileArgs)
+        user_path = args.path
+        start_line = args.start_line
+        end_line = args.end_line
 
         try:
             resolved = self.path_validator.validate(user_path)

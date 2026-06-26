@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 import structlog
+from pydantic import ValidationError
 
 from synthorg.observability.events.web import (
     WEB_REQUEST_FAILED,
@@ -133,11 +134,12 @@ class TestHttpRequestTool:
 
     @pytest.mark.unit
     async def test_unsupported_method(self, http_tool: HttpRequestTool) -> None:
-        result = await http_tool.execute(
-            arguments={"url": "http://x.com", "method": "PATCH"}
-        )
-        assert result.is_error is True
-        assert "unsupported" in result.content.lower()
+        # ``method`` is a closed Literal on ``HttpRequestArgs``; an
+        # out-of-set verb is rejected at the ``parse_typed`` boundary.
+        with pytest.raises(ValidationError):
+            await http_tool.execute(
+                arguments={"url": "http://x.com", "method": "PATCH"}
+            )
 
     @pytest.mark.unit
     async def test_response_truncation(self) -> None:

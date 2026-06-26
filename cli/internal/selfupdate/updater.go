@@ -298,7 +298,11 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		return zero, fmt.Errorf("github API rate-limited (HTTP %d) -- try again later", resp.StatusCode)
+		return zero, fmt.Errorf(
+			"github API rate-limited (HTTP %d) -- %s",
+			resp.StatusCode,
+			retryAfterMessage(resp.Header.Get("Retry-After")),
+		)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)

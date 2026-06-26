@@ -6,10 +6,11 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
-from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -128,8 +129,9 @@ class WebSearchTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with formatted search results.
         """
-        query = cast("str", arguments["query"])
-        max_results = cast("int", arguments.get("max_results", 10))
+        args = parse_typed("tool.execute", arguments, WebSearchArgs)
+        query = args.query
+        max_results = args.max_results
 
         logger.info(WEB_SEARCH_START, query=query, max_results=max_results)
 

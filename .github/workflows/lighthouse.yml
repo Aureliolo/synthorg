@@ -244,8 +244,15 @@ jobs:
           set -eu
           SHORT_SHA="${EXPECTED_SHORT_SHA:0:7}"
           BANNER_NEEDLE=">${SHORT_SHA}<"
+          # Cloudflare alias propagation after a new Pages deploy is the
+          # long pole here; 5 minutes was too tight and produced real
+          # false failures. Budget ~10 minutes of polling and report the
+          # true bound (computed from the loop params, not a hardcoded
+          # "5 minutes" string that drifted from the actual ceiling).
+          MAX_ATTEMPTS=60
+          POLL_INTERVAL=10
           echo "Waiting for ${PREVIEW_URL} to respond 200 AND serve commit ${SHORT_SHA}..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 "${MAX_ATTEMPTS}"); do
             # Both BODY and STATUS follow redirects (-L) so they refer
             # to the SAME final resource. Without -L on STATUS, a
             # Cloudflare 308 alias-redirect would report 308 even
@@ -264,10 +271,10 @@ jobs:
             if [[ "${BODY}" =~ \>([0-9a-f]{7})\< ]]; then
               CURRENT="${BASH_REMATCH[1]}"
             fi
-            echo "Attempt $i: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting 10s..."
-            sleep 10
+            echo "Attempt $i/${MAX_ATTEMPTS}: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting ${POLL_INTERVAL}s..."
+            sleep "${POLL_INTERVAL}"
           done
-          echo "::error::pr-preview did not serve commit ${SHORT_SHA} within 5 minutes. Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
+          echo "::error::pr-preview did not serve commit ${SHORT_SHA} after ${MAX_ATTEMPTS} attempts (~$((MAX_ATTEMPTS * POLL_INTERVAL))s of polling). Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)

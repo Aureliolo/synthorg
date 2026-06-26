@@ -46,12 +46,8 @@ async def backend(
     import aiosqlite  # lint-allow: persistence-boundary -- test bootstrap
 
     async with aiosqlite.connect(db_path) as db:
-        # Split the DDL keyword across two adjacent string literals so
-        # the persistence-boundary regex (which matches the keyword
-        # inside a single literal) does not flag this test bootstrap.
         ddl = (
-            "CREATE"
-            " TABLE connection_secrets ("
+            "CREATE TABLE connection_secrets ("  # lint-allow: persistence-boundary -- unit-test bootstrap of the single table under test  # noqa: E501
             "secret_id TEXT PRIMARY KEY, "
             "encrypted_value BLOB, "
             "key_version INTEGER, "

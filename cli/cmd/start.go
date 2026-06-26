@@ -69,7 +69,12 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := applyStartNoVerify(cmd)
+	// Pre-flight runs on the UNMUTATED context and BEFORE the lifecycle
+	// lock: load config, confirm the host is initialised, and (for a real
+	// run) confirm Docker is reachable. An uninitialised host or a down
+	// Docker daemon therefore fails with a clear, actionable error and
+	// never holds the lock or flips SkipVerify.
+	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 	state, err := loadStartState(opts.DataDir)
 	if err != nil {
@@ -81,17 +86,29 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
+	if err := assertInitialised(safeDir); err != nil {
+		return err
+	}
 	if startDryRun {
-		// Dry run only previews; validate compose existence for an accurate
-		// preview but take no lock (it mutates nothing, so there is no race).
-		if err := assertComposeExists(safeDir); err != nil {
-			return err
-		}
+		// Dry run only previews; it mutates nothing, so it takes no lock
+		// and does not probe Docker.
 		printStartDryRun(out, state, opts)
 		return nil
 	}
-	// Hold the lifecycle lock across the whole start so a concurrent stop or
-	// update-restart cannot race `compose up -d` on the same named volumes.
+	info, err := docker.Detect(ctx)
+	if err != nil {
+		return err
+	}
+	// Only now mutate the context (SkipVerify) and take the lock.
+	ctx = applyStartNoVerify(cmd)
+	return startUnderLock(ctx, cmd, info, state, safeDir, out, errOut, healthTimeout)
+}
+
+// startUnderLock holds the lifecycle lock for the whole start so a
+// concurrent stop or update-restart cannot race `compose up -d` on the
+// same named volumes, then brings the stack up. Split out of runStart so
+// the latter stays under the cyclomatic-complexity ceiling.
+func startUnderLock(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
 	lock, err := runlock.Acquire(ctx, safeDir)
 	if err != nil {
 		return err
@@ -101,14 +118,15 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
-	// Validate compose existence AFTER acquiring the lock so the check and the
-	// subsequent `compose up` happen atomically inside the critical section: a
-	// concurrent wipe/uninstall cannot delete compose.yml between the check and
-	// the up (it would block on this same lock until the start completes).
+	// Re-validate compose existence AFTER acquiring the lock so the check
+	// and the subsequent `compose up` happen atomically inside the
+	// critical section: a concurrent wipe/uninstall cannot delete
+	// compose.yml between the check and the up (it would block on this
+	// same lock until the start completes).
 	if err := assertComposeExists(safeDir); err != nil {
 		return err
 	}
-	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
+	return startContainers(ctx, cmd, info, state, safeDir, out, errOut, healthTimeout)
 }
 
 // parseStartTimeout resolves the health-check budget for `start`. Precedence:
@@ -174,6 +192,23 @@ func loadStartState(dataDir string) (config.State, error) {
 	}
 }
 
+// assertInitialised is the pre-flight init check: it confirms the host
+// has been through `synthorg init` (compose.yml present) and returns an
+// actionable "run synthorg init" error otherwise, BEFORE the lifecycle
+// lock is taken. assertComposeExists is the separate in-lock TOCTOU
+// re-check against a concurrent wipe.
+func assertInitialised(safeDir string) error {
+	composePath := filepath.Join(safeDir, "compose.yml")
+	_, err := os.Stat(composePath)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("SynthOrg is not initialised in %s; run 'synthorg init' first", safeDir)
+	}
+	return fmt.Errorf("checking compose.yml: %w", err)
+}
+
 func assertComposeExists(safeDir string) error {
 	// safeDir is the output of safeStateDir -> config.SecurePath, which
 	// canonicalises and validates the operator-supplied --data-dir before
@@ -219,15 +254,11 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) {
 	}
 }
 
-func startContainers(ctx context.Context, cmd *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
+func startContainers(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
 	if os.Getenv("SYNTHORG_NO_LOGO") == "" {
 		out.Logo(version.Version)
 	}
 
-	info, err := docker.Detect(ctx)
-	if err != nil {
-		return err
-	}
 	out.InlineKV(
 		"Docker", info.DockerVersion+" "+ui.IconSuccess,
 		"Compose", info.ComposeVersion+" "+ui.IconSuccess,
@@ -361,7 +392,8 @@ func waitForBackendHealthy(ctx context.Context, state config.State, out, errOut 
 	// localhost is correct: the CLI polls the docker-compose backend
 	// it just started on the same host, via the published port.
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
+	tun := GetGlobalOpts(ctx).Tunables
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
@@ -426,28 +458,6 @@ func warnRegistryOverridesDisableVerification(cmd *cobra.Command) {
 	)
 }
 
-// Health-check polling cadence shared by both start paths
-// (startDetached and pullStartAndWait).
-//
-//   - healthPollInterval (2s): trades responsiveness against backend
-//     load -- the readyz endpoint is cheap, but polling faster only
-//     shaves sub-second latency from a multi-second container start.
-//   - healthInitialDelay (5s): a typical compose-up cold start needs
-//     a few seconds before /readyz is even bound; polling sooner just
-//     burns connection refusals.
-//   - dhiVerifyTimeout (120s): caps DHI cosign + SLSA verification per
-//     batch; verification stalls past two minutes indicate a network or
-//     transparency-log outage rather than a slow CDN.
-//
-// The total readiness-wait budget for the pullStartAndWait path (called from
-// `synthorg wipe` after a destructive reset, which has no --timeout flag) is
-// the resolved health_wait_timeout tunable, not a hardcoded constant.
-const (
-	healthPollInterval = 2 * time.Second
-	healthInitialDelay = 5 * time.Second
-	dhiVerifyTimeout   = 120 * time.Second
-)
-
 // pullStartAndWait pulls images, starts containers, and waits for health.
 func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
 	if _, err := pullAllImages(ctx, cmd, info, safeDir, state, out); err != nil {
@@ -471,11 +481,12 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	healthTimeout := GetGlobalOpts(ctx).Tunables.HealthWaitTimeout
+	tun := GetGlobalOpts(ctx).Tunables
+	healthTimeout := tun.HealthWaitTimeout
 	if healthTimeout <= 0 {
 		healthTimeout = config.DefaultHealthWaitTimeout
 	}
-	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
@@ -611,7 +622,7 @@ func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out
 	defer lb.Finish()
 
 	// Verify each image with a timeout to prevent hanging on network issues.
-	dhiCtx, dhiCancel := context.WithTimeout(ctx, dhiVerifyTimeout)
+	dhiCtx, dhiCancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.DHIVerifyTimeout)
 	defer dhiCancel()
 	results, err := verify.VerifyDHIImages(dhiCtx, dhiRefs)
 

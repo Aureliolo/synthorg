@@ -22,6 +22,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.protocol import PersistenceBackend
@@ -172,3 +173,28 @@ class TestEscalationQueueRepository:
         fetched = await repo.get(sid("exp"))
         assert fetched is not None
         assert fetched.status is EscalationStatus.EXPIRED
+
+    async def test_duplicate_id_raises(self, backend: PersistenceBackend) -> None:
+        repo = backend.build_escalations()
+        row = _escalation(escalation_id="dup")
+        await repo.create(row)
+        with pytest.raises(ConstraintViolationError):
+            await repo.create(row)
+
+    async def test_apply_decision_on_decided_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = backend.build_escalations()
+        await repo.create(_escalation(escalation_id="dbl"))
+        decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
+        await repo.apply_decision(
+            sid("dbl"),
+            decision=decision,
+            decided_by=NotBlankStr("human:op-1"),
+        )
+        with pytest.raises(ValueError, match="cannot transition"):
+            await repo.apply_decision(
+                sid("dbl"),
+                decision=decision,
+                decided_by=NotBlankStr("human:op-2"),
+            )

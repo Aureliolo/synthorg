@@ -37,7 +37,7 @@ func TestOutputMethods(t *testing.T) {
 		{"Warn", func(u *UI) { u.Warn("careful") }, []string{IconWarning, "careful"}},
 		{"Error", func(u *UI) { u.Error("bad thing") }, []string{IconError, "bad thing"}},
 		{"KeyValue", func(u *UI) { u.KeyValue("Data dir", "/tmp/test") }, []string{"Data dir:", "/tmp/test"}},
-		{"Hint", func(u *UI) { u.Hint("try this") }, []string{IconHint, "try this"}},
+		{"HintNextStep", func(u *UI) { u.HintNextStep("try this") }, []string{IconHint, "try this"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

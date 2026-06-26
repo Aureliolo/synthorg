@@ -228,6 +228,7 @@ repos:
         args: [run, python, scripts/check_no_redundant_timeout.py]
         language: system
         files: ^tests/.*\.py$
+        stages: [pre-push]
 
       - id: no-ruff100-self-cloak
         name: no RUF100 self-cloak (RUF100 paired with another noqa code)
@@ -287,6 +288,7 @@ repos:
         args: [run, python, scripts/check_logger_exception_str_exc.py]
         language: system
         files: ^src/synthorg/.*\.py$
+        stages: [pre-push]
 
       - id: completion-config-temperature
         name: CompletionConfig must pin an explicit temperature
@@ -294,6 +296,7 @@ repos:
         args: [run, python, scripts/check_completion_config_temperature.py]
         language: system
         files: ^src/synthorg/.*\.py$
+        stages: [pre-push]
 
       - id: otlp-span-redaction
         name: block span.record_exception()/auto-handler kwargs in src/synthorg/
@@ -301,6 +304,7 @@ repos:
         args: [run, python, scripts/check_otlp_span_redaction.py]
         language: system
         files: ^src/synthorg/.*\.py$
+        stages: [pre-push]
 
       - id: no-stdlib-logging
         name: no stdlib logging in application code (use get_logger)
@@ -383,6 +387,7 @@ repos:
         args: [run, python, scripts/check_workflow_shell_git_commits.py]
         language: system
         files: ^\.github/workflows/.*\.ya?ml$
+        stages: [pre-push]
 
       - id: workflow-tag-lifecycle
         name: block tag CREATE+conditional-DELETE in same workflow (#1818)
@@ -398,6 +403,7 @@ repos:
         # ``.yml/.yaml`` suffix filter and exit 0 with zero workflows
         # actually scanned, letting a weakened gate land unchecked.
         pass_filenames: false
+        stages: [pre-push]
 
       - id: ci-workflow-resilience
         name: CI workflow resilience (job timeouts + fail-closed retry ladders)
@@ -410,9 +416,9 @@ repos:
         # as workflow-tag-lifecycle above): an edit limited to the checker
         # script or this config would otherwise scan zero workflows.
         pass_filenames: false
-        # commit+push only: the YAML scan is fast and gates content, but it
-        # has no place at commit-msg (which gates the message, not the tree).
-        stages: [pre-commit, pre-push]
+        # pre-push only: the whole-tree YAML scan is moved off the commit
+        # path so iterative commits stay fast; it still gates before push.
+        stages: [pre-push]
 
       - id: retry-helper-selftest
         name: cosign/push retry helpers classify large 5xx output as transient (broken-pipe regression)
@@ -566,7 +572,10 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        # pre-push only: ``go vet ./...`` compiles the whole CLI module,
+        # too heavy for the commit path; golangci-lint/go-test already
+        # run pre-push, so vet joins them there.
+        stages: [pre-push]
 
       - id: go-test
         name: go test (CLI)

@@ -6,10 +6,11 @@ design artifacts.
 """
 
 import copy
-from typing import ClassVar, Final, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
@@ -27,15 +28,6 @@ from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig
 
 logger = get_logger(__name__)
-
-_VALID_ACTIONS: Final[frozenset[str]] = frozenset(
-    {
-        "list",
-        "get",
-        "delete",
-        "search",
-    }
-)
 
 
 def _str_tags(meta: dict[str, JsonValue]) -> set[str]:
@@ -142,57 +134,25 @@ class AssetManagerTool(BaseDesignTool):
         Returns:
             A ``ToolExecutionResult`` with operation results.
         """
-        action = arguments.get("action")
-        if not isinstance(action, str):
-            logger.warning(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                reason="missing_action",
-            )
-            return ToolExecutionResult(
-                content="'action' is required and must be a string.",
-                is_error=True,
-            )
-
-        if action not in _VALID_ACTIONS:
-            logger.warning(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                action=action,
-                reason="invalid_action",
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid action: {action!r}. "
-                    f"Must be one of: {sorted(_VALID_ACTIONS)}"
-                ),
-                is_error=True,
-            )
-
-        if action == "list":
-            return self._handle_list(arguments)
-        if action == "get":
-            return self._handle_get(arguments)
-        if action == "delete":
-            return self._handle_delete(arguments)
-        return self._handle_search(arguments)
+        args = parse_typed("tool.execute", arguments, AssetManagerArgs)
+        if args.action == "list":
+            return self._handle_list(args)
+        if args.action == "get":
+            return self._handle_get(args)
+        if args.action == "delete":
+            return self._handle_delete(args)
+        return self._handle_search(args)
 
     def _handle_list(
         self,
-        arguments: dict[str, object],
+        args: AssetManagerArgs,
     ) -> ToolExecutionResult:
         """List assets, optionally filtered by tags.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        raw_tags = arguments.get("tags")
-        if raw_tags is not None and not isinstance(raw_tags, (list, tuple)):
-            logger.debug(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                action="list",
-                reason="invalid_tags_type",
-            )
-        raw_list = raw_tags if isinstance(raw_tags, (list, tuple)) else []
-        tags = [t for t in raw_list if isinstance(t, str)]
+        tags = list(args.tags)
         tag_set = set(tags)
 
         if tag_set:
@@ -226,15 +186,18 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_get(
         self,
-        arguments: dict[str, object],
+        args: AssetManagerArgs,
     ) -> ToolExecutionResult:
         """Retrieve a specific asset by ID.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        asset_id = arguments.get("asset_id")
-        if not isinstance(asset_id, str) or not asset_id.strip():
+        # ``AssetManagerArgs`` enforces asset_id-present for get/delete at
+        # the typed boundary; this narrowing keeps mypy honest and stays
+        # defensive against a direct, validator-bypassing programmatic call.
+        asset_id = args.asset_id
+        if asset_id is None:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="get",
@@ -273,15 +236,15 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_delete(
         self,
-        arguments: dict[str, object],
+        args: AssetManagerArgs,
     ) -> ToolExecutionResult:
         """Delete an asset by ID.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        asset_id = arguments.get("asset_id")
-        if not isinstance(asset_id, str) or not asset_id.strip():
+        asset_id = args.asset_id
+        if asset_id is None:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="delete",
@@ -317,15 +280,16 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_search(
         self,
-        arguments: dict[str, object],
+        args: AssetManagerArgs,
     ) -> ToolExecutionResult:
         """Search assets by query string in metadata values.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        raw_query = arguments.get("query")
-        if not isinstance(raw_query, str) or not raw_query.strip():
+        # ``query`` is optional on the model (only get/delete force a
+        # field); search still requires it, so the check stays here.
+        if args.query is None:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="search",
@@ -336,10 +300,8 @@ class AssetManagerTool(BaseDesignTool):
                 is_error=True,
             )
 
-        query = normalize_ascii_lowercase(raw_query)
-        raw_tags = arguments.get("tags")
-        raw_list = raw_tags if isinstance(raw_tags, (list, tuple)) else []
-        tags = [t for t in raw_list if isinstance(t, str)]
+        query = normalize_ascii_lowercase(args.query)
+        tags = list(args.tags)
         tag_set = set(tags)
 
         matching: dict[str, dict[str, JsonValue]] = {}
