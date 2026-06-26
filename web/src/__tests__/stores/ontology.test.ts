@@ -33,6 +33,7 @@ function singlePage(
     limit,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: { limit, next_cursor: null, has_more: false },
   }
 }

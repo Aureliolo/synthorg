@@ -113,7 +113,7 @@ class TestEmptyCompanyRejectsTaskCreation:
         self,
         provider_company_client: LoopAsyncClient,
     ) -> None:
-        """``POST /tasks`` now returns 202 + a submission envelope.
+        """``POST /tasks`` returns 202 + a submission envelope.
 
         The runtime app boots with a provider + auto-wired simulation
         runtime + work pipeline, so the boot hook attaches the

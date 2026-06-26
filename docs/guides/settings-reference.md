@@ -138,6 +138,7 @@ curl -X POST http://localhost:3001/api/v1/settings/security/import \
 Some settings are bootstrap-only and cannot be hot-reloaded safely. They are marked with `restart_required=True` in the schema. Common examples:
 
 - `api.rate_limit.floor_max_requests` / `unauth_max_requests` / `auth_max_requests` (the three-tier rate limiter builds at startup)
+- `api.rate_limit_auth_endpoint_max_requests` (the dedicated per-minute limiter applied as route middleware on the login / setup / change-password / dev-login endpoints; bound at module import, `read_only_post_init`)
 - `api.per_op_rate_limit.backend` / `api.per_op_concurrency.backend` (the per-op stores are constructed once at startup; enabled / overrides ARE runtime-editable)
 - `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
 - `backup.path` (backup scheduler's output directory)

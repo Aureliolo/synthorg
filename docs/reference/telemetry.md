@@ -33,9 +33,10 @@ String values are capped at `synthorg.telemetry.config.MAX_STRING_LENGTH` (64 ch
 
 Two-phase to keep filesystem I/O off the event loop:
 
-1. **Construction** (`__init__`): reads config and resolves the environment tag. Performs zero filesystem I/O. Safe to call synchronously from the app builder.
-2. **Startup** (`async start()`): loads or creates the anonymous deployment ID via `asyncio.to_thread` (5 s hard deadline). Sends the initial `deployment.startup` event with Docker enrichment. Schedules the periodic heartbeat task. Idempotent under concurrent callers via the lifecycle lock; the second caller sees `_deployment_id` already populated and skips the load.
-3. **Shutdown** (`async shutdown()`): cancels the heartbeat, sends `deployment.session_summary` and `deployment.shutdown`, then shuts down the reporter. Skips event emission if `_deployment_id` was never loaded (and logs `telemetry.shutdown.without_start` so operators can detect a silent init failure).
+1. **Construction** (`__init__`): reads config and resolves the environment tag. Performs zero filesystem I/O. Safe to call synchronously from the app builder. The `enabled` flag here is resolved env > default only (persistence is not yet connected).
+2. **DB-layer re-resolve** (`apply_enabled`, boot only): when the collector is booted through the Litestar lifecycle, the `_apply_telemetry_db_layer` startup hook re-resolves `telemetry.enabled` with full DB > env > default precedence once the config resolver is wired, then calls `apply_enabled(enabled=...)` to rebind the frozen config BEFORE `start()` reads it. Without this a DB-stored `telemetry.enabled` toggle would be ignored on restart.
+3. **Startup** (`async start()`): loads or creates the anonymous deployment ID via `asyncio.to_thread` (5 s hard deadline). Sends the initial `deployment.startup` event with Docker enrichment. Schedules the periodic heartbeat task. Idempotent under concurrent callers via the lifecycle lock; the second caller sees `_deployment_id` already populated and skips the load.
+4. **Shutdown** (`async shutdown()`): cancels the heartbeat, sends `deployment.session_summary` and `deployment.shutdown`, then shuts down the reporter. Skips event emission if `_deployment_id` was never loaded (and logs `telemetry.shutdown.without_start` so operators can detect a silent init failure).
 
 The deployment ID lives at `{data_dir}/telemetry_id`. Multiple replicas mounting the same `/data` race on `O_CREAT|O_EXCL`; losers re-read the winner's UUID with retry on partial-write windows so all replicas converge to one ID. On read/write failure the collector falls back to an in-memory UUID and tags the warning log with `using_generated_id=True` so dashboards can detect splinter deployments.
 

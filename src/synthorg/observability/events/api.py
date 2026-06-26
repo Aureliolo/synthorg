@@ -74,6 +74,9 @@ API_TASK_BOARD_REJECTED_NO_ADAPTER: Final[str] = "api.task.board.rejected_no_ada
 API_TASK_BOARD_PIPELINE_FAILED: Final[str] = "api.task.board.pipeline_failed"
 API_AUTH_SYSTEM_USER_ENSURED: Final[str] = "api.auth.system_user_ensured"
 API_AUTH_FALLBACK: Final[str] = "api.auth.fallback"
+API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL: Final[str] = (
+    "api.auth.discriminator.unknown_detail"
+)
 API_AUTH_CONFIG_FALLBACK: Final[str] = "api.auth.config_fallback"
 API_AUTH_COOKIE_NAME_FALLBACK: Final[str] = "api.auth.cookie_name_fallback"
 API_MEMORY_DIR_TMPROOT_FALLBACK: Final[str] = "api.memory_dir.tmproot_fallback"
@@ -246,6 +249,10 @@ API_CLIENT_LISTED: Final[str] = "api.client.listed"
 API_TASK_LISTED: Final[str] = "api.task.listed"
 API_STEERING_LISTED: Final[str] = "api.steering.listed"
 API_RISK_OVERRIDE_LISTED: Final[str] = "api.risk_override.listed"
+# CEO-only risk-tier override state changes -- audit-relevant, so logged at
+# INFO even though the durable override row is itself the audit artefact.
+API_RISK_OVERRIDE_CREATED: Final[str] = "api.risk_override.created"
+API_RISK_OVERRIDE_REVOKED: Final[str] = "api.risk_override.revoked"
 API_EXPERIMENT_VARIANT_REGISTERED: Final[str] = "api.experiment.variant_registered"
 API_BUDGET_CFO_QUERIED: Final[str] = "api.budget_cfo.queried"
 

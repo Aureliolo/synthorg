@@ -49,6 +49,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -323,10 +324,20 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_strategy_context]
 
-    # Bring up the notification dispatcher's HTTP-bearing sinks lazily under
-    # their lifecycle locks. Teardown lives in the on-shutdown runner
-    # (``lifecycle_runner_shutdown``) via ``notification_dispatcher.aclose``.
-    startup = [*startup, notification_dispatcher.start]
+    async def _start_construction_dispatcher() -> None:
+        # Bring up the construction-phase dispatcher's HTTP-bearing sinks under
+        # their lifecycle locks, but ONLY if it is still the live dispatcher.
+        # The bridge-config startup step (``_apply_notification_dispatcher_config``)
+        # may have already rebuilt + started a replacement with DB-resolved
+        # timeouts and swapped it onto the slice, leaving this one orphaned and
+        # unstarted; starting an orphan would open sinks nothing routes through
+        # and that the on-shutdown runner (which closes the LIVE slice
+        # dispatcher) never tears down.
+        live = app_state.slice(NotificationsStateSlice).dispatcher
+        if live is notification_dispatcher:
+            await notification_dispatcher.start()
+
+    startup = [*startup, _start_construction_dispatcher]
 
     async def _resolve_runtime_security_settings() -> None:
         await resolve_runtime_security_settings(app_state)

@@ -829,6 +829,28 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
+    async def test_http_exception_4xx_scrubs_secret_token(self) -> None:
+        """A credential in a 4xx HTTPException detail is scrubbed before the body.
+
+        Covers the defence-in-depth contract for the catch-all HTTP handler:
+        any token a third-party middleware / plugin interpolates into a 4xx
+        detail is redacted, matching the domain-error 4xx scrub.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(
+                status_code=400,
+                detail="rejected request with Authorization: Bearer sk-leak-me",
+            )
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert "sk-leak-me" not in body["error"]
+            assert "***" in body["error"]
+
     async def test_http_exception_empty_detail_uses_phrase(self) -> None:
         """HTTPException with empty detail falls back to HTTP phrase."""
 
@@ -1728,7 +1750,7 @@ class TestDomainErrorMapping:
 
 
 class TestBareResponseFixes:
-    """Controllers no longer return bare ``Response`` for error paths.
+    """Error paths raise typed errors so the central handlers respond.
 
     Error paths in ``artifacts.py``, ``subworkflows.py``, and
     ``projects.py`` must not return plain ``Response(content=ApiResponse(

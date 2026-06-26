@@ -637,10 +637,9 @@ class TestProviderControllerErrorPropagation:
     is the single source of truth for the wire contract, so the
     controllers do NOT catch a ``ProviderError`` and re-raise a generic
     Litestar error: that would drop the discriminating ``error_code``
-    (e.g. ``MODEL_NOT_FOUND`` collapsing to ``RESOURCE_NOT_FOUND``).  The
-    secret-token scrubbing that used to live in the controller catch now
-    runs once, centrally, in ``handle_domain_error`` (see
-    :meth:`test_handler_scrubs_secret_tokens_in_provider_4xx`).
+    (e.g. ``MODEL_NOT_FOUND`` collapsing to ``RESOURCE_NOT_FOUND``).
+    Secret-token scrubbing runs once, centrally, in ``handle_domain_error``
+    (see :meth:`test_handler_scrubs_secret_tokens_in_provider_4xx`).
     """
 
     async def test_create_provider_conflict_propagates(self) -> None:
@@ -879,11 +878,9 @@ class TestProviderControllerErrorPropagation:
     def test_handler_scrubs_secret_tokens_in_provider_4xx(self) -> None:
         """The central 4xx detail is scrubbed of any embedded secret token.
 
-        Replaces the per-controller ``safe_error_description`` catch: a
-        raise site that interpolates a credential into a 4xx message can
-        no longer leak it through the RFC 9457 envelope, because
-        ``_select_message`` routes every 4xx detail through
-        ``scrub_secret_tokens``.
+        A raise site that interpolates a credential into a 4xx message
+        cannot leak it through the RFC 9457 envelope: ``_select_message``
+        routes every 4xx detail through ``scrub_secret_tokens``.
         """
         from synthorg.api.exception_handlers import _select_message
         from synthorg.providers.errors import ProviderValidationError

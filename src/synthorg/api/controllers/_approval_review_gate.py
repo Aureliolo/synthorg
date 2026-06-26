@@ -144,6 +144,8 @@ async def try_mid_execution_resume(
         logger.error(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
+            error_type="AgentRuntimeNotConfiguredError",
+            error="agent runtime not configured",
             note="resume dispatch failed -- runtime not configured",
         )
         raise

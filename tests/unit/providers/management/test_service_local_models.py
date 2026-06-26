@@ -11,6 +11,7 @@ from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.service import ProviderManagementService
+from tests._shared import mock_of
 
 from .conftest import make_create_request
 
@@ -169,9 +170,11 @@ class TestDeleteLocalModelTranslation:
         from synthorg.providers.management._capability_helpers import (
             delete_local_model,
         )
+        from synthorg.providers.management.local_models import LocalModelManager
 
-        manager = AsyncMock()
-        manager.delete_model.side_effect = ValueError("absent on backend")
+        manager = mock_of[LocalModelManager](
+            delete_model=AsyncMock(side_effect=ValueError("absent on backend")),
+        )
 
         with pytest.raises(ProviderModelNotFoundError, match="not found"):
             await delete_local_model(manager, name="my-ollama", model_id="m1")
@@ -181,12 +184,16 @@ class TestDeleteLocalModelTranslation:
         from synthorg.providers.management._capability_helpers import (
             delete_local_model,
         )
+        from synthorg.providers.management.local_models import LocalModelManager
 
-        manager = AsyncMock()
         # The raised ProviderError message is authored-safe (no upstream
         # text); the upstream detail rides only the WARNING log.
-        manager.delete_model.side_effect = RuntimeError(
-            "internal driver state /var/run/.cache/0xdeadbeef",
+        manager = mock_of[LocalModelManager](
+            delete_model=AsyncMock(
+                side_effect=RuntimeError(
+                    "internal driver state /var/run/.cache/0xdeadbeef",
+                ),
+            ),
         )
 
         with pytest.raises(ProviderError) as info:

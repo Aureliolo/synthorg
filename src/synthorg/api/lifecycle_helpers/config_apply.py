@@ -178,11 +178,15 @@ async def _apply_notification_dispatcher_config(
     # Start BEFORE swapping so a failed start leaves the live (already
     # running) dispatcher in place rather than installing a built-but-
     # unstarted one whose sinks silently drop events. Mirrors the boot
-    # path in ``auto_wire.py`` / ``lifecycle_assembly.py``.
+    # path in ``auto_wire.py`` / ``lifecycle_assembly.py``. The ``finally``
+    # aclose covers BOTH a non-critical start failure AND a
+    # ``CancelledError`` (SIGTERM mid-start): either way a partially-started
+    # dispatcher's sinks (HTTP / SMTP sessions) are released rather than
+    # leaked.
+    start_ok = False
     try:
         await new_dispatcher.start()
-    except asyncio.CancelledError:
-        raise
+        start_ok = True
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -191,10 +195,19 @@ async def _apply_notification_dispatcher_config(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        try:
-            await new_dispatcher.aclose()
-        except Exception as close_exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(close_exc)
+    finally:
+        if not start_ok:
+            try:
+                await new_dispatcher.aclose()
+            except Exception as close_exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(close_exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    event_context="new_notification_dispatcher_aclose_after_start_failure",
+                    error_type=type(close_exc).__name__,
+                    error=safe_error_description(close_exc),
+                )
+    if not start_ok:
         return
     old_dispatcher = app_state.swap_notification_dispatcher(new_dispatcher)
     if old_dispatcher is None:

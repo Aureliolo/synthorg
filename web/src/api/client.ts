@@ -407,6 +407,12 @@ export interface PaginatedResult<T> {
   readonly nextCursor: string | null
   /** Whether more items follow the current page. */
   readonly hasMore: boolean
+  /**
+   * Names of backing data sources that failed and were served degraded
+   * (empty when the page is complete); lets callers surface a partial-data
+   * warning instead of silently presenting an incomplete result.
+   */
+  readonly degradedSources: readonly string[]
   /** Raw pagination envelope for callers that need direct access. */
   readonly pagination: {
     readonly limit: number
@@ -447,6 +453,7 @@ export function unwrapPaginated<T>(
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
+    degradedSources: body.degraded_sources,
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

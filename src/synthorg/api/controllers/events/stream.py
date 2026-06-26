@@ -4,8 +4,7 @@
 Provides SSE event streaming at ``/events/stream``. The streaming
 generator and its auth-revalidation machinery live in ``_sse``.
 Interrupt resume is owned exclusively by ``InterruptController``
-(``POST /interrupts/{id}/resume``); the SSE controller no longer
-duplicates that path.
+(``POST /interrupts/{id}/resume``); this controller streams only.
 """
 
 from typing import Annotated

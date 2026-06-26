@@ -63,9 +63,8 @@ if TYPE_CHECKING:
     # write ``from tests.unit.api.fakes import FakePersistenceBackend``
     # and have mypy resolve the symbol to its real type. At runtime the
     # name resolves via ``__getattr__`` below (PEP 562 lazy attribute
-    # access), preserving the historical circular-import workaround
-    # without forcing 36 call sites onto a direct ``fakes_backend``
-    # import path.
+    # access), so the 36 call sites keep the ``fakes`` import path while
+    # breaking the import cycle a direct ``fakes_backend`` import would form.
     from tests.unit.api.fakes_backend import FakePersistenceBackend
 
     __all__ = ["FakePersistenceBackend"]

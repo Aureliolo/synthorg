@@ -240,11 +240,19 @@ def _build_auth_exclude_paths(
     readyz_path = f"^{prefix}/readyz$"
     # External provider webhooks arrive with no session cookie or bearer
     # token: they authenticate by HMAC signature, verified inside the
-    # ingest handler. Excluding them from the session/bearer auth
-    # middleware lets the request reach that signature check instead of
-    # 401-ing first. Fail-safe (mandatory) so a custom
-    # ``auth.exclude_paths`` cannot accidentally re-gate webhook ingest.
-    webhooks_path = f"^{prefix}/webhooks/"
+    # ingest handler. Excluding ONLY the ingest path from the session/bearer
+    # auth middleware lets the request reach that signature check instead of
+    # 401-ing first. Scope tightly to the two-segment ingest route
+    # ``/webhooks/{connection_name}/{event_type}``: the operator-facing
+    # ``GET /webhooks/{connection_name}/activity`` and
+    # ``POST /webhooks/receipts/{receipt_id}/retry`` endpoints carry
+    # ``require_read_access`` / ``require_write_access`` and MUST keep the auth
+    # middleware (without it ``scope["user"]`` is never set and the guards 403
+    # every caller). The negative lookahead drops the ``/activity`` listing;
+    # the ``$`` anchor (exactly two segments) drops the three-segment retry
+    # route. Fail-safe (mandatory) so a custom ``auth.exclude_paths`` cannot
+    # accidentally re-gate webhook ingest.
+    webhooks_path = f"^{prefix}/webhooks/[^/]+/(?!activity$)[^/]+$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None

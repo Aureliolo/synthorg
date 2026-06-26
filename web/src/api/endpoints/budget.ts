@@ -88,6 +88,7 @@ export async function listCostRecords(
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
+    degradedSources: [],
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

@@ -31,7 +31,7 @@ from synthorg.api.auth.system_user import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.auth.models import ApiKey, AuthenticatedUser, AuthMethod
+from synthorg.core.auth.models import ApiKey, AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.normalization import extract_bearer_token
 from synthorg.observability import get_logger, safe_error_description
@@ -190,26 +190,25 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         raise NotAuthorizedException(detail="Invalid credentials")
 
 
-async def _try_jwt_auth(
+def _decode_jwt_claims(
     token: str,
     auth_service: AuthService,
-    app_state: AppState,
+    *,
     path: str,
-) -> AuthenticatedUser | None:
-    """Attempt JWT authentication.
+) -> JwtClaims | None:
+    """Decode + validate a raw JWT, classifying any failure for the audit log.
 
-    Validates the token signature, expiry, and required claims.
-    Delegates user resolution and ``pwd_sig`` validation to
-    :func:`_resolve_jwt_user`.
+    Uses the raw decode path: the middleware enforces iss/aud itself in
+    ``_resolve_jwt_user`` after loading the user record (the expected pair is
+    keyed off the resolved role).
 
     Returns:
-        Authenticated user on success, or ``None`` on failure.
+        The decoded ``JwtClaims`` on success; ``None`` (with a
+        ``SECURITY_AUTH_FAILED`` log carrying the specific reason) on an
+        invalid token, malformed claims, or an unconfigured secret.
     """
     try:
-        # Raw path: the middleware enforces iss/aud itself in
-        # ``_resolve_jwt_user`` after loading the user record (the expected
-        # pair is keyed off the resolved role).
-        claims = auth_service._decode_token_raw(token)  # noqa: SLF001
+        return auth_service._decode_token_raw(token)  # noqa: SLF001
     except jwt.InvalidTokenError as exc:
         logger.warning(
             SECURITY_AUTH_FAILED,
@@ -241,6 +240,26 @@ async def _try_jwt_auth(
         )
         return None
 
+
+async def _try_jwt_auth(
+    token: str,
+    auth_service: AuthService,
+    app_state: AppState,
+    path: str,
+) -> AuthenticatedUser | None:
+    """Attempt JWT authentication.
+
+    Validates the token signature, expiry, and required claims.
+    Delegates user resolution and ``pwd_sig`` validation to
+    :func:`_resolve_jwt_user`.
+
+    Returns:
+        Authenticated user on success, or ``None`` on failure.
+    """
+    claims = _decode_jwt_claims(token, auth_service, path=path)
+    if claims is None:
+        return None
+
     # Check session revocation (sync, O(1) in-memory lookup).
     if app_state.slice(ApiCoreStateSlice).session_store is not None:
         session_store = session_store_of(app_state)
@@ -254,6 +273,63 @@ async def _try_jwt_auth(
             return None
 
     return await _resolve_jwt_user(claims, app_state, path)
+
+
+def _enforce_jwt_token_binding(
+    claims: JwtClaims,
+    db_user: User,
+    *,
+    user_id: str,
+    path: str,
+) -> bool:
+    """Enforce the iss / aud / pwd_sig binding for a JWT-authenticated user.
+
+    System users (CLI tokens) skip ``pwd_sig`` validation because their random
+    password hash is never known to any caller; the JWT signature alone
+    authenticates them. The canonical iss + aud pair differs by role so a
+    leaked CLI token cannot replay as a user token (or vice versa).
+
+    Returns:
+        ``True`` when every binding check passes; ``False`` (with a
+        ``SECURITY_AUTH_FAILED`` log) on the first rejection.
+    """
+    if db_user.role == HumanRole.SYSTEM:
+        expected_iss, expected_aud = SYSTEM_ISSUER, SYSTEM_AUDIENCE
+        token_label = "system_token"  # noqa: S105 -- audit log discriminator
+    else:
+        expected_iss, expected_aud = USER_ISSUER, USER_AUDIENCE
+        token_label = "user_token"  # noqa: S105 -- audit log discriminator
+    if claims.iss != expected_iss:
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason=f"{token_label}_wrong_issuer",
+            user_id=user_id,
+            iss=claims.iss,
+            path=path,
+        )
+        return False
+    if claims.aud != expected_aud:
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason=f"{token_label}_wrong_audience",
+            user_id=user_id,
+            aud=claims.aud,
+            path=path,
+        )
+        return False
+    if db_user.role != HumanRole.SYSTEM:
+        expected_sig = hashlib.sha256(
+            db_user.password_hash.encode(),
+        ).hexdigest()[:16]
+        if not _hmac.compare_digest(claims.pwd_sig or "", expected_sig):
+            logger.warning(
+                SECURITY_AUTH_FAILED,
+                reason="password_changed_since_token_issued",
+                user_id=user_id,
+                path=path,
+            )
+            return False
+    return True
 
 
 async def _resolve_jwt_user(
@@ -284,52 +360,8 @@ async def _resolve_jwt_user(
         )
         return None
 
-    # System users have a random password hash nobody knows;
-    # pwd_sig validation is meaningless and skipped.  The shared
-    # JWT secret signature is the sole authentication gate.
-    # Additionally, require iss + aud to constrain which tokens
-    # may skip pwd_sig. Both system and user tokens carry these
-    # claims; the canonical pair differs by role so a leaked CLI
-    # token cannot replay as a user token (or vice versa).
-    if db_user.role == HumanRole.SYSTEM:
-        expected_iss, expected_aud = SYSTEM_ISSUER, SYSTEM_AUDIENCE
-        token_label = "system_token"  # noqa: S105 -- audit log discriminator
-    else:
-        expected_iss, expected_aud = USER_ISSUER, USER_AUDIENCE
-        token_label = "user_token"  # noqa: S105 -- audit log discriminator
-    if claims.iss != expected_iss:
-        logger.warning(
-            SECURITY_AUTH_FAILED,
-            reason=f"{token_label}_wrong_issuer",
-            user_id=user_id,
-            iss=claims.iss,
-            path=path,
-        )
+    if not _enforce_jwt_token_binding(claims, db_user, user_id=user_id, path=path):
         return None
-    if claims.aud != expected_aud:
-        logger.warning(
-            SECURITY_AUTH_FAILED,
-            reason=f"{token_label}_wrong_audience",
-            user_id=user_id,
-            aud=claims.aud,
-            path=path,
-        )
-        return None
-    if db_user.role != HumanRole.SYSTEM:
-        expected_sig = hashlib.sha256(
-            db_user.password_hash.encode(),
-        ).hexdigest()[:16]
-        if not _hmac.compare_digest(
-            claims.pwd_sig or "",
-            expected_sig,
-        ):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="password_changed_since_token_issued",
-                user_id=user_id,
-                path=path,
-            )
-            return None
 
     logger.info(
         API_AUTH_SUCCESS,
@@ -392,6 +424,37 @@ async def _try_api_key_auth(
     return await _resolve_api_key_user(api_key, app_state, path)
 
 
+def _api_key_precheck_ok(
+    api_key: ApiKey,
+    app_state: AppState,
+    *,
+    path: str,
+) -> bool:
+    """Whether the API key passes revocation + expiry pre-checks.
+
+    Returns:
+        ``True`` when the key is neither revoked nor expired; ``False``
+        (with a ``SECURITY_AUTH_FAILED`` log) otherwise.
+    """
+    if api_key.revoked:
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason="api_key_revoked",
+            key_name=api_key.name,
+            path=path,
+        )
+        return False
+    if api_key.expires_at is not None and api_key.expires_at < app_state.clock.now():
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason="api_key_expired",
+            key_name=api_key.name,
+            path=path,
+        )
+        return False
+    return True
+
+
 async def _resolve_api_key_user(
     api_key: ApiKey,
     app_state: AppState,
@@ -402,21 +465,7 @@ async def _resolve_api_key_user(
     Returns:
         The ``AuthenticatedUser`` value when present, ``None`` otherwise.
     """
-    if api_key.revoked:
-        logger.warning(
-            SECURITY_AUTH_FAILED,
-            reason="api_key_revoked",
-            key_name=api_key.name,
-            path=path,
-        )
-        return None
-    if api_key.expires_at is not None and api_key.expires_at < app_state.clock.now():
-        logger.warning(
-            SECURITY_AUTH_FAILED,
-            reason="api_key_expired",
-            key_name=api_key.name,
-            path=path,
-        )
+    if not _api_key_precheck_ok(api_key, app_state, path=path):
         return None
 
     db_user = await persistence_of(app_state).users.get(api_key.user_id)

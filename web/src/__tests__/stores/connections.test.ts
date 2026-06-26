@@ -28,6 +28,7 @@ function singlePage(reports: readonly HealthReport[]): PaginatedResult<HealthRep
     limit,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: {
       limit,
       next_cursor: null,

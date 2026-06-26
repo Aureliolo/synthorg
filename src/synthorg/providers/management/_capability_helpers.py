@@ -13,7 +13,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import format_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
-    PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_MODEL_ABSENT,
+    PROVIDER_MODEL_DELETE_FAILED,
     PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
@@ -105,19 +106,20 @@ async def delete_local_model(
     except ValueError as exc:
         del_msg = f"Model {model_id!r} not found on provider {name!r}"
         logger.warning(
-            PROVIDER_VALIDATION_FAILED,
+            PROVIDER_MODEL_ABSENT,
             provider=name,
             model=model_id,
             error=del_msg,
         )
         raise ProviderModelNotFoundError(del_msg) from exc
     except RuntimeError as exc:
+        # RecursionError is a RuntimeError; reraise_critical lets it (and
+        # MemoryError, were it ever a RuntimeError) escape before logging.
         reraise_critical(exc)
         del_msg = f"Failed to delete model {model_id!r} on provider {name!r}"
         logger.warning(
-            PROVIDER_DISCOVERY_FAILED,
+            PROVIDER_MODEL_DELETE_FAILED,
             provider=name,
-            reason="model_delete_failed",
             model=model_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

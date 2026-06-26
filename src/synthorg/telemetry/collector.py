@@ -395,8 +395,10 @@ class TelemetryCollector:
         ``telemetry.enabled`` is resolved with full DB > env > default
         precedence only after persistence connects, but the collector is
         built earlier (env > default), so boot re-applies the authoritative
-        value here before :meth:`start` reads it. Reassigns the frozen
-        config in place; intended for the pre-start boot hook only.
+        value here before :meth:`start` reads it. Rebinds ``self._config`` to
+        a fresh frozen copy via ``model_copy`` (the model is immutable);
+        intended for the pre-start boot hook only, before any task reads the
+        flag.
 
         Args:
             enabled: The authoritative resolved value.

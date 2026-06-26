@@ -12,8 +12,8 @@ def _service(state: State) -> WorkflowService:
 
     Wires in the :class:`VersioningService` for workflow definitions so
     create/update paths persist a best-effort version snapshot in the
-    same service call -- controllers no longer orchestrate the two
-    writes by hand.
+    same service call, keeping the two writes atomic and the controller
+    free of ordering responsibility.
 
     Returns:
         ``WorkflowService`` instance.

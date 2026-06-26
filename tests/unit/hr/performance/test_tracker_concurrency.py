@@ -1,11 +1,10 @@
 """Concurrency regression tests for PerformanceTracker.
 
-The tracker's ``_metrics_lock`` historically only protected
-``record_task_metric`` and the inflection cache.
-``record_coordination_contributions`` (synchronous) and
-``record_collaboration_event`` (async) both mutated shared dicts without
-the lock, which is an open defect waiting for an ``await`` to be inserted
-into either body. These tests pin the locked invariant.
+These tests pin the invariant that ``record_coordination_contributions``
+(synchronous) and ``record_collaboration_event`` (async) hold
+``_metrics_lock`` while mutating shared dicts, so a future ``await`` inside
+either body cannot open a data race against ``record_task_metric`` or the
+inflection cache.
 """
 
 import asyncio

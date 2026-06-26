@@ -9931,11 +9931,26 @@ export type components = {
         };
         /** CreateDepartmentRequest */
         readonly CreateDepartmentRequest: {
-            /** @enum {string|null} */
+            /**
+             * @description Default autonomy level for agents in the department.
+             * @enum {string|null}
+             */
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
-            /** @default 0 */
+            /**
+             * @description Share of the org budget allocated to this department (0-100).
+             * @default 0
+             * @example 20
+             */
             readonly budget_percent: number;
+            /**
+             * @description Agent name of the department head, if assigned.
+             * @example cto
+             */
             readonly head?: string | null;
+            /**
+             * @description Department name (unique within the organisation).
+             * @example Engineering
+             */
             readonly name: string;
         };
         /** CreateEntityRequest */
@@ -10066,25 +10081,43 @@ export type components = {
         };
         /** CreateProviderRequest */
         readonly CreateProviderRequest: {
+            /** @description API key credential (required for API_KEY auth). */
             readonly api_key?: string | null;
             readonly auth_type?: components["schemas"]["AuthType"];
+            /**
+             * @description Provider API base URL.
+             * @example https://api.example-provider.test/v1
+             */
             readonly base_url?: string | null;
             readonly custom_header_name?: string | null;
             readonly custom_header_value?: string | null;
-            /** @default litellm */
+            /**
+             * @description Driver backend name.
+             * @default litellm
+             * @example litellm
+             */
             readonly driver: string;
             readonly keep_alive?: string | null;
+            /** @description LiteLLM routing identifier override, if needed. */
             readonly litellm_provider?: string | null;
             /** @default [] */
             readonly models: readonly components["schemas"]["ProviderModelConfig"][];
+            /**
+             * @description Unique provider name (2-64 chars, lowercase + hyphens).
+             * @example example-provider
+             */
             readonly name: string;
             readonly oauth_client_id?: string | null;
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
             readonly preset_name?: string | null;
+            /** @description Bearer token for subscription-based auth. */
             readonly subscription_token?: string | null;
-            /** @default false */
+            /**
+             * @description Whether the operator accepted the subscription terms.
+             * @default false
+             */
             readonly tos_accepted: boolean;
         };
         /** CreateRequestPayload */
@@ -17406,6 +17439,7 @@ export type components = {
         };
         /** TransitionTaskRequest */
         readonly TransitionTaskRequest: {
+            /** @description Optional assignee override applied as part of the transition. */
             readonly assigned_to?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
@@ -17561,12 +17595,17 @@ export type components = {
         };
         /** UpdateDepartmentRequest */
         readonly UpdateDepartmentRequest: {
-            /** @enum {string|null} */
+            /**
+             * @description New default autonomy level; omit to leave unchanged.
+             * @enum {string|null}
+             */
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
+            /** @description New org-budget share (0-100); omit to leave unchanged. */
             readonly budget_percent?: number | null;
             readonly ceremony_policy?: {
                 readonly [key: string]: unknown;
             } | null;
+            /** @description New department head agent name; omit to leave unchanged. */
             readonly head?: string | null;
             readonly teams?: readonly components["schemas"]["Team"][] | null;
         };
@@ -17666,6 +17705,7 @@ export type components = {
         };
         /** UpdateTaskRequest */
         readonly UpdateTaskRequest: {
+            /** @description New assignee agent id; omit to leave the assignee unchanged. */
             readonly assigned_to?: string | null;
             /** @description New maximum spend for the task in the base currency. */
             readonly budget_limit?: number | null;
@@ -17673,7 +17713,10 @@ export type components = {
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
-            /** @enum {string|null} */
+            /**
+             * @description New scheduling priority; omit to leave it unchanged.
+             * @enum {string|null}
+             */
             readonly priority?: "critical" | "high" | "medium" | "low" | null;
             /** @description New task title. */
             readonly title?: string | null;

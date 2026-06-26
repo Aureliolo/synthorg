@@ -469,7 +469,14 @@ class HealthController(Controller):
         """
         app_state: AppState = state.app_state
         status = await _evaluate_readiness(app_state)
+        http_status = _status_code_for(status.status)
+        logger.debug(
+            API_HEALTH_CHECK,
+            handler="health",
+            readiness=status.status.value,
+            http_status=http_status,
+        )
         return Response(
             content=ApiResponse(data=status),
-            status_code=_status_code_for(status.status),
+            status_code=http_status,
         )

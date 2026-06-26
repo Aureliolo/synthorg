@@ -1,3 +1,4 @@
+# module-kind: code
 """A/B-test record serialisation for the meta read endpoints.
 
 Extracted from ``meta`` so the controller stays within its size budget

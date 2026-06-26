@@ -26,8 +26,8 @@
     },
     "src/synthorg/api/app_builders.py": {
       "cap": 500,
-      "loc": 458,
-      "ratio": 0.916,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/api/approval_store.py": {
@@ -44,8 +44,8 @@
     },
     "src/synthorg/api/auth/middleware.py": {
       "cap": 500,
-      "loc": 408,
-      "ratio": 0.816,
+      "loc": 456,
+      "ratio": 0.912,
       "tier": "code"
     },
     "src/synthorg/api/auth/service.py": {
@@ -92,9 +92,15 @@
     },
     "src/synthorg/api/controllers/artifacts.py": {
       "cap": 500,
-      "loc": 491,
-      "ratio": 0.982,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
+    },
+    "src/synthorg/api/controllers/backup.py": {
+      "cap": 400,
+      "loc": 390,
+      "ratio": 0.975,
+      "tier": "controller"
     },
     "src/synthorg/api/controllers/clients.py": {
       "cap": 500,
@@ -104,8 +110,8 @@
     },
     "src/synthorg/api/controllers/events/_sse.py": {
       "cap": 500,
-      "loc": 494,
-      "ratio": 0.988,
+      "loc": 527,
+      "ratio": 1.054,
       "tier": "code"
     },
     "src/synthorg/api/controllers/memory/_preflight.py": {
@@ -170,14 +176,14 @@
     },
     "src/synthorg/api/exception_handlers.py": {
       "cap": 1100,
-      "loc": 939,
-      "ratio": 0.854,
+      "loc": 971,
+      "ratio": 0.883,
       "tier": "complex_service"
     },
     "src/synthorg/api/lifecycle_helpers/config_apply.py": {
       "cap": 600,
-      "loc": 563,
-      "ratio": 0.938,
+      "loc": 572,
+      "ratio": 0.953,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/feature_wiring.py": {
@@ -1304,8 +1310,8 @@
     },
     "src/synthorg/telemetry/collector.py": {
       "cap": 1100,
-      "loc": 1024,
-      "ratio": 0.931,
+      "loc": 1026,
+      "ratio": 0.933,
       "tier": "complex_service"
     },
     "src/synthorg/templates/loader.py": {
@@ -1500,7 +1506,7 @@
     "synthorg.notifications.models": 20,
     "synthorg.observability": 1681,
     "synthorg.observability.background_tasks": 27,
-    "synthorg.observability.events.api": 192,
+    "synthorg.observability.events.api": 193,
     "synthorg.observability.events.approval_gate": 20,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 33,
@@ -1725,7 +1731,7 @@
     },
     "synthorg.telemetry.collector:TelemetryCollector": {
       "lcom4": 1,
-      "loc": 516
+      "loc": 518
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,

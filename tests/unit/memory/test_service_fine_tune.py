@@ -469,7 +469,7 @@ class TestRunPreflight:
 
 
 class TestListRunsPagination:
-    """``list_runs`` now returns ``(items, total)``."""
+    """``list_runs`` returns a ``(items, total)`` tuple for paginated access."""
 
     async def test_returns_tuple_with_total(self) -> None:
         runs = [_run(run_id=f"r-{i}") for i in range(3)]

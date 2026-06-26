@@ -19,6 +19,7 @@ from typing import Final
 
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL
 
 logger = get_logger(__name__)
 
@@ -78,7 +79,7 @@ def discriminate_unauthorized(detail: str | None) -> tuple[ErrorCode, str]:
             # in case a future producer constructs it from runtime
             # context.
             logger.warning(
-                "auth.discriminator.unknown_detail",
+                API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL,
                 detail=(detail or "<none>")[:_MAX_DETAIL_LEN],
             )
             return (ErrorCode.UNAUTHORIZED, "Authentication required")

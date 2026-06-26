@@ -1,3 +1,4 @@
+# module-kind: controller
 """Backup controller -- admin endpoints for backup/restore operations.
 
 All endpoints require CEO or the internal SYSTEM role

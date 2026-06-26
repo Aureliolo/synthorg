@@ -26,6 +26,7 @@ function twoVersionClient(
     limit: 25,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: { limit: 25, next_cursor: null, has_more: false },
   }
   return {

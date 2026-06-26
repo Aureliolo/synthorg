@@ -206,8 +206,11 @@ class WsTicketStore:
                 # Empty message lets the centralised handler fall back to
                 # the class default ("WebSocket ticket cap exceeded") so
                 # the 429 response carries no caller-identifying detail
-                # (the user_id is logged server-side just above).
-                raise TicketLimitExceededError
+                # (the user_id is logged server-side just above). Retry-After
+                # is the ticket TTL: the earliest a pending slot can free is
+                # when the oldest unconsumed ticket expires, so a client that
+                # honours the header does not hot-loop against the cap.
+                raise TicketLimitExceededError(retry_after=math.ceil(self._ttl))
 
             ticket = secrets.token_urlsafe(get_auth_token_bytes())
             entry = _TicketEntry(

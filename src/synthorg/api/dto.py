@@ -496,8 +496,14 @@ class UpdateTaskRequest(BaseModel):
         max_length=4096,
         description="New task description.",
     )
-    priority: Priority | None = None
-    assigned_to: NotBlankStr | None = None
+    priority: Priority | None = Field(
+        default=None,
+        description="New scheduling priority; omit to leave it unchanged.",
+    )
+    assigned_to: NotBlankStr | None = Field(
+        default=None,
+        description="New assignee agent id; omit to leave the assignee unchanged.",
+    )
     budget_limit: float | None = Field(
         default=None,
         ge=0.0,
@@ -522,7 +528,10 @@ class TransitionTaskRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     target_status: TaskStatus = Field(description="Desired target status")
-    assigned_to: NotBlankStr | None = None
+    assigned_to: NotBlankStr | None = Field(
+        default=None,
+        description="Optional assignee override applied as part of the transition.",
+    )
     expected_version: int | None = Field(
         default=None,
         ge=1,

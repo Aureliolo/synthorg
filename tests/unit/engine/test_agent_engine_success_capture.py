@@ -2,10 +2,10 @@
 """Engine-level proof for success-derived procedural capture.
 
 The procedural-memory learning loop has two halves: capture (this file) and
-injection (``test_agent_engine_memory_injection.py``).  Before this wiring the
-engine only captured procedural lessons on the failure-recovery path
-(``_try_procedural_memory``); a *successful* run captured nothing, so a working
-approach was never turned into reusable knowledge.
+injection (``test_agent_engine_memory_injection.py``).  These tests prove a
+COMPLETING task captures a procedural ``success:*`` lesson via
+:class:`SuccessCaptureStrategy`, not only the failure-recovery path
+(``_try_procedural_memory``), so a working approach becomes reusable knowledge.
 
 These tests drive the real :class:`SuccessCaptureStrategy` through the engine's
 own ``run()`` dispatch (not by poking the post-execution pipeline): a task that

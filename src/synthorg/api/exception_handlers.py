@@ -305,65 +305,75 @@ def _build_response(  # noqa: PLR0913
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        # Last-resort fallback when structured-response construction
-        # itself fails (e.g. Pydantic validation error from a corrupted
-        # ErrorCode, structlog context corruption, enum drift).  Emit a
-        # minimal but valid RFC 9457 body so client SDKs that decode
-        # ``error_detail`` fields do not crash on null access.  The
-        # negotiated content type is preserved -- ``application/json``
-        # clients still receive the standard ``ApiResponse`` envelope
-        # shape, only ``application/problem+json`` clients see a bare
-        # ``ProblemDetail``.
-        logger.error(
-            API_REQUEST_ERROR,
-            error_type="response_build_failure",
-            error="Failed to build structured error response",
-            detail=detail,
-            original_status_code=status_code,
-        )
-        # Re-check content negotiation defensively: if ``_wants_problem_json``
-        # itself was the original failure, default to the envelope shape
-        # so the fallback never repeats the same crash.
-        try:
-            use_problem_json = _wants_problem_json(request)
-        except Exception as exc:  # noqa: BLE001 -- defensive  # pragma: no cover
-            reraise_critical(exc)
-            use_problem_json = False
-        instance = _get_instance_id()
-        fallback_title = category_title(ErrorCategory.INTERNAL)
-        fallback_type = category_type_uri(ErrorCategory.INTERNAL)
-        if use_problem_json:
-            return Response(
-                content=ProblemDetail(
-                    type=fallback_type,
-                    title=fallback_title,
-                    status=500,
-                    detail="Internal server error",
-                    instance=instance,
-                    error_code=ErrorCode.INTERNAL_ERROR,
-                    error_category=ErrorCategory.INTERNAL,
-                    retryable=False,
-                    retry_after=None,
-                ),
-                status_code=500,
-                media_type=_PROBLEM_JSON,
-            )
+        return _build_response_fallback(request, detail=detail, status_code=status_code)
+
+
+def _build_response_fallback(
+    request: Request[object, object, State],
+    *,
+    detail: str,
+    status_code: int,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Last-resort 500 body when structured-response construction fails.
+
+    Reached when the normal ``_build_response`` path raises (corrupted
+    ``ErrorCode``, structlog context corruption, enum drift). Emits a
+    minimal but valid RFC 9457 body so client SDKs decoding ``error_detail``
+    do not crash on null access; the negotiated content type is preserved.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
+    logger.error(
+        API_REQUEST_ERROR,
+        error_type="response_build_failure",
+        error="Failed to build structured error response",
+        detail=detail,
+        original_status_code=status_code,
+    )
+    # Re-check content negotiation defensively: if ``_wants_problem_json``
+    # itself was the original failure, default to the envelope shape so the
+    # fallback never repeats the same crash.
+    try:
+        use_problem_json = _wants_problem_json(request)
+    except Exception as exc:  # noqa: BLE001 -- defensive  # pragma: no cover
+        reraise_critical(exc)
+        use_problem_json = False
+    instance = _get_instance_id()
+    fallback_title = category_title(ErrorCategory.INTERNAL)
+    fallback_type = category_type_uri(ErrorCategory.INTERNAL)
+    if use_problem_json:
         return Response(
-            content=ApiResponse[None](
-                error="Internal server error",
-                error_detail=ErrorDetail(
-                    detail="Internal server error",
-                    error_code=ErrorCode.INTERNAL_ERROR,
-                    error_category=ErrorCategory.INTERNAL,
-                    retryable=False,
-                    retry_after=None,
-                    instance=instance,
-                    title=fallback_title,
-                    type=fallback_type,
-                ),
+            content=ProblemDetail(
+                type=fallback_type,
+                title=fallback_title,
+                status=500,
+                detail="Internal server error",
+                instance=instance,
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+                retry_after=None,
             ),
             status_code=500,
+            media_type=_PROBLEM_JSON,
         )
+    return Response(
+        content=ApiResponse[None](
+            error="Internal server error",
+            error_detail=ErrorDetail(
+                detail="Internal server error",
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+                retry_after=None,
+                instance=instance,
+                title=fallback_title,
+                type=fallback_type,
+            ),
+        ),
+        status_code=500,
+    )
 
 
 _STATUS_TO_ERROR_META: MappingProxyType[int, tuple[ErrorCode, ErrorCategory, bool]] = (
@@ -893,7 +903,11 @@ def handle_validation_error(
         ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=400)
-    msg = str(exc.detail) if exc.detail else "Validation error"
+    # Pydantic v2 constraint messages can echo the rejected input value
+    # (literal / pattern failures); scrub before it reaches the body so a
+    # credential submitted to a mis-typed field cannot leak through the 400.
+    raw = str(exc.detail) if exc.detail else "Validation error"
+    msg = scrub_secret_tokens(raw)
     return _build_response(
         request,
         detail=msg,
@@ -910,20 +924,17 @@ def handle_invalid_cursor(
     """Map :class:`InvalidCursorError` to 400.
 
     Cursor tokens are opaque to the client; if tampering or decoding
-    fails, surface a sanitised description (via
-    ``safe_error_description``) in the 400 response body so operators
-    can distinguish malformed-base64 from signature-mismatch without
-    leaking secret-prefixed tokens or signature material into the
-    error envelope.
+    fails, surface the scrubbed exception message so operators can
+    distinguish malformed-base64 from signature-mismatch without the
+    response body carrying any secret-prefixed token or signature
+    material, and without the ``ExcType:`` prefix that
+    ``safe_error_description`` (a log-only helper) would prepend.
 
     Returns:
         ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=400)
-    # ``safe_error_description`` is documented to always return at
-    # least ``type(exc).__name__`` when ``str(exc)`` is empty, so no
-    # fallback string is needed here.
-    detail = safe_error_description(exc)
+    detail = scrub_secret_tokens(str(exc)) or "Invalid pagination cursor"
     return _build_response(
         request,
         detail=detail,
@@ -1012,6 +1023,40 @@ def _retry_after_from_reset(headers: Mapping[str, str]) -> int | None:
     return None
 
 
+def _resolve_http_retry_after(
+    raw_headers: dict[str, str],
+    *,
+    status: int,
+    request: Request[object, object, State],
+) -> int | None:
+    """Resolve a body-field ``Retry-After`` for an ``HTTPException``.
+
+    Prefers an explicit ``Retry-After`` header; for a 429 with no such
+    header, derives one from Litestar's IETF ``RateLimit-Reset`` draft
+    header so clients back off rather than retry with a 0 ms delay.
+
+    Returns:
+        The retry-after seconds, or ``None``.
+    """
+    raw_retry = raw_headers.get("Retry-After") or raw_headers.get("retry-after")
+    if raw_retry:
+        try:
+            return int(raw_retry)
+        except ValueError:
+            # Malformed Retry-After header from upstream is rare but
+            # observable; surfacing it lets operators distinguish a real
+            # missing header from a misbehaving upstream service.
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="retry_after_parse_error",
+                raw_retry_after=raw_retry,
+                path=str(request.url.path),
+            )
+    if status == _TOO_MANY_REQUESTS_STATUS:
+        return _retry_after_from_reset(raw_headers)
+    return None
+
+
 def handle_http_exception(
     request: Request[object, object, State],
     exc: HTTPException,
@@ -1038,33 +1083,18 @@ def handle_http_exception(
         # bytes or a non-string sequence; coerce so the slice always
         # returns a str rather than the same type as ``detail``.
         raw_detail = exc.detail or fallback
-        msg = (raw_detail if isinstance(raw_detail, str) else str(raw_detail))[
-            :_MAX_DETAIL_LEN
-        ]
+        # A third-party HTTPException subclass (rate-limit middleware, a
+        # plugin) may interpolate a credential into a 4xx detail; scrub it
+        # before it reaches the body, matching the domain-error 4xx path in
+        # ``_select_message``.
+        msg = scrub_secret_tokens(
+            (raw_detail if isinstance(raw_detail, str) else str(raw_detail))[
+                :_MAX_DETAIL_LEN
+            ]
+        )
     code, category, retryable = _category_for_status(status)
-    # Parse Retry-After header into the body field for agent consumers.
-    retry_after: int | None = None
     raw_headers = exc.headers or {}
-    raw_retry = raw_headers.get("Retry-After") or raw_headers.get("retry-after")
-    if raw_retry:
-        try:
-            retry_after = int(raw_retry)
-        except ValueError:
-            # Malformed Retry-After header from upstream is rare but
-            # observable; surfacing it lets operators distinguish a real
-            # missing header from a misbehaving upstream service.
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="retry_after_parse_error",
-                raw_retry_after=raw_retry,
-                path=str(request.url.path),
-            )
-    if retry_after is None and status == _TOO_MANY_REQUESTS_STATUS:
-        # Litestar's global rate-limit 429 carries only the IETF
-        # ``RateLimit-Reset`` draft header (seconds-to-reset), never
-        # ``Retry-After``; derive one so clients back off rather than
-        # retry with a 0 ms delay.
-        retry_after = _retry_after_from_reset(raw_headers)
+    retry_after = _resolve_http_retry_after(raw_headers, status=status, request=request)
     response_headers = {
         k: v
         for k, v in raw_headers.items()
@@ -1085,18 +1115,12 @@ def handle_http_exception(
 
 
 # Persistence-layer integrity violations (FK / unique / not-null /
-# generic constraint failures) translate into ``ConstraintViolationError``
-# inside the repository modules; the api layer catches that domain
-# class instead of importing the psycopg driver directly so the HTTP
-# layer stays decoupled from the persistence backend choice. Per the
-# project persistence-boundary rule, ``psycopg`` may only be imported
-# from ``src/synthorg/persistence/``; the previous direct import here
-# was a sanctioned exception kept while the driver-translation path
-# was incomplete -- now that ``ConstraintViolationError`` is the
-# established domain mapping (see
-# ``synthorg.persistence.postgres.approval_repo`` for the canonical
-# translation pattern), the api layer registers the domain class and
-# the driver import is no longer needed.
+# generic constraint failures) surface as ``ConstraintViolationError``
+# from the repository modules; the api layer registers that domain class
+# rather than importing the psycopg driver, so the HTTP layer stays
+# decoupled from the persistence backend choice (the persistence-boundary
+# rule confines ``psycopg`` imports to ``src/synthorg/persistence/``; see
+# ``synthorg.persistence.postgres.approval_repo`` for the translation).
 _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (RecordNotFoundError, handle_record_not_found),
     (DuplicateRecordError, handle_duplicate_record),

@@ -76,6 +76,26 @@ class TestWsTicketStoreCreate:
         with pytest.raises(TicketLimitExceededError):
             await store.create(user)
 
+    async def test_per_user_ticket_cap_carries_wire_contract(self) -> None:
+        """The cap error carries the dedicated 5004 code + a TTL-sized Retry-After.
+
+        Pins the discriminating ``WS_TICKET_LIMIT_EXCEEDED`` code (so a client
+        tells "too many pending tickets" apart from throughput throttling) and
+        that ``retry_after`` is the ticket TTL, not the inherited default of 1.
+        """
+        from synthorg.core.error_taxonomy import ErrorCode
+
+        ttl = 30.0
+        store = WsTicketStore(ttl_seconds=ttl)
+        user = _make_user()
+        for _ in range(5):
+            await store.create(user)
+        with pytest.raises(TicketLimitExceededError) as info:
+            await store.create(user)
+        assert info.value.error_code is ErrorCode.WS_TICKET_LIMIT_EXCEEDED
+        assert info.value.status_code == 429
+        assert info.value.retry_after == math.ceil(ttl)
+
     async def test_per_user_ticket_cap_different_users(self) -> None:
         """Different users have independent ticket caps."""
         store = WsTicketStore()

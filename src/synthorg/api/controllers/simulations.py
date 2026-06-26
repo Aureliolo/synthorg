@@ -368,6 +368,12 @@ class SimulationController(Controller):
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="simulation",
+                simulation_id=simulation_id,
+                operation="cancel",
+            )
             msg = f"Simulation {simulation_id!r} not found"
             raise NotFoundError(msg) from exc
         if record.status in {"completed", "cancelled", "failed"}:

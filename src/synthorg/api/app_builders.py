@@ -1,8 +1,9 @@
 """Config bootstrap and subsystem builders for the Litestar application.
 
-Collects the second-half wiring helpers that :mod:`synthorg.api.app`
-used to inline: logging bootstrap, memory-dir resolution, telemetry
-collector, performance tracker, and LLM-judge resolution.
+Second-half wiring helpers for the Litestar application: logging
+bootstrap, memory-dir resolution, telemetry collector, performance
+tracker, and LLM-judge resolution. Kept out of :mod:`synthorg.api.app`
+so the composition root stays a thin orchestrator.
 """
 
 import os

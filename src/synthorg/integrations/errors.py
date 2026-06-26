@@ -291,10 +291,19 @@ class WebhookVerifierUnavailableError(WebhookError):
 
     Fail-closed: the connection exists but its type has no webhook
     signature verifier in this deployment, so the request cannot be
-    authenticated and is rejected rather than processed unverified. Keeps
-    the ``WEBHOOK_ERROR`` family code (inheritance alias); the gap is a
-    deployment capability limit, not a caller-supplied credential fault.
+    authenticated and is rejected rather than processed unverified.
+
+    Status is 501 Not Implemented, not the family's 502: the server did
+    not contact an upstream and get a bad response (502); it simply does
+    not implement verification for this connection type. 501 tells the
+    sender this is a permanent capability gap (an operator must deploy the
+    verifier), not a transient upstream fault to retry. Keeps the
+    ``WEBHOOK_ERROR`` family code as an inheritance alias; only the HTTP
+    status is narrowed.
     """
+
+    status_code: ClassVar[int] = 501
+    default_message: ClassVar[str] = "Webhook signature verification unavailable"
 
 
 # -- Rate limiting errors ------------------------------------------------

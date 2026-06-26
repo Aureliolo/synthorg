@@ -40,9 +40,9 @@ class _AllMemoryControllers(
     """
 
 
-# Back-compat alias for the direct-method tests below: the handlers the
-# tests exercise via ``.fn`` do not use ``self``, so the composite stands
-# in for the former single ``MemoryAdminController``.
+# Alias so the direct-method tests below can address the composite under a
+# single controller name; the handlers they exercise via ``.fn`` do not use
+# ``self``, so the composite stands in transparently.
 MemoryAdminController = _AllMemoryControllers
 
 
