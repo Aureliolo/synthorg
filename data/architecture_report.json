@@ -212,8 +212,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 500,
-      "loc": 434,
-      "ratio": 0.868,
+      "loc": 436,
+      "ratio": 0.872,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -1002,6 +1002,12 @@
       "ratio": 0.818,
       "tier": "repository"
     },
+    "src/synthorg/persistence/postgres/conversation_participant_repo.py": {
+      "cap": 500,
+      "loc": 433,
+      "ratio": 0.866,
+      "tier": "code"
+    },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
       "loc": 472,
@@ -1106,8 +1112,8 @@
     },
     "src/synthorg/persistence/sqlite/conversation_participant_repo.py": {
       "cap": 500,
-      "loc": 414,
-      "ratio": 0.828,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/cost_forecast_repo.py": {
