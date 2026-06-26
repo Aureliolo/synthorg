@@ -17,6 +17,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # globals.
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -56,9 +57,7 @@ def _truncate_fallback(content: str) -> str:
     Returns:
         Result of type ``str``.
     """
-    if len(content) <= _TRUNCATE_LENGTH:
-        return content
-    return content[:_TRUNCATE_LENGTH] + "..."
+    return clip_with_ellipsis(content, _TRUNCATE_LENGTH)
 
 
 class AbstractiveSummarizer:

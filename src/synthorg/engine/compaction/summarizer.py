@@ -9,6 +9,7 @@ from typing import Final
 
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.task_enums import Complexity
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.epistemic import (
     extract_marker_sentences,
@@ -421,9 +422,7 @@ def _build_summary(
         )
         return f"[Archived {len(messages)} messages from earlier in the conversation.]"
 
-    joined = "; ".join(useful)
-    if len(joined) > _MAX_SUMMARY_CHARS:
-        joined = joined[:_MAX_SUMMARY_CHARS] + "..."
+    joined = clip_with_ellipsis("; ".join(useful), _MAX_SUMMARY_CHARS)
 
     if preserved_count > 0:
         msg_word = "message" if preserved_count == 1 else "messages"

@@ -26,6 +26,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.axis import (
@@ -124,11 +125,7 @@ class ConcatenationOp(_PlainPrepareMixin):
         """
         lines = [f"Consolidated {category.value} memories:"]
         for entry in entries:
-            truncated = (
-                entry.content[:_SUMMARY_TRUNCATE_LENGTH] + "..."
-                if len(entry.content) > _SUMMARY_TRUNCATE_LENGTH
-                else entry.content
-            )
+            truncated = clip_with_ellipsis(entry.content, _SUMMARY_TRUNCATE_LENGTH)
             lines.append(f"- {truncated}")
         return "\n".join(lines)
 

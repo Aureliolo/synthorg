@@ -20,6 +20,7 @@ import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
@@ -470,10 +471,8 @@ class ExternalTriggerStrategy:
             safe_value: object
             if not isinstance(value, str):
                 safe_value = type(value).__name__
-            elif len(value) > _MAX_LOG_VALUE_LEN:
-                safe_value = value[:_MAX_LOG_VALUE_LEN] + "..."
             else:
-                safe_value = value
+                safe_value = clip_with_ellipsis(value, _MAX_LOG_VALUE_LEN)
             logger.warning(
                 SPRINT_STRATEGY_CONFIG_INVALID,
                 strategy="external_trigger",
