@@ -36,7 +36,7 @@ function CatalogEntryCardInner({
         type="button"
         onClick={onSelect}
         aria-label={`View ${entry.name}`}
-        className="flex flex-col gap-3 rounded-md text-left focus:outline-none"
+        className="flex w-full flex-col gap-3 rounded-md text-left focus:outline-none"
       >
         <CatalogEntryHeader entry={entry} installed={installed} />
         <p className="line-clamp-2 text-xs text-text-secondary">{entry.description}</p>

@@ -120,7 +120,10 @@ async def _stream_dashboard_frames(
         while True:
             timeout = max(0.0, next_keepalive - clock.monotonic())
             if pending is None:
-                pending = asyncio.create_task(anext(events))
+                # ``anext`` on the abstract ``AsyncIterator`` returns an
+                # ``Awaitable``, not a ``Coroutine``, so ``create_task`` would
+                # not type-check here; ``ensure_future`` accepts both.
+                pending = asyncio.ensure_future(anext(events))
             try:
                 data = await asyncio.wait_for(asyncio.shield(pending), timeout)
             except TimeoutError:

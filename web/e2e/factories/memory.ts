@@ -83,3 +83,28 @@ export function makeOntologyEntity(
     ...overrides,
   }
 }
+
+/**
+ * Catalogue-wide aggregates carried on ``EntityListResponse.meta``. The
+ * ``/ontology/entities`` endpoint always returns this envelope, and the
+ * store reads ``meta.total_count`` directly, so a mock that omits it makes
+ * the store throw and the catalogue render empty.
+ */
+export interface MockEntityListMeta {
+  core_count: number
+  user_count: number
+  total_count: number
+  drift_summary: null
+}
+
+export function makeEntityListMeta(
+  overrides: Partial<MockEntityListMeta> = {},
+): MockEntityListMeta {
+  return {
+    core_count: 0,
+    user_count: 1,
+    total_count: 1,
+    drift_summary: null,
+    ...overrides,
+  }
+}

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
 import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harness'
-import { makeOntologyEntity } from '../factories'
+import { makeOntologyEntity, makeEntityListMeta } from '../factories'
 
 /**
  * Critical-flow E2E: ontology catalogue + WS personality-trim intake.
@@ -29,6 +29,7 @@ test.describe('Memory recall critical flow', () => {
           data: [makeOntologyEntity()],
           error: null,
           error_detail: null,
+          meta: makeEntityListMeta(),
           pagination: { total: 1, offset: 0, limit: 50, next_cursor: null, has_more: false },
         },
       }),
@@ -85,6 +86,7 @@ test.describe('Memory recall critical flow', () => {
           ],
           error: null,
           error_detail: null,
+          meta: makeEntityListMeta({ user_count: 2, total_count: 2 }),
           pagination: { total: 2, offset: 0, limit: 50, next_cursor: null, has_more: false },
         },
       }),
