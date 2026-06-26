@@ -636,6 +636,9 @@ its persona. Users can override via settings.
 | `research_lab` | `throughput_adaptive` | Discovery pace varies wildly |
 | `consultancy` | `calendar` | Client expects fixed reporting schedules |
 | `data_team` | `task_driven` | Pipeline/batch completion oriented |
+| `growth_marketing` | `event_driven` | Campaign-driven, reacts to launches and signals |
+| `support_desk` | `event_driven` | Ticket-driven, reacts to incoming demand |
+| `security_team` | `calendar` | Fixed review and audit cadences |
 
 ---
 
@@ -680,81 +683,27 @@ Event constants in `synthorg.observability.events.workflow`:
 
 ---
 
-## Implementation Roadmap
+## Strategy availability and integration status
 
-### Shipped in #961 (Foundation)
+All eight `CeremonyStrategyType` strategies ship with reference implementations
+and a default velocity calculator each: `task_driven`, `calendar`, `hybrid`,
+`event_driven`, `budget_driven`, `throughput_adaptive`, `external_trigger`, and
+`milestone_driven`. The dashboard exposes a ceremony-policy editor at
+`/settings/coordination/ceremony-policy` with project, department, and
+per-ceremony override panels, backed by the coordination-namespace ceremony
+settings. Switching a sprint's strategy mid-flight is detected via
+`detect_strategy_migration()` and surfaced through a migration warning. Each
+built-in template ships a default strategy (see [Template Defaults](#template-defaults)).
 
-- `CeremonySchedulingStrategy` protocol (all hooks, maximally extensible)
-- `VelocityCalculator` protocol
-- `CeremonyStrategyType` enum (all 8 members)
-- `CeremonyPolicyConfig` + `ResolvedCeremonyPolicy` + `resolve_ceremony_policy()`
-- `CeremonyEvalContext` (rich evaluation context)
-- `CeremonyScheduler` service
-- Ceremony-to-meeting bridge functions
-- `TaskDrivenStrategy` reference implementation
-- `TaskDrivenVelocityCalculator` reference implementation
-- `VelocityCalcType` enum, `VelocityMetrics` model
-- `VelocityRecord` extensions (task_completion_count, wall_clock_seconds, budget_consumed)
-- `SprintConfig` + `SprintCeremonyConfig` extensions (ceremony_policy, policy_override)
-- Observability event constants
-- This design page
+Per-department `ceremony_policy` overrides in `TemplateDepartmentConfig` and
+`Department` merge field-by-field with the project default via
+`resolve_ceremony_policy()`.
 
-### Shipped in #969 + #970 (Calendar + Hybrid Strategies)
+!!! note "Lifecycle-hook integration"
 
-- `CalendarStrategy`: time-based ceremony firing using `MeetingFrequency` intervals
-- `CalendarVelocityCalculator`: `pts/day` with duration-weighted rolling averages
-- `HybridStrategy`: first-wins between calendar (floor) and task-driven (ceiling) triggers
-- `MultiDimensionalVelocityCalculator`: `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
-- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION`, defensive, for invalid/unvalidated records only; `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION`, defensive, for invalid/unvalidated records only)
-
-### Implemented in #971 + #972 (Event-Driven + Budget-Driven Strategies, integration pending)
-
-- `EventDrivenStrategy`: reactive ceremony firing on engine events with configurable debounce
-- `PointsPerSprintVelocityCalculator`: `pts/sprint` for event-driven and external-trigger strategies
-- `BudgetDrivenStrategy`: ceremony firing at cost-consumption thresholds
-- `BudgetVelocityCalculator`: `pts/<DEFAULT_CURRENCY>` with budget-weighted rolling averages
-- Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
-
-> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration of those hooks is complete, these strategies' event counters will not increment for those event types.
-
-### Implemented in #973 + #974 (Throughput-Adaptive + External-Trigger Strategies, integration pending)
-
-- `ThroughputAdaptiveStrategy`: ceremony firing when rolling throughput rate drops or spikes beyond configured thresholds (velocity_drop_threshold_pct, velocity_spike_threshold_pct, measurement_window_tasks). Baseline rate established from first full window, frozen per sprint. Default velocity calculator: `TaskDrivenVelocityCalculator`.
-- `ExternalTriggerStrategy`: ceremony firing on named external signals (webhooks, git events, MCP invocations). Event matching via `context.external_events` and `on_external_event` lifecycle hook buffer. Source registration is declarative. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
-- Observability event constants (`SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET`, `SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_COLD_START`, `SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED`, `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED`)
-
-> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies, so their event-driven counters stay dormant until that integration lands.
-
-### Shipped in #975 + #976 + #980 (Milestone-Driven + Template Defaults + Department Overrides)
-
-- `MilestoneDrivenStrategy`: ceremony firing when all tasks tagged with a milestone are complete. Milestone-to-task assignment via `on_external_event` (`milestone_assign`/`milestone_unassign`). Edge-triggered (each milestone fires exactly once per sprint). Configurable `transition_milestone` for sprint auto-transition. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
-- Template default ceremony strategy assignments for all 9 builtins (solo_founder/startup/data_team: task_driven, dev_shop/product_team/full_company: hybrid, agency: event_driven, research_lab: throughput_adaptive, consultancy: calendar).
-- Per-department `ceremony_policy` override in `TemplateDepartmentConfig` and `Department` models. Department-level overrides merge field-by-field with project default via `resolve_ceremony_policy()`.
-- Observability event constants (`SPRINT_CEREMONY_MILESTONE_ASSIGNED`, `SPRINT_CEREMONY_MILESTONE_UNASSIGNED`, `SPRINT_CEREMONY_MILESTONE_COMPLETED`, `SPRINT_CEREMONY_MILESTONE_NOT_READY`, `SPRINT_AUTO_TRANSITION_MILESTONE`)
-
-> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks for the milestone-driven strategy, so its event-driven counters stay dormant until that integration lands.
-
-### Shipped in #978 (Strategy Migration UX)
-
-- `StrategyMigrationInfo` frozen model (sprint_id, previous/new strategy, velocity_history_size)
-- `detect_strategy_migration()` pure function for change detection
-- `format_migration_warning()` and `format_reorder_prompt()` pure text formatters
-- `notify_strategy_migration()` async best-effort notification via `AgentMessenger`
-- `CeremonyScheduler.activate_sprint()` captures previous strategy type before deactivation, returns `StrategyMigrationInfo | None`
-- `SPRINT_CEREMONY_STRATEGY_CHANGED` event logged on detection
-- Strategy-aware velocity calculator default in `resolve_ceremony_policy()` (`STRATEGY_DEFAULT_VELOCITY_CALC` mapping)
-- Explicit `velocity_calculator` in all 9 builtin template ceremony policies
-
-### Shipped in #979 (Dashboard UI)
-
-- Ceremony policy API controller: project-level policy query, resolved policy with
-  field-level origin tracking, active strategy query
-- Department ceremony-policy endpoints: GET/PUT/DELETE per-department overrides in
-  departments controller
-- 7 ceremony policy settings in coordination namespace (ceremony_strategy,
-  ceremony_strategy_config, ceremony_velocity_calculator, ceremony_auto_transition,
-  ceremony_transition_threshold, dept_ceremony_policies, ceremony_policy_overrides)
-- Ceremony policy settings page at ``/settings/coordination/ceremony-policy`` with
-  project policy editor, department overrides panel, per-ceremony overrides panel
-- Shared UI components: PolicySourceBadge (field origin indicator), InheritToggle
-  (inherit/override switch)
+    The `CeremonyScheduler` does not yet wire every lifecycle hook
+    (`on_task_added`, `on_task_blocked`, `on_budget_updated`,
+    `on_external_event`). Until that integration is complete, the event-driven
+    counters of the event-driven, budget-driven, throughput-adaptive,
+    external-trigger, and milestone-driven strategies do not increment for the
+    unwired event types.

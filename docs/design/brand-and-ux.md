@@ -294,7 +294,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 |------|------|--------|
 | `AgentRuntimeStatus` | `utils/agent-status.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
 | `SemanticColor` | `utils/agent-status.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
-| `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"cancelled"` |
+| `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"suspended"`, `"cancelled"`, `"rejected"`, `"auth_required"` |
 | `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
 | `ProviderHealthStatus` | `api/types` | `"up"`, `"degraded"`, `"down"`, `"unknown"` |
 | `ApprovalStatus` | `api/types` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
@@ -332,8 +332,3 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 | UX research document | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
 | Page structure and information architecture | [Page Structure & IA](page-structure.md) |
 | UX design guidelines (implementation specs) | [UX Guidelines](ux-guidelines.md) |
-| Parent issue (full UX overhaul) | #762 |
-| Design exploration issue | #765 |
-| Page structure issue | #766 |
-| Design tokens implementation | #775 |
-| UX guidelines document | #767 |

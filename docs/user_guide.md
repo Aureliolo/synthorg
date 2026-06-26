@@ -81,8 +81,9 @@ After the containers are running, open the web dashboard at [http://localhost:30
 4. **Providers**: configure LLM providers. Local providers (e.g. Ollama) are auto-detected with a re-scan button; additional providers can be added via the full provider form supporting API key, subscription, and custom configurations. Model discovery runs automatically after adding a provider.
 5. **Company**: name your synthetic organisation, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
 6. **Agents**: customise agent names, personality presets, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
-7. **Theme**: set UI preferences including colour palette, typography, layout density, animation level, and sidebar position.
-8. **Complete**: review a summary of your configuration and finish setup. This stores the company and brings up the platform; with a configured provider the agent runtime puts the organisation to work, exercised by deterministic e2e harnesses with a scripted provider (see the [Roadmap](roadmap/index.md)).
+7. **Capabilities**: enable or disable optional platform capabilities, grouped by purpose. The two conversational groups render expanded with their on-by-default toggles front-and-centre; advanced groups (off by default) render collapsed. Each toggle explains its trade-off.
+8. **Theme**: set UI preferences including colour palette, typography, layout density, animation level, and sidebar position.
+9. **Complete**: review a summary of your configuration and finish setup. This stores the company and brings up the platform; with a configured provider the agent runtime puts the organisation to work, exercised by deterministic e2e harnesses with a scripted provider (see the [Roadmap](roadmap/index.md)).
 
 The backend validates that a company and at least one provider exist before allowing setup to finish. Agents are optional (Quick Setup skips agent configuration). Steps are completed sequentially; a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 

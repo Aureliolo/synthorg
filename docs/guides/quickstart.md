@@ -120,7 +120,8 @@ On a fresh install with no admin user yet, the **setup wizard** first asks you t
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.
 3. **Name your company**: pick any name (e.g. "My First Org").
 4. **Review agents**: the template populates the roster; tweak personalities and models if you want, or accept defaults.
-5. **Pick a theme**: light or dark.
+5. **Choose capabilities**: enable or disable the optional platform capabilities for your organisation.
+6. **Pick a theme**: light or dark.
 
 **Quick Setup** is the abbreviated path (provider, company name, done). Use it when you want to land in the dashboard fastest and configure the rest later.
 

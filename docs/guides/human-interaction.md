@@ -69,7 +69,7 @@ API -> CLI
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | `GET /overview` (metrics summary), `GET /trends?period=7d\|30d\|90d` (bucketed time-series), `GET /forecast?horizon_days=1..90` (budget projection) |
 | `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (spending, performance, task completion, risk trends) |
-| `/api/v1/settings` | Runtime-editable configuration (28 namespaces), schema discovery |
+| `/api/v1/settings` | Runtime-editable configuration (<!--RS:settings_namespaces-->34<!--/RS--> namespaces), schema discovery |
 | `GET /api/v1/settings/security/export`, `POST /api/v1/settings/security/import` | Security policy export/import |
 | `GET /api/v1/security/audit` | Audit log query with filters |
 | `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics) |

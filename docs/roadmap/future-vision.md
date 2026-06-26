@@ -12,12 +12,13 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 
 | Feature | Status |
 |---------|--------|
-| TimescaleDB hypertable support for append-only time-series tables | Research |
 | Community template marketplace | Research |
+| A2A skill negotiation and inter-org federation (delegation across organisations) | Research |
 | Inter-company communication beyond A2A | Research |
 | Shift system for agents | Research |
 | Fully autonomous self-improving company (continuous staged-rollout meta-loop, beyond the manual-approval self-improvement loop already in active development) | Research |
-| Advanced memory architecture (GraphRAG, consistency protocols, RL consolidation) | Research |
+| Advanced memory architecture (GraphRAG, RL consolidation) | Research |
+| Distributed multi-node organisational memory consistency (Phase 2 compare-and-set on PostgreSQL advisory locks) | Research |
 | Kubernetes sandbox backend | Research |
 | Training mode (learn from senior agents) | Research |
 | Agent-controlled context compaction (agent-guided compaction tool, LLM summarisation, memory offload) | Research |

@@ -49,6 +49,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_IMAGE_PULL_ATTEMPTS` | CLI | Retry count for transient `docker pull` failures on standalone images (integer in `[1, 100]`, default `3`) |
 | `SYNTHORG_IMAGE_PULL_RETRY_DELAY` | CLI | Base backoff between pull retries. Exponential: N-th retry waits `delay * 2^(N-1)` seconds (e.g. `2s` base produces 2s, 4s, 8s, 16s, ...), saturated at a 5 min ceiling to guard against overflow when `image_pull_attempts` is large. Duration, default `2s`. |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | container | Fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. Listed here for operator visibility. |
+| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | container | Hostname the main container probes for the fine-tune sidecar health endpoint (default `fine-tune`, the compose service name). Read directly by the fine-tune Python runner; constrained to a hostname / IP literal shape. Override when the sidecar service is renamed or externally hosted. |
 
 ## Hardcoded network literals (audit rationale)
 
@@ -57,7 +58,7 @@ The CLI contains several `localhost` / service-DNS / port literals that look non
 - **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/readyz`). The port is flag / env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
 - **`postgres:5432` in `compose/generate.go::pgDSN`**: docker-compose internal DNS, container-to-container. The host-side Postgres port is a separate `Params.PostgresPort` tunable rendered in `compose.yml.tmpl`.
 - **`nats:4222` / `nats:8222` in `compose.yml.tmpl`**: NATS client and HTTP monitoring ports inside the compose network. `nats` is the compose service name. `8222` is the NATS-standard monitoring port, not exposed to the host.
-- **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_DEFAULT_NATS_URL`.
+- **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_NATS_URL`.
 
 ## See also
 

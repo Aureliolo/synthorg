@@ -23,7 +23,10 @@ provider, zero LLM spend, unless noted):
 - **Persistence**: SQLite (single-node default) and PostgreSQL
   (multi-instance), dual-backend conformance-tested, with in-process
   yoyo-managed migrations and ISO 4217 currency stamping on every
-  cost-bearing row.
+  cost-bearing row. Opt-in TimescaleDB hypertable conversion for the
+  append-only `cost_records` and `audit_entries` tables
+  (`enable_timescaledb: false` by default; ignored gracefully when the
+  extension is absent).
 - **Provider layer**: any LLM via LiteLLM with retry and rate-limit handling;
   local model management for Ollama and LM Studio.
 - **Configuration and templates**: define a company in YAML; importable
@@ -54,7 +57,11 @@ provider, zero LLM spend, unless noted):
   the best-fit role agent, multi-agent group chat, human-consented
   agent-initiated invites, and direct MCP acting under trust (sensitive
   actions approval-gated; fail-closed when security governance is inactive).
-  All modes opt-in, default off.
+  The four conversational modes (explain-chat, propose, concern routing, and
+  group chat) are on by default; explain-chat, propose, and group chat toggle
+  per request, while concern routing is baked into the proposer at startup and
+  needs a restart to change. Agent-initiated invites and direct MCP acting are
+  off by default.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
   with CSRF protection, Wolfi apko-composed distroless images, Trivy + Grype
@@ -89,12 +96,14 @@ operator-facing maturity and real-provider acceptance:
 Research candidates and longer-term ideas without a scheduled timeframe. See
 [Future Vision](future-vision.md) for detail.
 
-- Advanced memory architecture (GraphRAG, consistency protocols, RL
-  consolidation)
+- Advanced memory architecture (GraphRAG, RL consolidation)
+- Distributed multi-node organisational memory consistency (Phase 2
+  compare-and-set on PostgreSQL advisory locks)
+- A2A skill negotiation and inter-org federation (delegation across
+  organisations)
 - Community template marketplace
 - Kubernetes sandbox backend
 - Shift system for agents
 - Training mode (learn from senior agents)
-- TimescaleDB hypertable support for append-only time-series tables
 
 See [Open Questions](open-questions.md) for unresolved design decisions.

@@ -476,7 +476,15 @@ class StagnationDetector(Protocol):
 Async protocol; future implementations may consult external services or
 LLM-based analysis.
 
-### Default Implementation: `ToolRepetitionDetector`
+### Detector selection (`StagnationDetectionConfig.strategy`)
+
+Stagnation detection is **off by default**: `StagnationDetectionConfig.strategy`
+defaults to `"off"`, and the factory returns no detector, so a stock boot runs
+the engine without one. Set `stagnation.strategy` to `tool_repetition` or
+`quality_erosion` to activate the matching detector with its co-located
+sub-config.
+
+### `ToolRepetitionDetector` (`strategy: tool_repetition`)
 
 Uses dual-signal detection:
 
@@ -493,7 +501,7 @@ sorted per-turn for order-independent comparison.
 
 | Field                  | Default | Description                                       |
 |------------------------|---------|---------------------------------------------------|
-| `enabled`              | `True`  | Whether stagnation detection is active             |
+| `enabled`              | `True`  | Per-detector switch within `StagnationConfig`; only consulted once `strategy: tool_repetition` selects this detector (the system default is `strategy: off`, no detector) |
 | `window_size`          | `5`     | Number of recent tool-bearing turns to analyse     |
 | `repetition_threshold` | `0.6`   | Duplicate ratio that triggers detection            |
 | `cycle_detection`      | `True`  | Whether to detect repeating patterns               |

@@ -235,13 +235,13 @@ selectable via configuration:
 routing:
   strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
   rules:
-    - role_level: "C-Suite"
+    - role_level: "c_suite"
       preferred_model: "large"
       fallback: "medium"
-    - role_level: "Senior"
+    - role_level: "senior"
       preferred_model: "medium"
       fallback: "small"
-    - role_level: "Junior"
+    - role_level: "junior"
       preferred_model: "small"
       fallback: "local-coder"
     - task_type: "code_review"

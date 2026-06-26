@@ -169,6 +169,21 @@ The docstring-completeness convention (Google-style `Returns:` / `Raises:` secti
 - **Per-line opt-out**: a genuine false positive (e.g. an exception raised then caught within the same function, which ruff still reports) is suppressed with `# noqa: DOC501 -- <reason>` on the docstring's closing `"""` line; the reason is mandatory.
 - **Presence vs completeness**: `interrogate` (configured in `[tool.interrogate]`, `fail-under = 95`) covers docstring *presence*; the DOC rules cover *section completeness*. The two are complementary.
 
+## Domain-error-hierarchy gate
+
+`scripts/check_domain_error_hierarchy.py` enforces the rule at pre-push and in CI: every class definition under `src/synthorg/` whose direct base is one of `Exception` / `RuntimeError` / `LookupError` / `PermissionError` / `ValueError` / `TypeError` / `KeyError` / `IndexError` / `AttributeError` / `OSError` / `IOError` is a violation unless the class itself reaches `DomainError` via another base.
+
+Only the *root* of a stdlib-rooted chain is flagged; migrating the root to `DomainError` automatically corrects every descendant.
+
+Per-line opt-out:
+
+```python
+class TsaError(Exception):  # lint-allow: domain-error-hierarchy -- RFC 3161 internals; observability stays stdlib-rooted
+    ...
+```
+
+The justification after `--` is mandatory and must be non-empty. The gate also accepts a frozen baseline file (`scripts/domain_error_hierarchy_baseline.txt`) listing violations a rollout has not yet reached. The baseline shrinks monotonically: any entry that no longer maps to a real violation is reported as drift, so the file cannot harbour stale rows.
+
 ## Registration procedure
 
 1. Wire each new gate into `.pre-commit-config.yaml` (pre-commit or pre-push stage as fits) so it runs locally and in CI.

@@ -52,9 +52,6 @@ Credentials are encrypted at rest via a pluggable `SecretBackend`:
 | `encrypted_sqlite` | Fernet-encrypted rows in the SQLite `connection_secrets` table (default when persistence = SQLite) | Implemented |
 | `encrypted_postgres` | Fernet-encrypted rows in the Postgres `connection_secrets` table (auto-selected when persistence = Postgres) | Implemented |
 | `env_var` | Read-only, env var passthrough (no at-rest storage, no OAuth persistence) | Implemented |
-| `secret_manager_vault` | External secret manager adapter | Stub |
-| `secret_manager_cloud_a` | Cloud secret manager (variant A) | Stub |
-| `secret_manager_cloud_b` | Cloud secret manager (variant B) | Stub |
 
 Both `encrypted_*` backends share the same Fernet key material (AES-128-CBC + HMAC-SHA256, 32 bytes of key, URL-safe base64). The key is read from the environment variable named by `master_key_env` on each backend's config (default `SYNTHORG_MASTER_KEY`). **Per-secret rotation** (via `SecretBackend.rotate`) writes a new Fernet token under a fresh `secret_id` without touching other rows; losing the key loses only the stored secrets, not the rest of the org data. **Master-key rotation is not currently supported**: changing `SYNTHORG_MASTER_KEY` makes every previously stored ciphertext undecryptable, so the master key is treated as permanent for the life of the install (re-init preserves it for the same reason).
 

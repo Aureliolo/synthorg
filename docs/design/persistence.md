@@ -22,14 +22,19 @@ feature goes through a repository protocol, so swapping a backend is a config
 change, and so encrypted secret backends and test fixtures are never skipped
 by a caller that reached past the abstraction.
 
-- Sanctioned exceptions cover three categories: (1) the two agent-facing DB
-  introspection tools (`src/synthorg/tools/database/schema_inspect.py`,
-  `src/synthorg/tools/database/sql_query.py`); (2) security/scanning
+- Sanctioned exceptions cover three categories: (1) security/scanning
   utilities that inspect user-supplied SQL, such as
   `src/synthorg/security/rules/destructive_op_detector.py`, whose detection
-  payload *is* DDL keyword strings; and (3) test fixtures and conformance
-  harnesses that hold driver primitives for cross-subsystem setup. The
-  authoritative list lives in `_ALLOWLIST` inside
+  payload *is* DDL keyword strings; (2) CI/dev gate scripts that hold a
+  driver handle or reference driver names for their own bootstrap
+  (`scripts/check_persistence_boundary.py`,
+  `scripts/check_schema_drift_revisions.py`); and (3) test fixtures and
+  conformance harnesses that hold driver primitives for cross-subsystem
+  setup. The agent-facing DB introspection tools
+  (`tools/database/schema_inspect.py`, `tools/database/sql_query.py`) are
+  **not** on the allowlist: they route through
+  `persistence/external_sql.py` and import no driver, so the boundary holds
+  with no exception. The authoritative list lives in `_ALLOWLIST` inside
   `scripts/check_persistence_boundary.py`; consult it before assuming a
   path is (or is not) covered. Any new exception must be added there with
   a justifying comment.

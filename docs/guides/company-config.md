@@ -68,15 +68,18 @@ The `company_type` field selects a pre-defined organisational template:
 
 | Type | Description | Agents |
 |------|-------------|--------|
-| `solo_founder` | Solo builder with full autonomy | 2 |
+| `solo_founder` | Solo builder with full autonomy | 2--3 |
 | `startup` | CEO + small engineering team | 3--5 |
 | `dev_shop` | Engineering squad with quality gates | 6--10 |
 | `product_team` | Product-focused studio with design | 8--12 |
-| `agency` | Project manager + specialists | 4--8 |
-| `full_company` | Enterprise org with all departments | 8--15 |
+| `agency` | Project manager + specialists | 10--15 |
+| `full_company` | Enterprise org with all departments | 20--50 |
 | `research_lab` | Lead researcher + assistants | 5--10 |
 | `consultancy` | Client-facing advisory and delivery | 4--6 |
 | `data_team` | Analytics and ML-focused team | 5--8 |
+| `growth_marketing` | Campaign-driven marketing team | 5--8 |
+| `support_desk` | Ticket-driven customer support team | 5--7 |
+| `security_team` | Security review and audit team | 4--6 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels
@@ -314,7 +317,7 @@ Memory configuration is covered in detail in the [Memory Configuration](memory.m
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `backend` | string | `"mem0"` | Memory backend |
-| `level` | MemoryLevel | `"session"` | Default persistence level |
+| `level` | MemoryLevel | `"persistent"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage paths |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline |
@@ -416,21 +419,21 @@ Valid strategies: `manual`, `role_based`, `load_balanced`, `cost_optimized`, `hi
 departments:
   - name: "engineering"
     budget_percent: 60
-    head_role: "CTO"
+    head: "CTO"
     reporting_lines:
       - subordinate: "Full-Stack Developer"
         supervisor: "CTO"
   - name: "product"
     budget_percent: 40
-    head_role: "Product Manager"
+    head: "Product Manager"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Department name (must be unique) |
-| `budget_percent` | int | `0` | Percentage of company budget |
-| `head_role` | string | `null` | Department head role name. Use the companion `head_merge_id` to disambiguate when several agents share the role |
-| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when several agents share `head_role` |
+| `budget_percent` | float | `0` | Percentage of company budget |
+| `head` | string | `null` | Department head role name (or agent identifier). Use the companion `head_id` to disambiguate when several agents share the role |
+| `head_id` | string | `null` | Optional unique identifier for the department head; use when several agents share `head` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |
 
 ### Workflow Handoffs
@@ -496,19 +499,19 @@ SynthOrg enforces the following cross-field validation rules at load time:
     departments:
       - name: "executive"
         budget_percent: 20
-        head_role: "CEO"
+        head: "CEO"
         reporting_lines:
           - subordinate: "CTO"
             supervisor: "CEO"
       - name: "engineering"
         budget_percent: 60
-        head_role: "CTO"
+        head: "CTO"
         reporting_lines:
           - subordinate: "Full-Stack Developer"
             supervisor: "CTO"
       - name: "product"
         budget_percent: 20
-        head_role: "Product Manager"
+        head: "Product Manager"
 
     agents:
       - role: "CEO"

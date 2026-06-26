@@ -72,13 +72,13 @@ ls -lh logs/
 
 ### Docker logs (only needed for discrepancy check)
 
-Only fetch Docker logs if running discrepancy mode or default (summary + discrepancy). Requires the container to be running:
+Only fetch Docker logs if running discrepancy mode or default (summary + discrepancy). Requires the container to be running. Capture the combined stdout/stderr and save it to `logs/docker-stdout.txt` with the **Write** tool (a Bash `>` redirect to a file is blocked by the no-write hook). Run:
 
 ```bash
-docker logs synthorg-backend-1 --tail 1000 > logs/docker-stdout.txt 2>&1
+docker logs synthorg-backend-1 --tail 1000 2>&1
 ```
 
-Do **not** pass `--timestamps`; Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 3.
+then write the captured output to `logs/docker-stdout.txt` using the Write tool. Do **not** pass `--timestamps`; Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 3.
 
 If the container is stopped, skip the discrepancy check and report: "Container is stopped: file log analysis only (no discrepancy check)."
 

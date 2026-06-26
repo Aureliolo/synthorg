@@ -775,18 +775,18 @@ SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do n
 <one .py path per line from `git diff --staged main --name-only`>
 ```
 
-For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers.py` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
+For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers/` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
 
 **Launch:** add the two mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
 
-`mini-pass-ghost-wiring` is src-targeted (runtime modules only). Give it the changed `.py` files under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` as scope, but allow it to read `src/synthorg/api/{app,auto_wire,lifecycle,lifecycle_builder,lifecycle_helpers}.py` and `scripts/_ghost_wiring_manifest.txt` for boot-path tracing even when those are not in the diff (proving non-reachability requires reading the boot path, not just the new file). It must apply the SCOPE RULE in Agent 14's prompt and must not re-flag symbols whose manifest line is `PENDING` (those are tracked by EPIC #1955).
+`mini-pass-ghost-wiring` is src-targeted (runtime modules only). Give it the changed `.py` files under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` as scope, but allow it to read `src/synthorg/api/{app,auto_wire,lifecycle,lifecycle_builder}.py`, the `src/synthorg/api/lifecycle_helpers/` package, and `scripts/_ghost_wiring_manifest.txt` for boot-path tracing even when those are not in the diff (proving non-reachability requires reading the boot path, not just the new file). It must apply the SCOPE RULE in Agent 14's prompt and must not re-flag symbols whose manifest line is `PENDING` (those are tracked by EPIC #1955).
 
 **Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
 
 **Skip condition:** skip the mini-pass entirely when the diff has zero relevant `.py` changes:
 
 - skip both when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/`;
-- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow);
+- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers/` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow);
 - `mini-pass-ghost-wiring` runs whenever any `.py` under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` changed (a PR that adds a new runtime class/factory/store/endpoint without wiring it at boot is exactly the regression this catches). Skip it only when the diff has zero `.py` changes under those runtime modules.
 
 ## Phase 4: Launch Review Agents (parallel)

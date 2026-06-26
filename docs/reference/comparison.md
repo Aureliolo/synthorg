@@ -11,7 +11,7 @@ description: >-
 
 How SynthOrg compares to agent orchestration frameworks, platforms, and research projects.
 
-Last updated: 2026-06-19
+Last updated: 2026-06-26
 
 **Legend:**
 ✔ Full support | ~ Partial support | - Not supported | ⏲ Planned
@@ -123,7 +123,7 @@ Last updated: 2026-06-19
 
 | Framework | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ⏲ | ✔ | ✔ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ⏲ | ✔ | ~ | ~ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ | ~ | ✔ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | - | ~ | ~ | - |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | - | ~ | ~ | ✔ |
