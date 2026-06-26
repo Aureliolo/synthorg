@@ -224,6 +224,58 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="shutdown_grace_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Seconds the graceful-shutdown strategy waits for a"
+            " cooperative agent exit before escalating."
+        ),
+        group="Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=300.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="shutdown_cleanup_seconds",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description=(
+            "Seconds allowed for shutdown cleanup callbacks to run after"
+            " the agent has stopped."
+        ),
+        group="Shutdown",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=60.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="task_assignment_max_concurrent_tasks_per_agent",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum concurrent tasks an agent is intended to handle;"
+            " scoring-based assignment strategies filter out agents at"
+            " capacity."
+        ),
+        group="Task Assignment",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
 # ── Routing scorer weights ──────────────────────────────────────
 # Weights for the AgentTaskScorer score components. Sum is 1.1 with
 # the tag bonus; capped at 1.0 by the caller. See

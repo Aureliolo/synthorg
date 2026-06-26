@@ -19,7 +19,12 @@ from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_float
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_float,
+    parse_int,
+)
 
 logger = get_logger(__name__)
 
@@ -257,6 +262,18 @@ class GracefulShutdownConfig(BaseModel):
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
+            field="grace_seconds",
+            namespace=SettingNamespace.ENGINE,
+            key="shutdown_grace_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="cleanup_seconds",
+            namespace=SettingNamespace.ENGINE,
+            key="shutdown_cleanup_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
             field="tool_timeout_seconds",
             namespace=SettingNamespace.ENGINE,
             key="shutdown_tool_timeout_seconds",
@@ -322,6 +339,15 @@ class TaskAssignmentConfig(BaseModel):
         },
     )
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="max_concurrent_tasks_per_agent",
+            namespace=SettingNamespace.ENGINE,
+            key="task_assignment_max_concurrent_tasks_per_agent",
+            parse=parse_int,
+        ),
+    )
+
     strategy: NotBlankStr = Field(
         default="role_based",
         description="Assignment strategy name",
@@ -342,6 +368,11 @@ class TaskAssignmentConfig(BaseModel):
             "agents at capacity."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_strategy_name(self) -> Self:

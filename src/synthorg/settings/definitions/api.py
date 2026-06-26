@@ -379,6 +379,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="rate_limit_floor_max_requests",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Maximum total requests per time window (by IP) across the"
+            " whole API, independent of auth. Must be >= both the"
+            " authenticated and unauthenticated per-window caps. Resolves"
+            " through DB > env > YAML > code default; the DB layer is"
+            " rejected at write time because the middleware stack is baked"
+            " at app construction (read_only_post_init=True)."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=1000000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="rate_limit_time_unit",
         type=SettingType.ENUM,
         default="minute",
