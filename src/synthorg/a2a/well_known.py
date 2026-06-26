@@ -96,13 +96,14 @@ async def _get_cached_card(
         return card_data
 
 
-async def _put_cached_card(
+async def _put_cached_card(  # noqa: PLR0913 -- cache identity + TTL + bound
     cache_key: str,
     card_data: dict[str, JsonValue],
     ttl: int,
     *,
     fingerprint: str = "",
     clock: Clock | None = None,
+    max_entries: int = _CARD_CACHE_MAX_ENTRIES,
 ) -> None:
     """Store card data in cache with TTL and fingerprint.
 
@@ -114,12 +115,14 @@ async def _put_cached_card(
         clock: Time source override (defaults to module-level
             ``_default_clock``); tests inject a FakeClock to control
             the stored expiry deadline.
+        max_entries: Hard cap on cached entries enforced before insert
+            (operator-tuned ``a2a.card_cache_max_entries``).
     """
     if ttl <= 0:
         return
     active_clock = clock or _default_clock
     async with _cache_lock:
-        _evict_for_insert(cache_key, active_clock)
+        _evict_for_insert(cache_key, active_clock, max_entries)
         _card_cache[cache_key] = (
             card_data,
             active_clock.monotonic() + ttl,
@@ -127,7 +130,7 @@ async def _put_cached_card(
         )
 
 
-def _evict_for_insert(cache_key: str, active_clock: Clock) -> None:
+def _evict_for_insert(cache_key: str, active_clock: Clock, max_entries: int) -> None:
     """Make room for ``cache_key`` under the entry cap (caller holds the lock).
 
     Refreshing an existing key moves it to the most-recent position. When
@@ -137,11 +140,12 @@ def _evict_for_insert(cache_key: str, active_clock: Clock) -> None:
     Args:
         cache_key: The key about to be (re)inserted.
         active_clock: Clock used to identify expired entries.
+        max_entries: Hard cap on cached entries before eviction kicks in.
     """
     if cache_key in _card_cache:
         del _card_cache[cache_key]
         return
-    if len(_card_cache) < _CARD_CACHE_MAX_ENTRIES:
+    if len(_card_cache) < max_entries:
         return
     now = active_clock.monotonic()
     expired = [
@@ -149,7 +153,7 @@ def _evict_for_insert(cache_key: str, active_clock: Clock) -> None:
     ]
     for key in expired:
         del _card_cache[key]
-    while len(_card_cache) >= _CARD_CACHE_MAX_ENTRIES:
+    while len(_card_cache) >= max_entries:
         del _card_cache[next(iter(_card_cache))]
 
 
@@ -367,6 +371,7 @@ class WellKnownAgentCardController(Controller):
             card_data,
             ttl,
             fingerprint=company_name,
+            max_entries=app_state.config.a2a.card_cache_max_entries,
         )
         logger.info(
             A2A_AGENT_CARD_SERVED,
@@ -455,6 +460,12 @@ class WellKnownAgentCardController(Controller):
             )
             return _service_unavailable_response()
 
-        await _put_cached_card(cache_key, card_data, ttl, fingerprint=fingerprint)
+        await _put_cached_card(
+            cache_key,
+            card_data,
+            ttl,
+            fingerprint=fingerprint,
+            max_entries=app_state.config.a2a.card_cache_max_entries,
+        )
         logger.info(A2A_AGENT_CARD_SERVED, card_type="agent", agent_id=agent_id)
         return _card_response(card_data, ttl)

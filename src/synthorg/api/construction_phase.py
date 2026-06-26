@@ -378,6 +378,20 @@ def build_construction_services(
                     parse=parse_int,
                 ).value
             ),
+            history_per_session=int(
+                resolve_init_value(
+                    SettingNamespace.COMMUNICATION,
+                    "event_stream_history_per_session",
+                    parse=parse_int,
+                ).value
+            ),
+            history_max_sessions=int(
+                resolve_init_value(
+                    SettingNamespace.COMMUNICATION,
+                    "event_stream_history_max_sessions",
+                    parse=parse_int,
+                ).value
+            ),
         ),
         interrupt_store=overrides.interrupt_store or InterruptStore(),
         cursor_secret=cursor_secret,

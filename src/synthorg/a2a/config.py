@@ -1,12 +1,14 @@
 """A2A external gateway configuration."""
 
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_int
 
 logger = get_logger(__name__)
 
@@ -162,6 +164,15 @@ class A2AConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="card_cache_max_entries",
+            namespace=SettingNamespace.A2A,
+            key="card_cache_max_entries",
+            parse=parse_int,
+        ),
+    )
+
     enabled: bool = False
     allowed_peers: tuple[NotBlankStr, ...] = ()
     rate_limit_per_peer_rpm: int = Field(
@@ -184,6 +195,16 @@ class A2AConfig(BaseModel):
         ge=0,
         description="Agent Card cache TTL (0 = no caching)",
     )
+    card_cache_max_entries: int = Field(
+        default=512,
+        ge=1,
+        le=100000,
+        description=(
+            "Hard cap on cached Agent Cards. The per-agent key is"
+            " (agent_id, host_base); without a cap the cache grows"
+            " unbounded across agent churn since expiry is lazy."
+        ),
+    )
     auth: A2AAuthConfig = Field(
         default_factory=A2AAuthConfig,
         description="Authentication scheme configuration",
@@ -196,6 +217,11 @@ class A2AConfig(BaseModel):
         default_factory=A2AAgentCardVerificationConfig,
         description="Agent Card signature verification",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_enabled_has_peers(self) -> Self:

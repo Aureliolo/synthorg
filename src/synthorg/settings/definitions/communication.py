@@ -247,6 +247,46 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="event_stream_history_per_session",
+        type=SettingType.INTEGER,
+        default="256",
+        description=(
+            "Per-session SSE replay ring-buffer depth. Recent events are"
+            " retained so a reconnecting client sending Last-Event-ID is"
+            " replayed the gap it missed. Resolved at construction;"
+            " restart-required because the ring buffer is sized once."
+        ),
+        group="Event Stream",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=16,
+        max_value=10000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="event_stream_history_max_sessions",
+        type=SettingType.INTEGER,
+        default="1024",
+        description=(
+            "Maximum number of sessions retained in the SSE replay history"
+            " before the oldest session's buffer is evicted (FIFO). Bounds"
+            " total replay memory across session churn. Resolved at"
+            " construction; restart-required."
+        ),
+        group="Event Stream",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=16,
+        max_value=100000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="event_stream_subscriber_idle_ttl_seconds",
         type=SettingType.FLOAT,
         default="86400.0",
