@@ -11,6 +11,7 @@ and model-matching logic.
 
 from collections.abc import Callable
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.core.validation import require_non_blank
 from synthorg.engine.quality.decomposer_protocol import (
@@ -84,6 +85,7 @@ def build_decomposer(
     *,
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> CriteriaDecomposer:
     """Build a criteria decomposer from config.
 
@@ -92,6 +94,8 @@ def build_decomposer(
         provider: Required for ``DecomposerVariant.LLM``; ignored otherwise.
         tier_resolver: Maps ``config.decomposer_model_tier`` to a concrete
             model identifier.  Required for ``DecomposerVariant.LLM``.
+        cost_tracker: Records the verification LLM's token spend; forwarded
+            to the LLM decomposer so its probes are not a cost blind spot.
 
     Returns:
         A ``CriteriaDecomposer`` instance.
@@ -125,6 +129,7 @@ def build_decomposer(
             provider=provider,
             model_id=model_id,
             max_probes_per_criterion=config.max_probes_per_criterion,
+            cost_tracker=cost_tracker,
         )
 
     # Reachable when a tampered config holds an unknown discriminator
@@ -145,6 +150,7 @@ def build_grader(
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
     heuristic_grader_config: HeuristicGraderConfig | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> RubricGrader:
     """Build a rubric grader from config.
 
@@ -157,6 +163,8 @@ def build_grader(
             with operator-tunable thresholds resolved from
             ``EngineBridgeConfig``. ``None`` falls back to grader
             defaults that mirror the historical hardcoded values.
+        cost_tracker: Records the verification LLM's token spend; forwarded
+            to the LLM grader so its grading calls are not a cost blind spot.
 
     Returns:
         A ``RubricGrader`` instance.
@@ -190,6 +198,7 @@ def build_grader(
             provider=provider,
             model_id=model_id,
             min_confidence_override=config.min_confidence_override,
+            cost_tracker=cost_tracker,
         )
 
     # Reachable when a tampered config holds an unknown discriminator
