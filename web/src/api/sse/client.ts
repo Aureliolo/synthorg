@@ -63,6 +63,26 @@ interface SseClient {
   close: () => void
 }
 
+/** Parse one SSE frame's data into a plain event object, or null if malformed. */
+function parseSseFrameData(event: MessageEvent): Record<string, unknown> | null {
+  if (typeof event.data !== 'string') return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(event.data)
+  } catch (parseErr) {
+    log.warn('Failed to parse SSE frame', sanitizeForLog(parseErr))
+    return null
+  }
+  // Only forward plain objects; the caller's WsEvent validation rejects
+  // anything malformed, but excluding non-objects up front keeps the log
+  // signal clean and avoids handing arrays / scalars downstream.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    log.warn('SSE frame was not an event object, discarding')
+    return null
+  }
+  return parsed as Record<string, unknown>
+}
+
 /** Parse one SSE frame, surface its event id, and forward the raw event. */
 function processSseFrame(
   event: MessageEvent,
@@ -76,21 +96,8 @@ function processSseFrame(
   const sanitizedId = event.lastEventId
     ? sanitizeWsString(event.lastEventId, SSE_MAX_LAST_EVENT_ID_LENGTH)
     : undefined
-  if (typeof event.data !== 'string') return
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(event.data)
-  } catch (parseErr) {
-    log.warn('Failed to parse SSE frame', sanitizeForLog(parseErr))
-    return
-  }
-  // Only forward plain objects; the caller's WsEvent validation rejects
-  // anything malformed, but excluding non-objects up front keeps the log
-  // signal clean and avoids handing arrays / scalars downstream.
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    log.warn('SSE frame was not an event object, discarding')
-    return
-  }
+  const parsed = parseSseFrameData(event)
+  if (parsed === null) return
   if (onEvent(parsed) && sanitizedId !== undefined) {
     onLastEventId(sanitizedId)
   }

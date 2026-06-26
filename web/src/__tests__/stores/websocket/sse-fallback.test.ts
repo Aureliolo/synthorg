@@ -31,6 +31,7 @@ class FakeEventSource {
   onerror: ((ev: Event) => void) | null = null
   private readonly listeners = new Map<string, Set<SseListener>>()
   constructor(readonly url: string) {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- test spy needs the latest instance
     lastSource = this
   }
   addEventListener(type: string, handler: SseListener): void {
