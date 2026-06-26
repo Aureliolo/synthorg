@@ -700,6 +700,12 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    tree (``cmd_scan_all``), inherently near the budget and tipping past
 #    it under ``--dist=loadfile`` contention -- the full scan is the
 #    test's whole point, not a fixture leak.
+#  - ``test_check_error_code_uniqueness.py::test_real_tree_passes``: scans
+#    the entire committed ``src/synthorg`` tree for duplicate error-code
+#    mappings, the same whole-tree-scan class as above and likewise tipping
+#    past the budget under ``--dist=loadfile`` contention. Only this one
+#    test is exempt; the file's other cases scan synthetic ``tmp_path``
+#    trees and stay fast.
 #  - ``test_construction_wiring.py``: builds the whole app via
 #    ``create_app`` to assert construction-phase slice wiring. The build is
 #    class-scoped (one build shared across the class), so the one-time cost
@@ -729,6 +735,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/architecture/",
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
+    "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/api/test_construction_wiring.py",
     "unit/api/test_app.py",
     "unit/api/test_health.py",
