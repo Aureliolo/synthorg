@@ -383,15 +383,21 @@ class HealthProberService:
         Honours ``degraded_threshold``: stay ``HEALTHY`` until the
         degraded threshold is reached, transition to ``DEGRADED``
         between the two thresholds, and flip to ``UNHEALTHY`` only
-        once ``unhealthy_threshold`` is hit. Previously a single
-        failure forced ``DEGRADED`` regardless of configuration, so
-        raising ``degraded_threshold`` had no effect.
+        once ``unhealthy_threshold`` is hit.
 
         Returns:
-            The new ``ConnectionStatus`` (``HEALTHY``, ``DEGRADED``, or
-            ``UNHEALTHY``) after applying the failure-count thresholds.
+            The new ``ConnectionStatus`` after applying the failure-count
+            thresholds. ``UNKNOWN`` reports (the checker cannot probe) pass
+            through untouched: neither a success nor a failure.
         """
         async with self._failure_lock:
+            if report_status == ConnectionStatus.UNKNOWN:
+                # A checker with nothing to probe (e.g. a cloud LLM provider
+                # whose inference routes through litellm with no base_url)
+                # reports UNKNOWN. Counting it as a failure would escalate a
+                # perfectly healthy provider to UNHEALTHY over successive
+                # cycles, so leave the counter untouched and report UNKNOWN.
+                return ConnectionStatus.UNKNOWN
             if report_status == ConnectionStatus.HEALTHY:
                 self._failure_counts.pop(name, None)
                 return ConnectionStatus.HEALTHY

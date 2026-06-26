@@ -85,6 +85,7 @@ async def _init_persistence(
             ).model_copy(update={"dev_auth_bypass": dev_auth_bypass})
             app_state.wire(ApiCoreStateSlice, auth_service=AuthService(auth_config))
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 note="Failed to resolve JWT secret",
@@ -96,6 +97,7 @@ async def _init_persistence(
     try:
         await persistence.migrate()
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Failed to run persistence migrations",

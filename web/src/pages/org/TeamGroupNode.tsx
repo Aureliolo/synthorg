@@ -16,7 +16,7 @@ export function TeamGroupNode({ data }: NodeProps) {
     : { teamName: '', memberCount: 0 }
 
   return (
-    <div className="h-full w-full rounded-md border border-dashed border-border bg-bg-card/50 p-2">
+    <div className="h-full w-full rounded-md border border-dashed border-border bg-card/50 p-2">
       <Handle type="target" position={Position.Top} className="!bg-border" />
       <div className="flex items-center gap-1.5 pb-1">
         <Users className="size-3 text-text-muted" aria-hidden="true" />

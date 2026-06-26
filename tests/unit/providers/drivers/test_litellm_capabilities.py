@@ -1,0 +1,78 @@
+"""Unit tests for ``build_capabilities`` (LiteLLM driver capability resolution).
+
+Focus on the ollama path, which bypasses LiteLLM's static model DB entirely
+(``info = {}``) and resolves capabilities from the persisted probe metadata,
+plus the three-tier embedding detection.
+"""
+
+import pytest
+
+from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.provider_schema import ProviderModelConfig
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+
+pytestmark = pytest.mark.unit
+
+
+def _config(  # noqa: PLR0913 -- keyword-only test factory
+    model_id: str,
+    *,
+    tools: bool = False,
+    vision: bool = False,
+    reasoning: bool = False,
+    embeddings: bool = False,
+    max_context: int = 8192,
+) -> ProviderModelConfig:
+    return ProviderModelConfig(
+        id=model_id,
+        cost_per_1k_input=0.0,
+        max_context=max_context,
+        metadata=ModelMetadata(
+            supports_tools=tools,
+            supports_vision=vision,
+            supports_reasoning=reasoning,
+            supports_embeddings=embeddings,
+        ),
+    )
+
+
+def _ollama_caps(config: ProviderModelConfig) -> ModelCapabilities:
+    return build_capabilities(
+        config,
+        routing_key="ollama",
+        provider_name="test-provider",
+        fallback_max_output_tokens=2048,
+    )
+
+
+def test_ollama_capabilities_come_from_probe_metadata() -> None:
+    # ollama bypasses litellm's static DB (no entry for locally-pulled models),
+    # so the probed metadata flags survive instead of all-False guesses.
+    caps = _ollama_caps(_config("qwen3:8b", tools=True, vision=True, reasoning=True))
+    assert caps.supports_tools is True
+    assert caps.supports_vision is True
+    assert caps.supports_reasoning is True
+    # With no litellm streaming info, ollama models default to streaming-capable.
+    assert caps.supports_streaming is True
+    assert caps.provider == "test-provider"
+
+
+def test_ollama_embedding_flag_from_metadata() -> None:
+    assert _ollama_caps(_config("custom", embeddings=True)).supports_embeddings is True
+
+
+def test_embedding_detected_by_id_substring() -> None:
+    # Even with no metadata flag, an "embed" id is treated as an embedder
+    # (the id-substring last resort).
+    assert _ollama_caps(_config("nomic-embed-text")).supports_embeddings is True
+
+
+def test_chat_model_is_not_embedding() -> None:
+    assert _ollama_caps(_config("llama3:8b")).supports_embeddings is False
+
+
+def test_max_output_tokens_clamped_to_context() -> None:
+    # The fallback output cap must never exceed the model's context window.
+    caps = _ollama_caps(_config("small", max_context=1024))
+    assert caps.max_output_tokens <= 1024

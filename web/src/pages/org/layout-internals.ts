@@ -159,8 +159,9 @@ export function toGroupRelative(
 }
 
 /**
- * Step 1.5: centre each dept lead over its IN-GROUP reports.  Dagre lays
- * a lead out centred over ALL its children -- including cross-department
+ * Step 0.5 (runs before Step 1): centre each dept lead over its IN-GROUP
+ * reports.  Dagre lays a lead out centred over ALL its children -- including
+ * cross-department
  * reports (e.g. a CEO sits above its CTO *and* every department lead),
  * which dragged the lead far from the one report that shares its box and
  * left a wide, mostly-empty dept card.  Re-anchoring the lead to the

@@ -364,7 +364,9 @@ describe("formatCost", () => {
 
 describe("reenableKey", () => {
   it("is stable for the same (provider, model) pair", () => {
-    expect(reenableKey("openai", "gpt-x")).toBe(reenableKey("openai", "gpt-x"));
+    expect(reenableKey("test-provider", "test-small-001")).toBe(
+      reenableKey("test-provider", "test-small-001"),
+    );
   });
 
   it("distinguishes the same model id across providers", () => {

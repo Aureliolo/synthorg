@@ -138,7 +138,9 @@ def to_provider_model_response(
             capabilities.supports_streaming if capabilities is not None else True
         ),
         supports_embeddings=(
-            capabilities.supports_embeddings if capabilities is not None else False
+            capabilities.supports_embeddings
+            if capabilities is not None
+            else config.metadata.supports_embeddings
         ),
         supports_reasoning=(
             capabilities.supports_reasoning

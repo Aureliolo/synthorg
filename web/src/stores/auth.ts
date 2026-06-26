@@ -205,9 +205,14 @@ async function checkSessionImpl(
         await _retryDelay(SESSION_CHECK_RETRY_MS)
         continue
       }
-      // No valid session yet. Under the dev bypass, try a password-free
-      // auto-login as the existing admin before surfacing the login screen.
-      if (outcome === 'unauthenticated' && IS_DEV_AUTH_BYPASS) {
+      // No valid session yet (outcome is 'unauthenticated' or 'unknown').
+      // Under the dev bypass, try a password-free auto-login as the existing
+      // admin before surfacing the login screen. 'unknown' is covered too: a
+      // slow / 5xx backend during startup classifies as 'unknown', and the
+      // dev-bypass bootstrap only re-runs its check while status is 'unknown',
+      // so leaving it there would spin "Signing in..." forever; routing it
+      // through the auto-login either succeeds or falls through to login.
+      if (IS_DEV_AUTH_BYPASS) {
         if (await _tryDevAutoLogin(set, get)) return
         return
       }

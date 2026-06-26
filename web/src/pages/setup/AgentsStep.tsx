@@ -59,29 +59,25 @@ function UnresolvedAgentsBanner({
 
 /**
  * Loading / error / empty fallbacks rendered before the agent grid.
- * Reached only when the caller has confirmed `agentsLoading` OR the
- * agent list is empty, so the final branch is the empty state.
+ * Reached only when the caller has confirmed `agentsLoading`, the fetch has
+ * not yet run, OR the agent list is empty, so the final branch is the empty
+ * state. The not-yet-fetched case shows the skeleton too, so the empty state
+ * never flashes for a single frame before the on-mount fetch starts.
  */
 function AgentsStepFallback({
   agentsLoading,
+  agentsFetched,
   agentsError,
   onRetry,
 }: {
   agentsLoading: boolean
+  agentsFetched: boolean
   agentsError: string | null
   onRetry: () => void
 }) {
-  if (agentsLoading) {
-    return (
-      <div className="space-y-section-gap">
-        <Skeleton className="h-32 rounded-lg" />
-        {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
-      </div>
-    )
-  }
-
+  // Error wins over the skeleton: a failed fetch leaves ``agentsFetched``
+  // false, so checking it first would otherwise spin the skeleton forever
+  // instead of surfacing the error.
   if (agentsError) {
     return (
       <ErrorBanner
@@ -89,6 +85,17 @@ function AgentsStepFallback({
         description={agentsError}
         onRetry={onRetry}
       />
+    )
+  }
+
+  if (agentsLoading || !agentsFetched) {
+    return (
+      <div className="space-y-section-gap">
+        <Skeleton className="h-32 rounded-lg" />
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-24 rounded-lg" />
+        ))}
+      </div>
     )
   }
 
@@ -107,6 +114,7 @@ function AgentsStepFallback({
 interface AgentsStepController {
   agents: readonly SetupAgentSummary[]
   agentsLoading: boolean
+  agentsFetched: boolean
   agentsError: string | null
   providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
   personalityPresets: ReturnType<typeof useSetupWizardStore.getState>['personalityPresets']
@@ -196,7 +204,7 @@ function useAgentsStepController(): AgentsStepController {
   useClearStepRevalidationOnMount('agents')
 
   return {
-    agents, agentsLoading, agentsError, providers, personalityPresets,
+    agents, agentsLoading, agentsFetched, agentsError, providers, personalityPresets,
     personalityPresetsLoading, personalityPresetsError, unresolvedAgents,
     fetchAgents, fetchPersonalityPresets,
     handleNameChange, handleModelChange, handleRandomizeName, handlePersonalityChange,
@@ -240,10 +248,11 @@ function AgentsStepBanners({ c }: { c: AgentsStepController }) {
 export function AgentsStep() {
   const c = useAgentsStepController()
 
-  if (c.agentsLoading || c.agents.length === 0) {
+  if (c.agentsLoading || !c.agentsFetched || c.agents.length === 0) {
     return (
       <AgentsStepFallback
         agentsLoading={c.agentsLoading}
+        agentsFetched={c.agentsFetched}
         agentsError={c.agentsError}
         onRetry={() => void c.fetchAgents()}
       />

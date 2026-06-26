@@ -214,7 +214,10 @@ def _diff_provider_update(
     }
 
 
-_PARAM_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b\b", re.IGNORECASE)
+# The size digits sit immediately after a separator (``:1b``, ``-26b``); the
+# negative lookbehind rejects a ``b`` glued to a preceding alphanumeric so a
+# cloud id like ``gpt4b-turbo`` is not misread as a 4-billion local model.
+_PARAM_SIZE_RE = re.compile(r"(?<![a-z0-9])(\d+(?:\.\d+)?)\s*b\b", re.IGNORECASE)
 
 
 def _estimated_param_billions(model_id: str) -> float:

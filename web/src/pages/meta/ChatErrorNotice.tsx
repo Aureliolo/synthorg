@@ -16,7 +16,7 @@ export function ChatErrorNotice({ message, onRetry }: ChatErrorNoticeProps) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+      className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 p-card text-sm text-danger"
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="flex flex-1 flex-col gap-2">

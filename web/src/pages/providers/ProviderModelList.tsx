@@ -60,7 +60,7 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
       {visible.map((b) => (
         <span
           key={b.label}
-          className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight', b.className)}
+          className={cn('rounded px-1.5 py-0.5 text-micro font-medium leading-tight', b.className)}
         >
           {b.label}
         </span>

@@ -1,6 +1,5 @@
 """LLM-provider connection health check."""
 
-from datetime import UTC, datetime
 from typing import Final
 
 import httpx
@@ -73,7 +72,7 @@ class LlmProviderHealthCheck:
                 status=ConnectionStatus.UNKNOWN,
                 error_detail="Provider routes via the litellm default endpoint; "
                 "no base_url to probe",
-                checked_at=datetime.now(UTC),
+                checked_at=self._clock.now(),
             )
         validation = await validate_url_host(connection.base_url, self._network_policy)
         if not isinstance(validation, DnsValidationOk):
@@ -81,12 +80,13 @@ class LlmProviderHealthCheck:
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 reason="ssrf_policy_rejected_base_url",
+                validation_result=str(validation),
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 error_detail=f"ssrf_policy_rejected: {validation}",
-                checked_at=datetime.now(UTC),
+                checked_at=self._clock.now(),
             )
         # Pin the connect to the validated IP so DNS cannot rebind between
         # the SSRF pre-flight and the request.
@@ -115,7 +115,7 @@ class LlmProviderHealthCheck:
                     connection_name=connection.name,
                     status=ConnectionStatus.HEALTHY,
                     latency_ms=elapsed,
-                    checked_at=datetime.now(UTC),
+                    checked_at=self._clock.now(),
                 )
             logger.warning(
                 HEALTH_CHECK_FAILED,
@@ -127,7 +127,7 @@ class LlmProviderHealthCheck:
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
                 error_detail=f"HTTP {resp.status_code}",
-                checked_at=datetime.now(UTC),
+                checked_at=self._clock.now(),
             )
         except httpx.HTTPError as exc:
             elapsed = (self._clock.monotonic() - start) * 1000
@@ -143,5 +143,5 @@ class LlmProviderHealthCheck:
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
                 error_detail=scrubbed,
-                checked_at=datetime.now(UTC),
+                checked_at=self._clock.now(),
             )

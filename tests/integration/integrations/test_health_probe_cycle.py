@@ -179,3 +179,30 @@ class TestHealthProberCycle:
         monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
         await svc._probe_all()
         assert catalog.updates == [("probe-healthy", ConnectionStatus.HEALTHY)]
+
+    async def test_unknown_probe_does_not_escalate(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A checker returning UNKNOWN (nothing to probe) never escalates.
+
+        A cloud LLM provider with no base_url reports UNKNOWN every cycle;
+        counting it as a failure would walk a perfectly healthy provider up to
+        UNHEALTHY over successive cycles.
+        """
+        conn = _make_connection("probe-unknown")
+        catalog = _FakeCatalog((conn,))
+        with suppress_type_checks():
+            svc = HealthProberService(
+                catalog=catalog,  # type: ignore[arg-type]
+                degraded_threshold=1,
+                unhealthy_threshold=2,
+            )
+        checker = _ScriptedChecker({"probe-unknown": [ConnectionStatus.UNKNOWN] * 3})
+        monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
+        await svc._probe_all()
+        await svc._probe_all()
+        await svc._probe_all()
+        statuses = [status for _, status in catalog.updates]
+        assert ConnectionStatus.DEGRADED not in statuses
+        assert ConnectionStatus.UNHEALTHY not in statuses

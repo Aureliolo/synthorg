@@ -43,13 +43,17 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 
-async def _reload_bridge_best_effort(app_state: AppState, *, action: str) -> None:
+async def _reload_bridge_best_effort(
+    app_state: AppState, *, action: str, catalog_entry_id: str
+) -> None:
     """Hot-reload the agent runtime so an MCP catalog change goes live now.
 
-    The install/uninstall row is already persisted, so a reload failure must
-    NOT fail the request: the change still applies on the next natural runtime
-    rebuild. We rebuild + hot-swap proactively (no manual reload / restart) and
-    log the outcome.
+    The calling controller has already committed the install/uninstall row,
+    so a reload failure must NOT fail the request: the change still applies
+    on the next natural runtime rebuild. We rebuild + hot-swap proactively
+    (no manual reload / restart) and log the outcome, tagging the catalog
+    entry so a failure correlates with the install/uninstall that triggered
+    it.
     """
     from synthorg.core.critical_errors import reraise_critical  # noqa: PLC0415
     from synthorg.workers.runtime_builder import (  # noqa: PLC0415
@@ -63,11 +67,12 @@ async def _reload_bridge_best_effort(app_state: AppState, *, action: str) -> Non
         logger.warning(
             MCP_BRIDGE_RELOAD_FAILED,
             action=action,
+            catalog_entry_id=catalog_entry_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return
-    logger.info(MCP_BRIDGE_RELOADED, action=action)
+    logger.info(MCP_BRIDGE_RELOADED, action=action, catalog_entry_id=catalog_entry_id)
 
 
 # Page size for draining the installed-MCP-entries repo before
@@ -269,12 +274,10 @@ class MCPCatalogController(Controller):
     ) -> ApiResponse[CatalogEntry]:
         """Get a single catalog entry by ID.
 
-        ``CatalogEntryNotFoundError`` propagates directly to the
-        central exception handler (its class-level ``status_code``
-        / ``error_code`` map it to 404 + ``RECORD_NOT_FOUND``).  The
-        previous controller-level translation collapsed the type
-        into the generic ``NotFoundError`` and lost the discriminating
-        envelope.
+        ``CatalogEntryNotFoundError`` propagates directly to the central
+        exception handler, whose class-level ``status_code`` / ``error_code``
+        map it to 404 + ``RECORD_NOT_FOUND`` so the response keeps the
+        discriminating error envelope rather than a generic not-found.
 
         Returns:
             ``ApiResponse[CatalogEntry]`` instance.
@@ -300,10 +303,9 @@ class MCPCatalogController(Controller):
     ) -> PaginatedResponse[InstalledEntry]:
         """List MCP catalog entries currently installed on this instance.
 
-        Without this endpoint the dashboard could not rehydrate the
-        installed-state badge across refreshes -- the install API was
-        write-only, so a successful install would persist server-side
-        but appear "uninstalled" again on the next page load.
+        Backs the dashboard's installed-state badge: it rehydrates from
+        this endpoint on each page load, so the installed set survives a
+        refresh instead of depending on transient client state.
 
         Returns:
             ``PaginatedResponse[InstalledEntry]`` instance.
@@ -322,12 +324,6 @@ class MCPCatalogController(Controller):
         # when the install count crosses the page boundary.
         records_acc: list[McpInstallation] = []
         offset = 0
-        # Each iteration advances ``offset`` by ``_LIST_PAGE_SIZE`` (the
-        # page is non-empty by the ``not batch`` guard) and the loop
-        # terminates the moment a page comes back smaller than the
-        # page size. Total iterations are
-        # ``ceil(installed_count / _LIST_PAGE_SIZE)`` with no sleep
-        # between iterations.
         # lint-allow: long-running-loop-kill-switch -- bounded drain, not a daemon
         while True:
             batch = await installations_repo.list_items(
@@ -425,7 +421,9 @@ class MCPCatalogController(Controller):
 
         # Hot-reload the runtime so the freshly installed server's tools go
         # live without a manual reload / restart (best-effort).
-        await _reload_bridge_best_effort(app_state, action="install")
+        await _reload_bridge_best_effort(
+            app_state, action="install", catalog_entry_id=entry_id
+        )
 
         return ApiResponse(
             data=InstallEntryResponse(
@@ -480,5 +478,7 @@ class MCPCatalogController(Controller):
         else:
             # Hot-reload the runtime so the removed server's tools stop being
             # offered without a manual reload / restart (best-effort).
-            await _reload_bridge_best_effort(app_state, action="uninstall")
+            await _reload_bridge_best_effort(
+                app_state, action="uninstall", catalog_entry_id=entry_id
+            )
         return ApiResponse(data=None)

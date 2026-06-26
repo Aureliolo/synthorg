@@ -2,12 +2,12 @@
 
 import math
 from collections import defaultdict
-from typing import Annotated, Final
+from typing import Annotated, Final, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import (
@@ -172,6 +172,32 @@ class CostRecordListResponse(PaginatedResponse[CostRecord]):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code",
     )
+
+    @model_validator(mode="after")
+    def _currency_consistent(self) -> Self:
+        """Reject a response whose summaries disagree on the currency.
+
+        The top-level ``currency`` is authoritative; every per-day and the
+        overall summary must report the same code, otherwise the dashboard
+        would render mixed-currency totals as if they were one currency.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If any summary currency diverges from ``currency``.
+        """
+        if self.period_summary.currency != self.currency:
+            msg = (
+                f"period_summary currency {self.period_summary.currency!r} "
+                f"does not match response currency {self.currency!r}"
+            )
+            raise ValueError(msg)
+        mismatched = [d.date for d in self.daily_summary if d.currency != self.currency]
+        if mismatched:
+            msg = f"daily_summary currency mismatch on dates: {mismatched}"
+            raise ValueError(msg)
+        return self
 
 
 def _build_summaries(

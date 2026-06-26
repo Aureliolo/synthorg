@@ -206,6 +206,10 @@ describe("AgentsStep: empty-state copy", () => {
       fetchAgents: async () => {},
       fetchPersonalityPresets: async () => {},
       agents: [],
+      // A completed fetch that returned an empty roster: the empty-state copy
+      // only renders once the fetch has run (otherwise the skeleton shows), so
+      // mark it fetched to isolate the empty-state branch.
+      agentsFetched: true,
       agentsLoading: false,
       agentsError: null,
     });

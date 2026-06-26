@@ -6,7 +6,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks'
 import { WizardModelSelection } from './WizardModelSelection'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -254,7 +254,10 @@ function useCapabilities(): CapabilitiesState {
         setValues((prev) => ({ ...prev, [rowId(row)]: previous }))
         addToast({
           variant: 'error',
-          title: `Could not save the ${row.label.toLowerCase()} setting`,
+          title: getCrudErrorTitle(
+            caught,
+            `Could not save the ${row.label.toLowerCase()} setting`,
+          ).title,
           description: getErrorMessage(caught),
         })
       })

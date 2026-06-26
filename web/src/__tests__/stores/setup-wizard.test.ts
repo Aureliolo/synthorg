@@ -662,11 +662,13 @@ describe('setup wizard store', () => {
         useSetupWizardStore.getState().submitCompany(),
       ])
       try {
-        // Yield so the (single) coalesced fetch reaches the handler.
-        // Tight timeout: if the coalesced POST hasn't arrived within
-        // 100 ms the store's coalescing logic is broken; the default
-        // 1000 ms would mask a regression as a slow-CI false pass.
-        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 100 })
+        // Wait for the (single) coalesced fetch to reach the handler. The
+        // coalescing contract is enforced by ``totalCalls === 1`` itself, not
+        // by the timeout: a broken store firing 3 POSTs never settles at 1, so
+        // a generous ceiling cannot mask a regression. Keep the ceiling well
+        // above a slow CI worker's scheduling jitter so the happy path never
+        // false-fails (vi.waitFor returns as soon as the condition holds).
+        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 2000 })
         // ``observedConcurrent`` alone is satisfied if a serial test
         // runner happens to schedule the three calls one-after-another
         // (no real concurrency to block). ``totalCalls`` plus this

@@ -148,7 +148,9 @@ class TestCatalogInstall:
         assert result.catalog_entry_id == "test-local-mcp"
         assert result.server_name == "Test Local"
         assert result.connection_name is None
-        assert result.tool_count >= 1
+        # The synthetic entry declares two capabilities (alpha, beta); the
+        # tool_count must reflect them exactly, not merely be non-zero.
+        assert result.tool_count == 2
         stored = await repo.get(NotBlankStr("test-local-mcp"))
         assert stored is not None
         assert stored.connection_name is None

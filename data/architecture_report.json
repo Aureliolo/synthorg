@@ -114,6 +114,12 @@
       "ratio": 0.982,
       "tier": "code"
     },
+    "src/synthorg/api/controllers/mcp_catalog.py": {
+      "cap": 500,
+      "loc": 401,
+      "ratio": 0.802,
+      "tier": "code"
+    },
     "src/synthorg/api/controllers/memory/_preflight.py": {
       "cap": 500,
       "loc": 447,
@@ -1446,13 +1452,13 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 41,
     "synthorg.core.clock": 196,
-    "synthorg.core.critical_errors": 567,
+    "synthorg.core.critical_errors": 568,
     "synthorg.core.domain_errors": 227,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
     "synthorg.core.iso_datetime": 29,
     "synthorg.core.memory_enums": 49,
-    "synthorg.core.normalization": 94,
+    "synthorg.core.normalization": 95,
     "synthorg.core.pagination": 32,
     "synthorg.core.persistence_errors": 222,
     "synthorg.core.project_enums": 28,

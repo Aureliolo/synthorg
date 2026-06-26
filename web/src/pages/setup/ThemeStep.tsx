@@ -72,6 +72,7 @@ const PALETTE_OPTIONS: readonly { value: ColorPalette; label: string; descriptio
 const DENSITY_OPTIONS: readonly { value: Density; label: string; description: string }[] = [
   { value: 'dense', label: 'Dense', description: '12px padding, tight gaps. For power users.' },
   { value: 'balanced', label: 'Balanced', description: '16px padding. Recommended for most users.' },
+  { value: 'medium', label: 'Medium', description: '16px padding with roomier gaps.' },
   { value: 'sparse', label: 'Sparse', description: '20px padding, relaxed layout.' },
 ]
 

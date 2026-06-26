@@ -192,7 +192,7 @@ class AuthSessionController(Controller):
         Gated on ``SYNTHORG_DEV_AUTH_BYPASS`` (resolved at startup): when the
         flag is off the endpoint behaves as if it does not exist (404). When
         on, it logs the first CEO in without a password so local dev work skips
-        the login screen. The admin account must already exist -- this never
+        the login screen. The admin account must already exist; this never
         creates one, so first-run account setup is still required.
 
         Returns:

@@ -92,9 +92,22 @@ def _parse_capability_list(raw: str) -> list[str]:
         return []
     try:
         parsed = json.loads(text)
-    except ValueError, TypeError:
+    except (ValueError, TypeError) as exc:
+        # A malformed allowlist must not crash the overlay, but silently
+        # returning ``[]`` would be indistinguishable from "never set" to an
+        # operator who wrote invalid JSON, so log the discarded value.
+        logger.warning(
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
+            reason="tool_creation_allowed_capabilities_parse_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return []
     if not isinstance(parsed, list):
+        logger.warning(
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
+            reason="tool_creation_allowed_capabilities_not_a_list",
+        )
         return []
     return [str(item).strip() for item in parsed if str(item).strip()]
 

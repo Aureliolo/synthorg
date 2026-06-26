@@ -92,7 +92,11 @@ class TestDevLoginEndpoint:
         data = response.json()["data"]
         assert "token" not in data  # JWT lives in the HttpOnly cookie
         assert data["expires_in"] > 0
-        assert "session=" in response.headers.get("set-cookie", "")
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "session=" in set_cookie
+        # Dev-login mints the same cookie pair as /login, so the dashboard can
+        # issue state-changing (CSRF-double-submit) requests right after it.
+        assert "csrf_token=" in set_cookie
 
     async def test_enabled_without_admin_returns_401(
         self,

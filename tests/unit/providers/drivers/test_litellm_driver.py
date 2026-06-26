@@ -970,3 +970,33 @@ def _litellm_exc_kwargs(exc_name: str) -> dict[str, str]:
         "model": "test-model",
         "llm_provider": "test",
     }
+
+
+@pytest.mark.unit
+class TestKeepAlive:
+    """``keep_alive`` is an ollama-only completion kwarg."""
+
+    async def test_keep_alive_sent_to_ollama(self) -> None:
+        config = make_provider_config().model_copy(update={"keep_alive": "5m"})
+        driver = LiteLLMDriver("ollama", config)
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            m.return_value = make_mock_response()
+            await driver.complete(_user_message(), "medium")
+        assert m.call_args.kwargs["keep_alive"] == "5m"
+
+    async def test_keep_alive_omitted_when_unset(self) -> None:
+        driver = LiteLLMDriver("ollama", make_provider_config())
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            m.return_value = make_mock_response()
+            await driver.complete(_user_message(), "medium")
+        assert "keep_alive" not in m.call_args.kwargs
+
+    async def test_keep_alive_ignored_for_non_ollama(self) -> None:
+        # A non-ollama provider must never receive keep_alive: it is not a
+        # universal kwarg and would break drivers that reject unknown options.
+        config = make_provider_config().model_copy(update={"keep_alive": "5m"})
+        driver = LiteLLMDriver("example-provider", config)
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            m.return_value = make_mock_response()
+            await driver.complete(_user_message(), "medium")
+        assert "keep_alive" not in m.call_args.kwargs

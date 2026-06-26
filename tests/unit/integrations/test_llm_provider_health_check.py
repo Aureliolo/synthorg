@@ -65,6 +65,20 @@ class TestLlmProviderHealthCheck:
         assert report.status is ConnectionStatus.UNHEALTHY
         assert report.error_detail == "HTTP 503"
 
+    async def test_network_error_is_unhealthy(self, respx_mock: object) -> None:
+        """A connect / timeout error (httpx.HTTPError) means the provider down."""
+        respx_mock.get("https://api.example.com/v1").mock(  # type: ignore[attr-defined]
+            side_effect=httpx.ConnectError("connection refused"),
+        )
+        check = LlmProviderHealthCheck()
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_make_connection("https://api.example.com/v1"))
+        assert report.status is ConnectionStatus.UNHEALTHY
+        assert report.error_detail is not None
+
     async def test_blocked_internal_url_is_unhealthy(self, respx_mock: object) -> None:
         """SSRF policy rejects a private base_url before any HTTP call."""
         check = LlmProviderHealthCheck()

@@ -50,6 +50,7 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
           <div
             className="absolute right-2 top-2 z-10"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <Checkbox
               checked={selected ?? false}

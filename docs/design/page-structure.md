@@ -55,7 +55,7 @@ Project filter dropdown available. Dedicated Projects page shipped (#946).
 
 P&L management dashboard, not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
 
-**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`
+**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`, `POST /budget/forecast`, `GET /budget/forecasts/{id}`, `POST /budget/forecasts/{id}/approve`, `POST /budget/forecasts/{id}/reject`, `POST /budget/forecasts/{id}/raise_ceiling`, `GET /budget/pareto`
 **WS channels**: `budget`
 
 #### Approvals (`/approvals`)
@@ -513,6 +513,7 @@ Every backend controller has a home in the page structure. No orphans.
 | MessageController | Messages |
 | MeetingController | Meetings |
 | BudgetController | Budget, Dashboard |
+| ForecastBudgetController | Budget forecast (`/budget/forecast`: approve / reject / raise-ceiling on a brief's projected spend) |
 | AnalyticsController | Dashboard, Budget |
 | ProviderController | Providers |
 | ApprovalsController | Approvals, Dashboard |

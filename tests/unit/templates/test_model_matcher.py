@@ -403,6 +403,24 @@ class TestMatchAllAgents:
         matches = match_all_agents([{}], providers)
         assert all(isinstance(m, ModelMatch) for m in matches)
 
+    def test_embedding_only_provider_omits_agent(self) -> None:
+        # The batch path must apply the same embedder exclusion as match_model:
+        # a pool of only embedding models leaves the chat agent unassigned.
+        providers = {"prov": _provider(_make_model("embed", embeddings=True))}
+        matches = match_all_agents([{}], providers)
+        assert matches == []
+
+    def test_embedding_excluded_when_chat_model_present(self) -> None:
+        providers = {
+            "prov": _provider(
+                _make_model("embed", embeddings=True),
+                _make_model("chat"),
+            )
+        }
+        matches = match_all_agents([{}], providers)
+        assert len(matches) == 1
+        assert matches[0].model_id == "chat"
+
 
 # ── Explicit model-id pin ────────────────────────────────────
 

@@ -39,10 +39,10 @@ export const DEFAULT_GROUP_PADDING = 16
 
 // Fixed header pieces on every dept card (inner padding + title row + bottom margin)
 const HEADER_BASE = 48
-// Department stats pill row (Agents / Active / Cost) rendered on every
-// populated, expanded dept card. One StatPill row is ~22 px plus the
-// header's space-y-1.5 (6 px) gap above it. Not gated by a view toggle, so
-// it is always reserved -- omitting it let child agent cards overlap it.
+// Department stats pill row (Active / Cost) rendered on every populated,
+// expanded dept card. One StatPill row is ~22 px plus the header's
+// space-y-1.5 (6 px) gap above it. Not gated by a view toggle, so it is
+// always reserved -- omitting it let child agent cards overlap it.
 const HEADER_STATS_BAR = 30
 // Added when budget bar is on (label + 1 px bar + spacing)
 const HEADER_BUDGET_BAR = 26
@@ -59,9 +59,9 @@ export const EMPTY_GROUP_MIN_WIDTH = 240
 export const EMPTY_GROUP_HEIGHT = 180
 
 // Minimum width for a POPULATED dept card. Wide enough that the
-// Agents / Active / Cost stat pills sit on a single row instead of
-// wrapping and clipping past the card's left edge, and so a 1-agent
-// dept reads with the same visual weight as a multi-agent one.
+// Active / Cost stat pills sit on a single row instead of wrapping and
+// clipping past the card's left edge, and so a 1-agent dept reads with the
+// same visual weight as a multi-agent one.
 export const POPULATED_GROUP_MIN_WIDTH = 340
 
 // Target visible gap between any two adjacent dept boxes.  Enforced
