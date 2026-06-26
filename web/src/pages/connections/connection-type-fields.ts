@@ -350,12 +350,22 @@ function validateNumberValue(spec: ConnectionFieldSpec, value: string): string |
   return null
 }
 
+/**
+ * Canonicalize a free-text dialect input to the lowercase, trimmed wire form.
+ * Used by both validation and the submit path so a stored / submitted dialect
+ * always matches the backend's lowercase contract (``SQLite`` / `` postgres ``
+ * are normalised, not forwarded verbatim).
+ */
+export function canonicalizeDialect(value: string): string {
+  return value.trim().toLowerCase()
+}
+
 // The dialect field is a free-text input, so reject anything outside the
 // supported set at the form boundary (case-insensitively, matching
 // ``resolveRequired``) instead of letting ``postgres`` / ``sqlite3`` pass
 // here and only fail later at the API.
 function validateDialectValue(spec: ConnectionFieldSpec, value: string): string | null {
-  const trimmed = value.trim().toLowerCase()
+  const trimmed = canonicalizeDialect(value)
   const dialects: readonly string[] = DATABASE_DIALECTS
   if (trimmed && !dialects.includes(trimmed)) {
     return `${spec.label} must be one of: ${DATABASE_DIALECTS.join(', ')}`

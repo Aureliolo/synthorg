@@ -9,6 +9,7 @@ import {
 import { useConnectionsStore } from '@/stores/connections'
 import {
   CONNECTION_TYPE_FIELDS,
+  canonicalizeDialect,
   type ConnectionFieldSpec,
   type ConnectionTypeSpec,
   validateA2APeerCredentials,
@@ -106,6 +107,13 @@ function validateConnectionForm(
   return next
 }
 
+// Canonicalize the dialect to the backend's lowercase contract rather than
+// forwarding ``SQLite`` / `` postgres `` verbatim (same normalisation the
+// validator uses); other credential fields pass through unchanged.
+function credentialWireValue(field: ConnectionFieldSpec, raw: string): string {
+  return field.key === 'dialect' ? canonicalizeDialect(raw) : raw
+}
+
 function buildCreateBody(
   form: ConnectionFormState,
   spec: ConnectionTypeSpec,
@@ -114,8 +122,9 @@ function buildCreateBody(
 ): CreateConnectionRequest {
   const credentials: Record<string, string> = {}
   for (const field of spec.credentialFields) {
-    const value = form.credentials[field.key]
-    if (value !== undefined && value !== '') credentials[field.key] = value
+    const raw = form.credentials[field.key]
+    if (raw === undefined || raw === '') continue
+    credentials[field.key] = credentialWireValue(field, raw)
   }
   return {
     name: form.name.trim(),
