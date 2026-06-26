@@ -7,6 +7,7 @@ self-integrity header. ``store`` re-exports every public name here, so
 external importers keep importing them from ``cassette.store``.
 """
 
+import copy
 import hashlib
 import json
 from enum import StrEnum
@@ -48,6 +49,16 @@ class CassetteRecordedError(BaseModel):
         default_factory=dict,
         description="Redacted ProviderError.context for faithful replay",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_context(self) -> Self:
+        """Deep-copy ``context`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``context`` deep-copied.
+        """
+        object.__setattr__(self, "context", copy.deepcopy(self.context))
+        return self
 
 
 class CassetteOutcome(BaseModel):

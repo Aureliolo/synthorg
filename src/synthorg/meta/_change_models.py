@@ -6,6 +6,7 @@ Rollback operations / plans and the per-altitude change payloads
 content-shape invariant matched to its :class:`CodeOperation`.
 """
 
+import copy
 from typing import Self
 from uuid import UUID
 
@@ -90,6 +91,16 @@ class ArchitectureChange(BaseModel):
     target_name: NotBlankStr
     payload: dict[str, JsonValue] = Field(default_factory=dict)
     description: NotBlankStr
+
+    @model_validator(mode="after")
+    def _deep_copy_payload(self) -> Self:
+        """Deep-copy ``payload`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``payload`` deep-copied.
+        """
+        object.__setattr__(self, "payload", copy.deepcopy(self.payload))
+        return self
 
 
 class PromptChange(BaseModel):

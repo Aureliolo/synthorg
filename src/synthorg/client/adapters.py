@@ -5,6 +5,8 @@ before they enter the intake pipeline. Each implements the
 :class:`EntryPointStrategy` protocol: ``route(request) -> ClientRequest``.
 """
 
+import copy
+
 from synthorg.client.models import ClientRequest
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -27,7 +29,7 @@ class DirectAdapter:
             A copy of the request with ``metadata["entry_point"]`` set to
             ``"direct"``.
         """
-        metadata = dict(request.metadata)
+        metadata = copy.deepcopy(request.metadata)
         metadata["entry_point"] = "direct"
         return request.model_copy(update={"metadata": metadata})
 
@@ -51,7 +53,7 @@ class ProjectAdapter:
             A copy of the request with ``project_id`` and a ``"project"``
             entry-point stamped into metadata.
         """
-        metadata = dict(request.metadata)
+        metadata = copy.deepcopy(request.metadata)
         metadata["entry_point"] = "project"
         metadata["project_id"] = self._project_id
         return request.model_copy(update={"metadata": metadata})
@@ -73,6 +75,6 @@ class IntakeAdapter:
             A copy of the request with ``metadata["entry_point"]`` set to
             ``"intake"``.
         """
-        metadata = dict(request.metadata)
+        metadata = copy.deepcopy(request.metadata)
         metadata["entry_point"] = "intake"
         return request.model_copy(update={"metadata": metadata})

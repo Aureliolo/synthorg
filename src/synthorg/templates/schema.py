@@ -1,6 +1,7 @@
 # module-kind: declarative
 """Template schema: Pydantic models for company templates."""
 
+import copy
 from collections import Counter
 from typing import Literal, Self
 
@@ -264,6 +265,17 @@ class TemplateAgentConfig(BaseModel):
         alias="_remove",
         description="Merge directive: remove matching parent agent",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_personality(self) -> Self:
+        """Deep-copy ``personality`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``personality`` deep-copied (``None`` stays
+            ``None``).
+        """
+        object.__setattr__(self, "personality", copy.deepcopy(self.personality))
+        return self
 
     @model_validator(mode="after")
     def _validate_personality_mutual_exclusion(self) -> Self:

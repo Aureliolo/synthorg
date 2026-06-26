@@ -5,6 +5,7 @@ feedback, requests, and simulation metrics. All models are frozen
 Pydantic models following project conventions.
 """
 
+import copy
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final, Self, TypedDict, Unpack
@@ -362,6 +363,16 @@ class ClientRequest(BaseModel):
         default_factory=dict,
         description="Additional request metadata",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy ``metadata`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
     def with_status(
         self,

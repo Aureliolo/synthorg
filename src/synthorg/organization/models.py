@@ -6,6 +6,9 @@ without importing from the API layer. The ``synthorg.api.dto_org``
 module re-exports these for HTTP controllers.
 """
 
+import copy
+from typing import Self
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -120,6 +123,17 @@ class UpdateDepartmentRequest(BaseModel):
         if v is not None:
             CeremonyPolicyConfig.model_validate(v)
         return v
+
+    @model_validator(mode="after")
+    def _deep_copy_ceremony_policy(self) -> Self:
+        """Deep-copy ``ceremony_policy`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``ceremony_policy`` deep-copied (``None``
+            stays ``None``).
+        """
+        object.__setattr__(self, "ceremony_policy", copy.deepcopy(self.ceremony_policy))
+        return self
 
 
 class ReorderDepartmentsRequest(BaseModel):

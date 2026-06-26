@@ -20,9 +20,10 @@ Tools wired to consume these models:
   -> :class:`ListAsyncTasksArgs`
 """
 
-from typing import Annotated, Literal
+import copy
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.models import (
@@ -125,6 +126,16 @@ class TemplateFormatterArgs(BaseModel):
         default="text",
         description="Output format",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_variables(self) -> Self:
+        """Deep-copy ``variables`` so the frozen args model cannot be aliased.
+
+        Returns:
+            The instance with ``variables`` deep-copied.
+        """
+        object.__setattr__(self, "variables", copy.deepcopy(self.variables))
+        return self
 
 
 # ── Async-task tools ────────────────────────────────────────────────
