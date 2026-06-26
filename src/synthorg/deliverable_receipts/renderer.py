@@ -8,6 +8,7 @@ idempotent: any prior receipt section (everything from the receipt
 heading onward) is stripped before the fresh section is appended.
 """
 
+import asyncio
 from typing import Final
 
 from synthorg.core.text_clipping import clip_text
@@ -44,6 +45,10 @@ class ReceiptRenderer:
 
     def __init__(self, *, docs_service: DocsService) -> None:
         self._docs_service = docs_service
+        # Serialises the read-strip-append-write cycle so two concurrent
+        # renders cannot both read the same doc and have the later write
+        # clobber the earlier render's section (a lost-update TOCTOU).
+        self._render_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
     async def render_into_doc(
         self,
@@ -54,25 +59,28 @@ class ReceiptRenderer:
 
         Reads the current deliverable document, strips any prior receipt
         section, appends the freshly rendered one, and re-writes the doc.
+        The full read-modify-write runs under a per-renderer lock so
+        concurrent renders serialise instead of clobbering each other.
 
         Returns:
             The updated :class:`DocMetadata` row.
         """
-        existing = await self._docs_service.read_doc(
-            project_id=receipt.project_id,
-            slug=receipt.deliverable_doc_slug,
-        )
-        body = (*_without_receipt_section(existing), *_render_blocks(receipt))
-        return await self._docs_service.write_doc(
-            project_id=receipt.project_id,
-            title=NotBlankStr(existing.title),
-            doc_type=DocType.DELIVERABLE,
-            author_agent_id=RECEIPT_AUTHOR,
-            body=body,
-            tags=existing.tags,
-            related_task_ids=existing.related_task_ids,
-            slug=receipt.deliverable_doc_slug,
-        )
+        async with self._render_lock:
+            existing = await self._docs_service.read_doc(
+                project_id=receipt.project_id,
+                slug=receipt.deliverable_doc_slug,
+            )
+            body = (*_without_receipt_section(existing), *_render_blocks(receipt))
+            return await self._docs_service.write_doc(
+                project_id=receipt.project_id,
+                title=NotBlankStr(existing.title),
+                doc_type=DocType.DELIVERABLE,
+                author_agent_id=RECEIPT_AUTHOR,
+                body=body,
+                tags=existing.tags,
+                related_task_ids=existing.related_task_ids,
+                slug=receipt.deliverable_doc_slug,
+            )
 
 
 def _without_receipt_section(doc: LivingDocument) -> tuple[DocBlock, ...]:
