@@ -84,7 +84,7 @@ class NixEnvironmentStrategy:
             ``flake.nix`` listed when a fresh flake was created;
             ``seeded=False`` when one already existed.
         """
-        if self.detect(workspace_path):
+        if await asyncio.to_thread(self.detect, workspace_path):
             return ScaffoldResult(seeded=False)
         await asyncio.to_thread(
             self._flake_path(workspace_path).write_text,

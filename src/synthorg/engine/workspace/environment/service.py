@@ -101,24 +101,29 @@ class EnvironmentService:
             and row.declaration_hash == declaration_hash
         )
 
-    def _reconstruct(
+    async def _reconstruct(
         self, row: ProjectEnvironment, workspace_path: Path
     ) -> ProvisionedEnvironment:
         """Rebuild the active environment for a reused row.
 
         ``image_ref`` comes from the persisted row (building is the
         expensive part worth caching); ``env_vars`` are re-derived from
-        the declaration (cheap, never persisted).
+        the declaration (cheap, never persisted). The declaration read
+        is offloaded so the synchronous file access never blocks the
+        event loop.
 
         Returns:
             A :class:`ProvisionedEnvironment` synthesised from the
             persisted ``row`` and the live declaration's env vars.
         """
+        env_vars = await asyncio.to_thread(
+            self._strategy.runtime_env_vars, workspace_path
+        )
         return ProvisionedEnvironment(
             environment_type=row.environment_type,
             declaration_hash=row.declaration_hash,
             image_ref=row.image_ref,
-            env_vars=dict(self._strategy.runtime_env_vars(workspace_path)),
+            env_vars=dict(env_vars),
         )
 
     async def get_or_provision(
@@ -152,7 +157,9 @@ class EnvironmentService:
             if self._config.auto_seed:
                 await self._strategy.scaffold(workspace_path)
 
-            declaration_hash = str(self._strategy.declaration_hash(workspace_path))
+            declaration_hash = str(
+                await asyncio.to_thread(self._strategy.declaration_hash, workspace_path)
+            )
 
             cached = self._cache.get(project_id)
             if self._matches(cached, declaration_hash):
@@ -163,7 +170,7 @@ class EnvironmentService:
                     backend=self._strategy.kind().value,
                     source="memo",
                 )
-                return self._reconstruct(cached, workspace_path)
+                return await self._reconstruct(cached, workspace_path)
 
             row = await self._repo.get(project_id)
             if self._matches(row, declaration_hash):
@@ -175,7 +182,7 @@ class EnvironmentService:
                     backend=self._strategy.kind().value,
                     source="persisted",
                 )
-                return self._reconstruct(row, workspace_path)
+                return await self._reconstruct(row, workspace_path)
 
             if row is not None and row.environment_type != self._strategy.kind():
                 logger.warning(
@@ -215,7 +222,9 @@ class EnvironmentService:
             sandbox_kind=sandbox_kind,
         )
         if self._committer is not None:
-            paths = self._strategy.managed_paths(workspace_path)
+            paths = await asyncio.to_thread(
+                self._strategy.managed_paths, workspace_path
+            )
             await self._committer.commit(
                 workspace_path=workspace_path,
                 paths=paths,

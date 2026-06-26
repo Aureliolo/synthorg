@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.correlation import bind_correlation_id
 from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.otlp_handler import OtlpHandler
 from synthorg.observability.setup import (
     _DEFAULT_LOGGER_LEVELS,
     _THIRD_PARTY_LOGGER_LEVELS,
@@ -22,6 +23,7 @@ from synthorg.observability.setup import (
     _attach_handlers,
     _tame_third_party_loggers,
     configure_logging,
+    teardown_logging,
 )
 
 
@@ -49,6 +51,32 @@ def _file_config(tmp_path: Path) -> LogConfig:
         ),
         log_dir=str(tmp_path),
     )
+
+
+@pytest.mark.unit
+class TestTeardownLogging:
+    """Tests for teardown_logging shutdown flush."""
+
+    async def test_closes_and_removes_buffering_handlers(self) -> None:
+        root = logging.getLogger()
+        before = root.handlers[:]
+        otlp = OtlpHandler("http://collector.invalid", _start_flusher=False)
+        root.addHandler(otlp)
+        try:
+            await teardown_logging()
+            assert otlp not in root.handlers
+            assert root.handlers == before
+        finally:
+            if otlp in root.handlers:
+                root.removeHandler(otlp)
+
+    async def test_leaves_console_handlers_attached(self) -> None:
+        configure_logging(_console_only_config())
+        root = logging.getLogger()
+        before = root.handlers[:]
+        await teardown_logging()
+        # No buffering handler present, so the console handler is untouched.
+        assert root.handlers == before
 
 
 @pytest.mark.unit

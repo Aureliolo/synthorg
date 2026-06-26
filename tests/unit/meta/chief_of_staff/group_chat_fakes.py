@@ -48,6 +48,10 @@ class FakeParticipantRepo:
     async def save(self, entity: ConversationParticipant) -> None:
         self.items[str(entity.id)] = entity
 
+    async def save_many(self, entities: tuple[ConversationParticipant, ...]) -> None:
+        for entity in entities:
+            self.items[str(entity.id)] = entity
+
     async def get(self, entity_id: NotBlankStr) -> ConversationParticipant | None:
         return self.items.get(entity_id)
 

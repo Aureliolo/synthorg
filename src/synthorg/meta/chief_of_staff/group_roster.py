@@ -61,9 +61,10 @@ async def resolve_identities(
     Raises:
         GroupParticipantUnknownError: A named agent is not registered.
     """
+    resolved = await agent_registry.get_by_ids(tuple(agent_ids))
     identities: list[AgentIdentity] = []
     for agent_id in agent_ids:
-        identity = await agent_registry.get(agent_id)
+        identity = resolved.get(str(agent_id))
         if identity is None:
             raise GroupParticipantUnknownError(agent_id=agent_id)
         identities.append(identity)
@@ -86,18 +87,19 @@ async def enrol_participants(
     the random participant uuid -- a batch otherwise shares one
     ``now`` and the order would be arbitrary.
     """
-    for index, identity in enumerate(identities):
-        await participant_repo.save(
-            ConversationParticipant(
-                conversation_id=conversation_id,
-                agent_id=NotBlankStr(str(identity.id)),
-                agent_name=identity.name,
-                participant_role=identity.role,
-                status=ConversationParticipantStatus.ACTIVE,
-                added_by=added_by,
-                added_at=now + timedelta(microseconds=index),
-            )
+    participants = tuple(
+        ConversationParticipant(
+            conversation_id=conversation_id,
+            agent_id=NotBlankStr(str(identity.id)),
+            agent_name=identity.name,
+            participant_role=identity.role,
+            status=ConversationParticipantStatus.ACTIVE,
+            added_by=added_by,
+            added_at=now + timedelta(microseconds=index),
         )
+        for index, identity in enumerate(identities)
+    )
+    await participant_repo.save_many(participants)
     logger.info(
         COS_GROUP_PARTICIPANTS_ADDED,
         conversation_id=conversation_id,

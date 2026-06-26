@@ -133,6 +133,56 @@ class PostgresConversationParticipantRepository:
             )
             raise QueryError(msg) from exc
 
+    async def save_many(self, entities: tuple[ConversationParticipant, ...]) -> None:
+        """Upsert a whole roster batch in one transaction (all-or-nothing).
+
+        Raises:
+            ConstraintViolationError: On a duplicate
+                ``(conversation_id, agent_id)`` pair.
+            QueryError: On other database errors.
+        """
+        if not entities:
+            return
+        rows = [
+            (
+                str(entity.id),
+                entity.conversation_id,
+                entity.agent_id,
+                entity.agent_name,
+                entity.participant_role,
+                entity.status.value,
+                entity.added_by,
+                entity.added_at,
+            )
+            for entity in entities
+        ]
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.executemany(_PARTICIPANT_UPSERT_SQL, rows)
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            constraint = (
+                getattr(getattr(exc, "diag", None), "constraint_name", None)
+                or "<unknown>"
+            )
+            msg = f"Constraint violation saving {len(rows)} participants"
+            logger.warning(
+                COS_GROUP_PARTICIPANT_FAILED,
+                operation="save_many",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=constraint) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to save {len(rows)} participants"
+            logger.warning(
+                COS_GROUP_PARTICIPANT_FAILED,
+                operation="save_many",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
     async def get(self, entity_id: NotBlankStr) -> ConversationParticipant | None:
         """Get a participant by id, or ``None`` if not found.
 

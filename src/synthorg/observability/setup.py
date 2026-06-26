@@ -4,6 +4,7 @@ Provides the idempotent :func:`configure_logging` entry point that
 wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
+import asyncio
 import logging
 import sys
 from collections.abc import Mapping
@@ -435,3 +436,32 @@ def configure_logging(
 
     # 8. Apply per-logger levels (after taming so user overrides take precedence)
     _apply_logger_levels(config)
+
+
+async def teardown_logging() -> None:
+    """Flush and close buffering log handlers on application shutdown.
+
+    The OTLP and HTTP batch handlers queue records and a background
+    thread drains them; the queued tail and (for OTLP) the flusher
+    thread are lost unless the handler is closed, which flushes and
+    joins. Console/file/syslog handlers buffer nothing and stay attached
+    so late-shutdown log lines still emit. Closing is offloaded because
+    the OTLP close blocks on its flusher-thread join.
+    """
+    # Local imports: these handler modules import back into
+    # ``synthorg.core.normalization`` -> ``synthorg.observability``, so a
+    # module-level import here closes a cold-import cycle.
+    from synthorg.observability.http_handler import (  # noqa: PLC0415
+        HttpBatchHandler,
+    )
+    from synthorg.observability.otlp_handler import OtlpHandler  # noqa: PLC0415
+
+    root_logger = logging.getLogger()
+    buffering = tuple(
+        handler
+        for handler in root_logger.handlers[:]
+        if isinstance(handler, (OtlpHandler, HttpBatchHandler))
+    )
+    for handler in buffering:
+        root_logger.removeHandler(handler)
+        await asyncio.to_thread(handler.close)

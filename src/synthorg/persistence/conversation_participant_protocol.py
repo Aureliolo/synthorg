@@ -25,6 +25,7 @@ from synthorg.meta.chief_of_staff.enums import (
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
+    BatchWriteRepository,
     FilteredQueryRepository,
     StatefulRepository,
 )
@@ -50,6 +51,7 @@ class ConversationParticipantRepository(
         ConversationParticipant, NotBlankStr, ConversationParticipantStatus
     ],
     FilteredQueryRepository[ConversationParticipant, ConversationParticipantFilterSpec],
+    BatchWriteRepository[ConversationParticipant],
     Protocol,
 ):
     """CRUD + membership CAS + filtered roster query for participants.
@@ -100,6 +102,20 @@ class ConversationParticipantRepository(
         Raises:
             ConstraintViolationError: On constraint violations (e.g. a
                 duplicate ``(conversation_id, agent_id)`` pair).
+            QueryError: On other database errors.
+        """
+        ...
+
+    @override
+    async def save_many(self, entities: tuple[ConversationParticipant, ...], /) -> None:
+        """Upsert a whole roster batch in one transaction (all-or-nothing).
+
+        Used to enrol the initial roster so a mid-batch failure cannot
+        leave a half-populated conversation. An empty batch is a no-op.
+
+        Raises:
+            ConstraintViolationError: On a duplicate
+                ``(conversation_id, agent_id)`` pair.
             QueryError: On other database errors.
         """
         ...

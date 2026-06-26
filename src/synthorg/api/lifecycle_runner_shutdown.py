@@ -606,3 +606,9 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="otlp_trace_handler",
         )
+    # Flush and close buffering log handlers last, once every other
+    # service has emitted its shutdown lines, so the OTLP exporter's
+    # queued records and flusher thread are not lost on exit.
+    from synthorg.observability.setup import teardown_logging  # noqa: PLC0415
+
+    await teardown_logging()

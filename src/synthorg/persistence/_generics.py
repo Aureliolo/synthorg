@@ -56,6 +56,7 @@ from synthorg.core.pagination import (
 # invariant. Pyright enforces this for ``Protocol`` types.
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
 ID_contra = TypeVar("ID_contra", contravariant=True)
 FilterSpec_contra = TypeVar("FilterSpec_contra", contravariant=True)
 Event = TypeVar("Event")
@@ -137,6 +138,25 @@ class IdKeyedRepository(Protocol[T, ID_contra]):
         offset: int = 0,
     ) -> tuple[T, ...]:
         """List entities with pagination, ordered deterministically by id."""
+        ...
+
+
+@runtime_checkable
+class BatchWriteRepository(Protocol[T_contra]):
+    """Atomic multi-row upsert in a single backend transaction.
+
+    Composed alongside an id-keyed surface for entities written in
+    cohesive batches (e.g. enrolling a whole roster at once) where a
+    partial write would leave an inconsistent set. The batch MUST be
+    all-or-nothing: any row failing rolls back the whole call.
+    """
+
+    async def save_many(self, entities: tuple[T_contra, ...], /) -> None:
+        """Upsert every entity in one transaction (all-or-nothing).
+
+        An empty batch is a no-op. Ordering within the batch is the
+        caller's responsibility (e.g. via a per-row timestamp).
+        """
         ...
 
 

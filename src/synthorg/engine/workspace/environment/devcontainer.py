@@ -173,7 +173,7 @@ class DevcontainerEnvironmentStrategy:
             written file path when a fresh declaration was created;
             ``seeded=False`` when one already existed.
         """
-        if self.detect(workspace_path):
+        if await asyncio.to_thread(self.detect, workspace_path):
             return ScaffoldResult(seeded=False)
         target = self._nested_path(workspace_path)
         await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
