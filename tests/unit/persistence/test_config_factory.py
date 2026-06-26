@@ -84,12 +84,12 @@ class TestBuildPostgresPersistenceConfigFromUrl:
         assert cfg.postgres is not None
         assert cfg.postgres.ssl_mode == "disable"
 
-    def test_default_ssl_mode_is_require_when_no_override(self) -> None:
+    def test_default_ssl_mode_is_verify_full_when_no_override(self) -> None:
         cfg = build_postgres_persistence_config_from_url(
             "postgresql://u:p@h/db",
         )
         assert cfg.postgres is not None
-        assert cfg.postgres.ssl_mode == "require"
+        assert cfg.postgres.ssl_mode == "verify-full"
 
     def test_invalid_ssl_mode_override_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="SYNTHORG_POSTGRES_SSL_MODE"):

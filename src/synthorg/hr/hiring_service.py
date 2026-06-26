@@ -131,7 +131,7 @@ class HiringService:
 
     async def _store(self, request: HiringRequest) -> None:
         """Update the in-memory set and best-effort persist the request."""
-        await self._store(request)
+        self._requests[str(request.id)] = request
         if self._request_repo is None:
             return
         try:

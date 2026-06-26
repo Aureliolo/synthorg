@@ -10,14 +10,17 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.engine.context import DEFAULT_MAX_TURNS
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
+from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.routing_policy.router import StakesRouter
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -31,6 +34,7 @@ class AgentEngineRunMixin:
     _stakes_router: StakesRouter | None
     _flight_recorder_sink: FlightRecorderSink | None
     _clock: Clock
+    _config_resolver: ConfigResolver | None
 
     async def _route_stakes(
         self,
@@ -100,3 +104,28 @@ class AgentEngineRunMixin:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    async def _resolve_max_turns(self, *, agent_id: str, task_id: str) -> int:
+        """Resolve the per-run turn cap from settings, falling back to default.
+
+        Returns:
+            The operator-configured ``engine.max_turns`` when a resolver is
+            wired and the value is positive, else :data:`DEFAULT_MAX_TURNS`.
+            A settings-backend outage fails safe to the default.
+        """
+        if self._config_resolver is None:
+            return DEFAULT_MAX_TURNS
+        try:
+            resolved = await self._config_resolver.get_int("engine", "max_turns")
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="failed to read engine.max_turns, using default",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return DEFAULT_MAX_TURNS
+        return resolved if resolved > 0 else DEFAULT_MAX_TURNS

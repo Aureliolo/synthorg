@@ -10,14 +10,16 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from synthorg.api._app_wiring import (
-    _try_wire_audit_chain_persistence,
     _try_wire_cockpit,
     _try_wire_cost_dial,
     _try_wire_environment_service,
     _try_wire_performance_persistence,
-    _try_wire_trust_persistence,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
+from synthorg.api.lifecycle_helpers.durability_wiring import (
+    _try_wire_audit_chain_persistence,
+    _try_wire_trust_persistence,
+)
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
 from synthorg.core.autonomy_enums import AutonomyLevel

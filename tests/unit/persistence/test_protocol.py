@@ -1539,6 +1539,32 @@ class _FakeBackend:
         return _FakePrincipleOverrideRepository()
 
     @property
+    def trust_states(self) -> object:
+        # ``PersistenceBackend`` is ``@runtime_checkable``; the isinstance
+        # conformance check only verifies the attribute exists.
+        return object()
+
+    @property
+    def trust_change_history(self) -> object:
+        return object()
+
+    @property
+    def promotion_history(self) -> object:
+        return object()
+
+    @property
+    def hiring_requests(self) -> object:
+        return object()
+
+    @property
+    def agent_contributions(self) -> object:
+        return object()
+
+    @property
+    def audit_chain_entries(self) -> object:
+        return object()
+
+    @property
     def mcp_installations(self) -> object:
         return None
 

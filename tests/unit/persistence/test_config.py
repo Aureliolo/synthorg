@@ -81,7 +81,7 @@ class TestPostgresConfig:
         assert cfg.database == "synthorg"
         assert cfg.username == "postgres"
         assert cfg.password.get_secret_value() == "s3cret"
-        assert cfg.ssl_mode == "require"
+        assert cfg.ssl_mode == "verify-full"
         assert cfg.pool_min_size == 1
         assert cfg.pool_max_size == 10
         assert cfg.pool_timeout_seconds == 30.0
