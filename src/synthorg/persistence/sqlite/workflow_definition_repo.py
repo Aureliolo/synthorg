@@ -35,6 +35,7 @@ from synthorg.persistence._shared.workflow_definition_marshalling import (
     build_workflow_definition_where,
     row_to_workflow_definition,
     serialize_definition_columns,
+    validate_workflow_definition_revision,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.sqlite._workflow_definition_sql import (
@@ -97,29 +98,6 @@ class SQLiteWorkflowDefinitionRepository:
         self._db = db
         self._write_context = write_context
 
-    def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
-        """Reject obviously-invalid revisions before hitting the DB.
-
-        Shared between :meth:`save`, :meth:`update_if_exists`, and
-        :meth:`create_if_absent` so every write path fails fast with a
-        descriptive ``QueryError`` rather than bubbling a generic SQLite
-        CHECK-constraint error to the caller.
-
-        Raises:
-            QueryError: If ``definition.revision`` is less than 1.
-        """
-        if definition.revision < 1:
-            msg = (
-                f"Workflow definition revision must be >= 1, got"
-                f" {definition.revision} for {definition.id!r}"
-            )
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=str(definition.id),
-                error=msg,
-            )
-            raise QueryError(msg)
-
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
         """Conditional UPDATE, returning ``False`` if the row is missing.
 
@@ -138,7 +116,7 @@ class SQLiteWorkflowDefinitionRepository:
             PersistenceVersionConflictError: If the row version no longer matches.
             QueryError: If the database query fails.
         """
-        self._require_valid_revision(definition)
+        validate_workflow_definition_revision(definition)
         nodes_json, edges_json, inputs_json, outputs_json = (
             serialize_definition_columns(definition)
         )
@@ -214,7 +192,7 @@ class SQLiteWorkflowDefinitionRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        self._require_valid_revision(definition)
+        validate_workflow_definition_revision(definition)
         nodes_json, edges_json, inputs_json, outputs_json = (
             serialize_definition_columns(definition)
         )
@@ -269,7 +247,7 @@ class SQLiteWorkflowDefinitionRepository:
                 :meth:`_require_valid_revision`).
             PersistenceVersionConflictError: If the row version no longer matches.
         """
-        self._require_valid_revision(entity)
+        validate_workflow_definition_revision(entity)
         nodes_json, edges_json, inputs_json, outputs_json = (
             serialize_definition_columns(entity)
         )

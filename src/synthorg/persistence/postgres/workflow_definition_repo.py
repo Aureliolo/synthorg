@@ -35,6 +35,7 @@ from synthorg.persistence._shared.workflow_definition_marshalling import (
     build_workflow_definition_where,
     definition_jsonb_payloads,
     row_to_workflow_definition,
+    validate_workflow_definition_revision,
 )
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionFilterSpec,
@@ -84,29 +85,6 @@ class PostgresWorkflowDefinitionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
-        """Reject obviously-invalid revisions before hitting the DB.
-
-        Shared between :meth:`save`, :meth:`update_if_exists`, and
-        :meth:`create_if_absent` so all three write paths fail fast with
-        the same ``QueryError`` instead of hitting the ``revision >= 1``
-        CHECK constraint and surfacing a generic driver error.
-
-        Raises:
-            QueryError: If ``definition.revision`` is less than 1.
-        """
-        if definition.revision < 1:
-            msg = (
-                f"Workflow definition revision must be >= 1, got"
-                f" {definition.revision} for {definition.id!r}"
-            )
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=str(definition.id),
-                error=msg,
-            )
-            raise QueryError(msg)
-
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
         """Conditional UPDATE, returning ``False`` if the row is missing.
 
@@ -122,7 +100,7 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database query fails.
             PersistenceVersionConflictError: If the row version no longer matches.
         """
-        self._require_valid_revision(definition)
+        validate_workflow_definition_revision(definition)
         nodes, edges, inputs, outputs = _jsonb_columns(definition)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -191,7 +169,7 @@ class PostgresWorkflowDefinitionRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        self._require_valid_revision(definition)
+        validate_workflow_definition_revision(definition)
         nodes, edges, inputs, outputs = _jsonb_columns(definition)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -242,7 +220,7 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database operation fails.
             PersistenceVersionConflictError: If optimistic concurrency check fails.
         """
-        self._require_valid_revision(entity)
+        validate_workflow_definition_revision(entity)
         nodes, edges, inputs, outputs = _jsonb_columns(entity)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

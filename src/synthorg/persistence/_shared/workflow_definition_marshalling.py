@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import MalformedRowError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -28,6 +28,7 @@ from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.workflow_def import (
     PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
+    PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
 from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence.workflow_definition_protocol import (
@@ -152,6 +153,33 @@ def serialize_definition_columns(
     )
 
 
+def validate_workflow_definition_revision(definition: WorkflowDefinition) -> None:
+    """Reject obviously-invalid revisions before hitting the DB.
+
+    Shared between ``save`` / ``update_if_exists`` / ``create_if_absent`` on
+    both backends so every write path fails fast with the same descriptive
+    ``QueryError`` rather than surfacing a generic ``revision >= 1``
+    CHECK-constraint driver error to the caller.
+
+    Args:
+        definition: The workflow definition about to be written.
+
+    Raises:
+        QueryError: If ``definition.revision`` is less than 1.
+    """
+    if definition.revision < 1:
+        msg = (
+            f"Workflow definition revision must be >= 1, got"
+            f" {definition.revision} for {definition.id!r}"
+        )
+        logger.warning(
+            PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+            definition_id=str(definition.id),
+            error=msg,
+        )
+        raise QueryError(msg)
+
+
 def build_workflow_definition_where(
     filter_spec: WorkflowDefinitionFilterSpec, *, placeholder: LiteralString
 ) -> tuple[LiteralString, list[object]]:
@@ -180,4 +208,5 @@ __all__ = [
     "definition_jsonb_payloads",
     "row_to_workflow_definition",
     "serialize_definition_columns",
+    "validate_workflow_definition_revision",
 ]
