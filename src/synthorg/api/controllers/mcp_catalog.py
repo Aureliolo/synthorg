@@ -373,6 +373,9 @@ class MCPCatalogController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
+            InvalidConnectionAuthError: If the bound connection's type does
+                not match the entry's ``required_connection_type`` (422,
+                mapped by the central handler from class metadata).
         """
         entry_id = data.catalog_entry_id
         connection_name = data.connection_name

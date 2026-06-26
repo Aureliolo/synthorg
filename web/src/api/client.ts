@@ -442,20 +442,22 @@ export function unwrapPaginated<T>(
   // scalar cannot dereference to ``undefined`` fields.
   const raw: { pagination?: unknown; data?: unknown; degraded_sources?: unknown } =
     body
-  if (
-    !raw.pagination ||
-    typeof raw.pagination !== 'object' ||
-    !Array.isArray(raw.data) ||
-    !Array.isArray(raw.degraded_sources)
-  ) {
+  if (!raw.pagination || typeof raw.pagination !== 'object' || !Array.isArray(raw.data)) {
     throw new ApiRequestError('Unexpected API response format')
   }
+  // ``degraded_sources`` is a supplementary partial-data warning, not
+  // load-bearing data: keep the result's required ``degradedSources`` array
+  // honest by defaulting to ``[]`` when the wire omits it, rather than failing
+  // the whole list fetch over a missing warning field.
+  const degradedSources = Array.isArray(raw.degraded_sources)
+    ? (raw.degraded_sources as readonly string[])
+    : []
   return {
     data: body.data,
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
-    degradedSources: body.degraded_sources,
+    degradedSources,
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

@@ -1064,11 +1064,15 @@ def _resolve_http_retry_after(
             # observable; surfacing it lets operators distinguish a real
             # missing header from a misbehaving upstream service. The value
             # is untrusted third-party header content, so scrub credential
-            # patterns out of it before it reaches the log.
+            # patterns AND neutralise CR/LF (which could otherwise forge log
+            # lines) before it reaches the log.
+            safe_retry = (
+                scrub_secret_tokens(raw_retry).replace("\r", "\\r").replace("\n", "\\n")
+            )
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="retry_after_parse_error",
-                raw_retry_after=scrub_secret_tokens(raw_retry),
+                raw_retry_after=safe_retry,
                 path=str(request.url.path),
             )
     if status == _TOO_MANY_REQUESTS_STATUS:
@@ -1105,12 +1109,11 @@ def handle_http_exception(
         # A third-party HTTPException subclass (rate-limit middleware, a
         # plugin) may interpolate a credential into a 4xx detail; scrub it
         # before it reaches the body, matching the domain-error 4xx path in
-        # ``_select_message``.
-        msg = scrub_secret_tokens(
-            (raw_detail if isinstance(raw_detail, str) else str(raw_detail))[
-                :_MAX_DETAIL_LEN
-            ]
-        )
+        # ``_select_message``. Scrub the FULL string first, then truncate:
+        # truncating first could split a credential at the cutoff so the
+        # scrubber's pattern no longer matches and a fragment survives.
+        detail_str = raw_detail if isinstance(raw_detail, str) else str(raw_detail)
+        msg = scrub_secret_tokens(detail_str)[:_MAX_DETAIL_LEN]
     code, category, retryable = _category_for_status(status)
     raw_headers = exc.headers or {}
     retry_after = _resolve_http_retry_after(raw_headers, status=status, request=request)

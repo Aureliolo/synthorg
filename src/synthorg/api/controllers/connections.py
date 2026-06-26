@@ -158,8 +158,10 @@ class ConnectionsController(Controller):
         Litestar runs Pydantic validation on
         :class:`CreateConnectionRequest` before this handler executes;
         unknown fields and shape mismatches surface as a structured 4xx
-        response automatically.  The handler body therefore only owns
-        the persistence-layer dispatch and the domain-error mapping.
+        response automatically.  The handler body therefore only owns the
+        persistence-layer dispatch; the domain errors it can raise carry
+        their own wire contract on the class and propagate untouched to the
+        central handler rather than being caught and re-mapped here.
 
         Returns:
             ``ApiResponse[Connection]`` instance.

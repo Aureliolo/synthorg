@@ -922,6 +922,38 @@ class TestExceptionHandlers:
         assert len(parse_warnings) == 1
         assert parse_warnings[0]["raw_retry_after"] == "soon"
 
+    def test_http_exception_malformed_retry_after_neutralises_crlf(self) -> None:
+        """CR/LF in an upstream Retry-After is escaped before logging.
+
+        The header value is untrusted; a raw newline would let an attacker
+        forge a second log line on the parse-error warning path. The handler
+        escapes ``\\r`` / ``\\n`` so the logged field stays single-line.
+        """
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Slow down"
+        exc.headers = {"Retry-After": "x\r\nInjected: forged-line"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        with structlog.testing.capture_logs() as logs:
+            handle_http_exception(request, exc)
+
+        parse_warnings = [
+            log
+            for log in logs
+            if log.get("event") == "api.request.error"
+            and log.get("error_type") == "retry_after_parse_error"
+        ]
+        assert len(parse_warnings) == 1
+        logged = parse_warnings[0]["raw_retry_after"]
+        assert "\r" not in logged
+        assert "\n" not in logged
+        assert logged == "x\\r\\nInjected: forged-line"
+
     def test_http_429_retry_after_synthesised_from_ratelimit_reset(self) -> None:
         """Global rate-limit 429s carry only ``RateLimit-Reset``.
 
