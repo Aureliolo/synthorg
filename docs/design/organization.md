@@ -525,18 +525,6 @@ wipes all data, and optionally restarts the stack to re-open the wizard).
 
 ---
 
-## Community Marketplace
-
-!!! warning "Planned"
-
-    A future community marketplace would enable sharing and discovery of:
-
-    - Company templates
-    - Custom role definitions
-    - Workflow configurations
-    - Rating and review system
-    - Import/export in standard format
-
 ## MCP Service Facades
 
 The organisation domain exposes service facades on `AppState` for MCP handler shims

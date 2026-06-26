@@ -67,6 +67,20 @@ Templates -> Config
 | **approval** | Approval workflow protocol, models, and decision routing |
 | **notifications** | Operator alert adapters and notification dispatch |
 | **settings** | Settings registry, runtime resolution (DB > env > default), and configuration precedence |
+| **a2a** | Optional JSON-RPC 2.0 A2A federation layer: inbound gateway, outbound client, peer registry, agent-card serving, HMAC webhook verification (disabled by default) |
+| **knowledge** | Knowledge and provenance substrate: document/knowledge RAG over an ingested external corpus |
+| **ontology** | Semantic ontology subsystem: `OntologyService`, entity definitions and repository, drift detection |
+| **project_brain** | Long-horizon per-project state store: decisions and rationale, open questions, structured queryable history |
+| **docs_engine** | Living-documentation engine: per-project documentation store, human-browsable and agent-queryable |
+| **backup** | Backup and restore: scheduled, lifecycle-triggered, and manual backups of the persistence DB, agent memory, and company configuration, with retention |
+| **deliverable_receipts** | Immutable, self-validating provenance receipts attached to every completed deliverable (sources, decisions, rationale, cost) |
+| **execution** | Execution-trajectory data models (per-turn record, trajectory enums, efficiency ratios), free of any `engine` dependency |
+| **idempotency** | Claim/complete/fail idempotency service with response caching, shared by API controllers, the A2A gateway, and the MCP handler layer |
+| **infrastructure** | Thin per-subdomain MCP facades backing the `synthorg_settings_*`, `synthorg_providers_*`, `synthorg_backup_*` tool families |
+| **llm** | Cross-cutting LLM helpers: model pinning (`ModelPinMetadata`) and prompt-class profile metadata |
+| **telemetry** | Opt-in, privacy-safe anonymous product telemetry (off by default; no API keys or chat content) |
+| **versioning** | Generic versioning infrastructure for frozen Pydantic models (`VersioningService[T]`) |
+| **workers** | Distributed task-queue workers that plug into `TaskEngine` via `register_observer`, preserving the single-writer mutation-queue invariant |
 
 ## Design Principles
 

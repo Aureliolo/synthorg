@@ -42,10 +42,13 @@ Examples: `observability.root_log_level`, `observability.log_level_console`,
 
 Registered with `read_only_post_init=True` (which implies
 `restart_required=True`). The DB lookup is bypassed on reads, and
-`SettingsService.set()`, `set_many()`, `delete()`, and
-`delete_namespace()` raise `SettingReadOnlyError` so an operator does
-not believe a runtime override took effect when the running process
-keeps the boot-time value.
+`SettingsService.set()`, `set_many()`, and `delete()` raise
+`SettingReadOnlyError` so an operator does not believe a runtime
+override took effect when the running process keeps the boot-time value.
+`delete_namespace()` does not raise: a read-only key in the target
+namespace is logged as a WARNING (`reason="read_only_post_init_swept"`)
+and skipped, so it cannot hold the writable overrides the operator wants
+to clear hostage.
 
 For these entries the precedence chain collapses to **env > default**.
 The DB step is bypassed on reads (`get`, `get_namespace`, `get_all`,
@@ -146,10 +149,10 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 
 | Concern | Env var | Boot site |
 |---|---|---|
-| SQLite path | `SYNTHORG_DB_PATH` | `api/app.py`, `api/integrations_wiring.py` |
-| Postgres URL | `SYNTHORG_DATABASE_URL` | `api/app.py` |
-| Postgres SSL mode | `SYNTHORG_POSTGRES_SSL_MODE` | `api/app.py` |
-| Config-file path | `SYNTHORG_CONFIG_PATH` | `api/app.py`, `backup/factory.py` |
+| SQLite path | `SYNTHORG_DB_PATH` | `api/boot_persistence.py`, `api/app_helpers.py`, `api/integrations_wiring.py` |
+| Postgres URL | `SYNTHORG_DATABASE_URL` | `api/boot_persistence.py`, `api/app_helpers.py` |
+| Postgres SSL mode | `SYNTHORG_POSTGRES_SSL_MODE` | `api/boot_persistence.py` |
+| Config-file path | `SYNTHORG_CONFIG_PATH` | `api/boot_persistence.py`, `backup/factory.py` |
 | JWT secret | `SYNTHORG_JWT_SECRET` | `api/auth/secret.py` |
 | Master key (OAuth) | `SYNTHORG_MASTER_KEY` | `integrations/oauth/pkce.py` |
 | Pagination cursor secret | `SYNTHORG_PAGINATION_CURSOR_SECRET` | `api/cursor_config.py` |

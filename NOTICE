@@ -34,6 +34,6 @@ Deliberately excluded components
 The following strong-copyleft components are intentionally NOT shipped, and a
 gate (scripts/check_license_compat.py) keeps them out:
 
-  - pymupdf / fitz (AGPL-3.0): excluded from all dependency tables.
+  - pymupdf / fitz / pymupdf4llm (AGPL-3.0): excluded from all dependency tables.
   - golangci-lint (GPL-3.0):   used only as an external developer/CI binary,
                                never a Go module dependency of the CLI.

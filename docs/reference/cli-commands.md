@@ -50,7 +50,7 @@ Most defaults shown below are compiled into the binary. Entries written `(omitte
 | `status` | `--services` | (all) | Filter by service names (comma-separated) |
 | `status` | `--check` | `false` | Exit code only (`0`=healthy, `3`=unhealthy, `4`=unreachable) |
 | `logs` | `--follow` / `-f` | `false` | Follow log output |
-| `logs` | `--tail` | `100` | Number of lines to show from the tail |
+| `logs` | `--tail` | `100` | Number of lines to show from the tail; use `all` for the full log (a positive integer or `all`) |
 | `logs` | `--since` | (none) | Show logs since timestamp or relative (e.g. `1h`, `2024-01-01`) |
 | `logs` | `--until` | (none) | Show logs until timestamp or relative |
 | `logs` | `--timestamps` / `-t` | `false` | Show timestamps |
@@ -66,7 +66,7 @@ Most defaults shown below are compiled into the binary. Entries written `(omitte
 |---------|------|---------|-------------|
 | `cleanup` | `--dry-run` | `false` | List images without removing |
 | `cleanup` | `--all` | `false` | Include ALL SynthOrg images, not just old ones |
-| `cleanup` | `--keep` | `0` | Keep N most recent previous versions (`0`=remove all old) |
+| `cleanup` | `--keep` | `0` | Keep N most recent previous versions (`0`=remove all) |
 | `wipe` | `--dry-run` | `false` | Show what would happen without executing |
 | `wipe` | `--no-backup` | `false` | Skip the interactive backup prompt |
 | `wipe` | `--keep-images` | `false` | Leave container images on disk |
@@ -81,7 +81,7 @@ Most defaults shown below are compiled into the binary. Entries written `(omitte
 | `backup create` | `--timeout` | `60s` | API request timeout (Go duration). Default is the `backup_create_timeout` tunable. |
 | `backup list` | `--limit` / `-n` | `0` | Show N most recent (`0`=all) |
 | `backup list` | `--sort` | `newest` | Sort order (`newest` / `oldest` / `size`) |
-| `backup restore` | `--confirm` | (required) | Required acknowledgement that restore overwrites current data |
+| `backup restore` | `--confirm` | (required) | Confirm the restore operation (required) |
 | `backup restore` | `--dry-run` | `false` | Validate the archive without overwriting |
 | `backup restore` | `--no-restart` | `false` | Restore without restarting containers afterwards |
 | `backup restore` | `--timeout` | `30s` | API request timeout (Go duration). Default is the `backup_restore_timeout` tunable. |

@@ -110,7 +110,7 @@ Low-confidence signal -> conserve budget.
 **Claim**: Starting from a well-designed set of node/edge templates and selecting subsets
 outperforms generating arbitrary workflows from scratch.
 
-**SynthOrg validation**: Strongly confirmed. The Company YAML and 30 built-in roles in
+**SynthOrg validation**: Strongly confirmed. The Company YAML and 33 built-in roles in
 `src/synthorg/core/role_catalog.py` are a super-graph of organisational patterns. Template
 packs in `api/controllers/template_packs.py` apply curated patterns. The meeting protocols
 (3 variants) and loop types (3 variants) are a bounded selection space rather than

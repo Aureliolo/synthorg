@@ -122,7 +122,7 @@ competitors:
       budget_tracking: {support: planned, note: "Per-token/per-agent budgets, hierarchical cascades, and model downgrade are implemented and tested; enforced on a live run with the agent runtime (in active development)"}
       security_model: {support: planned, note: "Rule engine + LLM evaluator, progressive trust, audit trail, and output scanning are designed and tested; enforced on a live run with the agent runtime (in active development)"}
       observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP ship and run today"}
-      web_dashboard: {support: full, note: "React 19 dashboard (org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE) ships and runs; populated as the agent runtime comes online"}
+      web_dashboard: {support: partial, note: "React 19 dashboard (org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE) ships and runs, but its org/task/budget views stay empty until the agent runtime (in active development) populates them"}
       cli: {support: partial, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
       production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is not runnable end to end until the agent runtime lands"}
       workflow_types: {support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity, and ceremony scheduling are implemented and tested; they execute via the agent runtime (in active development)"}

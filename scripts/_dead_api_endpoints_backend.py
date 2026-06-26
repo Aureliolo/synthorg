@@ -464,7 +464,8 @@ def collect_backend_routes(
     Returns:
         A list of :class:`RouteRecord` covering every controller
         registered in the controllers/__init__.py tuples plus the
-        A2A registration block plus the module-level WS handler.
+        ``ControllerRegistration`` declarations in the feature.py
+        manifests plus the module-level WS handler.
     """
     src_root = project_root / "src" / "synthorg"
     init_path = src_root / "api" / "controllers" / "__init__.py"

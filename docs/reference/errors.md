@@ -324,29 +324,9 @@ When introducing a new domain error family:
 
 ## Domain-error-hierarchy gate
 
-`scripts/check_domain_error_hierarchy.py` enforces the rule at pre-push
-and in CI: every class definition under `src/synthorg/` whose direct
-base is one of `Exception` / `RuntimeError` / `LookupError` /
-`PermissionError` / `ValueError` / `TypeError` / `KeyError` /
-`IndexError` / `AttributeError` / `OSError` / `IOError` is a violation
-unless the class itself reaches `DomainError` via another base.
-
-Only the *root* of a stdlib-rooted chain is flagged; migrating the root
-to `DomainError` automatically corrects every descendant.
-
-Per-line opt-out:
-
-```python
-class TsaError(Exception):  # lint-allow: domain-error-hierarchy -- RFC 3161 internals; observability stays stdlib-rooted
-    ...
-```
-
-The justification after `--` is mandatory and must be non-empty. The
-gate also accepts a frozen baseline file
-(`scripts/domain_error_hierarchy_baseline.txt`) listing pre-existing
-violations a rollout has not yet reached. The baseline shrinks
-monotonically: any entry that no longer maps to a real violation is
-reported as drift, so the file cannot harbour stale rows.
+The `check_domain_error_hierarchy.py` gate that enforces this rule (no
+stdlib-rooted exception subclasses under `src/synthorg/`) is documented in
+[Convention Gates](convention-gates.md#domain-error-hierarchy-gate).
 
 ## Error-code uniqueness gate
 
@@ -413,28 +393,9 @@ renumbered.
 
 ## Interpreter-critical exception propagation
 
-`MemoryError` and `RecursionError` are subclasses of `Exception`, so a
-broad `except Exception:` block silently swallows them unless the
-handler propagates them explicitly. Call
-`synthorg.core.critical_errors.reraise_critical(exc)` as the first
-statement of the broad handler:
-
-```python
-from synthorg.core.critical_errors import reraise_critical
-
-try:
-    ...
-except Exception as exc:
-    reraise_critical(exc)
-    logger.warning(EVENT, error_type=type(exc).__name__, ...)
-    raise QueryError(msg) from exc
-```
-
-`asyncio.CancelledError` is **not** routed through this helper because
-it is a `BaseException`, not an `Exception`; a broad `except Exception:`
-block never catches it. See
-[Async concurrency conventions](conventions.md#11-async-concurrency-asynciotaskgroup-and-structured-concurrency)
-for the surrounding pattern.
+The broad-handler rule for propagating `MemoryError` / `RecursionError`
+via `synthorg.core.critical_errors.reraise_critical` is documented in
+[Async concurrency conventions](conventions.md#11-async-concurrency-asynciotaskgroup-and-structured-concurrency).
 
 ## Further reading
 

@@ -3,8 +3,11 @@
 > Structural mitigation against LLM tendency to recommend trendy, context-insensitive strategies ("trendslop") for strategic agent roles.
 
 **Module**: `src/synthorg/engine/strategy/`
-**Phase 1**: Core models, config, prompt integration (this page)
-**Phase 2**: Meeting integration (#1158)
+
+Covers the core models, config, and prompt integration documented on this page,
+plus meeting integration: the strategy subsystem's premortem and
+consensus-velocity hooks are bound to the meeting package through
+`src/synthorg/api/_meeting_strategy_dispatch.py`.
 
 ---
 
@@ -241,5 +244,4 @@ engine/strategy/
 
 ## References
 
-- Research: #693
-- Phase 2 (meeting integration): #1158
+- Meeting integration binding: `src/synthorg/api/_meeting_strategy_dispatch.py`

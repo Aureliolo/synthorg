@@ -148,20 +148,24 @@ occurs.
 
 **Source**: `src/synthorg/communication/conflict_resolution/human_strategy.py`
 
-This is a **stub implementation** pending approval queue integration (#37). It does not
-block waiting for a human; it returns a `ConflictResolution` with outcome
-`ESCALATED_TO_HUMAN` immediately. The caller receives a resolution object but with no
-winning position. What happens next depends on the caller's handling of
-`ESCALATED_TO_HUMAN`; there is no standard downstream behaviour enforced by the resolver.
+This is a full blocking implementation. The resolver persists an `Escalation`
+row via the configured `EscalationQueueStore`, registers an `asyncio.Future` in
+the `PendingFuturesRegistry`, dispatches an operator notification, and awaits the
+Future with a configured timeout. A decision arriving via the REST endpoint
+resolves the Future so the resolver wakes with the operator's payload and hands
+it to the configured `DecisionProcessor`. The `escalation/` sub-package
+(`store`, `registry`, `notify`, `processors`, `sweeper`) backs this flow, and an
+`approval_store` routes the escalation into the generic approval queue in
+parallel.
 
-This means conflicts assigned to `HumanEscalationResolver` are technically "resolved" from
-the resolver's perspective but have no actual decision. Callers that do not handle
-`ESCALATED_TO_HUMAN` specially will treat an unresolved conflict as resolved-with-no-winner.
+On timeout or explicit cancellation the resolver returns a no-winner
+`ConflictResolution` with outcome `ESCALATED_TO_HUMAN` (never `None`) and
+transitions the store row to `EXPIRED` so subsequent GETs surface the terminal
+state.
 
-**Severity**: Medium. Until #37 is implemented (approval queue integration), human
-escalation for conflict resolution is a no-op that silently produces unresolved conflicts.
-
-**Verdict**: Terminates immediately (no hang). Functional gap: no actual human blocking.
+**Verdict**: Safe. The resolver blocks up to its timeout for a real human
+decision and always produces a `ConflictResolution`, either the operator's
+decision or a terminal no-winner result on timeout.
 
 ### HybridResolver
 

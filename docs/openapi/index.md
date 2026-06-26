@@ -43,9 +43,9 @@ The static snapshot on this page is produced by `scripts/export_openapi.py`, whi
 SynthOrg uses **JWT session tokens** issued by the auth controller. The typical flow:
 
 1. **First-run setup.** On a fresh install, `POST /api/v1/auth/setup` creates the initial CEO account. After setup completes, this endpoint returns a conflict error.
-2. **Login.** `POST /api/v1/auth/login` with a username and password returns a `TokenResponse` carrying a signed JWT, its `expires_in` (seconds), and a `must_change_password` flag. Include the token on subsequent requests as `Authorization: Bearer <token>`. A server-side session record is created as a side effect and is retrievable via `GET /api/v1/auth/sessions`.
+2. **Login.** `POST /api/v1/auth/login` with a username and password returns a `CookieSessionResponse` carrying `expires_in` (seconds) and a `must_change_password` flag. The signed JWT is delivered as an `HttpOnly` `Set-Cookie` header, not in the response body. A server-side session record is created as a side effect and is retrievable via `GET /api/v1/auth/sessions`.
 3. **Password change.** New users are forced through `POST /api/v1/auth/change-password` before any other endpoint accepts their token; the `require_password_changed` guard blocks everything else until the temporary password is rotated.
-4. **Current identity.** `GET /api/v1/auth/me` returns the caller's `id`, `username`, `role`, and `must_change_password` flag (no session metadata).
+4. **Current identity.** `GET /api/v1/auth/me` returns the caller's `id`, `username`, `role`, `must_change_password` flag, `org_roles` (permission-level roles for org-config access), and `scoped_departments` (departments accessible to department admins); no session metadata.
 5. **WebSocket tickets.** Browsers can't set `Authorization` headers on WebSocket connections, so `POST /api/v1/auth/ws-ticket` mints a short-lived single-use ticket. The **preferred** way to present it is as the first WebSocket message (`{"action": "auth", "ticket": "<ticket>"}`) so the ticket never lands in URLs, access logs, or browser history. A legacy `/api/v1/ws?ticket=<ticket>` query-param form is also accepted and is validated before the WebSocket upgrade.
 6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions by default; CEOs can pass `?scope=all` to list every user's sessions across the organisation. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` is the normal "log out of this browser" action and **attempts server-side revocation** of the JTI when a valid JWT is presented. Logout is **idempotent**: it always returns 204 with cookie-clearing headers (`Max-Age=0` session/CSRF/refresh cookies plus `Clear-Site-Data: "cookies"`), whether or not the caller is authenticated, so clients can recover from stale cookie state without a catch-22. Logout is excluded from both auth middleware and CSRF double-submit validation so recovery works from any stale-cookie state; the server-side revocation step is best-effort (a session-store failure still returns 204 and clears cookies rather than 500-ing the client). There is no bulk "revoke all" endpoint.
 
@@ -160,12 +160,12 @@ Full request/response schemas for every endpoint are in the **[interactive refer
 
 ### Pagination
 
-List endpoints accept `limit` and `offset` query parameters and return a `PaginatedResponse[T]` envelope:
+List endpoints are **cursor-based**: they accept `limit` and an opaque `cursor` query parameter and return a `PaginatedResponse[T]` envelope:
 
 ```json
 {
   "data": [...],
-  "pagination": {"total": 142, "offset": 0, "limit": 50},
+  "pagination": {"limit": 50, "next_cursor": "<opaque>", "has_more": true},
   "degraded_sources": [],
   "error": null,
   "error_detail": null,
@@ -173,13 +173,13 @@ List endpoints accept `limit` and `offset` query parameters and return a `Pagina
 }
 ```
 
-`data` holds the page of items. `pagination` carries the offset/limit/total triple. `degraded_sources` is empty on a normal response and lists data sources that failed gracefully when the endpoint returned partial data. `error` and `error_detail` are `null` on success; `success` is derived from `error`.
+`data` holds the page of items. `pagination` carries the `limit`, the opaque `next_cursor` (`null` on the final page), and `has_more`; the two always agree (a non-null cursor means more pages exist). Clients walk forward by passing `next_cursor` back as `cursor` until `has_more` is `false`. There is no `offset` or `total`. `degraded_sources` is empty on a normal response and lists data sources that failed gracefully when the endpoint returned partial data. `error` and `error_detail` are `null` on success; `success` is derived from `error`.
 
 ### Optimistic concurrency
 
 Runtime-editable settings emit an `ETag` header on reads and honour `If-Match` on writes. To update a setting without trampling a concurrent write, pass the previously-received ETag back via `If-Match`; a mismatch produces a `409 Conflict` with `error_code` `VERSION_CONFLICT` (4002).
 
-Workflow definitions, workflow versions, workflow executions, and tasks use a different optimistic-concurrency mechanism: an `expected_version: int` field in the **request body** (not an HTTP header). The server rejects the update with the same `VERSION_CONFLICT` code when the stored version differs from the value supplied. Both mechanisms produce identical error shapes on conflict; only the input channel differs.
+Workflow definitions and tasks use a different optimistic-concurrency mechanism: an integer guard field in the **request body** (not an HTTP header). Tasks supply `expected_version: int`; workflow-definition update requests supply `expected_revision: int` (the field names differ by DTO, and DTOs are `extra="forbid"`, so using the wrong name is rejected). The server rejects the update with the same `VERSION_CONFLICT` code when the stored value differs from the one supplied. Both mechanisms produce identical error shapes on conflict; only the input channel differs.
 
 ### WebSocket events
 

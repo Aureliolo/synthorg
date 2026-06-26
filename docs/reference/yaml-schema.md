@@ -85,16 +85,13 @@ See [docs/guides/budget.md](../guides/budget.md) for the broader operations guid
 
 ## `integrations`
 
-Each integration is a typed sub-block keyed by name:
+`integrations` is a fixed set of typed sub-blocks (the model is `extra="forbid"`):
 
 ```yaml
 integrations:
-  github:
-    enabled: true
-    token: ${GITHUB_TOKEN}
-  slack:
-    enabled: true
-    webhook_url: ${SLACK_WEBHOOK}
+  enabled: true
+  connections:
+    max_connections_per_type: 100
   webhooks:
     enabled: true
     replay_window_seconds: 300
@@ -102,9 +99,13 @@ integrations:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `integrations.<name>.enabled` | bool | `false` | Activate the integration. |
-| `integrations.<name>.token` / `webhook_url` / `api_key` | str | (provider) | Secret material; `${ENV_VAR}` substitution supported. |
-| `integrations.webhooks.replay_window_seconds` | int | `300` | Webhook replay protection. |
+| `integrations.enabled` | bool | `true` | Master switch for the integrations layer. |
+| `integrations.connections.max_connections_per_type` | int | `100` | Upper bound on stored connections per connection type. |
+| `integrations.webhooks.enabled` | bool | `true` | Activate the webhook receiver. |
+| `integrations.webhooks.replay_window_seconds` | int | `300` | Webhook nonce/timestamp dedup window. |
+| `integrations.secret_backend` / `oauth` / `health` / `tunnel` / `mcp_catalog` | sub-block | (defaults) | Secret-storage, OAuth 2.1, health-monitoring, dev-tunnel, and bundled MCP catalog settings. |
+
+Individual connections (GitHub, Slack, SMTP, database, generic HTTP, OAuth apps) are **not** declared in YAML: they are created at runtime through the integrations API and their secrets live in the configured secret backend.
 
 ## `notifications`
 
@@ -131,11 +132,21 @@ notifications:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `security.audit_chain.enabled` | bool | `true` | Sign every audit event into the hash chain. |
-| `security.audit_chain.max_entries` | int | `100000` | Ring-buffer capacity; alert at 90%. |
-| `security.approval.timeout_seconds` | int | `86400` | Auto-reject pending approvals after this window. |
-| `security.approval.reviewer_groups` | list[str] | `[]` | Roles allowed to decide. |
-| `security.prompt_safety.enabled` | bool | `true` | Wrap untrusted content via `wrap_untrusted`. |
+| `security.enabled` | bool | `true` | Master switch for the security subsystem. |
+| `security.enforcement_mode` | enum | `active` | `active`, `shadow`, or `disabled`. |
+| `security.audit_enabled` | bool | `true` | Record audit entries. |
+| `security.post_tool_scanning_enabled` | bool | `true` | Scan tool output for secrets. |
+| `security.hard_deny_action_types` | list[str] | (preset) | Action types always denied. |
+| `security.audit_retention_days` | int | `730` | Days to retain `audit_entries` before automatic purge (`0` disables). |
+
+The hash-chained audit sink is a **root-level** block, not nested under `security`:
+
+```yaml
+audit_chain:
+  enabled: false   # opt-in; signs every audit event into the hash chain
+```
+
+Prompt-safety wrapping (`wrap_untrusted`) is always applied in code and has no YAML toggle; approval-timeout policy is configured under `config.approval_timeout`, not `security`.
 
 ## `ontology`
 
@@ -162,6 +173,5 @@ Failures surface at startup with a typed `ConfigValidationError` and a line/colu
 
 Most fields are hot-reloadable via `synthorg config reload-template`. Exceptions:
 
-- `version` change requires a process restart.
 - New agents require a worker pool restart (the runtime caches per-agent prompts).
 - `budget.currency` change requires draining the cost tracker first; the runtime refuses the reload until the tracker is empty.

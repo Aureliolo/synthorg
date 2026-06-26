@@ -52,6 +52,7 @@ into three categories:
 | `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:v<release>` | Sidecar (network-proxy) container image (version-pinned to the running release). |
 | `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
+| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | `fine-tune` | Hostname the main container probes for the fine-tune sidecar health endpoint (defaults to the compose service name). Override when the sidecar is renamed or externally hosted. |
 
 ## Telemetry (restart required)
 

@@ -421,6 +421,7 @@ deduplicating
 deduplication
 deepcopy
 delegation_chain
+deliverable_receipts
 deliverables
 denormalised
 denylist
@@ -447,6 +448,7 @@ dicts
 disambiguates
 discoverability
 doc_type
+docs_engine
 docstring
 docstrings
 domain_code
@@ -549,6 +551,7 @@ lazify
 leaderboard
 list_by_category
 liveness
+llm
 load_balanced
 localStorage
 locked_in
@@ -641,6 +644,7 @@ prepends
 pretrained
 prober
 project_id
+project_brain
 prompt_template
 proxied
 proxying

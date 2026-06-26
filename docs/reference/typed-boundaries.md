@@ -56,7 +56,7 @@ Behaviour:
 | Boundary label       | File                                              | Function                  | Model                                                   |
 | -------------------- | ------------------------------------------------- | ------------------------- | ------------------------------------------------------- |
 | `jwt`                | `src/synthorg/api/auth/service.py`                | `decode_token`            | `synthorg.api.auth.claims.JwtClaims`                    |
-| `settings.security`  | `src/synthorg/api/controllers/settings.py`        | `import_security_config`  | `synthorg.security.config.SecurityConfig`               |
+| `settings.security`  | `src/synthorg/api/controllers/settings/security.py` | `import_security_config`  | `synthorg.security.config.SecurityConfig`               |
 | `ws.control`         | `src/synthorg/api/controllers/ws_protocol.py`     | `handle_message`          | `synthorg.api.ws_control_models.WsControlMessage`       |
 | `audit_chain`        | `src/synthorg/observability/audit_chain/sink.py`  | `emit`                    | `synthorg.observability.audit_chain.payloads.AuditChainEventPayload` |
 | `a2a.jsonrpc`        | `src/synthorg/a2a/rpc_params.py`                  | `parse_rpc_params`        | `synthorg.a2a.rpc_params.A2ARpcParams` (TypeAdapter)    |

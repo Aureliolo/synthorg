@@ -195,7 +195,9 @@ inline with the consumer. Examples:
 * `src/synthorg/meta/mcp/domains/_*_args.py` for MCP tool
   registrations (`_common_args.py`, `_tasks_args.py`,
   `_agents_args.py`, `_simple_args.py`, `_workflows_org_args.py`,
-  `_remaining_args.py`).
+  and the `_remaining_args/` package, whose `__init__.py` re-exports
+  the `_communication`, `_integrations`, `_infrastructure`, and
+  `_memory_finetune` sub-modules).
 * `src/synthorg/memory/self_editing_args.py` for the six
   self-editing-memory tools.
 * `src/synthorg/api/ws_payloads/` for the WebSocket payload
@@ -249,7 +251,7 @@ Canonical example: `src/synthorg/approval/models.py:28`. Gate:
 `scripts/check_frozen_model_extra_forbid.py` (pre-push +
 `.pre-commit-config.yaml` `frozen-extra-forbid`).
 
-## 9. Typed args models at system boundaries (#1611)
+## 9. Typed args models at system boundaries
 
 Every system boundary that accepted a raw `dict[str, Any]` now
 validates against a frozen Pydantic args model:
@@ -376,6 +378,29 @@ broad `except Exception:` never catches it.
 Do not preemptively rewrite `gather(..., return_exceptions=True)` sites in
 unrelated modules. Convert each site to the structured-error pattern when
 touching its surrounding code.
+
+### Interpreter-critical exception propagation
+
+The same rule applies to any broad `except Exception:` handler, async or
+not. `MemoryError` and `RecursionError` are subclasses of `Exception`, so
+a broad handler silently swallows them unless it propagates them first.
+Call `reraise_critical(exc)` as the handler's first statement, then log
+and re-raise a `DomainError`:
+
+```python
+from synthorg.core.critical_errors import reraise_critical
+
+try:
+    ...
+except Exception as exc:
+    reraise_critical(exc)
+    logger.warning(EVENT, error_type=type(exc).__name__, ...)
+    raise QueryError(msg) from exc
+```
+
+`asyncio.CancelledError` is **not** routed through this helper because it
+is a `BaseException`, not an `Exception`; a broad `except Exception:`
+block never catches it.
 
 ## 12. Time injection: the `Clock` seam
 

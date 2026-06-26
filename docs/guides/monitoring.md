@@ -23,7 +23,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 ## Metric inventory
 
-The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes two filter variables (`$workflow_definition_id`, `$department`) that drill panels down per-entity. No per-agent label is exposed: an unbounded `agent_id` / `agent` label is a cardinality bomb, so per-agent cost and task breakdowns live in the structured logs and the REST cost / task APIs rather than in metrics. Default queries aggregate across the full set so the unfiltered view is always meaningful.
+The **Dashboard** column maps each metric to the row it appears under in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. A metric marked `n/a (scrape-only)` is exposed on `/metrics` and queryable in Prometheus but has no dedicated panel in the bundled dashboard yet. The dashboard exposes two filter variables (`$workflow_definition_id`, `$department`) that drill panels down per-entity. No per-agent label is exposed: an unbounded `agent_id` / `agent` label is a cardinality bomb, so per-agent cost and task breakdowns live in the structured logs and the REST cost / task APIs rather than in metrics. Default queries aggregate across the full set so the unfiltered view is always meaningful.
 
 Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The six registry-bound push-time label names (`agent_id`, `department`, `workflow_definition_id`, `tool_name`, `provider`, `model_id` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown. The `agent_id` carried on `synthorg_agent_identity_version_changes_total` is an OpenMetrics exemplar (validated against the same snapshot), not a label, so per-agent attribution survives without per-agent series.
 
@@ -58,14 +58,14 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_tasks_total` | Gauge | `status` | Task count per status (no per-agent label; per-agent breakdowns are served by the REST task API). | `Tasks` |
 | `synthorg_task_runs_total` | Counter | `outcome` | Emitted task outcomes by bounded `outcome` (`succeeded` / `failed` / `cancelled` / `rejected`). One increment per terminal-status hop on a task; a task that transitions through `failed` and is later retried therefore counts as one `failed` *and* one `succeeded` (or another terminal value) -- the counter records emitted outcomes, not unique task ids. | `Tasks` |
 | `synthorg_task_duration_seconds` | Histogram | `outcome` | Task execution duration in seconds, partitioned by the same `outcome` values as `synthorg_task_runs_total` (buckets 0.1s-600s). Observed only when the engine has a recorded creation timestamp; transitions where the timestamp is unavailable (e.g. a task created before a process restart) skip the histogram and emit `task_engine.timing_fallback` WARN with `synthorg_task_runs_total` still incremented so the count and histogram percentages remain comparable. | `Tasks` |
-| `synthorg_task_transitions_total` | Counter | `from_status`, `to_status` | Every persisted task status hop (not just terminal outcomes); both labels bounded to `TaskStatus` (out-of-vocabulary folds to the sentinel). Charts intermediate-state flow that the terminal-only `synthorg_task_runs_total` cannot show. | `Tasks` |
+| `synthorg_task_transitions_total` | Counter | `from_status`, `to_status` | Every persisted task status hop (not just terminal outcomes); both labels bounded to `TaskStatus` (out-of-vocabulary folds to the sentinel). Charts intermediate-state flow that the terminal-only `synthorg_task_runs_total` cannot show. | n/a (scrape-only) |
 
 ### Providers
 
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model (`direction` bounded to `input`/`output`). | `Tools & Providers` |
-| `synthorg_provider_tokens_per_call` | Histogram | `provider`, `model`, `direction` | Per-call token distribution (token-count buckets 128-131072, not seconds); charts per-request prompt / completion size rather than the running total. | `Tools & Providers` |
+| `synthorg_provider_tokens_per_call` | Histogram | `provider`, `model`, `direction` | Per-call token distribution (token-count buckets 128-131072, not seconds); charts per-request prompt / completion size rather than the running total. | n/a (scrape-only) |
 | `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call. | `Tools & Providers` |
 | `synthorg_provider_errors_total` | Counter | `provider`, `model`, `error_class` | Provider-call failures classified by `rate_limit` / `timeout` / `connection` / `internal` / `invalid_request` / `auth` / `content_filter` / `not_found` / `other`. | `Tools & Providers` |
 | `synthorg_provider_call_duration_seconds` | Histogram | `provider`, `model`, `call_type` | Provider call wall-clock duration per provider, model, and call type (buckets 0.05s-120s). The auto-emitted `_count` series is the per-label call counter. | `Tools & Providers` |
@@ -95,8 +95,8 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_security_evaluations_total` | Counter | `verdict` | Pre-tool security verdicts (`verdict` bounded to `allow` / `deny` / `escalate` / `output_scan`). | `Audit & Security` |
-| `synthorg_auth_failures_total` | Counter | `reason` | Authentication rejections; `reason` bounded to the `VALID_AUTH_FAILURE_REASONS` set (`invalid_password`, `hash_verification_error`, `jwt_secret_missing`, `token_expired`, `token_invalid`, `refresh_rejected`, `account_locked`, `unauthenticated`), out-of-vocabulary folds to `__other__`. Sustained `invalid_password` / `refresh_rejected` is a brute-force signal. | `Audit & Security` |
-| `synthorg_auth_lockouts_total` | Counter | (none) | Account lockouts triggered by repeated failed logins. Any sustained rate is alertable. | `Audit & Security` |
+| `synthorg_auth_failures_total` | Counter | `reason` | Authentication rejections; `reason` bounded to the `VALID_AUTH_FAILURE_REASONS` set (`invalid_password`, `hash_verification_error`, `jwt_secret_missing`, `token_expired`, `token_invalid`, `refresh_rejected`, `account_locked`, `unauthenticated`), out-of-vocabulary folds to `__other__`. Sustained `invalid_password` / `refresh_rejected` is a brute-force signal. | n/a (scrape-only) |
+| `synthorg_auth_lockouts_total` | Counter | (none) | Account lockouts triggered by repeated failed logins. Any sustained rate is alertable. | n/a (scrape-only) |
 
 ### Audit chain
 

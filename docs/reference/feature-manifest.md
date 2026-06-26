@@ -66,9 +66,9 @@ FEATURE: FeatureModule = FeatureManifest(
 | `name` | `NotBlankStr` | Stable feature name. Must be unique across the tree. |
 | `settings_namespace` | `SettingNamespace \| None` | The `SettingNamespace` enum value the feature owns, or `None` when the feature has no operator-facing namespace. |
 | `state_slice` | `type[BaseFeatureStateSlice] \| None` | The feature's typed slice class; the empty slice composer constructs one of these at boot. |
-| `controllers` | `tuple[type[Controller], ...]` | Litestar controller classes the feature registers. |
+| `controllers` | `tuple[type[Controller] \| ControllerRegistration, ...]` | Litestar controllers the feature registers. A bare `type[Controller]` mounts under the API prefix; a `ControllerRegistration` wraps a controller with an optional `predicate` (mount only when it returns `True` against the live `AppState`) and `mount` (`"api"` default or `"root"` for e.g. A2A `.well-known`). |
 | `mcp_handlers` | `tuple[McpHandlerModule, ...]` | Frozen `McpHandlerDescriptor` instances declaring the feature's MCP domain + tool names. |
-| `lifecycle_hooks` | `tuple[LifecycleHook, ...]` | Named async startup hooks (current PR ships none directly through manifests; the field is forward-compatible for the Part-3 composition root). |
+| `lifecycle_hooks` | `tuple[LifecycleHook, ...]` | Named async startup hooks declared by the feature; most features declare none. |
 | `ghost_wired_symbols` | `tuple[str, ...]` | Boot-constructed class / factory names the feature owns. Must match `scripts/_ghost_wiring_manifest.txt` exactly at the symbol level. |
 | `depends_on` | `tuple[str, ...]` | Names of other features this feature depends on. The resolver loads dependencies first. |
 

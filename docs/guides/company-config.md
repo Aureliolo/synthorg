@@ -314,7 +314,7 @@ Memory configuration is covered in detail in the [Memory Configuration](memory.m
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `backend` | string | `"mem0"` | Memory backend |
-| `level` | MemoryLevel | `"session"` | Default persistence level |
+| `level` | MemoryLevel | `"persistent"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage paths |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline |
@@ -416,21 +416,21 @@ Valid strategies: `manual`, `role_based`, `load_balanced`, `cost_optimized`, `hi
 departments:
   - name: "engineering"
     budget_percent: 60
-    head_role: "CTO"
+    head: "CTO"
     reporting_lines:
       - subordinate: "Full-Stack Developer"
         supervisor: "CTO"
   - name: "product"
     budget_percent: 40
-    head_role: "Product Manager"
+    head: "Product Manager"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Department name (must be unique) |
 | `budget_percent` | int | `0` | Percentage of company budget |
-| `head_role` | string | `null` | Department head role name. Use the companion `head_merge_id` to disambiguate when several agents share the role |
-| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when several agents share `head_role` |
+| `head` | string | `null` | Department head role name (or agent identifier). Use the companion `head_id` to disambiguate when several agents share the role |
+| `head_id` | string | `null` | Optional unique identifier for the department head; use when several agents share `head` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |
 
 ### Workflow Handoffs

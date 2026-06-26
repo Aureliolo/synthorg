@@ -9,8 +9,9 @@ copyleft-exclusion policy enforced by `scripts/check_license_compat.py`
 ## Rules
 
 - **AGPL and GPL (non-LGPL) are forbidden.** No strong-copyleft package
-  may enter a shipped dependency table. `pymupdf` / `fitz` (AGPL-3.0) are
-  named on a hard denylist and must not appear in `pyproject.toml` or in
+  may enter a shipped dependency table. `pymupdf` / `fitz` / `pymupdf4llm`
+  (AGPL-3.0) are named on a hard denylist and must not appear in
+  `pyproject.toml` or in
   the resolved `uv.lock` closure at any depth.
 - **LGPL is permitted with attribution.** Weak-copyleft (LGPL-3.0)
   components are dynamically linked / imported as separate works, so they
