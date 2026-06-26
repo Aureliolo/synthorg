@@ -39,6 +39,7 @@ from synthorg.engine.intervention import (
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_STEERING_LISTED
 from synthorg.observability.events.cockpit import (
     COCKPIT_INTERVENTION_APPLIED,
     COCKPIT_INTERVENTION_INITIATED,
@@ -191,6 +192,7 @@ class SteeringController(Controller):
             project_id=NotBlankStr(project_id),
             limit=limit,
         )
+        logger.debug(API_STEERING_LISTED, project_id=project_id, count=len(directives))
         return ApiResponse(data=list(directives))
 
     @post(

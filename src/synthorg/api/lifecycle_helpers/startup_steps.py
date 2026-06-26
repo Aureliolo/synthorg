@@ -5,6 +5,8 @@ Each step takes its dependencies explicitly (rather than closing over
 schedules them into the ``on_startup`` sequence.
 """
 
+from pathlib import Path
+
 from pydantic import ValidationError
 
 from synthorg.api._app_wiring import (
@@ -14,7 +16,6 @@ from synthorg.api._app_wiring import (
     _try_wire_performance_persistence,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
-from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -140,6 +141,7 @@ async def install_runtime_services(
     app_state: AppState,
     *,
     connection_catalog: ConnectionCatalog | None,
+    agent_workspace_root: Path | None,
 ) -> None:
     """Install worker-execution + coordinator runtime services at boot.
 
@@ -179,11 +181,11 @@ async def install_runtime_services(
 
     # Pin the sandbox workspace onto the mounted data volume in an
     # env-driven deployment so agent file/sandbox tools persist with
-    # the runtime data, not a process temp dir. Injected/dev apps
-    # return None and keep the documented temp fallback.
-    env_workspace_root = resolve_agent_workspace_root_env()
-    if env_workspace_root is not None:
-        app_state.wire(WorkspaceStateSlice, agent_workspace_root=env_workspace_root)
+    # the runtime data, not a process temp dir. Resolved once at the
+    # composition root (bootstrap) and injected; injected/dev apps pass
+    # ``None`` and keep the documented temp fallback.
+    if agent_workspace_root is not None:
+        app_state.wire(WorkspaceStateSlice, agent_workspace_root=agent_workspace_root)
 
     # Per-project persistent workspace substrate. The git backend is
     # config-selected (embedded default, no external dep);

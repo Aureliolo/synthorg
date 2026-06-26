@@ -11,6 +11,7 @@ from typing import override
 
 import pytest
 
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.idempotency import IdempotencyService
 from synthorg.persistence.idempotency_protocol import (
@@ -42,6 +43,9 @@ class _FakeRepo:
     def __init__(self, *, initial_outcome: IdempotencyOutcome | None = None) -> None:
         self.next_outcome = initial_outcome or IdempotencyOutcome.FRESH
         self.cached_response: str | None = None
+        #: Fingerprint the fake reports on an existing (COMPLETED / IN_FLIGHT)
+        #: row, so the service-layer mismatch check can be exercised.
+        self.stored_fingerprint: str | None = None
         self.completes: list[tuple[str, str, str]] = []
         self.fails: list[tuple[str, str, str]] = []
         self.cleanup_calls: list[datetime] = []
@@ -53,8 +57,9 @@ class _FakeRepo:
         key: NotBlankStr,
         ttl_seconds: int,
         now: datetime,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
-        del scope, key
+        del scope, key, request_fingerprint
         if self.next_outcome is IdempotencyOutcome.FRESH:
             return IdempotencyClaim(
                 outcome=IdempotencyOutcome.FRESH,
@@ -63,6 +68,7 @@ class _FakeRepo:
         return IdempotencyClaim(
             outcome=self.next_outcome,
             cached_response=self.cached_response,
+            request_fingerprint=self.stored_fingerprint,
         )
 
     async def complete(
@@ -154,6 +160,51 @@ async def test_run_idempotent_returns_cached_on_completed_claim() -> None:
     assert calls == 0, "callback must not run on cached claim"
     assert outcome.fresh is False
     assert outcome.timed_out is False
+    assert outcome.result == {"status": "cached"}
+
+
+async def test_run_idempotent_rejects_fingerprint_mismatch() -> None:
+    """Replaying a key with a different payload is a 409, not a cached hit.
+
+    Returning the prior result would let one request's response silently
+    answer a different request that happened to reuse the key.
+    """
+    repo = _FakeRepo(initial_outcome=IdempotencyOutcome.COMPLETED)
+    repo.cached_response = '{"status": "cached"}'
+    repo.stored_fingerprint = "fp-original"
+    svc = IdempotencyService(repo)
+
+    async def cb() -> dict[str, object]:
+        msg = "callback must not run on a mismatched replay"
+        raise AssertionError(msg)
+
+    with pytest.raises(ConflictError):
+        await svc.run_idempotent(
+            scope=_SCOPE,
+            key=_KEY,
+            callback=cb,
+            request_fingerprint="fp-different",
+        )
+
+
+async def test_run_idempotent_allows_matching_fingerprint() -> None:
+    """A genuine retry (same payload) still returns the cached result."""
+    repo = _FakeRepo(initial_outcome=IdempotencyOutcome.COMPLETED)
+    repo.cached_response = '{"status": "cached"}'
+    repo.stored_fingerprint = "fp-same"
+    svc = IdempotencyService(repo)
+
+    async def cb() -> dict[str, object]:
+        msg = "callback must not run on a cached hit"
+        raise AssertionError(msg)
+
+    outcome = await svc.run_idempotent(
+        scope=_SCOPE,
+        key=_KEY,
+        callback=cb,
+        request_fingerprint="fp-same",
+    )
+    assert outcome.fresh is False
     assert outcome.result == {"status": "cached"}
 
 

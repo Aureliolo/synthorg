@@ -57,10 +57,27 @@ class CreateDepartmentRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: NotBlankStr = Field(max_length=128)
-    head: NotBlankStr | None = None
-    budget_percent: float = Field(default=0.0, ge=0.0, le=100.0)
-    autonomy_level: AutonomyLevel | None = None
+    name: NotBlankStr = Field(
+        max_length=128,
+        description="Department name (unique within the organisation).",
+        examples=["Engineering"],
+    )
+    head: NotBlankStr | None = Field(
+        default=None,
+        description="Agent name of the department head, if assigned.",
+        examples=["cto"],
+    )
+    budget_percent: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="Share of the org budget allocated to this department (0-100).",
+        examples=[20.0],
+    )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Default autonomy level for agents in the department.",
+    )
 
 
 class UpdateDepartmentRequest(BaseModel):
@@ -68,9 +85,20 @@ class UpdateDepartmentRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    head: NotBlankStr | None = None
-    budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
-    autonomy_level: AutonomyLevel | None = None
+    head: NotBlankStr | None = Field(
+        default=None,
+        description="New department head agent name; omit to leave unchanged.",
+    )
+    budget_percent: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="New org-budget share (0-100); omit to leave unchanged.",
+    )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="New default autonomy level; omit to leave unchanged.",
+    )
     teams: tuple[Team, ...] | None = Field(default=None, max_length=64)
     # Stored as a raw dict at the domain level for YAML-level flexibility
     # (see ``Department.ceremony_policy``); validated against

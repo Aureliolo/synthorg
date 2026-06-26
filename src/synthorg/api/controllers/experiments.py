@@ -1,3 +1,4 @@
+# module-kind: controller
 """A/B experiment registry endpoints.
 
 Mounts the variant CRUD plus deterministic assignment lookup under
@@ -34,6 +35,10 @@ from synthorg.experiments.models import (
     ExperimentVariant,
 )
 from synthorg.meta.state import experiment_service_of
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_EXPERIMENT_VARIANT_REGISTERED
+
+logger = get_logger(__name__)
 
 
 class ExperimentsController(Controller):
@@ -97,6 +102,11 @@ class ExperimentsController(Controller):
             variant=data.variant,
             weight=data.weight,
             description=data.description,
+        )
+        logger.info(
+            API_EXPERIMENT_VARIANT_REGISTERED,
+            experiment=experiment,
+            variant=data.variant,
         )
         return ApiResponse(data=record)
 

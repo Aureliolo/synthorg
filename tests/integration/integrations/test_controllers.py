@@ -30,7 +30,6 @@ from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import (
-    ConflictError,
     NotFoundError,
     UnauthorizedError,
     ValidationError,
@@ -45,6 +44,7 @@ from synthorg.integrations.connections.models import (
 )
 from synthorg.integrations.errors import (
     DuplicateConnectionError,
+    InvalidConnectionAuthError,
 )
 from tests._shared import LoopAsyncClient, make_app_state
 
@@ -127,7 +127,10 @@ class TestConnectionsController:
         state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
-        with pytest.raises(ConflictError):
+        # The controller propagates the domain error untouched; the
+        # central exception handler maps it to 409 from the class
+        # ``status_code`` metadata it carries.
+        with pytest.raises(DuplicateConnectionError) as exc_info:
             await ctrl.create_connection.fn(
                 ctrl,
                 state=state,
@@ -139,6 +142,7 @@ class TestConnectionsController:
                     },
                 ),
             )
+        assert exc_info.value.status_code == 409
 
     async def test_reveal_secret_returns_field(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
@@ -880,7 +884,7 @@ class TestMCPCatalogController:
                 data=InstallEntryRequest(catalog_entry_id="nope"),
             )
 
-    async def test_install_connection_type_mismatch_400(self) -> None:
+    async def test_install_connection_type_mismatch_422(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (
             InstallEntryRequest,
             MCPCatalogController,
@@ -908,7 +912,10 @@ class TestMCPCatalogController:
             }
         )
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
+        # The controller propagates the domain error untouched; the
+        # central exception handler maps it to 422 from the class
+        # ``status_code`` metadata it carries.
+        with pytest.raises(InvalidConnectionAuthError) as exc_info:
             await ctrl.install_entry.fn(
                 ctrl,
                 state=state,
@@ -917,6 +924,7 @@ class TestMCPCatalogController:
                     connection_name="slacky",
                 ),
             )
+        assert exc_info.value.status_code == 422
 
     async def test_uninstall_existing_entry(
         self, monkeypatch: pytest.MonkeyPatch

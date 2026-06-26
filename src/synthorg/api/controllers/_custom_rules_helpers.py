@@ -7,9 +7,11 @@ the service wiring (``_service`` + ``CustomRulesService``) remains there
 for the existing patch target.
 """
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.domain_errors import DomainError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -38,8 +40,12 @@ class MetricDomainUnhandledError(DomainError):
     500) so the contract stays branchable rather than raising the bare
     base ``DomainError``. Signals an internal invariant violation: a
     metric path passed registry validation but its domain prefix is not
-    handled by the snapshot assembler.
+    handled by the snapshot assembler. The class-level ``default_message``
+    is what the 500 handler surfaces, so the diagnostic raise message
+    (which names the internal builder) stays out of the response body.
     """
+
+    default_message: ClassVar[str] = "Internal error building the rule preview"
 
 
 def _ensure_registered_metric_path(value: str) -> str:
@@ -239,7 +245,9 @@ def _build_preview_snapshot(
         ``OrgSignalSnapshot`` instance.
 
     Raises:
-        ValueError: If ``metric_path`` is not dot-notation.
+        ValidationError: If ``metric_path`` is not dot-notation (422; a
+            defensive guard, since the request DTO validator already
+            rejects unregistered paths at the boundary).
         MetricDomainUnhandledError: If the metric domain is not handled
             by the builder (an internal invariant violation, surfaced
             as a 500).
@@ -248,7 +256,7 @@ def _build_preview_snapshot(
         msg = (
             f"metric_path must be dot-notation '<domain>.<field>', got: {metric_path!r}"
         )
-        raise ValueError(msg)
+        raise ValidationError(msg)
     domain, field = metric_path.split(".", maxsplit=1)
 
     # Convert to int for integer-typed metrics so the injected sample

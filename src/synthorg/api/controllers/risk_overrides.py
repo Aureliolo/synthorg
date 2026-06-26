@@ -20,8 +20,17 @@ from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import NotFoundError, UnauthorizedError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_RESOURCE_NOT_FOUND,
+    API_RISK_OVERRIDE_CREATED,
+    API_RISK_OVERRIDE_LISTED,
+    API_RISK_OVERRIDE_REVOKED,
+)
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.state import risk_override_service_of
+
+logger = get_logger(__name__)
 
 
 def _require_actor(request: Request[object, object, State]) -> AuthenticatedUser:
@@ -119,6 +128,7 @@ class RiskOverrideController(Controller):
         """
         service = risk_override_service_of(state.app_state)
         active = service.list_active()
+        logger.debug(API_RISK_OVERRIDE_LISTED, count=len(active))
         return ApiResponse(data=[RiskOverrideResponse.from_override(o) for o in active])
 
     @post(
@@ -156,6 +166,13 @@ class RiskOverrideController(Controller):
             created_by=NotBlankStr(str(actor.user_id)),
             expires_at=data.expires_at,
         )
+        logger.info(
+            API_RISK_OVERRIDE_CREATED,
+            override_id=str(override.id),
+            action_type=data.action_type,
+            override_tier=data.override_tier.value,
+            created_by=str(actor.user_id),
+        )
         return ApiResponse(data=RiskOverrideResponse.from_override(override))
 
     @post(
@@ -192,8 +209,21 @@ class RiskOverrideController(Controller):
             revoked_by=NotBlankStr(str(actor.user_id)),
         )
         if revoked is None:
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``override_id`` without WARNING
+            # noise for an expected client error.
+            logger.debug(
+                API_RESOURCE_NOT_FOUND,
+                resource="risk_override",
+                override_id=override_id,
+            )
             msg = f"No active risk override {override_id}"
             raise NotFoundError(msg)
+        logger.info(
+            API_RISK_OVERRIDE_REVOKED,
+            override_id=override_id,
+            revoked_by=str(actor.user_id),
+        )
         return ApiResponse(data=RiskOverrideResponse.from_override(revoked))
 
 

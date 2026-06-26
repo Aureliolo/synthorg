@@ -19,7 +19,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthMethod
-from synthorg.core.domain_errors import ConflictError, UnauthorizedError
+from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_AUTH_FAILED
 
@@ -91,7 +91,9 @@ class AuthIdentityController(Controller):
         Raises:
             UnauthorizedError: Raised on the corresponding failure path.
             PermissionDeniedException: Raised on the corresponding failure path.
-            ConflictError: Raised on the corresponding failure path.
+            TicketLimitExceededError: When the per-user pending-ticket cap is
+                reached (429, ``WS_TICKET_LIMIT_EXCEEDED``, retryable); the
+                class metadata is the wire contract, so it propagates unchanged.
         """
         auth_user = require_authenticated_user(
             request, reason="ws_ticket_auth_required"
@@ -125,13 +127,15 @@ class AuthIdentityController(Controller):
         try:
             ticket = await ticket_store.create(ws_user)
         except TicketLimitExceededError:
+            # Security-audit breadcrumb; the typed error then propagates to the
+            # central handler, which reads its 429 / WS_TICKET_LIMIT_EXCEEDED /
+            # retryable wire contract from the class metadata.
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="ws_ticket_limit_exceeded",
                 user_id=auth_user.user_id,
             )
-            msg = "Too many pending tickets -- wait for existing tickets to expire"
-            raise ConflictError(msg)  # noqa: B904
+            raise
 
         return Response(
             content=ApiResponse(

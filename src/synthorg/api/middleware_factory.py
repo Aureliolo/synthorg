@@ -238,6 +238,24 @@ def _build_auth_exclude_paths(
     # metrics / setup-status / logout.
     healthz_path = f"^{prefix}/healthz$"
     readyz_path = f"^{prefix}/readyz$"
+    # External provider webhooks arrive with no session cookie or bearer
+    # token: they authenticate by HMAC signature, verified inside the
+    # ingest handler. Excluding ONLY the ingest path from the session/bearer
+    # auth middleware lets the request reach that signature check instead of
+    # 401-ing first. Scope tightly to the two-segment ingest route
+    # ``/webhooks/{connection_name}/{event_type}``: the operator-facing
+    # ``GET /webhooks/{connection_name}/activity`` and
+    # ``POST /webhooks/receipts/{receipt_id}/retry`` endpoints carry
+    # ``require_read_access`` / ``require_write_access`` and MUST keep the auth
+    # middleware (without it ``scope["user"]`` is never set and the guards 403
+    # every caller). The ``(?!activity$)`` lookahead drops the ``/activity``
+    # listing; the ``$`` anchor (exactly two segments) drops the three-segment
+    # retry route. The leading ``(?!receipts/)`` reserves the whole
+    # ``/webhooks/receipts/*`` namespace so no current or future two-segment
+    # operator route there (e.g. a ``GET /webhooks/receipts/{id}``) can ever
+    # match this ingest-only exclusion and bypass auth. Fail-safe (mandatory)
+    # so a custom ``auth.exclude_paths`` cannot accidentally re-gate ingest.
+    webhooks_path = f"^{prefix}/webhooks/(?!receipts/)[^/]+/(?!activity$)[^/]+$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -275,6 +293,7 @@ def _build_auth_exclude_paths(
         refresh_path,
         ws_path,
         oauth_callback_path,
+        webhooks_path,
     ]
     if a2a_enabled:
         mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))

@@ -13,7 +13,10 @@ from datetime import UTC, datetime
 from typing import Final, NoReturn, cast
 
 from synthorg.communication.bus.persistence import DequeHistoryAccessor
-from synthorg.communication.bus.quadratic_enforcement import QuadraticEnforcer
+from synthorg.communication.bus.quadratic_enforcement import (
+    QuadraticAlertSink,
+    QuadraticEnforcer,
+)
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType
@@ -162,11 +165,20 @@ class InMemoryMessageBus:
     def quadratic_enforcer(self) -> QuadraticEnforcer | None:
         """The O(n^2) message-overhead enforcer, if one is wired.
 
-        Exposed so boot wiring can late-bind the alert sink to the
-        ``NotificationDispatcher`` once it is available (the bus is
-        built in the construction phase, before the dispatcher).
+        Internal accessor for tests and intra-bus logic. Boot wiring
+        late-binds the alert sink through :meth:`set_quadratic_alert_sink`
+        rather than reaching for this concrete attribute.
         """
         return self._quadratic_enforcer
+
+    def set_quadratic_alert_sink(self, sink: QuadraticAlertSink) -> None:
+        """Late-bind the quadratic enforcer's alert sink, if enforcement is on.
+
+        No-op when this bus was built without an enforcer (enforcement
+        disabled), so boot wiring calls it unconditionally.
+        """
+        if self._quadratic_enforcer is not None:
+            self._quadratic_enforcer.set_alert_sink(sink)
 
     @property
     def is_running(self) -> bool:

@@ -192,6 +192,16 @@ _API_CACHE_CONTROL: Final[str] = "no-store, no-cache, must-revalidate, max-age=0
 # max-age=300: fresh for 5 minutes, then stale (cache should revalidate).
 _DOCS_CACHE_CONTROL: Final[str] = "public, max-age=300"
 
+# Disable powerful browser features the dashboard never uses, denying
+# them to any embedded iframe or compromised script. Kept in lockstep
+# with the edge proxy's ``Permissions-Policy`` (``web/Caddyfile``) so a
+# request that bypasses Caddy (direct backend access, local Uvicorn dev)
+# carries the same restrictions: update both together.
+_PERMISSIONS_POLICY: Final[str] = (
+    "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
+    "serial=(), bluetooth=(), screen-wake-lock=(), display-capture=()"
+)
+
 # Static security headers (path-independent, immutable at runtime).
 _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
     {
@@ -199,7 +209,7 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "X-Frame-Options": "DENY",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Strict-Transport-Security": ("max-age=63072000; includeSubDomains; preload"),
-        "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+        "Permissions-Policy": _PERMISSIONS_POLICY,
         "Cross-Origin-Resource-Policy": "same-origin",
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cache-Control": _API_CACHE_CONTROL,

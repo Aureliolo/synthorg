@@ -1835,6 +1835,11 @@ CREATE TABLE idempotency_keys (
         LENGTH(TRIM(expires_at)) > 0
         AND expires_at > created_at
     ),
+    -- Fingerprint (hex SHA-256) of the request that first claimed this key.
+    -- Lets the service reject a replay of the same key carrying a different
+    -- payload. Nullable: rows written before the column existed, and callers
+    -- that do not opt in, leave it NULL.
+    request_fingerprint TEXT,
     -- Cached-response invariant: the (response_hash, response_body)
     -- pair is set if and only if status is 'completed'. Catches
     -- buggy writes and corrupt rows loaded from disk before the

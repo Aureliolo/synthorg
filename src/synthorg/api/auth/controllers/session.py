@@ -232,10 +232,17 @@ class AuthSessionController(Controller):
 
         auth_config = get_auth_config(app_state)
         if app_state.slice(ApiCoreStateSlice).session_store is not None:
-            await session_store_of(app_state).enforce_session_limit(
+            revoked = await session_store_of(app_state).enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_LIMIT_ENFORCED,
+                    user_id=user.id,
+                    revoked=revoked,
+                    max_sessions=auth_config.max_concurrent_sessions,
+                )
 
         # WARNING (not INFO): a password-free admin session is a security-
         # relevant event that operators should see even at reduced verbosity.

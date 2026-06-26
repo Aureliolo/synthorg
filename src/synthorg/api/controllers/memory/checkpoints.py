@@ -21,21 +21,16 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.domain_errors import (
-    NotFoundError,
-)
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneRun,
 )
 from synthorg.memory.service import (
-    CheckpointNotFoundError,
     CheckpointRollbackCorruptError,
     CheckpointRollbackUnavailableError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
-    MEMORY_CHECKPOINT_NOT_FOUND,
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
 )
 
@@ -112,24 +107,12 @@ class MemoryCheckpointsController(Controller):
             ``ApiResponse[CheckpointRecord]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            CheckpointNotFoundError: If the checkpoint does not exist (404,
+                ``CHECKPOINT_NOT_FOUND``; mapped by the domain handler from
+                class metadata, preserving the discriminating code).
         """
         service = _shared.build_memory_service(state.app_state)
-        try:
-            updated = await service.deploy_checkpoint(checkpoint_id)
-        except CheckpointNotFoundError as exc:
-            logger.warning(
-                MEMORY_CHECKPOINT_NOT_FOUND,
-                checkpoint_id=checkpoint_id,
-                operation="deploy",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            # Controller-authored 4xx message so the response body
-            # never echoes backend exception class names / wording;
-            # full diagnostic detail stays in the warning log above.
-            msg = "Checkpoint not found"
-            raise NotFoundError(msg) from exc
+        updated = await service.deploy_checkpoint(checkpoint_id)
         return ApiResponse(data=updated)
 
     @post(
@@ -159,7 +142,7 @@ class MemoryCheckpointsController(Controller):
 
         Exception mapping:
 
-        - ``CheckpointNotFoundError`` -> HTTP 404 via ``NotFoundError``
+        - ``CheckpointNotFoundError`` -> HTTP 404 from its class metadata
         - ``CheckpointRollbackUnavailableError`` (HTTP 422, code
           ``CHECKPOINT_ROLLBACK_UNAVAILABLE``) and
           ``CheckpointRollbackCorruptError`` (HTTP 422, code
@@ -171,23 +154,14 @@ class MemoryCheckpointsController(Controller):
             ``ApiResponse[CheckpointRecord]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            CheckpointNotFoundError: If the checkpoint does not exist (404,
+                ``CHECKPOINT_NOT_FOUND``; mapped from class metadata).
             CheckpointRollbackUnavailableError: Rollback target unusable.
             CheckpointRollbackCorruptError: Raised on the corresponding failure path.
         """
         service = _shared.build_memory_service(state.app_state)
         try:
             updated = await service.rollback_checkpoint(checkpoint_id)
-        except CheckpointNotFoundError as exc:
-            logger.warning(
-                MEMORY_CHECKPOINT_NOT_FOUND,
-                checkpoint_id=checkpoint_id,
-                operation="rollback",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Checkpoint not found"
-            raise NotFoundError(msg) from exc
         except CheckpointRollbackUnavailableError as exc:
             # Operator-error / corrupt backup conditions; 422 better
             # reflects "rollback target invalid" than a generic 400.
@@ -250,21 +224,13 @@ class MemoryCheckpointsController(Controller):
             ``ApiResponse[None]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            CheckpointNotFoundError: If the checkpoint does not exist (404,
+                ``CHECKPOINT_NOT_FOUND``; mapped from class metadata).
+            CheckpointActiveConflictError: If the target is the active
+                checkpoint (409, ``CHECKPOINT_OPERATION_CONFLICT``).
         """
         service = _shared.build_memory_service(state.app_state)
-        try:
-            await service.delete_checkpoint(checkpoint_id)
-        except CheckpointNotFoundError as exc:
-            logger.warning(
-                MEMORY_CHECKPOINT_NOT_FOUND,
-                checkpoint_id=checkpoint_id,
-                operation="delete",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Checkpoint not found"
-            raise NotFoundError(msg) from exc
+        await service.delete_checkpoint(checkpoint_id)
         return ApiResponse(data=None)
 
     @get("/fine-tune/runs")

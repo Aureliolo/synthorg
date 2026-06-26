@@ -74,6 +74,7 @@ function pageOf<T>(items: readonly T[]): PaginatedResult<T> {
     limit: 50,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: { limit: 50, next_cursor: null, has_more: false },
   }
 }

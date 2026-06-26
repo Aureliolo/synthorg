@@ -301,8 +301,7 @@ class TestAutoWireMeetings:
 
         On a clean pre-setup boot the provider registry is not yet wired;
         the deferred meeting stack must produce exactly one INFO
-        ``API_MEETINGS_WIRING_DEFERRED`` record rather than the former
-        two WARNINGs.
+        ``API_MEETINGS_WIRING_DEFERRED`` record.
         """
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.observability.events.api import API_MEETINGS_WIRING_DEFERRED

@@ -168,7 +168,7 @@ def _build_delegation_requests(
 
     Pre-indexes ``all_tasks`` by ``parent_task_id`` into a dict so
     the BFS that follows is O(N + M) -- N tasks total, M tasks
-    actually reachable in the tree -- instead of the previous
+    actually reachable in the tree -- avoiding an
     O(depth * parents * N) full-table rescan per node.  Bounded to
     ``_MAX_TREE_DEPTH`` levels, sanitizes descriptions before
     including them in the returned requests.

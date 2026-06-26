@@ -180,6 +180,9 @@ class FakeMessageBus:
     ) -> tuple[object, ...]:
         raise NotImplementedError
 
+    def set_quadratic_alert_sink(self, sink: object) -> None:
+        """No-op: this fake has no quadratic-fan-out enforcer."""
+
 
 class FailingMessageBus(FakeMessageBus):
     """Message bus that always fails on publish."""

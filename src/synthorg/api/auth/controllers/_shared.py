@@ -13,6 +13,7 @@ from litestar import Request
 from litestar.datastructures import State
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 
+import synthorg.settings.definitions.api  # noqa: F401 -- populate the API registry
 from synthorg.api.api_core_state import ApiCoreStateSlice, lockout_store_of
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import AccountLockedError
@@ -25,6 +26,9 @@ from synthorg.observability.metrics_hub import (
     record_auth_failure,
     record_auth_lockout,
 )
+from synthorg.settings.bootstrap_resolver import resolve_init_value
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int
 
 logger = get_logger(__name__)
 
@@ -39,7 +43,15 @@ _DUMMY_ARGON2_HASH = (
 
 # Auth endpoints get a stricter throttle than the global limiter so a
 # brute-force login / setup loop is bounded regardless of the global cap.
-AUTH_RATE_LIMIT_PER_MINUTE: Final[int] = 10
+# Resolved env > code default at construction (the route-level limiter
+# middleware is baked at import, so a DB-layer change needs a restart).
+AUTH_RATE_LIMIT_PER_MINUTE: Final[int] = int(
+    resolve_init_value(
+        SettingNamespace.API,
+        "rate_limit_auth_endpoint_max_requests",
+        parse=parse_int,
+    ).value
+)
 
 
 _AUTH_RATE_LIMIT = LitestarRateLimitConfig(

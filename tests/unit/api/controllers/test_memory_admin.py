@@ -40,9 +40,9 @@ class _AllMemoryControllers(
     """
 
 
-# Back-compat alias for the direct-method tests below: the handlers the
-# tests exercise via ``.fn`` do not use ``self``, so the composite stands
-# in for the former single ``MemoryAdminController``.
+# Alias so the direct-method tests below can address the composite under a
+# single controller name; the handlers they exercise via ``.fn`` do not use
+# ``self``, so the composite stands in transparently.
 MemoryAdminController = _AllMemoryControllers
 
 
@@ -360,7 +360,7 @@ class TestCheckFineTuneSidecarHealth:
             return _FakeHttpResponse(status=200)
 
         monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health() is True
+        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is True
 
     def test_returns_false_on_5xx_response(
         self,
@@ -377,7 +377,7 @@ class TestCheckFineTuneSidecarHealth:
             return _FakeHttpResponse(status=503)
 
         monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health() is False
+        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
 
     def test_returns_false_on_urlerror(
         self,
@@ -396,7 +396,7 @@ class TestCheckFineTuneSidecarHealth:
             raise urllib.error.URLError(msg)
 
         monkeypatch.setattr(urllib.request, "urlopen", raise_url_error)
-        assert _check_fine_tune_sidecar_health() is False
+        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
 
     def test_returns_false_on_timeout(
         self,
@@ -414,7 +414,7 @@ class TestCheckFineTuneSidecarHealth:
             raise TimeoutError(msg)
 
         monkeypatch.setattr(urllib.request, "urlopen", raise_timeout)
-        assert _check_fine_tune_sidecar_health() is False
+        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
 
     def test_returns_false_on_unexpected_exception(
         self,
@@ -432,17 +432,18 @@ class TestCheckFineTuneSidecarHealth:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(urllib.request, "urlopen", raise_runtime)
-        assert _check_fine_tune_sidecar_health() is False
+        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
 
-    def test_uses_configured_health_port(
+    def test_uses_injected_health_port(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The probe URL honours ``SYNTHORG_FINE_TUNE_HEALTH_PORT``.
+        """The probe URL honours the injected host + port.
 
         Regression: the probe previously hardcoded port 15002, so an
         operator override made it a false negative on every Docker
-        install that rebinds the sidecar health port.
+        install that rebinds the sidecar health port. The host/port are
+        now resolved at the controller boundary and injected here.
         """
         import urllib.request
 
@@ -450,7 +451,6 @@ class TestCheckFineTuneSidecarHealth:
             _check_fine_tune_sidecar_health,
         )
 
-        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "23456")
         captured: dict[str, str] = {}
 
         def fake_urlopen(
@@ -462,18 +462,19 @@ class TestCheckFineTuneSidecarHealth:
             return _FakeHttpResponse(status=200)
 
         monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health() is True
+        assert _check_fine_tune_sidecar_health("fine-tune", 23456) is True
         assert captured["url"] == "http://fine-tune:23456/healthz"
 
-    def test_returns_false_on_malformed_health_port(
+    def test_returns_false_on_unresolved_health_port(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A malformed port override makes the probe report failure.
+        """A ``None`` port (unset / malformed at the boundary) skips the probe.
 
-        The sidecar itself would have refused to bind the bad port, so a
-        successful probe is impossible; the resolver raises ``ValueError``
-        and the helper returns ``False`` without attempting a request.
+        The sidecar itself would have refused to bind a malformed port, so
+        a successful probe is impossible; the boundary resolves it to
+        ``None`` and the helper returns ``False`` without attempting a
+        request.
         """
         import urllib.request
 
@@ -481,14 +482,12 @@ class TestCheckFineTuneSidecarHealth:
             _check_fine_tune_sidecar_health,
         )
 
-        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "not-a-port")
-
         def fail_urlopen(*_args: object, **_kwargs: object) -> object:
             msg = "urlopen must not be called with an unresolved port"
             raise AssertionError(msg)
 
         monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
-        assert _check_fine_tune_sidecar_health() is False
+        assert _check_fine_tune_sidecar_health("fine-tune", None) is False
 
     def test_reraises_memory_error(
         self,
@@ -511,7 +510,7 @@ class TestCheckFineTuneSidecarHealth:
 
         monkeypatch.setattr(urllib.request, "urlopen", raise_memory_error)
         with pytest.raises(MemoryError):
-            _check_fine_tune_sidecar_health()
+            _check_fine_tune_sidecar_health("fine-tune", 15002)
 
     def test_reraises_recursion_error(
         self,
@@ -529,7 +528,7 @@ class TestCheckFineTuneSidecarHealth:
 
         monkeypatch.setattr(urllib.request, "urlopen", raise_recursion_error)
         with pytest.raises(RecursionError):
-            _check_fine_tune_sidecar_health()
+            _check_fine_tune_sidecar_health("fine-tune", 15002)
 
 
 @pytest.mark.unit

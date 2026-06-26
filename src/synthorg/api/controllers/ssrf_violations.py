@@ -33,9 +33,12 @@ from synthorg.api.state import AppState
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.persistence.state import persistence_of
 from synthorg.security.ssrf_violation import SsrfViolationStatus
 
+logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
 
 
@@ -128,10 +131,26 @@ class SsrfViolationController(Controller):
             resolved_at=datetime.now(UTC),
         )
         if not updated:
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``violation_id`` without WARNING
+            # noise for an expected client error. (The vanished-after-resolution
+            # branch below stays WARNING -- it is a genuine anomaly.)
+            logger.debug(
+                API_RESOURCE_NOT_FOUND,
+                resource="ssrf_violation",
+                violation_id=violation_id,
+                reason="no_pending_match",
+            )
             msg = f"No pending SSRF violation found for id {violation_id!r}"
             raise ResourceNotFoundError(msg)
         violation = await service.get(NotBlankStr(violation_id))
         if violation is None:  # pragma: no cover -- just-updated row must exist
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="ssrf_violation",
+                violation_id=violation_id,
+                reason="vanished_after_resolution",
+            )
             msg = f"SSRF violation {violation_id!r} vanished after resolution"
             raise ResourceNotFoundError(msg)
         return ApiResponse(data=SsrfViolationDTO.from_entity(violation))

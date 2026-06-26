@@ -1147,8 +1147,9 @@ class _FakeIdempotencyRepository:
         key: NotBlankStr,
         ttl_seconds: int,
         now: object,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
-        del scope, key, ttl_seconds, now
+        del scope, key, ttl_seconds, now, request_fingerprint
         return IdempotencyClaim(
             outcome=IdempotencyOutcome.FRESH,
             claim_token="fake-token",
@@ -1616,8 +1617,8 @@ class TestProtocolCompliance:
 
     def test_fake_seen_claims_repo_is_seen_claims_repository(self) -> None:
         # Same backend-routed assertion as ``idempotency_keys``:
-        # catches a regression that swaps the property back to
-        # ``None`` (which historically hid backend wiring drift).
+        # catches a regression where the property returns ``None`` and
+        # silently hides backend wiring drift.
         backend = _FakeBackend()
         assert isinstance(backend.seen_claims, SeenClaimsRepository)
         assert isinstance(_FakeSeenClaimsRepository(), SeenClaimsRepository)

@@ -21,11 +21,7 @@ from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import (
     NotBlankStr,
 )
-from synthorg.integrations.errors import (
-    InvalidStateError,
-    OIDCVerificationError,
-    SecretRetrievalError,
-)
+from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.integrations.oauth.callback_handler import (
     resolve_oauth_http_timeout,
 )
@@ -247,7 +243,10 @@ class OAuthController(Controller):
             ``ApiResponse[dict[str, object]]`` instance.
 
         Raises:
-            ValidationError: Raised on the corresponding failure path.
+            InvalidStateError: If the ``state`` param is malformed, expired,
+                or replayed (400, mapped by the domain handler).
+            OIDCVerificationError: If the id_token fails signature / claim /
+                nonce verification (400, mapped by the domain handler).
             TokenExchangeFailedError: Propagated from the token-exchange step
                 with its own 502 + retryable metadata, rather than being
                 flattened to a non-retryable 422.
@@ -263,28 +262,25 @@ class OAuthController(Controller):
         )
         resolver = app_state.slice(SettingsStateSlice).config_resolver
 
-        try:
-            connection_name = await handle_oauth_callback(
-                state_param=state_param,
-                code=code,
-                state_service=require_service(
-                    app_state.slice(IntegrationsStateSlice).oauth_state_service,
-                    "OAuth State Service",
-                ),
-                catalog=catalog,
-                config_resolver=resolver,
-                clock=app_state.clock,
-            )
-        except InvalidStateError as exc:
-            raise ValidationError(str(exc)) from exc
-        except OIDCVerificationError as exc:
-            # id_token signature/claim/nonce rejection is a callback
-            # validation failure (400), not an upstream 502.
-            raise ValidationError(str(exc)) from exc
-        # ``TokenExchangeFailedError`` is NOT caught: a token-endpoint
-        # failure (upstream rate-limit, non-JSON body) is transient, so its
-        # own 502 + retryable metadata propagates to handle_domain_error
-        # rather than being flattened to a non-retryable 422.
+        # ``InvalidStateError`` and ``OIDCVerificationError`` carry their own
+        # 400 ``VALIDATION_ERROR`` wire contract (a malformed/replayed state
+        # param or an id_token signature/claim/nonce rejection is a callback
+        # validation failure, not an upstream 502), so they propagate untouched
+        # to the central handler. ``TokenExchangeFailedError`` likewise
+        # propagates: a token-endpoint failure (upstream rate-limit, non-JSON
+        # body) is transient, so its 502 + retryable metadata reaches the
+        # client rather than being flattened to a non-retryable 4xx.
+        connection_name = await handle_oauth_callback(
+            state_param=state_param,
+            code=code,
+            state_service=require_service(
+                app_state.slice(IntegrationsStateSlice).oauth_state_service,
+                "OAuth State Service",
+            ),
+            catalog=catalog,
+            config_resolver=resolver,
+            clock=app_state.clock,
+        )
         return ApiResponse(
             data={
                 "status": "connected",

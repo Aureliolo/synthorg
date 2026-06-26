@@ -159,6 +159,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 5001 | `PER_OPERATION_RATE_LIMITED` | Specific operation's `(max_requests, window)` budget exhausted |
 | 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Too many in-flight requests for the op |
 | 5003 | `AGENT_CONNECTION_LIMIT_EXCEEDED` | Message-bus quadratic `hard_block` rejected a new agent connection |
+| 5004 | `WS_TICKET_LIMIT_EXCEEDED` | Per-user pending WebSocket-ticket cap reached (consume or let tickets expire) |
 
 ## Budget Exhausted (6xxx)
 
@@ -299,10 +300,15 @@ Each handler:
 2. Returns `_build_response(...)` so the response carries the full RFC
    9457 envelope (or bare `application/problem+json` body when the
    client asks for it).
-3. Scrubs the upstream message on 5xx.  4xx behaviour varies: domain
-   handlers like `handle_backup_error` and `handle_domain_error` pass a
-   user-safe exception message through, while several Litestar-side
-   handlers intentionally return fixed public messages
+3. Scrubs the message. On 5xx, handlers return the class-level
+   `default_message` so no internal detail leaks. On 4xx, `_select_message`
+   (and the `handle_validation_error` / `handle_http_exception` /
+   `handle_invalid_cursor` handlers) routes the exception message through
+   `scrub_secret_tokens` as a defence-in-depth pass: a credential or token a
+   raise site interpolated is redacted, while ordinary validation text is
+   untouched. This central scrub is why domain errors propagate straight to
+   `handle_domain_error` with no controller-level catch-and-sanitise. Several
+   Litestar-side handlers go further and return fixed public messages
    (`handle_record_not_found` -> `"Resource not found"`,
    `handle_not_authorized` -> `"Authentication required"`,
    `handle_permission_denied` -> `"Forbidden"`,

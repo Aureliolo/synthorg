@@ -1,3 +1,4 @@
+# module-kind: code
 """Fine-tune preflight thresholds, checks, and batch-size recommendation.
 
 Pure helper module for the memory fine-tune controller: resolves
@@ -157,13 +158,15 @@ async def _resolve_fine_tune_thresholds(
     )
 
 
-def _run_preflight_checks(
+def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injected sidecar coords
     request: FineTuneRequest,
     *,
     min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
     min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
     max_depth: int = FINE_TUNE_PREFLIGHT_MAX_DEPTH,
     walk_timeout_s: float = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
+    sidecar_host: str = "",
+    sidecar_port: int | None = None,
 ) -> list[PreflightCheck]:
     """Run all pre-flight validation checks.
 
@@ -180,12 +183,18 @@ def _run_preflight_checks(
             the same fallback contract as ``min_required``.
         max_depth: Directory recursion cap for the document scan.
         walk_timeout_s: Wall-clock deadline for the document scan.
+        sidecar_host: Fine-tune sidecar host, resolved once at the API
+            boundary; empty disables the sidecar health probe.
+        sidecar_port: Fine-tune sidecar port; ``None`` disables the
+            sidecar health probe.
 
     Returns:
         List of the declared element type.
     """
     checks: list[PreflightCheck] = []
-    checks.append(_check_dependencies())
+    checks.append(
+        _check_dependencies(sidecar_host=sidecar_host, sidecar_port=sidecar_port)
+    )
     checks.append(_check_gpu())
     # The document scan applies only to directory mode; trajectory mode
     # sources from persisted org history, so there is no source dir to walk.
@@ -303,7 +312,7 @@ _HTTP_STATUS_OK_MIN: Final[int] = 200
 _HTTP_STATUS_OK_MAX_EXCLUSIVE: Final[int] = 300
 
 
-def _check_fine_tune_sidecar_health() -> bool:
+def _check_fine_tune_sidecar_health(host: str, port: int | None) -> bool:
     """Best-effort probe of the fine-tune sidecar's HTTP health endpoint.
 
     In a Docker-orchestrated install the heavy ML deps (torch +
@@ -316,12 +325,16 @@ def _check_fine_tune_sidecar_health() -> bool:
     locally.  Any error (DNS miss, refused connection, non-200, timeout)
     is swallowed so the caller falls back to the in-process import.
 
-    The probe host and port are resolved from
-    ``SYNTHORG_FINE_TUNE_HEALTH_HOST`` / ``SYNTHORG_FINE_TUNE_HEALTH_PORT``
-    via the same :func:`resolve_health_host` / :func:`resolve_health_port`
-    the sidecar uses, so an operator that renames the sidecar service is
-    honoured. A malformed port override means the sidecar itself never
-    bound, so the probe correctly reports failure.
+    The probe host and port are injected by the controller boundary
+    (resolved from ``SYNTHORG_FINE_TUNE_HEALTH_HOST`` /
+    ``SYNTHORG_FINE_TUNE_HEALTH_PORT`` there) so this helper stays a pure
+    function with no request-time environment access.
+
+    Args:
+        host: Resolved sidecar health host.
+        port: Resolved sidecar health port, or ``None`` when unset or
+            malformed -- the sidecar then never bound, so the probe
+            reports failure.
 
     Returns:
         ``True`` or ``False`` reflecting the condition.
@@ -329,16 +342,8 @@ def _check_fine_tune_sidecar_health() -> bool:
     import urllib.error  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
-    from synthorg.memory.embedding.fine_tune_runner import (  # noqa: PLC0415
-        resolve_health_host,
-        resolve_health_port,
-    )
-
-    try:
-        port = resolve_health_port()
-    except ValueError:
+    if port is None or not host:
         return False
-    host = resolve_health_host()
     url = f"http://{host}:{port}/healthz"
 
     try:
@@ -356,7 +361,9 @@ def _check_fine_tune_sidecar_health() -> bool:
         return False
 
 
-def _check_dependencies() -> PreflightCheck:
+def _check_dependencies(
+    *, sidecar_host: str = "", sidecar_port: int | None = None
+) -> PreflightCheck:
     """Check whether fine-tuning ML dependencies are reachable.
 
     Two-stage check: an in-process import covers pip installs that
@@ -366,6 +373,11 @@ def _check_dependencies() -> PreflightCheck:
     Either path succeeding is enough to call the dependencies
     available -- a Docker-orchestrated install ships the ML extras only
     in the sidecar, so the in-process import alone would under-report.
+
+    Args:
+        sidecar_host: Injected sidecar health host (resolved at the
+            controller boundary). Empty / ``None`` port skips the probe.
+        sidecar_port: Injected sidecar health port, or ``None``.
 
     Returns:
         ``PreflightCheck`` instance.
@@ -382,7 +394,7 @@ def _check_dependencies() -> PreflightCheck:
         # In-process imports failed; this is the expected path for the
         # Docker orchestration where ML deps live in a sidecar.  Probe
         # the sidecar's HTTP health endpoint before declaring failure.
-        if _check_fine_tune_sidecar_health():
+        if _check_fine_tune_sidecar_health(sidecar_host, sidecar_port):
             return PreflightCheck(
                 name="dependencies",
                 status="pass",

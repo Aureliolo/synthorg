@@ -40,9 +40,8 @@ class TestComposeSettingsDependentServices:
         assert app_state.slice(ProvidersStateSlice).management is None
 
     def test_composes_resolver_and_management(self) -> None:
-        # The exact composition the dropped ``_init_derived_services``
-        # used to perform; without it every resolver-dependent endpoint
-        # 503s at boot (the production outage this guards).
+        # Guards that the resolver-dependent services are all composed;
+        # without this composition every dependent endpoint 503s at boot.
         app_state = make_app_state()
         settings_service = mock_of[SettingsService]()
         compose_settings_dependent_services(app_state, settings_service)

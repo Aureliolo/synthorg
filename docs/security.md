@@ -87,6 +87,15 @@ on resolution.
         error directing operators to use ``unauth_max_requests`` and
         ``auth_max_requests`` instead.
 
+- **Dedicated auth-endpoint limiter**: separate from the global three-tier
+  limiter, a per-minute cap is applied as route-level middleware on the
+  brute-force-sensitive auth endpoints (login, setup, change-password, and
+  the dev-login bypass), keyed independently of the global tiers so it bounds
+  credential-guessing loops regardless of the global budget. Configured via
+  ``api.rate_limit_auth_endpoint_max_requests`` (env
+  ``SYNTHORG_API_RATE_LIMIT_AUTH_ENDPOINT_MAX_REQUESTS``); bootstrap-only
+  (``restart_required`` + ``read_only_post_init``).
+
 - **Per-operation rate limiting**: layered on top of the global three-tier
   limiter, individual expensive or abuse-prone operations carry a
   ``per_op_rate_limit`` guard that buckets requests per

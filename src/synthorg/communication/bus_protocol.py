@@ -8,6 +8,7 @@ default implementation is :class:`InMemoryMessageBus` in
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
+from synthorg.communication.bus.quadratic_enforcement import QuadraticAlertSink
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
 from synthorg.communication.subscription import (
@@ -238,6 +239,17 @@ class MessageBus(Protocol):
 
         Returns:
             All registered channels.
+        """
+        ...
+
+    def set_quadratic_alert_sink(self, sink: QuadraticAlertSink) -> None:
+        """Late-bind an alert sink to the bus's quadratic enforcer, if any.
+
+        Boot wiring calls this once the notification dispatcher exists (the
+        bus is built earlier, in the construction phase, so its enforcer
+        starts sink-less). Backends without a quadratic enforcer implement
+        it as a no-op, so wiring never branches on the concrete backend
+        type to reach an enforcer that may not exist.
         """
         ...
 

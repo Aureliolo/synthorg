@@ -70,6 +70,7 @@ function _catalogPage(
     limit: rows.length || 1,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: {
       limit: rows.length || 1,
       next_cursor: null,

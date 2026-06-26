@@ -407,6 +407,12 @@ export interface PaginatedResult<T> {
   readonly nextCursor: string | null
   /** Whether more items follow the current page. */
   readonly hasMore: boolean
+  /**
+   * Names of backing data sources that failed and were served degraded
+   * (empty when the page is complete); lets callers surface a partial-data
+   * warning instead of silently presenting an incomplete result.
+   */
+  readonly degradedSources: readonly string[]
   /** Raw pagination envelope for callers that need direct access. */
   readonly pagination: {
     readonly limit: number
@@ -434,19 +440,24 @@ export function unwrapPaginated<T>(
   // place. Read through an untrusted-wire view so the guard is type-honest
   // about what the network can actually send; require an object so a truthy
   // scalar cannot dereference to ``undefined`` fields.
-  const raw: { pagination?: unknown; data?: unknown } = body
-  if (
-    !raw.pagination ||
-    typeof raw.pagination !== 'object' ||
-    !Array.isArray(raw.data)
-  ) {
+  const raw: { pagination?: unknown; data?: unknown; degraded_sources?: unknown } =
+    body
+  if (!raw.pagination || typeof raw.pagination !== 'object' || !Array.isArray(raw.data)) {
     throw new ApiRequestError('Unexpected API response format')
   }
+  // ``degraded_sources`` is a supplementary partial-data warning, not
+  // load-bearing data: keep the result's required ``degradedSources`` array
+  // honest by defaulting to ``[]`` when the wire omits it, rather than failing
+  // the whole list fetch over a missing warning field.
+  const degradedSources = Array.isArray(raw.degraded_sources)
+    ? (raw.degraded_sources as readonly string[])
+    : []
   return {
     data: body.data,
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
+    degradedSources,
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

@@ -700,10 +700,11 @@ class TestApprovalIdempotency:
             scope: str,
             key: str,
             callback: Callable[[], Awaitable[object]],
+            request_fingerprint: str | None = None,
         ) -> IdempotencyResult:
             # The callback (the real decision body) is intentionally not
             # invoked: this test pins the key shape, not the decision.
-            del callback
+            del callback, request_fingerprint
             captured["scope"] = scope
             captured["key"] = key
             return IdempotencyResult(result=canned, fresh=True, timed_out=False)
@@ -761,6 +762,7 @@ class TestApprovalIdempotency:
                 scope="approval:approve",
                 key="a1:key",
                 endpoint="approvals.approve",
+                request_fingerprint="fp",
                 decide=_never_called,
             )
 

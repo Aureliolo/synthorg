@@ -328,6 +328,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="rate_limit_floor_max_requests",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Per-IP request floor per time window across the whole API,"
+            " including auth-rejected requests (defence-in-depth against"
+            " invalid-auth floods). Wraps both user-gated tiers, so it must"
+            " be >= rate_limit_unauth_max_requests AND"
+            " rate_limit_auth_max_requests."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=1_000_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="rate_limit_unauth_max_requests",
         type=SettingType.INTEGER,
         default="20",
@@ -421,6 +442,30 @@ _r.register(
         group="Authentication",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limit_auth_endpoint_max_requests",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Per-IP request budget per time window on the auth endpoints"
+            " (login / setup / change-password / dev-login). Stricter than"
+            " the global limiter so a brute-force loop is bounded regardless"
+            " of the global cap. Resolved at construction (the route-level"
+            " limiter middleware is baked at import), so a DB-layer change"
+            " needs a restart; env (SYNTHORG_API_RATE_LIMIT_AUTH_ENDPOINT_MAX"
+            "_REQUESTS) > code default applies at boot."
+        ),
+        group="Authentication",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=1,
+        max_value=1000,
     )
 )
 

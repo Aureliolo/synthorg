@@ -458,10 +458,15 @@ async def revalidated_sse_stream(
             pending.cancel()
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await pending
-        # Explicitly close the inner generator: when cancellation lands at the
-        # ``yield event`` point (``pending is None``), the branch above does
-        # nothing, so without this the inner subscription cleanup would defer
-        # to the async-gen finalizer rather than running synchronously here.
+        # Close the inner async generator so ITS finally runs (provider
+        # download teardown, hub unsubscribe, etc.). Without this the
+        # ``pending=None`` cancel path (cancellation landing at the
+        # ``yield event`` point) and the ``yield revoked; return`` path
+        # abandon it open until GC, and the per-op concurrency slot wrapping
+        # the request stays held past the stream's real lifetime. Safe only
+        # after the in-flight ``anext`` task above is cancelled and awaited
+        # (an async generator cannot be aclose()d while an anext on it is
+        # still running).
         if isinstance(inner_iter, AsyncGenerator):
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await inner_iter.aclose()

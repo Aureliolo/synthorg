@@ -33,6 +33,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
+    API_CLIENT_LISTED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
@@ -264,6 +265,7 @@ class ClientController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
+        logger.debug(API_CLIENT_LISTED, count=len(page))
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{client_id:str}")

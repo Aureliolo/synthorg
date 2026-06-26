@@ -30,6 +30,7 @@ function makeStubClient(
       limit: 25,
       nextCursor: hasMore ? 'next-cursor' : null,
       hasMore,
+      degradedSources: [],
       pagination: {
         limit: 25,
         next_cursor: hasMore ? 'next-cursor' : null,

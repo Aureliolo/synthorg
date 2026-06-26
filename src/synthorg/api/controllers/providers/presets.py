@@ -16,13 +16,9 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import NotFoundError, ValidationError
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import (
-    API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
-)
-from synthorg.providers.errors import ProviderValidationError
+from synthorg.core.domain_errors import NotFoundError
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.providers.presets import get_preset
 from synthorg.providers.state import ProvidersStateSlice
 
@@ -102,8 +98,9 @@ class ProviderPresetsController(Controller):
 
         Raises:
             NotFoundError: If the preset name is unknown.
-            ValidationError: If the override shape conflicts with
-                the preset's kind (cloud vs local).
+            ProviderValidationError: If the override shape conflicts with
+                the preset's kind (cloud vs local) (422, mapped by the
+                domain handler from class metadata).
         """
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
@@ -126,21 +123,7 @@ class ProviderPresetsController(Controller):
             app_state.slice(ProvidersStateSlice).preset_override_service,
             "Preset Override Service",
         )
-        try:
-            saved = await preset_service.upsert_override(
-                preset_name,
-                data,
-                actor=actor,
-            )
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="preset",
-                name=preset_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        saved = await preset_service.upsert_override(preset_name, data, actor=actor)
         return ApiResponse(data=saved)
 
     @delete(

@@ -655,8 +655,7 @@ def test_duplicate_handler_key_in_two_maps_flagged(tmp_path: Path) -> None:
     """The same admin key in two ``*_HANDLERS`` maps fails closed.
 
     A guarded decoy entry can hide an unguarded real handler for the
-    same key; ``_find_dict_value_for_key`` used to return the first
-    match and stop. The hardened version collects every match and
+    same key, so ``_find_dict_value_for_key`` collects every match and
     refuses to disambiguate when there are two.
     """
     domain = (

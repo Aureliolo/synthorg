@@ -689,8 +689,7 @@ class TestDegradedSources:
 class TestActivityFeedLifecycleCap:
     """Lifecycle cap is sourced from ``app_state.bridge_config.api``.
 
-    The controller no longer carries a hardcoded fallback constant;
-    the cap flows through the bridge-config snapshot that
+    The cap flows through the bridge-config snapshot that
     ``_apply_bridge_config`` populates at startup and the
     :class:`ApiBridgeSettingsSubscriber` hot-swaps on operator change.
     """

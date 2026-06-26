@@ -89,6 +89,60 @@ class TestIdempotencyClaim:
         assert claim.outcome is IdempotencyOutcome.COMPLETED
         assert claim.cached_response == '{"ok": true}'
 
+    async def test_claim_round_trips_request_fingerprint(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """A FRESH claim stores its fingerprint; later claims surface it."""
+        key = NotBlankStr("key-fingerprint")
+        first = await backend.idempotency_keys.claim(
+            scope=_SCOPE,
+            key=key,
+            ttl_seconds=60,
+            now=_now(),
+            request_fingerprint="fp-abc",
+        )
+        assert first.outcome is IdempotencyOutcome.FRESH
+        # The stored fingerprint is surfaced verbatim regardless of the
+        # incoming one, so the service can compare and reject mismatches.
+        in_flight = await backend.idempotency_keys.claim(
+            scope=_SCOPE,
+            key=key,
+            ttl_seconds=60,
+            now=_now(),
+            request_fingerprint="fp-other",
+        )
+        assert in_flight.outcome is IdempotencyOutcome.IN_FLIGHT
+        assert in_flight.request_fingerprint == "fp-abc"
+        record = await backend.idempotency_keys.get(scope=_SCOPE, key=key)
+        assert record is not None
+        assert record.request_fingerprint == "fp-abc"
+
+    async def test_reclaim_rotates_request_fingerprint(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """An expired re-claim adopts the new request's fingerprint."""
+        key = NotBlankStr("key-fingerprint-rotate")
+        await backend.idempotency_keys.claim(
+            scope=_SCOPE,
+            key=key,
+            ttl_seconds=1,
+            now=_now() - timedelta(seconds=10),
+            request_fingerprint="fp-old",
+        )
+        reclaim = await backend.idempotency_keys.claim(
+            scope=_SCOPE,
+            key=key,
+            ttl_seconds=60,
+            now=_now(),
+            request_fingerprint="fp-new",
+        )
+        assert reclaim.outcome is IdempotencyOutcome.FRESH
+        record = await backend.idempotency_keys.get(scope=_SCOPE, key=key)
+        assert record is not None
+        assert record.request_fingerprint == "fp-new"
+
     async def test_expired_claim_returns_fresh(
         self,
         backend: PersistenceBackend,

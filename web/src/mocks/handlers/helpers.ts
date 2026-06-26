@@ -117,7 +117,12 @@ export function voidSuccess(): ApiResponse<null> {
 export function paginatedFor<
   Fn extends (...args: never[]) => Promise<PaginatedResult<unknown>>,
 >(
-  result: AwaitedReturn<Fn>,
+  // ``degradedSources`` is always-present on a normalised ``PaginatedResult``
+  // but a wire-envelope fixture rarely cares about it, so accept it optionally
+  // and default to ``[]`` rather than forcing every caller to spell it out.
+  result: Omit<AwaitedReturn<Fn>, 'degradedSources'> & {
+    degradedSources?: readonly string[]
+  },
 ): PaginatedResponse<
   AwaitedReturn<Fn> extends PaginatedResult<infer Item> ? Item : never
 > {
@@ -133,7 +138,7 @@ export function paginatedFor<
     error_detail: null,
     pagination,
     success: true,
-    degraded_sources: [],
+    degraded_sources: result.degradedSources ?? [],
   }
 }
 
@@ -185,6 +190,7 @@ export function emptyPage<T>(limit = 200): PaginatedResult<T> {
     limit,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: {
       limit,
       next_cursor: null,

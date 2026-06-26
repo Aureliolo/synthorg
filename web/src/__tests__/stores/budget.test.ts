@@ -134,6 +134,7 @@ function installDefaults(overrides: FixtureOverrides = {}) {
     error: null,
     error_detail: null,
     pagination: { total: 1, offset: 0, limit: 500 },
+    degraded_sources: [],
     daily_summary: [],
     period_summary: {
       avg_cost: 1,

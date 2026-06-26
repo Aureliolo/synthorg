@@ -30,6 +30,7 @@ from synthorg.communication.bus import _nats_receive as _recv
 from synthorg.communication.bus._nats_state import create_state
 from synthorg.communication.bus._nats_utils import require_running
 from synthorg.communication.bus.errors import BusUnrestartableError
+from synthorg.communication.bus.quadratic_enforcement import QuadraticAlertSink
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType
@@ -254,6 +255,14 @@ class JetStreamMessageBus:
             messages,
             ttl_seconds=ttl_seconds,
         )
+
+    def set_quadratic_alert_sink(self, sink: QuadraticAlertSink) -> None:
+        """No-op: quadratic-overhead enforcement is an in-memory-bus feature.
+
+        JetStream relies on the broker for backpressure, so it carries no
+        per-process ``QuadraticEnforcer``. Implemented to satisfy the
+        ``MessageBus`` protocol so boot wiring stays backend-agnostic.
+        """
 
     async def subscribe(
         self,

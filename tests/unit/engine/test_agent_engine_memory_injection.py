@@ -2,11 +2,9 @@
 """Engine-level proof for context memory injection in the live run loop.
 
 The capture half of the loop (``test_agent_engine_success_capture.py``) stores
-lessons; this half makes the live engine *use* them.  Before this wiring the
-engine only injected memories a caller pre-retrieved and passed via
-``run(memory_messages=...)`` -- the engine never consulted its own
-``memory_injection_strategy`` for context injection, so a wired CONTEXT
-strategy was inert on the real execution path.
+lessons; this half makes the live engine *use* them: it consults its own
+``memory_injection_strategy`` for context injection during ``run()``, not only
+memories a caller pre-retrieved and passed via ``run(memory_messages=...)``.
 
 These tests drive the real :class:`ContextInjectionStrategy` through the
 engine's own ``run()`` dispatch (NOT by calling ``prepare_messages`` in the

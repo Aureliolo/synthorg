@@ -52,14 +52,43 @@ class CreateProviderRequest(BaseModel):
         extra="forbid",
     )
 
-    name: NotBlankStr = Field(max_length=64)
-    driver: NotBlankStr = "litellm"
-    litellm_provider: NotBlankStr | None = None
-    auth_type: AuthType = AuthType.API_KEY
-    api_key: SecretStr | None = None
-    subscription_token: SecretStr | None = None
-    tos_accepted: bool = False
-    base_url: NotBlankStr | None = None
+    name: NotBlankStr = Field(
+        max_length=64,
+        description="Unique provider name (2-64 chars, lowercase + hyphens).",
+        examples=["example-provider"],
+    )
+    driver: NotBlankStr = Field(
+        default="litellm",
+        description="Driver backend name.",
+        examples=["litellm"],
+    )
+    litellm_provider: NotBlankStr | None = Field(
+        default=None,
+        description="LiteLLM routing identifier override, if needed.",
+    )
+    auth_type: AuthType = Field(
+        default=AuthType.API_KEY,
+        description="Authentication mechanism the provider uses.",
+    )
+    # Secret fields carry a description but never an example, so no
+    # credential-shaped placeholder leaks into the rendered OpenAPI spec.
+    api_key: SecretStr | None = Field(
+        default=None,
+        description="API key credential (required for API_KEY auth).",
+    )
+    subscription_token: SecretStr | None = Field(
+        default=None,
+        description="Bearer token for subscription-based auth.",
+    )
+    tos_accepted: bool = Field(
+        default=False,
+        description="Whether the operator accepted the subscription terms.",
+    )
+    base_url: NotBlankStr | None = Field(
+        default=None,
+        description="Provider API base URL.",
+        examples=["https://api.example-provider.test/v1"],
+    )
     keep_alive: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None

@@ -11,6 +11,7 @@ from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.service import ProviderManagementService
+from tests._shared import mock_of
 
 from .conftest import make_create_request
 
@@ -152,6 +153,52 @@ class TestLocalModelManagement:
                 "nonexistent-model",
                 LocalModelParams(num_ctx=4096),
             )
+
+
+class TestDeleteLocalModelTranslation:
+    """``delete_local_model`` maps stdlib manager errors to typed ones.
+
+    The ``LocalModelManager`` protocol signals failure with stdlib
+    ``ValueError`` / ``RuntimeError``; the service boundary translates
+    them into typed provider errors so the controller can propagate the
+    right wire contract (404 ``MODEL_NOT_FOUND`` / 502 ``PROVIDER_ERROR``)
+    without a catch of its own.
+    """
+
+    async def test_value_error_becomes_model_not_found(self) -> None:
+        from synthorg.providers.errors import ProviderModelNotFoundError
+        from synthorg.providers.management._capability_helpers import (
+            delete_local_model,
+        )
+        from synthorg.providers.management.local_models import LocalModelManager
+
+        manager = mock_of[LocalModelManager](
+            delete_model=AsyncMock(side_effect=ValueError("absent on backend")),
+        )
+
+        with pytest.raises(ProviderModelNotFoundError, match="not found"):
+            await delete_local_model(manager, name="my-ollama", model_id="m1")
+
+    async def test_runtime_error_becomes_provider_error(self) -> None:
+        from synthorg.providers.errors import ProviderError
+        from synthorg.providers.management._capability_helpers import (
+            delete_local_model,
+        )
+        from synthorg.providers.management.local_models import LocalModelManager
+
+        # The raised ProviderError message is authored-safe (no upstream
+        # text); the upstream detail rides only the WARNING log.
+        manager = mock_of[LocalModelManager](
+            delete_model=AsyncMock(
+                side_effect=RuntimeError(
+                    "internal driver state /var/run/.cache/0xdeadbeef",
+                ),
+            ),
+        )
+
+        with pytest.raises(ProviderError) as info:
+            await delete_local_model(manager, name="my-ollama", model_id="m1")
+        assert "0xdeadbeef" not in str(info.value)
 
 
 class TestCreateFromPresetLocalSkipsLitellm:

@@ -20,6 +20,7 @@ load-bearing teardown completes.
 from collections.abc import Awaitable, Callable
 
 from synthorg.api.app_builders import _build_telemetry_collector
+from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.feature_composition import compose_feature_slices
 from synthorg.api.lifecycle_builder import _build_lifecycle
@@ -43,15 +44,23 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.state import NotificationsStateSlice
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice
 from synthorg.telemetry.state import TelemetryStateSlice
+
+logger = get_logger(__name__)
 
 type LifespanHooks = list[Callable[[], Awaitable[None]]]
 
@@ -121,9 +130,17 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         nonlocal runtime_services_installed
         if runtime_services_installed:
             return
+        # Resolve the agent sandbox workspace root from the deployment env at
+        # startup (the install guard runs this once), then inject it into the
+        # installer instead of re-reading the environment inside it. Resolving
+        # here, not at the composition root, keeps the resolver's fail-fast on
+        # a non-absolute SYNTHORG_DB_PATH out of pure app construction (dev /
+        # ``:memory:`` / OpenAPI export must not crash on a relative path).
+        agent_workspace_root = resolve_agent_workspace_root_env()
         await install_runtime_services(
             app_state,
             connection_catalog=connection_catalog,
+            agent_workspace_root=agent_workspace_root,
         )
         runtime_services_installed = True
 
@@ -186,7 +203,30 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     # load-bearing teardown and a hanging flush never blocks cleanup.
     telemetry_collector = _build_telemetry_collector(effective_config.telemetry)
     app_state.swap_slice(TelemetryStateSlice(collector=telemetry_collector))
-    startup = [*startup, telemetry_collector.start]
+
+    async def _apply_telemetry_db_layer() -> None:
+        # ``telemetry.enabled`` is DB > env > default, but the collector was
+        # built from env > default before persistence connected. Re-resolve
+        # with DB awareness now that the resolver is wired and apply it before
+        # the collector starts. Best-effort: an unwired resolver (anonymous /
+        # test boot) keeps the construction-time value.
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
+        if resolver is None:
+            return
+        try:
+            enabled = await resolver.get_bool(SettingNamespace.TELEMETRY, "enabled")
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                setting="telemetry.enabled",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        telemetry_collector.apply_enabled(enabled=enabled)
+
+    startup = [*startup, _apply_telemetry_db_layer, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
 
     # Automated report service: wired from the cost tracker + budget config so
@@ -284,10 +324,20 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_strategy_context]
 
-    # Bring up the notification dispatcher's HTTP-bearing sinks lazily under
-    # their lifecycle locks. Teardown lives in the on-shutdown runner
-    # (``lifecycle_runner_shutdown``) via ``notification_dispatcher.aclose``.
-    startup = [*startup, notification_dispatcher.start]
+    async def _start_construction_dispatcher() -> None:
+        # Bring up the construction-phase dispatcher's HTTP-bearing sinks under
+        # their lifecycle locks, but ONLY if it is still the live dispatcher.
+        # The bridge-config startup step (``_apply_notification_dispatcher_config``)
+        # may have already rebuilt + started a replacement with DB-resolved
+        # timeouts and swapped it onto the slice, leaving this one orphaned and
+        # unstarted; starting an orphan would open sinks nothing routes through
+        # and that the on-shutdown runner (which closes the LIVE slice
+        # dispatcher) never tears down.
+        live = app_state.slice(NotificationsStateSlice).dispatcher
+        if live is notification_dispatcher:
+            await notification_dispatcher.start()
+
+    startup = [*startup, _start_construction_dispatcher]
 
     async def _resolve_runtime_security_settings() -> None:
         await resolve_runtime_security_settings(app_state)

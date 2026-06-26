@@ -2,7 +2,7 @@
 
 from synthorg.a2a.push_verifier import A2APushVerifier
 from synthorg.integrations.connections.models import ConnectionType
-from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.integrations.errors import WebhookVerifierUnavailableError
 from synthorg.integrations.webhooks.verifiers.forge_verifiers import (
     ForgejoHmacVerifier,
     GiteaHmacVerifier,
@@ -52,7 +52,7 @@ def get_verifier(connection_type: ConnectionType) -> SignatureVerifier:
         A ``SignatureVerifier`` instance.
 
     Raises:
-        InvalidConnectionAuthError: If no verifier is registered
+        WebhookVerifierUnavailableError: If no verifier is registered
             for ``connection_type``.
     """
     verifier_cls = _VERIFIER_FACTORIES.get(connection_type)
@@ -65,5 +65,5 @@ def get_verifier(connection_type: ConnectionType) -> SignatureVerifier:
             "No webhook signature verifier registered for "
             f"connection_type={connection_type.value}"
         )
-        raise InvalidConnectionAuthError(msg)
+        raise WebhookVerifierUnavailableError(msg)
     return verifier_cls()

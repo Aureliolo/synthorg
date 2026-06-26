@@ -59,6 +59,11 @@ class IdempotencyClaim(BaseModel):
     outcome: IdempotencyOutcome
     cached_response: str | None = Field(default=None)
     claim_token: NotBlankStr | None = Field(default=None)
+    #: Fingerprint of the request that first claimed this key, surfaced for
+    #: COMPLETED / IN_FLIGHT outcomes so the service can reject a replay of the
+    #: same key carrying a different payload. ``None`` for FRESH (no prior row)
+    #: and for rows written before the fingerprint column existed.
+    request_fingerprint: str | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_cached_response_matches_outcome(self) -> Self:
@@ -106,6 +111,10 @@ class IdempotencyRecord(BaseModel):
             ``None`` while the record is in-flight or failed.
         response_body: JSON-encoded cached response, or ``None``
             until the operation completes successfully.
+        request_fingerprint: Fingerprint of the request that first
+            claimed this key, or ``None`` for rows written before the
+            column existed. Lets the service reject a replay of the same
+            key carrying a different payload.
         created_at: When the claim was first inserted.
         expires_at: When the row becomes eligible for cleanup.
     """
@@ -117,6 +126,7 @@ class IdempotencyRecord(BaseModel):
     status: IdempotencyOutcome
     response_hash: str | None = None
     response_body: str | None = None
+    request_fingerprint: str | None = None
     created_at: AwareDatetime
     expires_at: AwareDatetime
 
@@ -176,6 +186,7 @@ class IdempotencyRepository(Protocol):
         key: NotBlankStr,
         ttl_seconds: int,
         now: datetime,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
         """Attempt to claim *(scope, key)* for the duration of *ttl_seconds*.
 
@@ -183,6 +194,11 @@ class IdempotencyRepository(Protocol):
         receives ``FRESH``, and the underlying database insert /
         select runs inside a single transaction so the discriminator
         cannot race.
+
+        *request_fingerprint* (when supplied) is stored on the FRESH
+        insert and surfaced verbatim on an existing row's COMPLETED /
+        IN_FLIGHT claim, so the service can reject a replay of the same
+        key carrying a different payload.
         """
         ...
 

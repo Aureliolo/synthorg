@@ -35,22 +35,11 @@ from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import (
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-)
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.core.domain_errors import NotFoundError
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_PROVIDER_HEALTH_QUERIED,
-    API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
-)
-from synthorg.providers.errors import (
-    ProviderAlreadyExistsError,
-    ProviderNotFoundError,
-    ProviderValidationError,
 )
 from synthorg.providers.health import ProviderHealthSummary
 from synthorg.providers.presets import ProviderPreset, list_presets
@@ -227,33 +216,16 @@ class ProviderCrudController(Controller):
             Created provider response.
 
         Raises:
-            ConflictError: If a provider with this name already exists.
-            ValidationError: If the provider configuration fails
-                validation.
+            ProviderAlreadyExistsError: If a provider with this name already
+                exists (409, mapped by the domain handler from class metadata).
+            ProviderValidationError: If the provider configuration fails
+                validation (422, mapped by the domain handler).
         """
         app_state: AppState = state.app_state
         # Strip preset_name from external requests -- only
         # create_from_preset may set it (capability flag injection).
         safe_data = data.model_copy(update={"preset_name": None})
-        try:
-            config = await provider_management_of(app_state).create_provider(
-                safe_data,
-            )
-        except ProviderAlreadyExistsError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="provider",
-                name=data.name,
-            )
-            raise ConflictError(safe_error_description(exc)) from exc
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        config = await provider_management_of(app_state).create_provider(safe_data)
         return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @post(
@@ -281,30 +253,13 @@ class ProviderCrudController(Controller):
             Created provider response.
 
         Raises:
-            ConflictError: If a provider with this name already exists.
-            ValidationError: If the preset is unknown or config
-                validation fails.
+            ProviderAlreadyExistsError: If a provider with this name already
+                exists (409, mapped by the domain handler from class metadata).
+            ProviderValidationError: If the preset is unknown or config
+                validation fails (422, mapped by the domain handler).
         """
         app_state: AppState = state.app_state
-        try:
-            config = await provider_management_of(app_state).create_from_preset(
-                data,
-            )
-        except ProviderAlreadyExistsError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="provider",
-                name=data.name,
-            )
-            raise ConflictError(safe_error_description(exc)) from exc
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        config = await provider_management_of(app_state).create_from_preset(data)
         return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @put(
@@ -331,30 +286,13 @@ class ProviderCrudController(Controller):
             Updated provider response.
 
         Raises:
-            NotFoundError: If the provider does not exist.
-            ValidationError: If the update fails validation.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
+            ProviderValidationError: If the update fails validation (422,
+                mapped by the domain handler).
         """
         app_state: AppState = state.app_state
-        try:
-            config = await provider_management_of(app_state).update_provider(
-                name,
-                data,
-            )
-        except ProviderNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(safe_error_description(exc)) from exc
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        config = await provider_management_of(app_state).update_provider(name, data)
         return ApiResponse(data=to_provider_response(config, name=name))
 
     @delete(
@@ -377,15 +315,8 @@ class ProviderCrudController(Controller):
             name: Provider name.
 
         Raises:
-            NotFoundError: If the provider does not exist.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
         """
         app_state: AppState = state.app_state
-        try:
-            await provider_management_of(app_state).delete_provider(name)
-        except ProviderNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(safe_error_description(exc)) from exc
+        await provider_management_of(app_state).delete_provider(name)
