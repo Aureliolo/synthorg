@@ -14,6 +14,7 @@ from uuid import UUID
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import (
     artifact_facade_service_of,
     ontology_facade_service_of,
@@ -128,7 +129,7 @@ async def _artifacts_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if artifact is None:
-        missing = LookupError(f"Artifact {artifact_id} not found")
+        missing = NotFoundError(f"Artifact {artifact_id} not found")
         log_handler_invoke_failed(tool, missing, artifact_id=artifact_id)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -274,7 +275,7 @@ async def _ontology_get_entity(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if entity is None:
-        missing = LookupError(f"Entity {entity_id} not found")
+        missing = NotFoundError(f"Entity {entity_id} not found")
         log_handler_invoke_failed(tool, missing, entity_id=entity_id)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

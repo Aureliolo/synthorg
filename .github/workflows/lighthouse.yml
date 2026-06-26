@@ -184,7 +184,13 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository ||
        github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The preview-wait poll loop alone budgets ~10m (60 x 10s); 15m left
+    # only ~5m for checkout, node setup, install-js-deps (its own fetch
+    # retries) and the remote LHCI audit, so a slow Cloudflare alias
+    # propagation could hit the hard job timeout mid-audit instead of
+    # surfacing the cleaner poll-timeout error. 20m keeps headroom beyond
+    # the poll ceiling.
+    timeout-minutes: 20
     environment: lighthouse
     permissions:
       contents: read

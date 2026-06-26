@@ -32,6 +32,13 @@ func TestRetryAfterMessage(t *testing.T) {
 }
 
 func TestRetryAfterMessageHTTPDate(t *testing.T) {
+	// A far-future HTTP-date exercises the capped branch: the delta is
+	// clamped to the one-day display ceiling before formatting.
+	farFuture := time.Now().UTC().Add(48 * time.Hour).Format(http.TimeFormat)
+	if got := retryAfterMessage(farFuture); got != "retry after 86400 seconds" {
+		t.Fatalf("far-future HTTP-date retryAfterMessage = %q, want %q", got, "retry after 86400 seconds")
+	}
+
 	future := time.Now().UTC().Add(time.Hour).Format(http.TimeFormat)
 	got := retryAfterMessage(future)
 	// HTTP-date has one-second precision and time.Until is re-read inside

@@ -373,27 +373,24 @@ def _check_go_gpl(repo_root: Path) -> list[Violation]:
 def _run_go_licenses(cli_dir: Path) -> str:
     """Run ``go-licenses csv ./...`` in ``cli_dir`` and return its stdout.
 
-    ``go-licenses`` may exit non-zero when a package in the closure cannot
-    be analysed (vendored C, a module with no ``LICENSE`` file) while still
-    emitting valid CSV rows for everything it could classify. A non-zero
-    exit is therefore tolerated as long as stdout carries rows; only a
-    missing binary or a truly empty result is a SetupError.
+    The scan fails closed: a missing binary, a timeout, a truly empty
+    result, or any non-zero exit (which signals go-licenses skipped part
+    of the closure, e.g. a module with no ``LICENSE`` file) all raise
+    SetupError, so an incomplete closure can never pass as a clean scan.
 
-    The tolerance is NOT a safety claim. A package go-licenses cannot
-    classify is simply absent from the CSV, so this scan does not
-    validate it -- a copyleft module that fails analysis would not appear
-    here at all. The deterministic backstops (the ``_HARD_DENYLIST`` /
-    ``_GO_GPL_TOOLS`` name checks against ``go.mod`` / ``go.sum``, which
-    run unconditionally and do not depend on go-licenses) remain the
-    authoritative guard; this scan only adds coverage for the packages it
-    *can* classify.
+    Even on success this is not a completeness claim: a package
+    go-licenses cannot classify is simply absent from the CSV. The
+    deterministic backstops (the ``_HARD_DENYLIST`` / ``_GO_GPL_TOOLS``
+    name checks against ``go.mod`` / ``go.sum``, which run unconditionally
+    and do not depend on go-licenses) remain the authoritative guard;
+    this scan only adds coverage for the packages it *can* classify.
 
     Returns:
         The captured CSV stdout.
 
     Raises:
-        SetupError: If ``go-licenses`` is absent, times out, or produces
-            no parseable output.
+        SetupError: If ``go-licenses`` is absent, times out, produces no
+            parseable output, or exits non-zero (an incomplete closure).
     """
     if shutil.which("go-licenses") is None:
         msg = (

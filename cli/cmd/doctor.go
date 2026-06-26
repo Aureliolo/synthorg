@@ -44,8 +44,9 @@ Gathers host and Docker environment info, per-container state, backend
 health, image digests, compose/config details, disk usage, and recent
 error logs, then writes a timestamped 0600 report under the data dir.
 Pass --checks to run only named categories (environment, health,
-containers, images, compose, config, disk, errors) or --fix to apply the
-safe auto-remediations doctor knows about. The run finishes by printing a
+containers, images, compose, config, disk, errors), or --checks=all for
+every category, or --fix to apply the safe auto-remediations doctor knows
+about. The run finishes by printing a
 pre-filled GitHub issue URL so a bug report can be opened with the
 diagnostic context already attached.`,
 	Args: cobra.NoArgs,
