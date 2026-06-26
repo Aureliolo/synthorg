@@ -300,9 +300,20 @@ func checkComposeFile(ctx context.Context, r *Report, info docker.Info, dataDir 
 	return ""
 }
 
+// dialTimeout bounds each per-port TCP dial in checkPorts. Set by
+// Configure from the resolved diagnostics_dial_timeout tunable; defaults
+// to 1s for direct / test use.
+var dialTimeout = 1 * time.Second
+
+// Configure applies the resolved port-probe dial timeout. Called once
+// from root.go PersistentPreRunE.
+func Configure(timeout time.Duration) {
+	dialTimeout = timeout
+}
+
 // checkPorts tests whether configured ports are already bound.
 func checkPorts(ctx context.Context, backendPort, webPort int) []string {
-	dialer := net.Dialer{Timeout: 1 * time.Second}
+	dialer := net.Dialer{Timeout: dialTimeout}
 	var conflicts []string
 	for _, p := range []struct {
 		name string

@@ -1,6 +1,7 @@
 """Tests for the asset manager tool."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.asset_manager import AssetManagerTool
@@ -94,9 +95,11 @@ class TestAssetManagerTool:
 
     async def test_get_without_asset_id(self) -> None:
         tool = AssetManagerTool()
-        result = await tool.execute(arguments={"action": "get"})
-        assert result.is_error
-        assert "asset_id is required" in result.content
+        # ``AssetManagerArgs`` requires asset_id for get/delete at the
+        # ``parse_typed`` boundary, so this raises rather than returning
+        # an is_error result (the invoker maps it to invalid_argument).
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "get"})
 
     async def test_delete_existing_asset(self) -> None:
         tool = AssetManagerTool(assets={"img-001": {"type": "image"}})
@@ -120,9 +123,8 @@ class TestAssetManagerTool:
 
     async def test_delete_without_asset_id(self) -> None:
         tool = AssetManagerTool()
-        result = await tool.execute(arguments={"action": "delete"})
-        assert result.is_error
-        assert "asset_id is required" in result.content
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "delete"})
 
     async def test_search_finds_matching(self) -> None:
         tool = AssetManagerTool(
@@ -146,15 +148,17 @@ class TestAssetManagerTool:
 
     async def test_search_without_query(self) -> None:
         tool = AssetManagerTool()
-        result = await tool.execute(arguments={"action": "search"})
-        assert result.is_error
-        assert "query is required" in result.content
+        # ``AssetManagerArgs`` requires query for search at the
+        # ``parse_typed`` boundary, so this raises rather than returning
+        # an is_error result (the invoker maps it to invalid_argument).
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "search"})
 
     async def test_invalid_action(self) -> None:
         tool = AssetManagerTool()
-        result = await tool.execute(arguments={"action": "update"})
-        assert result.is_error
-        assert "Invalid action" in result.content
+        # ``action`` is a closed Literal on ``AssetManagerArgs``.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "update"})
 
     def test_register_asset(self) -> None:
         tool = AssetManagerTool()

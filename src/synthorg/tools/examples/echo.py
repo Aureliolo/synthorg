@@ -10,10 +10,11 @@ It sets ``args_model = EchoArgs`` so the ``ToolInvoker`` validates
 automatically.
 """
 
-from typing import ClassVar, cast, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -56,11 +57,12 @@ class EchoTool(BaseTool):
     ) -> ToolExecutionResult:
         """Return the ``message`` argument as content.
 
-        ``ToolInvoker`` has already validated ``arguments`` against
-        :class:`EchoArgs` via :attr:`BaseTool.args_model` before this
-        method is called, so the access below is unconditionally safe.
+        Re-validating through :func:`parse_typed` at the tool boundary
+        gives typed field access and keeps the agent tool plane under
+        the same typed-boundary contract as the auth / MCP surfaces.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        return ToolExecutionResult(content=cast("str", arguments["message"]))
+        args = parse_typed("tool.execute", arguments, EchoArgs)
+        return ToolExecutionResult(content=args.message)

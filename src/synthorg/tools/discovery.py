@@ -16,6 +16,7 @@ from typing import ClassVar, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
@@ -30,7 +31,6 @@ from synthorg.observability.events.tool import (
 from synthorg.security.autonomy.enums import ToolCategory
 
 from .base import BaseTool, ToolExecutionResult
-from .errors import ToolParameterError
 
 logger = get_logger(__name__)
 
@@ -120,26 +120,6 @@ METADATA_SHOULD_LOAD_RESOURCE: str = "should_load_resource"
 """Set by ``LoadToolResourceTool`` to signal ``DisclosureMiddleware``."""
 
 
-def _require_str(arguments: dict[str, object], key: str) -> str:
-    """Return ``arguments[key]`` narrowed to ``str``.
-
-    Args:
-        arguments: Pre-validated tool arguments.
-        key: Argument name to extract.
-
-    Returns:
-        The argument value as a string.
-
-    Raises:
-        ToolParameterError: If the value is not a string.
-    """
-    value = arguments[key]
-    if not isinstance(value, str):
-        msg = f"{key} must be a string"
-        raise ToolParameterError(msg)
-    return value
-
-
 class ListToolsTool(BaseTool):
     """Return L1 metadata for all permitted tools.
 
@@ -216,7 +196,8 @@ class LoadToolTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        tool_name = _require_str(arguments, "tool_name")
+        args = parse_typed("tool.execute", arguments, LoadToolArgs)
+        tool_name = args.tool_name
         l2 = self._manager.get_l2_body(tool_name)
         if l2 is None:
             return ToolExecutionResult(
@@ -267,8 +248,9 @@ class LoadToolResourceTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        tool_name = _require_str(arguments, "tool_name")
-        resource_id = _require_str(arguments, "resource_id")
+        args = parse_typed("tool.execute", arguments, LoadToolResourceArgs)
+        tool_name = args.tool_name
+        resource_id = args.resource_id
         resource = self._manager.get_l3_resource(tool_name, resource_id)
         if resource is None:
             return ToolExecutionResult(

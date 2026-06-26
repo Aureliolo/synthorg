@@ -16,8 +16,7 @@ const (
 	EnvWebPort       = "SYNTHORG_WEB_PORT"
 	EnvChannel       = "SYNTHORG_CHANNEL"
 	EnvImageTag      = "SYNTHORG_IMAGE_TAG"
-	EnvNoVerify      = "SYNTHORG_NO_VERIFY"
-	EnvSkipVerify    = "SYNTHORG_SKIP_VERIFY" // backward-compat alias for EnvNoVerify
+	EnvSkipVerify    = "SYNTHORG_SKIP_VERIFY" // env equivalent of the --skip-verify flag
 	EnvAutoUpdateCLI = "SYNTHORG_AUTO_UPDATE_CLI"
 	EnvAutoPull      = "SYNTHORG_AUTO_PULL"
 	EnvAutoRestart   = "SYNTHORG_AUTO_RESTART"
@@ -47,6 +46,12 @@ const (
 	EnvImageVerifyTimeout     = config.EnvImageVerifyTimeout
 	EnvImagePullAttempts      = config.EnvImagePullAttempts
 	EnvImagePullRetryDelay    = config.EnvImagePullRetryDelay
+	EnvHealthPollInterval     = config.EnvHealthPollInterval
+	EnvHealthInitialDelay     = config.EnvHealthInitialDelay
+	EnvDHIVerifyTimeout       = config.EnvDHIVerifyTimeout
+	EnvUpdateHealthTimeout    = config.EnvUpdateHealthTimeout
+	EnvCompletionProbeTimeout = config.EnvCompletionProbeTimeout
+	EnvDiagnosticsDialTimeout = config.EnvDiagnosticsDialTimeout
 	EnvMaxAPIResponseBytes    = config.EnvMaxAPIResponseBytes
 	EnvMaxBinaryBytes         = config.EnvMaxBinaryBytes
 	EnvMaxArchiveEntryBytes   = config.EnvMaxArchiveEntryBytes

@@ -184,7 +184,14 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository ||
        github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The preview-wait poll loop's worst case is MAX_ATTEMPTS x
+    # (CURL_MAX_TIME + POLL_INTERVAL) = 60 x (10 + 10) = 1200s (~20m); on
+    # top of that sit checkout, node setup, install-js-deps (its own fetch
+    # retries) and the remote LHCI audit. A 30m ceiling keeps the job
+    # timeout above that worst case so a slow Cloudflare alias propagation
+    # surfaces the cleaner in-loop poll-timeout error rather than a hard
+    # mid-audit kill.
+    timeout-minutes: 30
     environment: lighthouse
     permissions:
       contents: read
@@ -244,15 +251,27 @@ jobs:
           set -eu
           SHORT_SHA="${EXPECTED_SHORT_SHA:0:7}"
           BANNER_NEEDLE=">${SHORT_SHA}<"
+          # Cloudflare alias propagation after a new Pages deploy is the
+          # long pole here; 5 minutes was too tight and produced real
+          # false failures. Budget ~10 minutes of polling and report the
+          # true worst-case bound (MAX_ATTEMPTS x (CURL_MAX_TIME +
+          # POLL_INTERVAL)), not a hardcoded string that drifts from the
+          # actual ceiling.
+          MAX_ATTEMPTS=60
+          POLL_INTERVAL=10
+          CURL_MAX_TIME=10
           echo "Waiting for ${PREVIEW_URL} to respond 200 AND serve commit ${SHORT_SHA}..."
-          for i in $(seq 1 30); do
-            # Both BODY and STATUS follow redirects (-L) so they refer
-            # to the SAME final resource. Without -L on STATUS, a
-            # Cloudflare 308 alias-redirect would report 308 even
-            # when BODY contains the matching banner, causing a
-            # false 5-minute timeout.
-            BODY=$(curl -sS -L --max-time 15 "${PREVIEW_URL}" || true)
-            STATUS=$(curl -sS -L --max-time 15 -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
+          for i in $(seq 1 "${MAX_ATTEMPTS}"); do
+            # One request, not two: a single curl returns the body with
+            # the HTTP status appended on a trailing line, so STATUS and
+            # BODY always describe the SAME response. Two separate curls
+            # would double the per-iteration worst case AND could observe
+            # different deployments if Cloudflare flips the alias between
+            # them. -L follows the 308 alias-redirect to the final
+            # resource (without it the status would read 308, not 200).
+            RESPONSE="$(curl -sS -L --max-time "${CURL_MAX_TIME}" -w $'\n%{http_code}' "${PREVIEW_URL}" || printf '\n000')"
+            STATUS="${RESPONSE##*$'\n'}"
+            BODY="${RESPONSE%$'\n'*}"
             if [[ "${STATUS}" == "200" && "${BODY}" == *"${BANNER_NEEDLE}"* ]]; then
               echo "pr-preview is live (HTTP 200, banner SHA matches ${SHORT_SHA})."
               exit 0
@@ -264,10 +283,10 @@ jobs:
             if [[ "${BODY}" =~ \>([0-9a-f]{7})\< ]]; then
               CURRENT="${BASH_REMATCH[1]}"
             fi
-            echo "Attempt $i: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting 10s..."
-            sleep 10
+            echo "Attempt $i/${MAX_ATTEMPTS}: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting ${POLL_INTERVAL}s..."
+            sleep "${POLL_INTERVAL}"
           done
-          echo "::error::pr-preview did not serve commit ${SHORT_SHA} within 5 minutes. Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
+          echo "::error::pr-preview did not serve commit ${SHORT_SHA} after ${MAX_ATTEMPTS} attempts (worst case ~$((MAX_ATTEMPTS * (CURL_MAX_TIME + POLL_INTERVAL)))s). Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)

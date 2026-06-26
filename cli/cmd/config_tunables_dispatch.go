@@ -77,6 +77,12 @@ var tunableSpecs = map[string]tunableSpec{
 	"attestation_http_timeout": durationTunable("attestation_http_timeout", config.DefaultAttestationHTTPTimeout, EnvAttestationHTTPTimeout, func(s *config.State) *string { return &s.AttestationHTTPTimeout }),
 	"image_verify_timeout":     durationTunable("image_verify_timeout", config.DefaultImageVerifyTimeout, EnvImageVerifyTimeout, func(s *config.State) *string { return &s.ImageVerifyTimeout }),
 	"image_pull_retry_delay":   durationTunable("image_pull_retry_delay", config.DefaultImagePullRetryDelay, EnvImagePullRetryDelay, func(s *config.State) *string { return &s.ImagePullRetryDelay }),
+	"health_poll_interval":     durationTunable("health_poll_interval", config.DefaultHealthPollInterval, EnvHealthPollInterval, func(s *config.State) *string { return &s.HealthPollInterval }),
+	"health_initial_delay":     durationTunable("health_initial_delay", config.DefaultHealthInitialDelay, EnvHealthInitialDelay, func(s *config.State) *string { return &s.HealthInitialDelay }),
+	"dhi_verify_timeout":       durationTunable("dhi_verify_timeout", config.DefaultDHIVerifyTimeout, EnvDHIVerifyTimeout, func(s *config.State) *string { return &s.DHIVerifyTimeout }),
+	"update_health_timeout":    durationTunable("update_health_timeout", config.DefaultUpdateHealthTimeout, EnvUpdateHealthTimeout, func(s *config.State) *string { return &s.UpdateHealthTimeout }),
+	"completion_probe_timeout": durationTunable("completion_probe_timeout", config.DefaultCompletionProbeTimeout, EnvCompletionProbeTimeout, func(s *config.State) *string { return &s.CompletionProbeTimeout }),
+	"diagnostics_dial_timeout": durationTunable("diagnostics_dial_timeout", config.DefaultDiagnosticsDialTimeout, EnvDiagnosticsDialTimeout, func(s *config.State) *string { return &s.DiagnosticsDialTimeout }),
 	"image_pull_attempts": {
 		set: func(s *config.State, v string) error {
 			return setIntInRange(v, "image_pull_attempts", 1, config.MaxImagePullAttempts, &s.ImagePullAttempts)

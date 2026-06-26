@@ -2,6 +2,7 @@
 
 import aiosqlite
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.database.config import DatabaseConnectionConfig
 from synthorg.tools.database.sql_query import SqlQueryTool, _classify_statement
@@ -65,6 +66,10 @@ class TestReadOnlyEnforcement:
             "DELETE FROM t WHERE id=1",
             "DROP TABLE t",
             "CREATE TABLE t2 (id INT)",
+            # WITH can prefix DML and PRAGMA can write schema, so both must
+            # be treated as writes (not whitelisted) in read-only mode.
+            "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x",
+            "PRAGMA writable_schema=ON",
         ],
     )
     async def test_write_blocked_in_read_only(
@@ -73,6 +78,28 @@ class TestReadOnlyEnforcement:
         query: str,
     ) -> None:
         tool = SqlQueryTool(config=read_only_config)
+        result = await tool.execute(arguments={"query": query})
+        assert result.is_error is True
+        assert "blocked" in result.content.lower()
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "ATTACH DATABASE '/etc/passwd' AS evil",
+            "DETACH DATABASE evil",
+            "VACUUM",
+        ],
+    )
+    async def test_filesystem_escape_blocked_even_when_writable(
+        self,
+        writable_config: DatabaseConnectionConfig,
+        query: str,
+    ) -> None:
+        # ATTACH/DETACH/VACUUM are blocked unconditionally (the filesystem
+        # isolation guarantee), so even a writable connection must reject
+        # them rather than only the read-only path.
+        tool = SqlQueryTool(config=writable_config)
         result = await tool.execute(arguments={"query": query})
         assert result.is_error is True
         assert "blocked" in result.content.lower()
@@ -111,9 +138,22 @@ class TestQueryExecution:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SqlQueryTool(config=read_only_config)
-        result = await tool.execute(arguments={"query": ""})
+        # ``query`` is ``NotBlankStr`` on ``SqlQueryArgs``; a blank query
+        # is rejected at the ``parse_typed`` boundary before execution.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"query": ""})
+
+    @pytest.mark.unit
+    async def test_comment_only_query_is_empty(
+        self, read_only_config: DatabaseConnectionConfig
+    ) -> None:
+        # A comment-only query passes NotBlankStr but strips to nothing
+        # after leading-comment removal, so classification yields no
+        # keyword and execution reports an empty query.
+        tool = SqlQueryTool(config=read_only_config)
+        result = await tool.execute(arguments={"query": "-- just a comment"})
         assert result.is_error is True
-        assert "empty" in result.content.lower()
+        assert "empty query" in result.content.lower()
 
     @pytest.mark.unit
     async def test_no_results(self, read_only_config: DatabaseConnectionConfig) -> None:

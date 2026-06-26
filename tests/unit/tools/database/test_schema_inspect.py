@@ -2,6 +2,7 @@
 
 import aiosqlite
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.database.config import DatabaseConnectionConfig
 from synthorg.tools.database.schema_inspect import SchemaInspectTool
@@ -83,9 +84,35 @@ class TestDescribeTable:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SchemaInspectTool(config=read_only_config)
-        result = await tool.execute(arguments={"action": "describe_table"})
+        # ``SchemaInspectArgs`` requires table_name for describe_table at
+        # the ``parse_typed`` boundary.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "describe_table"})
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "table_name",
+        [
+            "users; DROP TABLE secrets",
+            "users WHERE 1=1",
+            "users-table",
+            "'; DELETE FROM users; --",
+        ],
+    )
+    async def test_unsafe_table_name_rejected(
+        self,
+        read_only_config: DatabaseConnectionConfig,
+        table_name: str,
+    ) -> None:
+        # ``table_name`` is only presence-validated at the typed boundary,
+        # so the ``_SAFE_IDENTIFIER_RE`` guard in ``_describe_table`` is the
+        # sole SQL-injection barrier for this path.
+        tool = SchemaInspectTool(config=read_only_config)
+        result = await tool.execute(
+            arguments={"action": "describe_table", "table_name": table_name}
+        )
         assert result.is_error is True
-        assert "table_name" in result.content.lower()
+        assert "invalid table name" in result.content.lower()
 
 
 class TestEdgeCases:
@@ -96,6 +123,6 @@ class TestEdgeCases:
         self, read_only_config: DatabaseConnectionConfig
     ) -> None:
         tool = SchemaInspectTool(config=read_only_config)
-        result = await tool.execute(arguments={"action": "drop_all"})
-        assert result.is_error is True
-        assert "invalid" in result.content.lower()
+        # ``action`` is a closed Literal on ``SchemaInspectArgs``.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "drop_all"})

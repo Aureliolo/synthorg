@@ -16,9 +16,13 @@ copyleft-exclusion policy enforced by `scripts/check_license_compat.py`
 - **LGPL is permitted with attribution.** Weak-copyleft (LGPL-3.0)
   components are dynamically linked / imported as separate works, so they
   may ship, but every LGPL distribution MUST be attributed in the
-  top-level `NOTICE` file. Today that is `psycopg`, `psycopg_pool`, and
-  `psycopg_binary` (the optional `postgres` extra and the published
-  backend image).
+  top-level `NOTICE` file. This applies to both Python and JS deps: today
+  the Python side is `psycopg`, `psycopg_pool`, and `psycopg_binary` (the
+  optional `postgres` extra and the published backend image), and the JS
+  side covers any LGPL package discovered dynamically in
+  `web/package-lock.json`. The Python `_KNOWN_LGPL` set is a curated
+  backstop list; JS LGPL deps are not curated but are detected from the
+  lockfile's per-package SPDX `license` field.
 - **GPL developer tooling stays external.** `golangci-lint` (GPL-3.0) is
   installed as a standalone binary and is never added as a `go tool`
   directive, so its transitive closure never enters `cli/go.mod` /
@@ -42,6 +46,12 @@ copyleft-exclusion policy enforced by `scripts/check_license_compat.py`
    curated known-LGPL set is also asserted against `NOTICE` so the
    attribution check holds even when the `postgres` extra is not synced
    into the gate's environment.
+4. **Web JS copyleft scan** -- every package in `web/package-lock.json`
+   is classified from its per-entry SPDX `license` field. AGPL / GPL
+   (non-LGPL) is a hard failure; an LGPL package must be attributed in
+   `NOTICE` (matched by npm package name, scoped or plain) or the gate fails.
+   A missing `web/package-lock.json` is tolerated (the scan yields no
+   violations) so the gate stays usable before the lockfile exists.
 
 Transitive copyleft of unknown packages is covered by the name denylist
 over the full `uv.lock` closure rather than by classifying every

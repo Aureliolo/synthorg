@@ -2,10 +2,11 @@
 
 import asyncio
 from pathlib import Path
-from typing import ClassVar, cast, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_FS_DELETE, TOOL_FS_ERROR
 from synthorg.security.autonomy.enums import ActionType
@@ -88,7 +89,8 @@ class DeleteFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming deletion or an error.
         """
-        user_path = cast("str", arguments["path"])
+        args = parse_typed("tool.execute", arguments, DeleteFileArgs)
+        user_path = args.path
 
         try:
             resolved = self.path_validator.validate(user_path)

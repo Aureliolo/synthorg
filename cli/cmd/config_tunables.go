@@ -8,7 +8,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
-// This file hosts the 17 tunable config keys (registry hosts / image
+// This file hosts the 26 tunable config keys (registry hosts / image
 // tags / NATS defaults / timeouts / byte limits) and their setter,
 // getter, reset, and env-var mappings. Kept separate from config.go to
 // keep either file under the 800-line soft limit -- config.go carries

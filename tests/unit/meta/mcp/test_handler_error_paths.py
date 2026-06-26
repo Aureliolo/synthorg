@@ -393,3 +393,45 @@ class TestDestructiveHandlersExerciseGuardrailBranch:
             f"{tool_name}: guardrail violation didn't emit "
             f"MCP_HANDLER_GUARDRAIL_VIOLATED event"
         )
+
+
+class TestAdminGuardrailAcceptsDomainFields:
+    """``AdminGuardrailArgs`` rides each admin tool's own fields through.
+
+    The envelope uses ``extra="allow"`` so a destructive tool's domain
+    arguments (e.g. an entity id) travel in the same ``arguments`` dict
+    as ``confirm``/``reason``. An accidental flip to ``extra="forbid"``
+    would make ``parse_typed("mcp.admin", ...)`` reject every admin call
+    with a generic ``ValidationError`` before the precise guardrail
+    checks run, silently breaking all admin tools. This pins the
+    contract directly on the helper.
+    """
+
+    def test_extra_domain_fields_pass_through(self, actor: AgentIdentity) -> None:
+        from synthorg.meta.mcp.handlers.common import require_admin_guardrails
+
+        reason, resolved = require_admin_guardrails(
+            {
+                "confirm": True,
+                "reason": "scheduled cleanup",
+                "agent_id": "agent-7",
+                "cascade": True,
+            },
+            actor,
+        )
+        assert reason == "scheduled cleanup"
+        assert resolved is actor
+
+    def test_malformed_confirm_still_violates_not_validation_error(
+        self, actor: AgentIdentity
+    ) -> None:
+        from synthorg.meta.mcp.errors import GuardrailViolationError
+        from synthorg.meta.mcp.handlers.common import require_admin_guardrails
+
+        # A non-bool confirm must reach the guardrail branch (not trip
+        # parse_typed) so the wire surface stays guardrail_violated.
+        with pytest.raises(GuardrailViolationError):
+            require_admin_guardrails(
+                {"confirm": "yes", "reason": "x", "agent_id": "agent-7"},
+                actor,
+            )

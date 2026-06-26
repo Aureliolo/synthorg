@@ -75,6 +75,31 @@ def test_notice_covers_absent() -> None:
     assert _MODULE._notice_covers("nothing relevant", "psycopg") is False
 
 
+# ── _web_notice_covers ──────────────────────────────────────────
+
+
+def test_web_notice_covers_scoped_full_name() -> None:
+    notice = "attribution for @scope/widget here"
+    assert _MODULE._web_notice_covers(notice, "@scope/widget") is True
+
+
+def test_web_notice_covers_unscoped_basename() -> None:
+    notice = "the lodash library is attributed here"
+    assert _MODULE._web_notice_covers(notice, "lodash") is True
+
+
+def test_web_notice_covers_basename_not_a_substring_false_positive() -> None:
+    # A generic basename ("core") must not clear attribution by matching
+    # inside a larger npm name ("core-js", "@types/core").
+    notice = "core-js and @types/core are attributed here"
+    assert _MODULE._web_notice_covers(notice, "core") is False
+    assert _MODULE._web_notice_covers(notice, "@scope/core") is False
+
+
+def test_web_notice_covers_absent() -> None:
+    assert _MODULE._web_notice_covers("nothing relevant", "@scope/widget") is False
+
+
 # ── denylist ────────────────────────────────────────────────────
 
 _CLEAN_PYPROJECT = """
@@ -279,7 +304,7 @@ def test_web_copyleft_flags_gpl_dependency(tmp_path: Path) -> None:
         '{"packages": {"": {"name": "root"}, '
         '"node_modules/some-lib": {"version": "1.0.0", "license": "GPL-3.0-only"}}}',
     )
-    violations = _MODULE._check_web_copyleft(tmp_path)
+    violations = _MODULE._check_web_copyleft(tmp_path, "")
     assert any("some-lib" in v.message for v in violations)
 
 
@@ -288,7 +313,7 @@ def test_web_copyleft_flags_legacy_licenses_array(tmp_path: Path) -> None:
         tmp_path / "web" / "package-lock.json",
         '{"packages": {"node_modules/agpl-lib": {"licenses": [{"type": "AGPL-3.0"}]}}}',
     )
-    violations = _MODULE._check_web_copyleft(tmp_path)
+    violations = _MODULE._check_web_copyleft(tmp_path, "")
     assert any("agpl-lib" in v.message for v in violations)
 
 
@@ -298,11 +323,11 @@ def test_web_copyleft_permissive_passes(tmp_path: Path) -> None:
         '{"packages": {"node_modules/mit-lib": {"license": "MIT"}, '
         '"node_modules/no-license": {"version": "2.0.0"}}}',
     )
-    assert _MODULE._check_web_copyleft(tmp_path) == []
+    assert _MODULE._check_web_copyleft(tmp_path, "") == []
 
 
 def test_web_copyleft_absent_lockfile_no_violation(tmp_path: Path) -> None:
-    assert _MODULE._check_web_copyleft(tmp_path) == []
+    assert _MODULE._check_web_copyleft(tmp_path, "") == []
 
 
 def test_web_copyleft_missing_packages_map_fails_closed(tmp_path: Path) -> None:
@@ -310,7 +335,37 @@ def test_web_copyleft_missing_packages_map_fails_closed(tmp_path: Path) -> None:
     # that would fail-open and let copyleft JS deps bypass enforcement.
     _write(tmp_path / "web" / "package-lock.json", '{"lockfileVersion": 1}')
     with pytest.raises(_MODULE.SetupError):
-        _MODULE._check_web_copyleft(tmp_path)
+        _MODULE._check_web_copyleft(tmp_path, "")
+
+
+def test_web_copyleft_lgpl_without_notice_flags(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"node_modules/lgpl-lib": {"license": "LGPL-3.0-only"}}}',
+    )
+    violations = _MODULE._check_web_copyleft(tmp_path, "")
+    assert any("lgpl-lib" in v.message and v.location == "NOTICE" for v in violations)
+
+
+def test_web_copyleft_lgpl_attributed_in_notice_passes(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"node_modules/lgpl-lib": {"license": "LGPL-3.0-only"}}}',
+    )
+    notice = "Third-party notices\n- lgpl-lib (LGPL-3.0)\n"
+    assert _MODULE._check_web_copyleft(tmp_path, notice) == []
+
+
+def test_web_copyleft_scoped_lgpl_attributed_by_basename_passes(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"node_modules/@scope/lgpl-lib": '
+        '{"license": "LGPL-2.1-or-later"}}}',
+    )
+    # Attribution by the unscoped basename counts.
+    assert _MODULE._check_web_copyleft(tmp_path, "lgpl-lib") == []
 
 
 # ── known-LGPL NOTICE coverage ──────────────────────────────────

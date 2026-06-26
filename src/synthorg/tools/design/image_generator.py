@@ -7,10 +7,11 @@ inject a provider at construction time.
 
 import asyncio
 import base64
-from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.design import (
@@ -83,15 +84,6 @@ class ImageProvider(Protocol):
         ...
 
 
-_VALID_STYLES: Final[frozenset[str]] = frozenset(
-    {"realistic", "sketch", "diagram", "icon"}
-)
-_VALID_QUALITIES: Final[frozenset[str]] = frozenset({"draft", "standard", "high"})
-
-_MIN_DIMENSION: Final[int] = 256
-_MAX_DIMENSION: Final[int] = 2048
-
-
 class ImageGeneratorTool(BaseDesignTool):
     """Generate images from text prompts via an abstracted provider.
 
@@ -161,56 +153,12 @@ class ImageGeneratorTool(BaseDesignTool):
                 is_error=True,
             )
 
-        prompt = cast("str", arguments["prompt"])
-        style = cast("str", arguments.get("style", "realistic"))
-        width = cast("int", arguments.get("width", 1024))
-        height = cast("int", arguments.get("height", 1024))
-        quality = cast("str", arguments.get("quality", "standard"))
-
-        if not (_MIN_DIMENSION <= width <= _MAX_DIMENSION) or not (
-            _MIN_DIMENSION <= height <= _MAX_DIMENSION
-        ):
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="invalid_dimensions",
-                width=width,
-                height=height,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Width and height must be between "
-                    f"{_MIN_DIMENSION} and {_MAX_DIMENSION}. "
-                    f"Got width={width}, height={height}."
-                ),
-                is_error=True,
-            )
-
-        if style not in _VALID_STYLES:
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="invalid_style",
-                style=style,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid style: {style!r}. Must be one of: {sorted(_VALID_STYLES)}"
-                ),
-                is_error=True,
-            )
-
-        if quality not in _VALID_QUALITIES:
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="invalid_quality",
-                quality=quality,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid quality: {quality!r}. "
-                    f"Must be one of: {sorted(_VALID_QUALITIES)}"
-                ),
-                is_error=True,
-            )
+        args = parse_typed("tool.execute", arguments, ImageGeneratorArgs)
+        prompt = args.prompt
+        style = args.style
+        width = args.width
+        height = args.height
+        quality = args.quality
 
         logger.info(
             DESIGN_IMAGE_GENERATION_START,

@@ -6,11 +6,12 @@ bodies are streamed and truncated at ``max_response_bytes`` to
 prevent memory exhaustion.
 """
 
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 import httpx
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -32,15 +33,6 @@ from synthorg.tools.web.base_web_tool import BaseWebTool
 logger = get_logger(__name__)
 _DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 1048576
 _DEFAULT_REQUEST_TIMEOUT: Final[float] = 30.0
-
-_ALLOWED_METHODS: Final[frozenset[str]] = frozenset(
-    {
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-    }
-)
 
 
 class HttpRequestTool(BaseWebTool):
@@ -107,22 +99,14 @@ class HttpRequestTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with the response body or error.
         """
-        url = cast("str", arguments["url"])
-        method = cast("str", arguments.get("method", "GET")).upper()
-        headers = cast("dict[str, str]", arguments.get("headers") or {})
-        body = cast("str | None", arguments.get("body"))
-        raw_timeout = arguments.get("timeout")
+        args = parse_typed("tool.execute", arguments, HttpRequestArgs)
+        url = args.url
+        method = args.method
+        headers = args.headers
+        body = args.body
         timeout: float = (
-            cast("float", raw_timeout)
-            if raw_timeout is not None
-            else self._request_timeout
+            args.timeout if args.timeout is not None else self._request_timeout
         )
-
-        if method not in _ALLOWED_METHODS:
-            return ToolExecutionResult(
-                content=f"Unsupported HTTP method: {method!r}",
-                is_error=True,
-            )
 
         # SSRF validation (validate_url_host already logs WEB_SSRF_BLOCKED)
         validation = await self._validate_url(url)

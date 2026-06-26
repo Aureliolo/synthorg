@@ -417,12 +417,12 @@ def _find_feature_manifest_controllers(
     """Return ``(class_name, source_file, mounted_under_api_prefix)`` triples.
 
     Discovers controllers declared via ``ControllerRegistration`` in every
-    feature manifest (``feature.py``), replacing the stale ``api/app.py``
-    AST scan: the codebase moved A2A (and demo) controllers to
-    feature-manifest discovery, so they no longer appear as imports in
-    ``app.py``. Controllers reached through the ``controllers/__init__.py``
-    tuples are deduplicated by the caller's ``seen_modules`` set, so this
-    surfaces exactly the manifest-only controllers (a2a, demo). Conditional
+    feature manifest (``feature.py``). A2A and demo controllers register
+    this way rather than through the ``controllers/__init__.py`` tuples, so
+    without this pass they are invisible to the dead-endpoint inventory.
+    Controllers reached through the ``controllers/__init__.py`` tuples are
+    deduplicated by the caller's ``seen_modules`` set, so this surfaces
+    exactly the manifest-only controllers (a2a, demo). Conditional
     ``predicate`` gating is intentionally ignored (every declared route is
     inventoried).
     """

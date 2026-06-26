@@ -161,8 +161,9 @@ jobs:
         run: uv run python scripts/generate_comparison.py
 
       - name: Build docs
-        # TODO: Restore --strict once zensical supports it
-        # https://github.com/zensical/backlog/issues/72
+        # DEFERRED(zensical/backlog#72): restore the ``--strict`` docs
+        # build once zensical implements the flag (tracked upstream at
+        # https://github.com/zensical/backlog/issues/72).
         # SYNTHORG_VERSION intentionally omitted; previews show "dev" banner
         #
         # Retry up to 3 times with a 15-second backoff.  The D2 plugin

@@ -6,10 +6,11 @@ stdlib ``html.parser`` module.
 """
 
 from html.parser import HTMLParser
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -23,8 +24,6 @@ from synthorg.tools.web._args import HtmlParserArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 
 logger = get_logger(__name__)
-
-_EXTRACT_MODES: Final[tuple[str, ...]] = ("text", "links", "metadata")
 
 
 # ── Extraction helpers ─────────────────────────────────────────
@@ -219,22 +218,9 @@ class HtmlParserTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with extracted content.
         """
-        html_content = cast("str", arguments["html_content"])
-        mode = cast("str", arguments.get("extract_mode", "text"))
-
-        if mode not in _EXTRACT_MODES:
-            logger.warning(
-                WEB_PARSE_FAILED,
-                mode=mode,
-                error=f"Invalid extract_mode: {mode!r}",
-                valid_modes=_EXTRACT_MODES,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid extract_mode: {mode!r}. Must be one of: {_EXTRACT_MODES}"
-                ),
-                is_error=True,
-            )
+        args = parse_typed("tool.execute", arguments, HtmlParserArgs)
+        html_content = args.html_content
+        mode = args.extract_mode
 
         logger.info(WEB_PARSE_START, mode=mode, content_length=len(html_content))
 

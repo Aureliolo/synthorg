@@ -882,6 +882,12 @@
       "ratio": 0.93,
       "tier": "feature"
     },
+    "src/synthorg/meta/mcp/handlers/common.py": {
+      "cap": 500,
+      "loc": 403,
+      "ratio": 0.806,
+      "tier": "code"
+    },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
       "loc": 472,
@@ -1450,7 +1456,7 @@
     "synthorg.core.auth.models": 32,
     "synthorg.core.auth.roles": 31,
     "synthorg.core.autonomy_enums": 36,
-    "synthorg.core.boundary": 41,
+    "synthorg.core.boundary": 60,
     "synthorg.core.clock": 196,
     "synthorg.core.critical_errors": 568,
     "synthorg.core.domain_errors": 227,

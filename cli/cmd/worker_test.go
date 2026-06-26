@@ -10,7 +10,7 @@ import (
 
 // TestWorkerCmd_BareInvocationPrintsHelp verifies that `synthorg worker`
 // with no subcommand renders the help text (exit 0) instead of silently
-// succeeding without doing anything -- the behaviour the audit flagged.
+// succeeding without doing anything.
 func TestWorkerCmd_BareInvocationPrintsHelp(t *testing.T) {
 	out, errOut, dataDir := sandboxRootCmd(t)
 	rootCmd.SetArgs([]string{"--data-dir", dataDir, "worker"})

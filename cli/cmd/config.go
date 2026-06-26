@@ -25,11 +25,13 @@ var supportedConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port",
 	"backup_create_timeout", "backup_restore_timeout",
-	"changelog_view", "channel", "color",
+	"changelog_view", "channel", "color", "completion_probe_timeout",
 	"default_nats_stream_prefix",
-	"dhi_registry", "docker_sock",
+	"dhi_registry", "dhi_verify_timeout", "diagnostics_dial_timeout",
+	"docker_sock",
 	"fine_tuning", "fine_tuning_variant",
-	"health_check_timeout", "health_wait_timeout",
+	"health_check_timeout", "health_initial_delay", "health_poll_interval",
+	"health_wait_timeout",
 	"hints", "image_pull_attempts", "image_pull_retry_delay",
 	"image_repo_prefix", "image_tag", "image_verify_timeout", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
@@ -37,7 +39,7 @@ var supportedConfigKeys = []string{
 	"registry_host", "sandbox",
 	"self_update_api_timeout", "self_update_http_timeout",
 	"telemetry_opt_in", "timestamps",
-	"tuf_fetch_timeout", "web_port",
+	"tuf_fetch_timeout", "update_health_timeout", "web_port",
 }
 
 var configCmd = &cobra.Command{
@@ -144,12 +146,14 @@ Supported keys:
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
-Plus 20 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
+Plus 26 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
 postgres_image_tag, nats_image_tag,
 default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
 health_check_timeout, health_wait_timeout, self_update_http_timeout,
 self_update_api_timeout, tuf_fetch_timeout, attestation_http_timeout,
 image_verify_timeout, image_pull_attempts, image_pull_retry_delay,
+health_poll_interval, health_initial_delay, dhi_verify_timeout,
+update_health_timeout, completion_probe_timeout, diagnostics_dial_timeout,
 max_api_response_bytes, max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
 for the full key set with current values; durations accept Go duration
 strings ("30s", "5m"); byte sizes accept "4MiB", "256MB", etc.
@@ -354,11 +358,13 @@ var gettableConfigKeys = []string{
 	"auto_start_after_wipe", "auto_update_cli",
 	"backend_port",
 	"backup_create_timeout", "backup_restore_timeout",
-	"changelog_view", "channel", "color",
+	"changelog_view", "channel", "color", "completion_probe_timeout",
 	"default_nats_stream_prefix",
-	"dhi_registry", "docker_sock",
+	"dhi_registry", "dhi_verify_timeout", "diagnostics_dial_timeout",
+	"docker_sock",
 	"fine_tuning", "fine_tuning_variant",
-	"health_check_timeout", "health_wait_timeout",
+	"health_check_timeout", "health_initial_delay", "health_poll_interval",
+	"health_wait_timeout",
 	"hints", "image_pull_attempts", "image_pull_retry_delay",
 	"image_repo_prefix", "image_tag", "image_verify_timeout", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
@@ -367,7 +373,7 @@ var gettableConfigKeys = []string{
 	"registry_host", "sandbox",
 	"self_update_api_timeout", "self_update_http_timeout",
 	"telemetry_opt_in", "timestamps",
-	"tuf_fetch_timeout", "web_port",
+	"tuf_fetch_timeout", "update_health_timeout", "web_port",
 }
 
 func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {

@@ -20,6 +20,7 @@ from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
@@ -58,19 +59,9 @@ _ALWAYS_BLOCKED_PREFIXES: Final[tuple[str, ...]] = (
     "VACUUM",
 )
 
-# Statement prefixes that require write access.
-_WRITE_PREFIXES: Final[tuple[str, ...]] = (
-    "INSERT",
-    "UPDATE",
-    "DELETE",
-    "DROP",
-    "ALTER",
-    "CREATE",
-    "TRUNCATE",
-    "REPLACE",
-    "REINDEX",
-)
-
+# Strips leading SQL line/block comments so the first real keyword is
+# exposed for classification (a comment-prefixed write must not slip past
+# the read-only guard).
 _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
     r"^\s*(?:(?:--[^\n]*(?:\n|$)|/\*.*?\*/)\s*)*",
     re.DOTALL,
@@ -152,13 +143,9 @@ class SqlQueryTool(BaseDatabaseTool):
         Returns:
             A ``ToolExecutionResult`` with formatted query results.
         """
-        query = cast("str", arguments["query"])
-        raw_parameters = arguments.get("parameters")
-        parameters: list[SqlBindValue] = (
-            [cast("SqlBindValue", param) for param in raw_parameters]
-            if isinstance(raw_parameters, (list, tuple))
-            else []
-        )
+        args = parse_typed("tool.execute", arguments, SqlQueryArgs)
+        query = args.query
+        parameters: list[SqlBindValue] = list(args.parameters)
 
         keyword = _classify_statement(query)
         if not keyword:

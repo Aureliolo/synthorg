@@ -3,12 +3,10 @@
 On top of single-key CAS, the settings repo offers a transactional
 ``set_many`` that writes multiple rows under CAS in one shot, so
 mutations like ``delete_department`` can pin several keys at once and
-avoid TOCTOU races.
-
-The tests are duplicated across SQLite and Postgres rather than
-parameterised with ``request.getfixturevalue``, because the latter
-clashes with ``pytest-asyncio``'s runner when the underlying fixture
-is async.
+avoid TOCTOU races. This is the exhaustive CAS-edge home for
+``set_many`` (the conformance suite keeps only two representative cases
+to gate dual-backend parity); each scenario runs on both backends via
+the parametrized ``backend`` fixture.
 """
 
 from datetime import UTC, datetime
@@ -16,9 +14,8 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
-from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
 def _iso(minute: int) -> str:
@@ -156,78 +153,28 @@ async def _run_mixed(repo: SettingsRepository) -> None:
 
 
 @pytest.mark.integration
-class TestSetManySqlite:
-    async def test_all_success(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_all_success(on_disk_backend.settings)
+class TestSetMany:
+    """Exhaustive ``set_many`` CAS edges, run on SQLite and Postgres.
 
-    async def test_cas_conflict_rolls_back(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_cas_conflict_rolls_back(on_disk_backend.settings)
+    The shared dual-backend ``backend`` fixture parametrizes every case
+    over both implementations, so a CAS-semantics divergence between the
+    SQLite and Postgres ``set_many`` paths fails here.
+    """
 
-    async def test_first_write_sentinel(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_first_write_sentinel(on_disk_backend.settings)
+    async def test_all_success(self, backend: PersistenceBackend) -> None:
+        await _run_all_success(backend.settings)
 
-    async def test_no_cas_upserts(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_no_cas_upserts(on_disk_backend.settings)
+    async def test_cas_conflict_rolls_back(self, backend: PersistenceBackend) -> None:
+        await _run_cas_conflict_rolls_back(backend.settings)
 
-    async def test_empty_noop(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_empty_noop(on_disk_backend.settings)
+    async def test_first_write_sentinel(self, backend: PersistenceBackend) -> None:
+        await _run_first_write_sentinel(backend.settings)
 
-    async def test_mixed(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _run_mixed(on_disk_backend.settings)
+    async def test_no_cas_upserts(self, backend: PersistenceBackend) -> None:
+        await _run_no_cas_upserts(backend.settings)
 
+    async def test_empty_noop(self, backend: PersistenceBackend) -> None:
+        await _run_empty_noop(backend.settings)
 
-@pytest.mark.integration
-class TestSetManyPostgres:
-    async def test_all_success(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_all_success(postgres_backend.settings)
-
-    async def test_cas_conflict_rolls_back(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_cas_conflict_rolls_back(postgres_backend.settings)
-
-    async def test_first_write_sentinel(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_first_write_sentinel(postgres_backend.settings)
-
-    async def test_no_cas_upserts(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_no_cas_upserts(postgres_backend.settings)
-
-    async def test_empty_noop(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_empty_noop(postgres_backend.settings)
-
-    async def test_mixed(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _run_mixed(postgres_backend.settings)
+    async def test_mixed(self, backend: PersistenceBackend) -> None:
+        await _run_mixed(backend.settings)

@@ -321,9 +321,9 @@ class TestPathParamAliases:
     The HTTP-layer tests above prove that Litestar honours the alias
     constraints; this class pins the alias bounds themselves so a
     silent edit to ``path_params.py`` (relaxing ``max_length``,
-    dropping ``min_length``) fails here too.  Audit-22 explicitly
-    flagged ``connection_name`` (128) and ``event_type`` (64) as the
-    canonical caps for the integration controllers.
+    dropping ``min_length``) fails here too.  ``connection_name`` (128)
+    and ``event_type`` (64) are the canonical caps for the integration
+    controllers.
     """
 
     @pytest.mark.parametrize(
@@ -343,7 +343,7 @@ class TestPathParamAliases:
         expected_max: int,
         expected_min: int,
     ) -> None:
-        """Each alias's ``Parameter`` metadata declares the audit-22 bounds."""
+        """Each alias's ``Parameter`` metadata declares the canonical bounds."""
         from typing import get_args
 
         from litestar.params import ParameterKwarg

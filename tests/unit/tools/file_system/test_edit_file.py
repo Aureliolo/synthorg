@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import ValidationError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -148,16 +149,17 @@ class TestEditFileExecution:
         assert "directory" in result.content.lower()
 
     async def test_empty_old_text_rejected(self, edit_tool: EditFileTool) -> None:
-        """Empty old_text must be rejected."""
-        result = await edit_tool.execute(
-            arguments={
-                "path": "hello.txt",
-                "old_text": "",
-                "new_text": "injected",
-            }
-        )
-        assert result.is_error
-        assert "empty" in result.content.lower()
+        """Empty old_text is rejected at the typed boundary."""
+        # ``EditFileArgs.old_text`` has ``min_length=1``; an empty value
+        # raises in ``parse_typed`` before any edit is attempted.
+        with pytest.raises(ValidationError):
+            await edit_tool.execute(
+                arguments={
+                    "path": "hello.txt",
+                    "old_text": "",
+                    "new_text": "injected",
+                }
+            )
 
     async def test_edit_large_file_rejected(
         self, workspace: Path, edit_tool: EditFileTool

@@ -4,10 +4,11 @@ import asyncio
 import itertools
 import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -280,9 +281,10 @@ class ListDirectoryTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` with the listing or an error.
         """
-        user_path = cast("str", arguments.get("path", "."))
-        pattern = cast("str | None", arguments.get("pattern"))
-        recursive = cast("bool", arguments.get("recursive", False))
+        args = parse_typed("tool.execute", arguments, ListDirectoryArgs)
+        user_path = args.path
+        pattern = args.pattern
+        recursive = args.recursive
 
         if err := self._validate_list_args(pattern, recursive=recursive):
             return err

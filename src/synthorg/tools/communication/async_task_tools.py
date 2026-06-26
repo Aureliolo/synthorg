@@ -5,12 +5,13 @@ supervisor-facing async task operations as LLM-callable tools.
 """
 
 import json
-from typing import ClassVar, cast, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
@@ -65,11 +66,12 @@ class StartAsyncTaskTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
+        args = parse_typed("tool.execute", arguments, StartAsyncTaskArgs)
         try:
             spec = TaskSpec(
-                title=cast("str", arguments["title"]),
-                description=cast("str", arguments["description"]),
-                agent_id=cast("str", arguments["agent_id"]),
+                title=args.title,
+                description=args.description,
+                agent_id=args.agent_id,
                 parent_task_id=self._supervisor_task_id,
             )
             task_id = await self._service.start_async_task(
@@ -117,10 +119,9 @@ class CheckAsyncTaskTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
+        args = parse_typed("tool.execute", arguments, CheckAsyncTaskArgs)
         try:
-            status = await self._service.check_async_task(
-                cast("str", arguments["task_id"]),
-            )
+            status = await self._service.check_async_task(args.task_id)
         except LookupError as exc:
             safe_error = safe_error_description(exc)
             logger.warning(
@@ -162,10 +163,11 @@ class UpdateAsyncTaskTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
+        args = parse_typed("tool.execute", arguments, UpdateAsyncTaskArgs)
         try:
             status = await self._service.update_async_task(
-                task_id=cast("str", arguments["task_id"]),
-                instructions=cast("str", arguments["instructions"]),
+                task_id=args.task_id,
+                instructions=args.instructions,
             )
         except LookupError as exc:
             safe_error = safe_error_description(exc)
@@ -214,9 +216,10 @@ class CancelAsyncTaskTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
+        args = parse_typed("tool.execute", arguments, CancelAsyncTaskArgs)
         try:
             status = await self._service.cancel_async_task(
-                task_id=cast("str", arguments["task_id"]),
+                task_id=args.task_id,
                 supervisor_id=self._supervisor_id,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -266,9 +269,11 @@ class ListAsyncTasksTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        task_id = cast(
-            "str",
-            arguments.get("supervisor_task_id", self._supervisor_task_id),
+        args = parse_typed("tool.execute", arguments, ListAsyncTasksArgs)
+        task_id = (
+            args.supervisor_task_id
+            if args.supervisor_task_id is not None
+            else self._supervisor_task_id
         )
         children = await self._service.list_async_tasks(task_id)
         return ToolExecutionResult(

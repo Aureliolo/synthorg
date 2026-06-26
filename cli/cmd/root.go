@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
@@ -77,8 +79,8 @@ func init() {
 	pf.BoolVarP(&flagYes, "yes", "y", false, "assume yes for all prompts (non-interactive mode)")
 	pf.BoolVar(&flagHelpAll, "help-all", false, "show help for all commands (recursive)")
 
-	// Note: SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars are resolved
-	// inside setupGlobalOpts alongside all other env var overrides.
+	// Note: the SYNTHORG_SKIP_VERIFY env var is resolved inside
+	// setupGlobalOpts alongside all other env var overrides.
 }
 
 // setupGlobalOpts resolves the effective configuration from flags, env vars,
@@ -198,6 +200,8 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 		tun.SelfUpdateHTTPTimeout, tun.SelfUpdateAPITimeout, tun.TUFFetchTimeout,
 	)
 	health.Configure(tun.HealthCheckTimeout)
+	completion.Configure(tun.CompletionProbeTimeout)
+	diagnostics.Configure(tun.DiagnosticsDialTimeout)
 	// backup.go and root.go share package cmd, so the resolved cap is set
 	// directly on the package var rather than via a Configure() seam.
 	maxBackupResponseBytes = tun.MaxAPIResponseBytes
@@ -241,7 +245,7 @@ func resolveEnvOverrides() (noColor, quiet, yes, skipVerify bool) {
 		yes = true
 	}
 	skipVerify = flagSkipVerify
-	if !flagSkipVerify && (envBool(EnvNoVerify) || envBool(EnvSkipVerify)) {
+	if !flagSkipVerify && envBool(EnvSkipVerify) {
 		skipVerify = true
 	}
 	return

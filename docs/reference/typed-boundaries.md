@@ -3,8 +3,10 @@
 The security-sensitive API entry points listed below split into two
 groups. The **parse_typed-enforced** boundaries (`jwt`,
 `settings.security`, `ws.control`, `audit_chain`, `a2a.jsonrpc`,
-`mcp.tool`: the original six) validate inbound payloads through a
-single helper, `synthorg.core.boundary.parse_typed`. The
+`mcp.tool`: the original six, plus the agent tool-execution plane
+`tool.execute` and the MCP admin-guardrail helper `mcp.admin`) validate
+inbound payloads through a single helper,
+`synthorg.core.boundary.parse_typed`. The
 **informational/lenient** entries (`provider.tool_call`,
 `webhook.payload`, `mcp.tool.dual_path`) are documented in the same
 table for discoverability but are NOT gated by `parse_typed`; the
@@ -61,6 +63,8 @@ Behaviour:
 | `audit_chain`        | `src/synthorg/observability/audit_chain/sink.py`  | `emit`                    | `synthorg.observability.audit_chain.payloads.AuditChainEventPayload` |
 | `a2a.jsonrpc`        | `src/synthorg/a2a/rpc_params.py`                  | `parse_rpc_params`        | `synthorg.a2a.rpc_params.A2ARpcParams` (TypeAdapter)    |
 | `mcp.tool`           | `src/synthorg/meta/mcp/invoker.py`                | `invoke`                  | Per-tool `MCPToolDef.args_model`                        |
+| `tool.execute`       | `src/synthorg/tools/**` (each `Tool.execute`)     | `execute`                 | Per-tool `*Args` (e.g. `WebSearchArgs`, `ReadFileArgs`) |
+| `mcp.admin`          | `src/synthorg/meta/mcp/handlers/common.py`        | `require_admin_guardrails`| `AdminGuardrailArgs` (extra="allow" envelope)           |
 | `provider.tool_call` | `src/synthorg/providers/drivers/mappers.py`       | `extract_tool_calls`      | (no Pydantic; lenient dict/object extraction)           |
 | `webhook.payload`    | `src/synthorg/api/controllers/_webhooks_wiring.py`| `parse_payload`           | `WebhookEventPayload` (extra="allow")                   |
 | `mcp.tool.dual_path` | `src/synthorg/meta/mcp/invoker.py`                | `invoke`                  | Per-tool `args_model` OR `common_args` handler helpers  |
@@ -157,6 +161,55 @@ before dispatch. A malformed payload returns the
 on the wire. Tools without an `args_model` fall through to the
 deepcopy path and continue to validate via `common_args` helpers in
 the handler; this gate fires whenever a tool opts into typed args.
+
+### Agent tool execution (`tool.execute`)
+
+Every concrete agent tool under `src/synthorg/tools/` whose `execute`
+body ingests the inbound `arguments` dict routes it through
+`parse_typed("tool.execute", arguments, <ToolArgs>)` against the tool's
+own frozen `*Args` model (declared as `args_model`, mostly in a sibling
+`_args.py`). This replaces the legacy `cast(...)` / `arguments[...]` /
+`isinstance` access that re-derived field shape by hand.
+
+- Wire shape: the per-tool `args_model` JSON schema (the same model
+  whose `model_json_schema()` is advertised to the LLM).
+- The `ToolInvoker` already validates `args_model` before dispatch, so
+  in production `execute` never sees malformed input; the in-body
+  `parse_typed` is a defensive typed-access boundary that gives the
+  body validated attribute access and keeps the tool plane under the
+  same contract as the auth / MCP surfaces.
+- Because the args models now own the validation, the previous
+  per-body shape guards (closed-set checks for `method` / `action` /
+  `extract_mode`, dimension bounds, line-range ordering, non-blank
+  fields) are gone: a malformed direct `execute(...)` call raises the
+  re-raised `ValidationError` instead of returning an
+  `is_error=True` result.
+- Shared boundary label: every tool uses the single literal
+  `"tool.execute"`. The gate keys each registration on
+  `(file, ToolClass, execute, tool.execute)`, so files holding several
+  tool classes (`async_task_tools.py`, `discovery.py`) register one
+  entry per class.
+
+### MCP admin guardrails (`mcp.admin`)
+
+`require_admin_guardrails` (`src/synthorg/meta/mcp/handlers/common.py`)
+routes the admin-op envelope through
+`parse_typed("mcp.admin", arguments, AdminGuardrailArgs)` after the
+actor check. `AdminGuardrailArgs` types `confirm` / `reason` as `object`
+(not `bool` / `str`) and declares `extra="allow"`:
+
+- `extra="allow"` lets each admin tool's own domain fields ride through
+  the same `arguments` dict without rejection.
+- `object`-typed fields keep the precise `GuardrailViolationError`
+  failure modes (`missing_confirm` / `missing_reason`) on the wire as
+  `guardrail_violated`, rather than collapsing a bad `confirm` / `reason`
+  into the generic `invalid_argument` envelope `parse_typed` would
+  otherwise raise. The exact precondition checks (`confirm is True`,
+  non-blank `reason`) run on the typed object below the helper call.
+- `_meta_trigger_cycle` and every other `admin_tool` handler inherit
+  the boundary transitively because they call `require_admin_guardrails`
+  as their first statement (enforced separately by
+  `check_mcp_admin_tool_guardrails.py`).
 
 ### Provider tool-call extraction (`provider.tool_call`)
 
@@ -274,14 +327,20 @@ MCP expects.
 
 ## Lint guard (Phase 3)
 
-`scripts/check_boundary_typed.py` walks the six registered functions
-above and confirms each one still calls `parse_typed`. A regression
-that drops the call (refactor, rename, accidental removal) fails the
-gate before push.
+`scripts/check_boundary_typed.py` walks every registered function in
+`_REGISTERED_BOUNDARIES` (the original six API boundaries, the MCP
+admin guardrail, and one entry per agent `Tool.execute`) and confirms
+each one still calls `parse_typed`. Each registration is a
+`(file, class, function, label)` tuple; the class qualifier
+disambiguates the several tool classes that share an `execute` method
+in one file. A regression that drops the call (refactor, rename,
+accidental removal) fails the gate before push.
 
 The guard is wired into `.pre-commit-config.yaml` at the pre-push
-stage and into the CI `Lint` job. Per-line opt-out is `# lint-allow:
-boundary-typed -- <reason>` on the function def line.
+stage and into the CI `Lint` job. Its `files:` trigger is already the
+whole `src/synthorg/` tree, so a new boundary only needs a tuple in
+the script. Per-line opt-out is `# lint-allow: boundary-typed --
+<reason>` on the function def line.
 
 ## Adding a new boundary
 
@@ -293,10 +352,13 @@ boundary-typed -- <reason>` on the function def line.
 3. Translate the re-raised `ValidationError` into your boundary's
    native error envelope (HTTP, MCP, WS close code, JSON-RPC error,
    audit log). Do not swallow.
-4. Add a `(file, function, label)` tuple to
-   `_REGISTERED_BOUNDARIES` in `scripts/check_boundary_typed.py` and
-   widen the `files:` pattern in the `boundary-typed` hook of
-   `.pre-commit-config.yaml` to include the new file.
+4. Add a `(file, class, function, label)` tuple to
+   `_REGISTERED_BOUNDARIES` in `scripts/check_boundary_typed.py` (use
+   `""` for the class slot when the function is module-level or its
+   name is unique in the file). The `boundary-typed` hook's `files:`
+   pattern already spans the whole `src/synthorg/` tree, so no
+   `.pre-commit-config.yaml` change is needed unless the new file lives
+   outside it.
 5. Add a row to the table above; add a per-boundary subsection
    below explaining wire shape, error envelope translation, and any
    stability constraints.

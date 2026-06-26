@@ -63,7 +63,12 @@ def _wait_for_web_container_ready(
         else:
             if resp.status_code == 200:
                 return
-        time.sleep(_HEALTH_POLL_INTERVAL_SECONDS)
+        # Cap the inter-poll sleep to the remaining budget so the final
+        # backoff cannot push total wait past ``deadline`` (the loop
+        # would otherwise overshoot by up to one poll interval).
+        sleep_for = min(_HEALTH_POLL_INTERVAL_SECONDS, deadline - time.monotonic())
+        if sleep_for > 0:
+            time.sleep(sleep_for)
     pytest.fail(f"Web container did not become healthy within {deadline_secs:.0f}s")
 
 

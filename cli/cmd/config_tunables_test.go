@@ -28,6 +28,15 @@ var tunableKeys = []struct {
 	{"self_update_api_timeout", "20s"},
 	{"tuf_fetch_timeout", "15s"},
 	{"attestation_http_timeout", "20s"},
+	{"health_poll_interval", "3s"},
+	{"health_initial_delay", "7s"},
+	{"dhi_verify_timeout", "90s"},
+	{"update_health_timeout", "20s"},
+	{"completion_probe_timeout", "8s"},
+	{"diagnostics_dial_timeout", "2s"},
+	{"image_verify_timeout", "180s"},
+	{"image_pull_retry_delay", "5s"},
+	{"image_pull_attempts", "7"},
 	{"max_api_response_bytes", "2097152"},
 	{"max_binary_bytes", "512MiB"},
 	{"max_archive_entry_bytes", "64MiB"},
@@ -46,6 +55,22 @@ func TestTunableKeys_AllRegistered(t *testing.T) {
 				t.Errorf("%s has no env var mapping", tk.Key)
 			}
 		})
+	}
+}
+
+// TestTunableKeys_FixtureCoversEveryTunable is the reverse-completeness
+// guard: every key registered in the canonical tunableSpecs dispatch map
+// must appear in the tunableKeys fixture, so a newly wired tunable cannot
+// drift past the fixture without failing here.
+func TestTunableKeys_FixtureCoversEveryTunable(t *testing.T) {
+	inFixture := make(map[string]bool, len(tunableKeys))
+	for _, tk := range tunableKeys {
+		inFixture[tk.Key] = true
+	}
+	for key := range tunableSpecs {
+		if !inFixture[key] {
+			t.Errorf("tunableSpecs key %q missing from tunableKeys fixture", key)
+		}
 	}
 }
 

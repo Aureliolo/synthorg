@@ -109,7 +109,8 @@ func waitAndAnnounceRestart(ctx context.Context, uiOut *ui.UI, state config.Stat
 	sp := uiOut.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 	healthTimeout := restartHealthTimeout()
-	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second); err != nil {
+	tun := GetGlobalOpts(ctx).Tunables
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
 		sp.Warn(fmt.Sprintf("Health check did not pass after restart: %v", err))
 		return false
 	}

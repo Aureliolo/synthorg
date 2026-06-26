@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.diagram_generator import DiagramGeneratorTool
@@ -109,30 +110,24 @@ class TestDiagramGeneratorTool:
         assert 'label="My "Quoted" Title"' not in result.content
 
     @pytest.mark.parametrize(
-        ("args", "expected_msg"),
+        "args",
         [
-            (
-                {"diagram_type": "invalid", "description": "test"},
-                "Invalid diagram_type",
-            ),
-            (
-                {
-                    "diagram_type": "flowchart",
-                    "description": "test",
-                    "output_format": "pdf",
-                },
-                "Invalid output_format",
-            ),
+            {"diagram_type": "invalid", "description": "test"},
+            {
+                "diagram_type": "flowchart",
+                "description": "test",
+                "output_format": "pdf",
+            },
         ],
         ids=["invalid_diagram_type", "invalid_output_format"],
     )
-    async def test_execute_invalid_inputs(
-        self, args: dict[str, object], expected_msg: str
-    ) -> None:
+    async def test_execute_invalid_inputs(self, args: dict[str, object]) -> None:
         tool = DiagramGeneratorTool()
-        result = await tool.execute(arguments=args)
-        assert result.is_error
-        assert expected_msg in result.content
+        # ``diagram_type`` / ``output_format`` are closed Literals on
+        # ``DiagramGeneratorArgs``; bad values are rejected at the
+        # ``parse_typed`` boundary before any markup is produced.
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments=args)
 
     async def test_execute_architecture_uses_graph_in_graphviz(
         self,

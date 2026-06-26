@@ -179,8 +179,8 @@ async def test_save_emits_api_artifact_created_on_first_write() -> None:
     assert any(log["event"] == API_ARTIFACT_CREATED for log in logs)
     assert not any(log["event"] == API_ARTIFACT_UPDATED for log in logs)
     # Pin the first-write branch against the legacy persistence-layer
-    # event (matches the update-path test below): repos are silent on
-    # mutation; the API_ARTIFACT_* events are the canonical audit.
+    # event (same guard as the update-path test above): repos are silent
+    # on mutation; the API_ARTIFACT_* events are the canonical audit.
     assert not any(log["event"] == "persistence.artifact.saved" for log in logs)
 
 

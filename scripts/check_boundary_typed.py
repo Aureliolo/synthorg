@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Lint guard for the typed-boundary contract.
 
-The six security-sensitive entry points enumerated below MUST validate
+The security-sensitive entry points enumerated below MUST validate
 inbound payloads through :func:`synthorg.core.boundary.parse_typed`. A
 regression here re-introduces a ``dict[str, Any]`` shaped boundary --
-exactly the untyped surface this contract exists to forbid.
+exactly the untyped surface this contract exists to forbid. The set
+spans the original auth/RPC/audit/settings/WS/MCP surfaces plus the
+agent tool-execution plane (every ``Tool.execute`` body) and the MCP
+admin-guardrail helper.
 
-The checker walks each registered (file, function) pair, finds the
-``FunctionDef`` (or ``AsyncFunctionDef``) node, and confirms its body
-contains at least one ``parse_typed(...)`` call. The check is presence-
-only: the helper itself logs and re-raises ``ValidationError``, so a
-caller that routes through it inherits the boundary contract.
+The checker walks each registered (file, class, function) triple, finds
+the ``FunctionDef`` (or ``AsyncFunctionDef``) node, and confirms its
+body contains at least one ``parse_typed(...)`` call. The check is
+presence-only: the helper itself logs and re-raises ``ValidationError``,
+so a caller that routes through it inherits the boundary contract. The
+class qualifier disambiguates files that hold several classes with an
+``execute`` method (the tool plane); an empty qualifier keeps the
+original module-level / direct-class resolution.
 
 Per-line opt-out: append ``# lint-allow: boundary-typed -- <reason>``
 to a line that intentionally bypasses the gate. A genuine bypass MUST
@@ -31,21 +37,66 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# (relative_file_path, function_name, boundary_label) tuples enumerating
-# the registered API boundaries that MUST route through parse_typed.
-# Adding a new boundary means adding a tuple here AND wiring the
+# (relative_file_path, tool_class) pairs for every agent tool whose
+# ``execute`` body ingests the inbound ``arguments`` dict. Each routes
+# through ``parse_typed("tool.execute", arguments, <ToolArgs>)`` so the
+# tool plane inherits the same typed-boundary contract as the auth /
+# MCP / RPC surfaces.
+_TOOL_EXECUTE_SITES: tuple[tuple[str, str], ...] = (
+    ("src/synthorg/tools/web/web_search.py", "WebSearchTool"),
+    ("src/synthorg/tools/web/html_parser.py", "HtmlParserTool"),
+    ("src/synthorg/tools/web/http_request.py", "HttpRequestTool"),
+    ("src/synthorg/tools/file_system/read_file.py", "ReadFileTool"),
+    ("src/synthorg/tools/file_system/write_file.py", "WriteFileTool"),
+    ("src/synthorg/tools/file_system/edit_file.py", "EditFileTool"),
+    ("src/synthorg/tools/file_system/delete_file.py", "DeleteFileTool"),
+    ("src/synthorg/tools/file_system/list_directory.py", "ListDirectoryTool"),
+    ("src/synthorg/tools/design/diagram_generator.py", "DiagramGeneratorTool"),
+    ("src/synthorg/tools/design/image_generator.py", "ImageGeneratorTool"),
+    ("src/synthorg/tools/design/asset_manager.py", "AssetManagerTool"),
+    ("src/synthorg/tools/communication/async_task_tools.py", "StartAsyncTaskTool"),
+    ("src/synthorg/tools/communication/async_task_tools.py", "CheckAsyncTaskTool"),
+    ("src/synthorg/tools/communication/async_task_tools.py", "UpdateAsyncTaskTool"),
+    ("src/synthorg/tools/communication/async_task_tools.py", "CancelAsyncTaskTool"),
+    ("src/synthorg/tools/communication/async_task_tools.py", "ListAsyncTasksTool"),
+    ("src/synthorg/tools/communication/template_formatter.py", "TemplateFormatterTool"),
+    ("src/synthorg/tools/database/sql_query.py", "SqlQueryTool"),
+    ("src/synthorg/tools/database/schema_inspect.py", "SchemaInspectTool"),
+    ("src/synthorg/tools/context/compact_context.py", "CompactContextTool"),
+    ("src/synthorg/tools/examples/echo.py", "EchoTool"),
+    ("src/synthorg/tools/discovery.py", "LoadToolTool"),
+    ("src/synthorg/tools/discovery.py", "LoadToolResourceTool"),
+)
+
+
+# (relative_file_path, class_name, function_name, boundary_label) tuples
+# enumerating the registered API boundaries that MUST route through
+# parse_typed. ``class_name`` is the enclosing class (``""`` for a
+# module-level function or when the function name is unique within the
+# file). Adding a new boundary means adding a tuple here AND wiring the
 # corresponding parse_typed call at the named function.
-_REGISTERED_BOUNDARIES: tuple[tuple[str, str, str], ...] = (
-    ("src/synthorg/api/auth/service.py", "decode_token", "jwt"),
+_REGISTERED_BOUNDARIES: tuple[tuple[str, str, str, str], ...] = (
+    # Original six: auth / settings / WS / audit / A2A / MCP invoker.
+    ("src/synthorg/api/auth/service.py", "", "decode_token", "jwt"),
     (
         "src/synthorg/api/controllers/settings/security.py",
+        "",
         "import_security_config",
         "settings.security",
     ),
-    ("src/synthorg/api/controllers/ws_protocol.py", "handle_message", "ws.control"),
-    ("src/synthorg/observability/audit_chain/sink.py", "emit", "audit_chain"),
-    ("src/synthorg/a2a/rpc_params.py", "parse_rpc_params", "a2a.jsonrpc"),
-    ("src/synthorg/meta/mcp/invoker.py", "invoke", "mcp.tool"),
+    ("src/synthorg/api/controllers/ws_protocol.py", "", "handle_message", "ws.control"),
+    ("src/synthorg/observability/audit_chain/sink.py", "", "emit", "audit_chain"),
+    ("src/synthorg/a2a/rpc_params.py", "", "parse_rpc_params", "a2a.jsonrpc"),
+    ("src/synthorg/meta/mcp/invoker.py", "", "invoke", "mcp.tool"),
+    # MCP admin-guardrail helper: validates the confirm/reason envelope.
+    (
+        "src/synthorg/meta/mcp/handlers/common.py",
+        "",
+        "require_admin_guardrails",
+        "mcp.admin",
+    ),
+    # Agent tool-execution plane: every Tool.execute that reads arguments.
+    *((path, cls, "execute", "tool.execute") for path, cls in _TOOL_EXECUTE_SITES),
 )
 
 _OPT_OUT_MARKER = "lint-allow: boundary-typed"
@@ -53,9 +104,10 @@ _OPT_OUT_MARKER = "lint-allow: boundary-typed"
 
 def _function_node(
     tree: ast.Module,
+    class_name: str,
     function_name: str,
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Return the unique named top-level or direct class method.
+    """Return the unique named function, scoped by ``class_name``.
 
     ``ast.walk`` would happily return a nested helper or a second
     method that shadows the registered name, which is exactly the
@@ -63,14 +115,24 @@ def _function_node(
     to module-level definitions and direct class-body methods, and
     raise on ambiguity so the boundary symbol is resolved
     unambiguously.
+
+    When ``class_name`` is non-empty the search is confined to that
+    class's direct method bodies, which is what lets a file with
+    several classes that each define ``execute`` (the tool plane)
+    register one boundary per class without tripping the ambiguity
+    guard. An empty ``class_name`` keeps the original behaviour:
+    module-level functions plus every direct-class method of the given
+    name, raising on ambiguity.
     """
     matches: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.name == function_name:
+            if not class_name and node.name == function_name:
                 matches.append(node)
             continue
         if isinstance(node, ast.ClassDef):
+            if class_name and node.name != class_name:
+                continue
             matches.extend(
                 child
                 for child in node.body
@@ -78,9 +140,10 @@ def _function_node(
                 and child.name == function_name
             )
     if len(matches) > 1:
+        scope = f"{class_name}." if class_name else "top-level / direct-class "
         msg = (
-            f"ambiguous registered boundary function {function_name!r}: "
-            f"{len(matches)} top-level / direct-class definitions found"
+            f"ambiguous registered boundary function {scope}{function_name!r}: "
+            f"{len(matches)} definitions found"
         )
         raise ValueError(msg)
     return matches[0] if matches else None
@@ -244,13 +307,21 @@ def _check_boundary(
     rel_path: str,
     function_name: str,
     boundary_label: str,
+    class_name: str = "",
 ) -> list[str]:
-    """Return zero or more violation messages for one registered boundary."""
+    """Return zero or more violation messages for one registered boundary.
+
+    ``class_name`` is the enclosing class qualifier (empty for a
+    module-level function or when the function name is unique within the
+    file); it defaults to ``""`` so a caller that resolves a top-level
+    boundary needs only the file / function / label triple.
+    """
+    qualname = f"{class_name}.{function_name}" if class_name else function_name
     abs_path = REPO_ROOT / rel_path
     if not abs_path.is_file():
         return [
             f"{rel_path}: registered boundary file is missing "
-            f"(expected function {function_name!r} for boundary "
+            f"(expected function {qualname!r} for boundary "
             f"{boundary_label!r})"
         ]
     source = abs_path.read_text(encoding="utf-8")
@@ -260,11 +331,11 @@ def _check_boundary(
         print(f"{rel_path}: failed to parse -- {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
-    func = _function_node(tree, function_name)
+    func = _function_node(tree, class_name, function_name)
     if func is None:
         return [
             f"{rel_path}: registered boundary function "
-            f"{function_name!r} not found (boundary {boundary_label!r})"
+            f"{qualname!r} not found (boundary {boundary_label!r})"
         ]
 
     imports = _build_import_map(tree)
@@ -276,7 +347,7 @@ def _check_boundary(
         return []
 
     return [
-        f"{rel_path}:{func.lineno}: function {function_name!r} no longer "
+        f"{rel_path}:{func.lineno}: function {qualname!r} no longer "
         f"calls parse_typed; the {boundary_label!r} boundary contract is "
         "broken. Either route the inbound payload through "
         "synthorg.core.boundary.parse_typed, or add a "
@@ -302,8 +373,15 @@ def main() -> int:
     """
     violations: list[str] = []
     try:
-        for rel_path, function_name, boundary_label in _REGISTERED_BOUNDARIES:
-            violations.extend(_check_boundary(rel_path, function_name, boundary_label))
+        for (
+            rel_path,
+            class_name,
+            function_name,
+            boundary_label,
+        ) in _REGISTERED_BOUNDARIES:
+            violations.extend(
+                _check_boundary(rel_path, function_name, boundary_label, class_name)
+            )
     except ValueError as exc:
         print(f"check_boundary_typed: {exc}", file=sys.stderr)
         return 2

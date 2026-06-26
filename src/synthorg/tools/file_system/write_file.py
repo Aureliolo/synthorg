@@ -5,10 +5,11 @@ import os
 import pathlib
 import tempfile
 from pathlib import Path
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -238,9 +239,10 @@ class WriteFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming the write or an error.
         """
-        user_path = cast("str", arguments["path"])
-        content = cast("str", arguments["content"])
-        create_dirs = cast("bool", arguments.get("create_directories", False))
+        args = parse_typed("tool.execute", arguments, WriteFileArgs)
+        user_path = args.path
+        content = args.content
+        create_dirs = args.create_directories
 
         if err := self._validate_write_args(user_path, content):
             return err

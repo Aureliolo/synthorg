@@ -267,14 +267,6 @@ func (u *UI) KeyValue(key, value string) {
 	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.label.Render(stripControl(key)+":"), stripControl(value))
 }
 
-// Hint prints a hint/suggestion line in muted color.
-//
-// Deprecated: use HintError, HintNextStep, HintTip, or HintGuidance instead
-// for category-aware hint control. This method behaves like HintNextStep.
-func (u *UI) Hint(msg string) {
-	u.HintNextStep(msg)
-}
-
 // HintError prints a hint for error recovery. Always shown unless --quiet.
 func (u *UI) HintError(msg string) {
 	if u.quiet {

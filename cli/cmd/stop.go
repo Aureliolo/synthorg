@@ -102,12 +102,15 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	}
 	sp.Success("SynthOrg stopped")
 
-	out.HintNextStep("Run 'synthorg start' to restart.")
+	// Surface the data-loss warning (or the preserved-data guidance)
+	// BEFORE the restart hint so a `--volumes` run does not lead with a
+	// reassuring "restart" line ahead of "all your data is gone".
 	if stopVolumes {
 		out.Warn("Volumes removed -- all persistent data (database, memory) has been deleted.")
 	} else {
 		out.HintGuidance("Persistent data preserved. Use --volumes to also remove database and memory data.")
 	}
+	out.HintNextStep("Run 'synthorg start' to restart.")
 
 	return nil
 }

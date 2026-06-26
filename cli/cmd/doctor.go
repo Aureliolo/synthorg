@@ -38,8 +38,18 @@ var validDoctorChecks = map[string]bool{
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Run diagnostics and generate a bug report",
-	Long:  "Collects system info, container states, health, and logs. Saves a diagnostic file and prints a pre-filled GitHub issue URL.",
-	Args:  cobra.NoArgs,
+	Long: `Collect a full diagnostic snapshot of the local SynthOrg install.
+
+Gathers host and Docker environment info, per-container state, backend
+health, image digests, compose/config details, disk usage, and recent
+error logs, then writes a timestamped 0600 report under the data dir.
+Pass --checks to run only named categories (environment, health,
+containers, images, compose, config, disk, errors), or --checks=all for
+every category, or --fix to apply the safe auto-remediations doctor knows
+about. The run finishes by printing a
+pre-filled GitHub issue URL so a bug report can be opened with the
+diagnostic context already attached.`,
+	Args: cobra.NoArgs,
 	Example: `  synthorg doctor                          # full diagnostics
   synthorg doctor --checks health,containers  # run specific checks only
   synthorg doctor --fix                    # auto-fix detected issues`,

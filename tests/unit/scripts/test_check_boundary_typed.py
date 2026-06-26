@@ -333,6 +333,33 @@ class TestBoundaryTypedGate:
         finally:
             sample.unlink(missing_ok=True)
 
+    def test_class_scoped_resolution_disambiguates_same_named_methods(
+        self,
+    ) -> None:
+        # Two classes in one file each define ``execute`` (the tool
+        # plane). The class qualifier must resolve the registered class
+        # without tripping the ambiguity guard: the compliant class
+        # passes, and a sibling class that skips parse_typed is still
+        # caught when registered under its own name.
+        sample = _plant_fixture(
+            _IMPORT_PARSE_TYPED
+            + "class Good:\n"
+            + "    def execute(self, payload):\n"
+            + "        return parse_typed('tool.execute', payload, object)\n"
+            + "class Bad:\n"
+            + "    def execute(self, payload):\n"
+            + "        return payload\n",
+        )
+        try:
+            mod = _load_script_module()
+            rel = str(sample.relative_to(_REPO_ROOT))
+            assert mod._check_boundary(rel, "execute", "tool.execute", "Good") == []
+            bad = mod._check_boundary(rel, "execute", "tool.execute", "Bad")
+            assert len(bad) == 1
+            assert "no longer calls parse_typed" in bad[0]
+        finally:
+            sample.unlink(missing_ok=True)
+
     def test_main_translates_value_error_to_exit_2(
         self,
         capsys: pytest.CaptureFixture[str],

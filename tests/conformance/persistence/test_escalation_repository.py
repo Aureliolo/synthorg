@@ -22,6 +22,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.protocol import PersistenceBackend
@@ -94,9 +95,20 @@ class TestEscalationQueueRepository:
         await repo.create(_escalation(escalation_id="a"))
         await repo.create(_escalation(escalation_id="b"))
 
+        await repo.create(_escalation(escalation_id="c"))
+        await repo.cancel(sid("c"), cancelled_by=NotBlankStr("human:op-x"))
+
         pending, total = await repo.list_items(status=EscalationStatus.PENDING)
         assert total == 2
         assert {e.id for e in pending} == {as_uuid("a"), as_uuid("b")}
+        # The cancelled row must not leak into the PENDING filter.
+        assert as_uuid("c") not in {e.id for e in pending}
+
+        cancelled, total_cancelled = await repo.list_items(
+            status=EscalationStatus.CANCELLED,
+        )
+        assert total_cancelled == 1
+        assert {e.id for e in cancelled} == {as_uuid("c")}
 
         decided, total_decided = await repo.list_items(
             status=EscalationStatus.DECIDED,
@@ -108,27 +120,40 @@ class TestEscalationQueueRepository:
         repo = backend.build_escalations()
         await repo.create(_escalation(escalation_id="win"))
 
+        decision = WinnerDecision(
+            winning_agent_id="agent-a",
+            reasoning="strong consistency",
+        )
         updated = await repo.apply_decision(
             sid("win"),
-            decision=WinnerDecision(
-                winning_agent_id="agent-a",
-                reasoning="strong consistency",
-            ),
+            decision=decision,
             decided_by=NotBlankStr("human:op-1"),
         )
         assert updated.status is EscalationStatus.DECIDED
         assert updated.decided_by == "human:op-1"
+        assert updated.decision == decision
+        # Reload to prove the discriminated-union decision round-trips
+        # through the backend's JSON column rather than only surviving
+        # on the in-memory return value.
+        reloaded = await repo.get(sid("win"))
+        assert reloaded is not None
+        assert reloaded.decision == decision
 
     async def test_apply_reject_decision(self, backend: PersistenceBackend) -> None:
         repo = backend.build_escalations()
         await repo.create(_escalation(escalation_id="rej"))
 
+        decision = RejectDecision(reasoning="both off-strategy")
         updated = await repo.apply_decision(
             sid("rej"),
-            decision=RejectDecision(reasoning="both off-strategy"),
+            decision=decision,
             decided_by=NotBlankStr("human:op-2"),
         )
         assert updated.status is EscalationStatus.DECIDED
+        assert updated.decision == decision
+        reloaded = await repo.get(sid("rej"))
+        assert reloaded is not None
+        assert reloaded.decision == decision
 
     async def test_apply_decision_missing_raises(
         self, backend: PersistenceBackend
@@ -172,3 +197,28 @@ class TestEscalationQueueRepository:
         fetched = await repo.get(sid("exp"))
         assert fetched is not None
         assert fetched.status is EscalationStatus.EXPIRED
+
+    async def test_duplicate_id_raises(self, backend: PersistenceBackend) -> None:
+        repo = backend.build_escalations()
+        row = _escalation(escalation_id="dup")
+        await repo.create(row)
+        with pytest.raises(ConstraintViolationError):
+            await repo.create(row)
+
+    async def test_apply_decision_on_decided_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = backend.build_escalations()
+        await repo.create(_escalation(escalation_id="dbl"))
+        decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
+        await repo.apply_decision(
+            sid("dbl"),
+            decision=decision,
+            decided_by=NotBlankStr("human:op-1"),
+        )
+        with pytest.raises(ValueError, match="cannot transition"):
+            await repo.apply_decision(
+                sid("dbl"),
+                decision=decision,
+                decided_by=NotBlankStr("human:op-2"),
+            )

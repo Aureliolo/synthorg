@@ -234,11 +234,22 @@ func powershellProfilePath(ctx context.Context) (string, error) {
 	return defaultPowerShellProfile(home), nil
 }
 
+// probeTimeout bounds the one-shot shell-profile probe. Set by Configure
+// from the resolved completion_probe_timeout tunable; defaults to 5s for
+// direct / test use.
+var probeTimeout = 5 * time.Second
+
+// Configure applies the resolved shell-profile probe timeout. Called once
+// from root.go PersistentPreRunE.
+func Configure(timeout time.Duration) {
+	probeTimeout = timeout
+}
+
 // probeShellProfile runs `<shell> -NoProfile -Command echo $PROFILE` and
 // returns the reported path if it is absolute, well-formed, and resolves
 // to a location inside the user's home directory.
 func probeShellProfile(ctx context.Context, shell, resolvedHome string) (string, bool) {
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 	out, err := exec.CommandContext(probeCtx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
 	if err != nil {
