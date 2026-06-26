@@ -253,10 +253,17 @@ class IdempotencyService:
         )
         # Reuse of the same key with a different payload is a client error,
         # not a retry: returning the prior result would silently answer the
-        # wrong request. Compare only when both sides carry a fingerprint
-        # (an opted-in caller against a row written after the column landed).
+        # wrong request. Only an existing claim (COMPLETED / IN_FLIGHT) carries
+        # a prior fingerprint to compare; a FRESH claim has none. Compare only
+        # when both sides carry one (an opted-in caller against a row written
+        # after the column landed).
+        existing_claim = (
+            claim.outcome is IdempotencyOutcome.COMPLETED
+            or claim.outcome is IdempotencyOutcome.IN_FLIGHT
+        )
         if (
-            request_fingerprint is not None
+            existing_claim
+            and request_fingerprint is not None
             and claim.request_fingerprint is not None
             and claim.request_fingerprint != request_fingerprint
         ):

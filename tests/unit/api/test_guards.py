@@ -25,7 +25,6 @@ _TASK_PAYLOAD: dict[str, str] = {
     "description": "Test desc",
     "type": "development",
     "project": "proj",
-    "created_by": "alice",
 }
 
 
