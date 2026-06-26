@@ -6,7 +6,7 @@ design artifacts.
 """
 
 import copy
-from typing import ClassVar, override
+from typing import ClassVar, cast, override
 
 from pydantic import BaseModel, JsonValue
 
@@ -193,21 +193,9 @@ class AssetManagerTool(BaseDesignTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        # ``AssetManagerArgs`` enforces asset_id-present for get/delete at
-        # the typed boundary; this narrowing keeps mypy honest and stays
-        # defensive against a direct, validator-bypassing programmatic call.
-        asset_id = args.asset_id
-        if asset_id is None:
-            logger.warning(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                action="get",
-                reason="missing_asset_id",
-            )
-            return ToolExecutionResult(
-                content="asset_id is required for 'get' action.",
-                is_error=True,
-            )
-
+        # ``AssetManagerArgs._validate_action_fields`` guarantees asset_id is
+        # present for get/delete; cast narrows the Optional for mypy.
+        asset_id = cast("str", args.asset_id)
         meta = self._assets.get(asset_id)
         if meta is None:
             logger.warning(
@@ -243,18 +231,8 @@ class AssetManagerTool(BaseDesignTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        asset_id = args.asset_id
-        if asset_id is None:
-            logger.warning(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                action="delete",
-                reason="missing_asset_id",
-            )
-            return ToolExecutionResult(
-                content="asset_id is required for 'delete' action.",
-                is_error=True,
-            )
-
+        # Guaranteed present for delete by the model validator; cast for mypy.
+        asset_id = cast("str", args.asset_id)
         if asset_id not in self._assets:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
@@ -287,20 +265,8 @@ class AssetManagerTool(BaseDesignTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        # ``query`` is optional on the model (only get/delete force a
-        # field); search still requires it, so the check stays here.
-        if args.query is None:
-            logger.warning(
-                DESIGN_ASSET_VALIDATION_FAILED,
-                action="search",
-                reason="missing_query",
-            )
-            return ToolExecutionResult(
-                content="query is required for 'search' action.",
-                is_error=True,
-            )
-
-        query = normalize_ascii_lowercase(args.query)
+        # Guaranteed present for search by the model validator; cast for mypy.
+        query = normalize_ascii_lowercase(cast("str", args.query))
         tags = list(args.tags)
         tag_set = set(tags)
 

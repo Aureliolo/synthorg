@@ -59,7 +59,9 @@ _ALWAYS_BLOCKED_PREFIXES: Final[tuple[str, ...]] = (
     "VACUUM",
 )
 
-# Statement prefixes that require write access.
+# Strips leading SQL line/block comments so the first real keyword is
+# exposed for classification (a comment-prefixed write must not slip past
+# the read-only guard).
 _LEADING_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
     r"^\s*(?:(?:--[^\n]*(?:\n|$)|/\*.*?\*/)\s*)*",
     re.DOTALL,

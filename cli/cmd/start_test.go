@@ -269,7 +269,59 @@ func TestComputePullBackoff(t *testing.T) {
 	}
 }
 
+func TestPrintStartDryRun_SkipVerifyReflectsNoVerify(t *testing.T) {
+	// printStartDryRun must read the start-local --no-verify flag
+	// (startNoVerify) directly: applyStartNoVerify only flips
+	// opts.SkipVerify on the real-run path that follows the dry-run branch,
+	// so a preview that consulted opts.SkipVerify alone would understate the
+	// verification skip for `start --dry-run --no-verify`.
+	origNoVerify, origNoPull := startNoVerify, startNoPull
+	t.Cleanup(func() { startNoVerify, startNoPull = origNoVerify, origNoPull })
+
+	cases := []struct {
+		name       string
+		noVerify   bool
+		noPull     bool
+		skipVerify bool
+		want       bool
+	}{
+		{name: "no flags", want: false},
+		{name: "start --no-verify", noVerify: true, want: true},
+		{name: "global --skip-verify", skipVerify: true, want: true},
+		{name: "no-pull skips verification", noPull: true, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			startNoVerify, startNoPull = tc.noVerify, tc.noPull
+			var buf bytes.Buffer
+			out := ui.NewUIWithOptions(&buf, ui.Options{NoColor: true, Hints: "auto"})
+
+			printStartDryRun(out, config.State{}, &GlobalOpts{SkipVerify: tc.skipVerify})
+
+			got, found := skipVerifyDryRunValue(buf.String())
+			if !found {
+				t.Fatalf("no 'Skip verify' line in dry-run output:\n%s", buf.String())
+			}
+			if got != tc.want {
+				t.Errorf("Skip verify = %v, want %v\n--- output ---\n%s", got, tc.want, buf.String())
+			}
+		})
+	}
+}
+
+// skipVerifyDryRunValue extracts the boolean rendered on the "Skip verify"
+// KeyValue line of printStartDryRun output.
+func skipVerifyDryRunValue(output string) (value, found bool) {
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.Contains(line, "Skip verify:") {
+			return strings.HasSuffix(strings.TrimSpace(line), "true"), true
+		}
+	}
+	return false, false
+}
+
 func TestAssertInitialised(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		writeCompose  bool
@@ -291,6 +343,7 @@ func TestAssertInitialised(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			if tc.writeCompose {
 				composePath := filepath.Join(dir, "compose.yml")

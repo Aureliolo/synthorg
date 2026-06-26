@@ -197,34 +197,44 @@ func loadStartState(dataDir string) (config.State, error) {
 // actionable "run synthorg init" error otherwise, BEFORE the lifecycle
 // lock is taken. assertComposeExists is the separate in-lock TOCTOU
 // re-check against a concurrent wipe.
-func assertInitialised(safeDir string) error {
+// errComposeMissing is the sentinel statComposeFile returns when the
+// compose.yml is absent, as distinct from an actual stat failure. Each
+// caller wraps it with its own user-facing message via errors.Is.
+var errComposeMissing = errors.New("compose.yml not found")
+
+// statComposeFile reports whether safeDir holds a compose.yml: nil when
+// present, errComposeMissing when absent, or a wrapped os.Stat error
+// otherwise. safeDir is the output of safeStateDir -> config.SecurePath,
+// which canonicalises and validates the operator-supplied --data-dir
+// before it reaches here, so the os.Stat below operates on an
+// already-sanitised path. A static path-injection tracer may flag it
+// because it cannot follow the sanitiser across the helper boundary; the
+// upstream validation is the guarantee.
+func statComposeFile(safeDir string) error {
 	composePath := filepath.Join(safeDir, "compose.yml")
-	_, err := os.Stat(composePath)
-	if err == nil {
-		return nil
+	if _, err := os.Stat(composePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return errComposeMissing
+		}
+		return fmt.Errorf("checking compose.yml: %w", err)
 	}
-	if errors.Is(err, os.ErrNotExist) {
+	return nil
+}
+
+func assertInitialised(safeDir string) error {
+	err := statComposeFile(safeDir)
+	if errors.Is(err, errComposeMissing) {
 		return fmt.Errorf("SynthOrg is not initialised in %s; run 'synthorg init' first", safeDir)
 	}
-	return fmt.Errorf("checking compose.yml: %w", err)
+	return err
 }
 
 func assertComposeExists(safeDir string) error {
-	// safeDir is the output of safeStateDir -> config.SecurePath, which
-	// canonicalises and validates the operator-supplied --data-dir before
-	// it reaches this helper, so the os.Stat below operates on an
-	// already-sanitised path. A static path-injection tracer may flag it
-	// because it cannot follow the sanitiser across the helper boundary;
-	// the upstream validation is the guarantee.
-	composePath := filepath.Join(safeDir, "compose.yml")
-	_, err := os.Stat(composePath)
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
+	err := statComposeFile(safeDir)
+	if errors.Is(err, errComposeMissing) {
 		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
-	return fmt.Errorf("checking compose.yml: %w", err)
+	return err
 }
 
 func validateStartFlags(cmd *cobra.Command) error {
@@ -242,7 +252,11 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) {
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
 	out.KeyValue("Sandbox", strconv.FormatBool(state.Sandbox))
-	out.KeyValue("Skip verify", strconv.FormatBool(opts.SkipVerify || startNoPull))
+	// startNoVerify is read directly: applyStartNoVerify only flips
+	// opts.SkipVerify on the real run path (after this dry-run branch), so
+	// the preview must consult the start-local --no-verify flag itself or
+	// it would understate the verification skip.
+	out.KeyValue("Skip verify", strconv.FormatBool(opts.SkipVerify || startNoVerify || startNoPull))
 	out.KeyValue("Skip pull", strconv.FormatBool(startNoPull))
 	out.KeyValue("Detached", strconv.FormatBool(!startNoDetach))
 	out.KeyValue("Health check", strconv.FormatBool(!startNoWait && !startNoDetach))

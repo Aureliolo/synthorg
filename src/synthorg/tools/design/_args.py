@@ -75,11 +75,12 @@ class AssetManagerArgs(BaseModel):
     Cross-field invariants enforced at the boundary:
 
     * ``action='get'`` and ``action='delete'`` require ``asset_id``.
+    * ``action='search'`` requires ``query``.
 
-    The remaining action-specific runtime checks (``query`` /
-    ``tags`` shape for search/list) stay in the tool body so the
-    LLM-facing message references the action that triggered the
-    failure.
+    Enforcing every per-action required field here keeps the same failure
+    class (missing required field for the action) on one event path
+    (``parse_typed`` -> ``ValidationError``) rather than splitting it
+    between the boundary and the tool body.
     """
 
     model_config = _ARGS_CONFIG
@@ -95,12 +96,15 @@ class AssetManagerArgs(BaseModel):
     )
     query: NotBlankStr | None = Field(
         default=None,
-        description="Search query for asset metadata",
+        description="Search query for asset metadata (required for search)",
     )
 
     @model_validator(mode="after")
-    def _validate_asset_id_required(self) -> Self:
-        """Reject ``get`` / ``delete`` without ``asset_id``.
+    def _validate_action_fields(self) -> Self:
+        """Enforce each action's required field at the boundary.
+
+        ``get`` / ``delete`` require ``asset_id``; ``search`` requires
+        ``query``.
 
         Returns:
             Result of type ``Self``.
@@ -110,6 +114,9 @@ class AssetManagerArgs(BaseModel):
         """
         if self.action in {"get", "delete"} and self.asset_id is None:
             msg = f"asset_id is required when action={self.action!r} (get / delete)"
+            raise ValueError(msg)
+        if self.action == "search" and self.query is None:
+            msg = "query is required when action='search'"
             raise ValueError(msg)
         return self
 

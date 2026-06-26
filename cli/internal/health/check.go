@@ -36,10 +36,18 @@ func (e *RateLimitedError) Error() string {
 	return "health endpoint rate-limited"
 }
 
+// maxRetryAfterWait caps the honoured Retry-After delay. The wait is
+// already bounded by the caller's context, but capping the parse keeps a
+// hostile or malformed delta-seconds value (e.g. one large enough that
+// `time.Duration(secs) * time.Second` overflows int64 into a small or
+// negative duration) from yielding a misleading cadence.
+const maxRetryAfterWait = time.Hour
+
 // parseRetryAfterSeconds reads a Retry-After header into a duration,
 // honouring both forms RFC 9110 10.2.3 permits: an integer delta-seconds
 // and an HTTP-date. A past HTTP-date, a negative delta, or a malformed
-// value yields zero so the caller falls back to its own cadence.
+// value yields zero so the caller falls back to its own cadence. The
+// returned delay is capped at maxRetryAfterWait.
 func parseRetryAfterSeconds(header string) time.Duration {
 	if header == "" {
 		return 0
@@ -47,6 +55,12 @@ func parseRetryAfterSeconds(header string) time.Duration {
 	if secs, err := strconv.Atoi(header); err == nil {
 		if secs < 0 {
 			return 0
+		}
+		// Cap in seconds-space BEFORE the multiply: capping the resulting
+		// Duration would be too late, since `time.Duration(secs)*time.Second`
+		// has already overflowed int64 for a large enough delta.
+		if maxSecs := int(maxRetryAfterWait / time.Second); secs > maxSecs {
+			secs = maxSecs
 		}
 		return time.Duration(secs) * time.Second
 	}

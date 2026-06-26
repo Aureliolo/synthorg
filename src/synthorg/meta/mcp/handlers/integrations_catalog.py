@@ -43,7 +43,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -83,6 +86,7 @@ async def _mcp_catalog_list(
         limit=limit,
         total=len(sequence),
     )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
@@ -110,6 +114,7 @@ async def _mcp_catalog_search(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(e) for e in entries])
 
 
@@ -140,10 +145,10 @@ async def _mcp_catalog_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if entry is None:
-        return err(
-            LookupError(f"MCP catalog entry {entry_id} not found"),
-            domain_code="not_found",
-        )
+        missing = LookupError(f"MCP catalog entry {entry_id} not found")
+        log_handler_invoke_failed(tool, missing, entry_id=entry_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(entry))
 
 
@@ -175,6 +180,7 @@ async def _mcp_catalog_install(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(result))
 
 
@@ -221,4 +227,5 @@ async def _mcp_catalog_uninstall(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"removed": removed})

@@ -19,6 +19,8 @@ func TestRetryAfterMessage(t *testing.T) {
 		{name: "zero seconds", header: "0", want: "retry after 0 seconds"},
 		{name: "negative seconds", header: "-5", want: "try again later"},
 		{name: "garbage", header: "soon", want: "try again later"},
+		{name: "huge delta capped", header: "999999999", want: "retry after 86400 seconds"},
+		{name: "at cap", header: "86400", want: "retry after 86400 seconds"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -44,8 +46,11 @@ func TestRetryAfterMessageHTTPDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not parse seconds from %q: %v", got, err)
 	}
-	if secs < 3590 || secs > 3600 {
-		t.Errorf("future HTTP-date delay = %d seconds, want ~3600 (3590-3600)", secs)
+	// Lower bound allows a 60-second scheduling window between the Now()
+	// above and the time.Until re-read inside retryAfterMessage, so a
+	// heavily loaded runner cannot flake the assertion.
+	if secs < 3540 || secs > 3600 {
+		t.Errorf("future HTTP-date delay = %d seconds, want ~3600 (3540-3600)", secs)
 	}
 
 	past := time.Now().UTC().Add(-time.Hour).Format(http.TimeFormat)

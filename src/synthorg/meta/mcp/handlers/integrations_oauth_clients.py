@@ -51,7 +51,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -85,6 +88,7 @@ async def _oauth_list_providers(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(p) for p in providers])
 
 
@@ -120,6 +124,7 @@ async def _oauth_configure_provider(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(record.to_dict())
 
 
@@ -165,6 +170,7 @@ async def _oauth_remove_provider(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"removed": removed})
 
 
@@ -190,6 +196,7 @@ async def _clients_list(
             limit=limit,
             total=len(clients),
         )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok([c.to_dict() for c in page], pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -230,10 +237,10 @@ async def _clients_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if client is None:
-        return err(
-            LookupError(f"Client {client_id} not found"),
-            domain_code="not_found",
-        )
+        missing = LookupError(f"Client {client_id} not found")
+        log_handler_invoke_failed(tool, missing, client_id=client_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(client.to_dict())
 
 
@@ -267,6 +274,7 @@ async def _clients_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(client.to_dict())
 
 
@@ -319,6 +327,7 @@ async def _clients_deactivate(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"deactivated": deactivated})
 
 
@@ -351,4 +360,5 @@ async def _clients_get_satisfaction(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(result))

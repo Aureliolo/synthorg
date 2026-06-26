@@ -148,9 +148,11 @@ class TestAssetManagerTool:
 
     async def test_search_without_query(self) -> None:
         tool = AssetManagerTool()
-        result = await tool.execute(arguments={"action": "search"})
-        assert result.is_error
-        assert "query is required" in result.content
+        # ``AssetManagerArgs`` requires query for search at the
+        # ``parse_typed`` boundary, so this raises rather than returning
+        # an is_error result (the invoker maps it to invalid_argument).
+        with pytest.raises(ValidationError):
+            await tool.execute(arguments={"action": "search"})
 
     async def test_invalid_action(self) -> None:
         tool = AssetManagerTool()

@@ -51,7 +51,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -84,6 +87,7 @@ async def _artifacts_list(
             limit=limit,
             total=len(artifacts),
         )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok([a.to_dict() for a in page], pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -124,10 +128,10 @@ async def _artifacts_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if artifact is None:
-        return err(
-            LookupError(f"Artifact {artifact_id} not found"),
-            domain_code="not_found",
-        )
+        missing = LookupError(f"Artifact {artifact_id} not found")
+        log_handler_invoke_failed(tool, missing, artifact_id=artifact_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(artifact.to_dict())
 
 
@@ -161,6 +165,7 @@ async def _artifacts_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(artifact.to_dict())
 
 
@@ -213,6 +218,7 @@ async def _artifacts_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"removed": removed})
 
 
@@ -239,6 +245,7 @@ async def _ontology_list_entities(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(e) for e in entities])
 
 
@@ -267,10 +274,10 @@ async def _ontology_get_entity(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if entity is None:
-        return err(
-            LookupError(f"Entity {entity_id} not found"),
-            domain_code="not_found",
-        )
+        missing = LookupError(f"Entity {entity_id} not found")
+        log_handler_invoke_failed(tool, missing, entity_id=entity_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(entity))
 
 
@@ -300,6 +307,7 @@ async def _ontology_get_relationships(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(r) for r in result])
 
 
@@ -327,4 +335,5 @@ async def _ontology_search(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(r) for r in result])

@@ -126,7 +126,9 @@ async def _revoke_override(
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
     if revoked is None:
-        return err(NotFoundError(f"No active risk override {args.override_id}"))
+        missing = NotFoundError(f"No active risk override {args.override_id}")
+        log_handler_invoke_failed(tool_name, missing, override_id=args.override_id)
+        return err(missing, domain_code="not_found")
     response = ok(revoked.model_dump(mode="json"))
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
     logger.info(

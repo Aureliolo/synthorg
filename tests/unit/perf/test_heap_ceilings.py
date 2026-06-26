@@ -46,8 +46,7 @@ from tests.benchmarks._helpers import (
 #   ceil(Linux-measured * ~1.5)
 # which keeps the gate meaningful on the slower-allocator platform
 # while staying loose enough to absorb minor Python 3.14 patch
-# variance. Linux ubuntu-latest reference values (captured 2026-04-26
-# on the first PR-1637 CI run):
+# variance. Linux ubuntu-latest reference values (captured 2026-04-26):
 #   rank_memories(1000)     : ~3.0 MiB peak
 #   scrub_adversarial(20-k) : ~330 KiB peak (much higher than Windows
 #                             due to dict + regex arena overhead +

@@ -9,11 +9,10 @@ import (
 // point inside the backend container.
 //
 // Without Args + RunE the parent command would silently accept any
-// positional argument and exit 0 without running anything, which is
-// the behaviour the audit flagged. Args=NoArgs rejects typos like
-// 'synthorg worker strat' with Cobra's stock "unknown command" error
-// (exit 2); RunE=cmd.Help() renders the subcommand list when the user
-// runs 'synthorg worker' with nothing at all.
+// positional argument and exit 0 without running anything. Args=NoArgs
+// rejects typos like 'synthorg worker strat' with Cobra's stock "unknown
+// command" error (exit 2); RunE=cmd.Help() renders the subcommand list
+// when the user runs 'synthorg worker' with nothing at all.
 var workerCmd = &cobra.Command{
 	Use:   "worker",
 	Short: "Manage distributed task queue workers",

@@ -760,6 +760,12 @@ func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, 
 	return data, nil
 }
 
+// maxRetryAfterDisplaySeconds caps the rendered Retry-After hint at one
+// day so a malformed or hostile header (the value is server-controlled and
+// reaches us only for display, never an actual sleep) cannot produce an
+// absurd "retry after 9223372036854775807 seconds" message.
+const maxRetryAfterDisplaySeconds = 86400
+
 // retryAfterMessage renders the HTTP Retry-After header (RFC 9110
 // delta-seconds or HTTP-date form) as a human-readable hint. Returns a
 // generic "try again later" when the header is absent or unparseable, or
@@ -770,14 +776,14 @@ func retryAfterMessage(header string) string {
 		return "try again later"
 	}
 	if secs, err := strconv.Atoi(header); err == nil && secs >= 0 {
-		return fmt.Sprintf("retry after %d seconds", secs)
+		return fmt.Sprintf("retry after %d seconds", min(secs, maxRetryAfterDisplaySeconds))
 	}
 	if t, err := http.ParseTime(header); err == nil {
 		if d := time.Until(t); d > 0 {
 			// Floor at 1 so a sub-second-but-positive future date never
 			// renders as the misleading "retry after 0 seconds".
 			secs := max(int(d.Seconds()), 1)
-			return fmt.Sprintf("retry after %d seconds", secs)
+			return fmt.Sprintf("retry after %d seconds", min(secs, maxRetryAfterDisplaySeconds))
 		}
 	}
 	return "try again later"

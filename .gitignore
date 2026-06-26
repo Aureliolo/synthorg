@@ -1,6 +1,10 @@
 # Audit artifacts
 _audit/
 
+# Synthetic fixtures planted + deleted per test by the boundary-typed gate
+# test; only ever present transiently, never committed.
+src/synthorg/_lint_boundary_fixtures/
+
 # Generated, non-source-of-truth artifacts. Each is regenerated on demand
 # by a script and validated by its gate; tracking them only inflated the
 # pack store and produced merge noise. (Vendored third-party assets such

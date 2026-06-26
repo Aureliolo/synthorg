@@ -47,7 +47,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_CAPABILITY_GAP,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -101,6 +104,7 @@ async def _quality_get_summary(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(summary))
 
 
@@ -130,6 +134,7 @@ async def _quality_get_agent_quality(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(result))
 
 
@@ -163,6 +168,7 @@ async def _quality_list_scores(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(s) for s in page], pagination=pagination)
 
 
@@ -189,6 +195,7 @@ async def _reviews_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok([r.to_dict() for r in page], pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -232,6 +239,7 @@ async def _reviews_get(
         missing = NotFoundError(f"Review {review_id} not found")
         log_handler_invoke_failed(tool, missing, review_id=review_id)
         return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(record.to_dict())
 
 
@@ -262,6 +270,7 @@ async def _reviews_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(record.to_dict())
 
 
@@ -303,6 +312,7 @@ async def _reviews_update(
         missing = NotFoundError(f"Review {args.review_id} not found")
         log_handler_invoke_failed(tool, missing, review_id=args.review_id)
         return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(record.to_dict())
 
 
@@ -330,6 +340,7 @@ async def _evaluation_versions_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(v) for v in versions])
 
 
@@ -361,6 +372,7 @@ async def _evaluation_versions_get(
         missing = NotFoundError(f"Evaluation version {version_id} not found")
         log_handler_invoke_failed(tool, missing, version_id=version_id)
         return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(version))
 
 
