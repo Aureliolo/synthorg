@@ -16,7 +16,7 @@ from litestar.exceptions import (
 )
 from litestar.params import PathParameter
 
-from synthorg.api.dto import ProblemDetail
+from synthorg.api.dto import ApiResponse, ProblemDetail
 from synthorg.api.exception_handlers import (
     _build_error_response,
     _build_response,
@@ -1399,8 +1399,7 @@ class TestBuildResponseFallback:
         assert resp.status_code == 500
         envelope = resp.content
         # JSON clients receive the standard envelope.
-        assert hasattr(envelope, "error")
-        assert hasattr(envelope, "error_detail")
+        assert isinstance(envelope, ApiResponse)
         assert envelope.error == "Internal server error"
         assert envelope.error_detail is not None
         assert envelope.error_detail.error_code == ErrorCode.INTERNAL_ERROR

@@ -64,6 +64,7 @@ class SQLiteIdempotencyRepository:
         key: NotBlankStr,
         ttl_seconds: int,
         now: datetime,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
@@ -99,6 +100,7 @@ class SQLiteIdempotencyRepository:
                     row=row,
                     now=now,
                     expires_at=expires_at,
+                    request_fingerprint=request_fingerprint,
                 )
                 await self._db.commit()
             except Exception as exc:
@@ -136,13 +138,13 @@ class SQLiteIdempotencyRepository:
             The matching value, or ``None`` when absent.
         """
         async with self._db.execute(
-            "SELECT status, response_body, expires_at "
+            "SELECT status, response_body, request_fingerprint, expires_at "
             "FROM idempotency_keys WHERE scope = ? AND key = ?",
             (scope, key),
         ) as cursor:
             return await cursor.fetchone()
 
-    async def _claim_under_lock(
+    async def _claim_under_lock(  # noqa: PLR0913
         self,
         *,
         scope: NotBlankStr,
@@ -150,6 +152,7 @@ class SQLiteIdempotencyRepository:
         row: aiosqlite.Row | None,
         now: datetime,
         expires_at: datetime,
+        request_fingerprint: str | None,
     ) -> IdempotencyClaim:
         """Pick the right claim outcome given the existing *row*.
 
@@ -163,16 +166,21 @@ class SQLiteIdempotencyRepository:
                 return IdempotencyClaim(
                     outcome=IdempotencyOutcome.COMPLETED,
                     cached_response=row["response_body"],
+                    request_fingerprint=row["request_fingerprint"],
                 )
             if row_expires > now and status == "in_flight":
-                return IdempotencyClaim(outcome=IdempotencyOutcome.IN_FLIGHT)
-            # Expired OR failed -- rotate the lease.
+                return IdempotencyClaim(
+                    outcome=IdempotencyOutcome.IN_FLIGHT,
+                    request_fingerprint=row["request_fingerprint"],
+                )
+            # Expired OR failed -- rotate the lease (and its fingerprint).
             new_token = secrets.token_hex(16)
             await self._update_row_to_in_flight(
                 scope=scope,
                 key=key,
                 new_token=new_token,
                 expires_at=expires_at,
+                request_fingerprint=request_fingerprint,
             )
             return IdempotencyClaim(
                 outcome=IdempotencyOutcome.FRESH,
@@ -185,6 +193,7 @@ class SQLiteIdempotencyRepository:
             new_token=new_token,
             now=now,
             expires_at=expires_at,
+            request_fingerprint=request_fingerprint,
         )
         return IdempotencyClaim(
             outcome=IdempotencyOutcome.FRESH,
@@ -198,30 +207,33 @@ class SQLiteIdempotencyRepository:
         key: NotBlankStr,
         new_token: str,
         expires_at: datetime,
+        request_fingerprint: str | None,
     ) -> None:
         """Rotate an expired/failed row to a fresh in-flight lease.
 
         ``created_at`` is intentionally NOT in the SET clause: it
         records the original insertion time so
         ``IdempotencyRecord.created_at`` stays meaningful across
-        re-claims (the protocol contract). Only the lease columns
-        rotate.
+        re-claims (the protocol contract). The fingerprint DOES rotate:
+        a re-claim after expiry/failure is a fresh request whose payload
+        becomes the new identity for the lease.
         """
         await self._db.execute(
             "UPDATE idempotency_keys "
             "SET status = 'in_flight', claim_token = ?, "
             "response_hash = NULL, response_body = NULL, "
-            "expires_at = ? "
+            "request_fingerprint = ?, expires_at = ? "
             "WHERE scope = ? AND key = ?",
             (
                 new_token,
+                request_fingerprint,
                 format_iso_utc(expires_at),
                 scope,
                 key,
             ),
         )
 
-    async def _insert_in_flight_row(
+    async def _insert_in_flight_row(  # noqa: PLR0913
         self,
         *,
         scope: NotBlankStr,
@@ -229,17 +241,19 @@ class SQLiteIdempotencyRepository:
         new_token: str,
         now: datetime,
         expires_at: datetime,
+        request_fingerprint: str | None,
     ) -> None:
         """Insert a fresh in-flight idempotency row."""
         await self._db.execute(
             "INSERT INTO idempotency_keys "
             "(scope, key, status, claim_token, "
-            "created_at, expires_at) "
-            "VALUES (?, ?, 'in_flight', ?, ?, ?)",
+            "request_fingerprint, created_at, expires_at) "
+            "VALUES (?, ?, 'in_flight', ?, ?, ?, ?)",
             (
                 scope,
                 key,
                 new_token,
+                request_fingerprint,
                 format_iso_utc(now),
                 format_iso_utc(expires_at),
             ),
@@ -355,8 +369,8 @@ class SQLiteIdempotencyRepository:
         try:
             async with self._db.execute(
                 "SELECT scope, key, status, response_hash, response_body, "
-                "created_at, expires_at FROM idempotency_keys "
-                "WHERE scope = ? AND key = ?",
+                "request_fingerprint, created_at, expires_at "
+                "FROM idempotency_keys WHERE scope = ? AND key = ?",
                 (scope, key),
             ) as cursor:
                 row = await cursor.fetchone()
@@ -386,6 +400,7 @@ class SQLiteIdempotencyRepository:
                 status=IdempotencyOutcome(str(row["status"])),
                 response_hash=row["response_hash"],
                 response_body=row["response_body"],
+                request_fingerprint=row["request_fingerprint"],
                 created_at=_parse_dt(row["created_at"]),
                 expires_at=_parse_dt(row["expires_at"]),
             )

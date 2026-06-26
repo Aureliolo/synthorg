@@ -59,29 +59,45 @@ _API_DESCRIPTION = (
     " ingest) require no credentials."
 )
 
+
 # Security schemes published in the OpenAPI ``components`` block. CSRF is NOT a
 # scheme: it is a double-submit supplement to the cookie session, not an
 # independent authentication method, so it lives in the description prose.
-_SECURITY_SCHEMES: dict[str, SecurityScheme | Reference] = {
-    "sessionCookie": SecurityScheme(
-        type="apiKey",
-        security_scheme_in="cookie",
-        name="session",
-        description=(
-            "HttpOnly JWT session cookie set by POST /auth/login. Mutating"
-            " requests additionally require the x-csrf-token header."
+def _build_security_schemes(
+    cookie_name: str,
+) -> dict[str, SecurityScheme | Reference]:
+    """Build the published OpenAPI security schemes.
+
+    The ``sessionCookie`` scheme advertises the actual login cookie name
+    (``auth.cookie_name``) so the rendered spec / Scalar UI stay correct
+    when a deployment overrides the default.
+
+    Args:
+        cookie_name: The configured session cookie name.
+
+    Returns:
+        The ``securitySchemes`` mapping for the OpenAPI components block.
+    """
+    return {
+        "sessionCookie": SecurityScheme(
+            type="apiKey",
+            security_scheme_in="cookie",
+            name=cookie_name,
+            description=(
+                "HttpOnly JWT session cookie set by POST /auth/login. Mutating"
+                " requests additionally require the x-csrf-token header."
+            ),
         ),
-    ),
-    "bearerAuth": SecurityScheme(
-        type="http",
-        scheme="bearer",
-        description=(
-            "Authorization: Bearer <token>. The token is a user/system JWT"
-            " (contains dots) or an opaque API key (no dots); both authenticate"
-            " through this one scheme."
+        "bearerAuth": SecurityScheme(
+            type="http",
+            scheme="bearer",
+            description=(
+                "Authorization: Bearer <token>. The token is a user/system JWT"
+                " (contains dots) or an opaque API key (no dots); both"
+                " authenticate through this one scheme."
+            ),
         ),
-    ),
-}
+    }
 
 
 def build_litestar(  # noqa: PLR0913
@@ -194,7 +210,9 @@ def build_litestar(  # noqa: PLR0913
             version=__version__,
             description=_API_DESCRIPTION,
             path="/docs",
-            components=Components(security_schemes=_SECURITY_SCHEMES),
+            components=Components(
+                security_schemes=_build_security_schemes(api_config.auth.cookie_name),
+            ),
             # OR semantics: either scheme alone authenticates a request. Public
             # routes override this with ``security=[]`` at the handler level.
             security=[{"sessionCookie": []}, {"bearerAuth": []}],

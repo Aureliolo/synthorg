@@ -39,6 +39,7 @@ export interface CostRecordListResponseBody {
     next_cursor: string | null
     has_more: boolean
   }
+  degraded_sources: readonly string[]
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
   currency: string
@@ -53,6 +54,7 @@ function isCostRecordEnvelopeShaped(body: CostRecordListResponseBody): boolean {
   const envelope = body as {
     data?: unknown
     pagination?: { limit?: unknown }
+    degraded_sources?: unknown
     daily_summary?: unknown
     period_summary?: unknown
     currency?: unknown
@@ -60,6 +62,7 @@ function isCostRecordEnvelopeShaped(body: CostRecordListResponseBody): boolean {
   return (
     Array.isArray(envelope.data) &&
     typeof envelope.pagination?.limit === 'number' &&
+    Array.isArray(envelope.degraded_sources) &&
     Array.isArray(envelope.daily_summary) &&
     envelope.period_summary != null &&
     typeof envelope.currency === 'string'
@@ -88,7 +91,7 @@ export async function listCostRecords(
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
-    degradedSources: [],
+    degradedSources: body.degraded_sources,
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

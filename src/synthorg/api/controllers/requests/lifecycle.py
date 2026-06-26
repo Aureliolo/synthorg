@@ -169,7 +169,10 @@ class RequestController(Controller):
         try:
             stored = await sim_state.request_store.get(request_id)
         except KeyError as exc:
-            logger.warning(
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``request_id`` without WARNING
+            # noise for an expected client error.
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="client_request",
                 request_id=request_id,

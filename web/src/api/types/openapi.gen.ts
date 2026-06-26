@@ -10171,19 +10171,6 @@ export type components = {
         };
         /** CreateTaskRequest */
         readonly CreateTaskRequest: {
-            /** @description Agent id to assign the task to; omit to leave it unassigned. */
-            readonly assigned_to?: string | null;
-            /**
-             * @description Maximum spend for the task in the configured base currency.
-             * @default 0
-             * @example 10
-             */
-            readonly budget_limit: number;
-            /**
-             * @description Agent name (or operator id) that created the task.
-             * @example ceo
-             */
-            readonly created_by: string;
             /**
              * @description Detailed task description.
              * @example Produce a one-page plan covering channels, budget, and KPIs.

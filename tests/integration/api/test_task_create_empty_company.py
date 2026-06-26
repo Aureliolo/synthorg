@@ -89,7 +89,6 @@ def _task_payload() -> JsonDict:
         "description": "A task that needs an agent to run.",
         "type": "development",
         "project": "proj-1",
-        "created_by": _USERNAME,
     }
 
 

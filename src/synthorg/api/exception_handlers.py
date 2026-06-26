@@ -119,7 +119,24 @@ _ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
 # back off instead of hot-looping with a 0 ms retry.
 _TOO_MANY_REQUESTS_STATUS: Final[int] = 429
 _RATE_LIMIT_RESET_HEADER: Final[str] = "ratelimit-reset"
+# HTTP field names are case-insensitive (RFC 9110 §5.1); compare lowercased.
+_RETRY_AFTER_HEADER: Final[str] = "retry-after"
 _MIN_RETRY_AFTER_SECONDS: Final[int] = 1
+
+
+def _header_value_ci(headers: Mapping[str, str], name: str) -> str | None:
+    """Return the first header value whose name case-insensitively matches.
+
+    HTTP field names are case-insensitive, but a plain ``dict.get`` only
+    hits one exact spelling.  *name* must already be lowercased.
+
+    Returns:
+        The matching header value, or ``None`` when absent.
+    """
+    for key, value in headers.items():
+        if key.lower() == name:
+            return value
+    return None
 
 
 def _get_instance_id() -> str:
@@ -1014,12 +1031,12 @@ def _retry_after_from_reset(headers: Mapping[str, str]) -> int | None:
     Returns:
         The derived ``Retry-After`` seconds, or ``None``.
     """
-    for key, value in headers.items():
-        if key.lower() == _RATE_LIMIT_RESET_HEADER:
-            try:
-                return max(_MIN_RETRY_AFTER_SECONDS, int(value))
-            except TypeError, ValueError:
-                return None
+    value = _header_value_ci(headers, _RATE_LIMIT_RESET_HEADER)
+    if value is not None:
+        try:
+            return max(_MIN_RETRY_AFTER_SECONDS, int(value))
+        except TypeError, ValueError:
+            return None
     return None
 
 
@@ -1038,18 +1055,20 @@ def _resolve_http_retry_after(
     Returns:
         The retry-after seconds, or ``None``.
     """
-    raw_retry = raw_headers.get("Retry-After") or raw_headers.get("retry-after")
+    raw_retry = _header_value_ci(raw_headers, _RETRY_AFTER_HEADER)
     if raw_retry:
         try:
             return int(raw_retry)
         except ValueError:
             # Malformed Retry-After header from upstream is rare but
             # observable; surfacing it lets operators distinguish a real
-            # missing header from a misbehaving upstream service.
+            # missing header from a misbehaving upstream service. The value
+            # is untrusted third-party header content, so scrub credential
+            # patterns before it reaches the log (SEC-1).
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="retry_after_parse_error",
-                raw_retry_after=raw_retry,
+                raw_retry_after=scrub_secret_tokens(raw_retry),
                 path=str(request.url.path),
             )
     if status == _TOO_MANY_REQUESTS_STATUS:

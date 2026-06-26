@@ -130,6 +130,7 @@ export const budgetHandlers = [
         next_cursor: null,
         has_more: false,
       },
+      degraded_sources: [],
       daily_summary: [],
       period_summary: {
         avg_cost: 0,

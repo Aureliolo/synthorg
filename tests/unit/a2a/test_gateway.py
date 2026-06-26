@@ -617,12 +617,18 @@ class _KeyedIdempotencyRepo:
         self._completed: dict[tuple[object, object], str] = {}
 
     async def claim(
-        self, *, scope: object, key: object, ttl_seconds: int, now: object
+        self,
+        *,
+        scope: object,
+        key: object,
+        ttl_seconds: int,
+        now: object,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
         from synthorg.core.types import NotBlankStr
         from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
 
-        del ttl_seconds, now
+        del ttl_seconds, now, request_fingerprint
         cached = self._completed.get((scope, key))
         if cached is None:
             return IdempotencyClaim(

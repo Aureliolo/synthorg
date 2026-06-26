@@ -6,16 +6,17 @@ import type {
   TaskBoardSubmissionResponse,
 } from '@/api/types/tasks'
 
+// The board files into the work pipeline, which owns provenance (from the
+// authenticated requester), assignment (routing's capability-matched
+// selection), and the budget ceiling (the approved cost forecast). The form
+// therefore collects only the fields the filing actually carries.
 export interface TaskCreateFormState {
   title: string
   description: string
   type: TaskType
   priority: Priority
   project: string
-  created_by: string
-  assigned_to: string
   estimated_complexity: Complexity
-  budget_limit: string
 }
 
 const INITIAL_TASK_FORM: TaskCreateFormState = {
@@ -24,10 +25,7 @@ const INITIAL_TASK_FORM: TaskCreateFormState = {
   type: 'development',
   priority: 'medium',
   project: '',
-  created_by: '',
-  assigned_to: '',
   estimated_complexity: 'medium',
-  budget_limit: '',
 }
 
 export type TaskCreateFormErrors = Partial<Record<keyof TaskCreateFormState, string>>
@@ -102,27 +100,16 @@ function validateTaskForm(form: TaskCreateFormState): TaskCreateFormErrors {
   if (!form.title.trim()) next.title = 'Title is required'
   if (!form.description.trim()) next.description = 'Description is required'
   if (!form.project.trim()) next.project = 'Project is required'
-  if (!form.created_by.trim()) next.created_by = 'Creator is required'
-  if (form.budget_limit !== '') {
-    const n = Number(form.budget_limit)
-    if (!Number.isFinite(n) || n < 0) {
-      next.budget_limit = 'Budget must be a non-negative number'
-    }
-  }
   return next
 }
 
 function buildPayload(form: TaskCreateFormState): CreateTaskRequest {
-  const assignedTo = form.assigned_to.trim()
   return {
     title: form.title.trim(),
     description: form.description.trim(),
     type: form.type,
     priority: form.priority,
     project: form.project.trim(),
-    created_by: form.created_by.trim(),
-    ...(assignedTo ? { assigned_to: assignedTo } : {}),
     estimated_complexity: form.estimated_complexity,
-    budget_limit: form.budget_limit ? Number(form.budget_limit) : 0,
   }
 }

@@ -1147,8 +1147,9 @@ class _FakeIdempotencyRepository:
         key: NotBlankStr,
         ttl_seconds: int,
         now: object,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
-        del scope, key, ttl_seconds, now
+        del scope, key, ttl_seconds, now, request_fingerprint
         return IdempotencyClaim(
             outcome=IdempotencyOutcome.FRESH,
             claim_token="fake-token",

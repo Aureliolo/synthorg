@@ -41,7 +41,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.errors import RateLimitError
+from synthorg.providers.errors import ProviderNotFoundError, RateLimitError
 from synthorg.providers.resilience.errors import RetryExhaustedError
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
 from synthorg.providers.tool_call_feedback.state import (
@@ -256,15 +256,17 @@ class ProviderModelsController(Controller):
                 handler from class metadata).
         """
         app_state: AppState = state.app_state
-        tracker = tool_call_feedback_tracker_of(app_state)
-        await tracker.clear(provider=name, model=model_id)
+        # Validate the provider BEFORE clearing tracker state so an unknown
+        # provider can never mutate the feedback accumulator as a side effect.
+        # Raise the typed ``ProviderNotFoundError`` (404 from class metadata)
+        # rather than a generic ``NotFoundError`` so the wire contract matches
+        # the sibling add/sync handlers.
         providers = await config_resolver_of(app_state).get_provider_configs()
-        updated = require_resource_or_404(
-            providers.get(name),
-            resource_type="Provider",
-            identifier=name,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="read",
-            extra_log_kwargs={"name": name},
+        updated = providers.get(name)
+        if updated is None:
+            msg = f"Provider {name!r} not found"
+            raise ProviderNotFoundError(msg)
+        await tool_call_feedback_tracker_of(app_state).clear(
+            provider=name, model=model_id
         )
         return ApiResponse(data=to_provider_response(updated, name=None))

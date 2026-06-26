@@ -209,7 +209,10 @@ class RiskOverrideController(Controller):
             revoked_by=NotBlankStr(str(actor.user_id)),
         )
         if revoked is None:
-            logger.warning(
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``override_id`` without WARNING
+            # noise for an expected client error.
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="risk_override",
                 override_id=override_id,

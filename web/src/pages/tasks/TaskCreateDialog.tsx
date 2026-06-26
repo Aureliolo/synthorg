@@ -151,19 +151,7 @@ function TaskCreateDialogBody({ ctrl }: TaskCreateDialogBodyProps) {
       <TaskTemplatesRow onApplyTemplate={ctrl.applyTemplate} />
       <TitleDescriptionFields ctrl={ctrl} />
       <TypePriorityRow ctrl={ctrl} />
-      <ProjectCreatorRow ctrl={ctrl} />
-      <AssigneeComplexityRow ctrl={ctrl} />
-      <FormField label="Budget Limit">
-        <input
-          type="number"
-          value={ctrl.form.budget_limit}
-          onChange={(e) => ctrl.updateField('budget_limit', e.target.value)}
-          className={INPUT_CLASSES}
-          placeholder="0.00"
-          min="0"
-          step="0.01"
-        />
-      </FormField>
+      <ProjectComplexityRow ctrl={ctrl} />
       <TaskCreateDialogActions submitting={ctrl.submitting} onSubmit={ctrl.handleSubmit} />
     </div>
   )
@@ -255,7 +243,7 @@ function TypePriorityRow({ ctrl }: TaskCreateDialogBodyProps) {
   )
 }
 
-function ProjectCreatorRow({ ctrl }: TaskCreateDialogBodyProps) {
+function ProjectComplexityRow({ ctrl }: TaskCreateDialogBodyProps) {
   return (
     <div className="grid grid-cols-2 gap-grid-gap">
       <FormField label="Project" error={ctrl.errors.project} required>
@@ -265,31 +253,6 @@ function ProjectCreatorRow({ ctrl }: TaskCreateDialogBodyProps) {
           onChange={(e) => ctrl.updateField('project', e.target.value)}
           className={INPUT_CLASSES}
           placeholder="Project name"
-        />
-      </FormField>
-      <FormField label="Created By" error={ctrl.errors.created_by} required>
-        <input
-          type="text"
-          value={ctrl.form.created_by}
-          onChange={(e) => ctrl.updateField('created_by', e.target.value)}
-          className={INPUT_CLASSES}
-          placeholder="Agent or user"
-        />
-      </FormField>
-    </div>
-  )
-}
-
-function AssigneeComplexityRow({ ctrl }: TaskCreateDialogBodyProps) {
-  return (
-    <div className="grid grid-cols-2 gap-grid-gap">
-      <FormField label="Assigned To">
-        <input
-          type="text"
-          value={ctrl.form.assigned_to}
-          onChange={(e) => ctrl.updateField('assigned_to', e.target.value)}
-          className={INPUT_CLASSES}
-          placeholder="Agent name (optional)"
         />
       </FormField>
       <FormField label="Complexity">

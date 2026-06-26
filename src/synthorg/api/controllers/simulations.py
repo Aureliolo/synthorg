@@ -179,7 +179,10 @@ class SimulationController(Controller):
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
-            logger.warning(
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``simulation_id`` without
+            # WARNING noise for an expected client error.
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="simulation",
                 simulation_id=simulation_id,
@@ -368,7 +371,10 @@ class SimulationController(Controller):
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
-            logger.warning(
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``simulation_id`` without
+            # WARNING noise for an expected client error.
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="simulation",
                 simulation_id=simulation_id,

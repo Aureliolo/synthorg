@@ -415,7 +415,14 @@ class CreateProjectRequest(BaseModel):
 
 
 class CreateTaskRequest(BaseModel):
-    """Payload for creating a new task.
+    """Payload for filing a new task onto the board.
+
+    The board files into the work pipeline, which owns the fields it does
+    not accept here: provenance comes from the authenticated requester,
+    the assignee from the routing phase's capability-matched selection,
+    and the per-run budget ceiling from the approved cost forecast. Only
+    the fields the filing genuinely carries are accepted, so the contract
+    does not advertise inputs the pipeline silently derives.
 
     Attributes:
         title: Short task title.
@@ -423,10 +430,7 @@ class CreateTaskRequest(BaseModel):
         type: Task work type.
         priority: Task priority level.
         project: Project ID.
-        created_by: Agent name of the creator.
-        assigned_to: Optional assignee agent ID.
-        estimated_complexity: Complexity estimate.
-        budget_limit: Maximum spend in base currency.
+        estimated_complexity: Complexity estimate (drives routing).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -450,23 +454,9 @@ class CreateTaskRequest(BaseModel):
         description="Id of the project the task belongs to.",
         examples=["marketing"],
     )
-    created_by: NotBlankStr = Field(
-        description="Agent name (or operator id) that created the task.",
-        examples=["ceo"],
-    )
-    assigned_to: NotBlankStr | None = Field(
-        default=None,
-        description="Agent id to assign the task to; omit to leave it unassigned.",
-    )
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,
         description="Up-front complexity estimate used for routing and budgeting.",
-    )
-    budget_limit: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Maximum spend for the task in the configured base currency.",
-        examples=[10.0],
     )
 
 

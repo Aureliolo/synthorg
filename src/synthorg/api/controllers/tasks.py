@@ -63,7 +63,6 @@ from synthorg.observability.events.api import (
     API_TASK_BOARD_REJECTED_NO_ADAPTER,
     API_TASK_BOARD_SUBMITTED,
     API_TASK_CANCELLED,
-    API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
     API_TASK_LISTED,
     API_TASK_UPDATED,
@@ -311,13 +310,6 @@ class TaskController(Controller):
                 project=data.project,
             )
             raise AgentRuntimeNotConfiguredError
-        if data.created_by != requester:
-            logger.warning(
-                API_TASK_CREATED_BY_MISMATCH,
-                note="created_by differs from authenticated requester",
-                created_by=data.created_by,
-                requester=requester,
-            )
         filing = TaskBoardFiling(
             title=data.title,
             description=data.description,

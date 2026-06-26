@@ -131,7 +131,11 @@ class SsrfViolationController(Controller):
             resolved_at=datetime.now(UTC),
         )
         if not updated:
-            logger.warning(
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``violation_id`` without WARNING
+            # noise for an expected client error. (The vanished-after-resolution
+            # branch below stays WARNING -- it is a genuine anomaly.)
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="ssrf_violation",
                 violation_id=violation_id,

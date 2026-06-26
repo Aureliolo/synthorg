@@ -248,11 +248,14 @@ def _build_auth_exclude_paths(
     # ``POST /webhooks/receipts/{receipt_id}/retry`` endpoints carry
     # ``require_read_access`` / ``require_write_access`` and MUST keep the auth
     # middleware (without it ``scope["user"]`` is never set and the guards 403
-    # every caller). The negative lookahead drops the ``/activity`` listing;
-    # the ``$`` anchor (exactly two segments) drops the three-segment retry
-    # route. Fail-safe (mandatory) so a custom ``auth.exclude_paths`` cannot
-    # accidentally re-gate webhook ingest.
-    webhooks_path = f"^{prefix}/webhooks/[^/]+/(?!activity$)[^/]+$"
+    # every caller). The ``(?!activity$)`` lookahead drops the ``/activity``
+    # listing; the ``$`` anchor (exactly two segments) drops the three-segment
+    # retry route. The leading ``(?!receipts/)`` reserves the whole
+    # ``/webhooks/receipts/*`` namespace so no current or future two-segment
+    # operator route there (e.g. a ``GET /webhooks/receipts/{id}``) can ever
+    # match this ingest-only exclusion and bypass auth. Fail-safe (mandatory)
+    # so a custom ``auth.exclude_paths`` cannot accidentally re-gate ingest.
+    webhooks_path = f"^{prefix}/webhooks/(?!receipts/)[^/]+/(?!activity$)[^/]+$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None

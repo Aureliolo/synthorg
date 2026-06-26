@@ -86,8 +86,8 @@
     },
     "src/synthorg/api/controllers/approvals/decisions.py": {
       "cap": 400,
-      "loc": 339,
-      "ratio": 0.848,
+      "loc": 356,
+      "ratio": 0.89,
       "tier": "controller"
     },
     "src/synthorg/api/controllers/artifacts.py": {
@@ -110,8 +110,8 @@
     },
     "src/synthorg/api/controllers/events/_sse.py": {
       "cap": 500,
-      "loc": 527,
-      "ratio": 1.054,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/api/controllers/memory/_preflight.py": {
@@ -152,8 +152,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 495,
-      "ratio": 0.99,
+      "loc": 487,
+      "ratio": 0.974,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/exception_handlers.py": {
       "cap": 1100,
-      "loc": 971,
-      "ratio": 0.883,
+      "loc": 983,
+      "ratio": 0.894,
       "tier": "complex_service"
     },
     "src/synthorg/api/lifecycle_helpers/config_apply.py": {
@@ -690,6 +690,12 @@
       "ratio": 0.95,
       "tier": "service"
     },
+    "src/synthorg/idempotency/service.py": {
+      "cap": 500,
+      "loc": 416,
+      "ratio": 0.832,
+      "tier": "code"
+    },
     "src/synthorg/integrations/connections/catalog.py": {
       "cap": 500,
       "loc": 410,
@@ -1012,6 +1018,12 @@
       "cap": 500,
       "loc": 428,
       "ratio": 0.856,
+      "tier": "code"
+    },
+    "src/synthorg/persistence/postgres/idempotency_repo.py": {
+      "cap": 500,
+      "loc": 405,
+      "ratio": 0.81,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
@@ -1447,7 +1459,7 @@
     "synthorg.core.boundary": 60,
     "synthorg.core.clock": 196,
     "synthorg.core.critical_errors": 570,
-    "synthorg.core.domain_errors": 222,
+    "synthorg.core.domain_errors": 223,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
     "synthorg.core.iso_datetime": 29,

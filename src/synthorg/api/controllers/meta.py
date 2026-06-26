@@ -288,10 +288,10 @@ class MetaController(Controller):
         repo = ab_test_repo_of(state.app_state)
         record = await repo.get(NotBlankStr(proposal_id)) if repo is not None else None
         if record is None:
-            # Surface ``proposal_id`` as a queryable field: the typed 404 is
-            # also logged by the central handler, but only the message carries
-            # the id, so this controller log keeps it operator-searchable.
-            logger.warning(
+            # Routine missing-resource 404: the central handler logs the
+            # request error, so this stays at DEBUG (queryable ``proposal_id``
+            # when debugging) rather than inflating WARNING telemetry.
+            logger.debug(
                 API_RESOURCE_NOT_FOUND,
                 resource="ab_test",
                 proposal_id=proposal_id,

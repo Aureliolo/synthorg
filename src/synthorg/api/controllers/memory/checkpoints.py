@@ -142,7 +142,7 @@ class MemoryCheckpointsController(Controller):
 
         Exception mapping:
 
-        - ``CheckpointNotFoundError`` -> HTTP 404 via ``NotFoundError``
+        - ``CheckpointNotFoundError`` -> HTTP 404 from its class metadata
         - ``CheckpointRollbackUnavailableError`` (HTTP 422, code
           ``CHECKPOINT_ROLLBACK_UNAVAILABLE``) and
           ``CheckpointRollbackCorruptError`` (HTTP 422, code

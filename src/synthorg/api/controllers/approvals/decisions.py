@@ -1,6 +1,7 @@
 # module-kind: controller
 """Approvals decision endpoints -- create, approve, reject."""
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Final
@@ -9,6 +10,7 @@ from uuid import uuid4
 from litestar import Controller, Request, post
 from litestar.datastructures import State
 from litestar.params import HeaderParameter
+from pydantic import BaseModel
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
@@ -74,12 +76,27 @@ _IdempotencyKeyHeader = Annotated[
 ]
 
 
-async def _decide_idempotent(
+def _request_fingerprint(model: BaseModel) -> str:
+    """Stable fingerprint of a request body for idempotency-replay checks.
+
+    Hashes the model's canonical JSON so the idempotency layer can tell a
+    genuine retry (identical payload) from a key reused for a different
+    request. Pydantic emits fields in declaration order, so the dump is
+    deterministic for a given model.
+
+    Returns:
+        Hex SHA-256 digest of the serialised model.
+    """
+    return hashlib.sha256(model.model_dump_json().encode("utf-8")).hexdigest()
+
+
+async def _decide_idempotent(  # noqa: PLR0913
     app_state: AppState,
     *,
     scope: str,
     key: str,
     endpoint: str,
+    request_fingerprint: str,
     decide: Callable[[], Awaitable[dict[str, object]]],
 ) -> ApprovalResponse:
     """Run *decide* under the idempotency guard and re-hydrate the response.
@@ -100,6 +117,7 @@ async def _decide_idempotent(
         scope=scope,
         key=key,
         callback=decide,
+        request_fingerprint=request_fingerprint,
     )
     if outcome.timed_out:
         logger.warning(
@@ -214,6 +232,7 @@ class ApprovalsDecisionsController(Controller):
             # within the durable column bound (matches the decision paths).
             key=f"{auth_user.user_id}:{idempotency_key}",
             endpoint="approvals.create",
+            request_fingerprint=_request_fingerprint(data),
             decide=_create,
         )
         return ApiResponse(data=response)
@@ -312,6 +331,7 @@ class ApprovalsDecisionsController(Controller):
             # cached decision (matches the MCP backup handler's pattern).
             key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.approve",
+            request_fingerprint=_request_fingerprint(data),
             decide=_do_approve,
         )
         return ApiResponse(data=response)
@@ -406,6 +426,7 @@ class ApprovalsDecisionsController(Controller):
             # reused token on a different approval cannot collide.
             key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.reject",
+            request_fingerprint=_request_fingerprint(data),
             decide=_do_reject,
         )
         return ApiResponse(data=response)

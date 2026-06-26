@@ -67,6 +67,7 @@ class PostgresIdempotencyRepository:
         key: NotBlankStr,
         ttl_seconds: int,
         now: datetime,
+        request_fingerprint: str | None = None,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
@@ -110,6 +111,7 @@ class PostgresIdempotencyRepository:
                         new_token=new_token,
                         now=now,
                         expires_at=expires_at,
+                        request_fingerprint=request_fingerprint,
                     ):
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.FRESH,
@@ -128,23 +130,27 @@ class PostgresIdempotencyRepository:
                         # protocol.
                         last_status = "row_vanished"
                         continue
-                    outcome, cached_str = classified
+                    outcome, cached_str, stored_fingerprint = classified
                     if outcome is IdempotencyOutcome.COMPLETED:
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.COMPLETED,
                             cached_response=cached_str,
+                            request_fingerprint=stored_fingerprint,
                         )
                     if outcome is IdempotencyOutcome.IN_FLIGHT:
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.IN_FLIGHT,
+                            request_fingerprint=stored_fingerprint,
                         )
-                    # Expired or failed -- rotate the lease.
+                    # Expired or failed -- rotate the lease (and its
+                    # fingerprint: a re-claim is a fresh request).
                     await self._reclaim_update(
                         cur,
                         scope=scope,
                         key=key,
                         new_token=new_token,
                         expires_at=expires_at,
+                        request_fingerprint=request_fingerprint,
                     )
                     return IdempotencyClaim(
                         outcome=IdempotencyOutcome.FRESH,
@@ -184,6 +190,7 @@ class PostgresIdempotencyRepository:
         new_token: str,
         now: datetime,
         expires_at: datetime,
+        request_fingerprint: str | None,
     ) -> bool:
         """Try to win FRESH via ``INSERT ... ON CONFLICT DO NOTHING``.
 
@@ -198,11 +205,11 @@ class PostgresIdempotencyRepository:
         await cur.execute(
             "INSERT INTO idempotency_keys "
             "(scope, key, status, claim_token, "
-            "created_at, expires_at) "
-            "VALUES (%s, %s, 'in_flight', %s, %s, %s) "
+            "request_fingerprint, created_at, expires_at) "
+            "VALUES (%s, %s, 'in_flight', %s, %s, %s, %s) "
             "ON CONFLICT (scope, key) DO NOTHING "
             "RETURNING scope",
-            (scope, key, new_token, now, expires_at),
+            (scope, key, new_token, request_fingerprint, now, expires_at),
         )
         return await cur.fetchone() is not None
 
@@ -213,20 +220,21 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         now: datetime,
-    ) -> tuple[IdempotencyOutcome, str | None] | None:
+    ) -> tuple[IdempotencyOutcome, str | None, str | None] | None:
         """Lock the existing row and classify the next outcome.
 
         Returns ``None`` when the row vanished (caller retries the
-        whole protocol). Otherwise returns ``(outcome, cached_str)``:
-        - ``COMPLETED`` + non-None ``cached_str``
-        - ``IN_FLIGHT`` + ``None``
-        - ``FRESH`` + ``None`` (caller must run the reclaim UPDATE)
+        whole protocol). Otherwise returns
+        ``(outcome, cached_str, stored_fingerprint)``:
+        - ``COMPLETED`` + non-None ``cached_str`` + stored fingerprint
+        - ``IN_FLIGHT`` + ``None`` + stored fingerprint
+        - ``FRESH`` + ``None`` + ``None`` (caller runs the reclaim UPDATE)
 
         Returns:
             The matching value, or ``None`` when absent.
         """
         await cur.execute(
-            "SELECT status, response_body, expires_at "
+            "SELECT status, response_body, request_fingerprint, expires_at "
             "FROM idempotency_keys "
             "WHERE scope = %s AND key = %s FOR UPDATE",
             (scope, key),
@@ -236,6 +244,7 @@ class PostgresIdempotencyRepository:
             return None
         status = row["status"]
         row_expires = row["expires_at"]
+        stored_fingerprint = row["request_fingerprint"]
         if row_expires > now and status == "completed":
             # ``response_body`` is TEXT (not JSONB) so the verbatim
             # bytes round-trip back to the caller -- matching the
@@ -243,13 +252,13 @@ class PostgresIdempotencyRepository:
             # contract (a JSONB column would canonicalise key order
             # and whitespace, breaking re-hash equality).
             cached_str = row["response_body"]
-            return (IdempotencyOutcome.COMPLETED, cached_str)
+            return (IdempotencyOutcome.COMPLETED, cached_str, stored_fingerprint)
         if row_expires > now and status == "in_flight":
-            return (IdempotencyOutcome.IN_FLIGHT, None)
+            return (IdempotencyOutcome.IN_FLIGHT, None, stored_fingerprint)
         # Expired OR failed -- caller will reclaim with a fresh lease.
-        return (IdempotencyOutcome.FRESH, None)
+        return (IdempotencyOutcome.FRESH, None, None)
 
-    async def _reclaim_update(
+    async def _reclaim_update(  # noqa: PLR0913
         self,
         cur: AsyncCursor[DictRow],
         *,
@@ -257,20 +266,23 @@ class PostgresIdempotencyRepository:
         key: NotBlankStr,
         new_token: str,
         expires_at: datetime,
+        request_fingerprint: str | None,
     ) -> None:
         """Rotate an expired/failed row to a fresh in-flight lease.
 
         ``created_at`` is intentionally NOT in the SET clause so
         ``IdempotencyRecord.created_at`` keeps its original-insertion
-        semantics across re-claims (per the protocol contract).
+        semantics across re-claims (per the protocol contract). The
+        fingerprint DOES rotate: the re-claim is a fresh request whose
+        payload becomes the lease's new identity.
         """
         await cur.execute(
             "UPDATE idempotency_keys "
             "SET status = 'in_flight', claim_token = %s, "
             "response_hash = NULL, response_body = NULL, "
-            "expires_at = %s "
+            "request_fingerprint = %s, expires_at = %s "
             "WHERE scope = %s AND key = %s",
-            (new_token, expires_at, scope, key),
+            (new_token, request_fingerprint, expires_at, scope, key),
         )
 
     async def complete(
@@ -393,7 +405,7 @@ class PostgresIdempotencyRepository:
             ):
                 await cur.execute(
                     "SELECT scope, key, status, response_hash, "
-                    "response_body, created_at, expires_at "
+                    "response_body, request_fingerprint, created_at, expires_at "
                     "FROM idempotency_keys "
                     "WHERE scope = %s AND key = %s",
                     (scope, key),
@@ -426,6 +438,7 @@ class PostgresIdempotencyRepository:
                 status=status,
                 response_hash=row["response_hash"],
                 response_body=row["response_body"],
+                request_fingerprint=row["request_fingerprint"],
                 created_at=row["created_at"],
                 expires_at=row["expires_at"],
             )

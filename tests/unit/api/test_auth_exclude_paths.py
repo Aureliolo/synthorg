@@ -34,6 +34,10 @@ def test_webhook_ingest_excluded_but_activity_and_retry_are_not() -> None:
     assert _excluded(paths, f"{_PREFIX}/webhooks/github/push")
     assert not _excluded(paths, f"{_PREFIX}/webhooks/github/activity")
     assert not _excluded(paths, f"{_PREFIX}/webhooks/receipts/abc123/retry")
+    # The ``(?!receipts/)`` lookahead reserves the receipts namespace: a
+    # two-segment ``/webhooks/receipts/{id}`` must NOT be excluded, so any
+    # future operator route there keeps the auth middleware.
+    assert not _excluded(paths, f"{_PREFIX}/webhooks/receipts/abc123")
 
 
 def test_refresh_excluded_by_default() -> None:

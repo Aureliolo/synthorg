@@ -440,11 +440,13 @@ export function unwrapPaginated<T>(
   // place. Read through an untrusted-wire view so the guard is type-honest
   // about what the network can actually send; require an object so a truthy
   // scalar cannot dereference to ``undefined`` fields.
-  const raw: { pagination?: unknown; data?: unknown } = body
+  const raw: { pagination?: unknown; data?: unknown; degraded_sources?: unknown } =
+    body
   if (
     !raw.pagination ||
     typeof raw.pagination !== 'object' ||
-    !Array.isArray(raw.data)
+    !Array.isArray(raw.data) ||
+    !Array.isArray(raw.degraded_sources)
   ) {
     throw new ApiRequestError('Unexpected API response format')
   }
