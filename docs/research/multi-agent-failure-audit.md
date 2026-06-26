@@ -159,11 +159,13 @@ it to the configured `DecisionProcessor`. The `escalation/` sub-package
 `approval_store` routes the escalation into the generic approval queue in
 parallel.
 
-On timeout the resolver returns a no-winner `ConflictResolution` with outcome
-`ESCALATED_TO_HUMAN` (never `None`) and transitions the store row to `EXPIRED`
-so subsequent GETs surface the terminal state. Explicit cancellation takes a
-separate shielded cleanup path that persists the row as `CANCELLED` before
-propagating `CancelledError` so shutdown can reap the pending wait.
+On timeout the resolver first re-reads the row for a late decision a peer worker
+may have persisted while its wake-up was missed; if one is found it returns that
+operator decision. Otherwise it transitions the row to `EXPIRED` and returns a
+no-winner `ConflictResolution` with outcome `ESCALATED_TO_HUMAN` (never `None`).
+Cancellation takes a separate shielded cleanup path that persists the row as
+`CANCELLED`, then returns a cancellation `ConflictResolution` (also
+`ESCALATED_TO_HUMAN`) rather than propagating `CancelledError`.
 
 **Verdict**: Safe. The resolver blocks up to its timeout for a real human
 decision and always produces a `ConflictResolution`, either the operator's
