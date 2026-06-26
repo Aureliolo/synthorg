@@ -55,7 +55,7 @@ Project filter dropdown available. Dedicated Projects page shipped (#946).
 
 P&L management dashboard, not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
 
-**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`
+**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`, `POST /budget/forecast`, `GET /budget/forecasts/{id}`, `POST /budget/forecasts/{id}/approve`, `POST /budget/forecasts/{id}/reject`, `POST /budget/forecasts/{id}/raise_ceiling`, `GET /budget/pareto`
 **WS channels**: `budget`
 
 #### Approvals (`/approvals`)
@@ -259,8 +259,11 @@ Multi-step first-run flow. After account creation (conditional), a mode selectio
 | Providers | `/setup/providers` | yes | yes |
 | Company | `/setup/company` | yes | yes |
 | Agents | `/setup/agents` | yes | no |
+| Capabilities | `/setup/capabilities` | yes | no |
 | Theme | `/setup/theme` | yes | no |
-| Complete | `/setup/complete` | yes | yes |
+| Review (Complete) | `/setup/complete` | yes | yes |
+
+**Agents vs Capabilities split**: the Agents step is the agent roster only (per-agent name, personality, and model assignment, plus the org chart). All org-wide model defaults and feature toggles live on the Capabilities step: a **Models** section at the top carries the per-feature model pickers (coordination, embedding, research, Chief-of-Staff; the research picker is shown only while research is enabled), followed by grouped capability toggles (Conversational, Knowledge & research on by default; Automation, External network egress, Acts on your behalf collapsed and off). Settings that only take effect on the next server start are not badged in the wizard (they apply when the org first boots).
 
 **Provider step layout** (`web/src/pages/setup/ProvidersStep.tsx`): a three-section picker reused on both the wizard and the Settings → Providers page. (a) **Cloud providers** -- a logo-and-name grid for hosted providers; click a card to open the credential form pre-filled with that preset. (b) **Detected on this machine** -- only renders when an auto-detect probe found a reachable local server; rows include the URL, model count, and `[Add local]` / `[Add cloud]` buttons (the cloud variant is offered when a local preset has a hosted counterpart, e.g. local Ollama → Ollama Cloud). The probe is a single batch call to `POST /providers/probe-local` issued once on mount, with a manual rescan button. (c) **Configure manually** -- opens the credential form in custom-endpoint mode. The "Detected" section is hidden entirely when nothing was detected; vLLM is intentionally omitted from auto-detect because its default port (8000) collides with the SynthOrg backend.
 
@@ -365,7 +368,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
-| `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |
+| `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `capabilities`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |
 | `/org` | Org Chart | Interactive visualization with Hierarchy (default, drag-drop agent reassignment) and Communication (d3-force) views, 400ms animated transitions |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
 | `/roles` | Roles | Distinct role definitions derived from the org structure (no backend `GET /roles`); each links to its version history |
@@ -510,6 +513,7 @@ Every backend controller has a home in the page structure. No orphans.
 | MessageController | Messages |
 | MeetingController | Meetings |
 | BudgetController | Budget, Dashboard |
+| ForecastBudgetController | Budget forecast (`/budget/forecast`: approve / reject / raise-ceiling on a brief's projected spend) |
 | AnalyticsController | Dashboard, Budget |
 | ProviderController | Providers |
 | ApprovalsController | Approvals, Dashboard |

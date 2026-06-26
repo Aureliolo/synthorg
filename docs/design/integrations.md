@@ -149,6 +149,15 @@ Per-type health check implementations with a background `HealthProberService`.
 - **Smoothing**: N consecutive failures before marking `unhealthy` (default 3)
 - **Interval**: Configurable (default 5 minutes)
 - **Pattern**: Matches the `ProviderHealthProber` design
+- **`UNKNOWN` is a no-op**: a checker that cannot probe (e.g. an
+  `LLM_PROVIDER` connection with no `base_url`) reports `UNKNOWN`; the prober
+  neither resets nor increments the failure counter, so a healthy provider
+  never escalates to `UNHEALTHY` over successive cycles.
+- **`LLM_PROVIDER`** (`LlmProviderHealthCheck`): GETs the connection
+  `base_url`; any sub-500 response is `HEALTHY` (the endpoint is reachable),
+  a 5xx / network error / SSRF rejection is `UNHEALTHY`, and a connection
+  with no `base_url` (litellm-routed cloud provider) is `UNKNOWN`. The probe
+  is SSRF-validated and DNS-pinned before any request.
 
 ---
 
@@ -161,8 +170,10 @@ Per-type health check implementations with a background `HealthProberService`.
 
 ## MCP Server Catalog
 
-Static JSON catalog (`bundled.json`) with 8 curated MCP server entries:
-GitHub, Slack, Filesystem, PostgreSQL, SQLite, Brave Search, Puppeteer, Memory.
+Static JSON catalog (`bundled.json`) with 5 curated MCP server entries:
+GitHub, Slack, PostgreSQL, SQLite, Brave Search. Each entry is
+connection-gated (it declares a `required_connection_type`); no entry runs
+without a bound connection.
 
 ### API Endpoints
 
@@ -181,6 +192,13 @@ startup via `merge_installed_servers()` in
 `synthorg.integrations.mcp_catalog.install`. This keeps dashboard
 installs out-of-band from the user-owned YAML config and ensures
 they survive restarts without rewriting the config file.
+
+Install and uninstall additionally trigger a best-effort runtime
+hot-reload (`reload_runtime_services`) so a bridged (or removed)
+server's tools go live for the next task without a restart; the
+startup merge above is the fallback when the runtime is not yet wired
+at install time. A reload failure never fails the request (the row is
+already persisted) and is logged as `MCP_BRIDGE_RELOAD_FAILED`.
 
 ---
 

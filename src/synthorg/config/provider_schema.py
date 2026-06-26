@@ -144,6 +144,15 @@ class ProviderConfig(BaseModel):
         default=None,
         description="Base URL for the provider API",
     )
+    keep_alive: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Ollama keep_alive: how long the server keeps a model loaded "
+            "after a request (e.g. '5m', '0' to unload immediately, '-1' to "
+            "keep forever). Sent only to ollama providers; unset leaves the "
+            "ollama server's own default (OLLAMA_KEEP_ALIVE)."
+        ),
+    )
     oauth_token_url: NotBlankStr | None = Field(
         default=None,
         description="OAuth token endpoint URL",

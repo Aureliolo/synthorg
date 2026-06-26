@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { GitBranch } from 'lucide-react'
 import { useNavigate } from 'react-router'
-import { createLogger } from '@/lib/logger'
 import { TRANSITION_SLOW_MS } from '@/lib/motion'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
@@ -23,24 +22,6 @@ import {
   type OrgChartEdgeData,
 } from './useOrgChartRenderModel'
 import type { Edge, Node } from '@xyflow/react'
-
-const log = createLogger('OrgChart')
-
-const VIEWPORT_KEY = 'synthorg:orgchart:viewport'
-
-interface ViewportState {
-  x: number
-  y: number
-  zoom: number
-}
-
-function saveViewport(viewport: ViewportState) {
-  try {
-    localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
-  } catch (err) {
-    log.warn('Failed to save viewport:', err)
-  }
-}
 
 type FitViewFn = (options?: { padding?: number; duration?: number }) => unknown
 
@@ -94,7 +75,6 @@ export interface OrgChartController {
   onFitView: () => void
   onZoomIn: () => void
   onZoomOut: () => void
-  handleMoveEnd: (event: unknown, viewport: ViewportState) => void
   dragEnabled: boolean
   showMinimap: boolean
   filterOverlay: React.ReactNode
@@ -140,10 +120,6 @@ export function useOrgChartController(): OrgChartController {
   const filter = useOrgChartFilter(data.allNodes)
   useFitViewCommand(fitView)
 
-  const handleMoveEnd = useCallback((_event: unknown, viewport: ViewportState) => {
-    saveViewport(viewport)
-  }, [])
-
   const png = useOrgChartPngExport(fitView)
   const model = useOrgChartRenderModel({
     sourceNodes,
@@ -175,7 +151,6 @@ export function useOrgChartController(): OrgChartController {
     onFitView,
     onZoomIn,
     onZoomOut,
-    handleMoveEnd,
     dragEnabled: viewMode === 'hierarchy',
     showMinimap,
     filterOverlay: filter.overlay,

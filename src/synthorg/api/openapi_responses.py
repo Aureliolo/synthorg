@@ -34,6 +34,7 @@ _PUBLIC_PATH_SUFFIXES: Final[tuple[str, ...]] = (
     "/readyz",
     "/auth/setup",
     "/auth/login",
+    "/auth/dev-login",
     "/setup/status",
 )
 

@@ -315,6 +315,7 @@ def parse_ollama_show(
         supports_tools="tools" in caps,
         supports_vision="vision" in caps,
         supports_reasoning="thinking" in caps,
+        supports_embeddings="embedding" in caps,
         # Parameter count is a coarse size/strength signal the matcher uses to
         # rank quality so a frontier cloud model beats a small local one.
         parameter_count=_ollama_parameter_count(show),

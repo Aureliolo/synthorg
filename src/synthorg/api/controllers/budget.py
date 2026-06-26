@@ -12,8 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from synthorg._core.features import require_service
 from synthorg.api.dto import (
     ApiResponse,
-    ErrorDetail,
-    PaginationMeta,
+    PaginatedResponse,
 )
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
@@ -151,28 +150,19 @@ class PeriodSummary(BaseModel):
         return self.total_cost / self.record_count
 
 
-class CostRecordListResponse(BaseModel):
+class CostRecordListResponse(PaginatedResponse[CostRecord]):
     """Paginated cost records with summary aggregations.
 
-    ``error`` and ``error_detail`` must both be set or both be ``None``.
+    Extends the paginated envelope (``data`` is the page of cost records,
+    plus the inherited ``error``/``error_detail``/``pagination``/``success``)
+    with cost-specific aggregations computed over all matching records.
 
     Attributes:
-        data: Page of cost records.
-        error: Error message (``None`` on success).
-        error_detail: Structured error metadata (``None`` on success).
-        pagination: Pagination metadata.
         daily_summary: Per-day cost aggregations (all matching records).
         period_summary: Overall stats across all matching records.
-        success: Whether the request succeeded (computed from ``error``).
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    data: tuple[CostRecord, ...] = ()
-    error: str | None = None
-    error_detail: ErrorDetail | None = None
-    pagination: PaginationMeta
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
     currency: str = Field(
@@ -184,32 +174,30 @@ class CostRecordListResponse(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_error_detail_consistency(self) -> Self:
-        """Ensure ``error`` and ``error_detail`` are set together.
+    def _currency_consistent(self) -> Self:
+        """Reject a response whose summaries disagree on the currency.
+
+        The top-level ``currency`` is authoritative; every per-day and the
+        overall summary must report the same code, otherwise the dashboard
+        would render mixed-currency totals as if they were one currency.
 
         Returns:
-            ``Self`` instance.
+            The validated model.
 
         Raises:
-            ValueError: Raised on the corresponding failure path.
+            ValueError: If any summary currency diverges from ``currency``.
         """
-        if self.error_detail is not None and self.error is None:
-            msg = "error_detail requires error to be set"
+        if self.period_summary.currency != self.currency:
+            msg = (
+                f"period_summary currency {self.period_summary.currency!r} "
+                f"does not match response currency {self.currency!r}"
+            )
             raise ValueError(msg)
-        if self.error is not None and self.error_detail is None:
-            msg = "error must be accompanied by error_detail"
+        mismatched = [d.date for d in self.daily_summary if d.currency != self.currency]
+        if mismatched:
+            msg = f"daily_summary currency mismatch on dates: {mismatched}"
             raise ValueError(msg)
         return self
-
-    @computed_field
-    @property
-    def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``).
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self.error is None
 
 
 def _build_summaries(

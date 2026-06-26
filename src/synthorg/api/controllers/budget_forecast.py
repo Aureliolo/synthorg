@@ -17,6 +17,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -136,7 +137,7 @@ class ForecastBudgetController(Controller):
         self,
         data: ForecastRequest,
         state: State,
-    ) -> Forecast:
+    ) -> ApiResponse[Forecast]:
         """Generate a fresh pending forecast for a brief.
 
         Returns:
@@ -146,11 +147,13 @@ class ForecastBudgetController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         service = _require_service(state)
-        return await service.generate(
-            brief_text=data.brief_text,
-            role_skeleton=data.role_skeleton,
-            model_assignments=data.model_assignments,
-            estimated_turns_per_role=data.estimated_turns_per_role,
+        return ApiResponse(
+            data=await service.generate(
+                brief_text=data.brief_text,
+                role_skeleton=data.role_skeleton,
+                model_assignments=data.model_assignments,
+                estimated_turns_per_role=data.estimated_turns_per_role,
+            )
         )
 
     @get("/forecasts/{forecast_id:str}")
@@ -158,14 +161,14 @@ class ForecastBudgetController(Controller):
         self,
         forecast_id: PathId,
         state: State,
-    ) -> Forecast:
+    ) -> ApiResponse[Forecast]:
         """Retrieve a stored forecast by id.
 
         Returns:
             ``Forecast`` instance.
         """
         service = _require_service(state)
-        return await service.get_or_404(UUID(forecast_id))
+        return ApiResponse(data=await service.get_or_404(UUID(forecast_id)))
 
     @post(
         "/forecasts/{forecast_id:str}/approve",
@@ -179,17 +182,19 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: ForecastApproveRequest,
         state: State,
-    ) -> Forecast:
+    ) -> ApiResponse[Forecast]:
         """Approve a pending forecast; releases the work pipeline.
 
         Returns:
             ``Forecast`` instance.
         """
         service = _require_service(state)
-        return await service.approve(
-            UUID(forecast_id),
-            decided_by=data.decided_by,
-            ceiling_amount=data.ceiling_amount,
+        return ApiResponse(
+            data=await service.approve(
+                UUID(forecast_id),
+                decided_by=data.decided_by,
+                ceiling_amount=data.ceiling_amount,
+            )
         )
 
     @post(
@@ -204,14 +209,16 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: ForecastRejectRequest,
         state: State,
-    ) -> Forecast:
+    ) -> ApiResponse[Forecast]:
         """Reject a pending forecast; terminates the work item.
 
         Returns:
             ``Forecast`` instance.
         """
         service = _require_service(state)
-        return await service.reject(UUID(forecast_id), decided_by=data.decided_by)
+        return ApiResponse(
+            data=await service.reject(UUID(forecast_id), decided_by=data.decided_by)
+        )
 
     @post(
         "/forecasts/{forecast_id:str}/raise_ceiling",
@@ -225,7 +232,7 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: RaiseCeilingRequest,
         state: State,
-    ) -> Forecast:
+    ) -> ApiResponse[Forecast]:
         """Raise a parked run's hard ceiling so the engine can resume.
 
         Returns:
@@ -237,14 +244,16 @@ class ForecastBudgetController(Controller):
             ConflictError: Raised on the corresponding failure path.
         """
         service = _require_service(state)
-        return await service.raise_ceiling(
-            UUID(forecast_id),
-            new_ceiling=data.new_ceiling,
-            accumulated_cost=data.accumulated_cost,
+        return ApiResponse(
+            data=await service.raise_ceiling(
+                UUID(forecast_id),
+                new_ceiling=data.new_ceiling,
+                accumulated_cost=data.accumulated_cost,
+            )
         )
 
     @get("/pareto")
-    async def get_pareto(self, state: State) -> ParetoFrontier:
+    async def get_pareto(self, state: State) -> ApiResponse[ParetoFrontier]:
         """Return the current cost / quality frontier.
 
         Returns:
@@ -258,4 +267,4 @@ class ForecastBudgetController(Controller):
         if analyzer is None:
             msg = "Pareto analyzer not configured"
             raise ServiceUnavailableError(msg)
-        return await analyzer.analyse()
+        return ApiResponse(data=await analyzer.analyse())

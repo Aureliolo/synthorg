@@ -12,7 +12,10 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from synthorg.meta._config_overlay import overlay_feature_settings
+from synthorg.meta._config_overlay import (
+    _parse_capability_list,
+    overlay_feature_settings,
+)
 from synthorg.meta.config import SelfImprovementConfig, load_self_improvement_config
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -113,10 +116,100 @@ async def test_structural_blob_field_survives_overlay(
 async def test_overlay_couples_toolsmith_to_tool_creation(
     settings_service: SettingsService,
 ) -> None:
-    """``tool_creation_enabled`` keeps ``toolsmith.enabled`` coherent."""
+    """Tool creation with an allowlist enables a coherent toolsmith config."""
     await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    await settings_service.set(
+        "self_improvement",
+        "tool_creation_allowed_capabilities",
+        '["docs:summarize"]',
+    )
     overrides = await overlay_feature_settings(settings_service, {})
     assert overrides["tool_creation_enabled"] is True
     toolsmith = overrides["toolsmith"]
     assert isinstance(toolsmith, dict)
     assert toolsmith["enabled"] is True
+    assert toolsmith["allowed_capabilities"] == ["docs:summarize"]
+
+
+async def test_tool_creation_without_allowlist_is_held_off(
+    settings_service: SettingsService,
+) -> None:
+    """Enabling tool creation without an allowlist holds it off, not crashes.
+
+    An empty allowlist is deny-all (the toolsmith validator rejects it), so a
+    bad toolsmith sub-config must not sink the whole self-improvement posture:
+    tool creation is downgraded to off while the master enable survives.
+    """
+    await settings_service.set("self_improvement", "enabled", "true")
+    await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    overrides = await overlay_feature_settings(settings_service, {})
+    assert overrides["enabled"] is True
+    assert overrides["tool_creation_enabled"] is False
+    toolsmith = overrides["toolsmith"]
+    assert isinstance(toolsmith, dict)
+    assert toolsmith["enabled"] is False
+    # The full config must validate (no exception) with the held-off toolsmith.
+    config = await load_self_improvement_config(settings_service)
+    assert config.enabled is True
+    assert config.tool_creation_enabled is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # The JSON-typed setting validator rejects malformed JSON at write
+        # time, but ``_parse_capability_list`` stays defensive (it can be fed
+        # a raw value from a non-validated source) -- exercise it directly.
+        pytest.param("[invalid", [], id="malformed-json"),
+        pytest.param('{"docs": "summarize"}', [], id="not-a-list"),
+        pytest.param("42", [], id="json-scalar"),
+        pytest.param("", [], id="empty"),
+        pytest.param('["", "  ", "docs:summarize"]', ["docs:summarize"], id="blanks"),
+        pytest.param('["a:b", "c:d"]', ["a:b", "c:d"], id="valid"),
+        # Non-string items must be dropped, never coerced: ``str(True)`` etc.
+        # would yield truthy entries that silently enable tool creation.
+        pytest.param("[true, 0, {}]", [], id="non-string-items"),
+        pytest.param('[true, "a:b", 0]', ["a:b"], id="mixed-string-and-non-string"),
+    ],
+)
+def test_parse_capability_list(raw: str, expected: list[str]) -> None:
+    """``_parse_capability_list`` never raises: bad input is deny-all ([])."""
+    assert _parse_capability_list(raw) == expected
+
+
+async def test_non_list_allowlist_holds_tool_creation_off(
+    settings_service: SettingsService,
+) -> None:
+    """A valid-JSON-but-not-a-list allowlist parses to deny-all, not a crash.
+
+    The setting validator accepts any valid JSON, so a JSON object reaches the
+    overlay; it must be treated as an empty allowlist and hold tool creation
+    off rather than enabling a coherent toolsmith.
+    """
+    await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    await settings_service.set(
+        "self_improvement",
+        "tool_creation_allowed_capabilities",
+        '{"not": "a list"}',
+    )
+    overrides = await overlay_feature_settings(settings_service, {})
+    assert overrides["tool_creation_enabled"] is False
+    toolsmith = overrides["toolsmith"]
+    assert isinstance(toolsmith, dict)
+    assert toolsmith["enabled"] is False
+
+
+async def test_allowlist_filters_blank_items(
+    settings_service: SettingsService,
+) -> None:
+    """Blank / whitespace allowlist entries are dropped, keeping real ones."""
+    await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    await settings_service.set(
+        "self_improvement",
+        "tool_creation_allowed_capabilities",
+        '["", "  ", "docs:summarize"]',
+    )
+    overrides = await overlay_feature_settings(settings_service, {})
+    toolsmith = overrides["toolsmith"]
+    assert isinstance(toolsmith, dict)
+    assert toolsmith["allowed_capabilities"] == ["docs:summarize"]

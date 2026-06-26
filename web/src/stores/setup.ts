@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { getSetupStatus } from '@/api/endpoints/setup'
-import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 
 interface SetupState {
   /** Whether initial setup is complete. `null` means not yet fetched. */
@@ -14,7 +13,10 @@ interface SetupState {
 }
 
 export const useSetupStore = create<SetupState>()((set, get) => ({
-  setupComplete: IS_DEV_AUTH_BYPASS ? true : null,
+  // The dev auth bypass only skips the login screen; it must NOT fake setup
+  // completion. Start unknown so the guard always reflects the backend's real
+  // ``needs_setup`` (the wizard stays reachable in dev mode).
+  setupComplete: null,
   loading: false,
   error: false,
 

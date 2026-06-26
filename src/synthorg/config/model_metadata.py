@@ -45,6 +45,7 @@ class ModelMetadata(BaseModel):
             manual operator re-enable.
         supports_vision: Model accepts image inputs.
         supports_reasoning: Model exposes extended reasoning.
+        supports_embeddings: Model is an embedding model (vector output).
         max_output_tokens: Maximum output tokens, when known.
         family: Parsed model family (e.g. ``"example-large"``).
         generation: Parsed generation/recency as a sortable number
@@ -71,6 +72,7 @@ class ModelMetadata(BaseModel):
     )
     supports_vision: bool = Field(default=False)
     supports_reasoning: bool = Field(default=False)
+    supports_embeddings: bool = Field(default=False)
     max_output_tokens: int | None = Field(
         default=None,
         gt=0,

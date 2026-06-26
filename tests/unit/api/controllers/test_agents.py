@@ -132,20 +132,26 @@ class TestAgentControllerDbOverride:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        async with LoopAsyncClient(app) as client:
-            client.headers.update(make_auth_headers("observer"))
-            resp = await client.get("/api/v1/agents")
-            assert resp.status_code == 200
-            body = resp.json()
-            names = {a["name"] for a in body["data"]}
-            assert names == {"db-agent-1", "db-agent-2"}
+        try:
+            async with LoopAsyncClient(app) as client:
+                client.headers.update(make_auth_headers("observer"))
+                resp = await client.get("/api/v1/agents")
+                assert resp.status_code == 200
+                body = resp.json()
+                names = {a["name"] for a in body["data"]}
+                assert names == {"db-agent-1", "db-agent-2"}
 
-            detail_resp = await client.get(
-                f"/api/v1/agents/{stable_agent_id('db-agent-1')}"
-            )
-            assert detail_resp.status_code == 200
-            detail = detail_resp.json()
-            assert detail["data"]["name"] == "db-agent-1"
+                detail_resp = await client.get(
+                    f"/api/v1/agents/{stable_agent_id('db-agent-1')}"
+                )
+                assert detail_resp.status_code == 200
+                detail = detail_resp.json()
+                assert detail["data"]["name"] == "db-agent-1"
+        finally:
+            # fake_persistence is session-scoped and shared, so the agents
+            # override written above must be cleared or a later YAML-only
+            # roster test (e.g. test_list_agents_with_data) inherits it.
+            await settings_service.delete("company", "agents")
 
 
 # ── Helpers for performance/activity/history tests ────────────

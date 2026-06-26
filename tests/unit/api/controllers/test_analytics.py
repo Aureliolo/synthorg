@@ -476,12 +476,17 @@ class TestAnalyticsControllerDbOverride:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        async with LoopAsyncClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = await client.get("/api/v1/analytics/overview")
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["success"] is True
-            assert body["data"]["total_agents"] == 3
-            assert body["data"]["total_tasks"] == 0
-            assert body["data"]["total_cost"] == 0.0
+        try:
+            async with LoopAsyncClient(app) as client:
+                client.headers.update(make_auth_headers("ceo"))
+                resp = await client.get("/api/v1/analytics/overview")
+                assert resp.status_code == 200
+                body = resp.json()
+                assert body["success"] is True
+                assert body["data"]["total_agents"] == 3
+                assert body["data"]["total_tasks"] == 0
+                assert body["data"]["total_cost"] == 0.0
+        finally:
+            # Clear the override written to the session-scoped shared backend so
+            # YAML-only roster tests do not inherit these agents.
+            await settings_service.delete("company", "agents")

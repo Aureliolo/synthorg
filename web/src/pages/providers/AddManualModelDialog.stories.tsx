@@ -19,6 +19,7 @@ const meta = {
           litellm_provider: null,
           auth_type: 'api_key',
           base_url: null,
+          keep_alive: null,
           models: [],
           has_api_key: true,
           has_oauth_credentials: false,

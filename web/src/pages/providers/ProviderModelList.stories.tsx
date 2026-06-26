@@ -18,6 +18,8 @@ const models: ProviderModelResponse[] = [
     tool_calls_verified: null,
     supports_vision: true,
     supports_streaming: true,
+    supports_embeddings: false,
+    supports_reasoning: false,
     family: null,
     stale: null,
   },
@@ -34,6 +36,8 @@ const models: ProviderModelResponse[] = [
     tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
+    supports_embeddings: false,
+    supports_reasoning: false,
     family: null,
     stale: null,
   },
@@ -50,6 +54,8 @@ const models: ProviderModelResponse[] = [
     tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
+    supports_embeddings: false,
+    supports_reasoning: false,
     family: null,
     stale: null,
   },
@@ -69,7 +75,9 @@ export const Default: Story = { args: { models } }
 
 export const AllCapabilities: Story = {
   args: {
-    models: models.slice(0, 1),
+    // Explicit override: models[0] ships reasoning off, so reuse would skip the
+    // reasoning badge this fixture exists to showcase.
+    models: [{ ...models[0]!, supports_reasoning: true }],
   },
 }
 
@@ -88,6 +96,8 @@ export const NoCapabilities: Story = {
       tool_calls_verified: null,
       supports_vision: false,
       supports_streaming: false,
+      supports_embeddings: false,
+      supports_reasoning: false,
       family: null,
       stale: null,
     }],

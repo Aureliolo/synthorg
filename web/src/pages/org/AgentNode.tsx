@@ -30,7 +30,7 @@ const STATUS_RING_CLASSES: Record<string, string> = {
 const HANDLE_CLASSES = cn(
   '!size-1.5 !border-0 !bg-border-bright',
   '!opacity-0 group-hover/agent:!opacity-100',
-  'transition-opacity duration-150',
+  'transition-opacity duration-[var(--so-transition-fast)]',
 )
 
 function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
@@ -44,7 +44,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
       className={cn(
         'group/agent relative rounded-lg border border-border bg-card p-card',
         'min-w-36 max-w-44',
-        'ring-1 transition-all duration-200',
+        'ring-1 transition-all duration-[var(--so-transition-default)]',
         'hover:shadow-[var(--so-shadow-card-hover)] hover:ring-2',
         STATUS_RING_CLASSES[statusColor] ?? 'ring-border',
         isOffline && 'opacity-50',
@@ -65,7 +65,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
           when the user disables LEAD badges in the view menu. */}
       {data.isDeptLead && showLeadBadge && (
         <span
-          className="absolute -right-1 -top-1.5 rounded-full border border-accent/60 bg-accent px-1.5 py-0 font-mono text-micro font-bold uppercase leading-4 tracking-wider text-background shadow-sm"
+          className="absolute right-1 top-1 z-10 rounded-full border border-accent/60 bg-accent px-1.5 py-0 font-mono text-micro font-bold uppercase leading-4 tracking-wider text-background shadow-sm"
           aria-label="Department lead"
         >
           Lead
@@ -75,8 +75,11 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
       <div className="flex items-center gap-2">
         <Avatar name={data.name} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-sans text-xs font-semibold text-foreground">
+          <div className={cn('flex items-center gap-1.5', data.isDeptLead && 'pr-9')}>
+            <span
+              className="truncate font-sans text-xs font-semibold text-foreground"
+              title={data.name}
+            >
               {data.name}
             </span>
             <StatusBadge
@@ -85,7 +88,10 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
               decorative
             />
           </div>
-          <span className="block truncate font-sans text-micro text-muted-foreground">
+          <span
+            className="block truncate font-sans text-micro text-muted-foreground"
+            title={data.role}
+          >
             {data.role}
           </span>
         </div>

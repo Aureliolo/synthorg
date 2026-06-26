@@ -35,9 +35,11 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.dto import ApiResponse
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AccountLockedError,
+    NotFoundError,
     RefreshTokenInvalidError,
     UnauthorizedError,
 )
@@ -52,6 +54,7 @@ from synthorg.observability.events.security import (
     SECURITY_SESSION_LIMIT_ENFORCED,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.persistence.user_protocol import UserFilterSpec
 
 logger = get_logger(__name__)
 
@@ -155,6 +158,92 @@ class AuthSessionController(Controller):
             SECURITY_AUTH_TOKEN_ISSUED,
             user_id=user.id,
             username=user.username,
+        )
+
+        return Response(
+            content=ApiResponse(
+                data=CookieSessionResponse(
+                    expires_in=expires_in,
+                    must_change_password=user.must_change_password,
+                ),
+            ),
+            cookies=await make_session_cookies(
+                token,
+                expires_in,
+                auth_config,
+                app_state=app_state,
+                session_id=session_id,
+                user_id=user.id,
+            ),
+        )
+
+    @post(
+        "/dev-login",
+        status_code=200,
+        summary="DEV ONLY: password-free login as the existing admin",
+        middleware=[_AUTH_RATE_LIMIT.middleware],
+    )
+    async def dev_login(
+        self,
+        request: Request[object, object, State],
+    ) -> Response[ApiResponse[CookieSessionResponse]]:
+        """Mint a session for the existing admin with no password (dev only).
+
+        Gated on ``SYNTHORG_DEV_AUTH_BYPASS`` (resolved at startup): when the
+        flag is off the endpoint behaves as if it does not exist (404). When
+        on, it logs the first CEO in without a password so local dev work skips
+        the login screen. The admin account must already exist; this never
+        creates one, so first-run account setup is still required.
+
+        Returns:
+            A session-cookie response for the admin user.
+
+        Raises:
+            NotFoundError: When the dev auth bypass is disabled.
+            UnauthorizedError: When no admin account exists yet.
+        """
+        app_state = request.app.state["app_state"]
+        auth_service: AuthService = auth_service_of(app_state)
+        # Off by default: behave as if the route does not exist so a production
+        # deployment that never sets the flag exposes nothing.
+        if not auth_service.dev_auth_bypass:
+            msg = "Not found"
+            raise NotFoundError(msg)
+
+        persistence = persistence_of(app_state)
+        admins = await persistence.users.query(
+            UserFilterSpec(role=HumanRole.CEO),
+            limit=1,
+        )
+        user = admins[0] if admins else None
+        if user is None:
+            logger.warning(SECURITY_AUTH_FAILED, reason="dev_login_no_admin")
+            msg = "No admin account exists; complete first-run setup first."
+            raise UnauthorizedError(msg)
+
+        token, expires_in, session_id = auth_service.create_token(user)
+        await create_session_record(
+            request,
+            app_state,
+            session_id,
+            user,
+            expires_in,
+        )
+
+        auth_config = get_auth_config(app_state)
+        if app_state.slice(ApiCoreStateSlice).session_store is not None:
+            await session_store_of(app_state).enforce_session_limit(
+                user.id,
+                auth_config.max_concurrent_sessions,
+            )
+
+        # WARNING (not INFO): a password-free admin session is a security-
+        # relevant event that operators should see even at reduced verbosity.
+        logger.warning(
+            SECURITY_AUTH_TOKEN_ISSUED,
+            user_id=user.id,
+            username=user.username,
+            note="dev_auth_bypass: password-free admin session issued",
         )
 
         return Response(

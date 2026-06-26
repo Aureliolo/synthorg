@@ -78,6 +78,11 @@ overlay.PYTHONUNBUFFERED = '1'
 // this unset, so the env wins. Stays below the 7-day refresh-token lifetime
 // (the AuthConfig validator requires refresh > access).
 overlay.SYNTHORG_API_JWT_EXPIRY_MINUTES = '1440'
+// DEV ONLY: enable the password-free /auth/dev-login endpoint so the Vite dev
+// frontend (VITE_DEV_AUTH_BYPASS=true) auto-logs-in as the existing admin with
+// a real session. Local-only; never set in a production deployment. An admin
+// account must still exist (the wizard's account step is never skipped).
+overlay.SYNTHORG_DEV_AUTH_BYPASS = 'true'
 
 const env = { ...process.env, ...overlay }
 

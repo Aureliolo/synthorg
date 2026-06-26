@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Inbox, MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
 import type { Connection, HealthReport } from '@/api/types/integrations'
+import { connectionTypeUsesWebhookReceipts } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
 import { ROUTES } from '@/router/routes'
@@ -95,14 +96,18 @@ function ConnectionCardMeta({
       </div>
       {report?.error_detail && <p className="line-clamp-2 text-xs text-danger">{report.error_detail}</p>}
       {/* Cross-link into the receipt inspector pre-selected on this
-          connection (receipts are scoped per-connection there). */}
-      <Link
-        to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
-        className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
-      >
-        <Inbox className="size-3.5" aria-hidden />
-        View webhook receipts
-      </Link>
+          connection (receipts are scoped per-connection there). Only
+          webhook-emitting connection types receive receipts, so the link is
+          meaningless on e.g. an LLM-provider connection. */}
+      {connectionTypeUsesWebhookReceipts(connection.connection_type) && (
+        <Link
+          to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
+          className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
+        >
+          <Inbox className="size-3.5" aria-hidden />
+          View webhook receipts
+        </Link>
+      )}
     </div>
   )
 }

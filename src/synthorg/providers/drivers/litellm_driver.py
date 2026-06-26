@@ -68,13 +68,10 @@ from synthorg.providers._cost import compute_token_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
+from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
-)
-from synthorg.providers.drivers.litellm_model_info import (
-    extract_model_metadata,
-    get_litellm_model_info,
 )
 from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
 from synthorg.providers.drivers.litellm_tool_accumulator import (
@@ -83,7 +80,6 @@ from synthorg.providers.drivers.litellm_tool_accumulator import (
     emit_pending_tool_calls,
 )
 from synthorg.providers.enums import AuthType, StreamEventType
-from synthorg.providers.family_parser import get_family_parser
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -407,42 +403,13 @@ class LiteLLMDriver(BaseCompletionProvider):
             A ``ModelCapabilities`` constructed from the resolved model
             config and LiteLLM info.
         """
-        litellm_model = f"{self._routing_key}/{model_config.id}"
-        info = get_litellm_model_info(litellm_model)
-        # An empty info dict (offline or unknown model) would rebuild
-        # all-False capability flags and discard the persisted metadata;
-        # fall back to the config-layer record so capabilities survive.
-        metadata = (
-            extract_model_metadata(
-                info,
-                litellm_provider=self._routing_key,
-                model_id=model_config.id,
-                parser=get_family_parser(),
-            )
-            if info
-            else model_config.metadata
-        )
-
-        fallback = self._config.defaults.fallback_max_output_tokens
-        max_output = metadata.max_output_tokens or fallback
-        streaming_raw = info.get("supports_native_streaming")
-        supports_streaming = True if streaming_raw is None else bool(streaming_raw)
-        supports_tools = metadata.supports_tools
-
-        return ModelCapabilities(
-            model_id=model_config.id,
-            provider=self._provider_name,
-            max_context_tokens=model_config.max_context,
-            max_output_tokens=min(max_output, model_config.max_context),
-            supports_tools=supports_tools,
-            supports_vision=metadata.supports_vision,
-            supports_streaming=supports_streaming,
-            supports_streaming_tool_calls=supports_tools and supports_streaming,
-            supports_system_messages=bool(
-                info.get("supports_system_messages", True),
+        return build_capabilities(
+            model_config,
+            routing_key=self._routing_key,
+            provider_name=self._provider_name,
+            fallback_max_output_tokens=(
+                self._config.defaults.fallback_max_output_tokens
             ),
-            cost_per_1k_input=model_config.cost_per_1k_input,
-            cost_per_1k_output=model_config.cost_per_1k_output,
         )
 
     # ── Model resolution ─────────────────────────────────────────
@@ -556,6 +523,11 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         if self._config.base_url is not None:
             kwargs["api_base"] = self._config.base_url
+        # Ollama keep_alive: only the ollama provider honours this option, so
+        # gate on the routing key (sending it elsewhere would be an unknown
+        # kwarg). Unset leaves the ollama server's own OLLAMA_KEEP_ALIVE.
+        if self._routing_key == "ollama" and self._config.keep_alive is not None:
+            kwargs["keep_alive"] = self._config.keep_alive
         return _apply_completion_config(kwargs, config)
 
     # ── Response mapping ─────────────────────────────────────────

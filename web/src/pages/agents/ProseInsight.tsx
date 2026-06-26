@@ -12,7 +12,7 @@ export function ProseInsight({ insights, className }: ProseInsightProps) {
   return (
     <div
       className={cn(
-        'flex gap-3 rounded-lg border-l-2 border-accent/40 bg-card px-4 py-3',
+        'flex gap-3 rounded-lg border-l-2 border-accent/40 bg-card p-card',
         className,
       )}
     >

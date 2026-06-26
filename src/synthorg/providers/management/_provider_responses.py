@@ -110,6 +110,14 @@ class ProviderModelResponse(BaseModel):
         default=True,
         description="Supports streaming responses",
     )
+    supports_embeddings: bool = Field(
+        default=False,
+        description="Is an embedding model (vector output, not chat)",
+    )
+    supports_reasoning: bool = Field(
+        default=False,
+        description="Exposes extended reasoning (thinking/o1-style models)",
+    )
     family: NotBlankStr | None = Field(
         default=None,
         description="Parsed model family (groups models for the picker)",
@@ -197,6 +205,7 @@ class ProviderResponse(BaseModel):
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType
     base_url: NotBlankStr | None
+    keep_alive: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...]
     has_api_key: bool
     has_oauth_credentials: bool

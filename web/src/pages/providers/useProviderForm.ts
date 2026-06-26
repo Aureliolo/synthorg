@@ -56,6 +56,8 @@ export interface ProviderFields {
   setOauthScope: Dispatch<SetStateAction<string>>
   baseUrl: string
   setBaseUrl: Dispatch<SetStateAction<string>>
+  keepAlive: string
+  setKeepAlive: Dispatch<SetStateAction<string>>
   litellmProvider: string
   setLitellmProvider: Dispatch<SetStateAction<string>>
   submitting: boolean
@@ -79,6 +81,7 @@ function useProviderFields(): ProviderFields {
   const [oauthClientSecret, setOauthClientSecret] = useState('')
   const [oauthScope, setOauthScope] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
+  const [keepAlive, setKeepAlive] = useState('')
   const [litellmProvider, setLitellmProvider] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showTosDialog, setShowTosDialog] = useState(false)
@@ -94,13 +97,14 @@ function useProviderFields(): ProviderFields {
       oauthTokenUrl, setOauthTokenUrl, oauthClientId, setOauthClientId,
       oauthClientSecret, setOauthClientSecret, oauthScope, setOauthScope,
       baseUrl, setBaseUrl,
+      keepAlive, setKeepAlive,
       litellmProvider, setLitellmProvider, submitting, setSubmitting,
       showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
     }),
     [
       selectedPreset, name, authType, apiKey, subscriptionToken,
       customHeaderName, customHeaderValue, oauthTokenUrl, oauthClientId,
-      oauthClientSecret, oauthScope, baseUrl,
+      oauthClientSecret, oauthScope, baseUrl, keepAlive,
       litellmProvider, submitting, showTosDialog, tosAccepted,
     ],
   )
@@ -129,6 +133,7 @@ function applyEditPrefill(fields: ProviderFields, provider: ProviderWithName): v
   fields.setName(provider.name)
   fields.setAuthType(provider.auth_type)
   fields.setBaseUrl(provider.base_url ?? '')
+  fields.setKeepAlive(provider.keep_alive ?? '')
   fields.setLitellmProvider(provider.litellm_provider ?? '')
   fields.setTosAccepted(provider.tos_accepted_at !== null)
   // Non-secret credential fields are prefilled so editing an oauth /
@@ -144,6 +149,7 @@ function applyCustomPresetSync(fields: ProviderFields): void {
   fields.setName('')
   fields.setAuthType('api_key')
   fields.setBaseUrl('')
+  fields.setKeepAlive('')
   fields.setLitellmProvider('')
   fields.setTosAccepted(false)
   clearCredentialFields(fields)
@@ -153,6 +159,7 @@ function applyPresetSync(fields: ProviderFields, preset: ProviderPreset): void {
   fields.setName(preset.name)
   fields.setAuthType(preset.auth_type)
   fields.setBaseUrl(preset.default_base_url ?? '')
+  fields.setKeepAlive('')
   fields.setLitellmProvider(preset.litellm_provider)
   fields.setTosAccepted(false)
   clearCredentialFields(fields)
@@ -295,6 +302,7 @@ function valuesOf(fields: ProviderFields): ProviderFormValues {
     oauthClientSecret: fields.oauthClientSecret,
     oauthScope: fields.oauthScope,
     baseUrl: fields.baseUrl,
+    keepAlive: fields.keepAlive,
     litellmProvider: fields.litellmProvider,
     tosAccepted: fields.tosAccepted,
   }

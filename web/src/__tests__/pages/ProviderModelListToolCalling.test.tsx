@@ -22,6 +22,8 @@ function buildModel(
     tool_calls_verified: toolCallsVerified,
     supports_vision: false,
     supports_streaming: true,
+    supports_embeddings: false,
+    supports_reasoning: false,
     family: null,
     stale: null,
   }

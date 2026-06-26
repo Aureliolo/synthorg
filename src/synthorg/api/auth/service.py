@@ -135,6 +135,15 @@ class AuthService:
     def __init__(self, config: AuthConfig) -> None:
         self._config = config
 
+    @property
+    def dev_auth_bypass(self) -> bool:
+        """Whether the dev auth-bypass (password-free /auth/dev-login) is on.
+
+        Returns:
+            ``True`` only when ``SYNTHORG_DEV_AUTH_BYPASS`` was set at startup.
+        """
+        return self._config.dev_auth_bypass
+
     def _require_secret(self, operation: str) -> str:
         """Return the JWT secret or raise if unconfigured.
 

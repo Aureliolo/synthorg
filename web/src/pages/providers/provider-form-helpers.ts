@@ -57,6 +57,7 @@ export interface ProviderFormValues {
   oauthClientSecret: string
   oauthScope: string
   baseUrl: string
+  keepAlive: string
   litellmProvider: string
   tosAccepted: boolean
 }
@@ -325,6 +326,7 @@ export function buildCreateProviderRequest(v: ProviderFormValues): CreateProvide
     ...createCredentialFields(v),
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
     base_url: normaliseOptional(v.baseUrl),
+    keep_alive: normaliseOptional(v.keepAlive),
     models: [],
   }
 }
@@ -342,6 +344,7 @@ export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProvide
     ...updateCredentialFields(v),
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
     base_url: normaliseOptional(v.baseUrl),
+    keep_alive: normaliseOptional(v.keepAlive),
   }
 }
 

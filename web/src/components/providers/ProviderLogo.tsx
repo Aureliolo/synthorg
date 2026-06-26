@@ -1,37 +1,6 @@
 import { Server } from 'lucide-react'
+import { KNOWN_LOGOS } from './provider-logos'
 import { cn } from '@/lib/utils'
-
-/**
- * Preset names that have a bundled SVG in `web/public/provider-logos/`.
- *
- * Kept as a static set so the picker can decide between the brand mark
- * and the fallback `Server` icon synchronously, without an HTTP probe
- * or onError event listener (which doesn't fire reliably on
- * `mask-image`).  Add a new entry here whenever you drop a new SVG
- * into the public directory.
- */
-const KNOWN_LOGOS: ReadonlySet<string> = new Set([
-  'anthropic',
-  'azure',
-  'cerebras',
-  'cohere',
-  'deepseek',
-  'fireworks_ai',
-  'gemini',
-  'groq',
-  'lm-studio',
-  'mistral',
-  'moonshot',
-  'nvidia_nim',
-  'ollama',
-  'ollama-cloud',
-  'openai',
-  'openrouter',
-  'sambanova',
-  'together_ai',
-  'vllm',
-  'xai',
-])
 
 interface ProviderLogoProps {
   /** Preset name (matches the SVG filename in `/provider-logos/`). */

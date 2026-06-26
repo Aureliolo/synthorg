@@ -40,7 +40,7 @@ interface ProviderProbe {
   handleReprobe: () => void
 }
 
-function useProviderProbe(presetsLength: number): ProviderProbe {
+function useProviderProbe(presetsLength: number, shouldAutoProbe: boolean): ProviderProbe {
   const [probeResults, setProbeResults] = useState<
     Readonly<Partial<Record<string, ProbePresetResponse>>>
   >({})
@@ -70,13 +70,18 @@ function useProviderProbe(presetsLength: number): ProviderProbe {
     }
   }, [])
 
+  // Auto-detect runs at most once, and only when the org has NO providers
+  // configured yet: a fresh setup wants the convenience scan, but once
+  // providers exist the operator drives detection explicitly via the Scan
+  // button (re-probing on every visit is noise and spends local requests).
   const probeStartedRef = useRef(false)
   useEffect(() => {
     if (probeStartedRef.current) return
     if (presetsLength === 0) return
+    if (!shouldAutoProbe) return
     probeStartedRef.current = true
     void runProbe()
-  }, [presetsLength, runProbe])
+  }, [presetsLength, shouldAutoProbe, runProbe])
 
   const handleReprobe = useCallback(() => {
     void runProbe()
@@ -348,7 +353,7 @@ export default function ProvidersPage() {
     void fetchPresets()
   }, [fetchPresets])
 
-  const probe = useProviderProbe(presets.length)
+  const probe = useProviderProbe(presets.length, !loading && providers.length === 0)
   const modal = useProviderPickerModal()
   const pagination = useListPagination({ items: filteredProviders, namespace: 'providers' })
   const sel = useProviderSelection(filteredProviders)

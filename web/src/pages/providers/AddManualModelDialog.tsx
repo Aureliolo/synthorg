@@ -67,10 +67,14 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
     estimated_latency_ms: v.latency ?? null,
     local_params: null,
     // Manually-added models are unenriched; backend enriches on next sync.
+    // Embedding is the one capability that gates chat-agent matching, so a
+    // hard ``false`` would let an embedder-by-id slip in as a chat candidate
+    // until sync; apply the backend's id-substring last resort here too.
     metadata: {
       supports_tools: false,
       supports_vision: false,
       supports_reasoning: false,
+      supports_embeddings: /embed/i.test(v.idTrimmed),
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

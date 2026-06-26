@@ -221,6 +221,22 @@ async def test_raise_ceiling_rejects_below_accumulated() -> None:
     assert repo.saved == []
 
 
+async def test_get_forecast_returns_envelope() -> None:
+    """``get_forecast`` wraps the stored forecast in an ApiResponse."""
+    forecast = _approved_forecast()
+    repo = _FakeForecastRepo(forecast)
+    controller = _controller()
+    state = _state(repo=repo, budget_config=BudgetConfig(total_monthly=100.0))
+
+    result = await ForecastBudgetController.get_forecast.fn(
+        controller,
+        forecast_id=str(forecast.forecast_id),
+        state=state,
+    )
+    assert result.data.forecast_id == forecast.forecast_id
+    assert result.data.decision is ForecastDecision.APPROVED
+
+
 async def test_raise_ceiling_clears_halt_and_updates_ceiling() -> None:
     """A valid raise updates the ceiling and clears halt context."""
     forecast = _approved_forecast()
@@ -234,8 +250,8 @@ async def test_raise_ceiling_clears_halt_and_updates_ceiling() -> None:
         data=RaiseCeilingRequest(new_ceiling=3.0, accumulated_cost=1.5),
         state=state,
     )
-    assert updated.ceiling_amount == 3.0
-    assert updated.halt_context is None
+    assert updated.data.ceiling_amount == 3.0
+    assert updated.data.halt_context is None
     assert len(repo.saved) == 1
 
 

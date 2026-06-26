@@ -28,6 +28,7 @@ Engine-side construction helpers live in
 :mod:`synthorg.workers._coordinator_assembly`.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import NamedTuple
@@ -38,6 +39,7 @@ from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.health import (
     HealthJudge,
@@ -50,8 +52,12 @@ from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.notifications.state import NotificationsStateSlice
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.workers import (
+    WORKERS_RUNTIME_HOT_SWAP_FAILED,
+    WORKERS_RUNTIME_RELOADED,
+)
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
@@ -399,4 +405,78 @@ async def build_runtime_services(
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
         vision_gate=vision_gate,
+    )
+
+
+# Serialises the whole rebuild + swap so two concurrent reloads (rapid MCP
+# installs, or a catalog install racing /setup/complete) cannot interleave
+# their per-service swaps and leave AppState pairing a coordinator from one
+# build with a worker-execution service from another. Module-level, mirroring
+# the setup path's COMPLETE_LOCK; asyncio.Lock binds to the loop on first
+# acquire, not at construction.
+_RUNTIME_RELOAD_LOCK = asyncio.Lock()
+
+
+async def reload_runtime_services(app_state: AppState) -> None:
+    """Rebuild runtime services and hot-swap them into ``AppState``.
+
+    Brings the agent runtime (worker execution service, multi-agent
+    coordinator, work pipeline, and pipeline entry adapters) back online
+    with the CURRENT config and tool set WITHOUT a process restart. Used
+    after provider setup and after an MCP catalog install/uninstall so a
+    newly bridged (or removed) external-MCP tool goes live for the next
+    task without restarting the process.
+
+    With no provider configured, ``build_runtime_services`` returns a
+    ``None`` coordinator and work pipeline, so only the worker execution
+    service is swapped (to a ``NoProviderExecutionService``); the
+    coordinator and pipeline swaps are skipped.
+
+    A module lock serialises the rebuild + swap so concurrent reloads
+    cannot interleave their per-service swaps. The swap itself is atomic
+    per service: an in-flight task holding the prior engine finishes on
+    it; the next task picks up the rebuilt one. A failure midway leaves
+    ``AppState`` partially swapped, so the partial state is logged; the
+    next reload reapplies the full set and heals it.
+
+    Raises:
+        Exception: Propagated from ``build_runtime_services`` (or a swap)
+            so the caller decides whether a failure is fatal (setup
+            reinit) or best-effort (MCP reload).
+    """
+    from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+        wire_real_intake_entry,
+        wire_real_objective_entry,
+        wire_real_task_board_entry,
+    )
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
+    )
+
+    async with _RUNTIME_RELOAD_LOCK:
+        services = await build_runtime_services(
+            app_state,
+            workspace_root=agent_workspace_root_of(app_state),
+        )
+        try:
+            app_state.swap_worker_execution_service(services.worker_execution_service)
+            if services.coordinator is not None:
+                app_state.swap_coordinator(services.coordinator)
+            if services.work_pipeline is not None:
+                app_state.swap_work_pipeline(services.work_pipeline)
+            await wire_real_intake_entry(app_state, hot_swap=True)
+            await wire_real_objective_entry(app_state, hot_swap=True)
+            await wire_real_task_board_entry(app_state, hot_swap=True)
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.error(
+                WORKERS_RUNTIME_HOT_SWAP_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+    logger.info(
+        WORKERS_RUNTIME_RELOADED,
+        coordinator_swapped=services.coordinator is not None,
+        pipeline_swapped=services.work_pipeline is not None,
     )

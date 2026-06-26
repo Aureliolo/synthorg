@@ -201,8 +201,13 @@ class TestRateLimiterLogging:
         assert paused[0]["provider"] == "test-provider"
 
     async def test_logs_throttle_on_pause_active(self) -> None:
+        # FakeClock so the pause stays active when acquire() checks it: a real
+        # sub-second pause can expire under load before acquire runs, leaving no
+        # throttle log (a wall-clock race). FakeClock.sleep advances virtual
+        # time, so acquire still returns immediately after logging.
+        clock = FakeClock()
         config = RateLimiterConfig(max_concurrent=10)
-        limiter = RateLimiter(config, provider_name="test-provider")
+        limiter = RateLimiter(config, provider_name="test-provider", clock=clock)
 
         limiter.pause(0.05)
         with structlog.testing.capture_logs() as cap:

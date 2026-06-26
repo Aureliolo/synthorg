@@ -128,11 +128,15 @@ class TestCompanyControllerDbOverride:
         db_agents = [{"name": "db-agent", "role": "dev", "department": "eng"}]
         await settings_service.set("company", "agents", json.dumps(db_agents))
 
-        async with LoopAsyncClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = await client.get("/api/v1/company")
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["success"] is True
-            assert len(body["data"]["agents"]) == 1
-            assert body["data"]["agents"][0]["name"] == "db-agent"
+        try:
+            async with LoopAsyncClient(app) as client:
+                client.headers.update(make_auth_headers("ceo"))
+                resp = await client.get("/api/v1/company")
+                assert resp.status_code == 200
+                body = resp.json()
+                assert body["success"] is True
+                assert len(body["data"]["agents"]) == 1
+                assert body["data"]["agents"][0]["name"] == "db-agent"
+        finally:
+            # Clear the override from the session-scoped shared backend.
+            await settings_service.delete("company", "agents")

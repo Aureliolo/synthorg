@@ -26,23 +26,31 @@ interface ProviderModelRowProps {
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
-  const badges: { label: string; show: boolean; className: string }[] = [
-    {
-      label: 'tools',
-      show: model.supports_tools,
-      className: 'bg-accent/10 text-accent',
-    },
-    {
-      label: 'vision',
-      show: model.supports_vision,
-      className: 'bg-success/10 text-success',
-    },
-    {
-      label: 'stream',
-      show: model.supports_streaming,
-      className: 'bg-text-muted/10 text-text-secondary',
-    },
-  ]
+  // Embedding models are pure vector models: show only the embedding pill,
+  // since chat/tools/reasoning/vision don't apply. For everything else the
+  // absence of an embedding pill already implies a chat model, so chat earns
+  // no pill -- only the extra capabilities show. Streaming is universal, so it
+  // earns no badge either. Every pill keeps its own distinct hue.
+  const badges: { label: string; show: boolean; className: string }[] =
+    model.supports_embeddings
+      ? [{ label: 'embedding', show: true, className: 'bg-danger/15 text-danger' }]
+      : [
+          {
+            label: 'reasoning',
+            show: model.supports_reasoning,
+            className: 'bg-violet/15 text-violet',
+          },
+          {
+            label: 'tools',
+            show: model.supports_tools,
+            className: 'bg-success/15 text-success',
+          },
+          {
+            label: 'vision',
+            show: model.supports_vision,
+            className: 'bg-warning/15 text-warning',
+          },
+        ]
 
   const visible = badges.filter((b) => b.show)
   if (visible.length === 0) return null
@@ -52,7 +60,7 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
       {visible.map((b) => (
         <span
           key={b.label}
-          className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight', b.className)}
+          className={cn('rounded px-1.5 py-0.5 text-micro font-medium leading-tight', b.className)}
         >
           {b.label}
         </span>

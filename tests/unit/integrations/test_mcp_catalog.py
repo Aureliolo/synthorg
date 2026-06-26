@@ -1,6 +1,8 @@
 """Unit tests for the MCP server catalog."""
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +29,36 @@ from synthorg.integrations.mcp_catalog.service import CatalogService
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
 
+def _connectionless_catalog(tmp_path: Path) -> CatalogService:
+    """A ``CatalogService`` over one synthetic connectionless entry.
+
+    The bundled catalog ships only connection-gated servers, so the
+    connectionless install / merge paths are exercised against a synthetic
+    ``test-local-mcp`` entry written to a temp catalog file.
+    """
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "servers": [
+                    {
+                        "id": "test-local-mcp",
+                        "name": "Test Local",
+                        "description": "Connectionless test server",
+                        "npm_package": "@example/server-test-local",
+                        "required_connection_type": None,
+                        "transport": "stdio",
+                        "capabilities": ["alpha", "beta"],
+                        "tags": ["test", "local"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return CatalogService(catalog_path=catalog_path)
+
+
 @pytest.mark.unit
 class TestCatalogService:
     """Tests for the bundled MCP catalog service."""
@@ -34,7 +66,7 @@ class TestCatalogService:
     async def test_browse_returns_entries(self) -> None:
         service = CatalogService()
         entries = await service.browse()
-        assert len(entries) >= 8
+        assert len(entries) >= 5
 
     async def test_browse_entries_have_required_fields(self) -> None:
         service = CatalogService()
@@ -104,20 +136,22 @@ def _make_connection(
 class TestCatalogInstall:
     """Tests for ``CatalogService.install`` and ``uninstall``."""
 
-    async def test_install_connectionless_entry(self) -> None:
-        service = CatalogService()
+    async def test_install_connectionless_entry(self, tmp_path: Path) -> None:
+        service = _connectionless_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
         result = await service.install(
-            "filesystem-mcp",
+            "test-local-mcp",
             None,
             connection_catalog=None,
             installations_repo=repo,
         )
-        assert result.catalog_entry_id == "filesystem-mcp"
-        assert result.server_name == "Filesystem"
+        assert result.catalog_entry_id == "test-local-mcp"
+        assert result.server_name == "Test Local"
         assert result.connection_name is None
-        assert result.tool_count >= 1
-        stored = await repo.get(NotBlankStr("filesystem-mcp"))
+        # The synthetic entry declares two capabilities (alpha, beta); the
+        # tool_count must reflect them exactly, not merely be non-zero.
+        assert result.tool_count == 2
+        stored = await repo.get(NotBlankStr("test-local-mcp"))
         assert stored is not None
         assert stored.connection_name is None
 
@@ -138,17 +172,17 @@ class TestCatalogInstall:
         assert stored is not None
         assert stored.connection_name == "primary-gh"
 
-    async def test_install_idempotent(self) -> None:
-        service = CatalogService()
+    async def test_install_idempotent(self, tmp_path: Path) -> None:
+        service = _connectionless_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
         first = await service.install(
-            "memory-mcp",
+            "test-local-mcp",
             None,
             connection_catalog=None,
             installations_repo=repo,
         )
         second = await service.install(
-            "memory-mcp",
+            "test-local-mcp",
             None,
             connection_catalog=None,
             installations_repo=repo,
@@ -205,21 +239,21 @@ class TestCatalogInstall:
                 installations_repo=repo,
             )
 
-    async def test_uninstall_existing(self) -> None:
-        service = CatalogService()
+    async def test_uninstall_existing(self, tmp_path: Path) -> None:
+        service = _connectionless_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
         await service.install(
-            "puppeteer-mcp",
+            "test-local-mcp",
             None,
             connection_catalog=None,
             installations_repo=repo,
         )
         removed = await service.uninstall(
-            "puppeteer-mcp",
+            "test-local-mcp",
             installations_repo=repo,
         )
         assert removed is True
-        assert await repo.get(NotBlankStr("puppeteer-mcp")) is None
+        assert await repo.get(NotBlankStr("test-local-mcp")) is None
 
     async def test_uninstall_missing_is_noop(self) -> None:
         service = CatalogService()
@@ -246,11 +280,11 @@ class TestInstallMerge:
         assert entry.npm_package in server.args
         assert server.env["SYNTHORG_CONNECTION"] == "primary-gh"
 
-    async def test_installation_to_server_connectionless(self) -> None:
-        service = CatalogService()
-        entry = await service.get_entry("filesystem-mcp")
+    async def test_installation_to_server_connectionless(self, tmp_path: Path) -> None:
+        service = _connectionless_catalog(tmp_path)
+        entry = await service.get_entry("test-local-mcp")
         server = installation_to_server_config(entry, None)
-        assert server.name == "filesystem-mcp"
+        assert server.name == "test-local-mcp"
         assert server.env == {}
 
     async def test_merge_skips_duplicates(self) -> None:
@@ -277,19 +311,19 @@ class TestInstallMerge:
         assert len(merged.servers) == 1
         assert merged.servers[0].command == "custom-command"
 
-    async def test_merge_adds_new_entries(self) -> None:
-        service = CatalogService()
+    async def test_merge_adds_new_entries(self, tmp_path: Path) -> None:
+        service = _connectionless_catalog(tmp_path)
         entries = await service.browse()
         entries_by_id = {e.id: e for e in entries}
         base = MCPConfig(servers=())
         install = McpInstallation(
-            catalog_entry_id=NotBlankStr("filesystem-mcp"),
+            catalog_entry_id=NotBlankStr("test-local-mcp"),
             connection_name=None,
             installed_at=datetime.now(UTC),
         )
         merged = merge_installed_servers(base, (install,), entries_by_id)
         assert len(merged.servers) == 1
-        assert merged.servers[0].name == "filesystem-mcp"
+        assert merged.servers[0].name == "test-local-mcp"
 
     async def test_merge_skips_unknown_entry(self) -> None:
         base = MCPConfig(servers=())

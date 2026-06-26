@@ -1,6 +1,7 @@
 import { memo } from 'react'
-import { Server } from 'lucide-react'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
+import { ProviderLogo } from '@/components/providers/ProviderLogo'
+import { providerLogoName } from '@/components/providers/provider-logos'
 import { cn } from '@/lib/utils'
 import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
@@ -28,7 +29,15 @@ function ProviderCardInner({ provider, health, className }: ProviderCardProps) {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Server className="size-4 shrink-0 text-text-secondary" />
+          <ProviderLogo
+            name={providerLogoName(
+              provider.name,
+              provider.litellm_provider,
+              provider.driver,
+            )}
+            size={20}
+            className="shrink-0"
+          />
           <span className="truncate font-mono text-sm text-foreground">
             {displayName}
           </span>

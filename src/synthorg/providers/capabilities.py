@@ -54,6 +54,14 @@ class ModelCapabilities(BaseModel):
         default=True,
         description="Supports system messages",
     )
+    supports_embeddings: bool = Field(
+        default=False,
+        description="Is an embedding model (vector output, not chat)",
+    )
+    supports_reasoning: bool = Field(
+        default=False,
+        description="Exposes extended reasoning (thinking/o1-style models)",
+    )
     cost_per_1k_input: float = Field(
         ge=0.0,
         description=(

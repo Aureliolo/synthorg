@@ -25,6 +25,9 @@
   --so-warning: #f59e0b;
   --so-danger: #ef4444;
 
+  /* -- Categorical (theme-independent distinct hue; e.g. the reasoning pill) -- */
+  --so-violet: #a78bfa;
+
   /* -- Text -- */
   --so-text-primary: #e2e8f0;
   --so-text-secondary: #94a3b8;

@@ -77,7 +77,6 @@ export interface OrgChartCanvasProps {
   flowWrapperRef: React.RefObject<HTMLDivElement | null>
   renderedNodes: Node[]
   renderedEdges: Edge[]
-  onMoveEnd: (event: unknown, viewport: { x: number; y: number; zoom: number }) => void
   selection: OrgChartSelectionResult
   onEdgeMouseEnter: EdgeMouseHandler
   onEdgeMouseLeave: EdgeMouseHandler
@@ -96,7 +95,6 @@ export function OrgChartCanvas({
   flowWrapperRef,
   renderedNodes,
   renderedEdges,
-  onMoveEnd,
   selection,
   onEdgeMouseEnter,
   onEdgeMouseLeave,
@@ -123,7 +121,6 @@ export function OrgChartCanvas({
         edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
-        onMoveEnd={onMoveEnd}
         onNodeClick={selection.handleNodeClick}
         onNodeContextMenu={selection.handleNodeContextMenu}
         onEdgeMouseEnter={onEdgeMouseEnter}

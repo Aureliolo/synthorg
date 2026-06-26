@@ -177,6 +177,12 @@ META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA: Final[str] = (
 # fallbacks.
 META_SELF_IMPROVEMENT_LOAD_FAILED: Final[str] = "meta.self_improvement.load_failed"
 
+# Tool creation (toolsmith) was requested via settings but no capability
+# allowlist is configured. An empty allowlist is deny-all, so tool creation
+# is held off (rather than failing the whole self-improvement config) until
+# the operator sets ``self_improvement.tool_creation_allowed_capabilities``.
+META_TOOLSMITH_ALLOWLIST_REQUIRED: Final[str] = "meta.toolsmith.allowlist_required"
+
 # -- Chief of Staff chat endpoint diagnostics ------------------------------
 
 # Emitted at WARNING when ``POST /meta/chat`` cannot be served because a

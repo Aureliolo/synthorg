@@ -99,7 +99,10 @@ function DeptCardHeader({
             )}
           </button>
         )}
-        <span className="truncate font-sans text-xs font-semibold uppercase tracking-wide text-foreground">
+        <span
+          className="truncate font-sans text-xs font-semibold uppercase tracking-wide text-foreground"
+          title={displayName}
+        >
           {displayName}
         </span>
       </div>
@@ -270,7 +273,6 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
         <DeptStatusDots statusDots={statusDots} />
         {!isEmpty && !isCollapsed && (
           <DepartmentStatsBar
-            agentCount={agentCount}
             activeCount={activeCount}
             cost7d={cost7d}
             {...(currency !== null && { currency })}

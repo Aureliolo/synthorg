@@ -51,7 +51,7 @@ function capturePut(): {
 describe('WizardModelSelection', () => {
   it('prefills every per-feature model from the recommendations', async () => {
     server.use(recommendationsHandler())
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     await waitFor(() =>
       expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
     )
@@ -71,20 +71,16 @@ describe('WizardModelSelection', () => {
     expect(screen.getByText(/Powers memory \+ knowledge/)).toBeInTheDocument()
   })
 
-  it('defaults the research + knowledge toggles to on', async () => {
+  it('hides the research model picker when research is disabled', async () => {
     server.use(recommendationsHandler())
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={false} />)
     await waitFor(() =>
-      expect(screen.getByRole('switch', { name: 'Research' })).toBeInTheDocument(),
+      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
     )
-    expect(screen.getByRole('switch', { name: 'Research' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    )
-    expect(screen.getByRole('switch', { name: 'Knowledge base' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    )
+    // The research toggle lives on the Capabilities step; with it off, the
+    // research picker is gated out here while the others stay.
+    expect(screen.queryByLabelText('Research model')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Embedding model')).toBeInTheDocument()
   })
 
   it('treats a whitespace-only persisted value as unset', async () => {
@@ -101,7 +97,7 @@ describe('WizardModelSelection', () => {
         ),
       ),
     )
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     // A blank stored value must not win over the recommendation.
     await waitFor(() =>
       expect(
@@ -145,7 +141,7 @@ describe('WizardModelSelection', () => {
         )
       }),
     )
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     const select = await screen.findByLabelText<HTMLSelectElement>('Coordination model')
     fireEvent.change(select, { target: { value: 'small-model-001' } }) // older write, fails now
     fireEvent.change(select, { target: { value: 'medium-model-001' } }) // newer write, succeeds later
@@ -171,7 +167,7 @@ describe('WizardModelSelection', () => {
         ),
       ),
     )
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     await waitFor(() =>
       expect(
         screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
@@ -182,7 +178,7 @@ describe('WizardModelSelection', () => {
   it('persists a model override through the settings API', async () => {
     server.use(recommendationsHandler())
     const { calls } = capturePut()
-    renderWithRouter(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     await waitFor(() =>
       expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
     )
@@ -196,23 +192,5 @@ describe('WizardModelSelection', () => {
         value: 'small-model-001',
       }),
     )
-  })
-
-  it('disabling research persists the flag and hides the research model', async () => {
-    server.use(recommendationsHandler())
-    const { calls } = capturePut()
-    renderWithRouter(<WizardModelSelection />)
-    await waitFor(() =>
-      expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
-    )
-    fireEvent.click(screen.getByRole('switch', { name: 'Research' }))
-    await waitFor(() =>
-      expect(calls).toContainEqual({
-        namespace: 'research',
-        key: 'enabled',
-        value: 'false',
-      }),
-    )
-    expect(screen.queryByLabelText('Research model')).not.toBeInTheDocument()
   })
 })

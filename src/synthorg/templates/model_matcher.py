@@ -113,6 +113,17 @@ def passes_hard_filters(
     if model.max_context < requirement.min_context:
         return False
     meta = model.metadata
+    # Embedding models produce vector output, not chat completions, so they
+    # must never be assigned to a chat agent regardless of any other
+    # capability flags. An explicit ``model_id`` pin still bypasses this
+    # filter (the operator escape hatch for a deliberately specialised agent).
+    if meta.supports_embeddings:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            model=model.id,
+            reason="embedding_model_not_chat_capable",
+        )
+        return False
     if requirement.requires_tools and meta.tool_calls_verified is False:
         logger.debug(
             TEMPLATE_MODEL_MATCH_SKIPPED,

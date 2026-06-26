@@ -1,6 +1,5 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { useThemeStore } from '@/stores/theme'
 import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -663,11 +662,13 @@ describe('setup wizard store', () => {
         useSetupWizardStore.getState().submitCompany(),
       ])
       try {
-        // Yield so the (single) coalesced fetch reaches the handler.
-        // Tight timeout: if the coalesced POST hasn't arrived within
-        // 100 ms the store's coalescing logic is broken; the default
-        // 1000 ms would mask a regression as a slow-CI false pass.
-        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 100 })
+        // Wait for the (single) coalesced fetch to reach the handler. The
+        // coalescing contract is enforced by ``totalCalls === 1`` itself, not
+        // by the timeout: a broken store firing 3 POSTs never settles at 1, so
+        // a generous ceiling cannot mask a regression. Keep the ceiling well
+        // above a slow CI worker's scheduling jitter so the happy path never
+        // false-fails (vi.waitFor returns as soon as the condition holds).
+        await vi.waitFor(() => expect(totalCalls).toBe(1), { timeout: 2000 })
         // ``observedConcurrent`` alone is satisfied if a serial test
         // runner happens to schedule the three calls one-after-another
         // (no real concurrency to block). ``totalCalls`` plus this
@@ -720,21 +721,6 @@ describe('setup wizard store', () => {
 
       await useSetupWizardStore.getState().updateAgentName(0, 'New Name')
       expect(useSetupWizardStore.getState().agents[0]?.name).toBe('New Name')
-    })
-  })
-
-  describe('theme settings', () => {
-    it('updates theme setting', () => {
-      useSetupWizardStore.getState().setThemeSetting('density', 'dense')
-      expect(useSetupWizardStore.getState().themeSettings.density).toBe('dense')
-    })
-
-    it('preserves other theme settings when updating one', () => {
-      useSetupWizardStore.getState().setThemeSetting('density', 'dense')
-      useSetupWizardStore.getState().setThemeSetting('animation', 'spring')
-      const state = useSetupWizardStore.getState()
-      expect(state.themeSettings.density).toBe('dense')
-      expect(state.themeSettings.animation).toBe('spring')
     })
   })
 
@@ -1198,36 +1184,6 @@ describe('setup wizard store', () => {
       expect(state.completing).toBe(false)
       expect(state.completionError).toBeNull()
       expect(state.completionWarning).toContain('no ranked model available')
-    })
-
-    it('degrades a theme-persist failure to a warning, not an error, after a clean completion', async () => {
-      // The backend has already persisted setup_complete=true; a client-side
-      // theme store throw must NOT surface as a completionError (which would
-      // offer a Retry that re-POSTs /setup/complete and 409s).
-      server.use(
-        http.post('/api/v1/setup/complete', () =>
-          HttpResponse.json(
-            apiSuccess({
-              setup_complete: true,
-              embedder_selected: true,
-              embedder_failure_reason: null,
-            }),
-          ),
-        ),
-      )
-      const spy = vi
-        .spyOn(useThemeStore.getState(), 'setColorPalette')
-        .mockImplementation(() => {
-          throw new Error('theme store crashed')
-        })
-      try {
-        await useSetupWizardStore.getState().completeSetup()
-        const state = useSetupWizardStore.getState()
-        expect(state.completionError).toBeNull()
-        expect(state.completionWarning).toContain('theme')
-      } finally {
-        spy.mockRestore()
-      }
     })
 
     it('sets completionError on a 409 (already complete) failure', async () => {

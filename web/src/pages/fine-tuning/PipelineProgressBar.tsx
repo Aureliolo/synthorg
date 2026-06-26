@@ -1,4 +1,4 @@
-import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
+import { ACTIVE_STAGES, type FineTuneStage } from '@/api/endpoints/fine-tuning'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
 
 /**
@@ -26,6 +26,10 @@ interface PipelineProgressBarProps {
 export function PipelineProgressBar({ stage, progress, startedAt }: PipelineProgressBarProps) {
   const label = `Stage: ${formatStage(stage)}`
   if (progress == null) {
+    // No determinate progress and no active run (idle / settled): show no bar
+    // at all. An indeterminate animation while idle reads as "working" when
+    // nothing is running.
+    if (!ACTIVE_STAGES.has(stage)) return null
     return (
       <div className="pt-4">
         <ProgressIndicator

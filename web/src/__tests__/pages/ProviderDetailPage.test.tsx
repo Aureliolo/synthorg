@@ -24,6 +24,7 @@ function makeProvider(name: string): ProviderWithName {
     litellm_provider: "test-provider",
     auth_type: "api_key",
     base_url: null,
+    keep_alive: null,
     models: [
       {
         id: "test-model",
@@ -37,6 +38,7 @@ function makeProvider(name: string): ProviderWithName {
           supports_tools: false,
           supports_vision: false,
           supports_reasoning: false,
+          supports_embeddings: false,
           max_output_tokens: null,
           parameter_count: null,
           cost_tier: null,
@@ -79,6 +81,8 @@ const testModels: ProviderModelResponse[] = [
     tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
+    supports_embeddings: false,
+    supports_reasoning: false,
     family: null,
     stale: null,
   },
@@ -148,9 +152,12 @@ describe("ProviderDetailPage", () => {
       models: testModels,
     };
     renderDetail();
-    expect(screen.getByText("test-model")).toBeInTheDocument();
+    // The model id appears in both the model-list row and the test-connection
+    // model picker, so assert at least one occurrence.
+    expect(screen.getAllByText("test-model").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("tools")).toBeInTheDocument();
-    expect(screen.getByText("stream")).toBeInTheDocument();
+    // Streaming is universal, so it no longer earns a capability badge.
+    expect(screen.queryByText("stream")).not.toBeInTheDocument();
   });
 
   it("renders health metrics when health available", () => {
