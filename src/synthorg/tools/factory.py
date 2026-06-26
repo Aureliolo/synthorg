@@ -39,6 +39,7 @@ from synthorg.tools.git_tools import (
 )
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
+    merge_secure_backend_defaults,
     resolve_sandbox_for_category,
 )
 from synthorg.tools.web.html_parser import HtmlParserTool
@@ -859,6 +860,15 @@ def build_default_tools_from_config(  # noqa: PLR0913
     logger.debug(
         TOOL_FACTORY_CONFIG_ENTRY,
         source="config",
+    )
+
+    # Force untrusted-exec categories (code_execution, terminal) onto the
+    # container backend before any per-category resolution, so agent code
+    # never runs in the API process even when the global default is
+    # subprocess. Shadowing ``config`` makes every ``config.sandboxing``
+    # read below see the hardened overrides.
+    config = config.model_copy(
+        update={"sandboxing": merge_secure_backend_defaults(config.sandboxing)},
     )
 
     # Build sandbox backends once for all categories.

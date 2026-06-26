@@ -353,6 +353,29 @@ class TestUntrustedContentDirectiveInjection:
         assert "untrusted_content_directive" not in result.sections
         assert "## Untrusted Content" not in result.content
 
+    def test_tool_capable_agent_declares_tool_result_fence(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+    ) -> None:
+        """A tool-capable agent declares <tool-result> as untrusted up front."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            available_tools=sample_tool_definitions,
+        )
+
+        assert "untrusted_content_directive" in result.sections
+        assert "Any content enclosed in <tool-result>" in result.content
+
+    def test_no_tool_result_fence_without_tools(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """An agent with no tools never declares the <tool-result> fence."""
+        result = build_system_prompt(agent=sample_agent_with_personality)
+
+        assert "<tool-result>" not in result.content
+
     def test_org_policies_fenced_and_directed(
         self,
         sample_agent_with_personality: AgentIdentity,

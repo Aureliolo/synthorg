@@ -45,6 +45,16 @@ _DEFAULT_GVISOR_OVERRIDES: MappingProxyType[str, str] = MappingProxyType(
     }
 )
 
+# Tool categories that execute untrusted, agent-authored code. These must
+# run inside a container, never the API process, so they default to the
+# Docker backend even when the global default is ``subprocess`` (which is
+# acceptable for low-risk read-only tools). Operator-supplied per-category
+# ``overrides`` take precedence. This also makes the gVisor runtime
+# overrides above coherent: they only apply under the Docker backend.
+_UNTRUSTED_EXEC_CATEGORIES: frozenset[str] = frozenset(
+    {"code_execution", "terminal"},
+)
+
 
 def _build_subprocess_backend(
     *,
@@ -221,6 +231,36 @@ def merge_gvisor_defaults(
         update={"runtime_overrides": effective_overrides},
     )
     return config.model_copy(update={"docker": new_docker})
+
+
+def merge_secure_backend_defaults(
+    config: SandboxingConfig,
+) -> SandboxingConfig:
+    """Force untrusted-exec categories onto the container backend.
+
+    Returns a new config whose ``overrides`` route the
+    ``_UNTRUSTED_EXEC_CATEGORIES`` (agent-authored code execution) to the
+    ``docker`` backend, so that code is never run in the API process even
+    when ``default_backend`` is ``subprocess``. Operator-supplied
+    per-category overrides win. Returns the original config unchanged
+    when no change is needed.
+
+    Args:
+        config: Original sandboxing configuration.
+
+    Returns:
+        A new ``SandboxingConfig`` with secure backend defaults merged,
+        or the original config when nothing changed.
+    """
+    merged = dict(config.overrides)
+    changed = False
+    for category in _UNTRUSTED_EXEC_CATEGORIES:
+        if category not in merged:
+            merged[category] = "docker"
+            changed = True
+    if not changed:
+        return config
+    return config.model_copy(update={"overrides": merged})
 
 
 def resolve_sandbox_for_category(

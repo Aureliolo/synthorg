@@ -34,11 +34,17 @@ from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.persistence.sqlite._backend_accessors import (
     _BackendRepositoryAccessors,
 )
+from synthorg.persistence.sqlite.agent_contribution_repo import (
+    SQLiteAgentContributionRepository,
+)
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
 from synthorg.persistence.sqlite.artifact_repo import (
     SQLiteArtifactRepository,
+)
+from synthorg.persistence.sqlite.audit_chain_repo import (
+    SQLiteAuditChainRepository,
 )
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
@@ -84,6 +90,9 @@ from synthorg.persistence.sqlite.flight_recorder_repo import (
 )
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
+)
+from synthorg.persistence.sqlite.hiring_request_repo import (
+    SQLiteHiringRequestRepository,
 )
 from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
@@ -157,6 +166,9 @@ from synthorg.persistence.sqlite.project_repo import (
 from synthorg.persistence.sqlite.project_workspace_repo import (
     SQLiteProjectWorkspaceRepository,
 )
+from synthorg.persistence.sqlite.promotion_history_repo import (
+    SQLitePromotionHistoryRepository,
+)
 from synthorg.persistence.sqlite.provider_audit_repo import (
     SQLiteProviderAuditRepo,
 )
@@ -198,6 +210,10 @@ from synthorg.persistence.sqlite.training_plan_repo import (
 )
 from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
+)
+from synthorg.persistence.sqlite.trust_repo import (
+    SQLiteTrustChangeHistoryRepository,
+    SQLiteTrustStateRepository,
 )
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
@@ -311,6 +327,12 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._connection_secrets = None
         self._oauth_states = None
         self._webhook_receipts = None
+        self._trust_states = None
+        self._trust_change_history = None
+        self._promotion_history = None
+        self._hiring_requests = None
+        self._agent_contributions = None
+        self._audit_chain_entries = None
 
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
@@ -605,6 +627,30 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._webhook_receipts = SQLiteWebhookReceiptRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._trust_states = SQLiteTrustStateRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._trust_change_history = SQLiteTrustChangeHistoryRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._promotion_history = SQLitePromotionHistoryRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._hiring_requests = SQLiteHiringRequestRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._agent_contributions = SQLiteAgentContributionRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._audit_chain_entries = SQLiteAuditChainRepository(
             self._db,
             write_context=self.write_context,
         )

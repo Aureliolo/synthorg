@@ -42,7 +42,10 @@ from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.factory import build_sandbox_backends
+from synthorg.tools.sandbox.factory import (
+    build_sandbox_backends,
+    merge_secure_backend_defaults,
+)
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
@@ -131,8 +134,11 @@ async def _build_tool_registry(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
     )
+    # Force untrusted-exec categories onto the container backend so the
+    # built map contains the docker backend the tool factory resolves to
+    # (the factory applies the same merge to its per-category lookup).
     sandbox_backends = build_sandbox_backends(
-        config=app_state.config.sandboxing,
+        config=merge_secure_backend_defaults(app_state.config.sandboxing),
         workspace=workspace_root,
         lifecycle_strategy=lifecycle_strategy,
     )

@@ -81,6 +81,9 @@ from synthorg.observability.events.performance import (
     PERF_TRACKER_CLEARED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
+from synthorg.persistence.agent_contribution_protocol import (
+    AgentContributionRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -163,11 +166,13 @@ class PerformanceTracker:
         inflection_sink: InflectionSink | None = None,
         task_metric_repo: TaskMetricRepository | None = None,
         collab_metric_repo: CollaborationMetricRepository | None = None,
+        contribution_repo: AgentContributionRepository | None = None,
     ) -> None:
         cfg = config or PerformanceConfig()
         self._config = cfg
         self._task_metric_repo = task_metric_repo
         self._collab_metric_repo = collab_metric_repo
+        self._contribution_repo = contribution_repo
         self._quality_strategy = quality_strategy or self._default_quality()
         self._collaboration_strategy = (
             collaboration_strategy or self._default_collaboration(cfg)
@@ -451,6 +456,7 @@ class PerformanceTracker:
         *,
         task_metric_repo: TaskMetricRepository,
         collab_metric_repo: CollaborationMetricRepository,
+        contribution_repo: AgentContributionRepository | None = None,
     ) -> None:
         """Attach the durable metric repos post-connect.
 
@@ -461,6 +467,8 @@ class PerformanceTracker:
         """
         self._task_metric_repo = task_metric_repo
         self._collab_metric_repo = collab_metric_repo
+        if contribution_repo is not None:
+            self._contribution_repo = contribution_repo
 
     async def _persist_metric(
         self,
@@ -491,6 +499,26 @@ class PerformanceTracker:
                 error=safe_error_description(exc),
             )
 
+    async def _persist_contribution(self, contribution: AgentContribution) -> None:
+        """Durably append one contribution best-effort.
+
+        Fail-open: a write failure logs at WARNING but never surfaces to
+        the caller, mirroring :meth:`_persist_metric`.
+        """
+        if self._contribution_repo is None:
+            return
+        try:
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await self._contribution_repo.append(contribution)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PERF_METRIC_PERSIST_FAILED,
+                agent_id=str(contribution.agent_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     async def record_coordination_contributions(
         self,
         contributions: tuple[AgentContribution, ...],
@@ -504,6 +532,13 @@ class PerformanceTracker:
             for contrib in contributions:
                 agent_key = str(contrib.agent_id)
                 self._contributions.setdefault(agent_key, []).append(contrib)
+
+        # Durably persist each contribution best-effort so the
+        # accumulator survives restarts and is queryable for retrospective
+        # attribution analytics (the in-memory list is otherwise discarded
+        # on every restart). Fail-open, mirroring ``_persist_metric``.
+        for contrib in contributions:
+            await self._persist_contribution(contrib)
 
         if contributions:
             logger.info(

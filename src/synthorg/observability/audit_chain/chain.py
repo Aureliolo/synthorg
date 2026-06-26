@@ -62,6 +62,30 @@ class HashChain:
         """Hash of the most recent entry (or genesis)."""
         return self._tail_hash
 
+    def restore(self, entries: tuple[ChainEntry, ...]) -> None:
+        """Rebuild chain state from durably-loaded entries.
+
+        Replaces the in-memory entries and recomputes the tail hash from
+        the last entry so appends continue from the correct position and
+        link. ``entries`` MUST be in ascending ``position`` order (the
+        repository returns them oldest-first). A no-op for an empty input
+        leaves the chain at genesis.
+
+        Args:
+            entries: The durably-stored chain entries, oldest-first.
+        """
+        self._entries = list(entries)
+        if entries:
+            last = entries[-1]
+            self._tail_hash = self._link_hash(
+                last.previous_hash,
+                last.event_hash,
+                last.signature,
+                last.timestamp,
+            )
+        else:
+            self._tail_hash = self._initial_hash
+
     def snapshot(self) -> HashChain:
         """Create a read-only copy of this chain.
 

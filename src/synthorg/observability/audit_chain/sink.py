@@ -8,7 +8,7 @@ import math
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import ValidationError
 
@@ -18,7 +18,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.audit_chain.chain import ChainEntry, HashChain
 from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 from synthorg.observability.audit_chain.protocol import SignedPayload
@@ -31,6 +31,33 @@ from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
     AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
 )
+
+
+@runtime_checkable
+class AuditChainPersistenceWriter(Protocol):
+    """Sync hand-off seam for durably persisting appended chain entries.
+
+    Kept as a narrow local protocol so the sink (core observability) does
+    not depend on the persistence layer; the concrete
+    ``DurableAuditChainWriter`` is injected at boot.
+    """
+
+    def enqueue(self, entry: ChainEntry) -> None:
+        """Hand one appended entry to the durable writer (non-blocking)."""
+        ...
+
+    async def hydrate(self, chain: HashChain) -> None:
+        """Rebuild ``chain`` from the durable store at startup."""
+        ...
+
+    async def start(self) -> None:
+        """Spawn the background drain task."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop the drain task, flushing queued entries first."""
+        ...
+
 
 if TYPE_CHECKING:
     # Collaborator protocols stay TYPE_CHECKING: the boundary tests pass
@@ -234,6 +261,27 @@ class AuditChainSink(logging.Handler):
         self._lock = threading.Lock()
         self._append_callback: AppendCallback | None = None
         self._signing_timeout_seconds = signing_timeout_seconds
+        self._persistence_writer: AuditChainPersistenceWriter | None = None
+
+    async def attach_persistence(self, writer: AuditChainPersistenceWriter) -> None:
+        """Hydrate the live chain, start the writer, and register it.
+
+        Called from the startup wiring once the persistence backend is
+        connected and before traffic. Hydration rebuilds the in-memory
+        chain (tail hash + entries) from durable storage so verification
+        survives restarts; afterwards appended entries are handed to
+        ``writer.enqueue`` inside the sink lock.
+        """
+        await writer.hydrate(self._chain)
+        await writer.start()
+        self._persistence_writer = writer
+
+    async def aclose_persistence(self) -> None:
+        """Detach and stop the durable writer (flushing queued entries)."""
+        writer = self._persistence_writer
+        self._persistence_writer = None
+        if writer is not None:
+            await writer.stop()
 
     def set_signing_timeout_seconds(self, value: float) -> None:
         """Update the signing/timestamp timeout in place.
@@ -451,12 +499,17 @@ class AuditChainSink(logging.Handler):
         signed, ts_result = future.result(timeout=self._signing_timeout_seconds)
 
         with self._lock:
-            self._chain.append(
+            entry = self._chain.append(
                 event_data=data,
                 signature=signed.signature,
                 timestamp=ts_result.timestamp,
             )
             depth = len(self._chain.entries)
+            # Hand the appended entry to the durable writer while still
+            # holding the lock so the durable order matches the in-memory
+            # chain order. ``enqueue`` is non-blocking and thread-safe.
+            if self._persistence_writer is not None:
+                self._persistence_writer.enqueue(entry)
         # Only record "signed" when a TSA actually signed the timestamp;
         # TSA-failure fallbacks and plain local-clock providers report
         # non-signed status so append metrics reflect how many events

@@ -9,6 +9,11 @@ from typing import Final
 
 from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_KNOWLEDGE,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.injection import TokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
@@ -105,15 +110,22 @@ class PromptInjectionStrategy:
             return ()
 
         header = "# Entity Definitions (Canonical)\n"
+        # Entity definitions are operator/agent-authored and therefore
+        # attacker-controllable, so each block is fenced as untrusted
+        # (SEC-1) and a directive naming the fence is appended. Reserve
+        # the directive's cost up front so it is never trimmed away from
+        # the content it governs.
+        directive = untrusted_content_directive((TAG_KNOWLEDGE,))
         header_tokens = self._estimator.estimate_tokens(header)
-        remaining = effective_budget - header_tokens
+        directive_tokens = self._estimator.estimate_tokens(directive)
+        remaining = effective_budget - header_tokens - directive_tokens
         if remaining <= 0:
             return ()
 
         sections: list[str] = [header]
         included = 0
         for entity in entities:
-            formatted = format_entity(entity)
+            formatted = wrap_untrusted(TAG_KNOWLEDGE, format_entity(entity))
             tokens = self._estimator.estimate_tokens(formatted)
             if tokens > remaining:
                 break
@@ -124,6 +136,7 @@ class PromptInjectionStrategy:
         if included == 0:
             return ()
 
+        sections.append(directive)
         content = "\n\n".join(sections)
         logger.debug(
             ONTOLOGY_INJECTION_PREPARED,

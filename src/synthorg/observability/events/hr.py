@@ -82,6 +82,8 @@ HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
     "hr.offboarding.performance_eviction_failed"
 )
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
+HR_HIRING_PERSIST_FAILED: Final[str] = "hr.hiring.persist_failed"
+HR_HIRING_REQUESTS_HYDRATED: Final[str] = "hr.hiring.requests_hydrated"
 
 # ── Activity timeline ──────────────────────────────────────────
 

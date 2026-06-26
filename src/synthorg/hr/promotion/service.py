@@ -6,6 +6,7 @@ including criteria evaluation, approval decisions, model mapping,
 and trust integration.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
@@ -16,6 +17,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.errors import (
@@ -47,10 +49,16 @@ from synthorg.observability.events.promotion import (
     PROMOTION_EVALUATE_COMPLETE,
     PROMOTION_EVALUATE_FAILED,
     PROMOTION_EVALUATE_START,
+    PROMOTION_HISTORY_HYDRATED,
     PROMOTION_MODEL_CHANGED,
     PROMOTION_NOTIFICATION_SENT,
+    PROMOTION_PERSIST_FAILED,
     PROMOTION_REJECTED,
     PROMOTION_REQUESTED,
+)
+from synthorg.persistence.promotion_history_protocol import (
+    PromotionHistoryFilterSpec,
+    PromotionHistoryRepository,
 )
 from synthorg.security.trust.service import TrustService
 
@@ -58,6 +66,7 @@ logger = get_logger(__name__)
 
 
 _SYSTEM_INITIATOR = NotBlankStr("system")
+_PERSIST_TIMEOUT_SECONDS: float = 5.0
 
 # Callback type for promotion/demotion notifications.
 # The communication layer can supply a concrete callback
@@ -100,6 +109,7 @@ class PromotionService:
         approval_store: ApprovalStoreProtocol | None = None,
         trust_service: TrustService | None = None,
         on_notification: PromotionNotificationCallback | None = None,
+        history_repo: PromotionHistoryRepository | None = None,
     ) -> None:
         self._criteria = criteria_strategy
         self._approval = approval_strategy
@@ -110,6 +120,12 @@ class PromotionService:
         self._approval_store = approval_store
         self._trust_service = trust_service
         self._on_notification = on_notification
+        # Durable backing store for promotion records. When attached
+        # (production) every applied record is best-effort written
+        # through, and the in-memory history + cooldown are recomputed
+        # from it at startup so a crashloop cannot re-enable promotion by
+        # discarding the cooldown.
+        self._history_repo = history_repo
         self._promotion_history: dict[str, list[PromotionRecord]] = {}
         self._cooldown_until: dict[str, AwareDatetime] = {}
         # Per-agent lock serialising ``apply_promotion``: the cooldown
@@ -118,6 +134,69 @@ class PromotionService:
         # apply and double-promote. The lock makes the re-check-and-apply
         # atomic per agent; a different agent never contends.
         self._apply_locks = RefcountedLockMap[str]()
+
+    def attach_persistence(self, *, history_repo: PromotionHistoryRepository) -> None:
+        """Attach the durable promotion-history repo after boot.
+
+        The service is built in the construction phase before
+        persistence exists; this is called from the on-startup wiring
+        hook. Pair with :meth:`hydrate`.
+        """
+        self._history_repo = history_repo
+
+    async def hydrate(self) -> None:
+        """Load durable promotion history and recompute per-agent cooldown.
+
+        Idempotent and a no-op when no repository is attached. The
+        cooldown is derived from the newest record per agent so an
+        in-cooldown agent stays gated across a restart.
+        """
+        if self._history_repo is None:
+            return
+        history: dict[str, list[PromotionRecord]] = {}
+        offset = 0
+        page = 100
+        while True:
+            records = await self._history_repo.query(
+                PromotionHistoryFilterSpec(), limit=page, offset=offset
+            )
+            for record in records:
+                history.setdefault(str(record.agent_id), []).append(record)
+            if len(records) < page:
+                break
+            offset += page
+        cooldown: dict[str, AwareDatetime] = {}
+        for agent_key, records_list in history.items():
+            # query() returns newest-first; reverse to append (oldest-first)
+            # order and derive cooldown from the most-recent record.
+            newest = records_list[0]
+            records_list.reverse()
+            if self._config.cooldown_hours > 0:
+                cooldown[agent_key] = newest.effective_at + timedelta(
+                    hours=self._config.cooldown_hours
+                )
+        self._promotion_history = history
+        self._cooldown_until = cooldown
+        logger.info(
+            PROMOTION_HISTORY_HYDRATED,
+            agents=len(history),
+            records=sum(len(v) for v in history.values()),
+        )
+
+    async def _persist_record(self, record: PromotionRecord) -> None:
+        """Best-effort write-through of one promotion record."""
+        if self._history_repo is None:
+            return
+        try:
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await self._history_repo.append(record)
+        except (PersistenceError, TimeoutError) as exc:
+            logger.warning(
+                PROMOTION_PERSIST_FAILED,
+                agent_id=str(record.agent_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def evaluate_promotion(
         self,
@@ -498,6 +577,7 @@ class PromotionService:
                 self._cooldown_until[str(request.agent_id)] = now + timedelta(
                     hours=self._config.cooldown_hours
                 )
+            await self._persist_record(record)
         return record
 
     def _recheck_cooldown_locked(self, agent_id: NotBlankStr) -> None:

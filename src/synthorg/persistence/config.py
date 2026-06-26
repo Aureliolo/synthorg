@@ -5,7 +5,7 @@ backend-specific settings.
 """
 
 import re
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import ClassVar, Literal, Self
 
 from pydantic import (
@@ -158,8 +158,31 @@ class PostgresConfig(BaseModel):
     username: NotBlankStr = Field(description="Database username")
     password: SecretStr = Field(description="Database password")
     ssl_mode: PostgresSslMode = Field(
-        default="require",
-        description="libpq SSL mode",
+        default="verify-full",
+        description=(
+            "libpq SSL mode. Default 'verify-full' encrypts the wire AND"
+            " validates the server certificate + hostname (set"
+            " ssl_root_cert_path to the CA bundle). Local-loopback /"
+            " test deployments that connect to a trusted local server"
+            " can downgrade to 'disable'/'prefer' via the DSN or"
+            " SYNTHORG_POSTGRES_SSL_MODE."
+        ),
+    )
+    ssl_root_cert_path: Path | None = Field(
+        default=None,
+        description=(
+            "Path to the trusted CA certificate bundle (libpq"
+            " 'sslrootcert'). Required by 'verify-ca'/'verify-full' when"
+            " the server cert is not signed by a system-trusted CA."
+        ),
+    )
+    ssl_cert_path: Path | None = Field(
+        default=None,
+        description="Path to the client certificate (libpq 'sslcert').",
+    )
+    ssl_key_path: Path | None = Field(
+        default=None,
+        description="Path to the client private key (libpq 'sslkey').",
     )
     pool_min_size: int = Field(
         default=1,

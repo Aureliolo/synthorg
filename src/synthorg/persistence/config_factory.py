@@ -201,11 +201,11 @@ def build_postgres_persistence_config_from_url(
     hostname, port, and path are URL-decoded so credentials with
     reserved characters survive the round-trip.
 
-    The default ``ssl_mode`` from ``PostgresConfig`` (``"require"``)
-    rejects plaintext connections; for local Docker compose where the
-    backend talks to Postgres over an internal network without TLS,
-    callers can pass ``ssl_mode_override`` (typically sourced from
-    ``SYNTHORG_POSTGRES_SSL_MODE``).
+    The default ``ssl_mode`` from ``PostgresConfig`` (``"verify-full"``)
+    encrypts the wire and validates the server certificate; for local
+    Docker compose where the backend talks to Postgres over a trusted
+    internal network without TLS, callers can pass ``ssl_mode_override``
+    (typically sourced from ``SYNTHORG_POSTGRES_SSL_MODE``).
 
     Returns:
         Result of type ``PersistenceConfig``.
