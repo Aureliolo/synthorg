@@ -172,8 +172,8 @@ Per-type health check implementations with a background `HealthProberService`.
 
 Static JSON catalog (`bundled.json`) with 5 curated MCP server entries:
 GitHub, Slack, PostgreSQL, SQLite, Brave Search. Each entry is
-connection-gated (it declares a `required_connection_type`); the catalog
-carries no connectionless servers.
+connection-gated (it declares a `required_connection_type`); no entry runs
+without a bound connection.
 
 ### API Endpoints
 
