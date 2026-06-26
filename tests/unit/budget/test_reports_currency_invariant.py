@@ -16,6 +16,7 @@ Covers all four call sites in the module:
 """
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -28,7 +29,10 @@ from synthorg.budget.reports import (
     _build_provider_distribution,
     _build_task_spendings,
 )
+from synthorg.budget.spending_summary import PeriodSpending, SpendingSummary
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from tests._shared import mock_of
 from tests.unit.budget.conftest import make_cost_record
 
 pytestmark = pytest.mark.unit
@@ -174,3 +178,44 @@ class TestGenerateReportPeriodWideCurrency:
             include_period_comparison=False,
         )
         assert report.summary.period.total_cost == pytest.approx(0.30)
+
+
+class TestPeriodComparisonCrossCurrency:
+    """A period comparison must reject a cross-currency delta.
+
+    When the operator changes ``budget.currency`` between two periods,
+    subtracting the totals is meaningless; the comparison fails closed.
+    """
+
+    def _eur_summary(self) -> SpendingSummary:
+        return SpendingSummary(
+            period=PeriodSpending(
+                start=_START - (_END - _START),
+                end=_START,
+                total_cost=0.20,
+                currency="EUR",
+                record_count=1,
+            ),
+        )
+
+    async def test_mismatched_currency_raises(self) -> None:
+        bc = BudgetConfig(total_monthly=100.0, currency=DEFAULT_CURRENCY)
+        tracker = mock_of[CostTrackerProtocol](
+            build_summary=AsyncMock(return_value=self._eur_summary()),
+        )
+        gen = ReportGenerator(cost_tracker=tracker, budget_config=bc)
+        with pytest.raises(MixedCurrencyAggregationError) as exc:
+            await gen._build_period_comparison(_START, _END, 0.10, currency="USD")
+        assert exc.value.currencies == frozenset({"USD", "EUR"})
+
+    async def test_matching_currency_compares(self) -> None:
+        bc = BudgetConfig(total_monthly=100.0, currency=DEFAULT_CURRENCY)
+        tracker = mock_of[CostTrackerProtocol](
+            build_summary=AsyncMock(return_value=self._eur_summary()),
+        )
+        gen = ReportGenerator(cost_tracker=tracker, budget_config=bc)
+        comparison = await gen._build_period_comparison(
+            _START, _END, 0.10, currency="EUR"
+        )
+        assert comparison is not None
+        assert comparison.previous_period_cost == pytest.approx(0.20)
