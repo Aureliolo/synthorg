@@ -1,16 +1,34 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
+import type { FineTuneDataSourceType } from '@/api/endpoints/fine-tuning'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 
 import { PreflightResultPanel } from './PreflightResultPanel'
 import { usePipelineControlState } from './usePipelineControlState'
+
+const DATA_SOURCE_OPTIONS: readonly { value: FineTuneDataSourceType; label: string }[] = [
+  { value: 'directory', label: 'Document directory' },
+  { value: 'trajectory', label: 'Agent trajectories' },
+]
 
 export function PipelineControlPanel() {
   const ctrl = usePipelineControlState()
 
   return (
     <div className="flex flex-col gap-section-gap">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Data source</span>
+        <SegmentedControl<FineTuneDataSourceType>
+          label="Fine-tune data source"
+          options={DATA_SOURCE_OPTIONS}
+          value={ctrl.dataSource}
+          onChange={ctrl.setDataSource}
+          disabled={ctrl.isActive}
+        />
+      </div>
+
       <SourceDirectoryRow
         sourceDir={ctrl.sourceDir}
         loading={ctrl.loading}

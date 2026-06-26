@@ -43,6 +43,7 @@ const BASE_RUN: FineTuneRun = {
   error: null,
   config: {
     source_dir: 'data',
+    data_source: 'directory',
     base_model: 'small-base',
     output_dir: 'models',
     epochs: 1,

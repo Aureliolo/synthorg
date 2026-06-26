@@ -13,6 +13,7 @@ import { Pagination } from '@/components/ui/pagination'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import type { ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { useListPagination } from '@/hooks/use-list-pagination'
+import { formatNumber } from '@/utils/format'
 import { EntityCard } from './EntityCard'
 import type { EntityResponse } from '@/api/endpoints/ontology'
 import type { EntitySortKey } from '@/stores/ontology'
@@ -187,6 +188,7 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
   const setEntitySort = useOntologyStore((s) => s.setEntitySort)
   const setSelectedEntity = useOntologyStore((s) => s.setSelectedEntity)
   const deleteEntity = useOntologyStore((s) => s.deleteEntity)
+  const entityMeta = useOntologyStore((s) => s.entityMeta)
 
   const hasActiveFilters = searchQuery.trim().length > 0 || tierFilter !== 'all'
 
@@ -217,6 +219,14 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
 
   return (
     <SectionCard title="Entity Catalog" icon={Shapes}>
+      {entityMeta && (
+        <p className="text-xs text-text-muted" aria-live="polite">
+          {formatNumber(entityMeta.total_count)} total ({formatNumber(entityMeta.core_count)} core,{' '}
+          {formatNumber(entityMeta.user_count)} user)
+          {entityMeta.drift_summary != null
+            && `, ${formatNumber(entityMeta.drift_summary.entities_with_drift)} drifting`}
+        </p>
+      )}
       <EntityCatalogControls
         tierFilter={tierFilter}
         searchQuery={searchQuery}

@@ -153,7 +153,7 @@ function DateGroupSection({
           key={msg.id}
           message={msg}
           isNew={newMessageIds?.has(msg.id)}
-          onClick={() => onSelectMessage(msg.id)}
+          onSelect={onSelectMessage}
         />
       ))}
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { paginateAll } from '@/api/client'
 import { listAgents } from '@/api/endpoints/agents'
 import type { AgentConfig } from '@/api/types'
 import { createLogger } from '@/lib/logger'
@@ -72,14 +73,15 @@ function loadAgentRoster(
 ): () => void {
   const token = createCancellationToken()
   // Kick off the fetch in a microtask so the initial render completes first
-  // (avoids the synchronous set-state-in-effect lint rule). Ask for the full
-  // roster up-front so the table does not silently truncate to the default
-  // 50-agent page.
+  // (avoids the synchronous set-state-in-effect lint rule). Walk every cursor
+  // page so the roster, its aggregate metrics, and client-side search cover
+  // the full company rather than truncating to a fixed cap; the page paginates
+  // the loaded set in the browser.
   void Promise.resolve()
-    .then(() => listAgents({ limit: 200 }))
-    .then((paginated) => {
+    .then(() => paginateAll<AgentConfig>((cursor) => listAgents(cursor ? { cursor } : undefined)))
+    .then((agents) => {
       if (!token.cancelled()) {
-        setAgents(paginated.data)
+        setAgents(agents)
         setLoading(false)
       }
     })

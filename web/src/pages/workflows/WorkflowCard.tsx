@@ -3,6 +3,7 @@ import { Menu } from '@base-ui/react/menu'
 import { MoreHorizontal, Pencil, Copy, Download, Trash2 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { ROUTES } from '@/router/routes'
+import { Checkbox } from '@/components/ui/checkbox'
 import { StatPill } from '@/components/ui/stat-pill'
 import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { formatRelativeTime, formatLabel, formatDateTime } from '@/utils/format'
@@ -89,16 +90,17 @@ function SelectCheckbox({
   onToggleSelect,
 }: SelectCheckboxProps) {
   return (
-    <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
-      <input
-        type="checkbox"
-        className="size-4 rounded border-border accent-accent"
+    <div
+      className="absolute left-3 top-3 z-10"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <Checkbox
         checked={selected}
-        onChange={() => onToggleSelect(workflowId)}
-        onClick={(e) => e.stopPropagation()}
+        onCheckedChange={() => onToggleSelect(workflowId)}
         aria-label={`Select workflow ${workflowName}`}
       />
-    </label>
+    </div>
   )
 }
 

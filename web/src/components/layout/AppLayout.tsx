@@ -284,7 +284,16 @@ export default function AppLayout() {
   // exact viewport so only ``main`` scrolls.
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
+      {/* Keyboard users can jump past the header + sidebar straight to content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-[var(--so-shadow-card-hover)] focus:outline-none focus:ring-2 focus:ring-accent"
+      >
+        Skip to main content
+      </a>
+      <header>
+        <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
+      </header>
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
         {/* Padding lives on the animated wrapper (which is ``h-full``), NOT on
@@ -293,7 +302,7 @@ export default function AppLayout() {
             below the content. Inside the border-box ``h-full`` wrapper the
             padding is absorbed, and the Org Chart's concrete-height need (it
             relies on ``h-full``) is preserved. */}
-        <main className="flex-1 overflow-y-auto">
+        <main id="main-content" tabIndex={-1} aria-label="Main content" className="flex-1 overflow-y-auto">
           <RouteBoundary key={location.pathname}>
             <Suspense fallback={<PageLoadingFallback />}>
               <AnimatedPresence routeKey={location.pathname} className="p-card">

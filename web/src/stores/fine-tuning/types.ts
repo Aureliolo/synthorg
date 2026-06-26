@@ -4,7 +4,7 @@ import type {
   FineTuneRun,
   FineTuneStatus,
   PreflightResult,
-  StartFineTuneRequest,
+  FineTuneRequest,
 } from '@/api/endpoints/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -39,9 +39,9 @@ export interface FineTuningState {
   fetchStatus: () => Promise<void>
   fetchCheckpoints: () => Promise<void>
   fetchRuns: () => Promise<void>
-  startRun: (request: StartFineTuneRequest) => Promise<boolean>
+  startRun: (request: FineTuneRequest) => Promise<boolean>
   cancelRun: () => Promise<boolean>
-  runPreflightCheck: (request: StartFineTuneRequest) => Promise<boolean>
+  runPreflightCheck: (request: FineTuneRequest) => Promise<boolean>
   deployCheckpointAction: (id: string) => Promise<boolean>
   rollbackCheckpointAction: (id: string) => Promise<boolean>
   deleteCheckpointAction: (id: string) => Promise<boolean>

@@ -12,8 +12,10 @@ import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { MetricCard } from '@/components/ui/metric-card'
+import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
 import {
@@ -144,6 +146,35 @@ function ClientProfileSection({ client }: { client: ClientProfile }) {
   )
 }
 
+function SatisfactionHistoryList({ history }: { history: SatisfactionHistory['history'] }) {
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
+    useListPagination({ items: history, namespace: 'reviews', defaultPageSize: 20 })
+  return (
+    <div className="space-y-2">
+      <ul className="space-y-2">
+        {paginatedItems.map((point) => (
+          <li
+            key={point.feedback_id}
+            className="flex items-center justify-between rounded-md border border-border bg-card-hover p-card text-sm"
+          >
+            <span className="text-foreground">{point.task_id}</span>
+            <span className={point.accepted ? 'text-success' : 'text-danger'}>
+              {point.accepted ? 'accepted' : 'rejected'} · {point.score.toFixed(2)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
+    </div>
+  )
+}
+
 function ClientSatisfactionSection({
   satisfaction,
   satisfactionError,
@@ -173,24 +204,7 @@ function ClientSatisfactionSection({
             />
             <MetricCard label="Avg score" value={satisfaction.average_score.toFixed(2)} />
           </div>
-          <ul className="space-y-2">
-            {satisfaction.history.slice(0, 10).map((point) => (
-              <li
-                key={point.feedback_id}
-                className="flex items-center justify-between rounded-md border border-border bg-card-hover p-card text-sm"
-              >
-                <span className="text-foreground">{point.task_id}</span>
-                <span className={point.accepted ? 'text-success' : 'text-danger'}>
-                  {point.accepted ? 'accepted' : 'rejected'} · {point.score.toFixed(2)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {satisfaction.history.length > 10 && (
-            <p className="mt-2 text-xs text-text-secondary">
-              Showing the 10 most recent of {satisfaction.history.length} reviews.
-            </p>
-          )}
+          <SatisfactionHistoryList history={satisfaction.history} />
         </div>
       ) : (
         <p className="text-sm text-text-secondary">

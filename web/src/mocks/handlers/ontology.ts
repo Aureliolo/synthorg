@@ -6,12 +6,12 @@ import type {
   getEntity,
   getVersionManifest,
   listDriftReports,
-  listEntities,
   listEntityVersions,
   syncOrgMemory,
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
+import type { EntityListResponse } from '@/api/types'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
@@ -37,7 +37,15 @@ function buildEntity(
 
 export const ontologyHandlers = [
   http.get('/api/v1/ontology/entities', () =>
-    HttpResponse.json(paginatedFor<typeof listEntities>(emptyPage<EntityResponse>())),
+    HttpResponse.json({
+      data: [],
+      degraded_sources: [],
+      error: null,
+      error_detail: null,
+      meta: { core_count: 0, user_count: 0, total_count: 0, drift_summary: null },
+      pagination: { limit: 200, next_cursor: null, has_more: false },
+      success: true,
+    } satisfies EntityListResponse),
   ),
   http.get('/api/v1/ontology/entities/:name', ({ params }) =>
     HttpResponse.json(

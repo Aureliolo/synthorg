@@ -189,7 +189,7 @@ async function createProviderFromPresetImpl(
     set({ providersMutationError: msg })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create provider',
+      ...getCrudErrorTitle(err, 'Failed to create provider'),
       description: msg,
     })
     return { ok: false, error: msg }

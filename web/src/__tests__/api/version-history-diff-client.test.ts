@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { diffAgentIdentityVersions } from '@/api/endpoints/agents'
 import { diffWorkflowVersions } from '@/api/endpoints/workflows'
+import type { AgentIdentityDiff, WorkflowDiff } from '@/api/types'
 import { server } from '@/test-setup'
 
 /**
@@ -25,21 +26,25 @@ describe('version-history per-domain diff', () => {
         url = parsed.pathname
         fromParam = parsed.searchParams.get('from_version') ?? ''
         toParam = parsed.searchParams.get('to_version') ?? ''
+        // Typing the fixture against the generated DTO pins the mock so a
+        // backend schema rename (e.g. ``field_changes`` -> ``field_diffs``)
+        // fails this test at type-check instead of passing against stale data.
+        const data: AgentIdentityDiff = {
+          agent_id: String(p['id']),
+          from_version: 1,
+          to_version: 3,
+          field_changes: [
+            {
+              field_path: 'personality.risk_tolerance',
+              change_type: 'modified',
+              old_value: 'low',
+              new_value: 'high',
+            },
+          ],
+          summary: '1 field changed',
+        }
         return HttpResponse.json({
-          data: {
-            agent_id: String(p['id']),
-            from_version: 1,
-            to_version: 3,
-            field_changes: [
-              {
-                field_path: 'personality.risk_tolerance',
-                change_type: 'modified',
-                old_value: 'low',
-                new_value: 'high',
-              },
-            ],
-            summary: '1 field changed',
-          },
+          data,
           error: null,
           error_detail: null,
           success: true,
@@ -70,20 +75,21 @@ describe('version-history per-domain diff', () => {
     server.use(
       http.get('/api/v1/workflows/:id/diff', ({ request, params: p }) => {
         url = new URL(request.url).pathname
+        const data: WorkflowDiff = {
+          definition_id: String(p['id']),
+          from_version: 2,
+          to_version: 4,
+          node_changes: [
+            { node_id: 'n1', change_type: 'added', old_value: null, new_value: { type: 'task' } },
+          ],
+          edge_changes: [
+            { edge_id: 'e1', change_type: 'removed', old_value: { from: 'a' }, new_value: null },
+          ],
+          metadata_changes: [{ field: 'name', old_value: 'old', new_value: 'new' }],
+          summary: '3 changes',
+        }
         return HttpResponse.json({
-          data: {
-            definition_id: String(p['id']),
-            from_version: 2,
-            to_version: 4,
-            node_changes: [
-              { node_id: 'n1', change_type: 'added', old_value: null, new_value: { type: 'task' } },
-            ],
-            edge_changes: [
-              { edge_id: 'e1', change_type: 'removed', old_value: { from: 'a' }, new_value: null },
-            ],
-            metadata_changes: [{ field: 'name', old_value: 'old', new_value: 'new' }],
-            summary: '3 changes',
-          },
+          data,
           error: null,
           error_detail: null,
           success: true,

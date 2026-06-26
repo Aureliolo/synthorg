@@ -12,9 +12,15 @@ from typing import Annotated
 
 from litestar import Controller, Request, get
 from litestar.datastructures import State
+from litestar.exceptions import NotAuthorizedException, ServiceUnavailableException
 from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 
+from synthorg.api.channels import get_channels_plugin
+from synthorg.api.controllers.events._dashboard import (
+    dashboard_channel_frames,
+    resolve_dashboard_channels,
+)
 from synthorg.api.controllers.events._hub_access import require_hub
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
@@ -22,6 +28,7 @@ from synthorg.api.controllers.events._shared import (
 from synthorg.api.controllers.events._sse import (
     _sse_event_stream,
     assert_sse_session_access,
+    revalidated_sse_stream,
 )
 from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH
@@ -121,4 +128,68 @@ class EventStreamController(Controller):
                 user=user,
                 after_id=after_id,
             ),
+        )
+
+    @get(
+        "/dashboard",
+        media_type="text/event-stream",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("events.stream", key="user_or_ip"),
+        ],
+        opt=per_op_concurrency_from_policy(
+            "events.stream",
+            key="user",
+        ),
+    )
+    async def dashboard_stream(
+        self,
+        state: State,
+        request: Request[object, object, State],
+        last_event_id: Annotated[
+            str | None,
+            QueryParameter(
+                required=False,
+                max_length=_MAX_LAST_EVENT_ID_LENGTH,
+                description="Reconnect cursor; presence replays the recent backlog.",
+            ),
+        ] = None,
+    ) -> ServerSentEvent:
+        """Session-less SSE feed of the user's dashboard channels.
+
+        The read-only fallback the SPA opens when the WebSocket upgrade is
+        proxy-blocked. Subscribes to every channel the caller may read (plus
+        their user channel), forwards each ``WsEvent`` as a ``ws`` frame, and
+        replays the recent backlog when ``last_event_id`` is present.
+
+        Args:
+            state: Application state.
+            request: Incoming HTTP request (for the authenticated user).
+            last_event_id: Reconnect cursor; presence triggers backlog replay.
+
+        Returns:
+            SSE stream of the user's channel events.
+
+        Raises:
+            NotAuthorizedException: When no authenticated user is present.
+            ServiceUnavailableException: When the channel feed is not wired.
+        """
+        app_state: AppState = state.app_state
+        user = getattr(request, "user", None)
+        if not isinstance(user, AuthenticatedUser):
+            msg = "Authentication required"
+            raise NotAuthorizedException(msg)
+        plugin = get_channels_plugin(request)
+        if plugin is None:
+            msg = "Real-time channel feed unavailable"
+            raise ServiceUnavailableException(msg)
+        channels = resolve_dashboard_channels(user)
+        inner = dashboard_channel_frames(
+            plugin,
+            channels,
+            app_state=app_state,
+            replay=last_event_id is not None,
+        )
+        return ServerSentEvent(
+            content=revalidated_sse_stream(inner, app_state=app_state, user=user),
         )

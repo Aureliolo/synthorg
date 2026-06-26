@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { useFlash } from '@/hooks/useFlash'
@@ -16,10 +16,19 @@ import type { Message } from '@/api/types/messages'
 interface MessageBubbleProps {
   message: Message
   isNew?: boolean | undefined
-  onClick?: (() => void) | undefined
+  /**
+   * Selection handler called with the message id. Taking the id (rather than
+   * a pre-bound zero-arg closure) lets callers pass one stable callback for a
+   * whole list so the memoised bubble does not re-render per parent update.
+   */
+  onSelect?: ((id: string) => void) | undefined
 }
 
-export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  isNew,
+  onSelect,
+}: MessageBubbleProps) {
   const { triggerFlash, flashStyle } = useFlash()
   const hasTriggeredRef = useRef(false)
 
@@ -56,7 +65,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={onSelect ? () => onSelect(message.id) : undefined}
       aria-label={ariaLabel}
       className={cn(
         'flex w-full gap-3 rounded-lg p-card text-left transition-colors',
@@ -96,4 +105,4 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
       </div>
     </button>
   )
-}
+})

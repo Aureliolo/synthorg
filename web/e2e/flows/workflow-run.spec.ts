@@ -105,6 +105,92 @@ test.describe('Workflows list + system.error notification path', () => {
     await expect(page.locator('main')).toBeVisible()
   })
 
+  test('activates and cancels a workflow execution round-trip', async ({ page }) => {
+    const workflowId = 'workflow-001'
+    const executionId = 'exec-77'
+    // The list route reflects the cancellation once the POST flips this flag,
+    // so the post-cancel reload shows the terminal ``cancelled`` status.
+    let cancelled = false
+
+    const makeExecution = () => ({
+      id: executionId,
+      definition_id: workflowId,
+      definition_revision: 1,
+      version: 1,
+      status: cancelled ? 'cancelled' : 'running',
+      activated_by: 'operator',
+      project: 'default',
+      created_at: '2026-04-01T12:00:00Z',
+      updated_at: '2026-04-01T12:00:00Z',
+      completed_at: cancelled ? '2026-04-01T12:05:00Z' : null,
+      error: null,
+      node_executions: [],
+    })
+
+    await page.route(
+      `**/api/v1/workflow-executions/by-definition/${workflowId}**`,
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: [makeExecution()],
+            error: null,
+            error_detail: null,
+            pagination: {
+              total: 1,
+              offset: 0,
+              limit: 50,
+              next_cursor: null,
+              has_more: false,
+            },
+          },
+        }),
+    )
+
+    await page.route(
+      `**/api/v1/workflow-executions/${executionId}/cancel`,
+      (route) => {
+        if (route.request().method() !== 'POST') {
+          route.fallback()
+          return
+        }
+        cancelled = true
+        route.fulfill({
+          json: {
+            success: true,
+            data: makeExecution(),
+            error: null,
+            error_detail: null,
+          },
+        })
+      },
+    )
+
+    await page.goto(`/workflows/${workflowId}/executions`)
+    await expect(page).toHaveURL(/\/executions/)
+    // The activated (running) execution renders with its in-flight Cancel
+    // affordance; a terminal status would hide the button.
+    await expect(page.getByText('running').first()).toBeVisible()
+
+    // Row Cancel opens the confirm dialog; ``Cancel run`` fires the
+    // POST .../cancel round-trip the executions controller owns.
+    await clickButton(page, /^cancel$/i)
+    await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.url().includes(`/workflow-executions/${executionId}/cancel`)
+          && res.request().method() === 'POST',
+      ),
+      clickButton(page, /cancel run/i),
+    ])
+
+    // The success toast confirms the round-trip, and the reloaded list now
+    // reports the terminal ``cancelled`` status, proving the UI reflects the
+    // activated execution's new state after the API exchange.
+    await expect(page.getByText('Cancellation requested').first()).toBeVisible()
+    await expect(page.getByText('cancelled').first()).toBeVisible()
+  })
+
   test('creates a workflow via the POST /workflows round-trip', async ({ page }) => {
     // Single source of truth for the name so the form input, the mocked
     // response, and the toast assertion cannot drift apart if the

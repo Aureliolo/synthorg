@@ -5,16 +5,20 @@
  * page surface; the preview / validation panel reuses the store's
  * ``previewRule`` action without owning its error state.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Power } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { CustomRuleFormDrawer } from './custom-rules/CustomRuleFormDrawer'
 import type { CustomRule } from '@/api/endpoints/custom-rules'
@@ -106,6 +110,7 @@ interface CustomRulesContentProps {
   loading: boolean
   hasError: boolean
   rulesCount: number
+  filteredCount: number
   sortedRules: readonly CustomRule[]
   onToggle: (id: string) => void
   onEdit: (rule: CustomRule) => void
@@ -117,6 +122,7 @@ function CustomRulesContent({
   loading,
   hasError,
   rulesCount,
+  filteredCount,
   sortedRules,
   onToggle,
   onEdit,
@@ -144,6 +150,14 @@ function CustomRulesContent({
         title="No custom rules yet"
         description="Custom rules let you trigger improvement proposals when an observed metric crosses a threshold."
         action={{ label: 'Create your first rule', onClick: onCreate }}
+      />
+    )
+  }
+  if (filteredCount === 0) {
+    return (
+      <EmptyState
+        title="No rules match your search"
+        description="Adjust or clear the search to see the rest of your custom rules."
       />
     )
   }
@@ -187,29 +201,116 @@ function DeleteRuleDialog({
   )
 }
 
+interface CustomRulesView {
+  search: string
+  setSearch: (value: string) => void
+  filteredCount: number
+  page: number
+  pageSize: number
+  totalItems: number
+  paginatedItems: readonly CustomRule[]
+  setPage: (page: number) => void
+  setPageSize: (size: number) => void
+}
+
+/** Alpha sort + name/metric search + URL-persisted client pagination. */
+function useCustomRulesView(rules: readonly CustomRule[]): CustomRulesView {
+  const [search, setSearch] = useState('')
+  const filteredRules = useMemo(() => {
+    const sorted = [...rules].sort((a, b) => a.name.localeCompare(b.name))
+    const query = search.trim().toLowerCase()
+    if (!query) return sorted
+    return sorted.filter(
+      (r) =>
+        r.name.toLowerCase().includes(query)
+        || r.metric_path.toLowerCase().includes(query),
+    )
+  }, [rules, search])
+
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize, resetPage } =
+    useListPagination({ items: filteredRules, namespace: 'rules' })
+
+  const didMountRef = useRef(false)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    resetPage()
+  }, [search, resetPage])
+
+  return {
+    search,
+    setSearch,
+    filteredCount: filteredRules.length,
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems,
+    setPage,
+    setPageSize,
+  }
+}
+
+interface CustomRuleDialogsProps {
+  createOpen: boolean
+  onCreateClose: () => void
+  editing: CustomRule | null
+  onEditClose: () => void
+  deletingId: string | null
+  onDeleteClose: () => void
+}
+
+function CustomRuleDialogs({
+  createOpen,
+  onCreateClose,
+  editing,
+  onEditClose,
+  deletingId,
+  onDeleteClose,
+}: CustomRuleDialogsProps) {
+  const submitting = useCustomRulesStore((s) => s.submitting)
+  const deleteRule = useCustomRulesStore((s) => s.deleteRule)
+  return (
+    <>
+      <CustomRuleFormDrawer open={createOpen} mode="create" rule={null} onClose={onCreateClose} />
+      <CustomRuleFormDrawer
+        open={editing !== null}
+        mode="edit"
+        rule={editing}
+        onClose={onEditClose}
+      />
+      <DeleteRuleDialog
+        deletingId={deletingId}
+        submitting={submitting}
+        onCancel={onDeleteClose}
+        onConfirm={async (id) => {
+          // Only dismiss on success; on failure the store has already surfaced
+          // the error toast and we keep the dialog open for an in-context retry.
+          if (await deleteRule(id)) onDeleteClose()
+        }}
+      />
+    </>
+  )
+}
+
 export default function CustomRulesPage() {
   const rules = useCustomRulesStore((s) => s.rules)
   const loading = useCustomRulesStore((s) => s.loading)
   const error = useCustomRulesStore((s) => s.error)
-  const submitting = useCustomRulesStore((s) => s.submitting)
   const fetchRules = useCustomRulesStore((s) => s.fetchRules)
   const fetchMetrics = useCustomRulesStore((s) => s.fetchMetrics)
-  const deleteRule = useCustomRulesStore((s) => s.deleteRule)
   const toggleRule = useCustomRulesStore((s) => s.toggleRule)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<CustomRule | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const view = useCustomRulesView(rules)
 
   useEffect(() => {
     void fetchRules()
     void fetchMetrics()
   }, [fetchRules, fetchMetrics])
-
-  const sortedRules = useMemo(
-    () => [...rules].sort((a, b) => a.name.localeCompare(b.name)),
-    [rules],
-  )
 
   return (
     <div className="flex flex-col gap-section-gap">
@@ -229,52 +330,54 @@ export default function CustomRulesPage() {
           severity="error"
           title="Could not load custom rules"
           description={error}
-          onRetry={() => {
-            void fetchRules()
-          }}
+          onRetry={() => void fetchRules()}
         />
       )}
 
       <WsConnectionBanner />
 
+      {rules.length > 0 && (
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={view.search}
+              onChange={view.setSearch}
+              placeholder="Search rules by name or metric..."
+              aria-label="Search custom rules"
+            />
+          }
+        />
+      )}
+
       <CustomRulesContent
         loading={loading}
         hasError={Boolean(error)}
         rulesCount={rules.length}
-        sortedRules={sortedRules}
-        onToggle={(id) => {
-          void toggleRule(id)
-        }}
+        filteredCount={view.filteredCount}
+        sortedRules={view.paginatedItems}
+        onToggle={(id) => void toggleRule(id)}
         onEdit={setEditing}
         onDelete={setDeletingId}
         onCreate={() => setCreateOpen(true)}
       />
 
-      <CustomRuleFormDrawer
-        open={createOpen}
-        mode="create"
-        rule={null}
-        onClose={() => setCreateOpen(false)}
-      />
+      {view.filteredCount > 0 && (
+        <Pagination
+          page={view.page}
+          pageSize={view.pageSize}
+          total={view.totalItems}
+          onPageChange={view.setPage}
+          onPageSizeChange={view.setPageSize}
+        />
+      )}
 
-      <CustomRuleFormDrawer
-        open={editing !== null}
-        mode="edit"
-        rule={editing}
-        onClose={() => setEditing(null)}
-      />
-
-      <DeleteRuleDialog
+      <CustomRuleDialogs
+        createOpen={createOpen}
+        onCreateClose={() => setCreateOpen(false)}
+        editing={editing}
+        onEditClose={() => setEditing(null)}
         deletingId={deletingId}
-        submitting={submitting}
-        onCancel={() => setDeletingId(null)}
-        onConfirm={async (id) => {
-          const ok = await deleteRule(id)
-          // Only dismiss on success; on failure the store has
-          // already surfaced the error toast and we keep the
-          // dialog open so the user can retry in context.
-          if (ok) setDeletingId(null)
-        }}
+        onDeleteClose={() => setDeletingId(null)}
       />
     </div>
   )

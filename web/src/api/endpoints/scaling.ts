@@ -6,35 +6,18 @@ import {
   type PaginatedResult,
 } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type {
+  ScalingDecisionResponse,
+  ScalingSignalResponse,
+  ScalingStrategyResponse,
+} from '../types'
 
 // -- Response types ----------------------------------------------------------
 
-export interface ScalingStrategyResponse {
-  name: string
-  enabled: boolean
-  priority: number
-}
-
-export interface ScalingSignalResponse {
-  name: string
-  value: number
-  source: string
-  threshold: number | null
-  timestamp: string
-}
-
-export interface ScalingDecisionResponse {
-  id: string
-  action_type: string
-  source_strategy: string
-  target_agent_id: string | null
-  target_role: string | null
-  target_skills: readonly string[]
-  target_department: string | null
-  rationale: string
-  confidence: number
-  signals: readonly ScalingSignalResponse[]
-  created_at: string
+export type {
+  ScalingDecisionResponse,
+  ScalingSignalResponse,
+  ScalingStrategyResponse,
 }
 
 // -- API functions -----------------------------------------------------------

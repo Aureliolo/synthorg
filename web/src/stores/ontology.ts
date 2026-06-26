@@ -6,6 +6,7 @@ import {
   deleteEntity as apiDeleteEntity,
   listEntities,
   listDriftReports,
+  type EntityListMeta,
   type EntityResponse,
   type DriftReportResponse,
 } from '@/api/endpoints/ontology'
@@ -24,6 +25,11 @@ interface OntologyState {
   // ── Entity catalog ──
   entities: readonly EntityResponse[]
   totalEntities: number
+  /**
+   * Catalog-wide aggregates from the list endpoint's ``meta`` envelope
+   * (core/user/total counts + drift summary); ``null`` until first load.
+   */
+  entityMeta: EntityListMeta | null
   entitiesLoading: boolean
   entitiesError: string | null
 
@@ -105,6 +111,7 @@ export const useOntologyStore = create<OntologyState>()((set, get) => ({
   // ── Defaults ──
   entities: [],
   totalEntities: 0,
+  entityMeta: null,
   entitiesLoading: false,
   entitiesError: null,
 
@@ -126,7 +133,8 @@ export const useOntologyStore = create<OntologyState>()((set, get) => ({
       const result = await listEntities({ limit: 200 })
       set({
         entities: result.data,
-        totalEntities: result.data.length,
+        totalEntities: result.meta.total_count,
+        entityMeta: result.meta,
         entitiesLoading: false,
       })
     } catch (err) {

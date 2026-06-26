@@ -25,7 +25,7 @@ const meta: Meta<typeof MessageBubble> = {
   title: 'Pages/Messages/MessageBubble',
   component: MessageBubble,
   parameters: { a11y: { test: 'error' } },
-  args: { onClick: fn() },
+  args: { onSelect: fn() },
   decorators: [(Story) => <div className="max-w-lg"><Story /></div>],
 }
 export default meta

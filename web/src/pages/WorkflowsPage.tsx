@@ -37,7 +37,7 @@ export default function WorkflowsPage() {
   const countLabel =
     ctrl.data.filteredWorkflows.length === ctrl.data.totalWorkflows
       ? undefined
-      : `${ctrl.data.filteredWorkflows.length} of ${ctrl.data.totalWorkflows}`
+      : `${formatNumber(ctrl.data.filteredWorkflows.length)} of ${formatNumber(ctrl.data.totalWorkflows)}`
 
   return (
     <div className="space-y-section-gap">

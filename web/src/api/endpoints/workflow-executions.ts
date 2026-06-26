@@ -10,53 +10,10 @@
  * pagination metadata.
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { WorkflowNodeExecution } from '../types'
+import type { WorkflowExecution, WorkflowExecutionStatus } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-/** Mirrors ``synthorg.engine.workflow.enums.WorkflowExecutionStatus``. */
-export type WorkflowExecutionStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-
-/**
- * Mirrors ``synthorg.engine.workflow.execution_models.WorkflowExecution``.
- * Field names match the backend exactly (``definition_id`` not
- * ``workflow_id``, ``activated_by`` not ``triggered_by``, ``error`` not
- * ``error_message``); the dashboard does not rename them so a future
- * backend field addition lands without a frontend rename pass.
- */
-export interface WorkflowExecution {
-  /** Unique execution id. */
-  id: string
-  /** Source ``WorkflowDefinition`` id (NOT the URL path's ``workflow_id``). */
-  definition_id: string
-  /** Definition revision the execution was activated against. */
-  definition_revision: number
-  /** Optimistic-concurrency version of the execution record. */
-  version: number
-  /** Overall execution lifecycle status. */
-  status: WorkflowExecutionStatus
-  /** Identity of the user / agent that triggered activation. */
-  activated_by: string
-  /** Project the execution belongs to. */
-  project: string
-  /** ISO 8601 timestamp the execution record was created (== "started"). */
-  created_at: string
-  /** ISO 8601 timestamp of the most recent state update. */
-  updated_at: string
-  /**
-   * ISO 8601 completion timestamp; ``null`` until the execution reaches
-   * a terminal state (``completed`` / ``failed`` / ``cancelled``).
-   */
-  completed_at: string | null
-  /** Error message when ``status === 'failed'``; ``null`` otherwise. */
-  error: string | null
-  /** Per-node execution records for the run. */
-  node_executions: readonly WorkflowNodeExecution[]
-}
+export type { WorkflowExecution, WorkflowExecutionStatus }
 
 /**
  * GET /workflow-executions/by-definition/{workflow_id}

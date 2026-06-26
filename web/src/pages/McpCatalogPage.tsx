@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SelectField } from '@/components/ui/select-field'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatLabel } from '@/utils/format'
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { ConnectionFormModal } from './connections/ConnectionFormModal'
@@ -64,9 +66,31 @@ const CATALOG_SORT_OPTIONS = [
   { value: 'name' as const, label: 'Name A-Z' },
 ]
 
+/**
+ * Client-side pagination over the filtered catalog. The catalog is a bounded
+ * bundled set filtered / sorted / searched entirely in the browser, so the
+ * full set is loaded once and paged here (matching EntityCatalog / AgentsPage);
+ * ``?catalogPage`` deep-links survive. Resets to page 1 when the basis changes.
+ */
+function useCatalogPagination(fs: CatalogFilterSort) {
+  const pagination = useListPagination({ items: fs.entries, namespace: 'catalog' })
+  const { resetPage, totalItems } = pagination
+  const didMountRef = useRef(false)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    resetPage()
+  }, [fs.connectionType, fs.sort, totalItems, resetPage])
+  return pagination
+}
+
 export default function McpCatalogPage() {
   const ctrl = useMcpCatalogPageController()
   const fs = useCatalogFilterSort(ctrl.visibleEntries)
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
+    useCatalogPagination(fs)
 
   return (
     <div className="flex flex-col gap-section-gap">
@@ -106,13 +130,23 @@ export default function McpCatalogPage() {
       ) : (
         <ErrorBoundary level="section">
           <CatalogGridView
-            entries={fs.entries}
+            entries={paginatedItems}
             installedEntryIds={ctrl.installedEntryIds}
             onSelect={ctrl.handleSelect}
             onInstall={ctrl.handleInstall}
             emptyTitle={ctrl.emptyTitle}
             emptyDescription={ctrl.emptyDescription}
           />
+          {fs.entries.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={totalItems}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              className="mt-section-gap"
+            />
+          )}
         </ErrorBoundary>
       )}
 

@@ -296,6 +296,13 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
 
+/** Supported SQL dialects for ``database`` connections. */
+export const DATABASE_DIALECTS = ['postgresql', 'mysql', 'sqlite'] as const
+export type DatabaseDialect = (typeof DATABASE_DIALECTS)[number]
+
+/** Embedded (file-based) dialect: server host/port/credentials are optional. */
+const SQLITE_DIALECT: DatabaseDialect = 'sqlite'
+
 /**
  * Validate a single connection field.
  *
@@ -306,7 +313,11 @@ const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
 function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
   if (spec.required) return true
   // host/port/username/password are required for non-SQLite dialects.
-  return DATABASE_SERVER_FIELDS.has(spec.key) && dialect !== undefined && dialect.toLowerCase() !== 'sqlite'
+  return (
+    DATABASE_SERVER_FIELDS.has(spec.key)
+    && dialect !== undefined
+    && dialect.toLowerCase() !== SQLITE_DIALECT
+  )
 }
 
 function validateUrlValue(spec: ConnectionFieldSpec, value: string): string | null {

@@ -1,75 +1,44 @@
 /**
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
+import type { AxiosResponse } from 'axios'
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type {
+  CreateEntityRequest,
+  DriftAgentResponse,
+  DriftReportResponse,
+  EntityFieldResponse,
+  EntityListMeta,
+  EntityListResponse,
+  EntityRelationResponse,
+  EntityResponse,
+  EntityVersionResponse,
+  UpdateEntityRequest,
+} from '../types'
 
 // ── Types ─────────────────────────────────────────────────────
 
-export interface EntityFieldResponse {
-  name: string
-  type_hint: string
-  description: string
+export type {
+  CreateEntityRequest,
+  DriftAgentResponse,
+  DriftReportResponse,
+  EntityFieldResponse,
+  EntityListMeta,
+  EntityRelationResponse,
+  EntityResponse,
+  EntityVersionResponse,
+  UpdateEntityRequest,
 }
 
-export interface EntityRelationResponse {
-  target: string
-  relation: string
-  description: string
-}
-
-export interface EntityResponse {
-  name: string
-  tier: 'core' | 'user'
-  source: 'auto' | 'config' | 'api'
-  definition: string
-  fields: EntityFieldResponse[]
-  constraints: string[]
-  disambiguation: string
-  relationships: EntityRelationResponse[]
-  created_by: string
-  created_at: string
-  updated_at: string
-}
-
-export interface EntityVersionResponse {
-  entity_id: string
-  version: number
-  content_hash: string
-  snapshot: EntityResponse
-  saved_by: string
-  saved_at: string
-}
-
-export interface DriftAgentResponse {
-  agent_id: string
-  divergence_score: number
-  details: string
-}
-
-export interface DriftReportResponse {
-  entity_name: string
-  divergence_score: number
-  divergent_agents: DriftAgentResponse[]
-  canonical_version: number
-  recommendation: 'no_action' | 'notify' | 'retrain' | 'escalate'
-}
-
-export interface CreateEntityRequest {
-  name: string
-  definition?: string
-  fields?: { name: string; type_hint: string; description?: string }[]
-  constraints?: string[]
-  disambiguation?: string
-  relationships?: { target: string; relation: string; description?: string }[]
-}
-
-export interface UpdateEntityRequest {
-  definition?: string
-  fields?: { name: string; type_hint: string; description?: string }[]
-  constraints?: string[]
-  disambiguation?: string
-  relationships?: { target: string; relation: string; description?: string }[]
+/**
+ * Paginated entity page plus the backend's catalog-wide aggregates
+ * (``core_count`` / ``user_count`` / ``total_count`` / ``drift_summary``)
+ * carried on ``EntityListResponse.meta`` -- distinct from the per-page
+ * ``data.length`` so the UI can show real totals without a second call.
+ */
+export interface EntityListResult extends PaginatedResult<EntityResponse> {
+  readonly meta: EntityListMeta
 }
 
 // ── Endpoints ─────────────────────────────────────────────────
@@ -79,11 +48,16 @@ export async function listEntities(params?: {
   cursor?: string | null
   limit?: number
   tier?: string
-}): Promise<PaginatedResult<EntityResponse>> {
-  const response = await apiClient.get<PaginatedResponse<EntityResponse>>('/ontology/entities', {
+}): Promise<EntityListResult> {
+  const response = await apiClient.get<EntityListResponse>('/ontology/entities', {
     params,
   })
-  return unwrapPaginated<EntityResponse>(response)
+  // ``unwrapPaginated`` only reads ``data`` / ``pagination`` and never
+  // mutates, so the wire envelope's ``readonly`` data is safe to pass.
+  const page = unwrapPaginated<EntityResponse>(
+    response as unknown as AxiosResponse<PaginatedResponse<EntityResponse>>,
+  )
+  return { ...page, meta: response.data.meta }
 }
 
 export async function getEntity(name: string): Promise<EntityResponse> {

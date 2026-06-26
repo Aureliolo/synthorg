@@ -17,7 +17,7 @@ import {
 } from '@/api/endpoints/escalations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type {
   CancelEscalationRequest,
   EscalationResponse,
@@ -200,7 +200,7 @@ async function submitDecisionImpl(
     log.warn('Failed to submit escalation decision:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to submit decision',
+      ...getCrudErrorTitle(err, 'Failed to submit decision'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })
@@ -233,7 +233,7 @@ async function cancelEscalationImpl(
     log.warn('Failed to cancel escalation:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to cancel escalation',
+      ...getCrudErrorTitle(err, 'Failed to cancel escalation'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })

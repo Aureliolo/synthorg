@@ -55,25 +55,35 @@ async function fetchAuditImpl(
   }
 }
 
-function canFetchMoreAudit(get: ProvidersGet): boolean {
+/**
+ * Resolve the provider name + cursor for the next audit page, or ``null``
+ * when a fetch is not warranted. Returning the narrowed (non-null) values
+ * lets the caller use them without re-asserting through a cross-function
+ * boolean guard TypeScript cannot follow.
+ */
+function nextAuditPage(
+  get: ProvidersGet,
+): { providerName: string; cursor: string } | null {
   const state = get()
-  return Boolean(
-    state.auditHasMore
-    && state.auditNextCursor
-    && state.auditProviderName !== null
-    && !state.auditLoading
-    && !state.auditLoadingMore,
-  )
+  if (
+    !state.auditHasMore
+    || !state.auditNextCursor
+    || state.auditProviderName === null
+    || state.auditLoading
+    || state.auditLoadingMore
+  ) {
+    return null
+  }
+  return { providerName: state.auditProviderName, cursor: state.auditNextCursor }
 }
 
 async function fetchMoreAuditImpl(
   set: ProvidersSet,
   get: ProvidersGet,
 ): Promise<void> {
-  if (!canFetchMoreAudit(get)) return
-  const state = get()
-  const providerName = state.auditProviderName as string
-  const cursor = state.auditNextCursor as string
+  const next = nextAuditPage(get)
+  if (next === null) return
+  const { providerName, cursor } = next
   set({ auditLoadingMore: true })
   try {
     const page = await listProviderAudit(providerName, {

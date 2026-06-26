@@ -12,8 +12,8 @@ import {
   type CreateCustomRuleRequest,
   type CustomRule,
   type MetricDescriptor,
-  type PreviewRequest,
   type PreviewResult,
+  type PreviewRuleRequest,
 } from '@/api/endpoints/custom-rules'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -62,7 +62,7 @@ interface CustomRulesState {
    * error message and owns the ``try/catch`` boundary. Keep that
    * exception here; do not normalise it to ``null``.
    */
-  previewRule: (data: PreviewRequest) => Promise<PreviewResult>
+  previewRule: (data: PreviewRuleRequest) => Promise<PreviewResult>
 }
 
 type CrSet = StoreApi<CustomRulesState>['setState']

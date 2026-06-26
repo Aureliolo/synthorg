@@ -1,11 +1,22 @@
 import { apiClient, paginateAll, unwrap, unwrapPaginated, unwrapVoid } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type {
+  Comparator,
+  CreateCustomRuleRequest,
+  PreviewRuleRequest,
+  ProposalAltitude,
+  RuleSeverity,
+} from '../types'
 
 // -- Types -------------------------------------------------------------------
 
-export type Comparator = 'lt' | 'le' | 'gt' | 'ge' | 'eq' | 'ne'
-export type RuleSeverity = 'info' | 'warning' | 'critical'
-export type ProposalAltitude = 'config_tuning' | 'architecture' | 'prompt_tuning'
+export type {
+  Comparator,
+  CreateCustomRuleRequest,
+  PreviewRuleRequest,
+  ProposalAltitude,
+  RuleSeverity,
+}
 
 export interface MetricDescriptor {
   path: string
@@ -43,23 +54,6 @@ export interface RuleListItem {
   comparator?: string
   threshold?: number
   severity?: string
-}
-
-export interface CreateCustomRuleRequest {
-  name: string
-  description: string
-  metric_path: string
-  comparator: Comparator
-  threshold: number
-  severity: RuleSeverity
-  target_altitudes: ProposalAltitude[]
-}
-
-export interface PreviewRequest {
-  metric_path: string
-  comparator: Comparator
-  threshold: number
-  sample_value: number
 }
 
 export interface PreviewMatch {
@@ -142,7 +136,7 @@ export async function listMetrics(): Promise<MetricDescriptor[]> {
 }
 
 export async function previewRule(
-  data: PreviewRequest,
+  data: PreviewRuleRequest,
 ): Promise<PreviewResult> {
   const response = await apiClient.post<ApiResponse<PreviewResult>>(
     `${BASE}/preview`,

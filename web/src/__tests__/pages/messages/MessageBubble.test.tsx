@@ -61,13 +61,13 @@ describe('MessageBubble', () => {
     expect(screen.getByText('pr-42')).toBeInTheDocument()
   })
 
-  it('calls onClick when clicked', async () => {
+  it('calls onSelect with the message id when clicked', async () => {
     const user = userEvent.setup()
-    const onClick = vi.fn()
+    const onSelect = vi.fn()
     const msg = makeMessage('1')
-    render(<MessageBubble message={msg} onClick={onClick} />)
+    render(<MessageBubble message={msg} onSelect={onSelect} />)
 
     await user.click(screen.getByRole('button'))
-    expect(onClick).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(msg.id)
   })
 })

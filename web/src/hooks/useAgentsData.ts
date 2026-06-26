@@ -18,8 +18,6 @@ export interface UseAgentsDataReturn {
   totalAgents: number
   loading: boolean
   error: string | null
-  wsConnected: boolean
-  wsSetupError: string | null
 }
 
 export function useAgentsData(): UseAgentsDataReturn {
@@ -80,7 +78,10 @@ export function useAgentsData(): UseAgentsDataReturn {
     [markFresh],
   )
 
-  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
+  // Subscribe to the agents channel for real-time refetch. The connection
+  // state itself is surfaced globally via <WsConnectionBanner>, so this hook
+  // no longer re-exports it.
+  useWebSocket({ bindings })
 
   // Client-side filtering + sorting
   const filteredAgents = useMemo(() => {
@@ -99,7 +100,5 @@ export function useAgentsData(): UseAgentsDataReturn {
     totalAgents,
     loading,
     error,
-    wsConnected,
-    wsSetupError,
   }
 }

@@ -1,6 +1,9 @@
 import { openSseFallback } from '@/api/sse/client'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
+import { asObjectRecord } from '@/utils/parse'
+import { eventVersion, isWsEvent } from './dispatch'
+import { isSupportedWireVersion } from './protocol-guard'
 import { dispatchEvent } from './subscriptions'
 import type { WsSet } from './types'
 
@@ -83,8 +86,17 @@ export function activateSseFallback(set: WsSet): void {
       // exhausted flag so the banner returns to the "degraded" state.
       set({ sseFallbackExhausted: false })
     },
-    onEvent: (wsEvent) => {
-      dispatchEvent(wsEvent)
+    onEvent: (raw) => {
+      // The dashboard SSE feed carries the same WsEvent payloads as the
+      // socket, so validate + version-gate them through the identical path
+      // before dispatch rather than trusting the wire shape.
+      const msg = asObjectRecord(raw)
+      if (msg === null || !isWsEvent(msg)) {
+        log.warn('SSE event failed WsEvent validation, discarding')
+        return
+      }
+      if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return
+      dispatchEvent(msg)
     },
     onError: (err) => {
       log.warn('SSE fallback transport error', sanitizeForLog(err.message))

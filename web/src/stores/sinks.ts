@@ -116,10 +116,7 @@ async function fetchSinksImpl(set: SinksSet): Promise<void> {
     const sinks = await listSinks()
     set({ sinks, loading: false })
   } catch (err) {
-    const message = err instanceof Error
-      ? err.message
-      : 'Failed to load sinks'
-    set({ error: message, loading: false })
+    set({ error: getErrorMessage(err), loading: false })
   }
 }
 

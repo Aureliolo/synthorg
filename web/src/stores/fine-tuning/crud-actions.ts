@@ -10,7 +10,7 @@ import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import type { StartFineTuneRequest } from '@/api/endpoints/fine-tuning'
+import type { FineTuneRequest } from '@/api/endpoints/fine-tuning'
 import type { FineTuningGet, FineTuningSet } from './types'
 
 const log = createLogger('fine-tuning-store')
@@ -34,7 +34,7 @@ function emitMutationSuccess(title: string): void {
 
 async function startRunImpl(
   set: FineTuningSet,
-  request: StartFineTuneRequest,
+  request: FineTuneRequest,
 ): Promise<boolean> {
   set({ loading: true })
   try {
@@ -71,7 +71,7 @@ async function cancelRunImpl(set: FineTuningSet): Promise<boolean> {
 
 async function runPreflightImpl(
   set: FineTuningSet,
-  request: StartFineTuneRequest,
+  request: FineTuneRequest,
 ): Promise<boolean> {
   set({ loading: true, preflight: null })
   try {
@@ -109,10 +109,10 @@ export function createCrudActions(
   get: FineTuningGet,
 ) {
   return {
-    startRun: (request: StartFineTuneRequest) =>
+    startRun: (request: FineTuneRequest) =>
       startRunImpl(set, request),
     cancelRun: () => cancelRunImpl(set),
-    runPreflightCheck: (request: StartFineTuneRequest) =>
+    runPreflightCheck: (request: FineTuneRequest) =>
       runPreflightImpl(set, request),
     deployCheckpointAction: (id: string) =>
       checkpointMutationImpl(

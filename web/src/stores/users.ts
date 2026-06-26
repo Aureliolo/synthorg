@@ -16,7 +16,7 @@ import {
 } from '@/api/endpoints/users'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type { OrgRole } from '@/api/types/enums'
 
 const log = createLogger('users')
@@ -136,7 +136,7 @@ async function grantOrgRoleImpl(
     log.error('Failed to grant org role', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to grant role',
+      ...getCrudErrorTitle(err, 'Failed to grant role'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })
@@ -166,7 +166,7 @@ async function revokeOrgRoleImpl(
     log.error('Failed to revoke org role', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to revoke role',
+      ...getCrudErrorTitle(err, 'Failed to revoke role'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })

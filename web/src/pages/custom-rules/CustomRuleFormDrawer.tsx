@@ -43,6 +43,8 @@ const ALTITUDE_OPTIONS: ReadonlyArray<{ value: ProposalAltitude; label: string }
   { value: 'config_tuning', label: 'Config tuning' },
   { value: 'architecture', label: 'Architecture' },
   { value: 'prompt_tuning', label: 'Prompt tuning' },
+  { value: 'code_modification', label: 'Code modification' },
+  { value: 'tool_creation', label: 'Tool creation' },
 ]
 
 interface FormState {

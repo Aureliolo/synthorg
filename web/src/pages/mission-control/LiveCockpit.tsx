@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Activity } from 'lucide-react'
 
 import type { AgentActivity } from '@/api/types'
@@ -5,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { MetricCard } from '@/components/ui/metric-card'
+import { SkeletonMetric } from '@/components/ui/skeleton'
 import { useMissionControlData } from '@/hooks/useMissionControlData'
 import { useMissionControlStore } from '@/stores/mission-control'
 import { cn } from '@/lib/utils'
@@ -63,7 +65,7 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
   )
 }
 
-function AgentRow({
+const AgentRow = memo(function AgentRow({
   activity,
   onReplay,
 }: {
@@ -101,7 +103,7 @@ function AgentRow({
       </div>
     </div>
   )
-}
+})
 
 interface CockpitMetrics {
   agents: readonly AgentActivity[]
@@ -136,6 +138,17 @@ function CockpitMetricCards({ metrics }: { metrics: CockpitMetrics }) {
       />
       <MetricCard label="Stuck" value={metrics.stuckCount} animateValue />
       <MetricCard label="Runaway" value={metrics.runawayCount} animateValue />
+    </div>
+  )
+}
+
+function CockpitMetricSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4" aria-hidden="true">
+      <SkeletonMetric />
+      <SkeletonMetric />
+      <SkeletonMetric />
+      <SkeletonMetric />
     </div>
   )
 }
@@ -190,7 +203,14 @@ export function LiveCockpit({ onReplay }: LiveCockpitProps) {
           onRetry={() => void useMissionControlStore.getState().fetchSnapshot()}
         />
       )}
-      <CockpitMetricCards metrics={metrics} />
+      {/* Show skeletons rather than a row of zeros while the first snapshot
+          is still loading, so an empty cockpit is not mistaken for "0 active
+          agents". Genuine post-load zeros render through the real cards. */}
+      {loading && snapshot == null ? (
+        <CockpitMetricSkeleton />
+      ) : (
+        <CockpitMetricCards metrics={metrics} />
+      )}
       <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
     </div>
   )

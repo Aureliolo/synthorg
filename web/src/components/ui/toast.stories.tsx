@@ -55,6 +55,33 @@ export const WithDescription: Story = {
   },
 }
 
+export const LongTitle: Story = {
+  args: {
+    toast: {
+      id: '6',
+      variant: 'warning',
+      title:
+        'The provider rejected the request because the configured rate limit for this workspace was exceeded and no fallback provider is available',
+      description:
+        'This title is intentionally long to exercise wrapping and truncation behaviour in the toast.',
+    },
+    onDismiss: () => {},
+  },
+}
+
+export const WithAction: Story = {
+  args: {
+    toast: {
+      id: '7',
+      variant: 'error',
+      title: 'Failed to publish workflow',
+      description: 'The activation request timed out.',
+      action: { label: 'Retry', onClick: () => {} },
+    },
+    onDismiss: () => {},
+  },
+}
+
 export const AllVariants: Story = {
   args: {
     toast: { id: '1', variant: 'success', title: 'All variants' },

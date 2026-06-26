@@ -4,6 +4,7 @@ import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types/cer
 import type { Department } from '@/api/types/org'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SectionCard } from '@/components/ui/section-card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { CEREMONY_STRATEGY_LABELS, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/stores/ceremony-policy-constants'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ function derivePolicyFields(policy: CeremonyPolicyConfig | null | undefined, str
 
 interface DeptPolicyState {
   saving: boolean
+  loading: boolean
   departmentError: string | undefined
   isEditing: boolean
   effectivePolicy: CeremonyPolicyConfig | null | undefined
@@ -48,6 +50,10 @@ function useDepartmentPolicy(deptName: string): DeptPolicyState {
     void fetchPolicy(deptName)
   }, [deptName, fetchPolicy])
 
+  // ``policy`` is ``undefined`` until the first fetch resolves; the store
+  // stores ``null`` for a department that genuinely inherits. Distinguish the
+  // two so the row does not flash "Inherit" while the override is still loading.
+  const loading = policy === undefined && departmentError === undefined
   const hasOverride = policy != null && Object.keys(policy).length > 0
   // Local draft defers the API call until the user sets a strategy/field.
   const [localDraft, setLocalDraft] = useState<CeremonyPolicyConfig | null>(null)
@@ -84,6 +90,7 @@ function useDepartmentPolicy(deptName: string): DeptPolicyState {
 
   return {
     saving,
+    loading,
     departmentError,
     isEditing,
     effectivePolicy,
@@ -148,7 +155,13 @@ function DepartmentRow({ dept }: { dept: Department }) {
         <Chevron className="size-3.5 text-text-muted" />
         <span className="flex-1 text-sm font-medium">{dept.name}</span>
         <span className="text-xs text-text-muted">
-          {p.isEditing ? CEREMONY_STRATEGY_LABELS[p.strategy] : 'Inherit'}
+          {p.loading ? (
+            <Skeleton className="h-3 w-14" />
+          ) : p.isEditing ? (
+            CEREMONY_STRATEGY_LABELS[p.strategy]
+          ) : (
+            'Inherit'
+          )}
         </span>
       </button>
 

@@ -19,7 +19,7 @@ import {
 } from '@/api/endpoints/quality'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type { OverrideResponse, SetOverrideRequest } from '@/api/types/collaboration'
 
@@ -65,7 +65,7 @@ export const useQualityOverridesStore = create<QualityOverridesState>()(() => ({
       log.error('Get quality override failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to load quality override',
+        ...getCrudErrorTitle(err, 'Failed to load quality override'),
         description: getErrorMessage(err),
       })
       return { kind: 'error' }
@@ -84,7 +84,7 @@ export const useQualityOverridesStore = create<QualityOverridesState>()(() => ({
       log.error('Set quality override failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to apply quality override',
+        ...getCrudErrorTitle(err, 'Failed to apply quality override'),
         description: getErrorMessage(err),
       })
       return null
@@ -103,7 +103,7 @@ export const useQualityOverridesStore = create<QualityOverridesState>()(() => ({
       log.error('Clear quality override failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to clear quality override',
+        ...getCrudErrorTitle(err, 'Failed to clear quality override'),
         description: getErrorMessage(err),
       })
       return false

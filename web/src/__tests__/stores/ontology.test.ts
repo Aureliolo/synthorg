@@ -1,10 +1,10 @@
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { listEntities, type EntityResponse } from '@/api/endpoints/ontology'
+import { type EntityResponse } from '@/api/endpoints/ontology'
+import type { EntityListResponse } from '@/api/types'
 import { useOntologyStore } from '@/stores/ontology'
 import { useToastStore } from '@/stores/toast'
-import { apiError, paginatedFor, voidSuccess } from '@/mocks/handlers'
-import type { PaginatedResult } from '@/api/client'
+import { apiError, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 
 function buildEntity(overrides: Partial<EntityResponse> = {}): EntityResponse {
@@ -24,16 +24,23 @@ function buildEntity(overrides: Partial<EntityResponse> = {}): EntityResponse {
   }
 }
 
-function singlePage(
+function singlePageResponse(
   entities: readonly EntityResponse[],
-): PaginatedResult<EntityResponse> {
-  const limit = 200
+): EntityListResponse {
+  const userCount = entities.filter((e) => e.tier === 'user').length
   return {
     data: [...entities],
-    limit,
-    nextCursor: null,
-    hasMore: false,
-    pagination: { limit, next_cursor: null, has_more: false },
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+    degraded_sources: [],
+    meta: {
+      core_count: entities.length - userCount,
+      user_count: userCount,
+      total_count: entities.length,
+      drift_summary: null,
+    },
   }
 }
 
@@ -51,9 +58,7 @@ describe('useOntologyStore', () => {
   it('fetches entities and records the total', async () => {
     server.use(
       http.get('/api/v1/ontology/entities', () =>
-        HttpResponse.json(
-          paginatedFor<typeof listEntities>(singlePage([buildEntity()])),
-        ),
+        HttpResponse.json(singlePageResponse([buildEntity()])),
       ),
     )
 

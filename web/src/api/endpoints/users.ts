@@ -1,18 +1,20 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
-import type { HumanRole, OrgRole } from '../types/enums'
+import type { OrgRole } from '../types/enums'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
+import type { UserResponse as UserResponseWire } from '../types'
 
-export interface UserResponse {
-  id: string
-  username: string
-  role: HumanRole
-  must_change_password: boolean
-  org_roles: readonly OrgRole[]
-  scoped_departments: readonly string[]
-  created_at: string
-  updated_at: string
+// Derive from the generated wire type so id/username/role/timestamps stay in
+// lockstep with the backend, but keep ``org_roles`` narrowed to ``OrgRole``:
+// the backend only ever emits ``OrgRole`` values here (the OpenAPI schema
+// widens the StrEnum list to ``string[]``), and the users UI depends on the
+// narrowing exactly as it relies on the already-narrowed ``role`` field.
+export type UserResponse = Omit<UserResponseWire, 'org_roles'> & {
+  readonly org_roles: readonly OrgRole[]
 }
 
+// Kept hand-written: the discriminated union enforces that
+// ``scoped_departments`` is required only for ``department_admin`` and absent
+// for every other role, a constraint the flat generated struct cannot express.
 export type GrantOrgRoleRequest =
   | { role: 'department_admin'; scoped_departments: readonly string[] }
   | { role: Exclude<OrgRole, 'department_admin'>; scoped_departments?: never }
