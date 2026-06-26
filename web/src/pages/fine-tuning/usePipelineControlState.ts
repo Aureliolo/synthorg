@@ -58,9 +58,13 @@ export function usePipelineControlState(): PipelineControlState {
     setBatchSizeInput(value)
   }, [])
 
+  // ``buildRequest()`` keys off both ``sourceDir`` and ``dataSource``, so a
+  // change to either invalidates the prior preflight; clearing it here stops a
+  // stale result (and its ``startDisabled`` / recommended-batch-size state)
+  // from carrying over to the new request inputs.
   useEffect(() => {
     useFineTuningStore.setState({ preflight: null })
-  }, [sourceDir])
+  }, [sourceDir, dataSource])
 
   const effectiveBatchSize = deriveEffectiveBatchSize(
     batchSizeTouchedRef.current,

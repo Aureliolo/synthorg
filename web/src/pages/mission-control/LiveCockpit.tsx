@@ -203,15 +203,20 @@ export function LiveCockpit({ onReplay }: LiveCockpitProps) {
           onRetry={() => void useMissionControlStore.getState().fetchSnapshot()}
         />
       )}
-      {/* Show skeletons rather than a row of zeros while the first snapshot
-          is still loading, so an empty cockpit is not mistaken for "0 active
-          agents". Genuine post-load zeros render through the real cards. */}
-      {loading && snapshot == null ? (
+      {/* A missing snapshot is "data unavailable", not "0 active agents":
+          render skeletons whenever there is no real snapshot (first load OR a
+          failed fetch surfaced via the banner above) so deriveCockpitMetrics'
+          synthesized zeros never masquerade as genuine post-load metrics. */}
+      {snapshot == null ? (
         <CockpitMetricSkeleton />
       ) : (
         <CockpitMetricCards metrics={metrics} />
       )}
-      <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
+      <CockpitAgentList
+        agents={metrics.agents}
+        loading={loading || snapshot == null}
+        onReplay={onReplay}
+      />
     </div>
   )
 }

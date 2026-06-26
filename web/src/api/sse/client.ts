@@ -44,9 +44,11 @@ interface SseClientCallbacks {
   /**
    * Invoked with the raw parsed event object for each `ws` frame. The caller
    * validates the shape (it is the same `WsEvent` the WebSocket delivers) and
-   * dispatches it; this transport does not interpret the payload.
+   * dispatches it; this transport does not interpret the payload. Returns
+   * `true` only once the frame passed `WsEvent` validation, version gating,
+   * and dispatch, so the replay cursor advances only past accepted frames.
    */
-  onEvent: (event: unknown) => void
+  onEvent: (event: unknown) => boolean
   onError: (error: Error) => void
   onOpen?: () => void
   /**
@@ -64,19 +66,16 @@ interface SseClient {
 /** Parse one SSE frame, surface its event id, and forward the raw event. */
 function processSseFrame(
   event: MessageEvent,
-  onEvent: (event: unknown) => void,
+  onEvent: (event: unknown) => boolean,
   onLastEventId: (id: string) => void,
 ): void {
-  if (event.lastEventId) {
-    // Clamp the server-supplied id before we store / forward it: it is
-    // attacker-influenced and otherwise uncapped (control chars, bidi
-    // overrides, unbounded length).
-    const sanitizedId = sanitizeWsString(
-      event.lastEventId,
-      SSE_MAX_LAST_EVENT_ID_LENGTH,
-    )
-    if (sanitizedId !== undefined) onLastEventId(sanitizedId)
-  }
+  // Clamp the server-supplied id before we store it: it is attacker-influenced
+  // and otherwise uncapped (control chars, bidi overrides, unbounded length).
+  // Held until the frame is accepted so a rejected frame never advances the
+  // replay cursor (which would skip the dropped event permanently on reconnect).
+  const sanitizedId = event.lastEventId
+    ? sanitizeWsString(event.lastEventId, SSE_MAX_LAST_EVENT_ID_LENGTH)
+    : undefined
   if (typeof event.data !== 'string') return
   let parsed: unknown
   try {
@@ -92,7 +91,9 @@ function processSseFrame(
     log.warn('SSE frame was not an event object, discarding')
     return
   }
-  onEvent(parsed)
+  if (onEvent(parsed) && sanitizedId !== undefined) {
+    onLastEventId(sanitizedId)
+  }
 }
 
 /** Exponential backoff (ms) for the Nth reconnect attempt, capped at MAX. */

@@ -83,7 +83,10 @@ describe('openSseFallback', () => {
   it('forwards the parsed ws frame object to onEvent', () => {
     const events: unknown[] = []
     openSseFallback({
-      onEvent: (e) => events.push(e),
+      onEvent: (e) => {
+        events.push(e)
+        return true
+      },
       onError: () => {},
     })
     expect(lastEventSource).not.toBeNull()
@@ -103,21 +106,24 @@ describe('openSseFallback', () => {
   })
 
   it('registers only the single ws frame listener', () => {
-    openSseFallback({ onEvent: () => {}, onError: () => {} })
+    openSseFallback({ onEvent: () => true, onError: () => {} })
     expect(lastEventSource!.listenerCount()).toBe(1)
   })
 
   it('opens the EventSource with credentials so the session cookie is sent', () => {
     // Without withCredentials the SSE request omits the auth cookie and every
     // reconnect 401s silently, so this guards the credential flag explicitly.
-    openSseFallback({ onEvent: () => {}, onError: () => {} })
+    openSseFallback({ onEvent: () => true, onError: () => {} })
     expect(lastEventSource!.withCredentials).toBe(true)
   })
 
   it('discards malformed frames without throwing', () => {
     const events: unknown[] = []
     openSseFallback({
-      onEvent: (e) => events.push(e),
+      onEvent: (e) => {
+        events.push(e)
+        return true
+      },
       onError: () => {},
     })
     lastEventSource!.emit('ws', new MessageEvent('ws', { data: '{not-json' }))
@@ -127,7 +133,7 @@ describe('openSseFallback', () => {
   it('forwards the last event id as a query param on reconnect', () => {
     vi.useFakeTimers()
     try {
-      const handle = openSseFallback({ onEvent: () => {}, onError: () => {} })
+      const handle = openSseFallback({ onEvent: () => true, onError: () => {} })
       // Deliver a frame carrying a lastEventId, then force a reconnect.
       lastEventSource!.emit(
         'ws',
@@ -153,7 +159,7 @@ describe('openSseFallback', () => {
   it('reports transport errors via onError', () => {
     const errors: Error[] = []
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: (err) => errors.push(err),
     })
     try {
@@ -170,7 +176,7 @@ describe('openSseFallback', () => {
   it('reconnects with an application-level backoff timer after an error', () => {
     vi.useFakeTimers()
     try {
-      const handle = openSseFallback({ onEvent: () => {}, onError: () => {} })
+      const handle = openSseFallback({ onEvent: () => true, onError: () => {} })
       const first = lastEventSource
       // An error closes the current source and schedules a re-open; no new
       // EventSource is created synchronously (that would be the native flat
@@ -190,7 +196,7 @@ describe('openSseFallback', () => {
     try {
       let exhausted = false
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: () => {},
         onExhausted: () => {
           exhausted = true
@@ -214,7 +220,7 @@ describe('openSseFallback', () => {
     try {
       const errors: Error[] = []
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: (err) => errors.push(err),
       })
       // Initial source never stabilises (onopen never fires): first error is
@@ -243,7 +249,7 @@ describe('openSseFallback', () => {
     try {
       let exhausted = false
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: () => {},
         onExhausted: () => {
           exhausted = true
@@ -269,7 +275,7 @@ describe('openSseFallback', () => {
   it('close() tears down the EventSource', () => {
     const closeSpy = vi.spyOn(FakeEventSource.prototype, 'close')
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
     })
     handle.close()
@@ -279,7 +285,7 @@ describe('openSseFallback', () => {
   it('invokes onOpen when the transport connects', () => {
     let opened = false
     openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
       onOpen: () => {
         opened = true
@@ -291,7 +297,7 @@ describe('openSseFallback', () => {
 
   it('releases handlers + listeners on close()', () => {
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
       onOpen: () => {},
     })

@@ -11,7 +11,7 @@ import type {
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
-import type { EntityListResponse } from '@/api/types'
+import type { EntityListMeta, EntityListResponse } from '@/api/types'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
@@ -35,18 +35,41 @@ function buildEntity(
   }
 }
 
+/**
+ * Build the ``EntityListResponse`` wire envelope for the ontology list
+ * endpoint. ``EntityListResponse`` carries catalog-wide ``meta`` aggregates
+ * that the generic ``paginatedFor`` cannot model, so this ontology-specific
+ * helper keeps the handler in lockstep with the contract instead of inlining
+ * the envelope.
+ */
+function entityListEnvelope(
+  data: readonly EntityResponse[] = [],
+  opts: {
+    meta?: Partial<EntityListMeta>
+    nextCursor?: string | null
+    limit?: number
+  } = {},
+): EntityListResponse {
+  const nextCursor = opts.nextCursor ?? null
+  return {
+    data: [...data],
+    degraded_sources: [],
+    error: null,
+    error_detail: null,
+    meta: {
+      core_count: 0,
+      user_count: 0,
+      total_count: data.length,
+      drift_summary: null,
+      ...opts.meta,
+    },
+    pagination: { limit: opts.limit ?? 200, next_cursor: nextCursor, has_more: nextCursor !== null },
+    success: true,
+  }
+}
+
 export const ontologyHandlers = [
-  http.get('/api/v1/ontology/entities', () =>
-    HttpResponse.json({
-      data: [],
-      degraded_sources: [],
-      error: null,
-      error_detail: null,
-      meta: { core_count: 0, user_count: 0, total_count: 0, drift_summary: null },
-      pagination: { limit: 200, next_cursor: null, has_more: false },
-      success: true,
-    } satisfies EntityListResponse),
-  ),
+  http.get('/api/v1/ontology/entities', () => HttpResponse.json(entityListEnvelope())),
   http.get('/api/v1/ontology/entities/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getEntity>(buildEntity({ name: String(params['name']) })),

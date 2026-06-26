@@ -74,15 +74,18 @@ const CATALOG_SORT_OPTIONS = [
  */
 function useCatalogPagination(fs: CatalogFilterSort) {
   const pagination = useListPagination({ items: fs.entries, namespace: 'catalog' })
-  const { resetPage, totalItems } = pagination
+  const { resetPage } = pagination
   const didMountRef = useRef(false)
+  // Key the reset off the result-set identity (``fs.entries``), not its count:
+  // a new search returning the same number of entries must still return to
+  // page 1 rather than stranding the operator mid-way through a fresh set.
   useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true
       return
     }
     resetPage()
-  }, [fs.connectionType, fs.sort, totalItems, resetPage])
+  }, [fs.connectionType, fs.sort, fs.entries, resetPage])
   return pagination
 }
 

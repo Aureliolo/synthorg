@@ -64,7 +64,7 @@ export async function listEntities(params?: {
   // directly so the result stays fully typed and the aggregates are preserved.
   const body = response.data
   if (!body.success) {
-    throw new ApiRequestError(body.error ?? 'Failed to load entities')
+    throw new ApiRequestError(body.error ?? 'Failed to load entities', body.error_detail ?? null)
   }
   const { pagination } = body
   return {

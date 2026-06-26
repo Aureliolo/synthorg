@@ -29,6 +29,8 @@ function derivePolicyFields(policy: CeremonyPolicyConfig | null | undefined, str
 interface DeptPolicyState {
   saving: boolean
   loading: boolean
+  /** First fetch failed (policy still unknown), distinct from a true inherit. */
+  loadFailed: boolean
   departmentError: string | undefined
   isEditing: boolean
   effectivePolicy: CeremonyPolicyConfig | null | undefined
@@ -54,6 +56,10 @@ function useDepartmentPolicy(deptName: string): DeptPolicyState {
   // stores ``null`` for a department that genuinely inherits. Distinguish the
   // two so the row does not flash "Inherit" while the override is still loading.
   const loading = policy === undefined && departmentError === undefined
+  // First fetch failed: policy is still unknown, but an error is set. This is
+  // NOT a true inherit, so the row must report an error/unknown state rather
+  // than silently collapsing to "Inherit".
+  const loadFailed = policy === undefined && departmentError !== undefined
   const hasOverride = policy != null && Object.keys(policy).length > 0
   // Local draft defers the API call until the user sets a strategy/field.
   const [localDraft, setLocalDraft] = useState<CeremonyPolicyConfig | null>(null)
@@ -91,6 +97,7 @@ function useDepartmentPolicy(deptName: string): DeptPolicyState {
   return {
     saving,
     loading,
+    loadFailed,
     departmentError,
     isEditing,
     effectivePolicy,
@@ -157,6 +164,8 @@ function DepartmentRow({ dept }: { dept: Department }) {
         <span className="text-xs text-text-muted">
           {p.loading ? (
             <Skeleton className="h-3 w-14" />
+          ) : p.loadFailed ? (
+            <span className="text-danger">Unavailable</span>
           ) : p.isEditing ? (
             CEREMONY_STRATEGY_LABELS[p.strategy]
           ) : (

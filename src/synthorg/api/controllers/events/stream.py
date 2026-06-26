@@ -44,7 +44,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_DASHBOARD_SSE_FEED_UNAVAILABLE,
-    API_DASHBOARD_SSE_UNAUTHENTICATED,
     API_SSE_INVALID_LAST_EVENT_ID,
 )
 
@@ -89,7 +88,10 @@ def _require_dashboard_feed(
     """
     user = getattr(request, "user", None)
     if not isinstance(user, AuthenticatedUser):
-        logger.warning(API_DASHBOARD_SSE_UNAUTHENTICATED)
+        # The guard chain (require_read_access) should already have blocked
+        # this; raise the client-facing auth exception directly rather than
+        # logging a WARNING on a routine auth failure (attacker-controllable
+        # log noise). The unavailable-feed branch below keeps its WARNING.
         msg = "Authentication required"
         raise NotAuthorizedException(msg)
     plugin = get_channels_plugin(request)
@@ -219,6 +221,11 @@ class EventStreamController(Controller):
         app_state: AppState = state.app_state
         plugin, user = _require_dashboard_feed(request)
         channels = resolve_dashboard_channels(user)
+        # A reconnect (``last_event_id`` present) replays the recent backlog for
+        # gap recovery. The cursor's value is not used to slice the backlog
+        # server-side: each ``WsEvent`` carries a stable ``event_id`` and the
+        # client deduplicates by it, so a replayed event is dispatched exactly
+        # once without the server tracking per-connection cursor state.
         inner = dashboard_channel_frames(
             plugin,
             channels,

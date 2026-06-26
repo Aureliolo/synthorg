@@ -117,11 +117,13 @@ class TestActivateWorkflow:
             json={"project": "test-project"},
         )
         assert resp.status_code == 201
+        body = resp.json()
         assert len(calls) == 1
         event_type, channel, payload = calls[0]
         assert event_type is WsEventType.WORKFLOW_EXECUTION_STATUS_CHANGED
         assert channel == CHANNEL_WORKFLOWS
         assert payload["status"] == "running"
+        assert payload["execution_id"] == body["data"]["id"]
         assert payload["definition_id"] == sid("wfdef-test001")
 
     @pytest.mark.unit

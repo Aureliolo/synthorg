@@ -24,6 +24,22 @@ let sseClient: { close: () => void } | null = null
 let proxyBlockSuspicion = 0
 const PROXY_BLOCK_THRESHOLD = 2
 
+// Reconnect deduplication: the backend replays the recent per-channel backlog
+// on reconnect (gap recovery), so the client tracks recently-dispatched
+// ``event_id``s and drops a replayed duplicate. Bounded so a long-lived
+// session cannot grow it without limit; insertion-ordered eviction is enough
+// since ids are only re-seen within the small replay window.
+const SEEN_EVENT_ID_LIMIT = 512
+const seenEventIds = new Set<string>()
+
+function rememberEventId(id: string): void {
+  seenEventIds.add(id)
+  if (seenEventIds.size > SEEN_EVENT_ID_LIMIT) {
+    const oldest = seenEventIds.values().next().value
+    if (oldest !== undefined) seenEventIds.delete(oldest)
+  }
+}
+
 export function isSseFallbackActive(): boolean {
   return sseClient !== null
 }
@@ -33,6 +49,7 @@ export function closeSseFallback(set?: WsSet): void {
     sseClient.close()
     sseClient = null
   }
+  seenEventIds.clear()
   set?.({ sseFallbackActive: false, sseFallbackExhausted: false })
 }
 
@@ -90,23 +107,33 @@ export function activateSseFallback(set: WsSet): void {
     onEvent: (raw) => {
       // The dashboard SSE feed carries the same WsEvent payloads as the
       // socket, so validate + version-gate them through the identical path
-      // before dispatch rather than trusting the wire shape.
+      // before dispatch rather than trusting the wire shape. Return false on
+      // every reject path so the transport does not advance the replay cursor
+      // past a frame we dropped.
       const msg = asObjectRecord(raw)
       if (msg === null) {
         log.warn('SSE event was not a plain object, discarding', {
           rawType: typeof raw,
         })
-        return
+        return false
       }
       if (!isWsEvent(msg)) {
         log.warn('SSE event failed WsEvent schema validation, discarding', {
           eventType: sanitizeForLog(msg['event_type']),
           channel: sanitizeForLog(msg['channel']),
         })
-        return
+        return false
       }
-      if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return
+      if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return false
+      // Drop a replayed duplicate (reconnect backlog) so each event dispatches
+      // once; treat it as handled so the replay cursor still advances past it.
+      const eventId = typeof msg['event_id'] === 'string' ? msg['event_id'] : null
+      if (eventId !== null) {
+        if (seenEventIds.has(eventId)) return true
+        rememberEventId(eventId)
+      }
       dispatchEvent(msg)
+      return true
     },
     onError: (err) => {
       log.warn('SSE fallback transport error', sanitizeForLog(err.message))

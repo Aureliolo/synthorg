@@ -1,5 +1,7 @@
 /** Artifact, project, memory.fine_tune, and client WebSocket payload interfaces. */
 
+import type { WorkflowExecutionStatus } from '../enum-values.gen'
+
 export interface WsArtifactCreatedPayload {
   artifact_id: string
   task_id: string
@@ -39,7 +41,7 @@ export interface WsProjectStatusChangedPayload {
 export interface WsWorkflowExecutionStatusChangedPayload {
   execution_id: string
   definition_id: string
-  status: string
+  status: WorkflowExecutionStatus
   actor?: string | null
 }
 

@@ -59,15 +59,17 @@ def resolve_dashboard_channels(user: AuthenticatedUser) -> list[str]:
     return channels
 
 
-def _dashboard_frame(data: bytes | str, frame_id: int) -> dict[str, str] | None:
+def _dashboard_frame(data: bytes | str) -> dict[str, str] | None:
     """Render a published channel message as an SSE ``ws`` frame.
 
     The channel payload is a ``WsEvent`` JSON document (published via
     ``publish_ws_event``); it is forwarded verbatim under a fixed ``ws``
-    event name with a per-connection monotonic id so the browser records a
-    ``lastEventId`` for reconnect. Malformed payloads are dropped with a
-    WARNING so a misbehaving publisher is observable rather than silently
-    starving the dashboard.
+    event name. The frame's SSE ``id`` is the event's stable ``event_id`` so
+    the browser records it as ``lastEventId``: on reconnect the backend
+    replays the recent backlog (gap recovery) and the client deduplicates by
+    ``event_id`` to dispatch each event exactly once. Malformed payloads are
+    dropped with a WARNING so a misbehaving publisher is observable rather
+    than silently starving the dashboard.
 
     Returns:
         The frame dict, or ``None`` when the payload is not a valid event.
@@ -85,13 +87,15 @@ def _dashboard_frame(data: bytes | str, frame_id: int) -> dict[str, str] | None:
         return None
     if (
         not isinstance(obj, dict)
+        or not isinstance(obj.get("event_id"), str)
         or not isinstance(obj.get("event_type"), str)
         or not isinstance(obj.get("channel"), str)
+        or not isinstance(obj.get("timestamp"), str)
         or not isinstance(obj.get("payload"), dict)
     ):
         logger.warning(API_DASHBOARD_SSE_FRAME_INVALID, reason="schema_mismatch")
         return None
-    return {"event": "ws", "data": text, "id": str(frame_id)}
+    return {"event": "ws", "data": text, "id": str(obj["event_id"])}
 
 
 async def _stream_dashboard_frames(
@@ -113,7 +117,6 @@ async def _stream_dashboard_frames(
     """
     events = subscriber.iter_events()
     pending: asyncio.Task[bytes] | None = None
-    frame_id = 0
     try:
         next_keepalive = clock.monotonic() + keepalive_seconds
         # lint-allow: long-running-loop-kill-switch -- per-request SSE stream; lifetime bounded by client connection (CancelledError on disconnect) + auth revocation  # noqa: E501
@@ -133,9 +136,8 @@ async def _stream_dashboard_frames(
             except StopAsyncIteration:
                 return
             pending = None
-            frame = _dashboard_frame(data, frame_id)
+            frame = _dashboard_frame(data)
             if frame is not None:
-                frame_id += 1
                 yield frame
     finally:
         if pending is not None and not pending.done():

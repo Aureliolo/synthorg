@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 
 # ── Artifact domain ─────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ class WsWorkflowExecutionStatusChangedPayload(BaseModel):
     )
     execution_id: NotBlankStr
     definition_id: NotBlankStr
-    status: NotBlankStr
+    status: WorkflowExecutionStatus
     actor: NotBlankStr | None = None
 
 

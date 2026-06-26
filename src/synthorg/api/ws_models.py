@@ -7,6 +7,7 @@ serialised to JSON and pushed to WebSocket subscribers.
 import copy
 from enum import StrEnum
 from typing import Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -153,6 +154,10 @@ class WsEvent(BaseModel):
     the dict is a mutable reference inside a frozen model.
 
     Attributes:
+        event_id: Stable per-event identity. The dashboard SSE fallback
+            replays the recent backlog on reconnect (gap recovery), so the
+            client deduplicates by this id to dispatch each event exactly
+            once. Additive, optional wire field: legacy consumers ignore it.
         version: Wire-protocol version. Clients MUST ignore events whose
             version they do not understand. Bump only when introducing a
             breaking change to ``WsEvent`` -- coordinate with the
@@ -166,6 +171,10 @@ class WsEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    event_id: UUID = Field(
+        default_factory=uuid4,
+        description="Stable per-event id for client-side reconnect dedup",
+    )
     version: int = Field(
         default=WS_PROTOCOL_VERSION,
         ge=1,

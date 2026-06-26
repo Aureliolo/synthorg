@@ -96,6 +96,12 @@ export type { WsEventType }
 
 export interface WsEvent {
   /**
+   * Stable per-event id. The dashboard SSE fallback replays the recent
+   * backlog on reconnect, so the client deduplicates by this id to dispatch
+   * each event once. Optional: absent on legacy events (then not deduped).
+   */
+  event_id?: string
+  /**
    * Wire-protocol version. Absent on legacy events: treated as 1.
    * Clients MUST ignore events whose version they do not understand.
    * Coordinates with `WS_PROTOCOL_VERSION` in `@/utils/constants` and

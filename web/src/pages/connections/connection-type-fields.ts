@@ -347,12 +347,26 @@ function validateNumberValue(spec: ConnectionFieldSpec, value: string): string |
   return null
 }
 
+// The dialect field is a free-text input, so reject anything outside the
+// supported set at the form boundary (case-insensitively, matching
+// ``resolveRequired``) instead of letting ``postgres`` / ``sqlite3`` pass
+// here and only fail later at the API.
+function validateDialectValue(spec: ConnectionFieldSpec, value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  const dialects: readonly string[] = DATABASE_DIALECTS
+  if (trimmed && !dialects.includes(trimmed)) {
+    return `${spec.label} must be one of: ${DATABASE_DIALECTS.join(', ')}`
+  }
+  return null
+}
+
 export function validateConnectionField(
   spec: ConnectionFieldSpec,
   value: string,
   dialect?: string,
 ): string | null {
   if (resolveRequired(spec, dialect) && !value.trim()) return `${spec.label} is required`
+  if (spec.key === 'dialect') return validateDialectValue(spec, value)
   if (spec.type === 'url') return validateUrlValue(spec, value)
   if (spec.type === 'select') return validateSelectValue(spec, value)
   if (spec.type === 'number') return validateNumberValue(spec, value)

@@ -74,7 +74,13 @@ function useClientDetail(clientId: string | undefined): ClientDetailState {
           getClient(clientId),
           getClientSatisfaction(clientId).catch((err: unknown) => {
             log.warn('get_client_satisfaction_failed', getErrorMessage(err))
-            setSatisfactionError('Failed to load satisfaction history.')
+            // Guard the nested update: this inner catch can still resolve
+            // after the effect was cleaned up (client switch / unmount), and
+            // a stale rejection must not leak the error banner into the next
+            // client's view.
+            if (!cancelled) {
+              setSatisfactionError('Failed to load satisfaction history.')
+            }
             return null
           }),
         ])

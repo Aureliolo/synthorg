@@ -28,9 +28,10 @@ from synthorg.core.clock import SystemClock
 from tests._shared import mock_of
 
 
-def _ws_event_json() -> str:
+def _ws_event_json(event_id: str = "ev-001") -> str:
     return json.dumps(
         {
+            "event_id": event_id,
             "event_type": "task.updated",
             "channel": "tasks",
             "timestamp": "t",
@@ -119,17 +120,31 @@ class TestRequireDashboardFeed:
 @pytest.mark.unit
 class TestDashboardFrame:
     def test_valid_event_renders_named_ws_frame_with_id(self) -> None:
-        payload = _ws_event_json()
-        frame = _dashboard_frame(payload, 3)
-        assert frame == {"event": "ws", "data": payload, "id": "3"}
+        # The SSE ``id`` is the event's stable ``event_id`` so the client can
+        # dedupe replayed events on reconnect.
+        payload = _ws_event_json("ev-xyz")
+        frame = _dashboard_frame(payload)
+        assert frame == {"event": "ws", "data": payload, "id": "ev-xyz"}
 
     @pytest.mark.parametrize(
         "data",
-        ["{not-json", json.dumps([1, 2]), json.dumps({"channel": "tasks"})],
-        ids=["bad_json", "array", "missing_event_type"],
+        [
+            "{not-json",
+            json.dumps([1, 2]),
+            json.dumps({"channel": "tasks"}),
+            json.dumps(
+                {
+                    "event_type": "task.updated",
+                    "channel": "tasks",
+                    "timestamp": "t",
+                    "payload": {},
+                }
+            ),
+        ],
+        ids=["bad_json", "array", "missing_event_type", "missing_event_id"],
     )
     def test_malformed_payload_is_dropped(self, data: str) -> None:
-        assert _dashboard_frame(data, 0) is None
+        assert _dashboard_frame(data) is None
 
 
 @pytest.mark.unit
@@ -146,7 +161,9 @@ class TestDashboardChannelFrames:
                 replay=False,
             )
         ]
-        assert frames == [{"event": "ws", "data": event.decode("utf-8"), "id": "0"}]
+        assert frames == [
+            {"event": "ws", "data": event.decode("utf-8"), "id": "ev-001"}
+        ]
         plugin.subscribe.assert_awaited_once_with(["tasks"], history=None)  # type: ignore[attr-defined]
         plugin.unsubscribe.assert_awaited_once_with(  # type: ignore[attr-defined]
             plugin.subscribe.return_value  # type: ignore[attr-defined]
@@ -166,7 +183,9 @@ class TestDashboardChannelFrames:
         ]
         # Replay subscribes with the backlog history AND forwards the replayed
         # events as ``ws`` frames (not just the subscribe argument).
-        assert frames == [{"event": "ws", "data": event.decode("utf-8"), "id": "0"}]
+        assert frames == [
+            {"event": "ws", "data": event.decode("utf-8"), "id": "ev-001"}
+        ]
         plugin.subscribe.assert_awaited_once_with(  # type: ignore[attr-defined]
             ["tasks"], history=_DASHBOARD_REPLAY_LIMIT
         )

@@ -2,6 +2,7 @@
  * Zustand store for ontology entity catalog and drift monitor.
  */
 import { create, type StoreApi } from 'zustand'
+import { paginateAll } from '@/api/client'
 import {
   deleteEntity as apiDeleteEntity,
   listEntities,
@@ -130,11 +131,22 @@ export const useOntologyStore = create<OntologyState>()((set, get) => ({
   fetchEntities: async () => {
     set({ entitiesLoading: true, entitiesError: null })
     try {
-      const result = await listEntities({ limit: 200 })
+      // EntityCatalog filters / sorts / searches / paginates client-side, so
+      // it needs the WHOLE catalog, not the first page. Walk every cursor page
+      // via paginateAll; the ``meta`` aggregates are catalog-wide (identical on
+      // each page), so capture the latest page's copy for the summary line.
+      // Held on an object (not a bare ``let``) so the closure assignment is
+      // visible to the type after the await.
+      const captured: { meta: EntityListMeta | null } = { meta: null }
+      const entities = await paginateAll<EntityResponse>(async (cursor) => {
+        const result = await listEntities({ cursor, limit: 200 })
+        captured.meta = result.meta
+        return result
+      })
       set({
-        entities: result.data,
-        totalEntities: result.meta.total_count,
-        entityMeta: result.meta,
+        entities,
+        totalEntities: captured.meta?.total_count ?? entities.length,
+        entityMeta: captured.meta,
         entitiesLoading: false,
       })
     } catch (err) {
