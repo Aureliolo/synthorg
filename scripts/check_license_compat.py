@@ -73,6 +73,7 @@ Exit codes:
 import argparse
 import csv
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -600,22 +601,36 @@ def _web_package_license_blob(entry: dict[str, object]) -> str:
     return " ".join(parts).lower()
 
 
+def _notice_mentions_npm(notice: str, name: str) -> bool:
+    """Whether ``name`` appears in ``notice`` as a whole npm-name token.
+
+    A bare, generic basename (``core``) must not clear attribution by
+    matching inside a larger npm name (``core-js``, ``@types/core``), so
+    the match is bounded by characters that cannot continue an npm name
+    -- the symmetric counterpart to :func:`_go_notice_covers` excluding
+    the bare leaf for the same reason.
+    """
+    npm_name_char = r"[\w./@-]"
+    pattern = rf"(?<!{npm_name_char}){re.escape(name)}(?!{npm_name_char})"
+    return re.search(pattern, notice) is not None
+
+
 def _web_notice_covers(notice: str, npm_name: str) -> bool:
     """Whether NOTICE attributes an npm package ``npm_name``.
 
     npm names are not Python distributions, so the Python-flavoured
     :func:`_notice_covers` canonicalisation cannot be trusted for scoped
-    names (``@scope/pkg``). Match the raw npm name as a substring, plus
+    names (``@scope/pkg``). Match the raw npm name as a whole token, plus
     the unscoped basename, so an attribution under either spelling
     counts.
 
     Returns:
         ``True`` when an attribution for the package is present.
     """
-    if npm_name in notice:
+    if _notice_mentions_npm(notice, npm_name):
         return True
     basename = npm_name.rsplit("/", 1)[-1]
-    return bool(basename) and basename in notice
+    return bool(basename) and _notice_mentions_npm(notice, basename)
 
 
 def _check_web_copyleft(repo_root: Path, notice: str) -> list[Violation]:

@@ -75,6 +75,31 @@ def test_notice_covers_absent() -> None:
     assert _MODULE._notice_covers("nothing relevant", "psycopg") is False
 
 
+# ── _web_notice_covers ──────────────────────────────────────────
+
+
+def test_web_notice_covers_scoped_full_name() -> None:
+    notice = "attribution for @scope/widget here"
+    assert _MODULE._web_notice_covers(notice, "@scope/widget") is True
+
+
+def test_web_notice_covers_unscoped_basename() -> None:
+    notice = "the lodash library is attributed here"
+    assert _MODULE._web_notice_covers(notice, "lodash") is True
+
+
+def test_web_notice_covers_basename_not_a_substring_false_positive() -> None:
+    # A generic basename ("core") must not clear attribution by matching
+    # inside a larger npm name ("core-js", "@types/core").
+    notice = "core-js and @types/core are attributed here"
+    assert _MODULE._web_notice_covers(notice, "core") is False
+    assert _MODULE._web_notice_covers(notice, "@scope/core") is False
+
+
+def test_web_notice_covers_absent() -> None:
+    assert _MODULE._web_notice_covers("nothing relevant", "@scope/widget") is False
+
+
 # ── denylist ────────────────────────────────────────────────────
 
 _CLEAN_PYPROJECT = """
