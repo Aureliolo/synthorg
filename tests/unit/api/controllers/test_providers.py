@@ -18,6 +18,7 @@ from synthorg.api.controllers.providers.local_models import (
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.cursor import CursorSecret
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.resolver import ConfigResolver
@@ -252,16 +253,19 @@ class TestDiscoverModelsEndpoint:
         assert result.data.discovered_models == discovered
 
     async def test_discover_models_not_found(self) -> None:
-        """Non-existent provider raises NotFoundError."""
-        from synthorg.core.domain_errors import NotFoundError
+        """Non-existent provider propagates the typed ProviderNotFoundError.
 
+        ``ProviderNotFoundError`` already carries 404 / ``RESOURCE_NOT_FOUND``
+        as class metadata, so the controller lets it propagate to the
+        central handler instead of re-raising a generic ``NotFoundError``.
+        """
         state, mgmt = _make_provider_state_and_mgmt()
         mgmt.discover_models_for_provider = AsyncMock(
             side_effect=ProviderNotFoundError("Provider 'nonexistent' not found"),
         )
 
         ctrl = _provider_controller()
-        with pytest.raises(NotFoundError):
+        with pytest.raises(ProviderNotFoundError):
             await ctrl.discover_models.fn(
                 ctrl,
                 state=state,
@@ -626,66 +630,54 @@ async def _bound_audit_actor() -> AsyncIterator[None]:
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("_bound_audit_actor")
-class TestProviderControllerErrorSanitization:
-    """Validation / conflict error paths must surface sanitized text.
+class TestProviderControllerErrorPropagation:
+    """Typed provider errors propagate from the controllers unchanged.
 
-    The controller wraps backend ``ProviderValidationError`` /
-    ``ProviderAlreadyExistsError`` into Litestar's
-    ``ValidationError`` / ``ConflictError`` so the API client gets a
-    structured 4xx.  The detail string MUST go through
-    ``safe_error_description`` so a backend message that embeds a
-    credential, file path, or stack-trace fragment cannot leak
-    through the HTTP envelope.
+    Class metadata (``status_code`` / ``error_code`` / ``error_category``)
+    is the single source of truth for the wire contract, so the
+    controllers do NOT catch a ``ProviderError`` and re-raise a generic
+    Litestar error: that would drop the discriminating ``error_code``
+    (e.g. ``MODEL_NOT_FOUND`` collapsing to ``RESOURCE_NOT_FOUND``).  The
+    secret-token scrubbing that used to live in the controller catch now
+    runs once, centrally, in ``handle_domain_error`` (see
+    :meth:`test_handler_scrubs_secret_tokens_in_provider_4xx`).
     """
 
-    @staticmethod
-    def _safe(exc: BaseException) -> str:
-        from synthorg.observability import safe_error_description
-
-        return safe_error_description(exc)
-
-    async def test_create_provider_conflict_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import ConflictError
+    async def test_create_provider_conflict_propagates(self) -> None:
         from synthorg.providers.errors import ProviderAlreadyExistsError
         from synthorg.providers.management.dtos import CreateProviderRequest
 
         state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderAlreadyExistsError(
-            "Provider 'test-provider' already exists at /etc/secrets/api.key",
-        )
+        boom = ProviderAlreadyExistsError("Provider 'test-provider' already exists")
         mgmt.create_provider.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ConflictError) as info:
+        with pytest.raises(ProviderAlreadyExistsError) as info:
             await ctrl.create_provider.fn(
                 ctrl,
                 state=state,
                 data=CreateProviderRequest(name="test-provider"),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_create_provider_validation_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import ValidationError
+    async def test_create_provider_validation_propagates(self) -> None:
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import CreateProviderRequest
 
         state, mgmt = _make_provider_state_and_mgmt()
-        boom = ProviderValidationError(
-            "base_url 'http://10.0.0.1/secrets' rejected by guard",
-        )
+        boom = ProviderValidationError("base_url rejected by guard")
         mgmt.create_provider.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ValidationError) as info:
+        with pytest.raises(ProviderValidationError) as info:
             await ctrl.create_provider.fn(
                 ctrl,
                 state=state,
                 data=CreateProviderRequest(name="test-provider"),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_create_from_preset_conflict_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import ConflictError
+    async def test_create_from_preset_conflict_propagates(self) -> None:
         from synthorg.providers.errors import ProviderAlreadyExistsError
         from synthorg.providers.management.dtos import CreateFromPresetRequest
 
@@ -694,7 +686,7 @@ class TestProviderControllerErrorSanitization:
         mgmt.create_from_preset.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ConflictError) as info:
+        with pytest.raises(ProviderAlreadyExistsError) as info:
             await ctrl.create_from_preset.fn(
                 ctrl,
                 state=state,
@@ -703,12 +695,11 @@ class TestProviderControllerErrorSanitization:
                     preset_name="ollama",
                 ),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_create_from_preset_validation_uses_sanitized_text(
+    async def test_create_from_preset_validation_propagates(
         self,
     ) -> None:
-        from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import CreateFromPresetRequest
 
@@ -717,7 +708,7 @@ class TestProviderControllerErrorSanitization:
         mgmt.create_from_preset.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ValidationError) as info:
+        with pytest.raises(ProviderValidationError) as info:
             await ctrl.create_from_preset.fn(
                 ctrl,
                 state=state,
@@ -726,10 +717,9 @@ class TestProviderControllerErrorSanitization:
                     preset_name="ollama",
                 ),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_update_provider_validation_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import ValidationError
+    async def test_update_provider_validation_propagates(self) -> None:
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import UpdateProviderRequest
 
@@ -738,17 +728,16 @@ class TestProviderControllerErrorSanitization:
         mgmt.update_provider.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ValidationError) as info:
+        with pytest.raises(ProviderValidationError) as info:
             await ctrl.update_provider.fn(
                 ctrl,
                 state=state,
                 name="test-provider",
                 data=UpdateProviderRequest(),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_delete_model_validation_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import ValidationError
+    async def test_delete_model_validation_propagates(self) -> None:
         from synthorg.providers.errors import ProviderValidationError
 
         state, mgmt = _make_provider_state_and_mgmt()
@@ -756,31 +745,14 @@ class TestProviderControllerErrorSanitization:
         mgmt.delete_model.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ValidationError) as info:
+        with pytest.raises(ProviderValidationError) as info:
             await ctrl.delete_model.fn(
                 ctrl,
                 state=state,
                 name="test-provider",
                 model_id="test-small-001",
             )
-        assert str(info.value) == self._safe(boom)
-
-    async def test_delete_model_runtime_uses_sanitized_text(self) -> None:
-        from synthorg.core.domain_errors import DomainError
-
-        state, mgmt = _make_provider_state_and_mgmt()
-        boom = RuntimeError("internal driver state /var/run/.cache/0xdeadbeef")
-        mgmt.delete_model.side_effect = boom
-
-        ctrl = _provider_controller()
-        with pytest.raises(DomainError) as info:
-            await ctrl.delete_model.fn(
-                ctrl,
-                state=state,
-                name="test-provider",
-                model_id="test-small-001",
-            )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
     @pytest.mark.parametrize(
         "message",
@@ -790,12 +762,11 @@ class TestProviderControllerErrorSanitization:
             "Internal model registry mismatch: id 'missing' absent",
         ],
     )
-    async def test_update_model_config_model_missing_uses_sanitized_text(
+    async def test_update_model_config_model_missing_propagates(
         self,
         message: str,
     ) -> None:
         from synthorg.config.provider_schema import LocalModelParams
-        from synthorg.core.domain_errors import NotFoundError
         from synthorg.providers.errors import ProviderModelNotFoundError
         from synthorg.providers.management.dtos import UpdateModelConfigRequest
 
@@ -804,7 +775,7 @@ class TestProviderControllerErrorSanitization:
         mgmt.update_model_config.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(NotFoundError) as info:
+        with pytest.raises(ProviderModelNotFoundError) as info:
             await ctrl.update_model_config.fn(
                 ctrl,
                 state=state,
@@ -812,13 +783,16 @@ class TestProviderControllerErrorSanitization:
                 model_id="missing",
                 data=UpdateModelConfigRequest(local_params=LocalModelParams()),
             )
-        assert str(info.value) == self._safe(boom)
+        # The discriminating MODEL_NOT_FOUND code survives because the
+        # controller propagates the typed error instead of re-raising a
+        # generic NotFoundError (which carries RESOURCE_NOT_FOUND).
+        assert info.value is boom
+        assert info.value.error_code is ErrorCode.MODEL_NOT_FOUND
 
-    async def test_update_model_config_validation_uses_sanitized_text(
+    async def test_update_model_config_validation_propagates(
         self,
     ) -> None:
         from synthorg.config.provider_schema import LocalModelParams
-        from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.dtos import UpdateModelConfigRequest
 
@@ -827,7 +801,7 @@ class TestProviderControllerErrorSanitization:
         mgmt.update_model_config.side_effect = boom
 
         ctrl = _provider_controller()
-        with pytest.raises(ValidationError) as info:
+        with pytest.raises(ProviderValidationError) as info:
             await ctrl.update_model_config.fn(
                 ctrl,
                 state=state,
@@ -835,10 +809,10 @@ class TestProviderControllerErrorSanitization:
                 model_id="test-small-001",
                 data=UpdateModelConfigRequest(local_params=LocalModelParams()),
             )
-        assert str(info.value) == self._safe(boom)
+        assert info.value is boom
 
-    async def test_capability_mutations_sanitize_validation_text(self) -> None:
-        """Three capability mutations all sanitize ProviderValidationError text.
+    async def test_capability_mutations_propagate_validation(self) -> None:
+        """Three capability mutations all propagate ProviderValidationError.
 
         Drives the real ``audit_actor_from_context`` code path via
         ``authenticated_user_scope`` rather than monkey-patching the
@@ -851,7 +825,6 @@ class TestProviderControllerErrorSanitization:
         from synthorg.api.auth import authenticated_user_scope
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
         from synthorg.core.auth.roles import HumanRole
-        from synthorg.core.domain_errors import ValidationError
         from synthorg.providers.enums import AuthType
         from synthorg.providers.errors import ProviderValidationError
         from synthorg.providers.management.capability_dtos import (
@@ -894,14 +867,33 @@ class TestProviderControllerErrorSanitization:
             ctrl = _provider_controller()
             handler = getattr(ctrl, mutation_name).fn
             async with authenticated_user_scope(user):
-                with pytest.raises(ValidationError) as info:
+                with pytest.raises(ProviderValidationError) as info:
                     await handler(
                         ctrl,
                         state=state,
                         name="test-provider",
                         data=data,
                     )
-            assert str(info.value) == self._safe(boom), f"mutation={mutation_name!r}"
+            assert info.value is boom, f"mutation={mutation_name!r}"
+
+    def test_handler_scrubs_secret_tokens_in_provider_4xx(self) -> None:
+        """The central 4xx detail is scrubbed of any embedded secret token.
+
+        Replaces the per-controller ``safe_error_description`` catch: a
+        raise site that interpolates a credential into a 4xx message can
+        no longer leak it through the RFC 9457 envelope, because
+        ``_select_message`` routes every 4xx detail through
+        ``scrub_secret_tokens``.
+        """
+        from synthorg.api.exception_handlers import _select_message
+        from synthorg.providers.errors import ProviderValidationError
+
+        boom = ProviderValidationError(
+            "rejected request with Authorization: Bearer sk-supersecret-token",
+        )
+        detail = _select_message(boom, 422)
+        assert "sk-supersecret-token" not in detail
+        assert "***" in detail
 
 
 @pytest.mark.unit
@@ -956,7 +948,6 @@ class TestReenableToolCalling:
             )
 
     async def test_unknown_model_raises_404(self) -> None:
-        from synthorg.core.domain_errors import NotFoundError
         from synthorg.providers.errors import ProviderModelNotFoundError
         from synthorg.providers.tool_call_feedback.tracker import (
             ToolCallFeedbackTracker,
@@ -967,7 +958,9 @@ class TestReenableToolCalling:
         )
         state = self._state_with_tracker(tracker)
         ctrl = _provider_controller()
-        with pytest.raises(NotFoundError):
+        # Propagates the typed 404 (MODEL_NOT_FOUND) to the central handler
+        # rather than collapsing it into a generic NotFoundError.
+        with pytest.raises(ProviderModelNotFoundError):
             await ctrl.reenable_tool_calling.fn(
                 ctrl, state=state, name="test-provider", model_id="absent"
             )

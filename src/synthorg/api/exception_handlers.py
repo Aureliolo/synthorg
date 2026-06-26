@@ -73,7 +73,11 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
     API_ACCEPT_PARSE_FAILED,
@@ -756,15 +760,22 @@ def _select_message(exc: Exception, status_code: int) -> str:
     """Pick a user-safe message for the RFC 9457 envelope.
 
     5xx responses return the class-level ``default_message`` to avoid
-    leaking internal detail; 4xx responses pass through the exception
-    message (controller-authored, user-safe).
+    leaking internal detail. 4xx responses pass through the exception
+    message (controller / service-authored) but route it through
+    ``scrub_secret_tokens`` first: a defence-in-depth pass that redacts
+    any credential / token-shaped substring (Bearer tokens, URL
+    userinfo, Fernet ciphertext, JSON secret fields) a raise site may
+    have interpolated, without altering ordinary validation text. This
+    is what lets domain errors propagate straight to this handler with
+    no controller-level catch-and-sanitise.
 
     Returns:
         Resulting string.
     """
     if status_code >= _SERVER_ERROR_THRESHOLD:
         return str(getattr(exc, "default_message", "Internal server error"))
-    return str(exc) or str(getattr(exc, "default_message", "Request error"))
+    raw = str(exc) or str(getattr(exc, "default_message", "Request error"))
+    return scrub_secret_tokens(raw)
 
 
 def _parse_retry_after(raw: object) -> int | None:

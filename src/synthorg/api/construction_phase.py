@@ -58,7 +58,6 @@ from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.communication.bus import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
@@ -132,27 +131,28 @@ def _wire_quadratic_alert_sink(
 ) -> None:
     """Late-bind the bus quadratic enforcer's alert sink to the dispatcher.
 
-    The in-memory bus is constructed before the dispatcher exists, so its
-    :class:`QuadraticEnforcer` starts with no alert sink (it still emits
-    the structured detection event). Once the dispatcher is built we wrap
-    it in a :class:`DispatcherQuadraticAlertSink` so quadratic detections
-    also fire operator notifications. No-op for backends without an
-    enforcer (NATS) or when enforcement is disabled.
+    The bus is constructed before the dispatcher exists, so its enforcer
+    (if any) starts with no alert sink (it still emits the structured
+    detection event). Once the dispatcher is built we wrap it in a
+    :class:`DispatcherQuadraticAlertSink` so quadratic detections also
+    fire operator notifications. The bus routes the sink to its enforcer
+    through the ``MessageBus`` protocol seam, so backends without an
+    enforcer (NATS) or with enforcement disabled absorb it as a no-op
+    without the wiring code naming a concrete backend.
 
     Args:
         message_bus: The auto-wired message bus, or ``None``.
         dispatcher: The construction-phase notification dispatcher.
     """
-    if not isinstance(message_bus, InMemoryMessageBus):
-        return
-    enforcer = message_bus.quadratic_enforcer
-    if enforcer is None:
+    if message_bus is None:
         return
     from synthorg.notifications.quadratic_alert_sink import (  # noqa: PLC0415
         DispatcherQuadraticAlertSink,
     )
 
-    enforcer.set_alert_sink(DispatcherQuadraticAlertSink(dispatcher=dispatcher))
+    message_bus.set_quadratic_alert_sink(
+        DispatcherQuadraticAlertSink(dispatcher=dispatcher)
+    )
 
 
 def _wire_communication_services(

@@ -4,7 +4,7 @@
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Final
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
@@ -131,74 +131,92 @@ class ApprovalsDecisionsController(Controller):
         state: State,
         data: CreateApprovalRequest,
         request: Request[object, object, State],
+        idempotency_key: _IdempotencyKeyHeader,
     ) -> ApiResponse[ApprovalResponse]:
         """Create a new approval item.
 
         The ``requested_by`` field is populated from the authenticated
-        user's username, not from the request body.
+        user's username, not from the request body. Creation runs under
+        the idempotency guard so a 5xx-driven client retry with the same
+        ``Idempotency-Key`` returns the originally-created approval rather
+        than inserting a duplicate row.
 
         Args:
             state: Application state.
             data: Approval creation payload.
             request: The incoming HTTP request.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
-            Created approval item envelope.
+            Created (or cached) approval item envelope.
 
         Raises:
             UnauthorizedError: If the user is missing from the request scope.
+            ConflictError: If a concurrent in-flight create holds the same
+                idempotency key.
         """
         auth_user = require_authenticated_user(request)
 
         app_state: AppState = state.app_state
-        now = datetime.now(UTC)
-        approval_id = str(uuid4())
 
-        expires_at = None
-        if data.ttl_seconds is not None:
-            expires_at = now + timedelta(seconds=data.ttl_seconds)
+        async def _create() -> dict[str, object]:
+            now = datetime.now(UTC)
+            expires_at = None
+            if data.ttl_seconds is not None:
+                expires_at = now + timedelta(seconds=data.ttl_seconds)
 
-        item = ApprovalItem(
-            id=UUID(approval_id),
-            action_type=data.action_type,
-            title=data.title,
-            description=data.description,
-            requested_by=auth_user.username,
-            risk_level=data.risk_level,
-            created_at=now,
-            expires_at=expires_at,
-            task_id=data.task_id,
-            metadata=data.metadata,
-        )
-        # Resolve urgency thresholds BEFORE the durable write so a slow
-        # settings backend can't strand a committed approval behind a
-        # blocked response (which would prompt the client to retry and
-        # double-write the same approval).
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
-        store = require_service(
-            app_state.slice(ApprovalStateSlice).store, "Approval Store"
-        )
-        await store.add(item)
+            item = ApprovalItem(
+                id=uuid4(),
+                action_type=data.action_type,
+                title=data.title,
+                description=data.description,
+                requested_by=auth_user.username,
+                risk_level=data.risk_level,
+                created_at=now,
+                expires_at=expires_at,
+                task_id=data.task_id,
+                metadata=data.metadata,
+            )
+            # Resolve urgency thresholds BEFORE the durable write so a slow
+            # settings backend can't strand a committed approval behind a
+            # blocked response.
+            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
+                app_state
+            )
+            store = require_service(
+                app_state.slice(ApprovalStateSlice).store, "Approval Store"
+            )
+            await store.add(item)
 
-        _publish_approval_event(
-            request,
-            WsEventType.APPROVAL_SUBMITTED,
-            item,
-        )
-        logger.info(
-            API_APPROVAL_CREATED,
-            approval_id=item.id,
-            action_type=item.action_type,
-            risk_level=item.risk_level.value,
-        )
-        return ApiResponse(
-            data=_to_approval_response(
+            _publish_approval_event(
+                request,
+                WsEventType.APPROVAL_SUBMITTED,
+                item,
+            )
+            logger.info(
+                API_APPROVAL_CREATED,
+                approval_id=item.id,
+                action_type=item.action_type,
+                risk_level=item.risk_level.value,
+            )
+            return _to_approval_response(
                 item,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
-            )
+            ).model_dump(mode="json")
+
+        response = await _decide_idempotent(
+            app_state,
+            scope="approval:create",
+            # Scope the key to the caller so two users may reuse the same
+            # client-side token; a 36-char user_id keeps the composite key
+            # within the durable column bound (matches the decision paths).
+            key=f"{auth_user.user_id}:{idempotency_key}",
+            endpoint="approvals.create",
+            decide=_create,
         )
+        return ApiResponse(data=response)
 
     @post(
         "/{approval_id:str}/approve",

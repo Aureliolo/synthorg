@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
+from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
@@ -38,36 +39,13 @@ from synthorg.meta.state import (
     self_improvement_config_of,
 )
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.meta import (
     META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CUSTOM_RULE_LIST_FAILED,
+    META_PROPOSAL_LISTED,
 )
 from synthorg.persistence.state import persistence_of
-
-
-def _ab_test_to_dict(record: AbTestRecord) -> dict[str, object]:
-    """Serialise a durable A/B-test record for the read endpoints.
-
-    Returns:
-        A JSON-serialisable summary dict.
-    """
-    return {
-        "id": str(record.id),
-        "name": str(record.name),
-        "status": record.status.value,
-        "verdict": record.verdict.value if record.verdict is not None else None,
-        "observation_hours_elapsed": record.observation_hours_elapsed,
-        "arms": [
-            {
-                "name": str(arm.name),
-                "agent_count": arm.agent_count,
-                "fraction": arm.fraction,
-            }
-            for arm in record.arms
-        ],
-        "created_at": record.created_at.isoformat(),
-        "updated_at": record.updated_at.isoformat(),
-    }
 
 
 class ChatRequest(BaseModel):
@@ -178,6 +156,7 @@ class MetaController(Controller):
         ]
         # Append custom rules from persistence.
         repo = persistence_of(state.app_state).custom_rules
+        degraded_sources: tuple[NotBlankStr, ...] = ()
         try:
             from synthorg.persistence.custom_rule_protocol import (  # noqa: PLC0415
                 CustomRuleFilterSpec,
@@ -190,6 +169,10 @@ class MetaController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # Surface the partial result in the envelope so a client can tell
+            # "no custom rules configured" apart from "custom-rules query
+            # failed" rather than silently receiving only the built-ins.
+            degraded_sources = (NotBlankStr("custom_rules"),)
         else:
             rule_list.extend({**rule_to_dict(cr), "type": "custom"} for cr in custom)
         page, meta = paginate_cursor(
@@ -198,7 +181,11 @@ class MetaController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](
+            data=page,
+            pagination=meta,
+            degraded_sources=degraded_sources,
+        )
 
     @get("/mcp/tools")
     async def list_mcp_tools(
@@ -269,7 +256,7 @@ class MetaController(Controller):
             records = await collect_all(
                 lambda limit, offset: bound_repo.list_items(limit=limit, offset=offset)
             )
-        summaries = tuple(_ab_test_to_dict(record) for record in records)
+        summaries = tuple(ab_test_to_dict(record) for record in records)
         page, meta = paginate_cursor(
             summaries,
             limit=limit,
@@ -301,9 +288,17 @@ class MetaController(Controller):
         repo = ab_test_repo_of(state.app_state)
         record = await repo.get(NotBlankStr(proposal_id)) if repo is not None else None
         if record is None:
+            # Surface ``proposal_id`` as a queryable field: the typed 404 is
+            # also logged by the central handler, but only the message carries
+            # the id, so this controller log keeps it operator-searchable.
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="ab_test",
+                proposal_id=proposal_id,
+            )
             msg = f"ab_test {proposal_id!r} not found"
             raise AbTestNotFoundError(msg)
-        return ApiResponse[dict[str, object]](data=_ab_test_to_dict(record))
+        return ApiResponse[dict[str, object]](data=ab_test_to_dict(record))
 
     @get("/proposals")
     async def list_proposals(
@@ -327,6 +322,9 @@ class MetaController(Controller):
         store = require_service(
             state.app_state.slice(ApprovalStateSlice).store, "Approval Store"
         )
+        # A backend failure here propagates to the central persistence handler
+        # (500 + retryable); the success path logs the filtered count for
+        # request-context tracing.
         all_items = await store.list_items()
         proposals = tuple(
             {
@@ -341,6 +339,7 @@ class MetaController(Controller):
             for item in all_items
             if item.action_type.startswith("meta.")
         )
+        logger.debug(META_PROPOSAL_LISTED, count=len(proposals))
         page, meta = paginate_cursor(
             proposals,
             limit=limit,

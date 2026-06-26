@@ -240,6 +240,15 @@ API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
 API_SSRF_VIOLATION_LISTED: Final[str] = "api.ssrf_violation.listed"
 API_SSRF_VIOLATION_FETCH_FAILED: Final[str] = "api.ssrf_violation.fetch_failed"
 
+# Read-side list tracing for controllers that previously had no
+# handler-level observability on the happy path.
+API_CLIENT_LISTED: Final[str] = "api.client.listed"
+API_TASK_LISTED: Final[str] = "api.task.listed"
+API_STEERING_LISTED: Final[str] = "api.steering.listed"
+API_RISK_OVERRIDE_LISTED: Final[str] = "api.risk_override.listed"
+API_EXPERIMENT_VARIANT_REGISTERED: Final[str] = "api.experiment.variant_registered"
+API_BUDGET_CFO_QUERIED: Final[str] = "api.budget_cfo.queried"
+
 # Pagination / cursor
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret
 API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"

@@ -30,20 +30,14 @@ from synthorg.api.rate_limits import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import (
-    DomainError,
-    NotFoundError,
-    ValidationError,
-)
+from synthorg.core.domain_errors import DomainError, ValidationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_MODEL_OPERATION_FAILED,
-    API_RESOURCE_NOT_FOUND,
     API_SSE_PULL_MODEL_FAILED,
     API_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
-    ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
 )
@@ -211,52 +205,15 @@ class ProviderLocalModelsController(Controller):
             model_id: Model identifier (may contain colons).
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
-            ValidationError: Raised on the corresponding failure path.
-            DomainError: Raised on the corresponding failure path.
+            ProviderNotFoundError: If the provider does not exist (404).
+            ProviderModelNotFoundError: If the model does not exist on the
+                provider (404, ``MODEL_NOT_FOUND``).
+            ProviderValidationError: If delete is unsupported (422).
+            ProviderError: If the upstream delete request fails (502). All
+                mapped by the domain handler from class metadata.
         """
         app_state: AppState = state.app_state
-        try:
-            await provider_management_of(app_state).delete_model(
-                name,
-                model_id,
-            )
-        except ProviderNotFoundError as exc:
-            msg = f"Provider {name!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(msg) from exc
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                name=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
-        except ValueError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="model",
-                name=model_id,
-                provider=name,
-            )
-            raise NotFoundError(str(exc)) from exc
-        except RuntimeError as exc:
-            logger.warning(
-                API_MODEL_OPERATION_FAILED,
-                resource="model",
-                operation="delete",
-                name=model_id,
-                provider=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise DomainError(safe_error_description(exc)) from exc
+        await provider_management_of(app_state).delete_model(name, model_id)
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
@@ -294,43 +251,20 @@ class ProviderLocalModelsController(Controller):
             Updated model response.
 
         Raises:
-            NotFoundError: If the provider or model does not exist.
-            ValidationError: If the launch parameters are unsupported.
-            DomainError: Raised on the corresponding failure path.
+            ProviderNotFoundError: If the provider does not exist (404).
+            ProviderModelNotFoundError: If the model does not exist on the
+                provider (404, ``MODEL_NOT_FOUND``).
+            ProviderValidationError: If the launch parameters are
+                unsupported (422). All mapped by the domain handler.
+            DomainError: If the updated config is internally inconsistent
+                (500 invariant -- should never happen).
         """
         app_state: AppState = state.app_state
-        try:
-            updated = await provider_management_of(app_state).update_model_config(
-                name,
-                model_id,
-                data.local_params,
-            )
-        except ProviderNotFoundError as exc:
-            msg = f"Provider {name!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(msg) from exc
-        except ProviderModelNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="model",
-                name=model_id,
-                provider=name,
-            )
-            raise NotFoundError(safe_error_description(exc)) from exc
-        except ProviderValidationError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                name=name,
-                model=model_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        updated = await provider_management_of(app_state).update_model_config(
+            name,
+            model_id,
+            data.local_params,
+        )
         model = next(
             (m for m in updated.models if m.id == model_id),
             None,

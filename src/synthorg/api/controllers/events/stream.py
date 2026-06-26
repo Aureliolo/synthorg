@@ -91,14 +91,15 @@ class EventStreamController(Controller):
                 ids cannot be enumerated by status code).
         """
         app_state: AppState = state.app_state
-        hub = require_hub(app_state)
         user = getattr(request, "user", None)
         # ``require_read_access`` guarantees an authenticated user; assert it
-        # so a misconfigured guard chain fails closed rather than streaming
-        # a session to an anonymous caller.
+        # FIRST so a misconfigured guard chain fails closed with the generic
+        # 404 rather than streaming a session to an anonymous caller or
+        # leaking the hub-availability 503 ahead of the access check.
         if not isinstance(user, AuthenticatedUser):
             msg = "Session not found"
             raise NotFoundError(msg)
+        hub = require_hub(app_state)
         await assert_sse_session_access(app_state, session_id, user)
         # SSE reconnect: the browser resends the last event id it saw via
         # the ``Last-Event-ID`` header so the hub can replay the gap it

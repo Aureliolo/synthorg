@@ -238,6 +238,13 @@ def _build_auth_exclude_paths(
     # metrics / setup-status / logout.
     healthz_path = f"^{prefix}/healthz$"
     readyz_path = f"^{prefix}/readyz$"
+    # External provider webhooks arrive with no session cookie or bearer
+    # token: they authenticate by HMAC signature, verified inside the
+    # ingest handler. Excluding them from the session/bearer auth
+    # middleware lets the request reach that signature check instead of
+    # 401-ing first. Fail-safe (mandatory) so a custom
+    # ``auth.exclude_paths`` cannot accidentally re-gate webhook ingest.
+    webhooks_path = f"^{prefix}/webhooks/"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -275,6 +282,7 @@ def _build_auth_exclude_paths(
         refresh_path,
         ws_path,
         oauth_callback_path,
+        webhooks_path,
     ]
     if a2a_enabled:
         mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))

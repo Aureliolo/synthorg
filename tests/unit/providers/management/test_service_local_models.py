@@ -154,6 +154,46 @@ class TestLocalModelManagement:
             )
 
 
+class TestDeleteLocalModelTranslation:
+    """``delete_local_model`` maps stdlib manager errors to typed ones.
+
+    The ``LocalModelManager`` protocol signals failure with stdlib
+    ``ValueError`` / ``RuntimeError``; the service boundary translates
+    them into typed provider errors so the controller can propagate the
+    right wire contract (404 ``MODEL_NOT_FOUND`` / 502 ``PROVIDER_ERROR``)
+    without a catch of its own.
+    """
+
+    async def test_value_error_becomes_model_not_found(self) -> None:
+        from synthorg.providers.errors import ProviderModelNotFoundError
+        from synthorg.providers.management._capability_helpers import (
+            delete_local_model,
+        )
+
+        manager = AsyncMock()
+        manager.delete_model.side_effect = ValueError("absent on backend")
+
+        with pytest.raises(ProviderModelNotFoundError, match="not found"):
+            await delete_local_model(manager, name="my-ollama", model_id="m1")
+
+    async def test_runtime_error_becomes_provider_error(self) -> None:
+        from synthorg.providers.errors import ProviderError
+        from synthorg.providers.management._capability_helpers import (
+            delete_local_model,
+        )
+
+        manager = AsyncMock()
+        # The raised ProviderError message is authored-safe (no upstream
+        # text); the upstream detail rides only the WARNING log.
+        manager.delete_model.side_effect = RuntimeError(
+            "internal driver state /var/run/.cache/0xdeadbeef",
+        )
+
+        with pytest.raises(ProviderError) as info:
+            await delete_local_model(manager, name="my-ollama", model_id="m1")
+        assert "0xdeadbeef" not in str(info.value)
+
+
 class TestCreateFromPresetLocalSkipsLitellm:
     """Bug fix: local presets (auth_type=NONE) must skip models_from_litellm.
 

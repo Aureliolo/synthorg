@@ -427,10 +427,13 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
 
     Reads ``telemetry.enabled`` via :func:`bootstrap_resolver.resolve_init_value`,
     which honours ``env > default`` for the registered env var (see
-    :mod:`synthorg.settings.definitions.telemetry`). The DB layer is
-    consulted by ``SettingsService`` / ``ConfigResolver`` for runtime
-    ``/settings`` reads and edits; those changes apply on the next
-    process restart per the setting's ``restart_required`` semantics.
+    :mod:`synthorg.settings.definitions.telemetry`). The collector is built
+    in the construction phase, before persistence connects, so this only
+    layers env over the code default. The authoritative DB layer (a value
+    edited through ``/settings``) is applied at restart by the
+    ``_apply_telemetry_db_layer`` on-startup hook in ``lifecycle_assembly``,
+    which re-resolves ``telemetry.enabled`` with full DB > env > default
+    precedence once the resolver is wired and before the collector starts.
 
     Validates the env value at this system boundary so a typo such as
     ``SYNTHORG_TELEMETRY_ENABLED=falsee`` raises rather than silently

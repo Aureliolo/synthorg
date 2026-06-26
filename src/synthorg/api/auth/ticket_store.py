@@ -47,11 +47,18 @@ _DEFAULT_TTL_SECONDS: Final[float] = 30.0
 
 
 class TicketLimitExceededError(PerOperationRateLimitError):
-    """Raised when a user exceeds the per-user pending ticket cap."""
+    """Raised when a user exceeds the per-user pending ticket cap.
+
+    The cap bounds concurrent *unconsumed* tickets, not request
+    throughput, so it carries the dedicated ``WS_TICKET_LIMIT_EXCEEDED``
+    code rather than the throughput-oriented ``PER_OPERATION_RATE_LIMITED``:
+    a client can tell "too many pending tickets, consume or let them
+    expire" apart from "you are issuing requests too fast".
+    """
 
     default_message: ClassVar[str] = "WebSocket ticket cap exceeded"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
-    error_code: ClassVar[ErrorCode] = ErrorCode.PER_OPERATION_RATE_LIMITED
+    error_code: ClassVar[ErrorCode] = ErrorCode.WS_TICKET_LIMIT_EXCEEDED
     status_code: ClassVar[int] = 429
 
 

@@ -14,6 +14,7 @@ from synthorg.api.state import AppState
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
@@ -39,10 +40,10 @@ async def _require_registered_identity(
     Raises:
         NotFoundError: If no agent with *agent_id* is registered.
     """
-    # str(agent.id) is canonical lowercase, so lowercase the path segment to
-    # resolve case variants -- mirrors _config_agent_by_id so the registry-
-    # backed routes don't 404 on an id the config route would resolve.
-    canonical_agent_id = agent_id.lower()
+    # str(agent.id) is canonical ASCII-lowercase, so normalise the path segment
+    # the same way to resolve case variants -- mirrors _config_agent_by_id so
+    # the registry-backed routes don't 404 on an id the config route resolves.
+    canonical_agent_id = normalize_ascii_lowercase(agent_id)
     return require_resource_or_404(
         await agent_registry_of(app_state).get(canonical_agent_id),
         resource_type="agent",
@@ -69,9 +70,9 @@ async def _config_agent_by_id(
     Raises:
         NotFoundError: If no configured agent has *agent_id*.
     """
-    # str(agent.id) is canonical lowercase, so lowercase the path segment to
-    # resolve case variants; a non-matching (or malformed) id falls through.
-    target = agent_id.lower()
+    # str(agent.id) is canonical ASCII-lowercase, so normalise the path segment
+    # the same way; a non-matching (or malformed) id falls through.
+    target = normalize_ascii_lowercase(agent_id)
     agents = await config_resolver_of(app_state).get_agents()
     for agent in agents:
         if str(agent.id) == target:

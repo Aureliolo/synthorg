@@ -131,6 +131,12 @@ class RateLimitConfig(BaseModel):
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
         MirrorField(
+            field="floor_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_floor_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
             field="unauth_max_requests",
             namespace=SettingNamespace.API,
             key="rate_limit_unauth_max_requests",

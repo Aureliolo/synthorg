@@ -389,6 +389,22 @@ class TelemetryCollector:
         """Whether telemetry is enabled."""
         return self._config.enabled
 
+    def apply_enabled(self, *, enabled: bool) -> None:
+        """Override the resolved ``enabled`` flag before the collector starts.
+
+        ``telemetry.enabled`` is resolved with full DB > env > default
+        precedence only after persistence connects, but the collector is
+        built earlier (env > default), so boot re-applies the authoritative
+        value here before :meth:`start` reads it. Reassigns the frozen
+        config in place; intended for the pre-start boot hook only.
+
+        Args:
+            enabled: The authoritative resolved value.
+        """
+        if enabled == self._config.enabled:
+            return
+        self._config = self._config.model_copy(update={"enabled": enabled})
+
     @property
     def is_functional(self) -> bool:
         """Whether telemetry is both opted in AND the reporter can deliver.

@@ -65,6 +65,7 @@ from synthorg.observability.events.api import (
     API_TASK_CANCELLED,
     API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
+    API_TASK_LISTED,
     API_TASK_UPDATED,
 )
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
@@ -228,6 +229,7 @@ class TaskController(Controller):
             secret=cursor_secret_of(app_state),
         )
         meta = meta.model_copy(update={"total": total})
+        logger.debug(API_TASK_LISTED, count=len(page), total=total)
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{task_id:str}")

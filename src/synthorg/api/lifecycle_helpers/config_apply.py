@@ -175,6 +175,27 @@ async def _apply_notification_dispatcher_config(
         bridge_config=notif_bridge,
         config_resolver=config_resolver_of(app_state),
     )
+    # Start BEFORE swapping so a failed start leaves the live (already
+    # running) dispatcher in place rather than installing a built-but-
+    # unstarted one whose sinks silently drop events. Mirrors the boot
+    # path in ``auto_wire.py`` / ``lifecycle_assembly.py``.
+    try:
+        await new_dispatcher.start()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            event_context="new_notification_dispatcher_start",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        try:
+            await new_dispatcher.aclose()
+        except Exception as close_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(close_exc)
+        return
     old_dispatcher = app_state.swap_notification_dispatcher(new_dispatcher)
     if old_dispatcher is None:
         return

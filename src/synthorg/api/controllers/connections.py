@@ -27,7 +27,6 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathField, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import ConflictError, ValidationError
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.models import (
     Connection,
@@ -35,8 +34,6 @@ from synthorg.integrations.connections.models import (
 )
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
-    DuplicateConnectionError,
-    InvalidConnectionAuthError,
     SecretRetrievalError,
     SecretRetrievalNotFoundError,
 )
@@ -46,11 +43,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.api import (
-    API_RESOURCE_CONFLICT,
-    API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
-)
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.security import (
     SECURITY_CONNECTION_CREATED,
     SECURITY_CONNECTION_DELETED,
@@ -172,8 +165,10 @@ class ConnectionsController(Controller):
             ``ApiResponse[Connection]`` instance.
 
         Raises:
-            ConflictError: Raised on the corresponding failure path.
-            ValidationError: Raised on the corresponding failure path.
+            DuplicateConnectionError: If a connection with this name already
+                exists (409, mapped by the domain handler from class metadata).
+            InvalidConnectionAuthError: If the supplied credentials fail
+                validation (422, mapped by the domain handler).
         """
         # Defensively deepcopy ``credentials`` / ``metadata`` at the API
         # boundary so the catalog can never observe (or be mutated by)
@@ -189,40 +184,21 @@ class ConnectionsController(Controller):
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
             "Connection Catalog",
         )
-        try:
-            conn = await catalog.create(
-                name=data.name,
-                connection_type=data.connection_type,
-                auth_method=data.auth_method.value,
-                credentials=credentials_copy,
-                base_url=data.base_url,
-                metadata=metadata_copy,
-                health_check_enabled=data.health_check_enabled,
-                webhook_receipt_retention_days=data.webhook_receipt_retention_days,
-                sensitive=data.sensitive,
-            )
-        except DuplicateConnectionError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                connection=data.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConflictError(str(exc)) from exc
-        except InvalidConnectionAuthError as exc:
-            # ``InvalidConnectionAuthError`` is raised by
-            # ``authenticator.validate_credentials(credentials)``, so
-            # the offending field is ``credentials`` rather than
-            # ``auth_method``; mislabelling here would point clients at
-            # the wrong input.
-            logger.warning(
-                API_VALIDATION_FAILED,
-                connection=data.name,
-                field="credentials",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(str(exc)) from exc
+        # ``DuplicateConnectionError`` (409) and ``InvalidConnectionAuthError``
+        # (422, raised by ``authenticator.validate_credentials``) carry the
+        # right wire contract on the class, so they propagate untouched to the
+        # central handler instead of being caught and re-mapped.
+        conn = await catalog.create(
+            name=data.name,
+            connection_type=data.connection_type,
+            auth_method=data.auth_method.value,
+            credentials=credentials_copy,
+            base_url=data.base_url,
+            metadata=metadata_copy,
+            health_check_enabled=data.health_check_enabled,
+            webhook_receipt_retention_days=data.webhook_receipt_retention_days,
+            sensitive=data.sensitive,
+        )
         # Connection records carry credentials; route the success
         # event through the audit chain (the SECURITY_* prefix is the
         # ``AuditChainSink`` filter). Field naming mirrors

@@ -20,8 +20,12 @@ from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import NotFoundError, UnauthorizedError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RISK_OVERRIDE_LISTED
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.state import risk_override_service_of
+
+logger = get_logger(__name__)
 
 
 def _require_actor(request: Request[object, object, State]) -> AuthenticatedUser:
@@ -119,6 +123,7 @@ class RiskOverrideController(Controller):
         """
         service = risk_override_service_of(state.app_state)
         active = service.list_active()
+        logger.debug(API_RISK_OVERRIDE_LISTED, count=len(active))
         return ApiResponse(data=[RiskOverrideResponse.from_override(o) for o in active])
 
     @post(

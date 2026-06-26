@@ -1,3 +1,4 @@
+# module-kind: code
 """Callback factories and config helpers for the Litestar application.
 
 Small, self-contained helpers that :mod:`synthorg.api.app` composes

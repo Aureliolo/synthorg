@@ -20,6 +20,7 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_LISTED,
@@ -68,6 +69,9 @@ class AuthSessionsController(Controller):
             request, reason="unauthenticated_session_list"
         )
 
+        # Accept case / whitespace variants (?scope=All, ?scope=OWN) by
+        # normalising before the membership check rather than 422-ing.
+        scope = normalize_ascii_lowercase(scope)
         if scope not in _VALID_SCOPES:
             msg = f"Invalid scope: {scope!r}. Valid: own, all"
             logger.warning(

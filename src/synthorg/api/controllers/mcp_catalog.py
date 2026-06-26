@@ -25,9 +25,6 @@ from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import CatalogEntry
-from synthorg.integrations.errors import (
-    InvalidConnectionAuthError,
-)
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
 )
@@ -397,23 +394,16 @@ class MCPCatalogController(Controller):
             connection_catalog=connection_catalog,
         )
 
-        try:
-            result = await service.install(
-                entry_id,
-                connection_name,
-                connection_catalog=connection_catalog,
-                installations_repo=installations_repo,
-            )
-        except InvalidConnectionAuthError as exc:
-            logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                entry_id=entry_id,
-                connection_name=connection_name,
-                reason="connection_type_mismatch",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(str(exc)) from exc
+        # ``InvalidConnectionAuthError`` carries its own 422 ``VALIDATION_ERROR``
+        # wire contract (the supplied connection is the wrong type for this
+        # catalog entry), so it propagates untouched to the central handler
+        # instead of being caught and re-mapped.
+        result = await service.install(
+            entry_id,
+            connection_name,
+            connection_catalog=connection_catalog,
+            installations_repo=installations_repo,
+        )
 
         # NB: we intentionally don't re-log ``MCP_SERVER_INSTALLED``
         # here - the repository's ``save()`` is the canonical audit

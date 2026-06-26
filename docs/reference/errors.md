@@ -159,6 +159,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 5001 | `PER_OPERATION_RATE_LIMITED` | Specific operation's `(max_requests, window)` budget exhausted |
 | 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Too many in-flight requests for the op |
 | 5003 | `AGENT_CONNECTION_LIMIT_EXCEEDED` | Message-bus quadratic `hard_block` rejected a new agent connection |
+| 5004 | `WS_TICKET_LIMIT_EXCEEDED` | Per-user pending WebSocket-ticket cap reached (consume or let tickets expire) |
 
 ## Budget Exhausted (6xxx)
 

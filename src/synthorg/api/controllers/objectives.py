@@ -1,3 +1,4 @@
+# module-kind: controller
 """Goal / objective intake endpoints at ``/objectives``.
 
 A thin HTTP boundary over the

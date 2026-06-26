@@ -9,10 +9,18 @@ from datetime import UTC, datetime
 from typing import Final, assert_never
 
 from synthorg.core.actor_context import current_actor
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import format_iso_utc
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
-from synthorg.providers.errors import ProviderValidationError
+from synthorg.observability.events.provider import (
+    PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_VALIDATION_FAILED,
+)
+from synthorg.providers.errors import (
+    ProviderError,
+    ProviderModelNotFoundError,
+    ProviderValidationError,
+)
 from synthorg.providers.management.capability_dtos import (
     CredentialsRotateRequest,
     ProviderAuditActor,
@@ -21,6 +29,7 @@ from synthorg.providers.management.capability_dtos import (
     _OAuthRotation,
     _SubscriptionRotation,
 )
+from synthorg.providers.management.local_models import LocalModelManager
 
 logger = get_logger(__name__)
 
@@ -70,6 +79,50 @@ def mask_secret(secret: str) -> str:
     if len(secret) <= _SECRET_SHORT_THRESHOLD:
         return "*" * 8
     return f"{secret[:4]}***{secret[-4:]}"
+
+
+async def delete_local_model(
+    manager: LocalModelManager,
+    *,
+    name: str,
+    model_id: str,
+) -> None:
+    """Delete a model via the local manager, translating stdlib errors.
+
+    The ``LocalModelManager`` protocol signals "model absent" / "delete
+    failed" with stdlib ``ValueError`` / ``RuntimeError``; translate them
+    at this boundary into typed domain errors so the controller can let
+    them propagate to the central handler with the right wire contract
+    (404 ``MODEL_NOT_FOUND`` / 502 ``PROVIDER_ERROR``) instead of
+    re-mapping a generic error.
+
+    Raises:
+        ProviderModelNotFoundError: If the model does not exist (404).
+        ProviderError: If the upstream delete request fails (502).
+    """
+    try:
+        await manager.delete_model(model_id)
+    except ValueError as exc:
+        del_msg = f"Model {model_id!r} not found on provider {name!r}"
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            provider=name,
+            model=model_id,
+            error=del_msg,
+        )
+        raise ProviderModelNotFoundError(del_msg) from exc
+    except RuntimeError as exc:
+        reraise_critical(exc)
+        del_msg = f"Failed to delete model {model_id!r} on provider {name!r}"
+        logger.warning(
+            PROVIDER_DISCOVERY_FAILED,
+            provider=name,
+            reason="model_delete_failed",
+            model=model_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise ProviderError(del_msg) from exc
 
 
 def credentials_update_fields(

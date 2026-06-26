@@ -431,21 +431,42 @@ class CreateTaskRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    title: NotBlankStr = Field(max_length=256, description="Short task title.")
+    title: NotBlankStr = Field(
+        max_length=256,
+        description="Short task title.",
+        examples=["Draft Q3 marketing plan"],
+    )
     description: NotBlankStr = Field(
         max_length=4096,
         description="Detailed task description.",
+        examples=["Produce a one-page plan covering channels, budget, and KPIs."],
     )
-    type: TaskType
-    priority: Priority = Priority.MEDIUM
-    project: NotBlankStr
-    created_by: NotBlankStr
-    assigned_to: NotBlankStr | None = None
-    estimated_complexity: Complexity = Complexity.MEDIUM
+    type: TaskType = Field(description="Task work type (the kind of work performed).")
+    priority: Priority = Field(
+        default=Priority.MEDIUM,
+        description="Scheduling priority for the task.",
+    )
+    project: NotBlankStr = Field(
+        description="Id of the project the task belongs to.",
+        examples=["marketing"],
+    )
+    created_by: NotBlankStr = Field(
+        description="Agent name (or operator id) that created the task.",
+        examples=["ceo"],
+    )
+    assigned_to: NotBlankStr | None = Field(
+        default=None,
+        description="Agent id to assign the task to; omit to leave it unassigned.",
+    )
+    estimated_complexity: Complexity = Field(
+        default=Complexity.MEDIUM,
+        description="Up-front complexity estimate used for routing and budgeting.",
+    )
     budget_limit: float = Field(
         default=0.0,
         ge=0.0,
         description="Maximum spend for the task in the configured base currency.",
+        examples=[10.0],
     )
 
 

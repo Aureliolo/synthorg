@@ -1602,6 +1602,9 @@ class FakeMessageBus:
     async def list_channels(self) -> tuple[Channel, ...]:
         return tuple(self._channels)
 
+    def set_quadratic_alert_sink(self, sink: object) -> None:
+        """No-op: this fake has no quadratic-fan-out enforcer."""
+
     async def get_channel_history(
         self,
         channel_name: str,

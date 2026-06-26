@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
@@ -217,9 +218,11 @@ class TestArtifactController:
         resp = await async_test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
         assert resp.status_code == 404
         body = resp.json()
-        # Error message includes the artifact_id for parity with the
-        # other 404 messages in this controller.
-        error_lower = body["error"].lower()
-        assert "content" in error_lower
-        assert "not found" in error_lower
-        assert artifact_id.lower() in error_lower
+        assert body["success"] is False
+        # Content-missing is distinguished from artifact-missing by the wire
+        # CODE, not the message: the storage layer's ``RecordNotFoundError``
+        # propagates with its own ``RECORD_NOT_FOUND`` code (the metadata-
+        # missing path uses ``RESOURCE_NOT_FOUND``), and the persistence
+        # handler scrubs the operator-diagnostic detail to a safe generic
+        # string so the artifact id never rides the response body.
+        assert body["error_detail"]["error_code"] == ErrorCode.RECORD_NOT_FOUND.value

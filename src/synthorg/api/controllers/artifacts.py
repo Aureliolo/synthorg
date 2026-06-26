@@ -30,7 +30,6 @@ from synthorg.core.domain_errors import (
 from synthorg.core.persistence_errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
-    RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
@@ -46,7 +45,6 @@ from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.observability.events.persistence.artifact_storage import (
-    PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
@@ -555,13 +553,11 @@ class ArtifactController(Controller):
         )
         try:
             content = await storage.retrieve(artifact_id)
-        except RecordNotFoundError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_CONTENT_MISSING,
-                artifact_id=artifact_id,
-            )
-            msg = f"Artifact content for {artifact_id!r} not found"
-            raise NotFoundError(msg) from exc
+        # ``RecordNotFoundError`` (missing content blob) carries its own 404
+        # ``RECORD_NOT_FOUND`` wire contract; it propagates to the dedicated
+        # persistence handler (which scrubs the operator-diagnostic message to
+        # a safe "Resource not found") instead of being re-mapped to the
+        # generic ``RESOURCE_NOT_FOUND``.
         except Exception as exc:
             reraise_critical(exc)
             # Catch-all so any backend / storage failure on the

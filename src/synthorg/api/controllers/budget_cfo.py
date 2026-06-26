@@ -24,6 +24,10 @@ from synthorg.budget.optimizer_models import (
 )
 from synthorg.budget.state import cost_optimizer_of
 from synthorg.budget.trends import TrendPeriod, period_to_timedelta
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_BUDGET_CFO_QUERIED
+
+logger = get_logger(__name__)
 
 _DEFAULT_ANOMALY_WINDOW_COUNT: Final[int] = 5
 _MIN_ANOMALY_WINDOW_COUNT: Final[int] = 2
@@ -77,6 +81,12 @@ class BudgetCfoController(Controller):
             end=now,
             window_count=window_count,
         )
+        logger.debug(
+            API_BUDGET_CFO_QUERIED,
+            surface="anomalies",
+            period=period.value,
+            window_count=window_count,
+        )
         return ApiResponse(data=result)
 
     @get(
@@ -109,4 +119,5 @@ class BudgetCfoController(Controller):
             start=start,
             end=now,
         )
+        logger.debug(API_BUDGET_CFO_QUERIED, surface="efficiency", period=period.value)
         return ApiResponse(data=result)

@@ -1,3 +1,4 @@
+# module-kind: controller
 """Agent identity version history API -- list, get, diff, rollback."""
 
 from typing import Annotated, Final
