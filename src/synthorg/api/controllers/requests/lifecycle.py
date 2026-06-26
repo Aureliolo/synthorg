@@ -32,6 +32,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.client import CLIENT_REQUEST_STATUS_TRANSITIONED
 
 logger = get_logger(__name__)
@@ -168,6 +169,14 @@ class RequestController(Controller):
         try:
             stored = await sim_state.request_store.get(request_id)
         except KeyError as exc:
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``request_id`` without WARNING
+            # noise for an expected client error.
+            logger.debug(
+                API_RESOURCE_NOT_FOUND,
+                resource="client_request",
+                request_id=request_id,
+            )
             msg = f"Request {request_id!r} not found"
             raise NotFoundError(msg) from exc
         return ApiResponse(data=stored)

@@ -412,11 +412,11 @@ class WorkflowExecutionService:
     ) -> WorkflowNodeExecution:
         """Dispatch a single node to its registered handler.
 
-        The per-:class:`WorkflowNodeType` if-cascade was replaced by a
-        registry dispatch (ADR-0002). An unregistered node type raises
+        Registry dispatch keyed on :class:`WorkflowNodeType` (ADR-0002).
+        An unregistered node type raises
         :class:`StrategyFactoryNotFoundError` at lookup, which is
-        translated to the historical :class:`WorkflowExecutionError`
-        contract (same message + error log) so callers are unaffected.
+        translated to :class:`WorkflowExecutionError` (same message +
+        error log) so callers branch on one contract.
 
         Returns:
             The :class:`WorkflowNodeExecution` produced by the

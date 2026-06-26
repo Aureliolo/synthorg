@@ -54,8 +54,8 @@ def _python_type_for(prop_schema: object) -> type | None:
     """Map a JSON Schema property to a Python type for ``create_model``.
 
     Returns the unconstrained ``object`` type for an untyped property
-    (valid JSON Schema, accepts any value like the former ``Any``) and the
-    mapped Python type for a known type. Returns ``None`` for an explicit
+    (valid JSON Schema, accepts any value) and the mapped Python type for
+    a known type. Returns ``None`` for an explicit
     but unknown/unsupported ``type`` so the caller rejects the blueprint
     rather than silently accepting any value for that field.
 

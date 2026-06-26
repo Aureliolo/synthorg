@@ -16,7 +16,7 @@ from litestar.exceptions import (
 )
 from litestar.params import PathParameter
 
-from synthorg.api.dto import ProblemDetail
+from synthorg.api.dto import ApiResponse, ProblemDetail
 from synthorg.api.exception_handlers import (
     _build_error_response,
     _build_response,
@@ -829,6 +829,28 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
+    async def test_http_exception_4xx_scrubs_secret_token(self) -> None:
+        """A credential in a 4xx HTTPException detail is scrubbed before the body.
+
+        Covers the defence-in-depth contract for the catch-all HTTP handler:
+        any token a third-party middleware / plugin interpolates into a 4xx
+        detail is redacted, matching the domain-error 4xx scrub.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(
+                status_code=400,
+                detail="rejected request with Authorization: Bearer sk-leak-me",
+            )
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert "sk-leak-me" not in body["error"]
+            assert "***" in body["error"]
+
     async def test_http_exception_empty_detail_uses_phrase(self) -> None:
         """HTTPException with empty detail falls back to HTTP phrase."""
 
@@ -899,6 +921,38 @@ class TestExceptionHandlers:
         ]
         assert len(parse_warnings) == 1
         assert parse_warnings[0]["raw_retry_after"] == "soon"
+
+    def test_http_exception_malformed_retry_after_neutralises_crlf(self) -> None:
+        """CR/LF in an upstream Retry-After is escaped before logging.
+
+        The header value is untrusted; a raw newline would let an attacker
+        forge a second log line on the parse-error warning path. The handler
+        escapes ``\\r`` / ``\\n`` so the logged field stays single-line.
+        """
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Slow down"
+        exc.headers = {"Retry-After": "x\r\nInjected: forged-line"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        with structlog.testing.capture_logs() as logs:
+            handle_http_exception(request, exc)
+
+        parse_warnings = [
+            log
+            for log in logs
+            if log.get("event") == "api.request.error"
+            and log.get("error_type") == "retry_after_parse_error"
+        ]
+        assert len(parse_warnings) == 1
+        logged = parse_warnings[0]["raw_retry_after"]
+        assert "\r" not in logged
+        assert "\n" not in logged
+        assert logged == "x\\r\\nInjected: forged-line"
 
     def test_http_429_retry_after_synthesised_from_ratelimit_reset(self) -> None:
         """Global rate-limit 429s carry only ``RateLimit-Reset``.
@@ -1377,8 +1431,7 @@ class TestBuildResponseFallback:
         assert resp.status_code == 500
         envelope = resp.content
         # JSON clients receive the standard envelope.
-        assert hasattr(envelope, "error")
-        assert hasattr(envelope, "error_detail")
+        assert isinstance(envelope, ApiResponse)
         assert envelope.error == "Internal server error"
         assert envelope.error_detail is not None
         assert envelope.error_detail.error_code == ErrorCode.INTERNAL_ERROR
@@ -1728,7 +1781,7 @@ class TestDomainErrorMapping:
 
 
 class TestBareResponseFixes:
-    """Controllers no longer return bare ``Response`` for error paths.
+    """Error paths raise typed errors so the central handlers respond.
 
     Error paths in ``artifacts.py``, ``subworkflows.py``, and
     ``projects.py`` must not return plain ``Response(content=ApiResponse(

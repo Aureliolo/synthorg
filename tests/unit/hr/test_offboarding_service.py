@@ -228,6 +228,9 @@ class FakeMessageBus:
     ) -> tuple[Message, ...]:
         return ()
 
+    def set_quadratic_alert_sink(self, sink: object) -> None:
+        """No-op: this fake has no quadratic-fan-out enforcer."""
+
 
 # ── Tests ──────────────────────────────────────────────────────
 

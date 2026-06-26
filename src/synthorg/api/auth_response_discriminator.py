@@ -19,6 +19,7 @@ from typing import Final
 
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL
 
 logger = get_logger(__name__)
 
@@ -64,13 +65,21 @@ def discriminate_unauthorized(detail: str | None) -> tuple[ErrorCode, str]:
                 ErrorCode.SESSION_EXPIRED,
                 "Session expired. Please log in again.",
             )
+        case "Invalid authorization scheme" | "Invalid credentials":
+            # Known bad-credential / wrong-scheme failures (e.g. an API-key
+            # caller). Map to the generic 401 WITHOUT the unknown-detail
+            # warning below, which would otherwise fire on every such request.
+            return (
+                ErrorCode.UNAUTHORIZED,
+                "Authentication required",
+            )
         case _:
             # Detail string is owned by SynthOrg middleware (not user
             # input), so direct embedding is safe; truncate defensively
             # in case a future producer constructs it from runtime
             # context.
             logger.warning(
-                "auth.discriminator.unknown_detail",
+                API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL,
                 detail=(detail or "<none>")[:_MAX_DETAIL_LEN],
             )
             return (ErrorCode.UNAUTHORIZED, "Authentication required")

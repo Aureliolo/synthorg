@@ -82,19 +82,43 @@ class TrainingPlanResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
-    new_agent_id: NotBlankStr
-    new_agent_role: NotBlankStr
-    source_selector_type: NotBlankStr
-    enabled_content_types: tuple[NotBlankStr, ...]
-    curation_strategy_type: NotBlankStr
-    volume_caps: tuple[tuple[NotBlankStr, int], ...]
-    override_sources: tuple[NotBlankStr, ...]
-    skip_training: bool
-    require_review: bool
-    status: TrainingPlanStatus
-    created_at: AwareDatetime
-    executed_at: AwareDatetime | None = None
+    id: NotBlankStr = Field(description="Unique training-plan id.")
+    new_agent_id: NotBlankStr = Field(
+        description="Id of the agent the plan trains.",
+    )
+    new_agent_role: NotBlankStr = Field(
+        description="Role the trained agent will hold.",
+    )
+    source_selector_type: NotBlankStr = Field(
+        description="Registered source-selector strategy key.",
+    )
+    enabled_content_types: tuple[NotBlankStr, ...] = Field(
+        description="Content types the plan ingests (ContentType values).",
+    )
+    curation_strategy_type: NotBlankStr = Field(
+        description="Registered curation-strategy key.",
+    )
+    volume_caps: tuple[tuple[NotBlankStr, int], ...] = Field(
+        description=(
+            "Per-content-type ingestion caps as (content_type, max_items)"
+            " pairs; the serialised form of the plan's volume-cap mapping."
+        ),
+    )
+    override_sources: tuple[NotBlankStr, ...] = Field(
+        description="Explicit source agent ids that override selection.",
+    )
+    skip_training: bool = Field(
+        description="Whether the plan is an explicit skip (no training run).",
+    )
+    require_review: bool = Field(
+        description="Whether the human review gate is enabled for the plan.",
+    )
+    status: TrainingPlanStatus = Field(description="Current plan lifecycle state.")
+    created_at: AwareDatetime = Field(description="When the plan was created.")
+    executed_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the plan finished executing, or None if not yet run.",
+    )
 
 
 class TrainingResultResponse(BaseModel):

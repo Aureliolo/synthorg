@@ -26,15 +26,12 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.provider import (
     PROVIDER_PROBE_LOCAL_BATCH_COMPLETED,
     PROVIDER_PROBE_LOCAL_BATCH_STARTED,
     PROVIDER_PROBE_LOCAL_PRESET_FAILED,
 )
-from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.presets import LocalPreset, list_probable_presets
 from synthorg.providers.probing import probe_preset_urls
 from synthorg.providers.state import provider_management_of
@@ -161,22 +158,15 @@ class ProviderConnectionController(Controller):
             Discovery result with found models.
 
         Raises:
-            NotFoundError: If the provider does not exist.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
         """
         app_state: AppState = state.app_state
         mgmt = provider_management_of(app_state)
-        try:
-            discovered = await mgmt.discover_models_for_provider(
-                name,
-                preset_hint=preset_hint,
-            )
-        except ProviderNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(safe_error_description(exc)) from exc
+        discovered = await mgmt.discover_models_for_provider(
+            name,
+            preset_hint=preset_hint,
+        )
         return ApiResponse(
             data=DiscoverModelsResponse(
                 discovered_models=discovered,
@@ -208,19 +198,9 @@ class ProviderConnectionController(Controller):
             Connection test result.
 
         Raises:
-            NotFoundError: If the provider does not exist.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
         """
         app_state: AppState = state.app_state
-        try:
-            result = await provider_management_of(app_state).test_connection(
-                name,
-                data,
-            )
-        except ProviderNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(safe_error_description(exc)) from exc
+        result = await provider_management_of(app_state).test_connection(name, data)
         return ApiResponse(data=result)

@@ -76,8 +76,13 @@ def test_full_app_schema_enhancement() -> None:
     assert "401" not in healthz
     assert "401" not in readyz
 
-    # RFC 9457 docs in x-documentation, not info.description.
-    assert "RFC 9457" not in result["info"].get("description", "")
+    # The bulky RFC 9457 content-negotiation docs live in
+    # x-documentation, never inlined into info.description (which doc
+    # renderers display prominently at the top). A brief consumer-facing
+    # error-discrimination note in the description prose is intentional.
+    description = result["info"].get("description", "")
+    assert "## Error Handling" not in description
+    assert "content negotiation" not in description
     assert "rfc9457" in result["info"]["x-documentation"]
 
 

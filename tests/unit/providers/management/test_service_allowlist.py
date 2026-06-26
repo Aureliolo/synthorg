@@ -157,7 +157,7 @@ class TestUpdateProviderAllowlist:
 
 
 class TestDiscoveryTrustViaAllowlist:
-    """Trust resolution now uses the allowlist, not _resolve_discovery_trust."""
+    """Trust URL resolution is delegated to the provider allowlist."""
 
     async def test_allowlisted_url_is_trusted(
         self,

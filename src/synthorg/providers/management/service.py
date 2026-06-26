@@ -74,6 +74,7 @@ from synthorg.providers.errors import (
 from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
 )
+from synthorg.providers.management._capability_helpers import delete_local_model
 from synthorg.providers.management._config_transforms import (
     apply_update,
     build_provider_config,
@@ -1168,12 +1169,15 @@ class ProviderManagementService(
         Raises:
             ProviderNotFoundError: If the provider does not exist.
             ProviderValidationError: If delete is unsupported.
+            ProviderModelNotFoundError: If the model does not exist on the
+                provider.
+            ProviderError: If the upstream delete request fails.
         """
         _, manager = await self._resolve_local_manager(
             name,
             capability="delete",
         )
-        await manager.delete_model(model_id)
+        await delete_local_model(manager, name=name, model_id=model_id)
         try:
             await self.discover_models_for_provider(name)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

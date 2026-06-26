@@ -28,7 +28,10 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APPROVAL_REPO_LISTED
 
+logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
 
 
@@ -104,6 +107,7 @@ class ApprovalsQueryController(Controller):
             )
             for i in page
         )
+        logger.debug(API_APPROVAL_REPO_LISTED, count=len(enriched))
         return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{approval_id:str}", guards=[require_read_access])

@@ -222,10 +222,9 @@ def _wire_webhook_request_services(
 ) -> None:
     """Wire the webhook activity service + replay protector onto the slice.
 
-    Both are request-path singletons the webhooks controller used to
-    build lazily under a module-level ``threading.Lock``. Wiring them
-    once at startup removes that double-checked-lock and keeps the
-    controller free of direct ``persistence.webhook_receipts`` access:
+    Both are request-path singletons; wiring them once at startup avoids
+    per-request construction under a lock and keeps the controller free
+    of direct ``persistence.webhook_receipts`` access:
 
     * The activity service (read path) needs a connected persistence
       backend; skipped (controller 503s) when persistence is absent.

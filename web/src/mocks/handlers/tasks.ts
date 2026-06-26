@@ -62,9 +62,8 @@ export const tasksHandlers = [
       type?: Task['type']
       priority?: Priority
       project?: string
-      created_by?: string
     }
-    if (!body.title || !body.project || !body.created_by || !body.type) {
+    if (!body.title || !body.project || !body.type) {
       return HttpResponse.json(apiError('Missing required fields'), {
         status: 400,
       })

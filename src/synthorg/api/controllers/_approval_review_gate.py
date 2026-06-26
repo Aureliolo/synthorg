@@ -144,6 +144,8 @@ async def try_mid_execution_resume(
         logger.error(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
+            error_type="AgentRuntimeNotConfiguredError",
+            error="agent runtime not configured",
             note="resume dispatch failed -- runtime not configured",
         )
         raise
@@ -233,16 +235,18 @@ async def try_review_gate_transition(  # noqa: PLR0913
     task_id: str,
     *,
     approved: bool,
-    decided_by: str | None = None,
+    decided_by: str,
     decision_reason: str | None,
 ) -> None:
     """Delegate a review decision to the review gate service.
 
     Assumes ``preflight_review_gate`` has already validated self-review
-    and task existence.  Surfaces engine-layer failures (task mutation,
-    version conflict, persistence) as API errors so the caller sees a
-    meaningful status code instead of a silent 200 OK with no state
-    change.
+    and task existence, and that ``decided_by`` has already been resolved
+    by the caller (``signal_resume_intent`` resolves it once for its own
+    logging and the sibling resume flows, so re-resolving here would be
+    redundant).  Surfaces engine-layer failures (task mutation, version
+    conflict, persistence) as API errors so the caller sees a meaningful
+    status code instead of a silent 200 OK with no state change.
 
     Delegates to :meth:`ReviewGateService.dispatch_completion`, which
     backgrounds a gated approval (a configured adversarial gate runs an
@@ -262,7 +266,6 @@ async def try_review_gate_transition(  # noqa: PLR0913
             faithful 500 ``ENGINE_ERROR`` via the centralised handler.
         NotFoundError: Raised on the corresponding failure path.
     """
-    decided_by = resolve_decided_by(decided_by)
     try:
         await review_gate.dispatch_completion(
             task_id=task_id,

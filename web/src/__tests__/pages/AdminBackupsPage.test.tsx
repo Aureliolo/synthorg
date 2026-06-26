@@ -31,6 +31,7 @@ function singlePage(backups: BackupInfo[]): PaginatedResult<BackupInfo> {
     limit,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: { limit, next_cursor: null, has_more: false },
   }
 }
@@ -46,6 +47,7 @@ function cursorPage(
     limit,
     nextCursor,
     hasMore,
+    degradedSources: [],
     pagination: { limit, next_cursor: nextCursor, has_more: hasMore },
   }
 }

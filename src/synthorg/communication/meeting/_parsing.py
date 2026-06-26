@@ -35,10 +35,9 @@ _ANY_HEADER_RE = re.compile(
 )
 
 # A single list-item lead line (numbered or bulleted). Anchored,
-# per-line, no nested repetition -- replaces the former multiline
-# ``_LIST_ITEM_RE`` whose nested continuation group backtracked
-# catastrophically on a long single line. The continuation join is now
-# done by ``_extract_list_items`` line-by-line.
+# per-line, no nested repetition: a nested continuation group would
+# backtrack catastrophically on a long single line, so the continuation
+# join is done by ``_extract_list_items`` line-by-line instead.
 _LIST_LEAD_RE = re.compile(
     r"^[^\S\n]*(?:\d+[\.\)]|[-*\u2022])[^\S\n]*(.*)$",
 )

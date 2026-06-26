@@ -16,6 +16,7 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
+from litestar.openapi.spec import Components, Reference, SecurityScheme
 from litestar.types import Middleware
 
 from synthorg import __version__
@@ -37,6 +38,66 @@ from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.api.state import AppState
 
 type LifespanHooks = list[Callable[[], Awaitable[None]]]
+
+# Top-level OpenAPI description. Documents the two auth mechanisms the
+# middleware accepts so the rendered spec (and the Scalar UI) tells API
+# consumers how to authenticate without reading the source.
+_API_DESCRIPTION = (
+    "REST API for the SynthOrg synthetic-organisation platform.\n\n"
+    "**Authentication.** Two interchangeable mechanisms are accepted on every"
+    " protected route:\n\n"
+    "- `sessionCookie`: an HttpOnly JWT session cookie set by"
+    " `POST /auth/login` (browser / dashboard flow). Mutating requests made"
+    " with a cookie session must also send the double-submit CSRF token in the"
+    " `x-csrf-token` header.\n"
+    "- `bearerAuth`: an `Authorization: Bearer <token>` header for programmatic"
+    " access. The token may be a user/system JWT or an opaque API key; both"
+    " ride the same header.\n\n"
+    "Errors are RFC 9457 problem details: discriminate on the integer"
+    " `error_code` (most specific) then `error_category`. Public routes"
+    " (login, setup, health/readiness, metrics, OAuth callback, webhook"
+    " ingest) require no credentials."
+)
+
+
+# Security schemes published in the OpenAPI ``components`` block. CSRF is NOT a
+# scheme: it is a double-submit supplement to the cookie session, not an
+# independent authentication method, so it lives in the description prose.
+def _build_security_schemes(
+    cookie_name: str,
+) -> dict[str, SecurityScheme | Reference]:
+    """Build the published OpenAPI security schemes.
+
+    The ``sessionCookie`` scheme advertises the actual login cookie name
+    (``auth.cookie_name``) so the rendered spec / Scalar UI stay correct
+    when a deployment overrides the default.
+
+    Args:
+        cookie_name: The configured session cookie name.
+
+    Returns:
+        The ``securitySchemes`` mapping for the OpenAPI components block.
+    """
+    return {
+        "sessionCookie": SecurityScheme(
+            type="apiKey",
+            security_scheme_in="cookie",
+            name=cookie_name,
+            description=(
+                "HttpOnly JWT session cookie set by POST /auth/login. Mutating"
+                " requests additionally require the x-csrf-token header."
+            ),
+        ),
+        "bearerAuth": SecurityScheme(
+            type="http",
+            scheme="bearer",
+            description=(
+                "Authorization: Bearer <token>. The token is a user/system JWT"
+                " (contains dots) or an opaque API key (no dots); both"
+                " authenticate through this one scheme."
+            ),
+        ),
+    }
 
 
 def build_litestar(  # noqa: PLR0913
@@ -133,11 +194,28 @@ def build_litestar(  # noqa: PLR0913
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,
+        # Each handler is typed against its specific exception subtype
+        # (e.g. ``handle_record_not_found(_, exc: RecordNotFoundError)``).
+        # Litestar's ``ExceptionHandler`` is ``Callable[[Request, ExceptionT],
+        # Response]``; function-argument contravariance makes a
+        # ``RecordNotFoundError``-typed handler unassignable to the bare
+        # ``Exception`` parameter. Widening every handler to ``Exception`` and
+        # re-narrowing internally would discard the precise per-handler typing
+        # that documents the dispatch table, so the ignore is the cleaner
+        # trade. ``EXCEPTION_HANDLERS`` keeps an ``object`` value type for the
+        # same reason.
         exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         openapi_config=OpenAPIConfig(
             title="SynthOrg API",
             version=__version__,
+            description=_API_DESCRIPTION,
             path="/docs",
+            components=Components(
+                security_schemes=_build_security_schemes(api_config.auth.cookie_name),
+            ),
+            # OR semantics: either scheme alone authenticates a request. Public
+            # routes override this with ``security=[]`` at the handler level.
+            security=[{"sessionCookie": []}, {"bearerAuth": []}],
             render_plugins=[
                 ScalarRenderPlugin(path="/api"),
             ],

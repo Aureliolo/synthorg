@@ -36,6 +36,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_FAILED,
@@ -178,6 +179,14 @@ class SimulationController(Controller):
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``simulation_id`` without
+            # WARNING noise for an expected client error.
+            logger.debug(
+                API_RESOURCE_NOT_FOUND,
+                resource="simulation",
+                simulation_id=simulation_id,
+            )
             msg = f"Simulation {simulation_id!r} not found"
             raise NotFoundError(msg) from exc
         return ApiResponse(data=_to_response(record))
@@ -362,6 +371,15 @@ class SimulationController(Controller):
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
+            # Routine missing-resource 404: central handler logs the request
+            # error; DEBUG keeps the queryable ``simulation_id`` without
+            # WARNING noise for an expected client error.
+            logger.debug(
+                API_RESOURCE_NOT_FOUND,
+                resource="simulation",
+                simulation_id=simulation_id,
+                operation="cancel",
+            )
             msg = f"Simulation {simulation_id!r} not found"
             raise NotFoundError(msg) from exc
         if record.status in {"completed", "cancelled", "failed"}:

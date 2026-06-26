@@ -35,26 +35,13 @@ from synthorg.api.path_params import PathId, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import (
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
-    API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
 )
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.errors import (
-    ProviderAlreadyExistsError,
-    ProviderModelNotFoundError,
-    ProviderNotFoundError,
-    ProviderValidationError,
-    RateLimitError,
-)
+from synthorg.providers.errors import ProviderNotFoundError, RateLimitError
 from synthorg.providers.resilience.errors import RetryExhaustedError
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
 from synthorg.providers.tool_call_feedback.state import (
@@ -187,32 +174,13 @@ class ProviderModelsController(Controller):
             Updated provider response (secrets stripped).
 
         Raises:
-            NotFoundError: If the provider does not exist.
-            ConflictError: If a model with the same id is already
-                persisted on the provider.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
+            ProviderAlreadyExistsError: If a model with the same id is
+                already persisted on the provider (409).
         """
         app_state: AppState = state.app_state
-        try:
-            updated = await provider_management_of(app_state).add_model(
-                name,
-                data,
-            )
-        except ProviderNotFoundError as exc:
-            msg = f"Provider {name!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(msg) from exc
-        except ProviderAlreadyExistsError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="model",
-                name=data.model.id,
-                provider=name,
-            )
-            raise ConflictError(safe_error_description(exc)) from exc
+        updated = await provider_management_of(app_state).add_model(name, data)
         return ApiResponse(data=to_provider_response(updated, name=None))
 
     @post(
@@ -241,35 +209,13 @@ class ProviderModelsController(Controller):
             list.
 
         Raises:
-            NotFoundError: If the provider does not exist.
-            ValidationError: Raised on the corresponding failure path.
+            ProviderNotFoundError: If the provider does not exist (404,
+                mapped by the domain handler from class metadata).
+            ProviderValidationError: If the provider configuration changed
+                mid-discovery (422, mapped by the domain handler).
         """
         app_state: AppState = state.app_state
-        try:
-            result = await provider_management_of(app_state).sync_models(
-                name,
-                data,
-            )
-        except ProviderNotFoundError as exc:
-            msg = f"Provider {name!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(msg) from exc
-        except ProviderValidationError as exc:
-            # Validation errors (e.g. provider configuration changed
-            # mid-discovery) are operator-actionable; surface as 422
-            # rather than letting them escape to a generic 500.
-            logger.warning(
-                API_VALIDATION_FAILED,
-                resource="provider",
-                name=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(safe_error_description(exc)) from exc
+        result = await provider_management_of(app_state).sync_models(name, data)
         return ApiResponse(data=result)
 
     @post(
@@ -304,21 +250,23 @@ class ProviderModelsController(Controller):
             Updated provider response (secrets stripped).
 
         Raises:
-            NotFoundError: If the provider or model does not exist.
+            ProviderNotFoundError: If the provider does not exist (404).
+            ProviderModelNotFoundError: If the model does not exist on the
+                provider (404, ``MODEL_NOT_FOUND``; mapped by the domain
+                handler from class metadata).
         """
         app_state: AppState = state.app_state
-        tracker = tool_call_feedback_tracker_of(app_state)
-        try:
-            await tracker.clear(provider=name, model=model_id)
-        except (ProviderNotFoundError, ProviderModelNotFoundError) as exc:
-            raise NotFoundError(safe_error_description(exc)) from exc
+        # Validate the provider BEFORE clearing tracker state so an unknown
+        # provider can never mutate the feedback accumulator as a side effect.
+        # Raise the typed ``ProviderNotFoundError`` (404 from class metadata)
+        # rather than a generic ``NotFoundError`` so the wire contract matches
+        # the sibling add/sync handlers.
         providers = await config_resolver_of(app_state).get_provider_configs()
-        updated = require_resource_or_404(
-            providers.get(name),
-            resource_type="Provider",
-            identifier=name,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="read",
-            extra_log_kwargs={"name": name},
+        updated = providers.get(name)
+        if updated is None:
+            msg = f"Provider {name!r} not found"
+            raise ProviderNotFoundError(msg)
+        await tool_call_feedback_tracker_of(app_state).clear(
+            provider=name, model=model_id
         )
         return ApiResponse(data=to_provider_response(updated, name=None))

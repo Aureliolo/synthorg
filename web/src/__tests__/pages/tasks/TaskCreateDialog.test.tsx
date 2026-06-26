@@ -35,7 +35,6 @@ describe('TaskCreateDialog', () => {
     expect(screen.getByPlaceholderText('Task title')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Describe the task...')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Project name')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Agent or user')).toBeInTheDocument()
   })
 
   it('shows validation errors for empty required fields', async () => {
@@ -45,7 +44,6 @@ describe('TaskCreateDialog', () => {
     expect(screen.getByText('Title is required')).toBeInTheDocument()
     expect(screen.getByText('Description is required')).toBeInTheDocument()
     expect(screen.getByText('Project is required')).toBeInTheDocument()
-    expect(screen.getByText('Creator is required')).toBeInTheDocument()
   })
 
   it('calls onCreate with form data on valid submission', async () => {
@@ -56,7 +54,6 @@ describe('TaskCreateDialog', () => {
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
     await user.type(screen.getByPlaceholderText('Describe the task...'), 'Task description')
     await user.type(screen.getByPlaceholderText('Project name'), 'my-project')
-    await user.type(screen.getByPlaceholderText('Agent or user'), 'agent-cto')
 
     await user.click(screen.getByText('Create Task'))
 
@@ -65,7 +62,6 @@ describe('TaskCreateDialog', () => {
         title: 'My task',
         description: 'Task description',
         project: 'my-project',
-        created_by: 'agent-cto',
       }),
     )
   })
@@ -82,7 +78,6 @@ describe('TaskCreateDialog', () => {
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
     await user.type(screen.getByPlaceholderText('Describe the task...'), 'Desc')
     await user.type(screen.getByPlaceholderText('Project name'), 'proj')
-    await user.type(screen.getByPlaceholderText('Agent or user'), 'agent')
 
     await user.click(screen.getByText('Create Task'))
     expect(onCreate).toHaveBeenCalled()
@@ -99,7 +94,6 @@ describe('TaskCreateDialog', () => {
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
     await user.type(screen.getByPlaceholderText('Describe the task...'), 'Desc')
     await user.type(screen.getByPlaceholderText('Project name'), 'proj')
-    await user.type(screen.getByPlaceholderText('Agent or user'), 'agent')
 
     await user.click(screen.getByText('Create Task'))
     expect(onOpenChange).toHaveBeenCalledWith(false)

@@ -46,7 +46,6 @@ from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.observability.events.persistence.artifact_storage import (
-    PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
@@ -523,11 +522,10 @@ class ArtifactController(Controller):
     ) -> Response:  # type: ignore[type-arg]
         """Download binary content for an artifact.
 
-        Both 404 branches raise ``NotFoundError`` *before* any binary
-        bytes are streamed, so the central exception handler can swap
-        the response shape from ``application/octet-stream`` to the
-        RFC 9457 JSON envelope without colliding with already-sent
-        headers.
+        Both 404 branches raise before any binary bytes are streamed, so
+        the central exception handler can swap the response shape from
+        ``application/octet-stream`` to the RFC 9457 JSON envelope without
+        colliding with already-sent headers.
 
         Args:
             state: Application state.
@@ -537,8 +535,12 @@ class ArtifactController(Controller):
             Binary content with appropriate content type.
 
         Raises:
-            NotFoundError: If the artifact metadata or content is
-                missing (HTTP 404).
+            NotFoundError: If the artifact metadata is missing (HTTP 404,
+                ``RESOURCE_NOT_FOUND``).
+            RecordNotFoundError: If the metadata exists but the content
+                blob is absent from storage (HTTP 404, ``RECORD_NOT_FOUND``);
+                propagated so clients can distinguish the two not-found
+                conditions by code.
         """
         artifact = require_resource_or_404(
             await _service(state).get(artifact_id),
@@ -555,13 +557,16 @@ class ArtifactController(Controller):
         )
         try:
             content = await storage.retrieve(artifact_id)
-        except RecordNotFoundError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_CONTENT_MISSING,
-                artifact_id=artifact_id,
-            )
-            msg = f"Artifact content for {artifact_id!r} not found"
-            raise NotFoundError(msg) from exc
+        except RecordNotFoundError:
+            # Missing content blob is an ordinary 404: it carries its own
+            # ``RECORD_NOT_FOUND`` wire contract and propagates to the
+            # persistence handler (which scrubs the message to a safe generic
+            # string). Caught BEFORE the storage-fault breadcrumb below so a
+            # routine not-found does not log at ERROR under the retrieve-failed
+            # event.
+            raise
+        # Any other failure is a genuine storage fault; leave an
+        # operator-visible breadcrumb under the retrieve-failed event.
         except Exception as exc:
             reraise_critical(exc)
             # Catch-all so any backend / storage failure on the

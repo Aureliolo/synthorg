@@ -39,6 +39,7 @@ export interface CostRecordListResponseBody {
     next_cursor: string | null
     has_more: boolean
   }
+  degraded_sources?: readonly string[]
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
   currency: string
@@ -53,6 +54,7 @@ function isCostRecordEnvelopeShaped(body: CostRecordListResponseBody): boolean {
   const envelope = body as {
     data?: unknown
     pagination?: { limit?: unknown }
+    degraded_sources?: unknown
     daily_summary?: unknown
     period_summary?: unknown
     currency?: unknown
@@ -64,6 +66,15 @@ function isCostRecordEnvelopeShaped(body: CostRecordListResponseBody): boolean {
     envelope.period_summary != null &&
     typeof envelope.currency === 'string'
   )
+}
+
+/**
+ * The server's partial-data warning, defaulting to [] when the wire omits it.
+ * The field is supplementary (not load-bearing), so a missing one degrades to
+ * "no known degradation" rather than failing the whole fetch.
+ */
+function degradedSourcesOf(body: CostRecordListResponseBody): readonly string[] {
+  return body.degraded_sources ?? []
 }
 
 export async function listCostRecords(
@@ -88,6 +99,7 @@ export async function listCostRecords(
     limit: body.pagination.limit,
     nextCursor: body.pagination.next_cursor,
     hasMore: body.pagination.has_more,
+    degradedSources: degradedSourcesOf(body),
     pagination: {
       limit: body.pagination.limit,
       next_cursor: body.pagination.next_cursor,

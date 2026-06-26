@@ -73,8 +73,8 @@ class TelemetryEvent(BaseModel):
 
         A telemetry property typo (key not in the per-event-type
         allowlist), a forbidden key pattern, a non-primitive value, or
-        an over-length string now raises ``ValidationError`` here
-        rather than being silently dropped downstream. This is the
+        an over-length string raises ``ValidationError`` here at
+        construction. This is the
         same contract :class:`PrivacyScrubber` enforces at delivery
         time -- shared via
         :func:`synthorg.telemetry.property_rules.validate_event_properties`

@@ -10,7 +10,7 @@ controller module stays under the controller LOC cap.
 
 import asyncio
 import json as _json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import suppress
 from typing import Final
 
@@ -455,6 +455,17 @@ async def revalidated_sse_stream(
             pending.cancel()
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await pending
+        # Close the inner async generator so ITS finally runs (provider
+        # download teardown, hub unsubscribe, etc.). Without this the
+        # ``pending=None`` cancel path and the ``yield revoked; return``
+        # path abandon it open until GC, and the per-op concurrency slot
+        # wrapping the request stays held past the stream's real lifetime.
+        # Safe only after the in-flight ``anext`` task above is cancelled
+        # and awaited (an async generator cannot be aclose()d while an
+        # anext on it is still running).
+        if isinstance(inner_iter, AsyncGenerator):
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await inner_iter.aclose()
 
 
 async def _sse_event_stream(

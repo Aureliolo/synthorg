@@ -30,9 +30,8 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.pagination import collect_all
-from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import (
@@ -41,11 +40,8 @@ from synthorg.meta.rules.custom import (
     DeclarativeRule,
 )
 from synthorg.meta.rules.service import CustomRulesService
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import (
-    API_RESOURCE_CONFLICT,
-    API_RESOURCE_NOT_FOUND,
-)
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.security import (
     SECURITY_CUSTOM_RULE_CREATED,
     SECURITY_CUSTOM_RULE_DELETED,
@@ -172,7 +168,11 @@ class CustomRuleController(Controller):
             The created rule definition.
 
         Raises:
-            ConflictError: Raised on the corresponding failure path.
+            ConstraintViolationError: If the rule name is already taken
+                (the ``custom_rules_name`` unique index). Propagates to the
+                persistence-integrity handler, which classifies the sqlstate
+                to a 409 ``DUPLICATE_RECORD`` with a safe message rather than
+                leaking the raw constraint name.
         """
         now = datetime.now(UTC)
         definition = CustomRuleDefinition(
@@ -186,18 +186,7 @@ class CustomRuleController(Controller):
             created_at=now,
             updated_at=now,
         )
-        try:
-            saved = await _service(state).create(definition)
-        except ConstraintViolationError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="custom_rule",
-                operation="create",
-                name=data.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConflictError(str(exc)) from exc
+        saved = await _service(state).create(definition)
         # Custom rules define automation triggers (control plane);
         # route the success event through the audit chain via the
         # SECURITY_* prefix so the mutation is signed and chained
@@ -240,27 +229,21 @@ class CustomRuleController(Controller):
             The updated rule definition.
 
         Raises:
-            ConflictError: Raised on the corresponding failure path.
+            CustomRuleNotFoundError: If the rule id does not exist (404,
+                inherited ``NotFoundError`` envelope).
+            ConstraintViolationError: If the new name collides with the
+                ``custom_rules_name`` unique index. Propagates to the
+                persistence-integrity handler (409 ``DUPLICATE_RECORD``,
+                safe message).
         """
-        # ``CustomRuleNotFoundError`` inherits ``NotFoundError`` so
-        # the central handler maps it to 404 directly; the previous
-        # controller-level ``raise NotFoundError(str(exc))`` collapsed
-        # the type and lost the discriminating envelope.
-        try:
-            updated = await _service(state).update(
-                NotBlankStr(rule_id),
-                data.model_dump(exclude_none=True),
-            )
-        except ConstraintViolationError as exc:
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="custom_rule",
-                operation="update",
-                rule_id=rule_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConflictError(str(exc)) from exc
+        # ``CustomRuleNotFoundError`` inherits ``NotFoundError`` so the
+        # central handler maps it to 404 directly, and a unique-name clash
+        # surfaces as ``ConstraintViolationError`` routed to the integrity
+        # handler -- the controller re-raises neither.
+        updated = await _service(state).update(
+            NotBlankStr(rule_id),
+            data.model_dump(exclude_none=True),
+        )
         logger.info(
             SECURITY_CUSTOM_RULE_UPDATED,
             rule=rule_id,

@@ -1,14 +1,16 @@
 # module-kind: controller
 """Approvals decision endpoints -- create, approve, reject."""
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Final
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
 from litestar.params import HeaderParameter
+from pydantic import BaseModel
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
@@ -74,12 +76,27 @@ _IdempotencyKeyHeader = Annotated[
 ]
 
 
-async def _decide_idempotent(
+def _request_fingerprint(model: BaseModel) -> str:
+    """Stable fingerprint of a request body for idempotency-replay checks.
+
+    Hashes the model's canonical JSON so the idempotency layer can tell a
+    genuine retry (identical payload) from a key reused for a different
+    request. Pydantic emits fields in declaration order, so the dump is
+    deterministic for a given model.
+
+    Returns:
+        Hex SHA-256 digest of the serialised model.
+    """
+    return hashlib.sha256(model.model_dump_json().encode("utf-8")).hexdigest()
+
+
+async def _decide_idempotent(  # noqa: PLR0913
     app_state: AppState,
     *,
     scope: str,
     key: str,
     endpoint: str,
+    request_fingerprint: str,
     decide: Callable[[], Awaitable[dict[str, object]]],
 ) -> ApprovalResponse:
     """Run *decide* under the idempotency guard and re-hydrate the response.
@@ -100,6 +117,7 @@ async def _decide_idempotent(
         scope=scope,
         key=key,
         callback=decide,
+        request_fingerprint=request_fingerprint,
     )
     if outcome.timed_out:
         logger.warning(
@@ -131,74 +149,93 @@ class ApprovalsDecisionsController(Controller):
         state: State,
         data: CreateApprovalRequest,
         request: Request[object, object, State],
+        idempotency_key: _IdempotencyKeyHeader,
     ) -> ApiResponse[ApprovalResponse]:
         """Create a new approval item.
 
         The ``requested_by`` field is populated from the authenticated
-        user's username, not from the request body.
+        user's username, not from the request body. Creation runs under
+        the idempotency guard so a 5xx-driven client retry with the same
+        ``Idempotency-Key`` returns the originally-created approval rather
+        than inserting a duplicate row.
 
         Args:
             state: Application state.
             data: Approval creation payload.
             request: The incoming HTTP request.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
-            Created approval item envelope.
+            Created (or cached) approval item envelope.
 
         Raises:
             UnauthorizedError: If the user is missing from the request scope.
+            ConflictError: If a concurrent in-flight create holds the same
+                idempotency key.
         """
         auth_user = require_authenticated_user(request)
 
         app_state: AppState = state.app_state
-        now = datetime.now(UTC)
-        approval_id = str(uuid4())
 
-        expires_at = None
-        if data.ttl_seconds is not None:
-            expires_at = now + timedelta(seconds=data.ttl_seconds)
+        async def _create() -> dict[str, object]:
+            now = datetime.now(UTC)
+            expires_at = None
+            if data.ttl_seconds is not None:
+                expires_at = now + timedelta(seconds=data.ttl_seconds)
 
-        item = ApprovalItem(
-            id=UUID(approval_id),
-            action_type=data.action_type,
-            title=data.title,
-            description=data.description,
-            requested_by=auth_user.username,
-            risk_level=data.risk_level,
-            created_at=now,
-            expires_at=expires_at,
-            task_id=data.task_id,
-            metadata=data.metadata,
-        )
-        # Resolve urgency thresholds BEFORE the durable write so a slow
-        # settings backend can't strand a committed approval behind a
-        # blocked response (which would prompt the client to retry and
-        # double-write the same approval).
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
-        store = require_service(
-            app_state.slice(ApprovalStateSlice).store, "Approval Store"
-        )
-        await store.add(item)
+            item = ApprovalItem(
+                id=uuid4(),
+                action_type=data.action_type,
+                title=data.title,
+                description=data.description,
+                requested_by=auth_user.username,
+                risk_level=data.risk_level,
+                created_at=now,
+                expires_at=expires_at,
+                task_id=data.task_id,
+                metadata=data.metadata,
+            )
+            # Resolve urgency thresholds BEFORE the durable write so a slow
+            # settings backend can't strand a committed approval behind a
+            # blocked response.
+            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
+                app_state
+            )
+            store = require_service(
+                app_state.slice(ApprovalStateSlice).store, "Approval Store"
+            )
+            await store.add(item)
 
-        _publish_approval_event(
-            request,
-            WsEventType.APPROVAL_SUBMITTED,
-            item,
-        )
-        logger.info(
-            API_APPROVAL_CREATED,
-            approval_id=item.id,
-            action_type=item.action_type,
-            risk_level=item.risk_level.value,
-        )
-        return ApiResponse(
-            data=_to_approval_response(
+            _publish_approval_event(
+                request,
+                WsEventType.APPROVAL_SUBMITTED,
+                item,
+            )
+            logger.info(
+                API_APPROVAL_CREATED,
+                approval_id=item.id,
+                action_type=item.action_type,
+                risk_level=item.risk_level.value,
+            )
+            return _to_approval_response(
                 item,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
-            )
+            ).model_dump(mode="json")
+
+        response = await _decide_idempotent(
+            app_state,
+            scope="approval:create",
+            # Scope the key to the caller so two users may reuse the same
+            # client-side token; a 36-char user_id keeps the composite key
+            # within the durable column bound (matches the decision paths).
+            key=f"{auth_user.user_id}:{idempotency_key}",
+            endpoint="approvals.create",
+            request_fingerprint=_request_fingerprint(data),
+            decide=_create,
         )
+        return ApiResponse(data=response)
 
     @post(
         "/{approval_id:str}/approve",
@@ -294,6 +331,7 @@ class ApprovalsDecisionsController(Controller):
             # cached decision (matches the MCP backup handler's pattern).
             key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.approve",
+            request_fingerprint=_request_fingerprint(data),
             decide=_do_approve,
         )
         return ApiResponse(data=response)
@@ -388,6 +426,7 @@ class ApprovalsDecisionsController(Controller):
             # reused token on a different approval cannot collide.
             key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.reject",
+            request_fingerprint=_request_fingerprint(data),
             decide=_do_reject,
         )
         return ApiResponse(data=response)

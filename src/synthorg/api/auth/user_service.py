@@ -267,9 +267,9 @@ class UserService:
                 )
                 raise
             if revoked_refresh_tokens:
-                # Repo no longer logs SECURITY_AUTH_REFRESH_REVOKED
-                # (persistence-boundary rule); service layer emits the
-                # signed audit event with the cascading user_id.
+                # Persistence-boundary rule: the signed audit event is
+                # emitted at the service layer (with the cascading user_id),
+                # not inside the repository.
                 logger.info(
                     SECURITY_AUTH_REFRESH_REVOKED,
                     user_id=user_id,

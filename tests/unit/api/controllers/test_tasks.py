@@ -87,7 +87,6 @@ class TestTaskController:
                 "description": "Nothing should run.",
                 "type": "development",
                 "project": "proj-1",
-                "created_by": "alice",
             },
             headers=make_auth_headers("ceo"),
         )
@@ -110,7 +109,6 @@ class TestTaskController:
                 "description": "Do the thing",
                 "type": "development",
                 "project": "proj-1",
-                "created_by": "alice",
             },
             headers=make_auth_headers("ceo"),
         )

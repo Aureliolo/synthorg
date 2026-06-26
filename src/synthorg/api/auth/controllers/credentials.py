@@ -115,6 +115,28 @@ async def _revoke_old_session(
             )
 
 
+def _log_password_rotation(*, session_id: str, updated_user: User) -> None:
+    """Emit the signed audit-chain records for a password rotation.
+
+    The rotation mints a fresh session token (``SECURITY_AUTH_TOKEN_ISSUED``)
+    and records the credential change (``SECURITY_AUTH_PASSWORD_CHANGED``).
+    """
+    logger.info(
+        SECURITY_AUTH_TOKEN_ISSUED,
+        user_id=updated_user.id,
+        session_id=session_id,
+        principal=updated_user.id,
+    )
+    logger.info(
+        SECURITY_AUTH_PASSWORD_CHANGED,
+        user_id=updated_user.id,
+        username=updated_user.username,
+        principal=updated_user.id,
+        resource=f"user:{updated_user.id}",
+        action_type="credential:password_change",
+    )
+
+
 async def _rotate_session_and_build_response(
     app_state: AppState,
     request: Request[object, object, State],
@@ -144,23 +166,7 @@ async def _rotate_session_and_build_response(
         expires_in,
     )
     auth_config = get_auth_config(app_state)
-
-    # Signed audit-chain record of the credential exchange: the
-    # password rotation mints a fresh session token.
-    logger.info(
-        SECURITY_AUTH_TOKEN_ISSUED,
-        user_id=updated_user.id,
-        session_id=session_id,
-        principal=updated_user.id,
-    )
-    logger.info(
-        SECURITY_AUTH_PASSWORD_CHANGED,
-        user_id=updated_user.id,
-        username=updated_user.username,
-        principal=updated_user.id,
-        resource=f"user:{updated_user.id}",
-        action_type="credential:password_change",
-    )
+    _log_password_rotation(session_id=session_id, updated_user=updated_user)
 
     return Response(
         content=ApiResponse(

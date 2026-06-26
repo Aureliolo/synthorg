@@ -26,6 +26,7 @@ function singleEntryPage(entries: SettingEntry[]): PaginatedResult<SettingEntry>
     limit: SETTINGS_LIST_LIMIT,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: {
       limit: SETTINGS_LIST_LIMIT,
       next_cursor: null,

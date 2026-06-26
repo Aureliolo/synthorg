@@ -83,7 +83,7 @@ class _CtxCapturingProvider(ScriptedProvider):
     Subclasses the full protocol impl (so typeguard accepts it) and
     captures ``current_cost_context()`` at call time to verify that
     ``complete_text`` opens the correct cost scope around the provider
-    call -- research spend was previously unrecorded.
+    call, so research spend is attributed to the right scope.
     """
 
     def __init__(self, payload: str) -> None:

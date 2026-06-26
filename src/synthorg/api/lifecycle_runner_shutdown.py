@@ -32,6 +32,7 @@ from synthorg.memory.state import MemoryStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN
+from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
@@ -591,4 +592,17 @@ async def _run_shutdown(  # noqa: PLR0913
             "Failed to close A2A outbound HTTP client",
             timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="a2a_client",
+        )
+    # Flush + stop the OTLP trace handler so the BatchSpanProcessor thread
+    # drains queued spans and exits instead of leaking past process teardown.
+    # Bounded like every other stop step so a stalled exporter cannot block
+    # shutdown past the SIGKILL deadline.
+    trace_handler = app_state.slice(ObservabilityStateSlice).trace_handler
+    if trace_handler is not None:
+        await _try_stop(
+            trace_handler.shutdown(),
+            API_APP_SHUTDOWN,
+            "Failed to shut down OTLP trace handler",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="otlp_trace_handler",
         )

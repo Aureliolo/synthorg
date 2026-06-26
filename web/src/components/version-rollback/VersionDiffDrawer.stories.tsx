@@ -37,6 +37,7 @@ function makeClient(
         limit: 50,
         nextCursor: null,
         hasMore: false,
+        degradedSources: [],
         pagination: {
           total: 0,
           offset: 0,

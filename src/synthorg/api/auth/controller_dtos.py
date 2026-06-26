@@ -43,8 +43,15 @@ class SetupRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    username: NotBlankStr = Field(max_length=128)
-    password: NotBlankStr = Field(max_length=128)
+    username: NotBlankStr = Field(
+        max_length=128,
+        description="Admin login username for the first-run account.",
+        examples=["ceo"],
+    )
+    password: NotBlankStr = Field(
+        max_length=128,
+        description=("Admin password; must be at least the configured minimum length."),
+    )
 
     @model_validator(mode="after")
     def _validate_password_length(self) -> Self:
@@ -67,8 +74,12 @@ class LoginRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    username: NotBlankStr = Field(max_length=128)
-    password: NotBlankStr = Field(max_length=128)
+    username: NotBlankStr = Field(
+        max_length=128,
+        description="Login username.",
+        examples=["ceo"],
+    )
+    password: NotBlankStr = Field(max_length=128, description="Login password.")
 
 
 class ChangePasswordRequest(BaseModel):
@@ -109,8 +120,15 @@ class CookieSessionResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    expires_in: int = Field(gt=0)
-    must_change_password: bool
+    expires_in: int = Field(
+        gt=0,
+        description="Session lifetime in seconds before the JWT cookie expires.",
+        examples=[3600],
+    )
+    must_change_password: bool = Field(
+        description="Whether the user must change their password before proceeding.",
+        examples=[False],
+    )
 
 
 class UserInfoResponse(BaseModel):
@@ -127,12 +145,24 @@ class UserInfoResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
-    username: NotBlankStr
-    role: HumanRole
-    must_change_password: bool
-    org_roles: tuple[NotBlankStr, ...] = ()
-    scoped_departments: tuple[NotBlankStr, ...] = ()
+    id: NotBlankStr = Field(
+        description="Stable user id.",
+        examples=["018f3a2b-7c1d-7e44-9a3e-2b1c4d5e6f70"],
+    )
+    username: NotBlankStr = Field(description="Login username.", examples=["ceo"])
+    role: HumanRole = Field(description="Access-control role.")
+    must_change_password: bool = Field(
+        description="Whether a forced password change is pending.",
+        examples=[False],
+    )
+    org_roles: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Permission-level roles for org-config access.",
+    )
+    scoped_departments: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Departments a department admin is scoped to.",
+    )
 
 
 class WsTicketResponse(BaseModel):

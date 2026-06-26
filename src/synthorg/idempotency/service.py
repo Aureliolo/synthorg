@@ -17,6 +17,7 @@ from enum import StrEnum
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
@@ -27,6 +28,7 @@ from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_CLEANUP,
     IDEMPOTENCY_COMPLETE,
     IDEMPOTENCY_FAIL,
+    IDEMPOTENCY_KEY_PAYLOAD_MISMATCH,
 )
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
@@ -154,6 +156,7 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         callback: Callable[[], Awaitable[object]],
+        request_fingerprint: str | None = None,
     ) -> IdempotencyResult:
         """Run *callback* exactly once for ``(scope, key)``.
 
@@ -177,8 +180,19 @@ class IdempotencyService:
         :data:`_MAX_LEADER_FAILED_RETRIES` to bound the worst-case
         churn under sustained leader failures.
 
+        When *request_fingerprint* is supplied, a replay of the same
+        ``(scope, key)`` carrying a different fingerprint is rejected
+        with :class:`ConflictError` instead of returning the prior
+        result, so a key reused for a different payload cannot answer
+        the wrong request. Callers that omit it keep the legacy
+        key-only semantics.
+
         Returns:
             ``IdempotencyResult`` instance.
+
+        Raises:
+            ConflictError: If *request_fingerprint* differs from the
+                fingerprint stored on an existing claim for this key.
         """
         retries_after_leader_failure = 0
         # lint-allow: long-running-loop-kill-switch -- per-request retry-wait.
@@ -187,6 +201,7 @@ class IdempotencyService:
                 scope=scope,
                 key=key,
                 callback=callback,
+                request_fingerprint=request_fingerprint,
             )
             if outcome_value is not _LeaderFailedSentinel:
                 return IdempotencyResult(
@@ -207,6 +222,7 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         callback: Callable[[], Awaitable[object]],
+        request_fingerprint: str | None,
     ) -> tuple[object, bool, bool]:
         """Single attempt of the claim/run cycle.
 
@@ -221,6 +237,8 @@ class IdempotencyService:
             Tuple of the declared element types.
 
         Raises:
+            ConflictError: If *request_fingerprint* differs from the
+                fingerprint stored on an existing claim for this key.
             ValueError: Raised on the corresponding failure path.
             MemoryError: Raised on the corresponding failure path.
             RecursionError: Raised on the corresponding failure path.
@@ -231,7 +249,31 @@ class IdempotencyService:
             key=key,
             ttl_seconds=self._ttl_seconds,
             now=now,
+            request_fingerprint=request_fingerprint,
         )
+        # Reuse of the same key with a different payload is a client error,
+        # not a retry: returning the prior result would silently answer the
+        # wrong request. Only an existing claim (COMPLETED / IN_FLIGHT) carries
+        # a prior fingerprint to compare; a FRESH claim has none. Compare only
+        # when both sides carry one (an opted-in caller against a row written
+        # after the column landed).
+        existing_claim = (
+            claim.outcome is IdempotencyOutcome.COMPLETED
+            or claim.outcome is IdempotencyOutcome.IN_FLIGHT
+        )
+        if (
+            existing_claim
+            and request_fingerprint is not None
+            and claim.request_fingerprint is not None
+            and claim.request_fingerprint != request_fingerprint
+        ):
+            logger.warning(
+                IDEMPOTENCY_KEY_PAYLOAD_MISMATCH,
+                scope=scope,
+                key=key,
+            )
+            msg = "Idempotency-Key reused with a different request payload"
+            raise ConflictError(msg)
         if claim.outcome is IdempotencyOutcome.COMPLETED:
             logger.info(IDEMPOTENCY_CLAIM_COMPLETED, scope=scope, key=key)
             cached = (

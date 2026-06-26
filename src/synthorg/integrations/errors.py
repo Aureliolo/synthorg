@@ -66,7 +66,20 @@ class DuplicateConnectionError(IntegrationError):
 
 
 class InvalidConnectionAuthError(IntegrationError):
-    """Connection authentication configuration is invalid."""
+    """Caller-supplied connection auth configuration is invalid.
+
+    Raised by each connection type's ``validate_credentials`` when the
+    submitted credential payload is missing a field or malformed. That is
+    a request-validation failure (the caller controls the input), so the
+    wire contract is a 422 ``VALIDATION_ERROR`` rather than the
+    integration family's upstream-failure 502: a controller can let it
+    propagate untouched instead of catching and re-mapping it.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Connection authentication is invalid"
 
 
 class ConnectionHealthError(IntegrationError):
@@ -200,7 +213,18 @@ class OAuthRateLimitedError(OAuthError):
 
 
 class InvalidStateError(OAuthError):
-    """The OAuth state parameter is invalid, expired, or already used."""
+    """The OAuth state parameter is invalid, expired, or already used.
+
+    This is a callback-validation failure (a malformed, expired, or
+    replayed ``state`` query param), not a transient upstream token-endpoint
+    fault, so the wire contract is a 400 ``VALIDATION_ERROR`` rather than the
+    OAuth family's 502. The controller lets it propagate untouched.
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "OAuth state parameter is invalid"
 
 
 class DeviceFlowTimeoutError(OAuthError):
@@ -214,9 +238,16 @@ class PKCEValidationError(OAuthError):
 class OIDCVerificationError(OAuthError):
     """An OIDC id_token failed signature or claim verification.
 
-    Not retryable: a failed signature / issuer / audience / expiry
-    check is a security rejection, not a transient fault.
+    A failed signature / issuer / audience / expiry check is a callback
+    security rejection, not a transient fault, so the wire contract is a
+    400 ``VALIDATION_ERROR`` rather than the OAuth family's 502. The
+    controller lets it propagate untouched.
     """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "OAuth id_token verification failed"
 
 
 class OIDCNonceMismatchError(OIDCVerificationError):
@@ -253,6 +284,26 @@ class InvalidWebhookPayloadError(WebhookError):
 
 class WebhookProcessingError(WebhookError):
     """An error occurred while processing a verified webhook event."""
+
+
+class WebhookVerifierUnavailableError(WebhookError):
+    """No signature verifier is registered for the connection type.
+
+    Fail-closed: the connection exists but its type has no webhook
+    signature verifier in this deployment, so the request cannot be
+    authenticated and is rejected rather than processed unverified.
+
+    Status is 501 Not Implemented, not the family's 502: the server did
+    not contact an upstream and get a bad response (502); it simply does
+    not implement verification for this connection type. 501 tells the
+    sender this is a permanent capability gap (an operator must deploy the
+    verifier), not a transient upstream fault to retry. Keeps the
+    ``WEBHOOK_ERROR`` family code as an inheritance alias; only the HTTP
+    status is narrowed.
+    """
+
+    status_code: ClassVar[int] = 501
+    default_message: ClassVar[str] = "Webhook signature verification unavailable"
 
 
 # -- Rate limiting errors ------------------------------------------------

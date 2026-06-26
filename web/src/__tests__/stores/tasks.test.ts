@@ -210,8 +210,6 @@ describe('useTasksStore', () => {
         description: 'A test task',
         type: 'development' as const,
         project: 'test-project',
-        created_by: 'agent-cto',
-        budget_limit: 0,
       }
       const result = await useTasksStore.getState().createTask(payload)
       expect(result).toEqual(submission)
@@ -236,8 +234,6 @@ describe('useTasksStore', () => {
         description: 'D',
         type: 'development',
         project: 'p',
-        created_by: 'a',
-        budget_limit: 0,
       })
 
       expect(result).toBeNull()

@@ -67,13 +67,15 @@ API_AUTH_SUCCESS: Final[str] = "api.auth.success"
 API_AUTH_GUARD_SKIPPED: Final[str] = "api.auth.guard_skipped"
 API_TASK_TRANSITION_FAILED: Final[str] = "api.task.transition_failed"
 API_TASK_MUTATION_FAILED: Final[str] = "api.task.mutation_failed"
-API_TASK_CREATED_BY_MISMATCH: Final[str] = "api.task.created_by_mismatch"
 API_TASK_REJECTED_NO_PROVIDER: Final[str] = "api.task.rejected_no_provider"
 API_TASK_BOARD_SUBMITTED: Final[str] = "api.task.board.submitted"
 API_TASK_BOARD_REJECTED_NO_ADAPTER: Final[str] = "api.task.board.rejected_no_adapter"
 API_TASK_BOARD_PIPELINE_FAILED: Final[str] = "api.task.board.pipeline_failed"
 API_AUTH_SYSTEM_USER_ENSURED: Final[str] = "api.auth.system_user_ensured"
 API_AUTH_FALLBACK: Final[str] = "api.auth.fallback"
+API_AUTH_DISCRIMINATOR_UNKNOWN_DETAIL: Final[str] = (
+    "api.auth.discriminator.unknown_detail"
+)
 API_AUTH_CONFIG_FALLBACK: Final[str] = "api.auth.config_fallback"
 API_AUTH_COOKIE_NAME_FALLBACK: Final[str] = "api.auth.cookie_name_fallback"
 API_MEMORY_DIR_TMPROOT_FALLBACK: Final[str] = "api.memory_dir.tmproot_fallback"
@@ -239,6 +241,19 @@ API_ARTIFACT_DELETED: Final[str] = "api.artifact.deleted"
 # so signed audit consumers see the WHO+WHEN of recordings + resolutions).
 API_SSRF_VIOLATION_LISTED: Final[str] = "api.ssrf_violation.listed"
 API_SSRF_VIOLATION_FETCH_FAILED: Final[str] = "api.ssrf_violation.fetch_failed"
+
+# Read-side list tracing for controllers that previously had no
+# handler-level observability on the happy path.
+API_CLIENT_LISTED: Final[str] = "api.client.listed"
+API_TASK_LISTED: Final[str] = "api.task.listed"
+API_STEERING_LISTED: Final[str] = "api.steering.listed"
+API_RISK_OVERRIDE_LISTED: Final[str] = "api.risk_override.listed"
+# CEO-only risk-tier override state changes -- audit-relevant, so logged at
+# INFO even though the durable override row is itself the audit artefact.
+API_RISK_OVERRIDE_CREATED: Final[str] = "api.risk_override.created"
+API_RISK_OVERRIDE_REVOKED: Final[str] = "api.risk_override.revoked"
+API_EXPERIMENT_VARIANT_REGISTERED: Final[str] = "api.experiment.variant_registered"
+API_BUDGET_CFO_QUERIED: Final[str] = "api.budget_cfo.queried"
 
 # Pagination / cursor
 API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret

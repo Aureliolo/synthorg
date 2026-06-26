@@ -262,6 +262,20 @@ class MemoryFineTuneController(Controller):
         app_state: AppState = state.app_state
         settings_service = app_state.slice(SettingsStateSlice).settings_service
         thresholds = await _resolve_fine_tune_thresholds(settings_service)
+        # Resolve the sidecar health endpoint at the boundary and inject it
+        # into the (pure) preflight checks rather than reading the env deep in
+        # the probe helper. A malformed port means the sidecar never bound, so
+        # the probe is skipped (treated as unhealthy).
+        from synthorg.memory.embedding.fine_tune_runner import (  # noqa: PLC0415
+            resolve_health_host,
+            resolve_health_port,
+        )
+
+        sidecar_host = resolve_health_host()
+        try:
+            sidecar_port: int | None = resolve_health_port()
+        except ValueError:
+            sidecar_port = None
         # The walk's in-thread monotonic deadline only starts counting
         # once the ``to_thread`` job is scheduled; a saturated default
         # executor could otherwise leave this request awaiting
@@ -284,6 +298,8 @@ class MemoryFineTuneController(Controller):
                         min_recommended=thresholds.min_docs_recommended,
                         max_depth=thresholds.preflight_max_depth,
                         walk_timeout_s=thresholds.preflight_walk_timeout_s,
+                        sidecar_host=sidecar_host,
+                        sidecar_port=sidecar_port,
                     ),
                 )
                 batch_task = tg.create_task(
