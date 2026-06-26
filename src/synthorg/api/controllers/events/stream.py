@@ -11,6 +11,7 @@ duplicates that path.
 from typing import Annotated
 
 from litestar import Controller, Request, get
+from litestar.channels import ChannelsPlugin
 from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException, ServiceUnavailableException
 from litestar.params import QueryParameter
@@ -41,7 +42,11 @@ from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_SSE_INVALID_LAST_EVENT_ID
+from synthorg.observability.events.api import (
+    API_DASHBOARD_SSE_FEED_UNAVAILABLE,
+    API_DASHBOARD_SSE_UNAUTHENTICATED,
+    API_SSE_INVALID_LAST_EVENT_ID,
+)
 
 logger = get_logger(__name__)
 
@@ -49,6 +54,50 @@ logger = get_logger(__name__)
 # oversized ``Last-Event-ID`` cannot drive repeated linear scans over the
 # per-session replay buffer.
 _MAX_LAST_EVENT_ID_LENGTH: int = 64
+
+
+def _clamp_after_id(raw: str | None, *, session_id: str) -> str | None:
+    """Drop an oversized ``Last-Event-ID`` reconnect value.
+
+    A real event id is UUID-shaped, so an over-length value is crafted and
+    dropping it falls back to a normal (no-replay) subscribe rather than
+    driving repeated linear scans over the per-session replay buffer.
+
+    Returns:
+        The reconnect id, or ``None`` when absent or over the length cap.
+    """
+    if raw is not None and len(raw) > _MAX_LAST_EVENT_ID_LENGTH:
+        logger.warning(
+            API_SSE_INVALID_LAST_EVENT_ID, session_id=session_id, length=len(raw)
+        )
+        return None
+    return raw
+
+
+def _require_dashboard_feed(
+    request: Request[object, object, State],
+) -> tuple[ChannelsPlugin, AuthenticatedUser]:
+    """Resolve the authenticated user and channel plugin for the dashboard feed.
+
+    Returns:
+        The channel plugin and the authenticated user.
+
+    Raises:
+        NotAuthorizedException: When no authenticated user is present (the
+            guard chain should already have blocked this).
+        ServiceUnavailableException: When the channel feed is not wired.
+    """
+    user = getattr(request, "user", None)
+    if not isinstance(user, AuthenticatedUser):
+        logger.warning(API_DASHBOARD_SSE_UNAUTHENTICATED)
+        msg = "Authentication required"
+        raise NotAuthorizedException(msg)
+    plugin = get_channels_plugin(request)
+    if plugin is None:
+        logger.warning(API_DASHBOARD_SSE_FEED_UNAVAILABLE, user_id=user.user_id)
+        msg = "Real-time channel feed unavailable"
+        raise ServiceUnavailableException(msg)
+    return plugin, user
 
 
 class EventStreamController(Controller):
@@ -110,16 +159,9 @@ class EventStreamController(Controller):
         # SSE reconnect: the browser resends the last event id it saw via
         # the ``Last-Event-ID`` header so the hub can replay the gap it
         # missed while disconnected.
-        after_id = request.headers.get("last-event-id") or None
-        if after_id is not None and len(after_id) > _MAX_LAST_EVENT_ID_LENGTH:
-            # Oversized header: a real event id is UUID-shaped, so drop the
-            # crafted value and fall back to a normal (no-replay) subscribe.
-            logger.warning(
-                API_SSE_INVALID_LAST_EVENT_ID,
-                session_id=session_id,
-                length=len(after_id),
-            )
-            after_id = None
+        after_id = _clamp_after_id(
+            request.headers.get("last-event-id") or None, session_id=session_id
+        )
         return ServerSentEvent(
             content=_sse_event_stream(
                 hub,
@@ -175,14 +217,7 @@ class EventStreamController(Controller):
             ServiceUnavailableException: When the channel feed is not wired.
         """
         app_state: AppState = state.app_state
-        user = getattr(request, "user", None)
-        if not isinstance(user, AuthenticatedUser):
-            msg = "Authentication required"
-            raise NotAuthorizedException(msg)
-        plugin = get_channels_plugin(request)
-        if plugin is None:
-            msg = "Real-time channel feed unavailable"
-            raise ServiceUnavailableException(msg)
+        plugin, user = _require_dashboard_feed(request)
         channels = resolve_dashboard_channels(user)
         inner = dashboard_channel_frames(
             plugin,

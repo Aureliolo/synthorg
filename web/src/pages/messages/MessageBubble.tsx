@@ -83,7 +83,7 @@ export const MessageBubble = memo(function MessageBubble({
           {priorityColor && (
             <span
               className={cn('size-1.5 rounded-full', getPriorityDotClass(priorityColor))}
-              aria-label={`${message.priority} priority`}
+              aria-hidden="true"
             />
           )}
           <span className="ml-auto shrink-0 font-mono text-micro text-muted-foreground">

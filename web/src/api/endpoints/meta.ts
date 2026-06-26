@@ -26,9 +26,8 @@ import {
   type PaginatedResult,
 } from '../client'
 
-// Re-export the generated DTO so call sites that previously imported
-// the hand-maintained interface keep working without changing every
-// site at once; the source of truth is the generated openapi.gen.ts.
+// Re-export the generated DTO under a domain name so callers stay insulated
+// from the generated barrel's layout; the source of truth is openapi.gen.ts.
 export type ConversationalProposeResponse = ProposeResult
 
 // -- Types -------------------------------------------------------------------

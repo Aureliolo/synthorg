@@ -6,11 +6,9 @@ import type { AgentIdentityDiff, WorkflowDiff } from '@/api/types'
 import { server } from '@/test-setup'
 
 /**
- * Regression: the version-history diff client previously called the
- * generic ``/<base>/versions/diff`` URL for every domain and decoded the
- * response as ``{ entries: [{ before, after }] }``. Both assumptions were
- * wrong: agent identity serves ``AgentIdentityDiff`` (``field_changes``)
- * at ``/<base>/versions/diff`` while workflows serve ``WorkflowDiff``
+ * Each diff domain uses a distinct URL and response shape: agent identity
+ * serves ``AgentIdentityDiff`` (``field_changes``) at
+ * ``/<base>/versions/diff``; workflows serve ``WorkflowDiff``
  * (``node_changes`` / ``edge_changes`` / ``metadata_changes``) at
  * ``/<base>/diff``. These pin both per-domain URLs and the normalisation
  * into the shared ``VersionDiffResponse`` the drawer renders.

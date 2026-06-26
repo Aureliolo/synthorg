@@ -38,6 +38,8 @@ export type NotificationCategory =
   | 'agents.fired'
   | 'tasks.failed'
   | 'tasks.blocked'
+  | 'workflows.execution_failed'
+  | 'workflows.execution_cancelled'
   | 'providers.down'
   | 'providers.degraded'
   | 'connection.lost'
@@ -52,6 +54,7 @@ export type NotificationFilterGroup =
   | 'budget'
   | 'system'
   | 'tasks'
+  | 'workflows'
   | 'agents'
   | 'providers'
   | 'connection'
@@ -183,6 +186,18 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     label: 'Task blocked',
     group: 'tasks',
   },
+  'workflows.execution_failed': {
+    severity: 'error',
+    defaultRoutes: ['drawer', 'toast'],
+    label: 'Workflow execution failed',
+    group: 'workflows',
+  },
+  'workflows.execution_cancelled': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Workflow execution cancelled',
+    group: 'workflows',
+  },
   // `connection.*` categories are driven by the frontend itself:
   // `useGlobalNotifications` enqueues `connection.lost` on WS setup
   // failure and `connection.exhausted` on reconnect budget exhaustion.
@@ -258,6 +273,7 @@ export const FILTER_GROUP_LABELS: Record<NotificationFilterGroup, string> = {
   budget: 'Budget',
   system: 'System',
   tasks: 'Tasks',
+  workflows: 'Workflows',
   agents: 'Agents',
   providers: 'Providers',
   connection: 'Connection',

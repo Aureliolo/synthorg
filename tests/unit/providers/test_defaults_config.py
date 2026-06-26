@@ -1,4 +1,4 @@
-"""Tests for ProviderModelDefaults config (HYG-2)."""
+"""Tests for ProviderModelDefaults config: values, bounds, and immutability."""
 
 import pytest
 from pydantic import ValidationError
@@ -12,9 +12,8 @@ class TestProviderModelDefaults:
     """Default fallback values and bounds."""
 
     def test_default_fallback_is_4096(self) -> None:
-        # Matches the previously-inlined literal in
-        # ``LiteLLMDriver._do_get_model_capabilities`` so the extraction
-        # is a pure refactor -- zero behaviour change on day one.
+        # 4096 is the conservative default applied when the upstream provider
+        # API reports no context ceiling.
         assert ProviderModelDefaults().fallback_max_output_tokens == 4096
 
     def test_frozen(self) -> None:

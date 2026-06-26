@@ -2,7 +2,7 @@ import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { asObjectRecord, asObjectRecordArray } from '@/utils/parse'
 import { useToastStore } from '@/stores/toast'
 import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
@@ -116,6 +116,7 @@ async function fetchSinksImpl(set: SinksSet): Promise<void> {
     const sinks = await listSinks()
     set({ sinks, loading: false })
   } catch (err) {
+    log.warn('Failed to load sinks', sanitizeForLog(getErrorMessage(err)))
     set({ error: getErrorMessage(err), loading: false })
   }
 }
@@ -158,7 +159,7 @@ async function saveSinkImpl(
     set({ sinks: previous, error: getErrorMessage(err) })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to save sink',
+      ...getCrudErrorTitle(err, 'Failed to save sink'),
       description: getErrorMessage(err),
     })
     return false
@@ -186,7 +187,7 @@ async function deleteSinkImpl(
     set({ sinks: previous, error: getErrorMessage(err) })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete sink',
+      ...getCrudErrorTitle(err, 'Failed to delete sink'),
       description: getErrorMessage(err),
     })
     return false
@@ -216,7 +217,7 @@ export const useSinksStore = create<SinksState>((set, get) => ({
       set({ error: getErrorMessage(err) })
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Sink test failed',
+        ...getCrudErrorTitle(err, 'Sink test failed'),
         description: getErrorMessage(err),
       })
       return null

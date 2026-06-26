@@ -6,6 +6,8 @@ from typing import Any, cast
 
 import pytest
 
+from synthorg.api.channels import CHANNEL_WORKFLOWS
+from synthorg.api.ws_models import WsEventType
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -95,6 +97,32 @@ class TestActivateWorkflow:
         assert body["data"]["definition_id"] == sid("wfdef-test001")
         assert body["data"]["status"] == "running"
         assert body["data"]["project"] == "test-project"
+
+    @pytest.mark.unit
+    async def test_activate_publishes_status_event(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[tuple[WsEventType, str, dict[str, object]]] = []
+        monkeypatch.setattr(
+            "synthorg.api.controllers.workflow_executions.publish_ws_event",
+            lambda _request, event_type, channel, payload: calls.append(
+                (event_type, channel, payload)
+            ),
+        )
+        _seed_definition(async_test_client)
+        resp = await async_test_client.post(
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
+            json={"project": "test-project"},
+        )
+        assert resp.status_code == 201
+        assert len(calls) == 1
+        event_type, channel, payload = calls[0]
+        assert event_type is WsEventType.WORKFLOW_EXECUTION_STATUS_CHANGED
+        assert channel == CHANNEL_WORKFLOWS
+        assert payload["status"] == "running"
+        assert payload["definition_id"] == sid("wfdef-test001")
 
     @pytest.mark.unit
     async def test_activate_not_found(

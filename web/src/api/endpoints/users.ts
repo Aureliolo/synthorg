@@ -1,4 +1,11 @@
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import {
+  ApiRequestError,
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  type PaginatedResult,
+} from '../client'
 import type { OrgRole } from '../types/enums'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { UserResponse as UserResponseWire } from '../types'
@@ -27,6 +34,13 @@ export async function listUsers(
 }
 
 export async function grantOrgRole(userId: string, data: GrantOrgRoleRequest): Promise<UserResponse> {
+  // The backend rejects a department_admin grant with an empty scope (422);
+  // TypeScript cannot express "non-empty array", so guard before dispatch.
+  if (data.role === 'department_admin' && data.scoped_departments.length === 0) {
+    throw new ApiRequestError(
+      'A department admin grant requires at least one scoped department',
+    )
+  }
   const response = await apiClient.post<ApiResponse<UserResponse>>(
     `/users/${encodeURIComponent(userId)}/org-roles`,
     data,

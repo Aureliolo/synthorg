@@ -46,11 +46,24 @@ function singlePageResponse(
 
 describe('useOntologyStore', () => {
   beforeEach(() => {
+    // Zustand setState is a shallow merge, so reset the FULL slice: a partial
+    // reset leaves entitiesLoading / entitiesError / drift state dirty and
+    // makes randomised-order tests non-deterministic.
     useOntologyStore.setState({
       entities: [],
       totalEntities: 0,
-      mutating: false,
+      entityMeta: null,
+      entitiesLoading: false,
+      entitiesError: null,
+      driftReports: [],
+      driftLoading: false,
+      driftError: null,
+      tierFilter: 'all',
+      searchQuery: '',
+      entitySortBy: 'name',
+      entitySortDirection: 'asc',
       selectedEntity: null,
+      mutating: false,
     })
     useToastStore.getState().dismissAll()
   })
@@ -79,7 +92,11 @@ describe('useOntologyStore', () => {
 
     await useOntologyStore.getState().fetchEntities()
 
-    expect(typeof useOntologyStore.getState().entitiesError).toBe('string')
+    // A 500 surfaces the generic user-facing server-error copy (not the raw
+    // backend string), so assert that concrete recorded message.
+    expect(useOntologyStore.getState().entitiesError).toContain(
+      'unexpected server error',
+    )
     expect(useOntologyStore.getState().entitiesLoading).toBe(false)
   })
 

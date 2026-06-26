@@ -32,22 +32,27 @@ describe('MessageBubble', () => {
     expect(screen.getByRole('img', { name: 'alice chen' })).toBeInTheDocument()
   })
 
-  it('renders priority indicator for high priority', () => {
-    const msg = makeMessage('1', { priority: 'high' })
-    render(<MessageBubble message={msg} />)
-    expect(screen.getByLabelText('high priority')).toBeInTheDocument()
-  })
+  // The priority dot is decorative (aria-hidden); priority is conveyed through
+  // the button's composite accessible name instead of a nested label.
+  it.each(['high', 'urgent'] as const)(
+    'exposes %s priority in the message button accessible name',
+    (priority) => {
+      const msg = makeMessage('1', { priority })
+      render(<MessageBubble message={msg} />)
+      expect(
+        screen.getByRole('button', {
+          name: (accessibleName) => accessibleName.includes(`${priority} priority`),
+        }),
+      ).toBeInTheDocument()
+    },
+  )
 
-  it('renders priority indicator for urgent priority', () => {
-    const msg = makeMessage('1', { priority: 'urgent' })
-    render(<MessageBubble message={msg} />)
-    expect(screen.getByLabelText('urgent priority')).toBeInTheDocument()
-  })
-
-  it('does not render priority indicator for normal priority', () => {
+  it('does not mention priority for normal priority', () => {
     const msg = makeMessage('1', { priority: 'normal' })
     render(<MessageBubble message={msg} />)
-    expect(screen.queryByLabelText(/priority/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /priority/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('renders attachments when present', () => {

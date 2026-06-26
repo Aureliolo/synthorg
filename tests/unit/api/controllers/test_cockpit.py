@@ -109,9 +109,9 @@ class TestCockpitController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        # ``getFlightRecorderFrames`` now uses opaque cursor pagination,
-        # so the envelope is ``PaginatedResponse`` (``data`` is the page,
-        # ``pagination`` carries cursor + has_more).
+        # ``getFlightRecorderFrames`` returns a ``PaginatedResponse``:
+        # ``data`` holds the page and ``pagination`` carries the opaque
+        # cursor + has_more.
         turns = [f["turn_index"] for f in body["data"]]
         assert turns == [2, 1]
         assert body["pagination"]["has_more"] is False

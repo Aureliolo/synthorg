@@ -15,8 +15,8 @@ const _encoder = new TextEncoder()
  * Known valid event_type values for runtime validation (defence-in-depth
  * mirror of WS_EVENT_TYPE_VALUES). A future server roll-out that emits an
  * event_type the client does not know about gets dropped here with a
- * structured warning instead of slipping into the dispatch loop. Mirrors
- * the SSE fallback's ``AGUI_EVENT_MAP`` allowlist semantics.
+ * structured warning instead of slipping into the dispatch loop. The SSE
+ * fallback routes its frames through this same allowlist via ``isWsEvent``.
  */
 const VALID_WS_EVENT_TYPES: ReadonlySet<string> = new Set(WS_EVENT_TYPE_VALUES)
 

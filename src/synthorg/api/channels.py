@@ -37,6 +37,7 @@ CHANNEL_REVIEWS: Final[str] = "reviews"
 CHANNEL_EVENTS: Final[str] = "events"
 CHANNEL_INTERRUPTS: Final[str] = "interrupts"
 CHANNEL_COCKPIT: Final[str] = "cockpit"
+CHANNEL_WORKFLOWS: Final[str] = "workflows"
 CHANNEL_DISSENT: Final[str] = "#dissent"
 CHANNEL_WEBHOOKS: Final[str] = "#webhooks"
 CHANNEL_RATELIMIT: Final[str] = "#ratelimit"
@@ -62,16 +63,21 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_EVENTS,
     CHANNEL_INTERRUPTS,
     CHANNEL_COCKPIT,
+    CHANNEL_WORKFLOWS,
     CHANNEL_DISSENT,
     CHANNEL_WEBHOOKS,
     CHANNEL_RATELIMIT,
 )
 
 # Channels whose events are sensitive and restricted to system roles
-# (CEO/MANAGER). Includes budget channels and internal integration
-# coordination channels that carry secrets or rate-limit signals.
+# (CEO/MANAGER): budget figures, internal integration coordination
+# channels that carry secrets or rate-limit signals, and the dissent
+# channel that broadcasts internal conflict-resolution deliberations.
+# The dashboard SSE feed auto-subscribes every channel a caller may
+# read, so an unrestricted sensitive channel would otherwise stream to
+# any authenticated role; gating here closes that for both transports.
 BUDGET_CHANNELS: Final[frozenset[str]] = frozenset(
-    {CHANNEL_BUDGET, CHANNEL_WEBHOOKS, CHANNEL_RATELIMIT}
+    {CHANNEL_BUDGET, CHANNEL_WEBHOOKS, CHANNEL_RATELIMIT, CHANNEL_DISSENT}
 )
 
 

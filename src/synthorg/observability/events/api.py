@@ -108,6 +108,12 @@ API_WS_REVALIDATION_BUDGET_EXHAUSTED: Final[str] = (
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"
 API_SSE_INVALID_LAST_EVENT_ID: Final[str] = "api.sse.invalid_last_event_id"
+API_DASHBOARD_SSE_SUBSCRIBED: Final[str] = "api.dashboard_sse.subscribed"
+API_DASHBOARD_SSE_UNSUBSCRIBED: Final[str] = "api.dashboard_sse.unsubscribed"
+API_DASHBOARD_SSE_UNSUBSCRIBE_FAILED: Final[str] = "api.dashboard_sse.unsub_failed"
+API_DASHBOARD_SSE_FRAME_INVALID: Final[str] = "api.dashboard_sse.frame_invalid"
+API_DASHBOARD_SSE_UNAUTHENTICATED: Final[str] = "api.dashboard_sse.unauthenticated"
+API_DASHBOARD_SSE_FEED_UNAVAILABLE: Final[str] = "api.dashboard_sse.feed_unavailable"
 API_MODEL_OPERATION_FAILED: Final[str] = "api.model.operation_failed"
 API_OPENAPI_SCHEMA_ENHANCED: Final[str] = "api.openapi.schema_enhanced"
 API_RESOURCE_CONFLICT: Final[str] = "api.resource.conflict"

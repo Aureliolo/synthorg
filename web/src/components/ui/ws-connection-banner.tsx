@@ -46,10 +46,9 @@ function _resolveBannerKind(flags: {
 
 // Grace window during which the initial-handshake transition is
 // allowed to stay silent. A session that starts offline and never
-// connects will still surface the banner once this timer elapses --
-// previously the ``everConnectedRef`` suppression kept it hidden
-// indefinitely, which masked the exact failure mode this banner
-// exists to communicate.
+// connects still surfaces the banner once this timer elapses, so a
+// proxy or network failure before the first successful connection is
+// not masked indefinitely.
 const INITIAL_HANDSHAKE_GRACE_MS = 5000
 
 /**

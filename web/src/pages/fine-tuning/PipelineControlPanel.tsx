@@ -84,7 +84,7 @@ function SourceDirectoryRow({
   // Grid layout (vs `flex items-end`) so the action buttons align with the
   // INPUT row of the field rather than the hint line below it.
   return (
-    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto]">
+    <div className="grid grid-cols-1 items-start gap-grid-gap md:grid-cols-[1fr_auto]">
       <InputField
         label="Source Directory"
         value={sourceDir}

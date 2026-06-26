@@ -1,7 +1,7 @@
 /**
  * Pure-function coverage for the provider form helpers: request building
- * for every auth type (including the oauth / custom_header fields that
- * previously caused silent credential loss), validation, and the
+ * for every auth type (including the oauth / custom_header fields where a
+ * malformed payload silently drops credentials), validation, and the
  * vendor-neutral copy contract.
  */
 import { describe, expect, it } from 'vitest'

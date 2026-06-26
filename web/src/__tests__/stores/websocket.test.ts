@@ -716,11 +716,11 @@ describe('websocket store', () => {
     // guards. The teardown-first afterEach in ``test-setup.tsx`` plus
     // the generation-bumping ``teardown()`` action bound this to ~5%;
     // it cannot be fully eliminated without replacing MSW for these
-    // tests. The separate (and previously dominant) jitter race --
-    // advancing exactly ``WS_HEARTBEAT_INTERVAL_MS`` while the timer
-    // is armed at a jittered delay up to ``* JITTER_MAX`` -- is now
-    // eliminated deterministically by advancing
-    // ``WS_HEARTBEAT_MAX_DELAY_MS``; ``retry`` no longer covers it.
+    // tests. The jitter race -- advancing exactly
+    // ``WS_HEARTBEAT_INTERVAL_MS`` while the timer is armed at a jittered
+    // delay up to ``* JITTER_MAX`` -- is eliminated deterministically by
+    // advancing ``WS_HEARTBEAT_MAX_DELAY_MS``, so ``retry`` covers only the
+    // residual MSW/fake-timer interleave.
     it('sends a ping every 20s after auth_ok', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
       const beforePings = ws.sentMessages.length
@@ -767,11 +767,10 @@ describe('websocket store', () => {
     })
 
     // Same residual MSW-vs-fake-timer race as ``sends a ping`` above;
-    // see that comment for the ``retry`` rationale. The previously
-    // dominant jitter race (advancing exactly the interval while the
-    // timer is jittered up to ``* JITTER_MAX``) is gone: advancing
-    // ``WS_HEARTBEAT_MAX_DELAY_MS`` guarantees the ping has fired and
-    // the pong-timeout timer is armed before the second advance.
+    // see that comment for the ``retry`` rationale. Advancing
+    // ``WS_HEARTBEAT_MAX_DELAY_MS`` guarantees the ping has fired and the
+    // pong-timeout timer is armed before the second advance, so the jitter
+    // window (interval vs jitter-up-to-JITTER_MAX) cannot false-negative.
     it('closes the socket when no pong arrives within 10s', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
 

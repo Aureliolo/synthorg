@@ -32,6 +32,14 @@ const SSE_STREAM_PATH = '/api/v1/events/dashboard'
 /** The single SSE event name every dashboard `WsEvent` is published under. */
 const WS_FRAME_EVENT = 'ws'
 
+/**
+ * Mirror of the backend `_MAX_LAST_EVENT_ID_LENGTH` (events/stream.py): the
+ * server rejects a longer `last_event_id` query value with a 400, so clamping
+ * to the same bound here keeps a crafted oversized id from looping reconnect
+ * to exhaustion instead of being silently truncated server-side.
+ */
+const SSE_MAX_LAST_EVENT_ID_LENGTH = 64
+
 interface SseClientCallbacks {
   /**
    * Invoked with the raw parsed event object for each `ws` frame. The caller
@@ -63,7 +71,10 @@ function processSseFrame(
     // Clamp the server-supplied id before we store / forward it: it is
     // attacker-influenced and otherwise uncapped (control chars, bidi
     // overrides, unbounded length).
-    const sanitizedId = sanitizeWsString(event.lastEventId)
+    const sanitizedId = sanitizeWsString(
+      event.lastEventId,
+      SSE_MAX_LAST_EVENT_ID_LENGTH,
+    )
     if (sanitizedId !== undefined) onLastEventId(sanitizedId)
   }
   if (typeof event.data !== 'string') return
@@ -109,7 +120,7 @@ function computeReconnectDelay(attempt: number): number {
  * `Last-Event-ID` header, so the last id we saw is threaded back as a
  * `last_event_id` query parameter instead. Its presence tells the backend
  * to replay the recent per-channel backlog so events published during the
- * outage are not silently dropped; the dispatch pipeline de-duplicates.
+ * outage are not silently dropped.
  */
 export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   let source: EventSource | null = null

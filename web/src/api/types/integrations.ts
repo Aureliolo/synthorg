@@ -21,10 +21,9 @@ import type { CatalogEntry, InstallEntryRequest, InstallEntryResponse } from './
 import type { ConnectionStatus, ConnectionType } from './enum-values.gen'
 
 /**
- * Aliases onto the generated DTOs / enum values. These previously duplicated
- * the backend Pydantic shapes by hand; they now derive from the generator so a
- * backend change flows through without a second edit. The original names are
- * kept as aliases to avoid churning every call site.
+ * Stable domain-named aliases onto the generated DTOs / enum values so call
+ * sites importing ``McpCatalogEntry`` etc. stay insulated from rename churn in
+ * the generated barrel.
  */
 export type McpCatalogEntry = CatalogEntry
 export type McpInstallRequest = InstallEntryRequest

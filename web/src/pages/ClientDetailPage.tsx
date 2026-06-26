@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router'
 import { Smile, Users } from 'lucide-react'
 
@@ -17,6 +17,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { createLogger } from '@/lib/logger'
+import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
 import {
   useDetailNavigation,
@@ -52,16 +53,15 @@ function useClientDetail(clientId: string | undefined): ClientDetailState {
       ROUTES.CLIENT_DETAIL.replace(':clientId', encodeURIComponent(item.id)),
     [],
   )
-  const navItems = clients.map((c) => ({ id: c.client_id }))
+  const navItems = useMemo(() => clients.map((c) => ({ id: c.client_id })), [clients])
   const nav = useDetailNavigation({ items: navItems, currentId: clientId, routeFor: routeForClient })
   const { goPrev, goNext } = useDetailNavigationCallbacks(nav)
 
   useEffect(() => {
     if (!clientId) {
-      const timer = setTimeout(() => {
-        setError('Missing client id in URL')
-      }, 0)
-      return () => clearTimeout(timer)
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- one-shot guard for a missing route param; no render loop
+      setError('Missing client id in URL')
+      return
     }
     let cancelled = false
     const load = async () => {
@@ -73,7 +73,7 @@ function useClientDetail(clientId: string | undefined): ClientDetailState {
         const [profile, history] = await Promise.all([
           getClient(clientId),
           getClientSatisfaction(clientId).catch((err: unknown) => {
-            log.warn('get_client_satisfaction_failed', err)
+            log.warn('get_client_satisfaction_failed', getErrorMessage(err))
             setSatisfactionError('Failed to load satisfaction history.')
             return null
           }),
@@ -83,7 +83,7 @@ function useClientDetail(clientId: string | undefined): ClientDetailState {
         setSatisfaction(history)
       } catch (err) {
         if (cancelled) return
-        log.error('get_client_failed', err)
+        log.error('get_client_failed', getErrorMessage(err))
         setError('Failed to load client. It may have been removed.')
       }
     }

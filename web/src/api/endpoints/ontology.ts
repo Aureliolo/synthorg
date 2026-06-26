@@ -1,8 +1,14 @@
 /**
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
-import type { AxiosResponse } from 'axios'
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import {
+  ApiRequestError,
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  type PaginatedResult,
+} from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CreateEntityRequest,
@@ -52,12 +58,27 @@ export async function listEntities(params?: {
   const response = await apiClient.get<EntityListResponse>('/ontology/entities', {
     params,
   })
-  // ``unwrapPaginated`` only reads ``data`` / ``pagination`` and never
-  // mutates, so the wire envelope's ``readonly`` data is safe to pass.
-  const page = unwrapPaginated<EntityResponse>(
-    response as unknown as AxiosResponse<PaginatedResponse<EntityResponse>>,
-  )
-  return { ...page, meta: response.data.meta }
+  // ``EntityListResponse`` is the generated wire shape (``success: boolean``,
+  // ``readonly`` data, plus the ``meta`` aggregates), which does not match the
+  // discriminated ``PaginatedResponse`` ``unwrapPaginated`` expects. Map it
+  // directly so the result stays fully typed and the aggregates are preserved.
+  const body = response.data
+  if (!body.success) {
+    throw new ApiRequestError(body.error ?? 'Failed to load entities')
+  }
+  const { pagination } = body
+  return {
+    data: [...body.data],
+    limit: pagination.limit,
+    nextCursor: pagination.next_cursor,
+    hasMore: pagination.has_more,
+    pagination: {
+      limit: pagination.limit,
+      next_cursor: pagination.next_cursor,
+      has_more: pagination.has_more,
+    },
+    meta: body.meta,
+  }
 }
 
 export async function getEntity(name: string): Promise<EntityResponse> {
@@ -129,16 +150,16 @@ export interface DeriveOntologyResponse {
   derived_count: number
 }
 
-export type SyncOrgMemoryStatus = 'sync_completed' | 'sync_service_not_configured'
+export type SyncOrgMemoryStatus = 'sync_completed'
 
 export interface SyncOrgMemoryResponse {
   status: SyncOrgMemoryStatus
   /**
-   * Count of definitions published to OrgMemory. Present only on a
-   * completed sync; the backend omits it on the
-   * ``sync_service_not_configured`` branch.
+   * Count of definitions published to OrgMemory. Always present on a 200
+   * response; an unconfigured sync service returns a 503 (surfaced through
+   * the Axios error handler) rather than a body with this field omitted.
    */
-  published_count?: number
+  published_count: number
 }
 
 /** Re-run auto-derivation of entity definitions from decorated models. */

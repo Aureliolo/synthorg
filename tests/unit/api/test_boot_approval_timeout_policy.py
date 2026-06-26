@@ -1,8 +1,7 @@
 """The boot approval-timeout scheduler resolves its policy from config.
 
-``build_default_approval_timeout_scheduler`` previously hardwired
-:class:`WaitForeverPolicy`. It now builds the policy from the resolved
-``config.approval_timeout`` company-template field via
+``build_default_approval_timeout_scheduler`` builds the policy from the
+resolved ``config.approval_timeout`` company-template field via
 :func:`create_timeout_policy`, falling back to the wait-forever default
 when the config is absent or maps to an unrecognised type.
 """

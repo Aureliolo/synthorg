@@ -343,7 +343,7 @@ export default function CustomRulesPage() {
               value={view.search}
               onChange={view.setSearch}
               placeholder="Search rules by name or metric..."
-              aria-label="Search custom rules"
+              ariaLabel="Search custom rules"
             />
           }
         />

@@ -5,21 +5,17 @@ import { makeWorkflow, makeWorkflowExecution } from '../factories'
 import { clickButton, clickLocator, fillForm } from '../helpers/interactions'
 
 /**
- * Critical-flow E2E: workflows list mount + system.error notification path.
+ * Critical-flow E2E: workflows list mount + workflow-execution notification.
  *
- * Mounts the workflows list with a deterministic single-workflow
- * payload and pushes a ``system.error`` WebSocket frame whose payload
- * carries the workflow-execution context. Asserts the notifications
- * dispatch chain renders the "System error" entry; this exercises
- * the full envelope-validate -> dispatch -> notification-render path
- * end-to-end. The original ``workflow_execution.status_changed`` /
- * ``coordination.completed`` event types have no production handler
- * (no entry in ``WS_EVENT_TYPE_VALUES``, no notifications-store case)
- * so they would silently no-op; the ``system.error`` substitute is
- * the closest mapped event the dashboard already handles.
+ * Mounts the workflows list with a deterministic single-workflow payload and
+ * pushes a ``workflow_execution.status_changed`` WebSocket frame on the
+ * ``workflows`` channel. Asserts the notifications dispatch chain renders the
+ * "Workflow execution failed" entry, exercising the full envelope-validate ->
+ * dispatch -> notification-render path end-to-end against the real production
+ * event type and notifications-store router.
  */
 
-test.describe('Workflows list + system.error notification path', () => {
+test.describe('Workflows list + workflow-execution notification path', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
@@ -50,7 +46,7 @@ test.describe('Workflows list + system.error notification path', () => {
     )
   })
 
-  test('loads workflows and processes a WS system.error notification', async ({
+  test('loads workflows and processes a workflow-execution failure notification', async ({
     page,
   }) => {
     await page.goto('/workflows')
@@ -68,40 +64,28 @@ test.describe('Workflows list + system.error notification path', () => {
     await clickLocator(seededWorkflow)
     await expect(page.locator('main')).toBeVisible()
 
-    // Push a workflow-failure system event. ``workflow_execution.*``
-    // is not in ``WS_EVENT_TYPE_VALUES`` and the production
-    // notifications store has no ``coordination.completed`` handler,
-    // so neither would surface an observable UI change. The
-    // dashboard's notifications dispatch DOES handle ``system.error``
-    // (enqueues a "System error" entry with the payload's message);
-    // sending the workflow-failure context that way exercises the
-    // full envelope-validate -> dispatch -> notification-render
-    // chain end-to-end. A regression in any of those layers would
-    // prevent the "System error" title from rendering.
-    const execution = makeWorkflowExecution({
-      status: 'success',
-      finished_at: '2026-04-01T12:01:00Z',
-    })
-    const message = `workflow execution ${execution.id} completed`
+    // Push the real ``workflow_execution.status_changed`` event on the
+    // ``workflows`` channel with a terminal ``failed`` status. The
+    // notifications-store router maps it to a ``workflows.execution_failed``
+    // entry titled "Workflow execution failed" with the execution id as the
+    // description, exercising the full envelope-validate -> dispatch ->
+    // notification-render chain against the production event type.
+    const execution = makeWorkflowExecution({ status: 'failed' })
     await injectEvent(page, {
-      event_type: 'system.error',
-      channel: 'system',
+      event_type: 'workflow_execution.status_changed',
+      channel: 'workflows',
       timestamp: '2026-04-01T12:01:00Z',
       payload: {
-        ...execution,
         execution_id: execution.id,
-        message,
+        definition_id: execution.workflow_id,
+        status: 'failed',
+        actor: 'operator',
       },
     })
-    // Assert BOTH the static title and the payload-driven message
-    // so a regression where the dispatch chain drops the
-    // description (or the notifications store renders only the
-    // title) fails the test. The notifications case for
-    // ``system.error`` enqueues
-    // ``{title: 'System error', description: payload.message}``;
-    // both fields land in the rendered notification entry.
-    await expect(page.getByText('System error').first()).toBeVisible()
-    await expect(page.getByText(message).first()).toBeVisible()
+    // Assert both the static title and the payload-driven execution id so a
+    // regression that drops the description (or renders only the title) fails.
+    await expect(page.getByText('Workflow execution failed').first()).toBeVisible()
+    await expect(page.getByText(execution.id).first()).toBeVisible()
     await expect(page.locator('main')).toBeVisible()
   })
 

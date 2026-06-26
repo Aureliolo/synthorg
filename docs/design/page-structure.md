@@ -527,6 +527,7 @@ Every backend controller has a home in the page structure. No orphans.
 | MetaAnalyticsController | Meta Analytics page (Cross-deployment patterns section) |
 | OntologyController / OntologyAdminController | Ontology page (entity catalog + Admin section: re-derive, sync org memory) |
 | InterruptController | Mission Control (offline interrupts fallback panel) |
+| EventStreamController | Mission Control (per-task AG-UI SSE at `/events/stream`) + all pages (session-less dashboard SSE fallback at `/events/dashboard` when the WebSocket is proxy-blocked) |
 | MemoryEntriesController | Agent Detail page (memory administration: delete entry, CEO/SYSTEM only) |
 | AuditController | Settings (security namespace) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |

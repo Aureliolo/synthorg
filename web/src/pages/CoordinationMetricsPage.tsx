@@ -142,14 +142,14 @@ function CoordinationMetricsTable({
         <table className="w-full min-w-[44rem] text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-text-secondary">
-              <th className="py-2 pr-4 font-medium">Task</th>
-              <th className="py-2 pr-4 font-medium">Lead agent</th>
-              <th className="py-2 pr-4 text-right font-medium">Team</th>
-              <th className="py-2 pr-4 text-right font-medium">Efficiency</th>
-              <th className="py-2 pr-4 text-right font-medium">Overhead</th>
-              <th className="py-2 pr-4 text-right font-medium">Redundancy</th>
-              <th className="py-2 pr-4 text-right font-medium">Error amp.</th>
-              <th className="py-2 font-medium">Computed</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Task</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Lead agent</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Team</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Efficiency</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Overhead</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Redundancy</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Error amp.</th>
+              <th scope="col" className="py-2 font-medium">Computed</th>
             </tr>
           </thead>
           <tbody>

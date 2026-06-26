@@ -2,7 +2,7 @@ import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
 import type {
   ContentType,
-  CreateTrainingPlanRequest,
+  CreateTrainingPlanRequest as CreateTrainingPlanRequestWire,
   TrainingPlanResponse,
   TrainingPlanStatus,
   TrainingResultResponse,
@@ -11,9 +11,24 @@ import type {
 
 // -- Types -----------------------------------------------------------
 
+/**
+ * Create-plan request with the server-defaulted fields restored to optional.
+ * The generator marks ``override_sources`` / ``require_review`` /
+ * ``skip_training`` required because each has a backend ``@default``, so the
+ * raw wire type would force every caller to send them; the backend accepts a
+ * request that omits them.
+ */
+export type CreateTrainingPlanRequest = Omit<
+  CreateTrainingPlanRequestWire,
+  'override_sources' | 'require_review' | 'skip_training'
+> & {
+  readonly override_sources?: readonly string[]
+  readonly require_review?: boolean
+  readonly skip_training?: boolean
+}
+
 export type {
   ContentType,
-  CreateTrainingPlanRequest,
   TrainingPlanResponse,
   TrainingPlanStatus,
   TrainingResultResponse,

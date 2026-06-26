@@ -147,8 +147,8 @@ export function useRequestQueue(): RequestQueueState {
       setRequests(result.data)
       setError(null)
     } catch (err) {
-      log.error('list_requests_failed', err)
-      setError('Failed to load request queue.')
+      log.error('list_requests_failed', getErrorMessage(err))
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }

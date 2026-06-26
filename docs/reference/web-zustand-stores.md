@@ -121,13 +121,13 @@ The `retry()` action on `useWebSocketStore` is the user-initiated escape hatch f
 
 ### SSE fallback transport
 
-When the WebSocket handshake fails twice consecutively with a 1006 close before `auth_ok` (the canonical proxy-blocked-upgrade signature), the store switches to a read-only SSE feed against `/api/v1/events/stream` (`web/src/api/sse/client.ts` + `web/src/stores/websocket/sse-fallback.ts`). The fallback projects AG-UI events through the same `dispatchEvent` chain so tasks / agents / approvals / budget keep updating; write-path features stay gated behind the "connection limited" toast. Three observable flags drive the UI:
+When the WebSocket handshake fails twice consecutively with a 1006 close before `auth_ok` (the canonical proxy-blocked-upgrade signature), the store switches to a read-only SSE feed against `/api/v1/events/dashboard` (`web/src/api/sse/client.ts` + `web/src/stores/websocket/sse-fallback.ts`). That session-less, channel-multiplexed endpoint (`src/synthorg/api/controllers/events/_dashboard.py`) forwards the same `WsEvent` payloads the WebSocket serves, one per named `ws` frame; the fallback validates each frame via `isWsEvent` and routes it through the same `dispatchEvent` chain so tasks / agents / approvals / budget keep updating; write-path features stay gated behind the "connection limited" toast. Three observable flags drive the UI:
 
 - `sseFallbackActive`: the SSE feed is live (WS is down). `WsConnectionBanner` renders a *degraded* (`severity="warning"`) state, not the hard *offline* state.
 - `sseFallbackExhausted`: the SSE feed itself exhausted `SSE_MAX_RECONNECT_ATTEMPTS` (the `EventSource` is closed; no live transport remains). The banner escalates to the offline / retry state.
 - `protocolVersionMismatch`: the server emitted events whose `version` the client repeatedly could not parse, set after a threshold so a banner can advise a reload.
 
-So `WsConnectionBanner` has three states, not two: *connected* (hidden), *degraded* (SSE fallback active), and *offline* (no transport / fallback exhausted). The client also records each frame's `lastEventId` (clamped via `sanitizeWsString`) so the browser replays `Last-Event-ID` on reconnect.
+So `WsConnectionBanner` has three states, not two: *connected* (hidden), *degraded* (SSE fallback active), and *offline* (no transport / fallback exhausted). Because the client drives reconnect itself (a fresh `EventSource` each cycle, not the browser's native retry), it records each frame's `lastEventId` (clamped via `sanitizeWsString`) and threads it back as a `?last_event_id=` query parameter so the backend replays the recent per-channel backlog on reconnect.
 
 ### SSE / polling constants
 

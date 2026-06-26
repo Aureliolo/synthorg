@@ -67,7 +67,7 @@ export default function TrainingPage() {
                 value={search}
                 onChange={setSearch}
                 placeholder="Search agents by name..."
-                aria-label="Search training agents"
+                ariaLabel="Search training agents"
               />
             }
           />

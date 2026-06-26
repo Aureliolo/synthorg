@@ -36,6 +36,13 @@ export interface WsProjectStatusChangedPayload {
   previous_status?: string | null
 }
 
+export interface WsWorkflowExecutionStatusChangedPayload {
+  execution_id: string
+  definition_id: string
+  status: string
+  actor?: string | null
+}
+
 export interface WsMemoryFineTuneEventPayload {
   run_id: string
   stage: string

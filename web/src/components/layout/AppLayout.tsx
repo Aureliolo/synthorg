@@ -50,7 +50,7 @@ import { StatusBar } from './StatusBar'
 
 function PageLoadingFallback() {
   return (
-    <div className="space-y-section-gap p-2" role="status" aria-live="polite">
+    <div className="space-y-section-gap p-2" role="status">
       <SkeletonCard header lines={2} />
       <div className="grid grid-cols-4 gap-grid-gap">
         <SkeletonCard lines={1} />
@@ -113,11 +113,9 @@ function useNotificationDrawerShortcuts(): {
 }
 
 function useDocumentTitle(pathname: string): void {
-  // Drive ``document.title`` from the active route so the browser tab
-  // reflects the page the user is actually on. Previously only three
-  // pages set the title imperatively and never reverted it, so visiting
-  // MCP Catalog left the tab labelled "MCP Catalog · SynthOrg" for the
-  // rest of the session regardless of where the user navigated next.
+  // Drive ``document.title`` from the active route so the browser tab and
+  // the screen-reader page announcement always reflect the current page and
+  // revert automatically on navigation away.
   useEffect(() => {
     document.title = titleForPath(pathname)
   }, [pathname])

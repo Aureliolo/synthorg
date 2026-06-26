@@ -6,6 +6,7 @@ import type {
   PreviewRuleRequest,
   ProposalAltitude,
   RuleSeverity,
+  UpdateCustomRuleRequest,
 } from '../types'
 
 // -- Types -------------------------------------------------------------------
@@ -16,6 +17,7 @@ export type {
   PreviewRuleRequest,
   ProposalAltitude,
   RuleSeverity,
+  UpdateCustomRuleRequest,
 }
 
 export interface MetricDescriptor {
@@ -101,7 +103,7 @@ export async function createCustomRule(
 
 export async function updateCustomRule(
   id: string,
-  data: Partial<CreateCustomRuleRequest>,
+  data: UpdateCustomRuleRequest,
 ): Promise<CustomRule> {
   const response = await apiClient.patch<ApiResponse<CustomRule>>(
     `${BASE}/${encodeURIComponent(id)}`,

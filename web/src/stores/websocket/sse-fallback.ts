@@ -13,9 +13,10 @@ const log = createLogger('ws')
  * SSE fallback transport bookkeeping. When the WS handshake fails
  * twice in a row with a 1006 close (proxy-blocked WS upgrade is the
  * canonical failure mode), the store switches to a read-only SSE
- * feed against ``/api/v1/events/stream``. The fallback dispatches
- * AG-UI projected events through the same ``dispatchEvent`` handler
- * chain so the dashboard's tasks / agents / approvals / budget
+ * feed against ``/api/v1/events/dashboard``. Each raw SSE payload is
+ * validated as a ``WsEvent`` (via ``isWsEvent``) and version-gated,
+ * then routed through the same ``dispatchEvent`` path as the WebSocket
+ * transport so the dashboard's tasks / agents / approvals / budget
  * stores keep updating; write-path features rely on the
  * ``connection.limited`` toast to direct the user.
  */
@@ -91,8 +92,17 @@ export function activateSseFallback(set: WsSet): void {
       // socket, so validate + version-gate them through the identical path
       // before dispatch rather than trusting the wire shape.
       const msg = asObjectRecord(raw)
-      if (msg === null || !isWsEvent(msg)) {
-        log.warn('SSE event failed WsEvent validation, discarding')
+      if (msg === null) {
+        log.warn('SSE event was not a plain object, discarding', {
+          rawType: typeof raw,
+        })
+        return
+      }
+      if (!isWsEvent(msg)) {
+        log.warn('SSE event failed WsEvent schema validation, discarding', {
+          eventType: sanitizeForLog(msg['event_type']),
+          channel: sanitizeForLog(msg['channel']),
+        })
         return
       }
       if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return
@@ -103,9 +113,10 @@ export function activateSseFallback(set: WsSet): void {
     },
     onExhausted: () => {
       log.error('SSE fallback exhausted; no live transport remains')
-      // Clear the client ref and active flag so the line-77 guard does not
-      // strand re-activation: an exhausted client delivers nothing, so a
-      // later handshake-failure path must be able to open a fresh fallback.
+      // Clear the client ref and active flag so the ``activateSseFallback``
+      // guard (``sseClient !== null``) does not strand re-activation: an
+      // exhausted client delivers nothing, so a later handshake-failure path
+      // must be able to open a fresh fallback.
       sseClient = null
       set({ sseFallbackActive: false, sseFallbackExhausted: true })
     },

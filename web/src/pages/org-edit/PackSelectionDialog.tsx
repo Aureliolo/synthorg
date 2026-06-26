@@ -225,7 +225,10 @@ function usePackSelection(open: boolean, onOpenChange: (open: boolean) => void):
         if (!cancelled) setPacks(data)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(getErrorMessage(err))
+        if (!cancelled) {
+          log.error('listTemplatePacks failed:', getErrorMessage(err))
+          setError(getErrorMessage(err))
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

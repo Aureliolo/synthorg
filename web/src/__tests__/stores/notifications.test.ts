@@ -5,6 +5,7 @@ import { server } from '@/test-setup'
 import { successFor } from '@/mocks/handlers/helpers'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import type { getNamespaceSettings } from '@/api/endpoints/settings'
+import type { WsEvent } from '@/api/types/websocket'
 
 /**
  * Notification routing preferences are the backend source of truth (the
@@ -65,5 +66,47 @@ describe('notifications store: backend-sourced preferences', () => {
     })
     expect(typeof id).toBe('string')
     expect(useNotificationsStore.getState().items.length).toBeGreaterThan(0)
+  })
+})
+
+describe('notifications store: workflow execution routing', () => {
+  beforeEach(() => {
+    useNotificationsStore.setState({
+      items: [],
+      unreadCount: 0,
+      preferences: { routeOverrides: {}, globalMute: false, browserPermission: 'default' },
+    })
+  })
+
+  function workflowEvent(status: string): WsEvent {
+    return {
+      event_type: 'workflow_execution.status_changed',
+      channel: 'workflows',
+      timestamp: '2026-04-01T12:00:00Z',
+      payload: { execution_id: 'exec-9', definition_id: 'wf-1', status, actor: 'op' },
+    }
+  }
+
+  it('enqueues a failed-execution notification carrying the execution id', () => {
+    useNotificationsStore.getState().handleWsEvent(workflowEvent('failed'))
+    const items = useNotificationsStore.getState().items
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      category: 'workflows.execution_failed',
+      title: 'Workflow execution failed',
+      description: 'exec-9',
+    })
+  })
+
+  it('enqueues a cancelled-execution notification', () => {
+    useNotificationsStore.getState().handleWsEvent(workflowEvent('cancelled'))
+    expect(useNotificationsStore.getState().items[0]?.category).toBe(
+      'workflows.execution_cancelled',
+    )
+  })
+
+  it('ignores non-terminal workflow execution transitions', () => {
+    useNotificationsStore.getState().handleWsEvent(workflowEvent('running'))
+    expect(useNotificationsStore.getState().items).toHaveLength(0)
   })
 })

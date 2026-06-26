@@ -9,7 +9,7 @@
  * the rows in ``data`` alongside ``next_cursor`` and ``has_more``
  * pagination metadata.
  */
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { WorkflowExecution, WorkflowExecutionStatus } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
@@ -37,20 +37,15 @@ export async function listWorkflowExecutions(
 /**
  * POST /workflow-executions/{execution_id}/cancel
  *
- * Backend returns ``ApiResponse[WorkflowExecution]`` (the cancelled
- * execution). The dashboard doesn't currently surface the cancelled
- * execution body, so the function returns ``void`` and discards
- * ``response.data`` after the success check. Switch to ``unwrap`` and
- * propagate the returned execution if a future caller needs it.
+ * The backend returns the cancelled execution, but the dashboard does not
+ * render it, so the body is typed as ``null`` and validated for success via
+ * ``unwrapVoid``. Type the response as ``ApiResponse<WorkflowExecution>`` and
+ * use ``unwrap`` instead if a future caller needs the returned execution.
  */
 export async function cancelWorkflowExecution(executionId: string): Promise<void> {
-  const response = await apiClient.post<ApiResponse<WorkflowExecution>>(
+  const response = await apiClient.post<ApiResponse<null>>(
     `/workflow-executions/${encodeURIComponent(executionId)}/cancel`,
     {},
   )
-  // The endpoint returns ApiResponse<WorkflowExecution>, but the UI
-  // doesn't render the cancelled execution. unwrap validates the
-  // envelope's success flag and returns the typed data; we discard
-  // it.
-  unwrap(response)
+  unwrapVoid(response)
 }

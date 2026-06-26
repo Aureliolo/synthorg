@@ -8,11 +8,10 @@
 //     paginators). They never make network requests, never render
 //     React, never animate, never touch toasts.
 //   * MSW's ``setupServer().listen()`` patches Node global HTTP
-//     interceptors. Calling it once per ``.bench.ts`` file (which
-//     happens because ``test.setupFiles`` was previously shared
-//     with bench) trips MSW's invariant on the second listen and
-//     fails the whole CodSpeed Web job. With a dedicated bench
-//     setup, MSW is never imported in bench mode at all.
+//     interceptors. A second ``listen()`` across bench workers trips
+//     MSW's single-interceptor invariant and fails the whole CodSpeed
+//     Web job, so a dedicated bench setup keeps MSW out of bench mode
+//     entirely.
 //   * Motion / matchMedia / rAF shims are not needed for benches:
 //     no Component renders, no media queries are read, no
 //     animation frames are scheduled.

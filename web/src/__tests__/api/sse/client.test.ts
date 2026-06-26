@@ -12,12 +12,14 @@ let lastEventSource: FakeEventSource | null = null
 
 class FakeEventSource {
   readonly url: string
+  readonly withCredentials: boolean
   onopen: ((ev: Event) => void) | null = null
   onerror: ((ev: Event) => void) | null = null
   private readonly listeners = new Map<string, Set<SseListener>>()
 
-  constructor(url: string) {
+  constructor(url: string, init?: EventSourceInit) {
     this.url = url
+    this.withCredentials = init?.withCredentials ?? false
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- test spy needs the latest instance
     lastEventSource = this
   }
@@ -103,6 +105,13 @@ describe('openSseFallback', () => {
   it('registers only the single ws frame listener', () => {
     openSseFallback({ onEvent: () => {}, onError: () => {} })
     expect(lastEventSource!.listenerCount()).toBe(1)
+  })
+
+  it('opens the EventSource with credentials so the session cookie is sent', () => {
+    // Without withCredentials the SSE request omits the auth cookie and every
+    // reconnect 401s silently, so this guards the credential flag explicitly.
+    openSseFallback({ onEvent: () => {}, onError: () => {} })
+    expect(lastEventSource!.withCredentials).toBe(true)
   })
 
   it('discards malformed frames without throwing', () => {

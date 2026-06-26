@@ -10,7 +10,7 @@ controller module stays under the controller LOC cap.
 
 import asyncio
 import json as _json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import suppress
 from typing import Final
 
@@ -430,6 +430,9 @@ async def revalidated_sse_stream(
         while True:
             timeout = max(0.0, next_revalidate_ts - clock.monotonic())
             if pending is None:
+                # ``anext`` on the abstract ``AsyncIterator`` returns an
+                # ``Awaitable``, not a ``Coroutine``, so ``create_task`` would
+                # not type-check here; ``ensure_future`` accepts both.
                 pending = asyncio.ensure_future(anext(inner_iter))
             try:
                 event = await asyncio.wait_for(asyncio.shield(pending), timeout)
@@ -455,6 +458,13 @@ async def revalidated_sse_stream(
             pending.cancel()
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await pending
+        # Explicitly close the inner generator: when cancellation lands at the
+        # ``yield event`` point (``pending is None``), the branch above does
+        # nothing, so without this the inner subscription cleanup would defer
+        # to the async-gen finalizer rather than running synchronously here.
+        if isinstance(inner_iter, AsyncGenerator):
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await inner_iter.aclose()
 
 
 async def _sse_event_stream(
