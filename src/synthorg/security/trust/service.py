@@ -116,6 +116,7 @@ class TrustService:
         states: dict[str, TrustState] = {}
         offset = 0
         page = 100
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             batch = await self._state_repo.list_items(limit=page, offset=offset)
             for state in batch:
@@ -125,6 +126,7 @@ class TrustService:
             offset += page
         history: dict[str, list[TrustChangeRecord]] = {}
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             records = await self._history_repo.query(
                 TrustChangeHistoryFilterSpec(), limit=page, offset=offset

@@ -27,11 +27,11 @@ from synthorg.persistence.audit_chain_protocol import AuditChainFilterSpec
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "position, event_hash, previous_hash, canonical_payload, signature, timestamp"
+    "chain_position, event_hash, previous_hash, canonical_payload, signature, timestamp"
 )
 _INSERT_SQL = """
 INSERT INTO audit_chain_entries (
-    position, event_hash, previous_hash, canonical_payload, signature, timestamp
+    chain_position, event_hash, previous_hash, canonical_payload, signature, timestamp
 )
 VALUES (%s, %s, %s, %s, %s, %s)
 """
@@ -62,7 +62,7 @@ def _row_to_entry(row: DictRow) -> ChainEntry:
         QueryError: If a binary column is not bytes-like.
     """
     return ChainEntry(
-        position=int(row["position"]),
+        position=int(row["chain_position"]),
         event_hash=NotBlankStr(str(row["event_hash"])),
         previous_hash=NotBlankStr(str(row["previous_hash"])),
         canonical_payload=_to_bytes(
@@ -132,9 +132,9 @@ class PostgresAuditChainRepository:
         sql = f"SELECT {_COLUMNS} FROM audit_chain_entries"  # noqa: S608
         params: list[object] = []
         if filter_spec.min_position is not None:
-            sql += " WHERE position >= %s"
+            sql += " WHERE chain_position >= %s"
             params.append(filter_spec.min_position)
-        sql += " ORDER BY position ASC LIMIT %s OFFSET %s"
+        sql += " ORDER BY chain_position ASC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         try:
             async with (
@@ -176,7 +176,7 @@ class PostgresAuditChainRepository:
             ):
                 await cur.execute(
                     f"SELECT {_COLUMNS} FROM audit_chain_entries "  # noqa: S608
-                    "ORDER BY position DESC LIMIT 1",
+                    "ORDER BY chain_position DESC LIMIT 1",
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:

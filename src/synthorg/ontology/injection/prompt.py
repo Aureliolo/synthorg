@@ -111,10 +111,10 @@ class PromptInjectionStrategy:
 
         header = "# Entity Definitions (Canonical)\n"
         # Entity definitions are operator/agent-authored and therefore
-        # attacker-controllable, so each block is fenced as untrusted
-        # (SEC-1) and a directive naming the fence is appended. Reserve
-        # the directive's cost up front so it is never trimmed away from
-        # the content it governs.
+        # attacker-controllable, so each block is fenced as untrusted and a
+        # directive naming the fence is appended. Reserve the directive's
+        # cost up front so it is never trimmed away from the content it
+        # governs.
         directive = untrusted_content_directive((TAG_KNOWLEDGE,))
         header_tokens = self._estimator.estimate_tokens(header)
         directive_tokens = self._estimator.estimate_tokens(directive)

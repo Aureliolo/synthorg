@@ -2473,7 +2473,7 @@ CREATE TABLE trust_change_history (
 CREATE INDEX idx_trust_change_history_agent
 ON trust_change_history (agent_id, timestamp DESC);
 CREATE TABLE audit_chain_entries (
-    position INTEGER PRIMARY KEY CHECK (position >= 0),
+    chain_position INTEGER PRIMARY KEY CHECK (chain_position >= 0),
     event_hash TEXT NOT NULL CHECK (LENGTH(TRIM(event_hash)) > 0),
     previous_hash TEXT NOT NULL CHECK (LENGTH(TRIM(previous_hash)) > 0),
     canonical_payload BLOB NOT NULL,

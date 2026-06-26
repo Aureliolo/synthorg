@@ -119,6 +119,7 @@ class HiringService:
         loaded: dict[str, HiringRequest] = {}
         offset = 0
         page = 100
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             batch = await self._request_repo.list_items(limit=page, offset=offset)
             for request in batch:

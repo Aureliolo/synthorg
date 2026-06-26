@@ -85,7 +85,7 @@ class TestPromptInjectionStrategy:
         self,
         mock_backend: AsyncMock,
     ) -> None:
-        """Entity blocks are wrapped (SEC-1) and a directive names the fence."""
+        """Entity blocks are wrapped as untrusted and a directive names the fence."""
         strategy = PromptInjectionStrategy(backend=mock_backend)
         messages = await strategy.prepare_messages(
             agent_id="agent-1",

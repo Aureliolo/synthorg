@@ -61,6 +61,7 @@ class PromotionPersistenceMixin:
             return
         history: dict[str, list[PromotionRecord]] = {}
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             records = await self._history_repo.query(
                 PromotionHistoryFilterSpec(),

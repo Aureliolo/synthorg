@@ -79,6 +79,7 @@ class DurableAuditChainWriter:
         """Rebuild ``chain`` from the durable store at startup."""
         entries: list[ChainEntry] = []
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             page = await self._repo.query(
                 AuditChainFilterSpec(),
@@ -124,6 +125,7 @@ class DurableAuditChainWriter:
             CancelledError: When the drain task is cancelled on stop.
         """
         loop = asyncio.get_running_loop()
+        # lint-allow: long-running-loop-kill-switch -- exits on None stop sentinel
         while True:
             entry = await loop.run_in_executor(None, self._queue.get)
             if entry is None:

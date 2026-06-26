@@ -32,11 +32,11 @@ from synthorg.persistence.sqlite._shared import WriteContext
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "position, event_hash, previous_hash, canonical_payload, signature, timestamp"
+    "chain_position, event_hash, previous_hash, canonical_payload, signature, timestamp"
 )
 _INSERT_SQL = """
 INSERT INTO audit_chain_entries (
-    position, event_hash, previous_hash, canonical_payload, signature, timestamp
+    chain_position, event_hash, previous_hash, canonical_payload, signature, timestamp
 )
 VALUES (?, ?, ?, ?, ?, ?)
 """
@@ -59,7 +59,7 @@ def _row_to_entry(row: dict[str, object]) -> ChainEntry:
         msg = "audit_chain_entries binary column is not bytes"
         raise QueryError(msg)
     return ChainEntry(
-        position=int(row["position"]),  # type: ignore[call-overload]
+        position=int(row["chain_position"]),  # type: ignore[call-overload]
         event_hash=NotBlankStr(str(row["event_hash"])),
         previous_hash=NotBlankStr(str(row["previous_hash"])),
         canonical_payload=bytes(payload),
@@ -136,9 +136,9 @@ class SQLiteAuditChainRepository:
         sql = f"SELECT {_COLUMNS} FROM audit_chain_entries"  # noqa: S608
         params: list[object] = []
         if filter_spec.min_position is not None:
-            sql += " WHERE position >= ?"
+            sql += " WHERE chain_position >= ?"
             params.append(filter_spec.min_position)
-        sql += " ORDER BY position ASC LIMIT ? OFFSET ?"
+        sql += " ORDER BY chain_position ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
             async with self._db.execute(sql, params) as cursor:
@@ -172,7 +172,7 @@ class SQLiteAuditChainRepository:
         try:
             async with self._db.execute(
                 f"SELECT {_COLUMNS} FROM audit_chain_entries "  # noqa: S608
-                "ORDER BY position DESC LIMIT 1",
+                "ORDER BY chain_position DESC LIMIT 1",
             ) as cursor:
                 row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
