@@ -85,6 +85,7 @@ function loadAgentRoster(
     limit: 0,
     nextCursor: null,
     hasMore: false,
+    degradedSources: [],
     pagination: { limit: 0, next_cursor: null, has_more: false },
   }
   void Promise.resolve()

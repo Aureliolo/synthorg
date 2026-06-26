@@ -72,6 +72,7 @@ export async function listEntities(params?: {
     limit: pagination.limit,
     nextCursor: pagination.next_cursor,
     hasMore: pagination.has_more,
+    degradedSources: body.degraded_sources,
     pagination: {
       limit: pagination.limit,
       next_cursor: pagination.next_cursor,
