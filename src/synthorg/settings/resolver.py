@@ -1020,6 +1020,7 @@ class ConfigResolver:
                 ("matcher_headroom_ratio_cap", "float"),
                 ("matcher_tier_large_min_context", "int"),
                 ("matcher_tier_medium_min_context", "int"),
+                ("matcher_min_usable_parameters", "int"),
                 ("quality_heuristic_pass_threshold", "float"),
                 ("quality_heuristic_pass_grade", "float"),
                 ("quality_heuristic_fail_grade", "float"),

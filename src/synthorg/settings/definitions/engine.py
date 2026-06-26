@@ -479,6 +479,7 @@ _r.register(
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=0,
     )
 )
