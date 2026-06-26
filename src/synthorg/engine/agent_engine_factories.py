@@ -46,6 +46,7 @@ if TYPE_CHECKING:
         DocsToolFactoryProvider,
         KnowledgeToolFactoryProvider,
         ResearchToolFactoryProvider,
+        StructureMapToolFactoryProvider,
     )
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -81,6 +82,7 @@ class AgentEngineFactoriesMixin:
     _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
     _docs_tool_factory_provider: DocsToolFactoryProvider | None
     _research_tool_factory_provider: ResearchToolFactoryProvider | None
+    _structure_map_tool_factory_provider: StructureMapToolFactoryProvider | None
     _parked_context_repo: ParkedContextRepository | None
     _event_stream_hub: EventStreamHub | None
     _interrupt_store: InterruptStore | None
@@ -414,6 +416,28 @@ class AgentEngineFactoriesMixin:
             if research_tools:
                 registry = _ResearchToolRegistry(
                     [*registry.all_tools(), *research_tools],
+                )
+        # The structure-map query tool binds the task's project scope, so
+        # it is added only when a project scope exists. The factory is
+        # parked on the engine slice by brownfield intake (``None`` until a
+        # codebase is imported), so the tool is absent otherwise.
+        structure_map_tool_factory = (
+            self._structure_map_tool_factory_provider()
+            if self._structure_map_tool_factory_provider is not None
+            else None
+        )
+        if structure_map_tool_factory is not None and project_id is not None:
+            from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+            from synthorg.tools.registry import (  # noqa: PLC0415
+                ToolRegistry as _StructureMapToolRegistry,
+            )
+
+            structure_map_tools = structure_map_tool_factory.build_tools(
+                project_id=NotBlankStr(project_id),
+            )
+            if structure_map_tools:
+                registry = _StructureMapToolRegistry(
+                    [*registry.all_tools(), *structure_map_tools],
                 )
         if self._memory_injection_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415

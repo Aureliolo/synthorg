@@ -53,6 +53,7 @@ from synthorg.workers._agent_engine_collaborators import (
     boot_knowledge_tool_factory_provider,
     boot_research_tool_factory_provider,
     boot_steering_inbox,
+    boot_structure_map_tool_factory_provider,
 )
 
 if TYPE_CHECKING:
@@ -572,6 +573,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
         docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),
         research_tool_factory_provider=boot_research_tool_factory_provider(app_state),
+        structure_map_tool_factory_provider=(
+            boot_structure_map_tool_factory_provider(app_state)
+        ),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),

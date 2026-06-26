@@ -19,6 +19,7 @@ from synthorg.engine._agent_engine_types import (
     DocsToolFactoryProvider,
     KnowledgeToolFactoryProvider,
     ResearchToolFactoryProvider,
+    StructureMapToolFactoryProvider,
 )
 from synthorg.engine._validation import (
     validate_agent,
@@ -229,6 +230,9 @@ class AgentEngine(
         knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
         docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
         research_tool_factory_provider: ResearchToolFactoryProvider | None = None,
+        structure_map_tool_factory_provider: (
+            StructureMapToolFactoryProvider | None
+        ) = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -256,6 +260,7 @@ class AgentEngine(
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
         self._docs_tool_factory_provider = docs_tool_factory_provider
         self._research_tool_factory_provider = research_tool_factory_provider
+        self._structure_map_tool_factory_provider = structure_map_tool_factory_provider
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the

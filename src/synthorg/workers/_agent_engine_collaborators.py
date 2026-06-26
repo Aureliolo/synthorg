@@ -15,6 +15,7 @@ from synthorg.engine.flight_recording import (
     build_flight_recorder_sink,
 )
 from synthorg.engine.intervention import SteeringInbox, build_steering_inbox
+from synthorg.engine.state import EngineStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.persistence.state import PersistenceStateSlice
@@ -24,6 +25,7 @@ from synthorg.research.state import ResearchStateSlice
 from synthorg.research.tool_factory import ResearchToolFactory
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
+from synthorg.tools.structure_map.tool_factory import StructureMapToolFactory
 
 _COCKPIT_NS: str = SettingNamespace.COCKPIT.value
 _FR_ENABLED_KEY: str = "flight_recorder_enabled"
@@ -127,6 +129,27 @@ def boot_research_tool_factory_provider(
 
     def _provider() -> ResearchToolFactory | None:
         return app_state.slice(ResearchStateSlice).tool_factory
+
+    return _provider
+
+
+def boot_structure_map_tool_factory_provider(
+    app_state: AppState,
+) -> Callable[[], StructureMapToolFactory | None]:
+    """Return a provider reading the live structure-map tool factory.
+
+    Brownfield intake parks the factory on the engine slice after the
+    boot ``AgentEngine`` is built, so the engine resolves it through this
+    provider at per-task tool-invoker time.
+
+    Returns:
+        A zero-arg callable returning the current
+        ``StructureMapToolFactory`` from app state, or ``None`` when no
+        codebase has been imported.
+    """
+
+    def _provider() -> StructureMapToolFactory | None:
+        return app_state.slice(EngineStateSlice).structure_map_tool_factory
 
     return _provider
 
