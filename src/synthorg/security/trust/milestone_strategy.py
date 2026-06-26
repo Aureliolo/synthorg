@@ -95,6 +95,14 @@ class MilestoneTrustStrategy:
             ):
                 recommended = to_level
                 requires_human = milestone.requires_human_approval
+                # Auto-promotion on task-count alone is unsafe: without a
+                # tenure AND clean-history gate an agent can be elevated the
+                # instant it clears the task/quality bar. Fall back to human
+                # approval unless the milestone gates on both.
+                if milestone.auto_promote and (
+                    milestone.time_active_days <= 0 or milestone.clean_history_days <= 0
+                ):
+                    requires_human = True
                 details_parts.append(f"Milestone {key!r} achieved")
                 break
 

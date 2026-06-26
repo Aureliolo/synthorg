@@ -213,7 +213,7 @@ class ReVerificationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
-        default=False,
+        default=True,
         description="Whether re-verification is enabled",
     )
     interval_days: int = Field(
