@@ -68,18 +68,18 @@ The `company_type` field selects a pre-defined organisational template:
 
 | Type | Description | Agents |
 |------|-------------|--------|
-| `solo_founder` | Solo builder with full autonomy | 2 |
+| `solo_founder` | Solo builder with full autonomy | 2--3 |
 | `startup` | CEO + small engineering team | 3--5 |
 | `dev_shop` | Engineering squad with quality gates | 6--10 |
 | `product_team` | Product-focused studio with design | 8--12 |
-| `agency` | Project manager + specialists | 4--8 |
-| `full_company` | Enterprise org with all departments | 8--15 |
+| `agency` | Project manager + specialists | 10--15 |
+| `full_company` | Enterprise org with all departments | 20--50 |
 | `research_lab` | Lead researcher + assistants | 5--10 |
 | `consultancy` | Client-facing advisory and delivery | 4--6 |
 | `data_team` | Analytics and ML-focused team | 5--8 |
-| `growth_marketing` | Campaign-driven marketing team | 5 |
-| `support_desk` | Ticket-driven customer support team | 5 |
-| `security_team` | Security review and audit team | 4 |
+| `growth_marketing` | Campaign-driven marketing team | 5--8 |
+| `support_desk` | Ticket-driven customer support team | 5--7 |
+| `security_team` | Security review and audit team | 4--6 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels
@@ -431,7 +431,7 @@ departments:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Department name (must be unique) |
-| `budget_percent` | int | `0` | Percentage of company budget |
+| `budget_percent` | float | `0` | Percentage of company budget |
 | `head` | string | `null` | Department head role name (or agent identifier). Use the companion `head_id` to disambiguate when several agents share the role |
 | `head_id` | string | `null` | Optional unique identifier for the department head; use when several agents share `head` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |

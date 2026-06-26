@@ -786,7 +786,7 @@ For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/sett
 **Skip condition:** skip the mini-pass entirely when the diff has zero relevant `.py` changes:
 
 - skip both when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/`;
-- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow);
+- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers/` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow);
 - `mini-pass-ghost-wiring` runs whenever any `.py` under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` changed (a PR that adds a new runtime class/factory/store/endpoint without wiring it at boot is exactly the regression this catches). Skip it only when the diff has zero `.py` changes under those runtime modules.
 
 ## Phase 4: Launch Review Agents (parallel)

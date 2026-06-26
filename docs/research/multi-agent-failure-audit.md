@@ -151,17 +151,19 @@ occurs.
 This is a full blocking implementation. The resolver persists an `Escalation`
 row via the configured `EscalationQueueStore`, registers an `asyncio.Future` in
 the `PendingFuturesRegistry`, dispatches an operator notification, and awaits the
-Future with a configured timeout. A decision arriving via the REST endpoint
+Future with a configured timeout (or indefinitely when `timeout_seconds` is
+`None`). A decision arriving via the REST endpoint
 resolves the Future so the resolver wakes with the operator's payload and hands
 it to the configured `DecisionProcessor`. The `escalation/` sub-package
 (`store`, `registry`, `notify`, `processors`, `sweeper`) backs this flow, and an
 `approval_store` routes the escalation into the generic approval queue in
 parallel.
 
-On timeout or explicit cancellation the resolver returns a no-winner
-`ConflictResolution` with outcome `ESCALATED_TO_HUMAN` (never `None`) and
-transitions the store row to `EXPIRED` so subsequent GETs surface the terminal
-state.
+On timeout the resolver returns a no-winner `ConflictResolution` with outcome
+`ESCALATED_TO_HUMAN` (never `None`) and transitions the store row to `EXPIRED`
+so subsequent GETs surface the terminal state. Explicit cancellation takes a
+separate shielded cleanup path that persists the row as `CANCELLED` before
+propagating `CancelledError` so shutdown can reap the pending wait.
 
 **Verdict**: Safe. The resolver blocks up to its timeout for a real human
 decision and always produces a `ConflictResolution`, either the operator's
