@@ -75,7 +75,9 @@ export const Default: Story = { args: { models } }
 
 export const AllCapabilities: Story = {
   args: {
-    models: models.slice(0, 1),
+    // Explicit override: models[0] ships reasoning off, so reuse would skip the
+    // reasoning badge this fixture exists to showcase.
+    models: [{ ...models[0]!, supports_reasoning: true }],
   },
 }
 

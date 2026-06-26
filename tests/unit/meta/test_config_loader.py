@@ -166,6 +166,10 @@ async def test_tool_creation_without_allowlist_is_held_off(
         pytest.param("", [], id="empty"),
         pytest.param('["", "  ", "docs:summarize"]', ["docs:summarize"], id="blanks"),
         pytest.param('["a:b", "c:d"]', ["a:b", "c:d"], id="valid"),
+        # Non-string items must be dropped, never coerced: ``str(True)`` etc.
+        # would yield truthy entries that silently enable tool creation.
+        pytest.param("[true, 0, {}]", [], id="non-string-items"),
+        pytest.param('[true, "a:b", 0]', ["a:b"], id="mixed-string-and-non-string"),
     ],
 )
 def test_parse_capability_list(raw: str, expected: list[str]) -> None:

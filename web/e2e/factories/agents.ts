@@ -13,6 +13,9 @@ export interface MockAgent {
   status: 'active' | 'idle' | 'paused' | 'terminated'
   level: 'junior' | 'mid' | 'senior' | 'principal'
   current_task_id: string | null
+  /** Raw model config dict, mirroring the wire ``AgentConfig.model``. */
+  model: Record<string, unknown>
+  tier: 'large' | 'medium' | 'small' | null
 }
 
 export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
@@ -24,6 +27,8 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     status: 'active',
     level: 'mid',
     current_task_id: null,
+    model: { model_id: 'example-medium-001' },
+    tier: 'medium',
     ...overrides,
   }
 }

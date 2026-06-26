@@ -77,10 +77,21 @@ function devDocsPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use('/docs', (req, res) => {
-        let rel = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/')
+        let rel: string
+        try {
+          rel = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/')
+        } catch {
+          // A malformed escape (e.g. a bare ``%``) must not crash the dev
+          // server's middleware chain.
+          res.statusCode = 400
+          res.end('Bad Request')
+          return
+        }
         if (rel.endsWith('/')) rel += 'index.html'
         const filePath = path.join(docsRoot, path.normalize(rel))
-        if (!filePath.startsWith(docsRoot)) {
+        // Exact root or a true child only: a prefix-only check would let a
+        // sibling dir sharing the prefix (``_site/docs-secret``) escape.
+        if (filePath !== docsRoot && !filePath.startsWith(docsRoot + path.sep)) {
           res.statusCode = 403
           res.end('Forbidden')
           return

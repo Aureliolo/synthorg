@@ -213,7 +213,8 @@ async function checkSessionImpl(
       // so leaving it there would spin "Signing in..." forever; routing it
       // through the auto-login either succeeds or falls through to login.
       if (IS_DEV_AUTH_BYPASS) {
-        if (await _tryDevAutoLogin(set, get)) return
+        // _tryDevAutoLogin sets authStatus on both success and fall-through.
+        await _tryDevAutoLogin(set, get)
         return
       }
       if (outcome === 'unknown') log.error('Session check failed:', getErrorMessage(err))

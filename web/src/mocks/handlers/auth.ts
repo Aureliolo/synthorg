@@ -34,14 +34,14 @@ function buildAuthUser(
 
 export const authLoginSuccess = [
   http.post('/api/v1/auth/login', () => {
-    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    document.cookie = 'csrf_token=mock-csrf-token; path=/'
     return HttpResponse.json(successFor<typeof login>(mockAuthResponse))
   }),
 ]
 
 export const authSetupSuccess = [
   http.post('/api/v1/auth/setup', () => {
-    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    document.cookie = 'csrf_token=mock-csrf-token; path=/'
     return HttpResponse.json(successFor<typeof setup>(mockAuthResponse))
   }),
 ]
@@ -50,15 +50,15 @@ export const authSetupSuccess = [
 
 export const authHandlers = [
   http.post('/api/v1/auth/setup', () => {
-    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    document.cookie = 'csrf_token=mock-csrf-token; path=/'
     return HttpResponse.json(successFor<typeof setup>(mockAuthResponse))
   }),
   http.post('/api/v1/auth/login', () => {
-    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    document.cookie = 'csrf_token=mock-csrf-token; path=/'
     return HttpResponse.json(successFor<typeof login>(mockAuthResponse))
   }),
   http.post('/api/v1/auth/dev-login', () => {
-    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    document.cookie = 'csrf_token=mock-csrf-token; path=/'
     return HttpResponse.json(successFor<typeof devLogin>(mockAuthResponse))
   }),
   http.post('/api/v1/auth/logout', () => HttpResponse.json(voidSuccess())),

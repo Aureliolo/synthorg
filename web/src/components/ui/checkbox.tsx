@@ -32,7 +32,7 @@ export function Checkbox({ className, ...props }: CheckboxProps) {
         'flex size-4 shrink-0 items-center justify-center rounded border border-border bg-card',
         'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'data-[checked]:border-accent data-[checked]:bg-accent',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
         className,
       )}
       {...props}

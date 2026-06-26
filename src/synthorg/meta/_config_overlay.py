@@ -109,7 +109,18 @@ def _parse_capability_list(raw: str) -> list[str]:
             reason="tool_creation_allowed_capabilities_not_a_list",
         )
         return []
-    return [str(item).strip() for item in parsed if str(item).strip()]
+    # Only real strings are capability tags; coercing non-strings (``[true]``,
+    # ``[0]``, ``[{}]``) would yield truthy entries that silently enable tool
+    # creation, so drop them and surface the discard to the operator.
+    valid = [item.strip() for item in parsed if isinstance(item, str) and item.strip()]
+    non_string = sum(1 for item in parsed if not isinstance(item, str))
+    if non_string:
+        logger.warning(
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
+            reason="tool_creation_allowed_capabilities_non_string_items",
+            dropped=non_string,
+        )
+    return valid
 
 
 def _nested(overrides: dict[str, object], key: str) -> dict[str, object]:
