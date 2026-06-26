@@ -48,9 +48,15 @@ class ManifestError(BackupError):
 class ComponentBackupError(BackupError):
     """Raised when a per-component backup or restore step fails."""
 
+    default_message: ClassVar[str] = "Component backup or restore step failed"
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_COMPONENT_FAILED
+
 
 class RetentionError(BackupError):
     """Raised when backup pruning fails."""
+
+    default_message: ClassVar[str] = "Backup retention pruning failed"
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_RETENTION_FAILED
 
 
 class BackupNotFoundError(BackupError):

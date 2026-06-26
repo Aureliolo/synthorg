@@ -1981,23 +1981,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/events/dashboard": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** DashboardStream */
-        readonly get: operations["ApiV1EventsDashboardDashboardStream"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/events/stream": {
         readonly parameters: {
             readonly query?: never;
@@ -9602,15 +9585,7 @@ export type components = {
         readonly ConversationParticipantStatus: "active" | "removed";
         /** CookieSessionResponse */
         readonly CookieSessionResponse: {
-            /**
-             * @description Session lifetime in seconds before the JWT cookie expires.
-             * @example 3600
-             */
             readonly expires_in: number;
-            /**
-             * @description Whether the user must change their password before proceeding.
-             * @example false
-             */
             readonly must_change_password: boolean;
         };
         /** CoordinateTaskRequest */
@@ -9948,26 +9923,11 @@ export type components = {
         };
         /** CreateDepartmentRequest */
         readonly CreateDepartmentRequest: {
-            /**
-             * @description Default autonomy level for agents in the department.
-             * @enum {string|null}
-             */
+            /** @enum {string|null} */
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
-            /**
-             * @description Share of the org budget allocated to this department (0-100).
-             * @default 0
-             * @example 20
-             */
+            /** @default 0 */
             readonly budget_percent: number;
-            /**
-             * @description Agent name of the department head, if assigned.
-             * @example cto
-             */
             readonly head?: string | null;
-            /**
-             * @description Department name (unique within the organisation).
-             * @example Engineering
-             */
             readonly name: string;
         };
         /** CreateEntityRequest */
@@ -10098,43 +10058,25 @@ export type components = {
         };
         /** CreateProviderRequest */
         readonly CreateProviderRequest: {
-            /** @description API key credential (required for API_KEY auth). */
             readonly api_key?: string | null;
             readonly auth_type?: components["schemas"]["AuthType"];
-            /**
-             * @description Provider API base URL.
-             * @example https://api.example-provider.test/v1
-             */
             readonly base_url?: string | null;
             readonly custom_header_name?: string | null;
             readonly custom_header_value?: string | null;
-            /**
-             * @description Driver backend name.
-             * @default litellm
-             * @example litellm
-             */
+            /** @default litellm */
             readonly driver: string;
             readonly keep_alive?: string | null;
-            /** @description LiteLLM routing identifier override, if needed. */
             readonly litellm_provider?: string | null;
             /** @default [] */
             readonly models: readonly components["schemas"]["ProviderModelConfig"][];
-            /**
-             * @description Unique provider name (2-64 chars, lowercase + hyphens).
-             * @example example-provider
-             */
             readonly name: string;
             readonly oauth_client_id?: string | null;
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
             readonly preset_name?: string | null;
-            /** @description Bearer token for subscription-based auth. */
             readonly subscription_token?: string | null;
-            /**
-             * @description Whether the operator accepted the subscription terms.
-             * @default false
-             */
+            /** @default false */
             readonly tos_accepted: boolean;
         };
         /** CreateRequestPayload */
@@ -10188,22 +10130,19 @@ export type components = {
         };
         /** CreateTaskRequest */
         readonly CreateTaskRequest: {
+            readonly assigned_to?: string | null;
             /**
-             * @description Detailed task description.
-             * @example Produce a one-page plan covering channels, budget, and KPIs.
+             * @description Maximum spend for the task in the configured base currency.
+             * @default 0
              */
+            readonly budget_limit: number;
+            readonly created_by: string;
+            /** @description Detailed task description. */
             readonly description: string;
             readonly estimated_complexity?: components["schemas"]["Complexity"];
             readonly priority?: components["schemas"]["Priority"];
-            /**
-             * @description Id of the project the task belongs to.
-             * @example marketing
-             */
             readonly project: string;
-            /**
-             * @description Short task title.
-             * @example Draft Q3 marketing plan
-             */
+            /** @description Short task title. */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
         };
@@ -10891,7 +10830,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 5003 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -12178,12 +12117,7 @@ export type components = {
         };
         /** LoginRequest */
         readonly LoginRequest: {
-            /** @description Login password. */
             readonly password: string;
-            /**
-             * @description Login username.
-             * @example ceo
-             */
             readonly username: string;
         };
         /** ManualDecomposeRequest */
@@ -16403,12 +16337,7 @@ export type components = {
         };
         /** SetupRequest */
         readonly SetupRequest: {
-            /** @description Admin password; must be at least the configured minimum length. */
             readonly password: string;
-            /**
-             * @description Admin login username for the first-run account.
-             * @example ceo
-             */
             readonly username: string;
         };
         /** SetupStatusResponse */
@@ -17361,31 +17290,21 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
-            /** @description Registered curation-strategy key. */
             readonly curation_strategy_type: string;
-            /** @description Content types the plan ingests (ContentType values). */
             readonly enabled_content_types: readonly string[];
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly executed_at: string | null;
-            /** @description Unique training-plan id. */
             readonly id: string;
-            /** @description Id of the agent the plan trains. */
             readonly new_agent_id: string;
-            /** @description Role the trained agent will hold. */
             readonly new_agent_role: string;
-            /** @description Explicit source agent ids that override selection. */
             readonly override_sources: readonly string[];
-            /** @description Whether the human review gate is enabled for the plan. */
             readonly require_review: boolean;
-            /** @description Whether the plan is an explicit skip (no training run). */
             readonly skip_training: boolean;
-            /** @description Registered source-selector strategy key. */
             readonly source_selector_type: string;
             readonly status: components["schemas"]["TrainingPlanStatus"];
-            /** @description Per-content-type ingestion caps as (content_type, max_items) pairs; the serialised form of the plan's volume-cap mapping. */
             readonly volume_caps: readonly (readonly [
                 string,
                 number
@@ -17443,7 +17362,6 @@ export type components = {
         };
         /** TransitionTaskRequest */
         readonly TransitionTaskRequest: {
-            /** @description Optional assignee override applied as part of the transition. */
             readonly assigned_to?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
@@ -17599,17 +17517,12 @@ export type components = {
         };
         /** UpdateDepartmentRequest */
         readonly UpdateDepartmentRequest: {
-            /**
-             * @description New default autonomy level; omit to leave unchanged.
-             * @enum {string|null}
-             */
+            /** @enum {string|null} */
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
-            /** @description New org-budget share (0-100); omit to leave unchanged. */
             readonly budget_percent?: number | null;
             readonly ceremony_policy?: {
                 readonly [key: string]: unknown;
             } | null;
-            /** @description New department head agent name; omit to leave unchanged. */
             readonly head?: string | null;
             readonly teams?: readonly components["schemas"]["Team"][] | null;
         };
@@ -17709,7 +17622,6 @@ export type components = {
         };
         /** UpdateTaskRequest */
         readonly UpdateTaskRequest: {
-            /** @description New assignee agent id; omit to leave the assignee unchanged. */
             readonly assigned_to?: string | null;
             /** @description New maximum spend for the task in the base currency. */
             readonly budget_limit?: number | null;
@@ -17717,10 +17629,7 @@ export type components = {
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
-            /**
-             * @description New scheduling priority; omit to leave it unchanged.
-             * @enum {string|null}
-             */
+            /** @enum {string|null} */
             readonly priority?: "critical" | "high" | "medium" | "low" | null;
             /** @description New task title. */
             readonly title?: string | null;
@@ -17816,31 +17725,13 @@ export type components = {
         };
         /** UserInfoResponse */
         readonly UserInfoResponse: {
-            /**
-             * @description Stable user id.
-             * @example 018f3a2b-7c1d-7e44-9a3e-2b1c4d5e6f70
-             */
             readonly id: string;
-            /**
-             * @description Whether a forced password change is pending.
-             * @example false
-             */
             readonly must_change_password: boolean;
-            /**
-             * @description Permission-level roles for org-config access.
-             * @default []
-             */
+            /** @default [] */
             readonly org_roles: readonly string[];
             readonly role: components["schemas"]["HumanRole"];
-            /**
-             * @description Departments a department admin is scoped to.
-             * @default []
-             */
+            /** @default [] */
             readonly scoped_departments: readonly string[];
-            /**
-             * @description Login username.
-             * @example ceo
-             */
             readonly username: string;
         };
         /** UserResponse */
@@ -20322,10 +20213,7 @@ export interface operations {
     readonly ApiV1ApprovalsCreateApproval: {
         readonly parameters: {
             readonly query?: never;
-            readonly header: {
-                /** @description RFC-style retry-safe key. Required: an identical key within 24h returns the cached decision response instead of re-running the decision, so a 5xx-driven client retry cannot double-fire the notification / resume-signal side effects. */
-                readonly "Idempotency-Key": string;
-            };
+            readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
@@ -23142,35 +23030,6 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1EventsDashboardDashboardStream: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Reconnect cursor; presence replays the recent backlog. */
-                readonly last_event_id?: string | null;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "text/event-stream": unknown;
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
