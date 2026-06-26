@@ -12,7 +12,6 @@ thin coordinator (``__init__`` / ``get_protocol_type`` / ``run``).
 """
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.communication.meeting._parsing import (
@@ -45,6 +44,7 @@ from synthorg.communication.meeting.protocol import (
     AgentCaller,
     ConflictDetector,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
@@ -88,6 +88,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
     """
 
     __slots__ = (
+        "_clock",
         "_config",
         "_conflict_detector",
         "_consensus_hook",
@@ -101,6 +102,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         conflict_detector: ConflictDetector | None = None,
         consensus_hook: ConsensusVelocityHook | None = None,
         premortem_hook: PremortemHook | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._config = config
         self._conflict_detector: ConflictDetector = (
@@ -110,6 +112,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         )
         self._consensus_hook = consensus_hook
         self._premortem_hook = premortem_hook
+        self._clock = clock or SystemClock()
 
     def get_protocol_type(self) -> MeetingProtocolType:
         """Return the protocol type."""
@@ -147,7 +150,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             MeetingBudgetExhaustedError: If the token budget is
                 exhausted before synthesis can begin.
         """
-        started_at = datetime.now(UTC)
+        started_at = self._clock.now()
         tracker = TokenTracker(budget=token_budget)
         agenda_text = build_agenda_prompt(agenda)
         turn_number = 0
@@ -267,7 +270,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             budget=token_budget,
         )
 
-        ended_at = datetime.now(UTC)
+        ended_at = self._clock.now()
         return MeetingMinutes(
             meeting_id=meeting_id,
             protocol_type=MeetingProtocolType.STRUCTURED_PHASES,
@@ -397,7 +400,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
                 turn_number=turn_number,
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
-                timestamp=datetime.now(UTC),
+                timestamp=self._clock.now(),
             )
         if not section.strip():
             return summary, contribution

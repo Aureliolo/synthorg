@@ -15,7 +15,7 @@ loop:
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Final
 from uuid import uuid4
@@ -178,7 +178,7 @@ class EvalLoopCoordinator:
             Exception: Raised when the relevant invariant fails.
         """
         cycle_id = uuid4()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         window_start = now - window
         start_time = self._clock.monotonic()
 
@@ -231,7 +231,7 @@ class EvalLoopCoordinator:
                 proposed_actions=proposed_actions,
                 training_triggered=training_triggered,
                 benchmark_results=benchmark_results,
-                created_at=datetime.now(UTC),
+                created_at=self._clock.now(),
             )
 
             logger.info(

@@ -5,9 +5,10 @@ tokens before they expire.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import parse_iso_assume_utc
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
@@ -80,11 +81,13 @@ class OAuthTokenManager:
         refresh_threshold_seconds: int = _DEFAULT_REFRESH_THRESHOLD_SECONDS,
         check_interval_seconds: int = _DEFAULT_CHECK_INTERVAL_SECONDS,
         config_resolver: ConfigResolver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._catalog = catalog
         self._threshold = timedelta(seconds=refresh_threshold_seconds)
         self._interval = check_interval_seconds
         self._config_resolver = config_resolver
+        self._clock = clock or SystemClock()
         self._task: asyncio.Task[None] | None = None
         self._flow = AuthorizationCodeFlow()
         # Eager init: stop() must be safe before any start() call.
@@ -276,12 +279,12 @@ class OAuthTokenManager:
                     exc,
                     reason="unexpected error in refresh loop",
                 )
-            await asyncio.sleep(self._interval)
+            await self._clock.sleep(self._interval)
 
     async def _check_and_refresh(self) -> None:
         """Check all OAuth connections for expiring tokens."""
         all_connections = await self._catalog.list_all()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         threshold = now + self._threshold
 
         for conn in all_connections:

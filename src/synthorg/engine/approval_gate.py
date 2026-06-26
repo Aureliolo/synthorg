@@ -12,7 +12,6 @@ it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
 
-from datetime import UTC, datetime
 from typing import Final
 from uuid import uuid4
 
@@ -26,6 +25,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
@@ -76,12 +76,14 @@ class ApprovalGate:
         event_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
         interrupt_timeout_seconds: float = _DEFAULT_INTERRUPT_TIMEOUT_SECONDS,
+        clock: Clock | None = None,
     ) -> None:
         self._park_service = park_service
         self._parked_context_repo = parked_context_repo
         self._notification_dispatcher = notification_dispatcher
         self._event_hub = event_hub
         self._interrupt_store = interrupt_store
+        self._clock = clock or SystemClock()
         import math  # noqa: PLC0415
 
         if interrupt_timeout_seconds <= 0 or not math.isfinite(
@@ -173,7 +175,7 @@ class ApprovalGate:
                 resolution = InterruptResolution(
                     interrupt_id=interrupt_id,
                     decision=ResumeDecision.REJECT,
-                    resolved_at=datetime.now(UTC),
+                    resolved_at=self._clock.now(),
                     resolved_by="approval_gate_compensation",
                 )
                 try:
@@ -219,7 +221,7 @@ class ApprovalGate:
                     type=InterruptType.TOOL_APPROVAL,
                     session_id=session_id,
                     agent_id=agent_id,
-                    created_at=datetime.now(UTC),
+                    created_at=self._clock.now(),
                     timeout_seconds=self._interrupt_timeout_seconds,
                     tool_name=escalation.tool_name,
                     evidence_package_id=None,
@@ -466,7 +468,7 @@ class ApprovalGate:
         resolution = InterruptResolution(
             interrupt_id=iid,
             decision=ResumeDecision.APPROVE,
-            resolved_at=datetime.now(UTC),
+            resolved_at=self._clock.now(),
             resolved_by="approval_gate",
         )
         try:
