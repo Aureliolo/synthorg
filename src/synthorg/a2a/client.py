@@ -233,7 +233,15 @@ class A2AClient:
             )
             raise A2AClientError(msg, peer_name=peer_name)
 
-        # SSRF validation on outbound URL
+        # SSRF validation on outbound URL. ``validate_url_host`` resolves DNS
+        # and returns an error string when the host is blocked, or a
+        # ``DnsValidationOk`` carrying the resolved public IPs. Both the
+        # block result and the resolved IPs are consumed: the request below
+        # pins the connection to a validated IP so a rebind between this
+        # check and the connect cannot redirect the call to a private
+        # address (TOCTOU / DNS-rebinding).
+        pinned_ip: str | None = None
+        pinned_hostname: str | None = None
         if self._network_validator is not None:
             from synthorg.tools.network_validator import (  # noqa: PLC0415
                 extract_hostname,
@@ -252,7 +260,7 @@ class A2AClient:
                 msg = f"SSRF: cannot parse URL for peer '{peer_name}'"
                 raise A2AClientError(msg, peer_name=peer_name)
             try:
-                await validate_url_host(url_str, self._network_validator)
+                validation = await validate_url_host(url_str, self._network_validator)
             except Exception as ssrf_exc:
                 reraise_critical(ssrf_exc)
                 logger.warning(
@@ -267,6 +275,18 @@ class A2AClient:
                     msg,
                     peer_name=peer_name,
                 ) from ssrf_exc
+            if isinstance(validation, str):
+                logger.warning(
+                    A2A_OUTBOUND_SSRF_BLOCKED,
+                    peer_name=peer_name,
+                    url=url_str,
+                    reason=validation,
+                )
+                msg = f"SSRF: blocked outbound URL for peer '{peer_name}'"
+                raise A2AClientError(msg, peer_name=peer_name)
+            if validation.resolved_ips:
+                pinned_ip = validation.resolved_ips[0]
+                pinned_hostname = validation.hostname
 
         # Build JSON-RPC request
         rpc_req = JsonRpcRequest(
@@ -301,6 +321,8 @@ class A2AClient:
             headers,
             peer_name,
             method,
+            pinned_ip=pinned_ip,
+            pinned_hostname=pinned_hostname,
         )
         rpc_resp = _parse_rpc_response(response, peer_name)
 
@@ -340,13 +362,16 @@ class A2AClient:
             )
             raise A2AClientError(msg, peer_name=peer_name) from exc
 
-    async def _send_request(
+    async def _send_request(  # noqa: PLR0913 -- request + error context + pin pair
         self,
         url: str,
         rpc_req: JsonRpcRequest,
         headers: dict[str, str],
         peer_name: str,
         method: str,
+        *,
+        pinned_ip: str | None = None,
+        pinned_hostname: str | None = None,
     ) -> httpx.Response:
         """Send HTTP request with differentiated error handling.
 
@@ -356,6 +381,10 @@ class A2AClient:
             headers: HTTP headers.
             peer_name: Peer name for error context.
             method: RPC method for error context.
+            pinned_ip: Validated IP to pin the connection to (TOCTOU
+                mitigation); ``None`` skips pinning.
+            pinned_hostname: Original hostname preserved for the TLS SNI /
+                ``Host`` header when pinning.
 
         Returns:
             HTTP response.
@@ -370,6 +399,8 @@ class A2AClient:
                 url,
                 rpc_req,
                 headers,
+                pinned_ip=pinned_ip,
+                pinned_hostname=pinned_hostname,
             )
             response.raise_for_status()
         except (httpx.NetworkError, httpx.TimeoutException) as exc:
@@ -436,13 +467,24 @@ class A2AClient:
         url: str,
         rpc_req: JsonRpcRequest,
         headers: dict[str, str],
+        *,
+        pinned_ip: str | None = None,
+        pinned_hostname: str | None = None,
     ) -> httpx.Response:
         """Execute the HTTP POST, reusing injected client.
+
+        When ``pinned_ip`` / ``pinned_hostname`` are set (production SSRF
+        path), the fresh client is wired with a :class:`PinnedDnsTransport`
+        so the connection targets the exact IP the validator approved,
+        closing the DNS-rebinding window. An injected test client is used
+        as-is (tests stub the transport).
 
         Args:
             url: Target URL.
             rpc_req: JSON-RPC request to send.
             headers: HTTP headers.
+            pinned_ip: Validated IP to pin to; ``None`` skips pinning.
+            pinned_hostname: Hostname preserved for TLS SNI when pinning.
 
         Returns:
             HTTP response.
@@ -453,12 +495,23 @@ class A2AClient:
                 json=rpc_req.model_dump(mode="json"),
                 headers=headers,
             )
-        async with httpx.AsyncClient(timeout=self._timeout) as http:
-            return await http.post(
-                url,
-                json=rpc_req.model_dump(mode="json"),
-                headers=headers,
-            )
+        transport: httpx.AsyncBaseTransport | None = None
+        if pinned_ip is not None and pinned_hostname is not None:
+            from synthorg.tools._dns_pinning import PinnedDnsTransport  # noqa: PLC0415
+
+            transport = PinnedDnsTransport(hostname=pinned_hostname, ip=pinned_ip)
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=transport
+            ) as http:
+                return await http.post(
+                    url,
+                    json=rpc_req.model_dump(mode="json"),
+                    headers=headers,
+                )
+        finally:
+            if transport is not None:
+                await transport.aclose()
 
 
 def _parse_rpc_response(
