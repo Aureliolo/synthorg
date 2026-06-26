@@ -63,8 +63,8 @@ A list of agent definitions; each must declare at least `name`, `role`, and `dep
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `name` | str | (required) | Department name. |
-| `head_role` | str | `null` | Role name of the department head. |
-| `head_merge_id` | str | `null` | The head agent's `merge_id`, disambiguating the head when several agents share `head_role`. |
+| `head` | str | `null` | Department head role name (or agent identifier). |
+| `head_id` | str | `null` | Optional unique identifier for the department head, disambiguating when several agents share `head`. |
 | `budget_percent` | int | `0` | Percentage of the company budget allocated to this department. |
 | `teams` | list | `[]` | Teams within this department. |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor pairs. |

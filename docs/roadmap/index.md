@@ -58,8 +58,10 @@ provider, zero LLM spend, unless noted):
   agent-initiated invites, and direct MCP acting under trust (sensitive
   actions approval-gated; fail-closed when security governance is inactive).
   The four conversational modes (explain-chat, propose, concern routing, and
-  group chat) are on by default and toggle per request; agent-initiated invites
-  and direct MCP acting are off by default.
+  group chat) are on by default; explain-chat, propose, and group chat toggle
+  per request, while concern routing is baked into the proposer at startup and
+  needs a restart to change. Agent-initiated invites and direct MCP acting are
+  off by default.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
   with CSRF protection, Wolfi apko-composed distroless images, Trivy + Grype

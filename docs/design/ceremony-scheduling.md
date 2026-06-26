@@ -636,6 +636,9 @@ its persona. Users can override via settings.
 | `research_lab` | `throughput_adaptive` | Discovery pace varies wildly |
 | `consultancy` | `calendar` | Client expects fixed reporting schedules |
 | `data_team` | `task_driven` | Pipeline/batch completion oriented |
+| `growth_marketing` | `event_driven` | Campaign-driven, reacts to launches and signals |
+| `support_desk` | `event_driven` | Ticket-driven, reacts to incoming demand |
+| `security_team` | `calendar` | Fixed review and audit cadences |
 
 ---
 
@@ -689,17 +692,8 @@ and a default velocity calculator each: `task_driven`, `calendar`, `hybrid`,
 `/settings/coordination/ceremony-policy` with project, department, and
 per-ceremony override panels, backed by the coordination-namespace ceremony
 settings. Switching a sprint's strategy mid-flight is detected via
-`detect_strategy_migration()` and surfaced through a migration warning.
-
-Built-in template ceremony defaults (all twelve builtins):
-
-| Default strategy | Templates |
-|---|---|
-| `task_driven` | `solo_founder`, `startup`, `data_team` |
-| `hybrid` | `dev_shop`, `product_team`, `full_company` |
-| `event_driven` | `agency`, `growth_marketing`, `support_desk` |
-| `calendar` | `consultancy`, `security_team` |
-| `throughput_adaptive` | `research_lab` |
+`detect_strategy_migration()` and surfaced through a migration warning. Each
+built-in template ships a default strategy (see [Template Defaults](#template-defaults)).
 
 Per-department `ceremony_policy` overrides in `TemplateDepartmentConfig` and
 `Department` merge field-by-field with the project default via

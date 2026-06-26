@@ -77,6 +77,9 @@ The `company_type` field selects a pre-defined organisational template:
 | `research_lab` | Lead researcher + assistants | 5--10 |
 | `consultancy` | Client-facing advisory and delivery | 4--6 |
 | `data_team` | Analytics and ML-focused team | 5--8 |
+| `growth_marketing` | Campaign-driven marketing team | 5 |
+| `support_desk` | Ticket-driven customer support team | 5 |
+| `security_team` | Security review and audit team | 4 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels
@@ -496,19 +499,19 @@ SynthOrg enforces the following cross-field validation rules at load time:
     departments:
       - name: "executive"
         budget_percent: 20
-        head_role: "CEO"
+        head: "CEO"
         reporting_lines:
           - subordinate: "CTO"
             supervisor: "CEO"
       - name: "engineering"
         budget_percent: 60
-        head_role: "CTO"
+        head: "CTO"
         reporting_lines:
           - subordinate: "Full-Stack Developer"
             supervisor: "CTO"
       - name: "product"
         budget_percent: 20
-        head_role: "Product Manager"
+        head: "Product Manager"
 
     agents:
       - role: "CEO"
