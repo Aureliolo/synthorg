@@ -1064,7 +1064,7 @@ def _resolve_http_retry_after(
             # observable; surfacing it lets operators distinguish a real
             # missing header from a misbehaving upstream service. The value
             # is untrusted third-party header content, so scrub credential
-            # patterns before it reaches the log (SEC-1).
+            # patterns out of it before it reaches the log.
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="retry_after_parse_error",
