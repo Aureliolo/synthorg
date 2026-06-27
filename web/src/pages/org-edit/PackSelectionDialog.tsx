@@ -7,9 +7,12 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { listTemplatePacks, applyTemplatePack } from '@/api/endpoints/template-packs'
+import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { useCompanyStore } from '@/stores/company'
 import { getErrorMessage } from '@/utils/errors'
+
+const log = createLogger('PackSelectionDialog')
 import type { Department } from '@/api/types/org'
 import type { PackInfoResponse, RebalanceMode } from '@/api/types/templates'
 import { PackApplyPreviewDialog } from './PackApplyPreviewDialog'
@@ -31,7 +34,8 @@ interface ApplyDeps {
 async function refreshAfterPack(addToast: AddToast): Promise<void> {
   try {
     await useCompanyStore.getState().fetchCompanyData()
-  } catch {
+  } catch (err) {
+    log.warn('Pack applied but company refresh failed:', getErrorMessage(err))
     addToast({
       variant: 'warning',
       title: 'Pack applied but failed to refresh data. Reload the page.',
@@ -61,6 +65,7 @@ async function applyPackDirect(packName: string, deps: ApplyDeps): Promise<void>
     deps.onOpenChange(false)
     await refreshAfterPack(deps.addToast)
   } catch (err) {
+    log.error('applyPackDirect failed:', getErrorMessage(err))
     deps.setError(getErrorMessage(err))
   } finally {
     deps.setApplying(null)
@@ -82,6 +87,7 @@ async function applyPackWithMode(
     deps.onOpenChange(false)
     await refreshAfterPack(deps.addToast)
   } catch (err) {
+    log.error('applyPackWithMode failed:', getErrorMessage(err))
     deps.setError(getErrorMessage(err))
   } finally {
     deps.setApplying(null)
@@ -219,7 +225,10 @@ function usePackSelection(open: boolean, onOpenChange: (open: boolean) => void):
         if (!cancelled) setPacks(data)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(getErrorMessage(err))
+        if (!cancelled) {
+          log.error('listTemplatePacks failed:', getErrorMessage(err))
+          setError(getErrorMessage(err))
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

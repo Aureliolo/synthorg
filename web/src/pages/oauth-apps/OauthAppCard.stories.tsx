@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import type { Connection } from '@/api/types/integrations'
-import { connectionsList } from '@/mocks/handlers/integrations'
+import { connectionsList } from '@/mocks/handlers/connections'
 import { OauthAppCard } from './OauthAppCard'
 
 const baseConnection: Connection = {

@@ -21,7 +21,6 @@ const defaultHookReturn: UseAgentsDataReturn = {
   totalAgents: 1,
   loading: false,
   error: null,
-  wsConnected: true,
   wsSetupError: null,
 }
 
@@ -85,31 +84,10 @@ describe('AgentsPage', () => {
     expect(screen.queryByTestId('agents-skeleton')).not.toBeInTheDocument()
   })
 
-  it('shows WebSocket disconnect warning when not connected', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false }
+  it('surfaces a WebSocket setup failure so silent loss of live updates is visible', () => {
+    hookReturn = { ...defaultHookReturn, wsSetupError: 'subscribe failed' }
     renderPage()
-    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
-  })
-
-  it('shows custom wsSetupError message when provided', () => {
-    hookReturn = {
-      ...defaultHookReturn,
-      wsConnected: false,
-      wsSetupError: 'WebSocket auth failed',
-    }
-    renderPage()
-    expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
-  })
-
-  it('hides disconnect warning when loading', () => {
-    hookReturn = {
-      ...defaultHookReturn,
-      wsConnected: false,
-      loading: true,
-    }
-    renderPage()
-    expect(
-      screen.queryByText(/disconnected/i),
-    ).not.toBeInTheDocument()
+    expect(screen.getByText('Live updates unavailable')).toBeInTheDocument()
+    expect(screen.getByText('subscribe failed')).toBeInTheDocument()
   })
 })

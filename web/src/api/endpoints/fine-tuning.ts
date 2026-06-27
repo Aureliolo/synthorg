@@ -6,97 +6,32 @@ import {
   type PaginatedResult,
 } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type {
+  CheckpointRecord,
+  EvalMetrics,
+  FineTuneDataSourceType,
+  FineTuneRequest,
+  FineTuneRun,
+  FineTuneRunConfig,
+  FineTuneStage,
+  FineTuneStatus,
+  PreflightCheck,
+  PreflightResult,
+} from '../types'
 
 // -- Types -----------------------------------------------------------
 
-export type FineTuneStage =
-  | 'idle'
-  | 'generating_data'
-  | 'mining_negatives'
-  | 'training'
-  | 'evaluating'
-  | 'deploying'
-  | 'complete'
-  | 'failed'
-
-export interface FineTuneStatus {
-  run_id: string | null
-  stage: FineTuneStage
-  progress: number | null
-  error: string | null
-}
-
-export interface EvalMetrics {
-  ndcg_at_10: number
-  recall_at_10: number
-  base_ndcg_at_10: number
-  base_recall_at_10: number
-  improvement_ndcg: number
-  improvement_recall: number
-}
-
-export interface CheckpointRecord {
-  id: string
-  run_id: string
-  model_path: string
-  base_model: string
-  doc_count: number
-  eval_metrics: EvalMetrics | null
-  size_bytes: number
-  created_at: string
-  is_active: boolean
-  backup_config_json: string | null
-}
-
-export interface FineTuneRunConfig {
-  source_dir: string
-  base_model: string
-  output_dir: string
-  epochs: number
-  learning_rate: number
-  temperature: number
-  top_k: number
-  batch_size: number
-  validation_split: number
-}
-
-export interface FineTuneRun {
-  id: string
-  stage: FineTuneStage
-  progress: number | null
-  error: string | null
-  config: FineTuneRunConfig
-  started_at: string
-  updated_at: string
-  completed_at: string | null
-  duration_seconds: number | null
-  stages_completed: string[]
-}
-
-export interface PreflightCheck {
-  name: string
-  status: 'pass' | 'warn' | 'fail'
-  message: string
-  detail: string | null
-}
-
-export interface PreflightResult {
-  checks: PreflightCheck[]
-  recommended_batch_size: number | null
-  can_proceed: boolean
-}
-
-export interface StartFineTuneRequest {
-  source_dir: string
-  base_model?: string | null
-  output_dir?: string | null
-  epochs?: number | null
-  learning_rate?: number | null
-  temperature?: number | null
-  top_k?: number | null
-  batch_size?: number | null
-  validation_split?: number | null
-  resume_run_id?: string | null
+export type {
+  CheckpointRecord,
+  EvalMetrics,
+  FineTuneDataSourceType,
+  FineTuneRequest,
+  FineTuneRun,
+  FineTuneRunConfig,
+  FineTuneStage,
+  FineTuneStatus,
+  PreflightCheck,
+  PreflightResult,
 }
 
 /** Pipeline stages considered "active" (in progress). */
@@ -113,7 +48,7 @@ export const ACTIVE_STAGES: ReadonlySet<FineTuneStage> = new Set<FineTuneStage>(
 const BASE = '/admin/memory/fine-tune'
 
 export async function startFineTune(
-  request: StartFineTuneRequest,
+  request: FineTuneRequest,
 ): Promise<FineTuneStatus> {
   const response = await apiClient.post<ApiResponse<FineTuneStatus>>(BASE, request)
   return unwrap(response)
@@ -137,7 +72,7 @@ export async function cancelFineTune(): Promise<FineTuneStatus> {
 }
 
 export async function runPreflight(
-  request: StartFineTuneRequest,
+  request: FineTuneRequest,
 ): Promise<PreflightResult> {
   const response = await apiClient.post<ApiResponse<PreflightResult>>(
     `${BASE}/preflight`,

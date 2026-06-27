@@ -24,6 +24,9 @@ export type { BuildGoal, OversightPref, RankedTemplate } from './template-recomm
 
 export const MAX_COMPARE = 3
 
+/** Stable empty ranking returned before an intent is set (avoids a fresh array). */
+const EMPTY_MATCHES: readonly RankedTemplate[] = []
+
 /** Agent-count filter buckets. */
 export type SizeFilter = 'all' | 'small' | 'medium' | 'large'
 
@@ -142,9 +145,13 @@ function useRecommendationIntent(
 ): RecommendationIntentState {
   const [buildGoal, setBuildGoal] = useState<BuildGoal>('any')
   const [oversight, setOversight] = useState<OversightPref>('any')
+  const personalised = hasIntent({ goal: buildGoal, oversight })
+  // Skip the ranking entirely until an intent is set: without one the caller
+  // gates ``matches`` off ``recommendationPersonalised`` and never renders it,
+  // so ranking would run a full sort on every template-list change for nothing.
   const matches = useMemo(
-    () => rankTemplates(templates, { goal: buildGoal, oversight }),
-    [templates, buildGoal, oversight],
+    () => (personalised ? rankTemplates(templates, { goal: buildGoal, oversight }) : EMPTY_MATCHES),
+    [templates, buildGoal, oversight, personalised],
   )
   return {
     buildGoal,
@@ -152,7 +159,7 @@ function useRecommendationIntent(
     oversight,
     setOversight,
     matches,
-    recommendationPersonalised: hasIntent({ goal: buildGoal, oversight }),
+    recommendationPersonalised: personalised,
   }
 }
 

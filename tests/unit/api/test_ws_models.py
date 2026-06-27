@@ -69,6 +69,25 @@ class TestWsModels:
         with pytest.raises(ValidationError):
             event.channel = "other"  # type: ignore[misc]
 
+    def test_ws_event_id_is_unique_and_round_trips(self) -> None:
+        # Each event gets a distinct ``event_id`` (the dashboard SSE fallback
+        # dedupes replayed events by it), and it survives a JSON round-trip.
+        first = WsEvent(
+            event_type=WsEventType.TASK_CREATED,
+            channel="tasks",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+            payload=_TASK_CREATED_PAYLOAD,
+        )
+        second = WsEvent(
+            event_type=WsEventType.TASK_CREATED,
+            channel="tasks",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+            payload=_TASK_CREATED_PAYLOAD,
+        )
+        assert first.event_id != second.event_id
+        restored = WsEvent.model_validate_json(first.model_dump_json())
+        assert restored.event_id == first.event_id
+
     def test_ws_event_version_defaults_to_one(self) -> None:
         event = WsEvent(
             event_type=WsEventType.TASK_CREATED,

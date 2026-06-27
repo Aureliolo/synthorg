@@ -162,12 +162,13 @@ export function CompleteStep() {
   const { confirmOpen, setConfirmOpen, finishAndNavigate, handleComplete } =
     useCompleteStepActions(companyResponse, wizardCompleteSetup)
 
-  if (companyResponse && !statusReconciled) {
+  if (!statusReconciled) {
     // On resume the backend reconcile (wizard mount) is still hydrating the
-    // real agents + providers into the store. Render a skeleton rather than
-    // the summary so the roster + counts never flash empty before the server
-    // data lands. ``statusReconciled`` always flips (the reconcile sets it
-    // even on probe failure), so this is never a permanent state.
+    // real company / agents / providers into the store. Render a skeleton
+    // until it resolves so neither the summary nor the SkipWizardForm flashes
+    // (a premature SkipWizardForm could trigger a duplicate company creation).
+    // ``statusReconciled`` always flips (the reconcile sets it even on probe
+    // failure), and the guided flow reconciles on mount, so this never sticks.
     return (
       <div className="space-y-section-gap">
         <div className="space-y-2">

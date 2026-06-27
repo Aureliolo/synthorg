@@ -135,7 +135,10 @@ describe('useCustomRulesStore mutations', () => {
       expect(result).toBe(false)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
-      expect(toasts[0]!.title).toBe('Failed to delete rule')
+      expect(toasts[0]!.variant).toBe('error')
+      // ``getCrudErrorTitle`` maps the 404 to a category-aware title rather
+      // than the generic delete fallback.
+      expect(toasts[0]!.title).toBe('Not found')
     })
 
     it('returns true + removes rule + success toast on success', async () => {

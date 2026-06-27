@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { cn } from '@/lib/utils'
@@ -46,7 +47,7 @@ function ProjectCardFooter({
         <Users className="size-3" aria-hidden="true" />
         {teamSize} member{teamSize === 1 ? '' : 's'}
       </span>
-      {deadline && <span>Due {formatRelativeTime(deadline)}</span>}
+      {deadline && <time dateTime={deadline}>Due {formatRelativeTime(deadline)}</time>}
     </div>
   )
 }
@@ -56,16 +57,17 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
   return (
     <div className="relative">
       {onToggleSelect && (
-        <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-border accent-accent"
+        <div
+          className="absolute left-3 top-3 z-10"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <Checkbox
             checked={selected}
-            onChange={() => onToggleSelect(project.id)}
-            onClick={(e) => e.stopPropagation()}
+            onCheckedChange={() => onToggleSelect(project.id)}
             aria-label={`Select project ${project.name}`}
           />
-        </label>
+        </div>
       )}
     <Link
       to={detailHref}

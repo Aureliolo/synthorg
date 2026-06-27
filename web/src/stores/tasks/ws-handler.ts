@@ -83,22 +83,23 @@ function stringArrayFieldsMutated(
   sanitized: DashboardTask,
   candidate: Record<string, unknown>,
 ): boolean {
-  return !arraysEqual(
-    sanitized.reviewers,
-    candidate['reviewers'] as readonly string[],
-  )
-    || !arraysEqual(
-      sanitized.dependencies,
-      candidate['dependencies'] as readonly string[],
-    )
-    || !arraysEqual(
-      sanitized.delegation_chain,
-      candidate['delegation_chain'] as readonly string[],
-    )
-    || !nullableArraysEqual(
-      sanitized.middleware_override,
-      candidate['middleware_override'],
-    )
+  const reviewers = candidate['reviewers']
+  const dependencies = candidate['dependencies']
+  const delegationChain = candidate['delegation_chain']
+  // The sanitised task always holds string arrays here, so a wire value that
+  // is not a string array is itself a divergence: treat it as mutated rather
+  // than casting an untrusted shape past the type system.
+  if (
+    !isStringArray(reviewers)
+    || !isStringArray(dependencies)
+    || !isStringArray(delegationChain)
+  ) {
+    return true
+  }
+  return !arraysEqual(sanitized.reviewers, reviewers)
+    || !arraysEqual(sanitized.dependencies, dependencies)
+    || !arraysEqual(sanitized.delegation_chain, delegationChain)
+    || !nullableArraysEqual(sanitized.middleware_override, candidate['middleware_override'])
 }
 
 function nullableIdFieldsMutated(

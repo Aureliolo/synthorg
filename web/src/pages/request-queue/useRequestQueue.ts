@@ -10,6 +10,8 @@ import {
 } from '@/api/endpoints/clients'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('RequestQueuePage')
 
@@ -48,7 +50,6 @@ interface RequestActions {
 
 function useRequestActions(
   refresh: () => Promise<void>,
-  setError: (error: string | null) => void,
 ): RequestActions {
   const [pending, setPending] = useState<Record<string, boolean>>({})
   // Synchronous in-flight guard. ``setPending`` only commits on the next
@@ -75,14 +76,21 @@ function useRequestActions(
         await action()
         await refresh()
       } catch (err) {
-        log.error(logEvent, err)
-        setError(errorMsg)
+        // A mutation failure is surfaced as a toast (the store-owned CRUD
+        // error UX), not the page-level load-error banner reserved for the
+        // list fetch.
+        log.error(logEvent, getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          ...getCrudErrorTitle(err, errorMsg),
+          description: getErrorMessage(err),
+        })
       } finally {
         inFlightRef.current[requestId] = false
         setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },
-    [refresh, setError],
+    [refresh],
   )
 
   const handleScope = useCallback(
@@ -139,14 +147,14 @@ export function useRequestQueue(): RequestQueueState {
       setRequests(result.data)
       setError(null)
     } catch (err) {
-      log.error('list_requests_failed', err)
-      setError('Failed to load request queue.')
+      log.error('list_requests_failed', getErrorMessage(err))
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const actions = useRequestActions(refresh, setError)
+  const actions = useRequestActions(refresh)
 
   // Capability-gated effect: skip the network call entirely when the
   // requests subsystem is not configured (backend route 404s otherwise).

@@ -20,6 +20,9 @@ type BudgetAlertLevel = (typeof BUDGET_ALERT_LEVELS)[number]
 const TASK_STATUS_VALUES = ['failed', 'blocked', 'unknown'] as const
 type TaskStatusValue = (typeof TASK_STATUS_VALUES)[number]
 
+const WORKFLOW_EXEC_STATUS_VALUES = ['failed', 'cancelled', 'other'] as const
+type WorkflowExecStatusValue = (typeof WORKFLOW_EXEC_STATUS_VALUES)[number]
+
 function approvalSubmitted(p: WsPayload): EnqueueParams {
   return {
     category: 'approvals.pending',
@@ -126,6 +129,39 @@ function taskStatusChanged(p: WsPayload): EnqueueParams | null {
   }
 }
 
+function workflowExecutionStatusChanged(p: WsPayload): EnqueueParams | null {
+  // Only surface the noteworthy terminal transitions; running / pending /
+  // success transitions are not worth a notification entry.
+  const status = sanitizeWsEnum<WorkflowExecStatusValue>(
+    p['status'],
+    WORKFLOW_EXEC_STATUS_VALUES,
+    'other',
+    { maxLen: 32, field: 'workflow_execution.status_changed.status' },
+  )
+  if (status === 'other') return null
+  const executionId = sanitizeWsString(p['execution_id'])
+  const definitionId = sanitizeWsString(p['definition_id'])
+  const href = definitionId
+    ? `/workflows/${encodeURIComponent(definitionId)}/executions`
+    : undefined
+  if (status === 'failed') {
+    return {
+      category: 'workflows.execution_failed',
+      title: 'Workflow execution failed',
+      description: executionId,
+      entityId: executionId,
+      href,
+    }
+  }
+  return {
+    category: 'workflows.execution_cancelled',
+    title: 'Workflow execution cancelled',
+    description: executionId,
+    entityId: executionId,
+    href,
+  }
+}
+
 const WS_ROUTERS: Readonly<Record<string, WsEnqueueRouter>> = {
   'approval.submitted': approvalSubmitted,
   'approval.expired': (p) =>
@@ -141,6 +177,7 @@ const WS_ROUTERS: Readonly<Record<string, WsEnqueueRouter>> = {
   'agent.hired': (p) => agentEvent(p, 'agents.hired', 'Agent hired'),
   'agent.fired': (p) => agentEvent(p, 'agents.fired', 'Agent fired'),
   'task.status_changed': taskStatusChanged,
+  'workflow_execution.status_changed': workflowExecutionStatusChanged,
 }
 
 function handleWsEventImpl(get: NotificationsGet, event: WsEvent): void {

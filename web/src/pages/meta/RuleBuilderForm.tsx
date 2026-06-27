@@ -36,6 +36,8 @@ const ALTITUDE_OPTIONS: { value: ProposalAltitude; label: string }[] = [
   { value: 'config_tuning', label: 'Config Tuning' },
   { value: 'architecture', label: 'Architecture' },
   { value: 'prompt_tuning', label: 'Prompt Tuning' },
+  { value: 'code_modification', label: 'Code Modification' },
+  { value: 'tool_creation', label: 'Tool Creation' },
 ]
 
 interface RuleBuilderFormProps {

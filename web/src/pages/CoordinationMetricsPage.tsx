@@ -14,6 +14,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonTable } from '@/components/ui/skeleton'
@@ -141,14 +142,14 @@ function CoordinationMetricsTable({
         <table className="w-full min-w-[44rem] text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-text-secondary">
-              <th className="py-2 pr-4 font-medium">Task</th>
-              <th className="py-2 pr-4 font-medium">Lead agent</th>
-              <th className="py-2 pr-4 text-right font-medium">Team</th>
-              <th className="py-2 pr-4 text-right font-medium">Efficiency</th>
-              <th className="py-2 pr-4 text-right font-medium">Overhead</th>
-              <th className="py-2 pr-4 text-right font-medium">Redundancy</th>
-              <th className="py-2 pr-4 text-right font-medium">Error amp.</th>
-              <th className="py-2 font-medium">Computed</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Task</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Lead agent</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Team</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Efficiency</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Overhead</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Redundancy</th>
+              <th scope="col" className="py-2 pr-4 text-right font-medium">Error amp.</th>
+              <th scope="col" className="py-2 font-medium">Computed</th>
             </tr>
           </thead>
           <tbody>
@@ -180,20 +181,25 @@ export default function CoordinationMetricsPage() {
     <div className="space-y-section-gap">
       <ListHeader title="Coordination metrics" count={records.length} refreshing={loading} />
 
-      <div className="flex flex-wrap gap-grid-gap">
-        <SearchInput
-          value={taskId}
-          onChange={setTaskId}
-          placeholder="Filter by task ID"
-          ariaLabel="Filter coordination metrics by task ID"
-        />
-        <SearchInput
-          value={agentId}
-          onChange={setAgentId}
-          placeholder="Filter by agent ID"
-          ariaLabel="Filter coordination metrics by agent ID"
-        />
-      </div>
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={taskId}
+            onChange={setTaskId}
+            placeholder="Filter by task ID"
+            ariaLabel="Filter coordination metrics by task ID"
+          />
+        }
+        filters={
+          <SearchInput
+            value={agentId}
+            onChange={setAgentId}
+            placeholder="Filter by agent ID"
+            ariaLabel="Filter coordination metrics by agent ID"
+            maxWidth="narrow"
+          />
+        }
+      />
 
       {error && (
         <ErrorBanner

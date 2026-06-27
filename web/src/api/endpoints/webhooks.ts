@@ -1,38 +1,11 @@
 /**
  * Webhook activity endpoints.
- *
- * Mirrors the backend ``synthorg.integrations.connections.models.WebhookReceipt``
- * model. Field names match the backend exactly so a future schema change
- * lands without a rename pass.
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
+import type { WebhookReceipt } from '../types'
 
-/**
- * Mirrors ``synthorg.integrations.connections.models.WebhookReceipt``.
- * The backend uses an open ``status`` string (default ``"received"``);
- * common values include ``received`` / ``processing`` / ``completed``
- * / ``failed``. The frontend treats it as an open string and renders
- * the raw value in the receipt log.
- */
-export interface WebhookReceipt {
-  /** Unique receipt identifier. */
-  id: string
-  /** Source connection name. */
-  connection_name: string
-  /** Provider-specific event type (non-blank; always set by the backend). */
-  event_type: string
-  /** Processing status (``"received"`` / ``"processing"`` / ``"completed"`` / ``"failed"``). */
-  status: string
-  /** ISO 8601 timestamp when the webhook was received. */
-  received_at: string
-  /** ISO 8601 timestamp when processing finished; ``null`` while in flight. */
-  processed_at: string | null
-  /** Raw payload as JSON string (``""`` when no body was captured). */
-  payload_json: string
-  /** Error message if processing failed; ``null`` otherwise. */
-  error: string | null
-}
+export type { WebhookReceipt }
 
 /**
  * GET /webhooks/{connection_name}/activity

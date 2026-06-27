@@ -1,30 +1,35 @@
-import type { StartFineTuneRequest } from '@/api/endpoints/fine-tuning'
+import type {
+  FineTuneDataSourceType,
+  FineTuneRequest,
+} from '@/api/endpoints/fine-tuning'
 
 export interface PipelineFormState {
   sourceDir: string
+  dataSource: FineTuneDataSourceType
   epochs: string
   learningRate: string
   effectiveBatchSize: string
   showAdvanced: boolean
 }
 
-export function buildStartRequest(state: PipelineFormState): StartFineTuneRequest {
-  const request: StartFineTuneRequest = { source_dir: state.sourceDir }
-  if (!state.showAdvanced) return request
-  applyPositiveNumber(state.epochs, (value) => {
-    request.epochs = value
-  })
-  applyPositiveNumber(state.learningRate, (value) => {
-    request.learning_rate = value
-  })
-  applyPositiveNumber(state.effectiveBatchSize, (value) => {
-    request.batch_size = value
-  })
-  return request
+export function buildStartRequest(state: PipelineFormState): FineTuneRequest {
+  // The generated request type is fully ``readonly``, so assemble the
+  // optional advanced fields up front and spread them rather than mutating.
+  const advanced = state.showAdvanced
+  const epochs = parsePositive(advanced ? state.epochs : '')
+  const learningRate = parsePositive(advanced ? state.learningRate : '')
+  const batchSize = parsePositive(advanced ? state.effectiveBatchSize : '')
+  return {
+    source_dir: state.sourceDir,
+    data_source: state.dataSource,
+    ...(epochs !== null && { epochs }),
+    ...(learningRate !== null && { learning_rate: learningRate }),
+    ...(batchSize !== null && { batch_size: batchSize }),
+  }
 }
 
-function applyPositiveNumber(input: string, apply: (value: number) => void): void {
-  if (input === '') return
+function parsePositive(input: string): number | null {
+  if (input === '') return null
   const parsed = Number(input)
-  if (Number.isFinite(parsed) && parsed > 0) apply(parsed)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }

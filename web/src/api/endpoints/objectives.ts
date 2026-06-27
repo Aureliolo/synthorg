@@ -1,20 +1,18 @@
 import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
+import type {
+  SubmitObjectiveAck,
+  SubmitObjectivePayload as SubmitObjectivePayloadWire,
+} from '../types'
 
-export interface SubmitObjectivePayload {
-  title: string
-  description: string
-  requested_by: string
-  priority?: string | null
-  estimated_complexity?: string | null
-  task_type?: string | null
-  acceptance_criteria?: readonly string[]
-}
+export type { SubmitObjectiveAck }
 
-export interface SubmitObjectiveAck {
-  submission_id: string
-  status: string
-}
+// ``acceptance_criteria`` is required in the generated wire type (default
+// ``[]``); the dialog omits it so the backend applies that default. Derive
+// from the generated shape (no field/type drift) and keep it optional here.
+export type SubmitObjectivePayload =
+  Omit<SubmitObjectivePayloadWire, 'acceptance_criteria'>
+  & { acceptance_criteria?: readonly string[] }
 
 /**
  * Submit a goal/objective for decomposition. Returns the ``202 Accepted``

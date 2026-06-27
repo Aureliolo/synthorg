@@ -10,10 +10,10 @@ import {
   getTrainingResult,
   previewTrainingPlan,
   updateTrainingOverrides,
-  type TrainingOverridesRequest,
-  type TrainingPlanRequest,
+  type CreateTrainingPlanRequest,
   type TrainingPlanResponse,
   type TrainingResultResponse,
+  type UpdateTrainingOverridesRequest,
 } from '@/api/endpoints/training'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
@@ -42,14 +42,14 @@ interface TrainingState {
   hydrateForAgent: (agentId: string) => Promise<void>
   createPlan: (
     agentId: string,
-    overrides: TrainingPlanRequest,
+    overrides: CreateTrainingPlanRequest,
   ) => Promise<TrainingPlanResponse | null>
   executePlan: (agentId: string) => Promise<TrainingResultResponse | null>
   previewPlan: (agentId: string) => Promise<TrainingResultResponse | null>
   updateOverrides: (
     agentId: string,
     planId: string,
-    data: TrainingOverridesRequest,
+    data: UpdateTrainingOverridesRequest,
   ) => Promise<TrainingPlanResponse | null>
 }
 
@@ -164,7 +164,7 @@ async function fetchResultImpl(
 async function createPlanImpl(
   set: TrainingSet,
   agentId: string,
-  overrides: TrainingPlanRequest,
+  overrides: CreateTrainingPlanRequest,
 ): Promise<TrainingPlanResponse | null> {
   try {
     const plan = await createTrainingPlan(agentId, overrides)
@@ -271,7 +271,7 @@ async function updateOverridesImpl(
   set: TrainingSet,
   agentId: string,
   planId: string,
-  data: TrainingOverridesRequest,
+  data: UpdateTrainingOverridesRequest,
 ): Promise<TrainingPlanResponse | null> {
   try {
     const plan = await updateTrainingOverrides(agentId, planId, data)

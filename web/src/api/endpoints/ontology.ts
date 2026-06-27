@@ -1,75 +1,50 @@
 /**
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import {
+  ApiRequestError,
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  type PaginatedResult,
+} from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type {
+  CreateEntityRequest,
+  DriftAgentResponse,
+  DriftReportResponse,
+  EntityFieldResponse,
+  EntityListMeta,
+  EntityListResponse,
+  EntityRelationResponse,
+  EntityResponse,
+  EntityVersionResponse,
+  UpdateEntityRequest,
+} from '../types'
 
 // ── Types ─────────────────────────────────────────────────────
 
-export interface EntityFieldResponse {
-  name: string
-  type_hint: string
-  description: string
+export type {
+  CreateEntityRequest,
+  DriftAgentResponse,
+  DriftReportResponse,
+  EntityFieldResponse,
+  EntityListMeta,
+  EntityRelationResponse,
+  EntityResponse,
+  EntityVersionResponse,
+  UpdateEntityRequest,
 }
 
-export interface EntityRelationResponse {
-  target: string
-  relation: string
-  description: string
-}
-
-export interface EntityResponse {
-  name: string
-  tier: 'core' | 'user'
-  source: 'auto' | 'config' | 'api'
-  definition: string
-  fields: EntityFieldResponse[]
-  constraints: string[]
-  disambiguation: string
-  relationships: EntityRelationResponse[]
-  created_by: string
-  created_at: string
-  updated_at: string
-}
-
-export interface EntityVersionResponse {
-  entity_id: string
-  version: number
-  content_hash: string
-  snapshot: EntityResponse
-  saved_by: string
-  saved_at: string
-}
-
-export interface DriftAgentResponse {
-  agent_id: string
-  divergence_score: number
-  details: string
-}
-
-export interface DriftReportResponse {
-  entity_name: string
-  divergence_score: number
-  divergent_agents: DriftAgentResponse[]
-  canonical_version: number
-  recommendation: 'no_action' | 'notify' | 'retrain' | 'escalate'
-}
-
-export interface CreateEntityRequest {
-  name: string
-  definition?: string
-  fields?: { name: string; type_hint: string; description?: string }[]
-  constraints?: string[]
-  disambiguation?: string
-  relationships?: { target: string; relation: string; description?: string }[]
-}
-
-export interface UpdateEntityRequest {
-  definition?: string
-  fields?: { name: string; type_hint: string; description?: string }[]
-  constraints?: string[]
-  disambiguation?: string
-  relationships?: { target: string; relation: string; description?: string }[]
+/**
+ * Paginated entity page plus the backend's catalog-wide aggregates
+ * (``core_count`` / ``user_count`` / ``total_count`` / ``drift_summary``)
+ * carried on ``EntityListResponse.meta`` -- distinct from the per-page
+ * ``data.length`` so the UI can show real totals without a second call.
+ */
+export interface EntityListResult extends PaginatedResult<EntityResponse> {
+  readonly meta: EntityListMeta
 }
 
 // ── Endpoints ─────────────────────────────────────────────────
@@ -79,11 +54,32 @@ export async function listEntities(params?: {
   cursor?: string | null
   limit?: number
   tier?: string
-}): Promise<PaginatedResult<EntityResponse>> {
-  const response = await apiClient.get<PaginatedResponse<EntityResponse>>('/ontology/entities', {
+}): Promise<EntityListResult> {
+  const response = await apiClient.get<EntityListResponse>('/ontology/entities', {
     params,
   })
-  return unwrapPaginated<EntityResponse>(response)
+  // ``EntityListResponse`` is the generated wire shape (``success: boolean``,
+  // ``readonly`` data, plus the ``meta`` aggregates), which does not match the
+  // discriminated ``PaginatedResponse`` ``unwrapPaginated`` expects. Map it
+  // directly so the result stays fully typed and the aggregates are preserved.
+  const body = response.data
+  if (!body.success) {
+    throw new ApiRequestError(body.error ?? 'Failed to load entities', body.error_detail ?? null)
+  }
+  const { pagination } = body
+  return {
+    data: [...body.data],
+    limit: pagination.limit,
+    nextCursor: pagination.next_cursor,
+    hasMore: pagination.has_more,
+    degradedSources: body.degraded_sources,
+    pagination: {
+      limit: pagination.limit,
+      next_cursor: pagination.next_cursor,
+      has_more: pagination.has_more,
+    },
+    meta: body.meta,
+  }
 }
 
 export async function getEntity(name: string): Promise<EntityResponse> {
@@ -155,16 +151,16 @@ export interface DeriveOntologyResponse {
   derived_count: number
 }
 
-export type SyncOrgMemoryStatus = 'sync_completed' | 'sync_service_not_configured'
+export type SyncOrgMemoryStatus = 'sync_completed'
 
 export interface SyncOrgMemoryResponse {
   status: SyncOrgMemoryStatus
   /**
-   * Count of definitions published to OrgMemory. Present only on a
-   * completed sync; the backend omits it on the
-   * ``sync_service_not_configured`` branch.
+   * Count of definitions published to OrgMemory. Always present on a 200
+   * response; an unconfigured sync service returns a 503 (surfaced through
+   * the Axios error handler) rather than a body with this field omitted.
    */
-  published_count?: number
+  published_count: number
 }
 
 /** Re-run auto-derivation of entity definitions from decorated models. */

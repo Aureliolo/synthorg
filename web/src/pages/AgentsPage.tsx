@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { formatNumber } from '@/utils/format'
 import { AgentsSkeleton } from './agents/AgentsSkeleton'
 import { AgentFilters } from './agents/AgentFilters'
@@ -99,19 +100,21 @@ interface AgentsBannersProps {
 }
 
 function AgentsBanners({ ctrl }: AgentsBannersProps) {
-  const { error, wsConnected, loading, wsSetupError } = ctrl.data
+  const { error, wsSetupError } = ctrl.data
   return (
     <>
       {error && (
         <ErrorBanner severity="error" title="Could not load agents" description={error} />
       )}
-      {!wsConnected && !loading && (
+      {wsSetupError && (
         <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+          variant="inline"
+          severity="warning"
+          title="Live updates unavailable"
+          description={wsSetupError}
         />
       )}
+      <WsConnectionBanner />
     </>
   )
 }

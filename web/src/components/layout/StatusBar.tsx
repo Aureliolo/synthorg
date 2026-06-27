@@ -18,13 +18,10 @@ type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
 /**
  * Combine the HTTP health-probe status and the WebSocket connection
- * state into a single operator-facing pill.  Previously this was split
- * into two pills ("live" from the WS state and "all systems normal"
- * from the health probe) which were pure redundancy in the happy path
- * and only distinguished themselves when one signal was green and the
- * other was red.  The single pill applies a strict priority order so
- * the worst signal always wins, which is what an operator actually
- * wants to see.
+ * state into a single operator-facing pill. A single pill with a strict
+ * worst-signal-wins priority order avoids the ambiguity of two separate
+ * indicators that agree in the happy path and only differ when one signal
+ * is green and the other red.
  *
  * Priority (worst first):
  * 1. HTTP health reports ``down``      -> red    "system down"

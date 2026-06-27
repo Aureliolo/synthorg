@@ -5,6 +5,7 @@ from typing import Final
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State
 
+from synthorg.api.channels import CHANNEL_WORKFLOWS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
     ActivateWorkflowRequest,
@@ -19,6 +20,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
+from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
@@ -39,6 +41,31 @@ from synthorg.observability.events.workflow_execution import (
 logger = get_logger(__name__)
 
 _DEFAULT_PAGE_SIZE: Final[int] = 50
+
+
+def _publish_execution_status(
+    request: Request[object, object, State],
+    execution: WorkflowExecution,
+    *,
+    actor: str,
+) -> None:
+    """Broadcast a workflow-execution status change on the workflows channel.
+
+    Best-effort: ``publish_ws_event`` swallows a missing channel plugin so a
+    failed broadcast never blocks the API response that already committed the
+    transition.
+    """
+    publish_ws_event(
+        request,
+        WsEventType.WORKFLOW_EXECUTION_STATUS_CHANGED,
+        CHANNEL_WORKFLOWS,
+        {
+            "execution_id": str(execution.id),
+            "definition_id": execution.definition_id,
+            "status": execution.status.value,
+            "actor": actor,
+        },
+    )
 
 
 def _extract_username(request: Request[object, object, State]) -> str:
@@ -122,6 +149,7 @@ class WorkflowExecutionController(Controller):
             )
             raise
 
+        _publish_execution_status(request, execution, actor=activated_by)
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
             status_code=201,
@@ -256,6 +284,7 @@ class WorkflowExecutionController(Controller):
             execution_id=execution_id,
             cancelled_by=cancelled_by,
         )
+        _publish_execution_status(request, execution, actor=cancelled_by)
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
         )

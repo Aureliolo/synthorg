@@ -79,7 +79,7 @@ export function TrainingSection({ agentId }: TrainingSectionProps) {
     return result.items_after_guards.map(([contentType, itemCount]) => ({
       content_type: contentType,
       item_count: itemCount,
-      source_agents: result.source_agents_used,
+      source_agents: [...result.source_agents_used],
     }))
   }, [result])
 

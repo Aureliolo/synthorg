@@ -173,10 +173,9 @@ function isMinutesCollections(m: Record<string, unknown>): boolean {
  * still in-progress or failed) and otherwise verifies each field
  * the sanitizer dereferences. Element-level guards on the array
  * fields are critical: a malformed frame like ``contributions: [null]``
- * or ``action_items: [{}]`` would previously pass the outer
- * ``Array.isArray`` check and then throw inside
- * ``sanitizeMeetingMinutes`` when it tried to read ``.agent_id`` /
- * ``.description`` on the missing element.
+ * or ``action_items: [{}]`` passes the outer ``Array.isArray`` check but
+ * throws inside ``sanitizeMeetingMinutes`` when it reads ``.agent_id`` /
+ * ``.description`` on a null or empty element.
  */
 function isMeetingMinutesShape(value: unknown): boolean {
   if (value === null || value === undefined) return true

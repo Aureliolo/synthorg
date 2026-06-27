@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import type {
-  TrainingPlanRequest,
+  CreateTrainingPlanRequest,
   TrainingPlanResponse,
   TrainingResultResponse,
 } from '@/api/endpoints/training'
@@ -40,7 +40,7 @@ interface TrainingPanelProps {
   agentId: string
   plan?: TrainingPlanResponse | null
   result?: TrainingResultResponse | null
-  onCreatePlan?: (overrides: TrainingPlanRequest) => void
+  onCreatePlan?: (overrides: CreateTrainingPlanRequest) => void
   onExecute?: () => void
   className?: string
 }
@@ -49,6 +49,15 @@ const CONTENT_TYPE_LABELS: Record<TrainingContentType, string> = {
   procedural: 'Procedural Memories',
   semantic: 'Semantic Knowledge',
   tool_patterns: 'Tool Patterns',
+}
+
+// The wire result types carry content-type keys as plain ``string`` (the
+// backend is not constrained to the three known values), so resolve labels
+// through a fallback rather than indexing the narrowed label map directly.
+function contentTypeLabel(contentType: string): string {
+  return Object.hasOwn(CONTENT_TYPE_LABELS, contentType)
+    ? CONTENT_TYPE_LABELS[contentType as TrainingContentType]
+    : contentType
 }
 
 export function TrainingPanel({
@@ -150,7 +159,7 @@ function useTrainingPanelConfig(): TrainingPanelConfig {
   }
 }
 
-function buildPlanRequest(cfg: TrainingPanelConfig): TrainingPlanRequest {
+function buildPlanRequest(cfg: TrainingPanelConfig): CreateTrainingPlanRequest {
   const contentTypes = Array.from(cfg.enabledContentTypes)
   const customCapsPayload = cfg.customCaps.length
     ? Object.fromEntries(cfg.customCaps.map(({ contentType, cap }) => [contentType, cap]))
@@ -292,7 +301,7 @@ function ItemsByContentType({ items }: ItemsByContentTypeProps) {
       {items.map(([contentType, count]) => (
         <div key={contentType} className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {CONTENT_TYPE_LABELS[contentType]}
+            {contentTypeLabel(contentType)}
           </span>
           <span className="font-mono text-foreground">{count}</span>
         </div>

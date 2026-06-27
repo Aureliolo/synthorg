@@ -54,6 +54,18 @@ export const CustomAriaLabel: Story = {
   args: { status: 'active', label: true, ariaLabel: 'Alice Smith - Active' },
 }
 
+export const Announce: Story = {
+  args: { status: 'active', label: true, announce: true },
+}
+
+export const AnimatedAnnounce: Story = {
+  args: { status: 'active', label: true, animated: true, announce: true },
+}
+
+export const CustomDot: Story = {
+  args: { status: 'active', label: true, dotClassName: 'size-3' },
+}
+
 export const AllStatuses: Story = {
   args: { status: 'active' },
   render: () => (

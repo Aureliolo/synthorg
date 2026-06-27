@@ -25,9 +25,9 @@ from synthorg.observability.redaction import safe_error_description
 from synthorg.observability.sinks import SINK_ROUTING, build_handler
 
 # Default per-logger levels applied when no config overrides are given.
-# CFG-1 audit: ``synthorg.engine`` and ``synthorg.memory`` previously
-# defaulted to DEBUG which produces noisy disk output and can surface
-# PII in shared environments. Operators who want DEBUG for those
+# ``synthorg.engine`` and ``synthorg.memory`` are deliberately NOT floored
+# at DEBUG: DEBUG output from those namespaces is noisy on disk and can
+# surface PII in shared environments. Operators who want DEBUG for those
 # namespaces opt in via the ``observability/per_logger_levels`` setting
 # (or the ``config.logger_levels`` YAML key); ``SYNTHORG_LOG_LEVEL``
 # only adjusts the CONSOLE sink level and does NOT override these

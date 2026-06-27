@@ -6,7 +6,7 @@ import {
 } from '@/api/endpoints/subworkflows'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import type { PaginatedResult } from '@/api/client'
 import type { SubworkflowSummary } from '@/api/types/workflows'
@@ -134,7 +134,7 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       log.error('Delete subworkflow failed', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to delete subworkflow',
+        ...getCrudErrorTitle(err, 'Failed to delete subworkflow'),
         description: getErrorMessage(err),
       })
       return false

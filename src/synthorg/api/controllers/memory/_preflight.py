@@ -371,10 +371,8 @@ def _check_dependencies(
     container covers the Docker orchestration case where torch +
     sentence-transformers live exclusively in the sidecar image.
     Either path succeeding is enough to call the dependencies
-    available.  Previously, only the in-process import was attempted,
-    so every Docker-orchestrated install reported "Fine-tuning not
-    enabled" regardless of whether the user had set ``fine_tuning=true``
-    in the CLI config and started the sidecar.
+    available -- a Docker-orchestrated install ships the ML extras only
+    in the sidecar, so the in-process import alone would under-report.
 
     Args:
         sidecar_host: Injected sidecar health host (resolved at the

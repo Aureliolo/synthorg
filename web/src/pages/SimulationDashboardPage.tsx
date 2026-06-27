@@ -166,7 +166,7 @@ function SimulationMetrics({ runs }: { runs: readonly SimulationStatusResponse[]
   const totalRejected = runs.reduce((sum, run) => sum + run.metrics.tasks_rejected, 0)
   const runningCount = runs.filter((run) => run.status === 'running').length
   return (
-    <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-grid-gap md:grid-cols-4">
       <MetricCard label="Active runs" value={runningCount.toString()} />
       <MetricCard label="Tasks created" value={totalTasksCreated.toString()} />
       <MetricCard label="Accepted" value={totalAccepted.toString()} />

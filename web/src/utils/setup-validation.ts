@@ -33,16 +33,23 @@ const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
 
 interface TemplateStepInput {
   readonly selectedTemplate: string | null
+  /**
+   * True when the operator chose to build a blank org rather than pick a
+   * template. A blank selection is a valid completion of this step (it matches
+   * the lifecycle hook in ``template-step-data.ts``), so it must not be
+   * rejected for the absence of ``selectedTemplate``.
+   */
+  readonly blankSelected?: boolean
 }
 
 export function validateTemplateStep(input: TemplateStepInput): StepValidationResult {
-  if (!input.selectedTemplate) {
+  if (!input.selectedTemplate && !input.blankSelected) {
     return invalid('Please select a template')
   }
   return VALID
 }
 
-// ── Step 2: Company ──────────────────────────────────────────
+// ── Step 3: Company ──────────────────────────────────────────
 
 interface CompanyStepInput {
   readonly companyName: string
@@ -105,7 +112,7 @@ export function validateCompanyStep(input: CompanyStepInput): CompanyStepValidat
   }
 }
 
-// ── Step 3: Agents ───────────────────────────────────────────
+// ── Step 4: Agents ───────────────────────────────────────────
 
 interface AgentsStepInput {
   readonly agents: readonly SetupAgentSummary[]
@@ -128,7 +135,7 @@ export function validateAgentsStep(input: AgentsStepInput): StepValidationResult
   return errors.length > 0 ? { valid: false, errors } : VALID
 }
 
-// ── Step 4: Providers ────────────────────────────────────────
+// ── Step 2: Providers ────────────────────────────────────────
 
 interface ProvidersStepInput {
   readonly providers: Readonly<Record<string, ProviderConfig>>
@@ -233,7 +240,7 @@ export function resolveAgentModels(
   return unresolved
 }
 
-// ── Step 5: Theme ────────────────────────────────────────────
+// ── Step 6: Theme ────────────────────────────────────────────
 
 export function validateThemeStep(): StepValidationResult {
   // Theme settings always have defaults, so this step is always valid.

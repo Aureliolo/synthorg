@@ -41,6 +41,7 @@ import type {
   WsProjectCreatedPayload,
   WsProjectDeletedPayload,
   WsProjectStatusChangedPayload,
+  WsWorkflowExecutionStatusChangedPayload,
 } from './provider'
 import type {
   WsBudgetAlertPayload,
@@ -82,7 +83,7 @@ export const WS_CHANNELS = [
   'approvals', 'meetings', 'artifacts', 'projects',
   'company', 'departments', 'clients', 'requests',
   'simulations', 'reviews', 'events', 'interrupts',
-  'scaling', 'cockpit',
+  'scaling', 'cockpit', 'workflows',
 ] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]
@@ -94,6 +95,12 @@ export { WS_EVENT_TYPE_VALUES } from '../backend-enums.gen'
 export type { WsEventType }
 
 export interface WsEvent {
+  /**
+   * Stable per-event id. The dashboard SSE fallback replays the recent
+   * backlog on reconnect, so the client deduplicates by this id to dispatch
+   * each event once. Optional: absent on legacy events (then not deduped).
+   */
+  event_id?: string
   /**
    * Wire-protocol version. Absent on legacy events: treated as 1.
    * Clients MUST ignore events whose version they do not understand.
@@ -173,6 +180,7 @@ export interface WsEventPayloadMap {
   'project.created': WsProjectCreatedPayload
   'project.deleted': WsProjectDeletedPayload
   'project.status_changed': WsProjectStatusChangedPayload
+  'workflow_execution.status_changed': WsWorkflowExecutionStatusChangedPayload
   'memory.fine_tune.progress': WsMemoryFineTuneEventPayload
   'memory.fine_tune.stage_changed': WsMemoryFineTuneStageChangedPayload
   'memory.fine_tune.completed': WsMemoryFineTuneEventPayload

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 
 # ── Artifact domain ─────────────────────────────────────────────────
 
@@ -107,6 +108,25 @@ class WsProjectStatusChangedPayload(BaseModel):
     project_id: NotBlankStr
     status: NotBlankStr
     previous_status: NotBlankStr | None = None
+
+
+class WsWorkflowExecutionStatusChangedPayload(BaseModel):
+    """Payload for ``workflow_execution.status_changed``.
+
+    Emitted when a workflow execution transitions via the API (activation or
+    cancellation); ``status`` is the new ``WorkflowExecutionStatus`` value and
+    ``actor`` is the user who triggered it.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.WORKFLOW_EXECUTION_STATUS_CHANGED] = (
+        WsEventType.WORKFLOW_EXECUTION_STATUS_CHANGED
+    )
+    execution_id: NotBlankStr
+    definition_id: NotBlankStr
+    status: WorkflowExecutionStatus
+    actor: NotBlankStr | None = None
 
 
 # ── Memory fine-tune domain ─────────────────────────────────────────

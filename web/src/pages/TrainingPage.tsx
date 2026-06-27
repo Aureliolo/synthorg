@@ -1,12 +1,18 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { GraduationCap, Users } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 
 import { MetricCard } from '@/components/ui/metric-card'
+import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonTable } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { useListPagination } from '@/hooks/use-list-pagination'
+import { formatNumber } from '@/utils/format'
 
 import { TrainingPlanTable } from './training/TrainingPlanTable'
 import { useTrainingPageController } from './training/useTrainingPageController'
@@ -14,10 +20,33 @@ import { useTrainingPageController } from './training/useTrainingPageController'
 export default function TrainingPage() {
   const ctrl = useTrainingPageController()
   const rowCount = ctrl.rows.length
+  const [search, setSearch] = useState('')
+
+  const filteredRows = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return ctrl.rows
+    return ctrl.rows.filter((r) => r.agentName.toLowerCase().includes(query))
+  }, [ctrl.rows, search])
+
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize, resetPage } =
+    useListPagination({ items: filteredRows, namespace: 'training' })
+
+  const didMountRef = useRef(false)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    resetPage()
+  }, [search, resetPage])
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Training" count={rowCount} countLabel={`${rowCount} agents`} />
+      <ListHeader
+        title="Training"
+        count={rowCount}
+        countLabel={`${formatNumber(rowCount)} agents`}
+      />
 
       {ctrl.error && (
         <ErrorBanner
@@ -30,11 +59,35 @@ export default function TrainingPage() {
       <TrainingMetricsRow metrics={ctrl.metrics} />
 
       <SectionCard title="Agent training plans" icon={GraduationCap}>
+        {rowCount > 0 && (
+          <SearchFilterSort
+            className="mb-grid-gap"
+            search={
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Search agents by name..."
+                ariaLabel="Search training agents"
+              />
+            }
+          />
+        )}
         <TrainingPlanSection
           loading={ctrl.loading}
-          rows={ctrl.rows}
+          totalRows={rowCount}
+          rows={paginatedItems}
           onExecute={ctrl.handleExecute}
         />
+        {filteredRows.length > 0 && (
+          <Pagination
+            className="mt-section-gap"
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </SectionCard>
     </div>
   )
@@ -65,18 +118,28 @@ function TrainingMetricsRow({ metrics }: TrainingMetricsRowProps) {
 
 interface TrainingPlanSectionProps {
   loading: boolean
+  totalRows: number
   rows: ReturnType<typeof useTrainingPageController>['rows']
   onExecute: (agentId: string) => void
 }
 
-function TrainingPlanSection({ loading, rows, onExecute }: TrainingPlanSectionProps) {
+function TrainingPlanSection({ loading, totalRows, rows, onExecute }: TrainingPlanSectionProps) {
   if (loading) return <SkeletonTable rows={6} />
-  if (rows.length === 0) {
+  if (totalRows === 0) {
     return (
       <EmptyState
         icon={Users}
         title="No agents to train"
         description="Agents appear here once the company has been set up. Run the setup wizard to bring a roster online."
+      />
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="No agents match your search"
+        description="Adjust or clear the search to see the rest of the roster."
       />
     )
   }

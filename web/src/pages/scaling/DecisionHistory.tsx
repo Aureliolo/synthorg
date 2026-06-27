@@ -1,8 +1,10 @@
 import { Clock } from 'lucide-react'
 
 import { EmptyState } from '@/components/ui/empty-state'
+import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import type { ScalingDecisionResponse } from '@/api/endpoints/scaling'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
@@ -50,6 +52,9 @@ function DecisionRow({ decision }: DecisionRowProps) {
 }
 
 export function DecisionHistory({ decisions }: DecisionHistoryProps) {
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
+    useListPagination({ items: decisions, namespace: 'decisions', defaultPageSize: 20 })
+
   return (
     <SectionCard title="Recent Decisions" icon={Clock}>
       {decisions.length === 0 ? (
@@ -58,30 +63,39 @@ export function DecisionHistory({ decisions }: DecisionHistoryProps) {
           description="Trigger an evaluation to generate scaling decisions."
         />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                <th scope="col" className="py-2 pr-2">
-                  Action
-                </th>
-                <th scope="col" className="py-2 pr-2">
-                  Rationale
-                </th>
-                <th scope="col" className="py-2 pr-2">
-                  Strategy
-                </th>
-                <th scope="col" className="py-2 text-right">
-                  Confidence
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {decisions.map((d) => (
-                <DecisionRow key={d.id} decision={d} />
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-section-gap">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
+                  <th scope="col" className="py-2 pr-2">
+                    Action
+                  </th>
+                  <th scope="col" className="py-2 pr-2">
+                    Rationale
+                  </th>
+                  <th scope="col" className="py-2 pr-2">
+                    Strategy
+                  </th>
+                  <th scope="col" className="py-2 text-right">
+                    Confidence
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {paginatedItems.map((d) => (
+                  <DecisionRow key={d.id} decision={d} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </SectionCard>

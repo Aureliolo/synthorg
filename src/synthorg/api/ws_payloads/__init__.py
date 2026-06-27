@@ -71,6 +71,7 @@ from synthorg.api.ws_payloads._domain import (
     WsSteeringDirectiveIssuedPayload,
     WsSteeringSupersessionProposedPayload,
     WsSteeringTasksSupersededPayload,
+    WsWorkflowExecutionStatusChangedPayload,
 )
 from synthorg.api.ws_payloads._lifecycle import (
     WsAgentCreatedPayload,
@@ -150,6 +151,7 @@ WsEventPayload = Annotated[
     | WsProjectCreatedPayload
     | WsProjectDeletedPayload
     | WsProjectStatusChangedPayload
+    | WsWorkflowExecutionStatusChangedPayload
     | WsMemoryFineTuneProgressPayload
     | WsMemoryFineTuneStageChangedPayload
     | WsMemoryFineTuneCompletedPayload
@@ -262,4 +264,5 @@ __all__ = [
     "WsTaskCreatedPayload",
     "WsTaskStatusChangedPayload",
     "WsTaskUpdatedPayload",
+    "WsWorkflowExecutionStatusChangedPayload",
 ]

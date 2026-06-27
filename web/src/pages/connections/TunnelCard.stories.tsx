@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { tunnelHandlers } from '@/mocks/handlers/integrations'
+import { tunnelHandlers } from '@/mocks/handlers/tunnel'
 import { useTunnelStore } from '@/stores/tunnel'
 import { TunnelCard } from './TunnelCard'
 

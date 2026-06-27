@@ -6,13 +6,11 @@ import { getWorkflow, rollbackWorkflow } from '@/api/endpoints/workflows'
 import { server } from '@/test-setup'
 
 /**
- * Regression: the version-history rollback client previously sent
- * ``{ to_version }`` to ``/<base>/versions/rollback`` for every domain.
- * The two rollback-capable domains diverge: agent identity posts
- * ``{ target_version, reason }`` to ``/<base>/versions/rollback`` and
- * workflows post ``{ target_version, expected_revision }`` to
- * ``/<base>/rollback``. These pin both contracts via the per-domain
- * rollback descriptor the dialog drives.
+ * The two rollback-capable domains use different URLs and request bodies:
+ * agent identity posts ``{ target_version, reason }`` to
+ * ``/<base>/versions/rollback``; workflows post
+ * ``{ target_version, expected_revision }`` to ``/<base>/rollback``. These
+ * pin both contracts via the per-domain rollback descriptor the dialog drives.
  */
 describe('version-history per-domain rollback', () => {
   it('agent identity: posts target_version + reason to /versions/rollback', async () => {

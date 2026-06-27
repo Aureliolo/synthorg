@@ -18,7 +18,13 @@ export interface UseAgentsDataReturn {
   totalAgents: number
   loading: boolean
   error: string | null
-  wsConnected: boolean
+  /**
+   * WebSocket connect / subscribe / dispatch setup failure. The global
+   * ``<WsConnectionBanner>`` is suppressed while the socket reports
+   * ``connected``, so a subscription failure (which leaves ``connected``
+   * true but stops agent live updates) would otherwise be invisible; the page
+   * surfaces this so the operator knows updates have silently stopped.
+   */
   wsSetupError: string | null
 }
 
@@ -80,7 +86,12 @@ export function useAgentsData(): UseAgentsDataReturn {
     [markFresh],
   )
 
-  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
+  // Subscribe to the agents channel for real-time refetch. The connection
+  // state is surfaced globally via <WsConnectionBanner>, but a connect /
+  // subscribe / dispatch setup failure can leave the socket "connected" with
+  // no banner while live updates silently stop, so re-export ``setupError``
+  // for the page to surface.
+  const { setupError: wsSetupError } = useWebSocket({ bindings })
 
   // Client-side filtering + sorting
   const filteredAgents = useMemo(() => {
@@ -99,7 +110,6 @@ export function useAgentsData(): UseAgentsDataReturn {
     totalAgents,
     loading,
     error,
-    wsConnected,
     wsSetupError,
   }
 }

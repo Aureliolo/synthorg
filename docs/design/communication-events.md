@@ -68,6 +68,23 @@ The `EventStreamHub` (`communication/event_stream/stream.py`) is the single
 pub/sub source. Both the AG-UI dashboard and the A2A gateway consume
 from this hub, each applying their own projection layer.
 
+### Dashboard SSE feed (`GET /api/v1/events/dashboard`)
+
+A second, session-less SSE endpoint
+(`EventStreamController.dashboard_stream`, generator in
+`api/controllers/events/_dashboard.py`) is the read-only fallback the SPA
+opens when the WebSocket upgrade is proxy-blocked. Unlike `/events/stream`
+(a per-task AG-UI session stream), it bridges the Litestar `ChannelsPlugin`
+feed the WebSocket handler serves: it subscribes to every channel the caller
+may read (`resolve_dashboard_channels`, gating budget / internal / `#dissent`
+channels by role) plus the caller's `user:{id}` channel, then forwards each
+published `WsEvent` verbatim under a single named `ws` SSE frame (so the
+client needs one listener, not one per event type). It emits periodic
+`keepalive` frames, layers `revalidated_sse_stream` for periodic auth
+revalidation, and accepts a `last_event_id` query parameter (not the native
+`Last-Event-ID` header) that triggers replay of the recent per-channel
+backlog (`MemoryChannelsBackend(history=20)`).
+
 ## Interrupt and Resume Protocol
 
 Two blocking interrupt types:

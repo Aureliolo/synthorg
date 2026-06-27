@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
-import type { StartFineTuneRequest } from '@/api/endpoints/fine-tuning'
+import type {
+  FineTuneDataSourceType,
+  FineTuneRequest,
+} from '@/api/endpoints/fine-tuning'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 
 import { buildStartRequest } from './pipeline-request-builder'
 
 export interface PipelineControlState {
   sourceDir: string
+  dataSource: FineTuneDataSourceType
   showAdvanced: boolean
   epochs: string
   learningRate: string
@@ -19,6 +23,7 @@ export interface PipelineControlState {
   showPreflightPanel: boolean
   preflight: ReturnType<typeof useFineTuningStore.getState>['preflight']
   setSourceDir: (value: string) => void
+  setDataSource: (value: FineTuneDataSourceType) => void
   setShowAdvanced: (value: boolean) => void
   setEpochs: (value: string) => void
   setLearningRate: (value: string) => void
@@ -42,6 +47,7 @@ export function usePipelineControlState(): PipelineControlState {
       })),
     )
   const [sourceDir, setSourceDir] = useState('/data/documents')
+  const [dataSource, setDataSource] = useState<FineTuneDataSourceType>('directory')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [epochs, setEpochs] = useState('')
   const [learningRate, setLearningRate] = useState('')
@@ -52,9 +58,13 @@ export function usePipelineControlState(): PipelineControlState {
     setBatchSizeInput(value)
   }, [])
 
+  // ``buildRequest()`` keys off both ``sourceDir`` and ``dataSource``, so a
+  // change to either invalidates the prior preflight; clearing it here stops a
+  // stale result (and its ``startDisabled`` / recommended-batch-size state)
+  // from carrying over to the new request inputs.
   useEffect(() => {
     useFineTuningStore.setState({ preflight: null })
-  }, [sourceDir])
+  }, [sourceDir, dataSource])
 
   const effectiveBatchSize = deriveEffectiveBatchSize(
     batchSizeTouchedRef.current,
@@ -64,11 +74,19 @@ export function usePipelineControlState(): PipelineControlState {
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
   const startDisabled = loading || (preflight != null && !preflight.can_proceed)
   const showPreflightPanel = preflight != null
-  const buildRequest = (): StartFineTuneRequest =>
-    buildStartRequest({ sourceDir, epochs, learningRate, effectiveBatchSize, showAdvanced })
+  const buildRequest = (): FineTuneRequest =>
+    buildStartRequest({
+      sourceDir,
+      dataSource,
+      epochs,
+      learningRate,
+      effectiveBatchSize,
+      showAdvanced,
+    })
 
   return {
     sourceDir,
+    dataSource,
     showAdvanced,
     epochs,
     learningRate,
@@ -79,6 +97,7 @@ export function usePipelineControlState(): PipelineControlState {
     showPreflightPanel,
     preflight,
     setSourceDir,
+    setDataSource,
     setShowAdvanced,
     setEpochs,
     setLearningRate,

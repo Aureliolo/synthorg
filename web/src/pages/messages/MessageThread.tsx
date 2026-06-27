@@ -28,7 +28,7 @@ export function MessageThread({
       <MessageBubble
         message={msg}
         isNew={newMessageIds?.has(msg.id)}
-        onClick={() => onSelectMessage(msg.id)}
+        onSelect={onSelectMessage}
       />
     )
   }
@@ -41,7 +41,7 @@ export function MessageThread({
       <MessageBubble
         message={first}
         isNew={newMessageIds?.has(first.id)}
-        onClick={() => onSelectMessage(first.id)}
+        onSelect={onSelectMessage}
       />
 
       {/* Thread expand/collapse pill */}
@@ -78,7 +78,7 @@ export function MessageThread({
                   key={msg.id}
                   message={msg}
                   isNew={newMessageIds?.has(msg.id)}
-                  onClick={() => onSelectMessage(msg.id)}
+                  onSelect={onSelectMessage}
                 />
               ))}
             </div>

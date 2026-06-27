@@ -72,7 +72,8 @@ adopted because:
 | 401 handler (`client.ts:128-140`) | Works | Same | No change |
 | `ApiResponse` / `PaginatedResponse` envelope unwrap | Works | Same; `response.data` shape is adapter-agnostic | No change |
 | `signal: AbortController` | Works | Works | No change |
-| SSE / streaming (`src/api/endpoints/providers.ts:162-237`) | Already uses native `fetch` directly, bypassing axios | Unchanged | Adapter-agnostic |
+| SSE / streaming (`src/api/endpoints/providers/models.ts`, `pullModel`) | Already uses native `fetch` directly, bypassing axios | Unchanged | Adapter-agnostic |
+| SSE event feed (`src/api/sse/client.ts`, dashboard fallback) | Browser-native `EventSource` against `/api/v1/events/dashboard` | Unchanged | Outside the axios/fetch decision (native API, not XHR-intercepted) |
 | `onUploadProgress` / `onDownloadProgress` | Not used anywhere | Fetch adapter does not support upload progress | N/A |
 | `FormData` / `File` / `Blob` bodies | Not used | Both adapters support natively | N/A |
 | `paramsSerializer`, `maxContentLength`, `decompress` | Not configured | Same | No change |

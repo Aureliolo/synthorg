@@ -46,21 +46,12 @@ export function OntologyAdminSection() {
     setRunning('sync')
     void syncOrgMemory()
       .then((result) => {
-        // The backend returns HTTP 200 with this status (not an error)
-        // when no org-memory backend is wired; a "Published 0" success
-        // toast would misrepresent that as a completed no-op sync.
-        if (result.status === 'sync_service_not_configured') {
-          useToastStore.getState().add({
-            variant: 'warning',
-            title: 'Sync unavailable',
-            description: 'No org-memory backend is configured, so there was nothing to sync.',
-          })
-          return
-        }
+        // An unconfigured org-memory backend returns a 503 (handled in the
+        // catch below), so a resolved promise always means a completed sync.
         useToastStore.getState().add({
           variant: 'success',
           title: 'Org memory synced',
-          description: `Published ${String(result.published_count ?? 0)} entity definitions.`,
+          description: `Published ${String(result.published_count)} entity definitions.`,
         })
       })
       .catch((err: unknown) => {

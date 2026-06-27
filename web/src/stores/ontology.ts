@@ -2,10 +2,12 @@
  * Zustand store for ontology entity catalog and drift monitor.
  */
 import { create, type StoreApi } from 'zustand'
+import { paginateAll } from '@/api/client'
 import {
   deleteEntity as apiDeleteEntity,
   listEntities,
   listDriftReports,
+  type EntityListMeta,
   type EntityResponse,
   type DriftReportResponse,
 } from '@/api/endpoints/ontology'
@@ -24,6 +26,11 @@ interface OntologyState {
   // ── Entity catalog ──
   entities: readonly EntityResponse[]
   totalEntities: number
+  /**
+   * Catalog-wide aggregates from the list endpoint's ``meta`` envelope
+   * (core/user/total counts + drift summary); ``null`` until first load.
+   */
+  entityMeta: EntityListMeta | null
   entitiesLoading: boolean
   entitiesError: string | null
 
@@ -57,6 +64,24 @@ interface OntologyState {
 type OntologySet = StoreApi<OntologyState>['setState']
 type OntologyGet = StoreApi<OntologyState>['getState']
 
+// Keep the catalog-summary aggregates aligned with an optimistic list mutation
+// so the "N total (X core, Y user)" line does not drift from the rendered grid.
+// ``drift_summary`` is backend-only, so it is preserved untouched.
+function adjustEntityMeta(
+  meta: EntityListMeta | null,
+  entity: EntityResponse,
+  delta: number,
+): EntityListMeta | null {
+  if (meta === null) return null
+  const isCore = entity.tier === 'core'
+  return {
+    ...meta,
+    total_count: Math.max(0, meta.total_count + delta),
+    core_count: isCore ? Math.max(0, meta.core_count + delta) : meta.core_count,
+    user_count: isCore ? meta.user_count : Math.max(0, meta.user_count + delta),
+  }
+}
+
 async function deleteEntityImpl(
   set: OntologySet,
   get: OntologyGet,
@@ -70,6 +95,7 @@ async function deleteEntityImpl(
     mutating: true,
     entities: s.entities.filter((e) => e.name !== name),
     totalEntities: Math.max(0, s.totalEntities - (removed ? 1 : 0)),
+    entityMeta: removed ? adjustEntityMeta(s.entityMeta, removed, -1) : s.entityMeta,
     selectedEntity: s.selectedEntity?.name === name ? null : s.selectedEntity,
   }))
   try {
@@ -88,6 +114,9 @@ async function deleteEntityImpl(
         mutating: false,
         entities: shouldRestore ? [removed, ...s.entities] : s.entities,
         totalEntities: shouldRestore ? s.totalEntities + 1 : s.totalEntities,
+        entityMeta: shouldRestore
+          ? adjustEntityMeta(s.entityMeta, removed, 1)
+          : s.entityMeta,
         selectedEntity: shouldRestore ? previousSelected : s.selectedEntity,
       }
     })
@@ -105,6 +134,7 @@ export const useOntologyStore = create<OntologyState>()((set, get) => ({
   // ── Defaults ──
   entities: [],
   totalEntities: 0,
+  entityMeta: null,
   entitiesLoading: false,
   entitiesError: null,
 
@@ -123,10 +153,22 @@ export const useOntologyStore = create<OntologyState>()((set, get) => ({
   fetchEntities: async () => {
     set({ entitiesLoading: true, entitiesError: null })
     try {
-      const result = await listEntities({ limit: 200 })
+      // EntityCatalog filters / sorts / searches / paginates client-side, so
+      // it needs the WHOLE catalog, not the first page. Walk every cursor page
+      // via paginateAll; the ``meta`` aggregates are catalog-wide (identical on
+      // each page), so capture the latest page's copy for the summary line.
+      // Held on an object (not a bare ``let``) so the closure assignment is
+      // visible to the type after the await.
+      const captured: { meta: EntityListMeta | null } = { meta: null }
+      const entities = await paginateAll<EntityResponse>(async (cursor) => {
+        const result = await listEntities({ cursor, limit: 200 })
+        captured.meta = result.meta
+        return result
+      })
       set({
-        entities: result.data,
-        totalEntities: result.data.length,
+        entities,
+        totalEntities: captured.meta?.total_count ?? entities.length,
+        entityMeta: captured.meta,
         entitiesLoading: false,
       })
     } catch (err) {

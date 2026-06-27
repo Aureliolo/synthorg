@@ -12,8 +12,8 @@ import {
   type CreateCustomRuleRequest,
   type CustomRule,
   type MetricDescriptor,
-  type PreviewRequest,
   type PreviewResult,
+  type PreviewRuleRequest,
 } from '@/api/endpoints/custom-rules'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -62,7 +62,7 @@ interface CustomRulesState {
    * error message and owns the ``try/catch`` boundary. Keep that
    * exception here; do not normalise it to ``null``.
    */
-  previewRule: (data: PreviewRequest) => Promise<PreviewResult>
+  previewRule: (data: PreviewRuleRequest) => Promise<PreviewResult>
 }
 
 type CrSet = StoreApi<CustomRulesState>['setState']
@@ -158,7 +158,7 @@ async function deleteRuleImpl(set: CrSet, id: string): Promise<boolean> {
     log.error('Delete custom rule failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete rule',
+      ...getCrudErrorTitle(err, 'Failed to delete rule'),
       description: getErrorMessage(err),
     })
     return false
@@ -183,7 +183,7 @@ async function toggleRuleImpl(
     log.error('Toggle custom rule failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to toggle rule',
+      ...getCrudErrorTitle(err, 'Failed to toggle rule'),
       description: getErrorMessage(err),
     })
     return null

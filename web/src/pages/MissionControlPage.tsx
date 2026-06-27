@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -60,10 +60,11 @@ export default function MissionControlPage() {
     setTab(urlExecutionId ? 'recorder' : 'live')
   }
 
-  function handleReplay(executionId: string): void {
+  // Stable so the memoised cockpit rows do not re-render on every parent update.
+  const handleReplay = useCallback((executionId: string): void => {
     setReplayExecutionId(executionId)
     setTab('recorder')
-  }
+  }, [])
 
   return (
     <div className="space-y-section-gap">

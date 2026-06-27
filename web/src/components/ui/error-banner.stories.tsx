@@ -83,6 +83,26 @@ export const LongDescription: Story = {
   },
 }
 
+export const AllControls: Story = {
+  args: {
+    variant: 'section',
+    severity: 'error',
+    title: 'Activation failed',
+    description: 'The workflow could not be activated. Retry, dismiss, or open the run log.',
+    onRetry: () => {},
+    onDismiss: () => {},
+    action: { label: 'View log', onClick: () => {} },
+  },
+}
+
+export const TitleOnlyError: Story = {
+  args: {
+    variant: 'inline',
+    severity: 'error',
+    title: 'Failed to delete agent',
+  },
+}
+
 export const AllSeverities: Story = {
   render: () => (
     <div className="flex flex-col gap-3">

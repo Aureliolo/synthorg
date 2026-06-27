@@ -430,6 +430,9 @@ async def revalidated_sse_stream(
         while True:
             timeout = max(0.0, next_revalidate_ts - clock.monotonic())
             if pending is None:
+                # ``anext`` on the abstract ``AsyncIterator`` returns an
+                # ``Awaitable``, not a ``Coroutine``, so ``create_task`` would
+                # not type-check here; ``ensure_future`` accepts both.
                 pending = asyncio.ensure_future(anext(inner_iter))
             try:
                 event = await asyncio.wait_for(asyncio.shield(pending), timeout)
@@ -457,12 +460,13 @@ async def revalidated_sse_stream(
                 await pending
         # Close the inner async generator so ITS finally runs (provider
         # download teardown, hub unsubscribe, etc.). Without this the
-        # ``pending=None`` cancel path and the ``yield revoked; return``
-        # path abandon it open until GC, and the per-op concurrency slot
-        # wrapping the request stays held past the stream's real lifetime.
-        # Safe only after the in-flight ``anext`` task above is cancelled
-        # and awaited (an async generator cannot be aclose()d while an
-        # anext on it is still running).
+        # ``pending=None`` cancel path (cancellation landing at the
+        # ``yield event`` point) and the ``yield revoked; return`` path
+        # abandon it open until GC, and the per-op concurrency slot wrapping
+        # the request stays held past the stream's real lifetime. Safe only
+        # after the in-flight ``anext`` task above is cancelled and awaited
+        # (an async generator cannot be aclose()d while an anext on it is
+        # still running).
         if isinstance(inner_iter, AsyncGenerator):
             with suppress(asyncio.CancelledError, StopAsyncIteration):
                 await inner_iter.aclose()

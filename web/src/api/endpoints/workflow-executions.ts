@@ -9,54 +9,11 @@
  * the rows in ``data`` alongside ``next_cursor`` and ``has_more``
  * pagination metadata.
  */
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { WorkflowNodeExecution } from '../types'
+import { apiClient, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { WorkflowExecution, WorkflowExecutionStatus } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-/** Mirrors ``synthorg.engine.workflow.enums.WorkflowExecutionStatus``. */
-export type WorkflowExecutionStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-
-/**
- * Mirrors ``synthorg.engine.workflow.execution_models.WorkflowExecution``.
- * Field names match the backend exactly (``definition_id`` not
- * ``workflow_id``, ``activated_by`` not ``triggered_by``, ``error`` not
- * ``error_message``); the dashboard does not rename them so a future
- * backend field addition lands without a frontend rename pass.
- */
-export interface WorkflowExecution {
-  /** Unique execution id. */
-  id: string
-  /** Source ``WorkflowDefinition`` id (NOT the URL path's ``workflow_id``). */
-  definition_id: string
-  /** Definition revision the execution was activated against. */
-  definition_revision: number
-  /** Optimistic-concurrency version of the execution record. */
-  version: number
-  /** Overall execution lifecycle status. */
-  status: WorkflowExecutionStatus
-  /** Identity of the user / agent that triggered activation. */
-  activated_by: string
-  /** Project the execution belongs to. */
-  project: string
-  /** ISO 8601 timestamp the execution record was created (== "started"). */
-  created_at: string
-  /** ISO 8601 timestamp of the most recent state update. */
-  updated_at: string
-  /**
-   * ISO 8601 completion timestamp; ``null`` until the execution reaches
-   * a terminal state (``completed`` / ``failed`` / ``cancelled``).
-   */
-  completed_at: string | null
-  /** Error message when ``status === 'failed'``; ``null`` otherwise. */
-  error: string | null
-  /** Per-node execution records for the run. */
-  node_executions: readonly WorkflowNodeExecution[]
-}
+export type { WorkflowExecution, WorkflowExecutionStatus }
 
 /**
  * GET /workflow-executions/by-definition/{workflow_id}
@@ -80,20 +37,15 @@ export async function listWorkflowExecutions(
 /**
  * POST /workflow-executions/{execution_id}/cancel
  *
- * Backend returns ``ApiResponse[WorkflowExecution]`` (the cancelled
- * execution). The dashboard doesn't currently surface the cancelled
- * execution body, so the function returns ``void`` and discards
- * ``response.data`` after the success check. Switch to ``unwrap`` and
- * propagate the returned execution if a future caller needs it.
+ * The backend returns the cancelled execution, but the dashboard does not
+ * render it, so the body is typed as ``null`` and validated for success via
+ * ``unwrapVoid``. Type the response as ``ApiResponse<WorkflowExecution>`` and
+ * use ``unwrap`` instead if a future caller needs the returned execution.
  */
 export async function cancelWorkflowExecution(executionId: string): Promise<void> {
-  const response = await apiClient.post<ApiResponse<WorkflowExecution>>(
+  const response = await apiClient.post<ApiResponse<null>>(
     `/workflow-executions/${encodeURIComponent(executionId)}/cancel`,
     {},
   )
-  // The endpoint returns ApiResponse<WorkflowExecution>, but the UI
-  // doesn't render the cancelled execution. unwrap validates the
-  // envelope's success flag and returns the typed data; we discard
-  // it.
-  unwrap(response)
+  unwrapVoid(response)
 }

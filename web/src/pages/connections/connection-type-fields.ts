@@ -296,6 +296,13 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
 
+/** Supported SQL dialects for ``database`` connections. */
+export const DATABASE_DIALECTS = ['postgresql', 'mysql', 'sqlite'] as const
+export type DatabaseDialect = (typeof DATABASE_DIALECTS)[number]
+
+/** Embedded (file-based) dialect: server host/port/credentials are optional. */
+const SQLITE_DIALECT: DatabaseDialect = 'sqlite'
+
 /**
  * Validate a single connection field.
  *
@@ -305,8 +312,15 @@ const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
  */
 function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
   if (spec.required) return true
-  // host/port/username/password are required for non-SQLite dialects.
-  return DATABASE_SERVER_FIELDS.has(spec.key) && dialect !== undefined && dialect.toLowerCase() !== 'sqlite'
+  // host/port/username/password are required for non-SQLite dialects. Trim
+  // the dialect the same way ``validateConnectionField`` does so a padded
+  // ``"sqlite "`` is still recognised as SQLite and does not wrongly mark the
+  // server fields required.
+  return (
+    DATABASE_SERVER_FIELDS.has(spec.key)
+    && dialect !== undefined
+    && dialect.trim().toLowerCase() !== SQLITE_DIALECT
+  )
 }
 
 function validateUrlValue(spec: ConnectionFieldSpec, value: string): string | null {
@@ -336,12 +350,36 @@ function validateNumberValue(spec: ConnectionFieldSpec, value: string): string |
   return null
 }
 
+/**
+ * Canonicalize a free-text dialect input to the lowercase, trimmed wire form.
+ * Used by both validation and the submit path so a stored / submitted dialect
+ * always matches the backend's lowercase contract (``SQLite`` / `` postgres ``
+ * are normalised, not forwarded verbatim).
+ */
+export function canonicalizeDialect(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+// The dialect field is a free-text input, so reject anything outside the
+// supported set at the form boundary (case-insensitively, matching
+// ``resolveRequired``) instead of letting ``postgres`` / ``sqlite3`` pass
+// here and only fail later at the API.
+function validateDialectValue(spec: ConnectionFieldSpec, value: string): string | null {
+  const trimmed = canonicalizeDialect(value)
+  const dialects: readonly string[] = DATABASE_DIALECTS
+  if (trimmed && !dialects.includes(trimmed)) {
+    return `${spec.label} must be one of: ${DATABASE_DIALECTS.join(', ')}`
+  }
+  return null
+}
+
 export function validateConnectionField(
   spec: ConnectionFieldSpec,
   value: string,
   dialect?: string,
 ): string | null {
   if (resolveRequired(spec, dialect) && !value.trim()) return `${spec.label} is required`
+  if (spec.key === 'dialect') return validateDialectValue(spec, value)
   if (spec.type === 'url') return validateUrlValue(spec, value)
   if (spec.type === 'select') return validateSelectValue(spec, value)
   if (spec.type === 'number') return validateNumberValue(spec, value)

@@ -5,7 +5,6 @@ import {
   SSE_RECONNECT_BASE_DELAY,
   SSE_RECONNECT_MAX_DELAY,
 } from '@/utils/ws-constants'
-import type { WsEvent } from '@/api/types/websocket'
 
 type SseListener = (ev: MessageEvent) => void
 
@@ -13,12 +12,14 @@ let lastEventSource: FakeEventSource | null = null
 
 class FakeEventSource {
   readonly url: string
+  readonly withCredentials: boolean
   onopen: ((ev: Event) => void) | null = null
   onerror: ((ev: Event) => void) | null = null
   private readonly listeners = new Map<string, Set<SseListener>>()
 
-  constructor(url: string) {
+  constructor(url: string, init?: EventSourceInit) {
     this.url = url
+    this.withCredentials = init?.withCredentials ?? false
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- test spy needs the latest instance
     lastEventSource = this
   }
@@ -79,72 +80,86 @@ afterEach(() => {
 })
 
 describe('openSseFallback', () => {
-  it('forwards mapped AG-UI events as internal WsEvent frames', () => {
-    const events: WsEvent[] = []
+  it('forwards the parsed ws frame object to onEvent', () => {
+    const events: unknown[] = []
     openSseFallback({
-      onEvent: (e) => events.push(e),
+      onEvent: (e) => {
+        events.push(e)
+        return true
+      },
       onError: () => {},
     })
     expect(lastEventSource).not.toBeNull()
-    // The server names the frame with its AG-UI type (the SSE ``event:``
-    // field), so the client receives it via the named listener.
+    // The backend publishes every WsEvent under a single ``ws`` frame name.
+    const wsEvent = {
+      event_type: 'task.status_changed',
+      channel: 'tasks',
+      timestamp: '2026-05-13T12:00:00Z',
+      payload: { task_id: 't-1' },
+    }
     lastEventSource!.emit(
-      'run_started',
-      new MessageEvent('run_started', {
-        data: JSON.stringify({
-          id: 'evt-1',
-          type: 'run_started',
-          timestamp: '2026-05-13T12:00:00Z',
-          payload: { task_id: 't-1' },
-        }),
-      }),
+      'ws',
+      new MessageEvent('ws', { data: JSON.stringify(wsEvent) }),
     )
     expect(events).toHaveLength(1)
-    expect(events[0]!.event_type).toBe('task.status_changed')
-    expect(events[0]!.channel).toBe('tasks')
-    expect(events[0]!.timestamp).toBe('2026-05-13T12:00:00Z')
-    expect(events[0]!.payload).toEqual({ task_id: 't-1' })
+    expect(events[0]).toEqual(wsEvent)
   })
 
-  it('does not subscribe to AG-UI types that have no internal mapping', () => {
-    const events: WsEvent[] = []
-    openSseFallback({
-      onEvent: (e) => events.push(e),
-      onError: () => {},
-    })
-    // No listener is registered for an unmapped type, so even if the
-    // server emitted it the read-only fallback would never receive it.
-    lastEventSource!.emit(
-      'tool_call_args',
-      new MessageEvent('tool_call_args', {
-        data: JSON.stringify({
-          id: 'evt-2',
-          type: 'tool_call_args',
-          timestamp: '2026-05-13T12:00:00Z',
-          payload: {},
-        }),
-      }),
-    )
-    expect(events).toHaveLength(0)
+  it('registers only the single ws frame listener', () => {
+    openSseFallback({ onEvent: () => true, onError: () => {} })
+    expect(lastEventSource!.listenerCount()).toBe(1)
+  })
+
+  it('opens the EventSource with credentials so the session cookie is sent', () => {
+    // Without withCredentials the SSE request omits the auth cookie and every
+    // reconnect 401s silently, so this guards the credential flag explicitly.
+    openSseFallback({ onEvent: () => true, onError: () => {} })
+    expect(lastEventSource!.withCredentials).toBe(true)
   })
 
   it('discards malformed frames without throwing', () => {
-    const events: WsEvent[] = []
+    const events: unknown[] = []
     openSseFallback({
-      onEvent: (e) => events.push(e),
+      onEvent: (e) => {
+        events.push(e)
+        return true
+      },
       onError: () => {},
     })
-    lastEventSource!.emit(
-      'run_started',
-      new MessageEvent('run_started', { data: '{not-json' }),
-    )
+    lastEventSource!.emit('ws', new MessageEvent('ws', { data: '{not-json' }))
     expect(events).toHaveLength(0)
+  })
+
+  it('forwards the last event id as a query param on reconnect', () => {
+    vi.useFakeTimers()
+    try {
+      const handle = openSseFallback({ onEvent: () => true, onError: () => {} })
+      // Deliver a frame carrying a lastEventId, then force a reconnect.
+      lastEventSource!.emit(
+        'ws',
+        new MessageEvent('ws', {
+          lastEventId: '7',
+          data: JSON.stringify({
+            event_type: 'task.updated',
+            channel: 'tasks',
+            timestamp: '2026-05-13T12:00:00Z',
+            payload: {},
+          }),
+        }),
+      )
+      lastEventSource!.onerror?.(new Event('error'))
+      vi.advanceTimersByTime(SSE_RECONNECT_BASE_DELAY)
+      expect(lastEventSource!.url).toContain('last_event_id=7')
+      handle.close()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reports transport errors via onError', () => {
     const errors: Error[] = []
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: (err) => errors.push(err),
     })
     try {
@@ -161,7 +176,7 @@ describe('openSseFallback', () => {
   it('reconnects with an application-level backoff timer after an error', () => {
     vi.useFakeTimers()
     try {
-      const handle = openSseFallback({ onEvent: () => {}, onError: () => {} })
+      const handle = openSseFallback({ onEvent: () => true, onError: () => {} })
       const first = lastEventSource
       // An error closes the current source and schedules a re-open; no new
       // EventSource is created synchronously (that would be the native flat
@@ -181,7 +196,7 @@ describe('openSseFallback', () => {
     try {
       let exhausted = false
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: () => {},
         onExhausted: () => {
           exhausted = true
@@ -205,7 +220,7 @@ describe('openSseFallback', () => {
     try {
       const errors: Error[] = []
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: (err) => errors.push(err),
       })
       // Initial source never stabilises (onopen never fires): first error is
@@ -234,7 +249,7 @@ describe('openSseFallback', () => {
     try {
       let exhausted = false
       const handle = openSseFallback({
-        onEvent: () => {},
+        onEvent: () => true,
         onError: () => {},
         onExhausted: () => {
           exhausted = true
@@ -260,7 +275,7 @@ describe('openSseFallback', () => {
   it('close() tears down the EventSource', () => {
     const closeSpy = vi.spyOn(FakeEventSource.prototype, 'close')
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
     })
     handle.close()
@@ -270,7 +285,7 @@ describe('openSseFallback', () => {
   it('invokes onOpen when the transport connects', () => {
     let opened = false
     openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
       onOpen: () => {
         opened = true
@@ -282,7 +297,7 @@ describe('openSseFallback', () => {
 
   it('releases handlers + listeners on close()', () => {
     const handle = openSseFallback({
-      onEvent: () => {},
+      onEvent: () => true,
       onError: () => {},
       onOpen: () => {},
     })

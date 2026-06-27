@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Activity } from 'lucide-react'
 
 import type { AgentActivity } from '@/api/types'
@@ -5,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { MetricCard } from '@/components/ui/metric-card'
+import { SkeletonMetric } from '@/components/ui/skeleton'
 import { useMissionControlData } from '@/hooks/useMissionControlData'
 import { useMissionControlStore } from '@/stores/mission-control'
 import { cn } from '@/lib/utils'
@@ -63,7 +65,7 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
   )
 }
 
-function AgentRow({
+const AgentRow = memo(function AgentRow({
   activity,
   onReplay,
 }: {
@@ -101,7 +103,7 @@ function AgentRow({
       </div>
     </div>
   )
-}
+})
 
 interface CockpitMetrics {
   agents: readonly AgentActivity[]
@@ -136,6 +138,17 @@ function CockpitMetricCards({ metrics }: { metrics: CockpitMetrics }) {
       />
       <MetricCard label="Stuck" value={metrics.stuckCount} animateValue />
       <MetricCard label="Runaway" value={metrics.runawayCount} animateValue />
+    </div>
+  )
+}
+
+function CockpitMetricSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4" aria-hidden="true">
+      <SkeletonMetric />
+      <SkeletonMetric />
+      <SkeletonMetric />
+      <SkeletonMetric />
     </div>
   )
 }
@@ -190,8 +203,30 @@ export function LiveCockpit({ onReplay }: LiveCockpitProps) {
           onRetry={() => void useMissionControlStore.getState().fetchSnapshot()}
         />
       )}
-      <CockpitMetricCards metrics={metrics} />
-      <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
+      {/* Three explicit states keep "data unavailable" distinct from both
+          "still loading" and genuine post-load zeros: a failed first fetch
+          shows an unavailable empty state (the banner above offers retry), an
+          in-flight first fetch shows skeletons, and a real snapshot renders the
+          metrics + agent list. ``deriveCockpitMetrics'`` synthesized zeros
+          never masquerade as genuine metrics, and the agent list never shows
+          its "Loading activity..." copy after an error. */}
+      {snapshot == null && error != null ? (
+        <EmptyState
+          icon={Activity}
+          title="Activity unavailable"
+          description="Retry to load the live org-activity snapshot."
+        />
+      ) : snapshot == null ? (
+        <>
+          <CockpitMetricSkeleton />
+          <CockpitAgentList agents={metrics.agents} loading onReplay={onReplay} />
+        </>
+      ) : (
+        <>
+          <CockpitMetricCards metrics={metrics} />
+          <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
+        </>
+      )}
     </div>
   )
 }

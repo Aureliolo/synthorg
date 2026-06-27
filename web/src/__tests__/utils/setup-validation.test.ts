@@ -110,6 +110,12 @@ describe("validateTemplateStep", () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Please select a template");
   });
+
+  it("returns valid for a blank-org selection with no template", () => {
+    const result = validateTemplateStep({ selectedTemplate: null, blankSelected: true });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
 });
 
 describe("validateCompanyStep", () => {

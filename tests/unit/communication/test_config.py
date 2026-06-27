@@ -584,7 +584,8 @@ class TestCommunicationConfigFixtures:
 
 @pytest.mark.unit
 class TestNatsConfigHealthFlushTimeout:
-    """HYG-2: the health-flush timeout is config-driven and bounded."""
+    """The NATS health-flush timeout is config-driven and bounded so a stale
+    JetStream connection cannot block shutdown indefinitely."""
 
     def test_default_is_two_seconds(self) -> None:
         # Matches the previously-inlined ``timeout=2`` literal in

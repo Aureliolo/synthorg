@@ -37,6 +37,7 @@ const GLOBAL_CHANNELS = [
   'budget',
   'system',
   'tasks',
+  'workflows',
 ] as const satisfies readonly WsChannel[]
 
 export function useGlobalNotifications(): void {

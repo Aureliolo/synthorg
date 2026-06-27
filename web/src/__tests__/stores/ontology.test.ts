@@ -1,10 +1,10 @@
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { listEntities, type EntityResponse } from '@/api/endpoints/ontology'
+import { type EntityResponse } from '@/api/endpoints/ontology'
+import type { EntityListResponse } from '@/api/types'
 import { useOntologyStore } from '@/stores/ontology'
 import { useToastStore } from '@/stores/toast'
-import { apiError, paginatedFor, voidSuccess } from '@/mocks/handlers'
-import type { PaginatedResult } from '@/api/client'
+import { apiError, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 
 function buildEntity(overrides: Partial<EntityResponse> = {}): EntityResponse {
@@ -24,27 +24,46 @@ function buildEntity(overrides: Partial<EntityResponse> = {}): EntityResponse {
   }
 }
 
-function singlePage(
+function singlePageResponse(
   entities: readonly EntityResponse[],
-): PaginatedResult<EntityResponse> {
-  const limit = 200
+): EntityListResponse {
+  const userCount = entities.filter((e) => e.tier === 'user').length
   return {
     data: [...entities],
-    limit,
-    nextCursor: null,
-    hasMore: false,
-    degradedSources: [],
-    pagination: { limit, next_cursor: null, has_more: false },
+    error: null,
+    error_detail: null,
+    pagination: { limit: 200, next_cursor: null, has_more: false },
+    success: true,
+    degraded_sources: [],
+    meta: {
+      core_count: entities.length - userCount,
+      user_count: userCount,
+      total_count: entities.length,
+      drift_summary: null,
+    },
   }
 }
 
 describe('useOntologyStore', () => {
   beforeEach(() => {
+    // Zustand setState is a shallow merge, so reset the FULL slice: a partial
+    // reset leaves entitiesLoading / entitiesError / drift state dirty and
+    // makes randomised-order tests non-deterministic.
     useOntologyStore.setState({
       entities: [],
       totalEntities: 0,
-      mutating: false,
+      entityMeta: null,
+      entitiesLoading: false,
+      entitiesError: null,
+      driftReports: [],
+      driftLoading: false,
+      driftError: null,
+      tierFilter: 'all',
+      searchQuery: '',
+      entitySortBy: 'name',
+      entitySortDirection: 'asc',
       selectedEntity: null,
+      mutating: false,
     })
     useToastStore.getState().dismissAll()
   })
@@ -52,9 +71,7 @@ describe('useOntologyStore', () => {
   it('fetches entities and records the total', async () => {
     server.use(
       http.get('/api/v1/ontology/entities', () =>
-        HttpResponse.json(
-          paginatedFor<typeof listEntities>(singlePage([buildEntity()])),
-        ),
+        HttpResponse.json(singlePageResponse([buildEntity()])),
       ),
     )
 
@@ -75,7 +92,11 @@ describe('useOntologyStore', () => {
 
     await useOntologyStore.getState().fetchEntities()
 
-    expect(typeof useOntologyStore.getState().entitiesError).toBe('string')
+    // A 500 surfaces the generic user-facing server-error copy (not the raw
+    // backend string), so assert that concrete recorded message.
+    expect(useOntologyStore.getState().entitiesError).toContain(
+      'unexpected server error',
+    )
     expect(useOntologyStore.getState().entitiesLoading).toBe(false)
   })
 

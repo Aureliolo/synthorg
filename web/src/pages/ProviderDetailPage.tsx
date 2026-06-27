@@ -355,6 +355,7 @@ export default function ProviderDetailPage() {
   if (error && !provider) {
     return (
       <div className="flex flex-col gap-section-gap">
+        <Breadcrumbs items={[{ label: 'Providers', to: ROUTES.PROVIDERS }, { label: 'Error' }]} />
         <ErrorBanner severity="error" title="Could not load provider" description={error} />
       </div>
     )

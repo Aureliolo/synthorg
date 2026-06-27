@@ -10,6 +10,7 @@ const MESSAGES: Record<NotificationFilterGroup, string> = {
   budget: 'No budget notifications',
   system: 'No system notifications',
   tasks: 'No task notifications',
+  workflows: 'No workflow notifications',
   agents: 'No agent notifications',
   providers: 'No provider notifications',
   connection: 'No connection notifications',

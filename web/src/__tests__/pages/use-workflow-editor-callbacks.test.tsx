@@ -29,7 +29,7 @@ describe('useWorkflowEditorCallbacks handleValidate', () => {
     useToastStore.getState().dismissAll()
   })
 
-  it('emits an error toast when validation fails (previously silent)', async () => {
+  it('emits an error toast when validation fails', async () => {
     // Mirror the store contract: every ``validate`` failure path clears
     // ``validationResult`` and sets ``error``.
     const validate = vi.fn(() => {

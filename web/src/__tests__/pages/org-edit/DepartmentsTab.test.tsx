@@ -42,9 +42,9 @@ describe('DepartmentsTab', () => {
 
   it('renders department cards', () => {
     renderTab()
-    // Runtime health bars were removed from this editor view in the
-    // Base UI migration -- department cards now show only edit-time
-    // metadata (agent count, team count, optional budget percent).
+    // Department cards in this editor view show only edit-time metadata
+    // (agent count, team count, optional budget percent); runtime health is
+    // surfaced through the status bar, not here.
     expect(screen.getAllByText('Engineering').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Product').length).toBeGreaterThanOrEqual(1)
   })

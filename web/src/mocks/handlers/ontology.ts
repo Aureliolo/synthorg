@@ -6,12 +6,12 @@ import type {
   getEntity,
   getVersionManifest,
   listDriftReports,
-  listEntities,
   listEntityVersions,
   syncOrgMemory,
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
+import type { EntityListMeta, EntityListResponse } from '@/api/types'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
@@ -35,10 +35,44 @@ function buildEntity(
   }
 }
 
+/**
+ * Build the ``EntityListResponse`` wire envelope for the ontology list
+ * endpoint. ``EntityListResponse`` carries catalog-wide ``meta`` aggregates
+ * that the generic ``paginatedFor`` cannot model, so this ontology-specific
+ * helper keeps the handler in lockstep with the contract instead of inlining
+ * the envelope.
+ */
+function entityListEnvelope(
+  data: readonly EntityResponse[] = [],
+  opts: {
+    meta?: Partial<EntityListMeta>
+    nextCursor?: string | null
+    limit?: number
+  } = {},
+): EntityListResponse {
+  const nextCursor = opts.nextCursor ?? null
+  // Derive the tier counts from the data so the aggregates stay consistent
+  // with total_count by default; opts.meta still overrides for bespoke cases.
+  const coreCount = data.filter((e) => e.tier === 'core').length
+  return {
+    data: [...data],
+    degraded_sources: [],
+    error: null,
+    error_detail: null,
+    meta: {
+      core_count: coreCount,
+      user_count: data.length - coreCount,
+      total_count: data.length,
+      drift_summary: null,
+      ...opts.meta,
+    },
+    pagination: { limit: opts.limit ?? 200, next_cursor: nextCursor, has_more: nextCursor !== null },
+    success: true,
+  }
+}
+
 export const ontologyHandlers = [
-  http.get('/api/v1/ontology/entities', () =>
-    HttpResponse.json(paginatedFor<typeof listEntities>(emptyPage<EntityResponse>())),
-  ),
+  http.get('/api/v1/ontology/entities', () => HttpResponse.json(entityListEnvelope())),
   http.get('/api/v1/ontology/entities/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getEntity>(buildEntity({ name: String(params['name']) })),

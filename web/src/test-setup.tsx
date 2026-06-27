@@ -72,11 +72,9 @@ installStorageShim()
 //
 // This file is loaded ONLY by the ``unit`` project in
 // ``vitest.config.ts``; the ``bench`` project loads
-// ``./src/bench-setup.ts`` (no MSW, no React, no Motion). Splitting
-// the two projects is the architectural fix for CodSpeed Web --
-// previously ``test.setupFiles`` was shared with bench mode, and
-// MSW's ``setupServer().listen()`` tripped its global-interceptor
-// invariant on the second ``.bench.ts`` file.
+// ``./src/bench-setup.ts`` (no MSW, no React, no Motion). Keeping MSW out
+// of the bench project matters because a second ``setupServer().listen()``
+// across bench workers trips MSW's single global-interceptor invariant.
 export const server = setupServer(...defaultHandlers)
 
 beforeAll(() => {

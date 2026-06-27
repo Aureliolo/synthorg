@@ -13,20 +13,11 @@ export interface AnimatedPresenceProps {
 /**
  * Page transition variants.
  *
- * Previously this was a combined slide+fade with `x: 8 -> 0` on enter
- * and `x: -8` on exit, wrapped in `mode="wait"`.  That produced a
- * visible "2 flashes back and forth" on every sidebar navigation:
- * the old page slid left and faded out, then after a gap (enforced
- * by mode="wait") the new page slid in from the right and faded in.
- * With dense dashboard layouts and React StrictMode's double-mount in
- * dev, the slide reads as a layout shift rather than a polished
- * transition -- more like a reload than a hand-off.
- *
- * The replacement is a fast pure opacity crossfade with no horizontal
- * translation and a very short exit so the perceived "reposition" is
- * gone.  Duration is kept under 120ms total so the transition is
- * imperceptible for everyday navigation but still visible as a soft
- * fade rather than a hard swap.
+ * A pure opacity crossfade with no horizontal translation: on dense
+ * dashboard layouts (and under React StrictMode's dev double-mount) any
+ * slide reads as a layout shift rather than a transition. Duration is kept
+ * under 120ms total so the change is imperceptible for everyday navigation
+ * but still visible as a soft fade rather than a hard swap.
  */
 const pageVariants: Variants = {
   initial: { opacity: 0 },
@@ -58,9 +49,8 @@ export function AnimatedPresence({
   return (
     // mode="popLayout" lets the outgoing page exit while the incoming
     // page enters in the same frame -- no gap, no "blank for a tick"
-    // between routes.  Previously we used mode="wait" which forced the
-    // exit animation to fully complete before the new page mounted,
-    // which introduced the perceptible gap users saw as a second flash.
+    // between routes (mode="wait" would force the exit to finish before
+    // the new page mounts, leaving a perceptible blank gap).
     //
     // `initial={false}` skips the enter animation on the first mount
     // of AnimatePresence itself (the very first page load, and every
