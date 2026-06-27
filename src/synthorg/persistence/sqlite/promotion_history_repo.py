@@ -94,8 +94,8 @@ class SQLitePromotionHistoryRepository:
             QueryError: If the write fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 await self._db.execute(_INSERT_SQL, _record_to_params(event))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:

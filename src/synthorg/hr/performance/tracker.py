@@ -542,7 +542,10 @@ class PerformanceTracker:
         # path). Each ``_persist_contribution`` is fail-open, so a per-item
         # failure is logged without aborting the batch; only a re-raised
         # critical (MemoryError/RecursionError) propagates.
-        if contributions:
+        # Skip the fan-out entirely when no repo is wired: every
+        # ``_persist_contribution`` would early-return, so spawning a task
+        # per contribution is pure scheduling overhead on the in-memory path.
+        if contributions and self._contribution_repo is not None:
             async with asyncio.TaskGroup() as tg:
                 # Fire-and-forget within the group: the TaskGroup awaits every
                 # task on exit. Bind the handles to ``_`` so the discarded

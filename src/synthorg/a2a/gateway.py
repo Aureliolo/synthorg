@@ -852,6 +852,10 @@ def _validate_task_ownership(
     cancel another peer's task. A mismatch raises 404 (not 403) so the
     boundary does not leak the existence of another peer's task.
 
+    Peer identity is case-insensitive, so the comparison uses the same
+    canonical form the create path stamps; otherwise the peer could not
+    reach its own task after a differently-cased follow-up request.
+
     Args:
         task: The task to check.
         peer_name: Authenticated peer name.
@@ -860,7 +864,7 @@ def _validate_task_ownership(
         _A2AMethodError: With a 404 status when the task was created by a
             different peer.
     """
-    if task.created_by != f"a2a-gateway:{peer_name}":
+    if task.created_by != f"a2a-gateway:{normalize_ascii_lowercase(peer_name)}":
         logger.warning(
             A2A_TASK_METHOD_REJECTED,
             task_id=str(task.id),
@@ -925,6 +929,14 @@ async def _handle_message_send(
     from synthorg.core.task_enums import Priority, TaskType  # noqa: PLC0415
     from synthorg.engine.task_engine_models import CreateTaskData  # noqa: PLC0415
 
+    # Peer identity is case-insensitive (the registry keys on the lowercased
+    # name), so the ownership stamp and idempotency scope must use the
+    # canonical form too. Otherwise a retry from the same peer with different
+    # header casing (``Foo`` vs ``foo``) misses the idempotency entry
+    # (double-create) and stamps a ``created_by`` that later fails the
+    # ``_validate_task_ownership`` check on the peer's own tasks/get.
+    canonical_peer_name = normalize_ascii_lowercase(peer_name)
+
     task_data = CreateTaskData(
         title=f"A2A: {description[:80]}",
         description=description,
@@ -933,7 +945,7 @@ async def _handle_message_send(
         project="a2a-inbound",
         # Stamp the originating peer onto the task so tasks/get and
         # tasks/cancel can enforce per-peer ownership later.
-        created_by=f"a2a-gateway:{peer_name}",
+        created_by=f"a2a-gateway:{canonical_peer_name}",
     )
 
     from synthorg.api.api_core_state import (  # noqa: PLC0415
@@ -949,7 +961,7 @@ async def _handle_message_send(
         """
         created = await task_engine.create_task(
             task_data,
-            requested_by=f"a2a-gateway:{peer_name}",
+            requested_by=f"a2a-gateway:{canonical_peer_name}",
         )
         logger.info(
             A2A_TASK_CREATED,
@@ -969,7 +981,7 @@ async def _handle_message_send(
     # ``message_id`` must not collide and hand one peer another's cached task
     # id (which would precede the per-peer ownership checks).
     outcome = await idempotency_service_of(app_state).run_idempotent(
-        scope=NotBlankStr(f"a2a:message_send:{peer_name}"),
+        scope=NotBlankStr(f"a2a:message_send:{canonical_peer_name}"),
         key=NotBlankStr(str(params.message_id)),
         callback=_create_task_state,
     )
@@ -1227,7 +1239,7 @@ async def _handle_tasks_cancel(
 
     cancelled_task, _ = await task_engine.cancel_task(
         params.id,
-        requested_by=f"a2a-gateway:{peer_name}",
+        requested_by=f"a2a-gateway:{normalize_ascii_lowercase(peer_name)}",
         reason="A2A tasks/cancel request",
     )
 

@@ -37,9 +37,10 @@ _CAUSAL_MARKERS: Final[tuple[str, ...]] = (
     "hence",
 )
 # Split on sentence boundaries but never inside a decimal number: a ``.``
-# flanked by digits (``0.75``) is not a claim boundary, otherwise one
-# quantitative claim fragments into several and over-scores the position.
-_CLAIM_SPLIT: Final[re.Pattern[str]] = re.compile(r"(?:(?<!\d)\.(?!\d)|[;\n])+")
+# is exempt only when it sits *between* two digits (``0.75``). A dot
+# touching a non-digit on either side still splits, so a sentence ending
+# right after a decimal (``score 0.92. Therefore``) is two claims, not one.
+_CLAIM_SPLIT: Final[re.Pattern[str]] = re.compile(r"(?:\.(?!\d)|(?<!\d)\.|[;\n])+")
 _DIGIT: Final[re.Pattern[str]] = re.compile(r"\d")
 
 
