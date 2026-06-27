@@ -50,8 +50,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, lint-imports, architecture-drift, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
-
+  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
@@ -84,21 +83,23 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         types: []
-      - id: orphan-fixtures
-        name: orphan pytest fixtures (always-on, pre-push)
-        entry: uv run python scripts/check_orphan_fixtures.py
+      # Consolidated single-process runner for the pre-push-only Python
+      # gates (scripts/run_prepush_python_gates.py). Folding ~40 individual
+      # `uv run python scripts/check_*.py` hooks into one process collapses
+      # the per-push spawn count -- the desktop-heap / STATUS_DLL_INIT_FAILED
+      # (0xC0000142) pressure on Windows -- and pays the synthorg import once.
+      # The underlying scripts/check_*.py files stay on disk so the
+      # convention-gate-inventory meta-gate still resolves each gate path, and
+      # CI's `pre-commit run --all-files` runs this one hook from the same
+      # config so local<->CI parity holds.
+      - id: consolidated-python-gates
+        name: consolidated pre-push Python gates (single process)
+        entry: uv run python scripts/run_prepush_python_gates.py
         language: system
-        files: ^tests/.*\.py$
-        pass_filenames: false
-        stages: [pre-push]
         always_run: true
-      - id: check-license-compat
-        name: license compatibility (no AGPL/GPL; LGPL attributed in NOTICE)
-        entry: uv run python scripts/check_license_compat.py
-        language: system
-        files: ^(pyproject\.toml|uv\.lock|cli/go\.(mod|sum)|web/package\.json|web/package-lock\.json|NOTICE|scripts/check_license_compat\.py)$
         pass_filenames: false
         stages: [pre-push]
+        types: []
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -306,52 +307,6 @@ repos:
         args: [run, python, scripts/check_otlp_span_redaction.py]
         language: system
         files: ^src/synthorg/.*\.py$
-        stages: [pre-push]
-
-      - id: no-stdlib-logging
-        name: no stdlib logging in application code (use get_logger)
-        entry: uv run python scripts/check_no_stdlib_logging.py
-        language: system
-        # Trigger on any src/synthorg Python file, the gate script
-        # itself, or this config so a PR that introduces an
-        # ``import logging`` (or weakens the gate by editing the
-        # script) cannot bypass the check. The observability package
-        # is allowlisted inside the script, not here.
-        files: ^(src/synthorg/.*\.py|scripts/check_no_stdlib_logging\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: no-ghost-wiring
-        name: no ghost-wiring regressions (ENFORCED runtime components must be reachable)
-        entry: uv run python scripts/check_no_ghost_wiring.py
-        language: system
-        # Trigger on any src/synthorg Python file (a change could remove
-        # the only construction site of an ENFORCED component), the
-        # manifest, the gate script itself (cannot weaken the gate
-        # silently), or this config.
-        files: ^(src/synthorg/.*\.py|scripts/_ghost_wiring_manifest\.txt|scripts/check_no_ghost_wiring\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: runtime-reachability
-        name: runtime reachability (pinned request/loop-path call edges stay intact)
-        entry: uv run python scripts/check_runtime_reachability.py
-        language: system
-        # Trigger on any src/synthorg Python file (a refactor could sever a
-        # pinned edge), the manifest, the gate script itself (cannot weaken
-        # the gate silently), or this config. Complements no-ghost-wiring:
-        # that gate proves construction, this one proves the edge that makes
-        # a constructed component actually fire from a request/loop entry.
-        files: ^(src/synthorg/.*\.py|scripts/_runtime_reachability_manifest\.txt|scripts/check_runtime_reachability\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: no-raw-playwright-imports
-        name: Playwright stays bound to synthorg.tools.browser
-        entry: uv run python scripts/check_no_raw_playwright_imports.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_no_raw_playwright_imports\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
         stages: [pre-push]
 
       - id: no-loop-bound-init
@@ -639,57 +594,6 @@ repos:
         # land on the branch, so nothing escapes review.
         stages: [pre-push]
 
-      - id: forbidden-literals
-        name: forbidden-literal gate (src/synthorg)
-        entry: uv run python scripts/check_forbidden_literals.py
-        language: system
-        files: ^src/synthorg/.*\.py$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: persistence-boundary
-        name: persistence-boundary gate (src/ + tests/)
-        entry: uv run python scripts/check_persistence_boundary.py
-        language: system
-        files: ^(src/synthorg|tests)/.*\.py$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: currency-aggregation-invariant
-        name: currency-aggregation-invariant gate (src/synthorg)
-        entry: uv run python scripts/check_currency_aggregation_invariant.py
-        language: system
-        # Trigger on any change to src/synthorg Python files, the gate
-        # script itself, or this config so a PR that adds an unguarded
-        # cost aggregation (or weakens the gate by editing the script)
-        # cannot bypass the check.
-        files: ^(src/synthorg/.*\.py|scripts/check_currency_aggregation_invariant\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: persistence-protocol-uniformity
-        name: persistence-backend property return-type uniformity (#1773)
-        entry: uv run python scripts/check_persistence_protocol_return_types.py
-        language: system
-        # Trigger on changes to the protocol module, either backend, the
-        # gate script itself, or this config so a PR cannot weaken the
-        # check by editing the script without touching the backends.
-        files: ^(src/synthorg/persistence/(protocol|[^/]+_protocol|sqlite/backend|postgres/backend)\.py|scripts/check_persistence_protocol_return_types\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: dependency-inversion
-        name: dependency-inversion gate (high-level packages depend on protocols)
-        entry: uv run python scripts/check_dependency_inversion.py
-        language: system
-        # Trigger on any change to the scanned tree, the gate script
-        # itself, or this config so a PR that introduces a new concrete
-        # import (or weakens the gate via the script / allowlist) cannot
-        # bypass the check.
-        files: ^(src/synthorg/(api|engine|communication|persistence)/.*\.py|scripts/check_dependency_inversion\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
       - id: list-pagination
         name: list_*/query repository pagination gate
         entry: uv run python scripts/check_list_pagination.py --scan-all
@@ -697,70 +601,6 @@ repos:
         files: ^(src/synthorg/persistence/.*\.py|scripts/check_list_pagination\.py|scripts/list_pagination_baseline\.txt|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
-
-      - id: no-magic-numbers
-        name: no bare numeric literals in business logic (#1739)
-        entry: uv run python scripts/check_no_magic_numbers.py
-        language: system
-        files: ^(src/synthorg|scripts/check_no_magic_numbers\.py|scripts/no_magic_numbers_baseline\.txt|\.pre-commit-config\.yaml)/?.*$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: setting-to-startup-trace
-        name: settings → startup wiring trace (ghost-wired settings gate)
-        entry: uv run python scripts/check_setting_to_startup_trace.py
-        language: system
-        # Trigger on any change to settings definitions, lifecycle/app
-        # wiring, the lint script itself, or its baseline file so a PR
-        # that adds a ghost-wired setting (or weakens the gate by editing
-        # the script / baseline) cannot bypass the check.
-        files: ^(src/synthorg/settings/definitions/.*\.py|src/synthorg/api/(app|lifecycle|lifecycle_builder|lifecycle_helpers|auto_wire)\.py|scripts/check_setting_to_startup_trace\.py|scripts/setting_to_startup_trace_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: long-running-loop-kill-switch
-        name: long-running loops carry a runtime kill-switch
-        entry: uv run python scripts/check_long_running_loops_have_kill_switch.py
-        language: system
-        # Trigger on any change to src/synthorg Python files, the gate
-        # script itself, or its baseline. A PR that adds a new
-        # ``while True:`` / ``while not stop_event.is_set():`` async
-        # loop without a per-iteration ``ConfigResolver.get_bool(...
-        # _enabled)`` re-read (or a mandatory-justification opt-out)
-        # cannot bypass the check by editing only the source file.
-        files: ^(src/synthorg/.*\.py|scripts/check_long_running_loops_have_kill_switch\.py|scripts/long_running_loops_kill_switch_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: domain-error-hierarchy
-        name: domain-error-hierarchy gate (DomainError-rooted exception classes)
-        entry: uv run python scripts/check_domain_error_hierarchy.py
-        language: system
-        # Trigger on any change to src/synthorg Python files, the gate
-        # script itself, or its baseline so a PR that introduces a new
-        # plain-Exception class (or weakens the gate by editing the
-        # script / baseline) cannot bypass the check.
-        files: ^(src/synthorg/.*\.py|scripts/check_domain_error_hierarchy\.py|scripts/domain_error_hierarchy_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        # Full-repo AST walk: ~2.7s on every commit becomes noticeable
-        # on focused-edit cycles where a developer commits multiple
-        # times in a row. Move to pre-push so each commit stays
-        # interactive while the gate still fires before code leaves
-        # the machine.
-        stages: [pre-push]
-
-      - id: error-code-uniqueness
-        name: error-code-uniqueness gate (one ErrorCode per DomainError subclass)
-        entry: uv run python scripts/check_error_code_uniqueness.py
-        language: system
-        # Trigger on any change to a src/synthorg error class, the gate
-        # script, or this config so a PR that duplicates an ErrorCode (or
-        # weakens the gate) cannot bypass the check. Full-tree AST walk
-        # resolves cross-module inheritance, so it cannot be filtered to
-        # changed files only.
-        files: ^(src/synthorg/.*\.py|scripts/check_error_code_uniqueness\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
 
       - id: no-controller-response-for-domain-errors
         name: no-controller-response-for-domain-errors gate (raise typed errors, never build local Response envelopes)
@@ -838,120 +678,6 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      - id: mcp-admin-guardrail
-        name: MCP admin_tool guardrails gate (require_admin_guardrails on every admin handler)
-        entry: uv run python scripts/check_mcp_admin_tool_guardrails.py
-        language: system
-        # Trigger on any change to MCP domain registrations, MCP handlers,
-        # the gate script itself, or this config so a PR that introduces a
-        # new admin_tool registration / handler (or weakens the gate by
-        # editing the script) cannot bypass the check.
-        files: ^(src/synthorg/meta/mcp/(handlers|domains)/.*\.py|scripts/check_mcp_admin_tool_guardrails\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: handler-arguments-get
-        name: MCP typed-args gate (args_model handlers must narrow via typed_args, not raw arguments)
-        entry: uv run python scripts/check_handler_arguments_get.py
-        language: system
-        # Trigger on any change to MCP domain registrations, MCP handlers,
-        # the gate script itself, or this config so a PR that wires a new
-        # args_model but leaves the handler reading the raw ``arguments``
-        # dict (or weakens the gate by editing the script) cannot bypass it.
-        files: ^(src/synthorg/meta/mcp/(handlers|domains)/.*\.py|scripts/check_handler_arguments_get\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: no-os-environ-outside-bootstrap
-        name: env-read gate (single-key os.environ reads only at the bootstrap edge)
-        entry: uv run python scripts/check_no_os_environ_outside_bootstrap.py
-        language: system
-        # Trigger on any src change or an edit to the gate script / this config
-        # so a new direct os.environ read in business logic (or a weakening of
-        # the gate's allowlist) cannot bypass the precedence boundary.
-        files: ^(src/synthorg/.*\.py|scripts/check_no_os_environ_outside_bootstrap\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: dead-api-endpoints
-        name: dead-API-endpoint gate (frontend ↔ backend route parity)
-        entry: uv run python scripts/check_dead_api_endpoints.py
-        language: system
-        # Trigger on any change to controller registration, controller
-        # files, the WS handler, A2A controllers, every TS/TSX source
-        # under web/src/, the gate scripts themselves, or the baseline
-        # so a PR cannot land a frontend caller pointing at a dead
-        # endpoint without the gate running.
-        files: ^(src/synthorg/api/(app|controllers/.*)\.py|src/synthorg/a2a/.*\.py|web/src/.*\.(ts|tsx)|scripts/(check_dead_api_endpoints|_dead_api_endpoints_.*)\.py|scripts/dead_api_endpoints_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: dual-backend-test-parity
-        name: dual-backend test parity gate (conformance + protocols)
-        entry: uv run python scripts/check_dual_backend_test_parity.py
-        language: system
-        # Trigger on any change to a persistence protocol, a
-        # conformance test, the gate script, or its baseline so a PR
-        # that adds a missing-coverage gap or a signature regression
-        # (or weakens the gate by editing the script / baseline)
-        # cannot bypass the check.
-        files: ^(src/synthorg/persistence/[^/]+\.py|tests/conformance/persistence/.*\.py|scripts/check_dual_backend_test_parity\.py|scripts/_dual_backend_parity_lib\.py|scripts/dual_backend_parity_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: frozen-extra-forbid
-        name: Frozen model extra="forbid" gate (src/synthorg + tests)
-        entry: uv run python scripts/check_frozen_model_extra_forbid.py
-        language: system
-        # Project-wide successor to the old api-only dto-forbid-extra
-        # gate. Trigger on any change to the scanned trees (src and
-        # tests), the checker itself, or this config so a PR that
-        # weakens the gate cannot bypass it by not touching scanned
-        # Python files.
-        files: ^(src/synthorg/.*\.py|tests/.*\.py|scripts/check_frozen_model_extra_forbid\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: boundary-typed
-        name: typed-boundary contract gate (RFC #1711 Phase 3)
-        entry: uv run python scripts/check_boundary_typed.py
-        language: system
-        # The script's ``_REGISTERED_BOUNDARIES`` tuple is the single
-        # source of truth for which (file, function) pairs the gate
-        # enforces. Keep this trigger broad rather than duplicating
-        # the boundary list here, so a future boundary added only to
-        # the script does not silently stop running pre-push because
-        # this regex was forgotten. The check is sub-second when
-        # there are no violations, so the broader trigger costs
-        # nothing per push.
-        files: ^(src/synthorg/.*\.py|scripts/check_boundary_typed\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: provider-complete-chokepoint
-        name: cost-recording chokepoint gate
-        entry: uv run python scripts/check_provider_complete_chokepoint.py
-        language: system
-        # Trigger on any change to the scanned tree, the checker
-        # itself, or this config -- so a PR that weakens the gate
-        # (e.g. relaxing the heuristic, expanding the allowlist,
-        # changing the trigger pattern) cannot bypass the check by
-        # not touching ``src/synthorg/`` Python files.
-        files: ^(src/synthorg/.*\.py|scripts/check_provider_complete_chokepoint\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: schema-drift
-        name: schema-drift gate (SQLite vs Postgres parity)
-        entry: uv run python scripts/check_schema_drift.py
-        language: system
-        # Trigger on schema files, revision files, the script itself,
-        # the baseline, or this config so a PR that weakens the gate
-        # cannot bypass the check by not touching schema.sql.
-        files: ^(src/synthorg/persistence/(sqlite|postgres)/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift\.py|scripts/_schema_drift_.*\.py|scripts/schema_drift_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
       - id: schema-drift-revisions-sqlite
         name: schema.sql matches accumulated revisions (sqlite arm)
         entry: uv run python scripts/check_schema_drift_revisions.py --backend sqlite
@@ -962,18 +688,6 @@ repos:
         # 'forgot to update schema.sql' bug-class at pre-push without
         # external dependencies (~5-10s).
         files: ^(src/synthorg/persistence/sqlite/(schema\.sql|revisions/.*\.sql)|scripts/check_schema_drift_revisions\.py|scripts/_schema_drift_.*\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: convention-gate-inventory
-        name: convention-gate inventory (MANDATORY <-> gate parity)
-        entry: uv run python scripts/check_convention_gate_inventory.py
-        language: system
-        # Trigger on any canonical doc file, the inventory YAML, the
-        # gate script itself, or this config so a PR that adds a
-        # MANDATORY paragraph or weakens the inventory cannot bypass
-        # the check.
-        files: ^(CLAUDE\.md|web/CLAUDE\.md|cli/CLAUDE\.md|docs/reference/.*\.md|docs/design/.*\.md|scripts/check_convention_gate_inventory\.py|scripts/convention_gate_map\.yaml|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
@@ -989,53 +703,6 @@ repos:
         files: ^(\.pre-commit-config\.yaml|\.github/workflows/(ci|cli)\.yml|scripts/check_local_ci_parity\.py)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
-
-      - id: no-review-origin-in-code
-        name: no reviewer citations / issue back-refs / naked SEC-N in code
-        entry: uv run python scripts/check_no_review_origin_in_code.py
-        language: system
-        # Trigger on any in-scope source / test file, the gate script
-        # itself, or this config so a PR that introduces a forbidden
-        # pattern (or weakens the gate by editing the script) cannot
-        # bypass the check. Yoyo-managed migration revisions are
-        # excluded so the hook does not start a subprocess for files
-        # the script's internal allowlist would immediately skip.
-        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_review_origin_in_code\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        # Full-repo scan is ~14s wall-clock; running it on every commit
-        # made focused-edit cycles painful. pre-push still catches
-        # everything before code leaves the machine, and pre-commit.ci
-        # is a separate hook surface (uses its own stage selection).
-        stages: [pre-push]
-
-      - id: no-migration-framing
-        name: no migration / origin / phase-N framing in code
-        entry: uv run python scripts/check_no_migration_framing.py
-        language: system
-        # Trigger on any in-scope source / test file, the gate script
-        # itself, or this config so a PR that introduces migration /
-        # origin framing (or weakens the gate by editing the script)
-        # cannot bypass the check. Yoyo-managed migration revisions
-        # are excluded so the hook does not start a subprocess for
-        # files the script's internal allowlist would immediately skip.
-        files: ^(src/synthorg/(?!persistence/(?:postgres|sqlite)/revisions/).*\.(py|sql)|tests/.*\.py|scripts/check_no_migration_framing\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        # ~13s wall-clock on the full repo; same cost trade-off as
-        # no-review-origin-in-code above. Moved to pre-push.
-        stages: [pre-push]
-
-      - id: docstring-completeness
-        name: docstring completeness (DOC201/DOC202/DOC501 via ruff)
-        # Thin wrapper over ruff's pydoclint rules so the
-        # docstring-completeness convention ships an explicit gate
-        # rather than living only in the shared ``ruff check`` config.
-        # Ruff stays the engine; the wrapper inherits the
-        # per-file-ignores scope, so it never drifts from the config.
-        entry: uv run python scripts/check_docstring_completeness.py
-        language: system
-        files: ^(src/synthorg/.*\.py|tests/.*\.py|scripts/check_docstring_completeness\.py|pyproject\.toml)$
-        pass_filenames: false
-        stages: [pre-push]
 
       - id: no-api-dto-in-persistence-or-service
         name: forbid synthorg.api.dto_* imports inside persistence/ and service/
@@ -1059,16 +726,6 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # ── Codebase modularity gates ─────────────────────────────────
-      # Tiered LOC budget per `# module-kind:` header. Baseline-driven.
-      - id: module-size-budget
-        name: module-size budget (tiered LOC caps per # module-kind: header)
-        entry: uv run python scripts/check_module_size_budget.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_module_size_budget\.py|scripts/_module_size_lib\.py|scripts/_module_size_baseline\.json|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
       # Allowlisted god-modules must net-shrink on every PR.
       - id: no-growth-in-god-modules
         name: god-modules must net-shrink
@@ -1087,113 +744,12 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # AST-driven cycle detection across src/synthorg/.
-      - id: no-circular-imports
-        name: no new import cycles in src/synthorg/
-        entry: uv run python scripts/check_no_circular_imports.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_no_circular_imports\.py|scripts/_circular_imports_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
       # Declarative import-layering contracts (import-linter / grimp).
       - id: lint-imports
         name: import-linter layering contracts
         entry: uv run lint-imports --config .importlinter
         language: system
         files: ^(src/synthorg/.*\.py|\.importlinter|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Architecture-drift gate: fan-in / LCOM / budget-pressure regressions
-      # vs the committed data/architecture_report.json baseline.
-      - id: architecture-drift
-        name: architecture-drift gate (fan-in / LCOM / budget pressure)
-        entry: uv run python scripts/check_architecture_drift.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/(check_architecture_drift|architecture_report|_architecture_lib)\.py|data/architecture_report\.json|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Package-nesting depth ceiling.
-      - id: module-depth
-        name: module nesting depth ceiling
-        entry: uv run python scripts/check_module_depth.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_module_depth\.py|scripts/_module_depth_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Every Protocol class needs a non-trivial docstring.
-      - id: protocol-documented
-        name: every Protocol class carries a non-trivial docstring
-        entry: uv run python scripts/check_protocol_documented.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_protocol_documented\.py|scripts/_protocol_doc_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # No open() / network / subprocess at import time.
-      - id: no-module-level-io
-        name: no module-import-time I/O calls
-        entry: uv run python scripts/check_no_module_level_io.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_no_module_level_io\.py|scripts/_module_level_io_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # State-slice classes must be frozen Pydantic + extra="forbid".
-      - id: state-slice-immutability
-        name: state-slice classes must be frozen + extra="forbid"
-        entry: uv run python scripts/check_state_slice_immutability.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_state_slice_immutability\.py|scripts/_state_slice_immutability_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Factory-registered strategies referenced by Protocol at callsites.
-      - id: strategy-protocol-injection
-        name: strategy callsites annotate with Protocol, not concrete impl
-        entry: uv run python scripts/check_strategy_protocol_injection.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_strategy_protocol_injection\.py|scripts/_strategy_protocol_injection_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Every SettingNamespace value has a settings/definitions/<name>.py file.
-      - id: settings-namespace-complete
-        name: every SettingNamespace value has a definitions/<name>.py file
-        entry: uv run python scripts/check_settings_namespace_complete.py
-        language: system
-        files: ^(src/synthorg/settings/(enums\.py|definitions/.*\.py)|scripts/check_settings_namespace_complete\.py|scripts/_settings_namespace_baseline\.txt|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Every slice-bearing feature directory ships a feature.py manifest.
-      - id: feature-manifest
-        name: every feature directory has a valid feature.py manifest
-        entry: uv run python scripts/check_feature_manifest.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/check_feature_manifest\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # AppState.__slots__ may not grow past the approved cross-cutting set.
-      - id: no-implicit-state-attribute
-        name: AppState may not grow new attributes (move state to a slice)
-        entry: uv run python scripts/check_no_implicit_state_attribute.py
-        language: system
-        files: ^(src/synthorg/api/state\.py|scripts/check_no_implicit_state_attribute\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # data/feature_index.json is committed and byte-compared; codebase_map.json
-      # is a gitignored navigation artefact validated structurally (not committed).
-      - id: feature-index-freshness
-        name: data/feature_index.json up to date (+ codebase_map structure)
-        entry: uv run python scripts/check_feature_index_freshness.py
-        language: system
-        files: ^(src/synthorg/.*\.py|scripts/(generate_feature_index|check_feature_index_freshness)\.py|data/feature_index\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
@@ -1241,7 +797,11 @@ repos:
       # the full default ruleset applies to schema.sql and new revisions.
       - id: sqlfluff
         name: sqlfluff (SQLite + Postgres revisions + schema)
-        entry: bash -c "uv run sqlfluff lint --dialect sqlite src/synthorg/persistence/sqlite/revisions/ src/synthorg/persistence/sqlite/schema.sql && uv run sqlfluff lint --dialect postgres src/synthorg/persistence/postgres/revisions/ src/synthorg/persistence/postgres/schema.sql"
+        # The two ~100 KB schema.sql files dominate (~20s each, single
+        # file so --processes cannot split them); run the SQLite and
+        # Postgres dialects concurrently so the two parses overlap instead
+        # of summing. Exit non-zero if either dialect fails.
+        entry: bash -c "uv run sqlfluff lint --dialect sqlite src/synthorg/persistence/sqlite/revisions/ src/synthorg/persistence/sqlite/schema.sql & p1=$!; uv run sqlfluff lint --dialect postgres src/synthorg/persistence/postgres/revisions/ src/synthorg/persistence/postgres/schema.sql & p2=$!; wait $p1; r1=$?; wait $p2; r2=$?; [ $r1 -eq 0 ] && [ $r2 -eq 0 ]"
         language: system
         files: ^(src/synthorg/persistence/(sqlite|postgres)/(revisions/.*|schema)\.sql|\.sqlfluff(ignore)?|\.pre-commit-config\.yaml)$
         pass_filenames: false

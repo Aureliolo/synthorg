@@ -307,16 +307,21 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     trailing_marker = (
         _line_has_trailing_marker_sql if is_sql else _line_has_trailing_marker_python
     )
+    patterns = _all_patterns()
     for idx, line in enumerate(file_lines, start=1):
+        # Cheap regex first: only lines that actually match a forbidden
+        # pattern pay the tokenize-based suppression checks below, which
+        # are otherwise the gate's dominant cost across the whole tree.
+        # All matching patterns are kept so a multi-issue line surfaces
+        # every label.
+        matched = [(label, pat) for label, pat in patterns if pat.search(line)]
+        if not matched:
+            continue
         if trailing_marker(line):
             continue
         if idx > 1 and _line_has_dedicated_marker(file_lines[idx - 2]):
             continue
-        for label, pattern in _all_patterns():
-            if pattern.search(line):
-                issues.append(f"{rel}:{idx}: {label}: {line.rstrip()}")
-                # Continue checking other patterns on the same line so
-                # a multi-issue line surfaces every label.
+        issues.extend(f"{rel}:{idx}: {label}: {line.rstrip()}" for label, _ in matched)
     return issues
 
 
