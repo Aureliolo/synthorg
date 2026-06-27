@@ -15,7 +15,8 @@
       "state_slice_fields": [
         "card_builder",
         "client",
-        "peer_registry"
+        "peer_registry",
+        "peer_discovery"
       ]
     },
     {
@@ -320,7 +321,8 @@
         "escalation_registry",
         "escalation_processor",
         "escalation_sweeper",
-        "escalation_notify_subscriber"
+        "escalation_notify_subscriber",
+        "conflict_resolution_service"
       ]
     },
     {
@@ -1325,6 +1327,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-27T06:54:04.776960Z",
+  "generated_at": "2026-06-27T08:02:39.810881Z",
   "schema_version": 1
 }
