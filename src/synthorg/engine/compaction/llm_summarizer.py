@@ -147,6 +147,8 @@ class LLMSummarizer:
                 cost_tracker=self._cost_tracker,
                 agent_id=_SUMMARY_AGENT_ID,
                 task_id=NotBlankStr(f"compaction:{execution_id}"),
+                # Context-budget compaction is not a registered prompt class.
+                purpose=None,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

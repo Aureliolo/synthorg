@@ -36,6 +36,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.state import provider_credential_catalog_of
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -725,6 +726,7 @@ class ProviderManagementService(
             task_id=NotBlankStr(
                 f"system:providers:test_connection:{_safe_task_id_segment(name)}",
             ),
+            purpose=PromptPurposeId.PROVIDERS_TEST_CONNECTION,
             call_category=LLMCallCategory.SYSTEM,
         ):
             await driver.complete(messages, model_id)

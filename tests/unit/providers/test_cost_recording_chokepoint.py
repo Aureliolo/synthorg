@@ -23,6 +23,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
@@ -142,6 +143,41 @@ class TestCostRecordingChokepoint:
         assert record.finish_reason == FinishReason.STOP
         assert record.success is True
         assert response.usage.cost == pytest.approx(0.001)
+
+    async def test_purpose_threads_into_record(self) -> None:
+        provider = _StubProvider()
+        tracker = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            purpose=PromptPurposeId.MEMORY_RERANK,
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model")
+
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].prompt_class_id == "system:memory:rerank"
+
+    async def test_purpose_defaults_none(self) -> None:
+        provider = _StubProvider()
+        tracker = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            await provider.complete([_msg()], "test-model")
+
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].prompt_class_id is None
 
     async def test_no_record_when_scope_not_open(self) -> None:
         provider = _StubProvider()

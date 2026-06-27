@@ -188,6 +188,8 @@ class LlmDecompositionStrategy:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=str(task.id),
+                # Per-task decomposition, not a system prompt class.
+                purpose=None,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

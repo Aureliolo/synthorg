@@ -33,6 +33,7 @@ from synthorg.knowledge.models import (
 )
 from synthorg.knowledge.synthesis._args import KnowledgeSynthesisOutput
 from synthorg.knowledge.synthesis.citation_binder import KnowledgeCitationBinder
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SYNTHESIS_FAILED,
@@ -136,6 +137,7 @@ class KnowledgeSynthesizer:
             cost_tracker=self._cost_tracker,
             task_id=_SYNTHESIS_TASK_ID,
             project_id=project_id,
+            purpose=PromptPurposeId.KNOWLEDGE_SYNTHESIS,
         )
         answer = self._build_answer(
             query=query,

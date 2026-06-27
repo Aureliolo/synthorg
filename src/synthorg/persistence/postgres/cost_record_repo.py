@@ -53,11 +53,12 @@ class PostgresCostRecordRepository:
                     INSERT INTO cost_records (
                         agent_id, task_id, provider, model, input_tokens,
                         output_tokens, cost, currency, timestamp,
-                        call_category
+                        call_category, prompt_class_id
                     ) VALUES (
                         %(agent_id)s, %(task_id)s, %(provider)s, %(model)s,
                         %(input_tokens)s, %(output_tokens)s, %(cost)s,
-                        %(currency)s, %(timestamp)s, %(call_category)s
+                        %(currency)s, %(timestamp)s, %(call_category)s,
+                        %(prompt_class_id)s
                     )
                     """,
                     {
@@ -71,6 +72,7 @@ class PostgresCostRecordRepository:
                         "currency": event.currency,
                         "timestamp": event.timestamp,
                         "call_category": event.call_category,
+                        "prompt_class_id": event.prompt_class_id,
                     },
                 )
                 await conn.commit()
@@ -114,7 +116,8 @@ class PostgresCostRecordRepository:
 
         sql = (
             "SELECT agent_id, task_id, provider, model, input_tokens, "
-            "output_tokens, cost, currency, timestamp, call_category "
+            "output_tokens, cost, currency, timestamp, call_category, "
+            "prompt_class_id "
             "FROM cost_records"
         )
         if clauses:

@@ -280,6 +280,66 @@ class TestCostRecordRepository:
             await backend.cost_records.aggregate(agent_id="agent_mix")
         assert exc_info.value.currencies == frozenset({"USD", "EUR"})
 
+    async def test_prompt_class_id_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        from synthorg.budget.cost_record import CostRecord
+        from synthorg.llm.prompt_purpose import PromptPurposeId
+        from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
+
+        task = make_task(task_id="t-pclass")
+        await backend.tasks.save(task)
+
+        record = CostRecord(
+            agent_id="agent_pclass",
+            task_id=sid("t-pclass"),
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost=0.05,
+            currency="USD",
+            timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+            call_category=LLMCallCategory.PRODUCTIVE,
+            prompt_class_id=PromptPurposeId.MEMORY_RERANK,
+        )
+        await backend.cost_records.append(record)
+
+        results = await backend.cost_records.query(
+            CostRecordFilterSpec(agent_id="agent_pclass")
+        )
+        assert len(results) == 1
+        assert results[0].prompt_class_id == "system:memory:rerank"
+
+    async def test_prompt_class_id_defaults_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        from synthorg.budget.cost_record import CostRecord
+        from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
+
+        task = make_task(task_id="t-pclass-none")
+        await backend.tasks.save(task)
+
+        record = CostRecord(
+            agent_id="agent_pclass_none",
+            task_id=sid("t-pclass-none"),
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=10,
+            output_tokens=5,
+            cost=0.01,
+            currency="USD",
+            timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+            call_category=LLMCallCategory.PRODUCTIVE,
+        )
+        await backend.cost_records.append(record)
+
+        results = await backend.cost_records.query(
+            CostRecordFilterSpec(agent_id="agent_pclass_none")
+        )
+        assert len(results) == 1
+        assert results[0].prompt_class_id is None
+
 
 @pytest.mark.integration
 class TestMessageRepository:

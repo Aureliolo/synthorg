@@ -41,6 +41,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_COST_FAILED,
@@ -78,6 +79,10 @@ class CostRecordingContext(BaseModel):
     project_id: NotBlankStr | None = Field(
         default=None,
         description="Optional project attribution",
+    )
+    prompt_class_id: PromptPurposeId | None = Field(
+        default=None,
+        description="Optional prompt-purpose attribution",
     )
     call_category: LLMCallCategory = Field(description="LLM call category")
     currency: CurrencyCode = Field(
@@ -149,6 +154,7 @@ async def cost_recording_scope(  # noqa: PLR0913
     agent_id: NotBlankStr,
     task_id: NotBlankStr,
     project_id: NotBlankStr | None = None,
+    purpose: PromptPurposeId | None = None,
     call_category: LLMCallCategory,
     currency: CurrencyCode | None = None,
 ) -> AsyncIterator[None]:
@@ -172,6 +178,10 @@ async def cost_recording_scope(  # noqa: PLR0913
         agent_id: Agent attribution for the emitted record.
         task_id: Task attribution for the emitted record.
         project_id: Optional project attribution.
+        purpose: Optional prompt-purpose attribution stamped on the
+            emitted record's ``prompt_class_id`` so spend/latency can be
+            sliced by prompt purpose. ``None`` when the call carries no
+            system prompt purpose.
         call_category: Category to stamp on the emitted record.
         currency: ISO 4217 currency for the emitted record.  Required
             when ``cost_tracker`` is provided; when ``None`` the
@@ -196,6 +206,7 @@ async def cost_recording_scope(  # noqa: PLR0913
         agent_id=agent_id,
         task_id=task_id,
         project_id=project_id,
+        prompt_class_id=purpose,
         call_category=call_category,
         currency=resolved_currency,
     )
@@ -334,6 +345,7 @@ def _build_cost_record(
         agent_id=ctx.agent_id,
         task_id=ctx.task_id,
         project_id=ctx.project_id,
+        prompt_class_id=ctx.prompt_class_id,
         provider=NotBlankStr(provider),
         model=NotBlankStr(model),
         input_tokens=usage.input_tokens,
@@ -463,6 +475,7 @@ def _build_cost_record_from_usage(
         agent_id=ctx.agent_id,
         task_id=ctx.task_id,
         project_id=ctx.project_id,
+        prompt_class_id=ctx.prompt_class_id,
         provider=NotBlankStr(provider),
         model=NotBlankStr(model),
         input_tokens=usage.input_tokens,

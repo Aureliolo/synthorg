@@ -18,6 +18,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
 from synthorg.providers.protocol import CompletionProvider
@@ -79,6 +80,7 @@ class LlmQueryPlanner:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:planning:{brief.brief_id}"),
             project_id=brief.project_id,
+            purpose=PromptPurposeId.RESEARCH_PLANNING,
         )
         output = self._parse(content)
         sub_queries = self._build_sub_queries(brief, output)

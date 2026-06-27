@@ -15,6 +15,7 @@ from typing import Final
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -70,6 +71,7 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
     agent_id: NotBlankStr = SYSTEM_SPEND_AGENT_ID,
     task_id: NotBlankStr,
     project_id: NotBlankStr | None = None,
+    purpose: PromptPurposeId | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     call_category: LLMCallCategory = LLMCallCategory.SYSTEM,
 ) -> tuple[str, float]:
@@ -89,6 +91,8 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
         agent_id: Attribution agent id for the emitted record.
         task_id: Task attribution for the emitted record.
         project_id: Optional project attribution for the emitted record.
+        purpose: Optional prompt-purpose attribution for the emitted
+            record, so subsystem spend can be sliced by prompt purpose.
         cost_tracker: Sink for the per-call cost record, or ``None`` to
             skip recording.
         call_category: Budget call category for the emitted record.
@@ -110,6 +114,7 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
         agent_id=agent_id,
         task_id=task_id,
         project_id=project_id,
+        purpose=purpose,
         call_category=call_category,
     ):
         response = await provider.complete(

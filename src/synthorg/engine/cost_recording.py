@@ -15,6 +15,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.execution.turn import TurnRecord
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_FAILED,
@@ -54,6 +55,7 @@ async def record_execution_costs(  # noqa: PLR0913
     *,
     tracker: CostTrackerProtocol | None,
     project_id: NotBlankStr | None = None,
+    prompt_class_id: PromptPurposeId | None = None,
 ) -> None:
     """Record per-turn costs to the CostTracker if available.
 
@@ -99,6 +101,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 agent_id=agent_id,
                 task_id=task_id,
                 project_id=project_id,
+                prompt_class_id=prompt_class_id,
                 provider=identity.model.provider,
                 model=identity.model.model_id,
                 input_tokens=turn.input_tokens,
