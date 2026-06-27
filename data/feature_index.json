@@ -672,7 +672,9 @@
         "scaling_decision_service",
         "promotion_service",
         "promotion_cycle_scheduler",
-        "pruning_service"
+        "pruning_service",
+        "eval_loop_coordinator",
+        "eval_loop_cycle_scheduler"
       ]
     },
     {
@@ -1327,6 +1329,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-27T08:02:39.810881Z",
+  "generated_at": "2026-06-27T09:04:21.067102Z",
   "schema_version": 1
 }

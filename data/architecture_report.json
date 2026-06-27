@@ -182,8 +182,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/config_apply.py": {
       "cap": 600,
-      "loc": 632,
-      "ratio": 1.053,
+      "loc": 526,
+      "ratio": 0.877,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/feature_wiring.py": {
@@ -200,8 +200,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 500,
-      "loc": 446,
-      "ratio": 0.892,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -968,8 +968,8 @@
     },
     "src/synthorg/observability/sinks.py": {
       "cap": 500,
-      "loc": 428,
-      "ratio": 0.856,
+      "loc": 442,
+      "ratio": 0.884,
       "tier": "code"
     },
     "src/synthorg/organization/services.py": {
@@ -1459,7 +1459,7 @@
     "synthorg.api.pagination": 61,
     "synthorg.api.path_params": 80,
     "synthorg.api.rate_limits": 91,
-    "synthorg.api.state": 260,
+    "synthorg.api.state": 262,
     "synthorg.api.state_slices": 31,
     "synthorg.api.ws_models": 20,
     "synthorg.approval.enums": 78,
@@ -1490,7 +1490,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 61,
     "synthorg.core.clock": 207,
-    "synthorg.core.critical_errors": 576,
+    "synthorg.core.critical_errors": 578,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
@@ -1524,7 +1524,7 @@
     "synthorg.hr.registry": 39,
     "synthorg.hr.scaling.models": 22,
     "synthorg.hr.seniority": 57,
-    "synthorg.hr.state": 41,
+    "synthorg.hr.state": 42,
     "synthorg.hr.training.models": 23,
     "synthorg.integrations.connections.catalog": 26,
     "synthorg.integrations.connections.models": 61,
@@ -1549,9 +1549,9 @@
     "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1699,
+    "synthorg.observability": 1702,
     "synthorg.observability.background_tasks": 27,
-    "synthorg.observability.events.api": 195,
+    "synthorg.observability.events.api": 197,
     "synthorg.observability.events.approval_gate": 20,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 33,
@@ -1595,14 +1595,14 @@
     "synthorg.security.autonomy.enums": 73,
     "synthorg.security.models": 28,
     "synthorg.settings.bridge_configs": 20,
-    "synthorg.settings.enums": 140,
+    "synthorg.settings.enums": 141,
     "synthorg.settings.errors": 26,
-    "synthorg.settings.mirrors": 35,
+    "synthorg.settings.mirrors": 36,
     "synthorg.settings.models": 42,
     "synthorg.settings.registry": 44,
     "synthorg.settings.resolver": 36,
     "synthorg.settings.service": 26,
-    "synthorg.settings.state": 87,
+    "synthorg.settings.state": 89,
     "synthorg.tools.base": 78,
     "synthorg.tools.network_validator": 29
   },
