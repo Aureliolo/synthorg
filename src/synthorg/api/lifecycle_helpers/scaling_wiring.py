@@ -123,18 +123,17 @@ async def _wire(
     from synthorg.memory.state import org_memory_backend_of  # noqa: PLC0415
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
-    # Attach the per-backend durable hiring-requests repo and hydrate the
+    # Attach the per-backend durable hiring-requests repo, then hydrate the
     # in-flight set so an approved request survives a restart between approval
-    # and instantiation. Hydration is isolated: a failure here only leaves
-    # in-flight requests unrestored (orphaned), a distinct operational
-    # consequence from a later assembly failure, so it is logged on its own and
-    # wiring still proceeds -- the pipeline comes up degraded (no recovered
-    # in-flight requests) rather than staying dormant.
+    # and instantiation. Attachment is a hard prerequisite: a failure there
+    # would leave the service non-durable, so it stays outside the guard and
+    # aborts wiring through the outer handler. Only hydration is isolated -- a
+    # failure there merely leaves in-flight requests unrestored (orphaned), so
+    # it is logged on its own and wiring still proceeds, bringing the pipeline
+    # up degraded (no recovered in-flight requests) rather than dormant.
     hiring = HiringService(registry=registry, approval_store=approval_store)
+    hiring.attach_persistence(request_repo=persistence_of(app_state).hiring_requests)
     try:
-        hiring.attach_persistence(
-            request_repo=persistence_of(app_state).hiring_requests
-        )
         await hiring.hydrate()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
