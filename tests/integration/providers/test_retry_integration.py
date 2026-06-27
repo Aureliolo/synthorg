@@ -142,7 +142,7 @@ class TestRetryIntegration:
             model="test-model-001",
             llm_provider="test-provider",
         )
-        rate_err.headers = {"retry-after": "0.01"}  # type: ignore[attr-defined]
+        rate_err.headers = {"retry-after": "0.01"}
 
         success = build_model_response(
             content="After rate limit",
@@ -253,7 +253,7 @@ class TestRetryDisabledIntegration:
             model="test-model-001",
             llm_provider="test-provider",
         )
-        rate_err.headers = {"retry-after": "5"}  # type: ignore[attr-defined]
+        rate_err.headers = {"retry-after": "5"}
 
         with patch(
             _PATCH_ACOMPLETION,

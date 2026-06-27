@@ -73,7 +73,7 @@ def _make_litellm_rate_limit(
         response=response,
     )
     if retry_after is not None:
-        exc.headers = {"retry-after": retry_after}  # type: ignore[attr-defined]
+        exc.headers = {"retry-after": retry_after}
     return exc
 
 
