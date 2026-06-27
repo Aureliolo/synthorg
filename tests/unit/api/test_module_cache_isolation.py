@@ -20,10 +20,10 @@ pytestmark = pytest.mark.unit
 
 
 class TestA2aCardCacheGlobalReset:
-    """``synthorg.a2a.well_known._card_cache`` resets before every test."""
+    """The a2a well-known ``_card_cache`` resets before every test."""
 
     async def test_cache_starts_empty_outside_a2a_directory(self) -> None:
-        from synthorg.a2a.well_known import _card_cache
+        from synthorg.api.a2a.well_known import _card_cache
 
         assert _card_cache == {}
 
@@ -32,7 +32,7 @@ class TestA2aCardCacheGlobalReset:
         # runs BEFORE this test, so the cache is empty here too; the
         # population is the test's own contribution that the next test
         # must not see.
-        from synthorg.a2a.well_known import _card_cache
+        from synthorg.api.a2a.well_known import _card_cache
 
         _card_cache["host-a:test-key"] = ({"name": "test"}, 1.0e30, "fp")
         assert "host-a:test-key" in _card_cache
@@ -42,7 +42,7 @@ class TestA2aCardCacheGlobalReset:
         # global reset, the populate-on-A entry was cleared before B
         # started. Without the reset, ordering randomisation
         # (pytest-randomly) could surface this as flake.
-        from synthorg.a2a.well_known import _card_cache
+        from synthorg.api.a2a.well_known import _card_cache
 
         assert _card_cache == {}
 

@@ -122,9 +122,14 @@ class HiringService:
         offset = 0
         # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
-            batch = await self._request_repo.list_items(
-                limit=_HYDRATE_PAGE_SIZE, offset=offset
-            )
+            # Bound each page read so a hung backend cannot stall the on-startup
+            # wiring hook indefinitely; mirrors the write-path timeout in
+            # ``_store``. A timeout surfaces to the caller (wire_scaling) where
+            # it degrades to leaving the service unwired rather than hanging.
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                batch = await self._request_repo.list_items(
+                    limit=_HYDRATE_PAGE_SIZE, offset=offset
+                )
             for request in batch:
                 loaded[str(request.id)] = request
             if len(batch) < _HYDRATE_PAGE_SIZE:

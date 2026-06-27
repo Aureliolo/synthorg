@@ -16,9 +16,9 @@ from synthorg._core.features import (
     FeatureModule,
 )
 from synthorg.a2a._construction import wire_construction
-from synthorg.a2a.gateway import A2AGatewayController
 from synthorg.a2a.state import A2aStateSlice
-from synthorg.a2a.well_known import WellKnownAgentCardController
+from synthorg.api.a2a.gateway import A2AGatewayController
+from synthorg.api.a2a.well_known import WellKnownAgentCardController
 from synthorg.api.route_predicates import a2a_gateway_ready, a2a_well_known_ready
 from synthorg.settings.enums import SettingNamespace
 

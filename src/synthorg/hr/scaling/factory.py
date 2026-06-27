@@ -10,7 +10,13 @@ from typing import Literal, assert_never
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.pruning.policy import PruningPolicy
+from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.pruning.policy import (
+    PruningPolicy,
+    ThresholdPruningPolicy,
+    ThresholdPruningPolicyConfig,
+)
 from synthorg.hr.scaling.config import ScalingConfig, TriggerConfig
 from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.guards.approval_gate import ApprovalGateGuard
@@ -23,6 +29,7 @@ from synthorg.hr.scaling.protocols import (
     ScalingStrategy,
     ScalingTrigger,
 )
+from synthorg.hr.scaling.service import AgentLookup, ScalingService
 from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
 from synthorg.hr.scaling.signals.budget import BudgetSignalSource
 from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
@@ -105,6 +112,12 @@ def create_scaling_strategies(
                     config.performance_pruning.evolution_check_timeout_seconds
                 ),
             ),
+        )
+    elif config.performance_pruning.enabled:
+        logger.debug(
+            HR_SCALING_FACTORY_ASSEMBLED,
+            component="strategies",
+            note="performance_pruning enabled but skipped (pruning_policy absent)",
         )
 
     logger.debug(
@@ -193,6 +206,22 @@ def create_scaling_context_builder(
         else None
     )
 
+    active_sources = [
+        name
+        for name, src in (
+            ("workload", workload_src),
+            ("budget", budget_src),
+            ("skill", skill_src),
+            ("performance", performance_src),
+            ("benchmark", benchmark_src),
+        )
+        if src is not None
+    ]
+    logger.debug(
+        HR_SCALING_FACTORY_ASSEMBLED,
+        component="context_builder",
+        sources=active_sources,
+    )
     return ScalingContextBuilder(
         workload_source=workload_src,
         budget_source=budget_src,
@@ -274,3 +303,91 @@ def create_scaling_trigger(config: ScalingConfig) -> ScalingTrigger:
         name=str(trigger.name),
     )
     return trigger
+
+
+def build_scaling_service(  # noqa: PLR0913 -- explicit DI of the scaling service collaborators
+    config: ScalingConfig,
+    *,
+    hiring_service: HiringService | None = None,
+    offboarding_service: OffboardingService | None = None,
+    agent_registry: AgentLookup | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
+    pruning_policy: PruningPolicy | None = None,
+    evolution_checker: Callable[[NotBlankStr], Awaitable[bool]] | None = None,
+    benchmark_history_dir: Path | None = None,
+) -> ScalingService:
+    """Assemble a fully wired :class:`ScalingService` from configuration.
+
+    Combines the strategy/guard/context/trigger sub-factories with the
+    hire / offboard execution collaborators into the orchestrating service
+    the boot wiring publishes on ``HrStateSlice.scaling_service``.
+
+    When ``config.performance_pruning`` is enabled and no ``pruning_policy``
+    is supplied, a default :class:`ThresholdPruningPolicy` is wired so the
+    performance-pruning strategy can evaluate rather than being silently
+    skipped (it cannot run without a policy).
+
+    Args:
+        config: Scaling configuration (strategy/guard/trigger knobs).
+        hiring_service: Hiring service that executes HIRE decisions.
+        offboarding_service: Offboarding service that executes PRUNE
+            decisions.
+        agent_registry: Agent lookup used to resolve target names when
+            executing a PRUNE.
+        approval_store: Approval store wired into the approval-gate guard.
+            When ``None`` the approval gate is intentionally omitted (the
+            decisions then flow through only the conflict / cooldown / rate
+            guards); the boot wiring never passes ``None`` -- it requires a
+            wired approval store before constructing the service -- so this
+            applies to tests and custom harnesses only.
+        pruning_policy: Policy backing the performance-pruning strategy.
+            Defaults to a :class:`ThresholdPruningPolicy` when omitted and
+            performance pruning is enabled.
+        evolution_checker: Async predicate the performance-pruning strategy
+            consults to defer pruning of agents under active evolution.
+        benchmark_history_dir: Golden-benchmark scorecard directory; when
+            provided a benchmark regression surfaces into the scaling
+            context.
+
+    Returns:
+        The assembled :class:`ScalingService`.
+    """
+    effective_policy = pruning_policy
+    if effective_policy is None and config.performance_pruning.enabled:
+        effective_policy = ThresholdPruningPolicy(ThresholdPruningPolicyConfig())
+        logger.debug(
+            HR_SCALING_FACTORY_ASSEMBLED,
+            component="pruning_policy",
+            note="default ThresholdPruningPolicy applied (no policy supplied)",
+        )
+
+    strategies = create_scaling_strategies(
+        config,
+        pruning_policy=effective_policy,
+        evolution_checker=evolution_checker,
+    )
+    guard = create_scaling_guards(config, approval_store=approval_store)
+    context_builder = create_scaling_context_builder(
+        config,
+        benchmark_history_dir=benchmark_history_dir,
+    )
+    trigger = create_scaling_trigger(config)
+
+    service = ScalingService(
+        strategies=strategies,
+        trigger=trigger,
+        guard=guard,
+        context_builder=context_builder,
+        config=config,
+        hiring_service=hiring_service,
+        offboarding_service=offboarding_service,
+        agent_registry=agent_registry,
+    )
+    logger.info(
+        HR_SCALING_FACTORY_ASSEMBLED,
+        component="service",
+        strategies=len(strategies),
+        has_hiring=hiring_service is not None,
+        has_offboarding=offboarding_service is not None,
+    )
+    return service

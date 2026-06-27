@@ -11,11 +11,11 @@ from litestar import Request
 from litestar.datastructures import State
 from litestar.testing import RequestFactory
 
-from synthorg.a2a import well_known
 from synthorg.a2a.agent_card import AgentCardBuilder
 from synthorg.a2a.config import A2AConfig
 from synthorg.a2a.state import A2aStateSlice
-from synthorg.a2a.well_known import (
+from synthorg.api.a2a import well_known
+from synthorg.api.a2a.well_known import (
     WellKnownAgentCardController,
     _agent_fingerprint,
     _assemble_company_card,

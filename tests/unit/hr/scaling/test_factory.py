@@ -5,6 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.pruning.policy import PruningPolicy
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.config import (
     BudgetCapConfig,
     PerformancePruningConfig,
@@ -13,16 +17,24 @@ from synthorg.hr.scaling.config import (
     TriggerConfig,
     WorkloadScalingConfig,
 )
+from synthorg.hr.scaling.context import ScalingContextBuilder
+from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.hr.scaling.factory import (
+    build_scaling_service,
     create_scaling_context_builder,
     create_scaling_guards,
     create_scaling_strategies,
     create_scaling_trigger,
 )
+from synthorg.hr.scaling.service import ScalingService
+from synthorg.hr.scaling.strategies.performance_pruning import (
+    PerformancePruningStrategy,
+)
 from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
 from synthorg.hr.scaling.triggers.composite import CompositeScalingTrigger
 from synthorg.hr.scaling.triggers.threshold import SignalThresholdTrigger
 from synthorg.meta.learning_curve import ScorecardSummary, append_summary
+from tests._shared import mock_of
 
 
 def _summary(label: str, total: int, *, hour: int) -> ScorecardSummary:
@@ -132,7 +144,7 @@ class TestCreateScalingContextBuilder:
     def test_creates_builder(self) -> None:
         config = ScalingConfig()
         builder = create_scaling_context_builder(config)
-        assert builder is not None
+        assert isinstance(builder, ScalingContextBuilder)
 
     async def test_builder_surfaces_benchmark_regression(self, tmp_path: Path) -> None:
         """A configured history dir wires the benchmark source end to end."""
@@ -155,3 +167,66 @@ class TestCreateScalingContextBuilder:
         builder = create_scaling_context_builder(ScalingConfig())
         context = await builder.build(agent_ids=())
         assert context.benchmark_signals == ()
+
+
+@pytest.mark.unit
+class TestBuildScalingService:
+    """Full-pipeline assembly via ``build_scaling_service``."""
+
+    def _names(self, service: ScalingService) -> set[str]:
+        return {str(s.name) for s in service.strategies}
+
+    def test_assembles_service_with_enabled_strategies(self) -> None:
+        service = build_scaling_service(ScalingConfig())
+        assert isinstance(service, ScalingService)
+        names = self._names(service)
+        assert ScalingStrategyName.WORKLOAD.value in names
+        assert ScalingStrategyName.BUDGET_CAP.value in names
+        assert ScalingStrategyName.SKILL_GAP.value not in names
+
+    def test_injects_default_pruning_policy(self) -> None:
+        # Unlike the bare create_scaling_strategies (which skips performance
+        # pruning without a policy), the service factory injects a default
+        # ThresholdPruningPolicy so the strategy is live.
+        service = build_scaling_service(ScalingConfig())
+        assert ScalingStrategyName.PERFORMANCE_PRUNING.value in self._names(service)
+
+    def test_all_strategies_disabled_yields_empty(self) -> None:
+        config = ScalingConfig(
+            workload=WorkloadScalingConfig(enabled=False),
+            budget_cap=BudgetCapConfig(enabled=False),
+            skill_gap=SkillGapConfig(enabled=False),
+            performance_pruning=PerformancePruningConfig(enabled=False),
+        )
+        service = build_scaling_service(config)
+        assert service.strategies == ()
+
+    def test_threads_execution_collaborators(self) -> None:
+        hiring = mock_of[HiringService]()
+        offboarding = mock_of[OffboardingService]()
+        registry = AgentRegistryService()
+        service = build_scaling_service(
+            ScalingConfig(),
+            hiring_service=hiring,
+            offboarding_service=offboarding,
+            agent_registry=registry,
+        )
+        # The named regression is build_scaling_service dropping a collaborator
+        # on the floor, so assert each is threaded onto the orchestrator verbatim
+        # rather than only re-checking default config/strategy wiring.
+        assert service._hiring_service is hiring
+        assert service._offboarding_service is offboarding
+        assert service._agent_registry is registry
+        assert service.config.enabled is True
+        assert ScalingStrategyName.WORKLOAD.value in self._names(service)
+        assert ScalingStrategyName.BUDGET_CAP.value in self._names(service)
+
+    def test_explicit_pruning_policy_is_not_overridden(self) -> None:
+        # A caller-supplied policy must propagate to the performance-pruning
+        # strategy verbatim, not be replaced by the default ThresholdPruningPolicy.
+        explicit = mock_of[PruningPolicy]()
+        service = build_scaling_service(ScalingConfig(), pruning_policy=explicit)
+        pruning = next(
+            s for s in service.strategies if isinstance(s, PerformancePruningStrategy)
+        )
+        assert pruning._policy is explicit

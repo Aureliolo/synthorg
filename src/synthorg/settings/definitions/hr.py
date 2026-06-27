@@ -153,6 +153,29 @@ _r.register(
     )
 )
 
+# ── Dynamic-scaling kill switch ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Master switch for the dynamic auto-scaling pipeline. Off by"
+            " default: the scaling endpoints stay dormant until an operator"
+            " opts in, because an enabled pipeline evaluates workload /"
+            " budget / skill / performance signals into real hire and prune"
+            " decisions (routed through the approval gate). When enabled the"
+            " ScalingService and the durable HiringService are constructed at"
+            " boot. Baked at startup; toggling requires a restart."
+        ),
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
 # ── Workload scaling tuning knobs ────────────────────────────────
 
 _r.register(

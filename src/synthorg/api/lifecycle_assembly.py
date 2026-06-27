@@ -302,6 +302,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_pruning]
 
+    async def _wire_scaling() -> None:
+        from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
+            wire_scaling,
+        )
+
+        await wire_scaling(app_state)
+
+    startup = [*startup, _wire_scaling]
+
     async def _wire_quota_poller() -> None:
         from synthorg.api.lifecycle_helpers.budget_wiring import (  # noqa: PLC0415
             wire_quota_poller,
