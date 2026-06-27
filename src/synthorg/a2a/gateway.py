@@ -2,9 +2,9 @@
 """A2A JSON-RPC 2.0 gateway controller.
 
 Handles inbound A2A requests dispatched by method name:
-``message/send``, ``tasks/get``, ``tasks/cancel``, ``skills/query``.
-All inbound requests are validated against the peer allowlist and
-connection catalog credentials.
+``message/send``, ``tasks/get``, ``tasks/cancel``, ``skills/query``,
+``skills/negotiate``. All inbound requests are validated against the peer
+allowlist and connection catalog credentials.
 
 One cohesive responsibility: be the inbound A2A wire boundary. The
 controller, the JSON-RPC envelope parser, the peer-credential
@@ -43,6 +43,7 @@ from synthorg.a2a.models import (
 )
 from synthorg.a2a.rpc_params import (
     A2AMessageSendParams,
+    A2ASkillNegotiateParams,
     A2ASkillQueryParams,
     A2ATaskCancelParams,
     A2ATaskGetParams,
@@ -59,6 +60,7 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import (
     extract_bearer_token,
     extract_media_type,
+    normalize_ascii_lowercase,
 )
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
@@ -80,6 +82,8 @@ from synthorg.observability.events.a2a import (
     A2A_JSONRPC_METHOD_NOT_FOUND,
     A2A_JSONRPC_PARSE_ERROR,
     A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
+    A2A_PEER_NOT_FOUND,
+    A2A_SKILLS_NEGOTIATED,
     A2A_SKILLS_QUERIED,
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
@@ -97,6 +101,7 @@ _SUPPORTED_METHODS = frozenset(
         "tasks/get",
         "tasks/cancel",
         "skills/query",
+        "skills/negotiate",
     }
 )
 
@@ -487,6 +492,8 @@ async def _dispatch_method(
                 result = await _handle_tasks_cancel(app_state, params, peer_name)
             case A2ASkillQueryParams():
                 result = await _handle_skills_query(app_state, params, peer_name)
+            case A2ASkillNegotiateParams():
+                result = await _handle_skills_negotiate(app_state, params, peer_name)
             case _:  # pragma: no cover -- enforced exhaustive over A2ARpcParams
                 # mypy proves this branch is unreachable via the
                 # closed ``A2ARpcParams`` union; we still keep it as a
@@ -1055,6 +1062,75 @@ async def _handle_skills_query(
     return {
         "skill": str(params.skill),
         "peers": list(matches),
+    }
+
+
+async def _handle_skills_negotiate(
+    app_state: AppState,
+    params: A2ASkillNegotiateParams,
+    peer_name: str,
+) -> dict[str, JsonValue]:
+    """Handle ``skills/negotiate`` -- confirm a named peer still serves a skill.
+
+    The caller has already run ``skills/query`` and chosen one peer; this
+    re-checks that the peer is still registered and that its card advertises
+    ``params.skill`` (the card may have changed since the query). On accept it
+    returns the peer's routing ``url`` so the caller can dispatch the task; on
+    a stale/missing peer or a dropped skill it returns ``accepted=False`` so
+    the caller falls back rather than routing to a peer that can no longer
+    serve the request.
+
+    Args:
+        app_state: Application state container.
+        params: Typed ``skills/negotiate`` parameters.
+        peer_name: Authenticated peer name.
+
+    Returns:
+        ``{"skill", "peer_name", "accepted", "url", "matched_skills"}``.
+
+    Raises:
+        _A2AMethodError: With a 503 status when peer discovery is not wired,
+            or a 404 when the named peer is not registered.
+    """
+    registry = app_state.slice(A2aStateSlice).peer_registry
+    if registry is None:
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            "Peer discovery unavailable",
+            http_status=503,
+        )
+    card = await registry.get(params.peer_name)
+    if card is None:
+        logger.warning(
+            A2A_PEER_NOT_FOUND,
+            peer_name=str(params.peer_name),
+            requested_by=peer_name,
+        )
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            f"Peer {params.peer_name!r} is not registered",
+            http_status=404,
+        )
+    needle = normalize_ascii_lowercase(params.skill)
+    matched = tuple(
+        sk.id
+        for sk in card.skills
+        if sk.id.lower() == needle or any(tag.lower() == needle for tag in sk.tags)
+    )
+    accepted = bool(matched)
+    logger.info(
+        A2A_SKILLS_NEGOTIATED,
+        skill=str(params.skill),
+        peer_name=str(params.peer_name),
+        requested_by=peer_name,
+        accepted=accepted,
+    )
+    return {
+        "skill": str(params.skill),
+        "peer_name": str(params.peer_name),
+        "accepted": accepted,
+        "url": str(card.url) if accepted else None,
+        "matched_skills": list(matched),
     }
 
 

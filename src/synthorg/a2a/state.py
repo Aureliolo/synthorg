@@ -11,6 +11,7 @@ from pydantic import ConfigDict
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.a2a.agent_card import AgentCardBuilder
 from synthorg.a2a.client import A2AClient
+from synthorg.a2a.peer_discovery import PeerDiscoveryClient
 from synthorg.a2a.peer_registry import PeerRegistry
 
 
@@ -22,3 +23,4 @@ class A2aStateSlice(BaseFeatureStateSlice):
     card_builder: AgentCardBuilder | None = None
     client: A2AClient | None = None
     peer_registry: PeerRegistry | None = None
+    peer_discovery: PeerDiscoveryClient | None = None

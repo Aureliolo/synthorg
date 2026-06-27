@@ -78,6 +78,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     a2a_card_builder = None
     a2a_peer_registry = None
     a2a_client_obj = None
+    a2a_peer_discovery = None
     a2a_http_client: object | None = None
     try:
         from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: PLC0415
@@ -94,6 +95,9 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             import httpx  # noqa: PLC0415
 
             from synthorg.a2a.client import A2AClient  # noqa: PLC0415
+            from synthorg.a2a.peer_discovery import (  # noqa: PLC0415
+                PeerDiscoveryClient,
+            )
             from synthorg.a2a.peer_registry import PeerRegistry  # noqa: PLC0415
             from synthorg.tools.network_validator import NetworkPolicy  # noqa: PLC0415
 
@@ -111,6 +115,14 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 network_validator=NetworkPolicy(),
                 http_client=a2a_http_client,
                 timeout_seconds=a2a_client_timeout,
+            )
+            # Governed discovery fetches remote well-known cards through the
+            # same SSRF-pinned path; the inbound body cap bounds the card size.
+            a2a_peer_discovery = PeerDiscoveryClient(
+                peer_registry=a2a_peer_registry,
+                network_validator=NetworkPolicy(),
+                timeout_seconds=a2a_client_timeout,
+                max_card_bytes=effective_config.a2a.max_request_body_bytes,
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # If the client was built but never handed to a committed
@@ -134,6 +146,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 card_builder=a2a_card_builder,
                 client=a2a_client_obj,
                 peer_registry=a2a_peer_registry,
+                peer_discovery=a2a_peer_discovery,
             )
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="a2a_gateway")

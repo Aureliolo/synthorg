@@ -123,6 +123,7 @@ class TestSupportedMethods:
             "tasks/get",
             "tasks/cancel",
             "skills/query",
+            "skills/negotiate",
         }
         assert expected == _SUPPORTED_METHODS
 
