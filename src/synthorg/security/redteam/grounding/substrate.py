@@ -29,6 +29,7 @@ from typing import Final
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.models import KnowledgeHit
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CLAIM_UNSUPPORTED,
@@ -49,11 +50,10 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.security.redteam.grounding._llm import (
-    ENTAILMENT_MAX_TOKENS,
+    ENTAILMENT_CONFIG,
     EXTRACT_CLAIMS_TOOL,
-    EXTRACTION_MAX_TOKENS,
+    EXTRACTION_CONFIG,
     GROUNDING_VERDICT_TOOL,
-    LLM_TEMPERATURE,
     MAX_DELIVERABLE_CHARS,
     build_entailment_messages,
     build_extraction_messages,
@@ -71,7 +71,7 @@ from synthorg.security.redteam.routing import SUBSTRATE_DROP_FLOOR
 
 logger = get_logger(__name__)
 
-_GROUNDING_AGENT_ID: Final[str] = "system:red_team:grounding"
+_GROUNDING_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:red_team:grounding")
 """Synthetic attribution id for the checker's extraction / entailment calls."""
 
 _DEFAULT_SEARCH_LIMIT: Final[int] = 5
@@ -151,7 +151,28 @@ class KnowledgeSubstrateGroundingChecker:
                 else "knowledge_service_not_wired",
             )
             return await self._delegate(deliverable_content, execution_id, project_id)
+        return await self._check_with_substrate(
+            context, deliverable_content, execution_id, project_id
+        )
 
+    async def _check_with_substrate(
+        self,
+        context: GroundingSubstrateContext,
+        deliverable_content: NotBlankStr,
+        execution_id: NotBlankStr,
+        project_id: NotBlankStr | None,
+    ) -> tuple[UngroundedClaim, ...]:
+        """Extract claims and evaluate each against the wired corpus.
+
+        Degrades to the heuristic fallback when claim-extraction fails.
+
+        Returns:
+            The ungrounded claims; an empty tuple when extraction yields none.
+
+        Raises:
+            asyncio.CancelledError: Propagated when extraction, corpus search,
+                or entailment is cancelled.
+        """
         try:
             claims = await self._extract_claims(
                 context, deliverable_content, execution_id
@@ -175,15 +196,34 @@ class KnowledgeSubstrateGroundingChecker:
                 execution_id=execution_id,
             )
             return ()
+        return await self._evaluate_claims_concurrently(
+            context, claims, execution_id, project_id
+        )
 
-        # Fan the per-claim corpus search + entailment round-trips out
-        # concurrently: each claim costs two LLM calls, so a serial loop
-        # makes worst-case latency scale linearly with claim count (up to
-        # MAX_CLAIMS) and starves later claims under timeout pressure.
-        # ``_evaluate_claim`` is fail-soft (it swallows everything but
-        # critical errors and cancellation), so a single bad claim never
-        # aborts the group. Results are slotted by index to keep output
-        # order deterministic regardless of completion order.
+    async def _evaluate_claims_concurrently(
+        self,
+        context: GroundingSubstrateContext,
+        claims: tuple[str, ...],
+        execution_id: NotBlankStr,
+        project_id: NotBlankStr | None,
+    ) -> tuple[UngroundedClaim, ...]:
+        """Evaluate every extracted claim concurrently, order-preserving.
+
+        Fans the per-claim corpus search + entailment round-trips out
+        concurrently: each claim costs two LLM calls, so a serial loop makes
+        worst-case latency scale linearly with claim count (up to MAX_CLAIMS)
+        and starves later claims under timeout pressure. ``_evaluate_claim``
+        is fail-soft (it swallows everything but critical errors and
+        cancellation), so a single bad claim never aborts the group. Results
+        are slotted by index to keep output order deterministic regardless of
+        completion order.
+
+        Returns:
+            The flagged claims in extracted order.
+
+        Raises:
+            asyncio.CancelledError: Propagated from a cancelled child task.
+        """
         flagged: list[UngroundedClaim | None] = [None] * len(claims)
 
         async def _evaluate_into(index: int, claim: str) -> None:
@@ -258,12 +298,10 @@ class KnowledgeSubstrateGroundingChecker:
                 original_length=len(deliverable_content),
                 cap=MAX_DELIVERABLE_CHARS,
             )
-        response = await self._complete(
+        response = await self._complete_extraction(
             context,
             execution_id,
             messages=build_extraction_messages(deliverable_content),
-            tools=[EXTRACT_CLAIMS_TOOL],
-            max_tokens=EXTRACTION_MAX_TOKENS,
         )
         return parse_extracted_claims(response)
 
@@ -289,9 +327,30 @@ class KnowledgeSubstrateGroundingChecker:
             asyncio.CancelledError: Propagated when the corpus search or
                 entailment call is cancelled.
         """
+        hits = await self._search_corpus(context, claim, execution_id, project_id)
+        if not hits:
+            return None
+        return await self._entail_claim(context, claim, hits, execution_id)
+
+    async def _search_corpus(
+        self,
+        context: GroundingSubstrateContext,
+        claim: str,
+        execution_id: NotBlankStr,
+        project_id: NotBlankStr | None,
+    ) -> tuple[KnowledgeHit, ...]:
+        """Retrieve corpus evidence for one claim (fail-soft).
+
+        Returns:
+            The retrieved hits; an empty tuple when the corpus is empty, the
+            knowledge service is unwired, or the search fails transiently.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the search is cancelled.
+        """
         knowledge_service = context.knowledge_service
         if knowledge_service is None:  # pragma: no cover - guarded by caller
-            return None
+            return ()
         try:
             hits = await knowledge_service.search(
                 query=NotBlankStr(claim),
@@ -309,22 +368,37 @@ class KnowledgeSubstrateGroundingChecker:
                 error=safe_error_description(exc),
                 policy="skip_claim",
             )
-            return None
-
+            return ()
         if not hits:
             logger.debug(
                 RED_TEAM_GROUNDING_CORPUS_EMPTY,
                 execution_id=execution_id,
             )
-            return None
+        return hits
 
+    async def _entail_claim(
+        self,
+        context: GroundingSubstrateContext,
+        claim: str,
+        hits: tuple[KnowledgeHit, ...],
+        execution_id: NotBlankStr,
+    ) -> UngroundedClaim | None:
+        """Judge one claim against its evidence; flag it only if unsupported.
+
+        Returns:
+            An :class:`UngroundedClaim` when the verdict is an at-or-above-floor
+            "unsupported"; ``None`` otherwise (transient failure, an unparseable
+            verdict, or a supported / uncertain verdict).
+
+        Raises:
+            asyncio.CancelledError: Propagated when the entailment call is
+                cancelled.
+        """
         try:
-            response = await self._complete(
+            response = await self._complete_entailment(
                 context,
                 execution_id,
                 messages=build_entailment_messages(claim, hits),
-                tools=[GROUNDING_VERDICT_TOOL],
-                max_tokens=ENTAILMENT_MAX_TOKENS,
             )
         except asyncio.CancelledError:
             raise
@@ -363,14 +437,54 @@ class KnowledgeSubstrateGroundingChecker:
             expected_source_kind=None,
         )
 
-    async def _complete(
+    async def _complete_extraction(
+        self,
+        context: GroundingSubstrateContext,
+        execution_id: NotBlankStr,
+        *,
+        messages: list[ChatMessage],
+    ) -> CompletionResponse:
+        """Run the claim-extraction completion under a cost-recording scope.
+
+        Returns:
+            The provider's completion response.
+        """
+        return await self._run_completion(
+            context,
+            execution_id,
+            messages=messages,
+            tools=[EXTRACT_CLAIMS_TOOL],
+            config=EXTRACTION_CONFIG,
+        )
+
+    async def _complete_entailment(
+        self,
+        context: GroundingSubstrateContext,
+        execution_id: NotBlankStr,
+        *,
+        messages: list[ChatMessage],
+    ) -> CompletionResponse:
+        """Run the per-claim entailment completion under a cost-recording scope.
+
+        Returns:
+            The provider's completion response.
+        """
+        return await self._run_completion(
+            context,
+            execution_id,
+            messages=messages,
+            tools=[GROUNDING_VERDICT_TOOL],
+            config=ENTAILMENT_CONFIG,
+        )
+
+    async def _run_completion(
         self,
         context: GroundingSubstrateContext,
         execution_id: NotBlankStr,
         *,
         messages: list[ChatMessage],
         tools: list[ToolDefinition],
-        max_tokens: int,
+        config: CompletionConfig,
     ) -> CompletionResponse:
         """Run one structured completion under a cost-recording scope.
 
@@ -379,7 +493,7 @@ class KnowledgeSubstrateGroundingChecker:
         """
         async with cost_recording_scope(
             cost_tracker=context.cost_tracker,
-            agent_id=NotBlankStr(_GROUNDING_AGENT_ID),
+            agent_id=_GROUNDING_AGENT_ID,
             task_id=execution_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
@@ -387,8 +501,5 @@ class KnowledgeSubstrateGroundingChecker:
                 messages,
                 context.model_id,
                 tools=tools,
-                config=CompletionConfig(
-                    temperature=LLM_TEMPERATURE,
-                    max_tokens=max_tokens,
-                ),
+                config=config,
             )

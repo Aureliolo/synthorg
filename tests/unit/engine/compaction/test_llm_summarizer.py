@@ -3,7 +3,12 @@
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
-from synthorg.engine.compaction.llm_summarizer import LLMSummarizer
+from synthorg.engine.compaction.llm_summarizer import (
+    _DEFAULT_MAX_TOKENS,
+    _DEFAULT_TEMPERATURE,
+    LLMSummarizer,
+)
+from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -32,7 +37,7 @@ class _FakeProvider:
     ) -> None:
         self._content = content
         self._error = error
-        self.calls: list[tuple[list[ChatMessage], str]] = []
+        self.calls: list[tuple[list[ChatMessage], str, CompletionConfig | None]] = []
 
     async def complete(
         self,
@@ -41,7 +46,7 @@ class _FakeProvider:
         *,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        self.calls.append((messages, model))
+        self.calls.append((messages, model, config))
         if self._error is not None:
             raise self._error
         return _response(self._content)
@@ -68,6 +73,37 @@ class TestLLMSummarizer:
         )
         assert out == "A concise semantic summary."
         assert provider.calls
+
+    async def test_default_sampling_params_match_compaction_defaults(self) -> None:
+        provider = _FakeProvider(content="summary")
+        summarizer = LLMSummarizer(provider=provider, model="example-small-001")
+        await summarizer.summarize(_archivable(), fallback_text=_FALLBACK)
+        _, _, config = provider.calls[0]
+        assert config is not None
+        assert config.temperature == pytest.approx(0.3)
+        assert config.max_tokens == 500
+
+    async def test_explicit_args_override_defaults(self) -> None:
+        provider = _FakeProvider(content="summary")
+        summarizer = LLMSummarizer(
+            provider=provider,
+            model="example-small-001",
+            temperature=0.7,
+            max_tokens=250,
+        )
+        await summarizer.summarize(_archivable(), fallback_text=_FALLBACK)
+        _, _, config = provider.calls[0]
+        assert config is not None
+        assert config.temperature == pytest.approx(0.7)
+        assert config.max_tokens == 250
+
+    def test_module_defaults_mirror_compaction_config(self) -> None:
+        # The module Finals are duplicated from the domain config; guard the
+        # duplication so a CompactionConfig default change cannot silently
+        # diverge a directly-constructed summariser from the wired path.
+        defaults = CompactionConfig()
+        assert defaults.llm_summary_temperature == _DEFAULT_TEMPERATURE
+        assert defaults.llm_summary_max_tokens == _DEFAULT_MAX_TOKENS
 
     async def test_empty_content_falls_back(self) -> None:
         provider = _FakeProvider(content="   ")

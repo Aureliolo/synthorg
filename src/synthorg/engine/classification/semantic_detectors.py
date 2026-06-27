@@ -6,9 +6,7 @@ detectors are disabled by default -- they require explicit opt-in
 via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 """
 
-import json
 from abc import ABC, abstractmethod
-from types import MappingProxyType
 from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -18,13 +16,12 @@ from synthorg.budget.coordination_config import (
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.classification._parsing import parse_findings
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
-from synthorg.engine.classification.models import (
-    ErrorFinding,
-    ErrorSeverity,
-)
+from synthorg.engine.classification.models import ErrorFinding
 from synthorg.engine.classification.protocol import DetectionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -36,7 +33,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
     DETECTOR_ERROR,
-    DETECTOR_PARSE_ERROR,
     DETECTOR_START,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -47,6 +43,20 @@ from synthorg.providers.protocol import CompletionProvider
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOKENS: Final[int] = 1024
 
+# Stable per-purpose prompt-class identifiers, one per concrete detector.
+_PROMPT_CLASS_ID_CONTRADICTION: Final[NotBlankStr] = NotBlankStr(
+    "semantic_detector.logical_contradiction"
+)
+_PROMPT_CLASS_ID_NUMERICAL: Final[NotBlankStr] = NotBlankStr(
+    "semantic_detector.numerical_drift"
+)
+_PROMPT_CLASS_ID_MISSING_REFERENCE: Final[NotBlankStr] = NotBlankStr(
+    "semantic_detector.context_omission"
+)
+_PROMPT_CLASS_ID_COORDINATION: Final[NotBlankStr] = NotBlankStr(
+    "semantic_detector.coordination_failure"
+)
+
 _SANITIZE_MAX_LENGTH: Final[int] = 2000
 # Cost reserved per LLM semantic detector invocation.  Small enough
 # that the reservation gate admits several concurrent detectors
@@ -54,127 +64,6 @@ _SANITIZE_MAX_LENGTH: Final[int] = 2000
 # provider cannot silently overshoot.  Actual cost is reconciled via
 # ``ClassificationBudgetTracker.settle`` once the call completes.
 _ESTIMATED_LLM_COST: Final[float] = 0.001
-_SEVERITY_MAP: MappingProxyType[str, ErrorSeverity] = MappingProxyType(
-    {
-        "low": ErrorSeverity.LOW,
-        "medium": ErrorSeverity.MEDIUM,
-        "high": ErrorSeverity.HIGH,
-    },
-)
-
-
-def _parse_findings(
-    raw: str | None,
-    category: ErrorCategory,
-) -> tuple[ErrorFinding, ...]:
-    """Parse LLM JSON output into ErrorFinding tuples.
-
-    Expected format::
-
-        [
-            {
-                "description": "...",
-                "severity": "high|medium|low",
-                "evidence": ["..."],
-                "turn_start": 0,
-                "turn_end": 2,
-            }
-        ]
-
-    Malformed JSON or invalid items are logged at DEBUG level and
-    skipped -- they do not cause the detector to fail.
-
-    Returns:
-        Tuple of well-formed :class:`ErrorFinding` records; ``()`` on
-        empty input, invalid JSON, or non-list output.
-    """
-    if not raw:
-        return ()
-    try:
-        items = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        logger.debug(
-            DETECTOR_PARSE_ERROR,
-            category=category.value,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            raw_snippet=raw[:200],
-        )
-        return ()
-    if not isinstance(items, list):
-        logger.debug(
-            DETECTOR_PARSE_ERROR,
-            category=category.value,
-            reason="response is not a JSON array",
-            actual_type=type(items).__name__,
-        )
-        return ()
-
-    findings: list[ErrorFinding] = []
-    for idx, item in enumerate(items):
-        finding = _parse_single_finding(item, idx, category)
-        if finding is not None:
-            findings.append(finding)
-    return tuple(findings)
-
-
-def _parse_single_finding(
-    item: object,
-    idx: int,
-    category: ErrorCategory,
-) -> ErrorFinding | None:
-    """Parse a single item from an LLM JSON array.
-
-    Returns ``None`` when the item is malformed -- parse errors
-    are logged at DEBUG level for operator visibility.
-
-    Returns:
-        A well-formed :class:`ErrorFinding`; ``None`` when the JSON
-        object is missing required fields or has the wrong shape.
-    """
-    if not isinstance(item, dict):
-        logger.debug(
-            DETECTOR_PARSE_ERROR,
-            category=category.value,
-            item_index=idx,
-            reason="item is not a JSON object",
-        )
-        return None
-    desc = item.get("description", "")
-    if not desc or not isinstance(desc, str):
-        logger.debug(
-            DETECTOR_PARSE_ERROR,
-            category=category.value,
-            item_index=idx,
-            reason="missing or empty description",
-        )
-        return None
-    severity = _SEVERITY_MAP.get(
-        str(item.get("severity", "medium")).lower(),
-        ErrorSeverity.MEDIUM,
-    )
-    evidence_raw = item.get("evidence", [])
-    if not isinstance(evidence_raw, list):
-        evidence_raw = []
-    evidence = tuple(str(e) for e in evidence_raw if isinstance(e, str) and e.strip())
-    turn_range: tuple[int, int] | None = None
-    turn_start = item.get("turn_start")
-    turn_end = item.get("turn_end")
-    if (
-        isinstance(turn_start, int)
-        and isinstance(turn_end, int)
-        and turn_start >= 0
-        and turn_end >= turn_start
-    ):
-        turn_range = (turn_start, turn_end)
-
-    return ErrorFinding(
-        category=category,
-        severity=severity,
-        description=desc,
-        evidence=evidence,
-        turn_range=turn_range,
-    )
 
 
 def _build_conversation_text(
@@ -204,6 +93,22 @@ def _build_conversation_text(
     return "\n".join(parts)
 
 
+def _build_detector_messages(prompt_text: str) -> list[ChatMessage]:
+    """Build the system + user messages for a semantic-detector call.
+
+    Returns:
+        The detector prompt as the system message plus the fixed
+        return-JSON user instruction.
+    """
+    return [
+        ChatMessage(role=MessageRole.SYSTEM, content=prompt_text),
+        ChatMessage(
+            role=MessageRole.USER,
+            content="Analyze the conversation above and return JSON.",
+        ),
+    ]
+
+
 class _BaseSemanticDetector(ABC):
     """Base class for LLM-backed semantic detectors.
 
@@ -225,6 +130,11 @@ class _BaseSemanticDetector(ABC):
 
     @property
     @abstractmethod
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+
+    @property
+    @abstractmethod
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
 
@@ -232,7 +142,7 @@ class _BaseSemanticDetector(ABC):
         self,
         *,
         provider: CompletionProvider,
-        model_id: str,
+        model_id: NotBlankStr,
         budget_tracker: ClassificationBudgetTracker | None = None,
         temperature: float = 0.0,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
@@ -321,29 +231,54 @@ class _BaseSemanticDetector(ABC):
             Parsed :class:`ErrorFinding` tuple from the LLM response;
             ``()`` when budget is exhausted or the call fails.
         """
-        estimated_cost = _ESTIMATED_LLM_COST
-        if self._budget_tracker is not None:
-            reserved = await self._budget_tracker.try_reserve(estimated_cost)
-            if not reserved:
-                logger.debug(
-                    DETECTOR_COMPLETE,
-                    detector=detector_name,
-                    finding_count=0,
-                    reason="budget exhausted",
-                )
-                return ()
-        else:
-            reserved = False
+        reserved = await self._reserve_budget(detector_name)
+        if reserved is None:
+            return ()
+        messages = _build_detector_messages(self._prompt(conversation_text))
+        return await self._complete_within_budget(
+            messages,
+            context=context,
+            detector_name=detector_name,
+            message_count=message_count,
+            reserved=reserved,
+        )
 
-        prompt_text = self._prompt(conversation_text)
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=prompt_text),
-            ChatMessage(
-                role=MessageRole.USER,
-                content="Analyze the conversation above and return JSON.",
-            ),
-        ]
+    async def _reserve_budget(self, detector_name: str) -> bool | None:
+        """Reserve the per-call estimated cost against the budget tracker.
 
+        Returns:
+            ``True`` when a reservation was taken, ``False`` when no tracker
+            is wired (nothing to reserve), or ``None`` when the budget is
+            exhausted and the caller must skip the call.
+        """
+        if self._budget_tracker is None:
+            return False
+        reserved = await self._budget_tracker.try_reserve(_ESTIMATED_LLM_COST)
+        if not reserved:
+            logger.debug(
+                DETECTOR_COMPLETE,
+                detector=detector_name,
+                finding_count=0,
+                reason="budget exhausted",
+            )
+            return None
+        return True
+
+    async def _complete_within_budget(
+        self,
+        messages: list[ChatMessage],
+        *,
+        context: DetectionContext,
+        detector_name: str,
+        message_count: int,
+        reserved: bool,
+    ) -> tuple[ErrorFinding, ...]:
+        """Run the provider call, settling or releasing the reservation.
+
+        Returns:
+            Parsed :class:`ErrorFinding` tuple from the LLM response; ``()``
+            on any provider failure.
+        """
         settled = False
         try:
             async with cost_recording_scope(
@@ -364,11 +299,11 @@ class _BaseSemanticDetector(ABC):
             actual_cost = response.usage.cost
             if reserved and self._budget_tracker is not None:
                 await self._budget_tracker.settle(
-                    estimated_cost=estimated_cost,
+                    estimated_cost=_ESTIMATED_LLM_COST,
                     actual_cost=actual_cost,
                 )
                 settled = True
-            return _parse_findings(response.content, self.category)
+            return parse_findings(response.content, self.category)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -383,7 +318,7 @@ class _BaseSemanticDetector(ABC):
             return ()
         finally:
             if reserved and not settled and self._budget_tracker is not None:
-                await self._budget_tracker.release(estimated_cost)
+                await self._budget_tracker.release(_ESTIMATED_LLM_COST)
 
 
 class SemanticContradictionDetector(_BaseSemanticDetector):
@@ -394,6 +329,12 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.LOGICAL_CONTRADICTION
+
+    @property
+    @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return _PROMPT_CLASS_ID_CONTRADICTION
 
     @property
     @override
@@ -425,6 +366,12 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.NUMERICAL_DRIFT
+
+    @property
+    @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return _PROMPT_CLASS_ID_NUMERICAL
 
     @property
     @override
@@ -461,6 +408,12 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 
     @property
     @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return _PROMPT_CLASS_ID_MISSING_REFERENCE
+
+    @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -491,6 +444,12 @@ class SemanticCoordinationDetector(_BaseSemanticDetector):
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.COORDINATION_FAILURE
+
+    @property
+    @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return _PROMPT_CLASS_ID_COORDINATION
 
     @property
     @override

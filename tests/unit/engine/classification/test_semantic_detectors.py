@@ -13,6 +13,7 @@ from synthorg.budget.coordination_config import (
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
+from synthorg.engine.classification._parsing import parse_findings
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
@@ -26,7 +27,6 @@ from synthorg.engine.classification.semantic_detectors import (
     SemanticCoordinationDetector,
     SemanticMissingReferenceDetector,
     SemanticNumericalVerificationDetector,
-    _parse_findings,
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
@@ -99,7 +99,7 @@ def _mock_provider(content: str = "[]") -> AsyncMock:
     return provider
 
 
-# ── _parse_findings ────────────────────────────────────────────
+# ── parse_findings ────────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -118,7 +118,7 @@ class TestParseFindingsHelper:
                 },
             ]
         )
-        findings = _parse_findings(raw, ErrorCategory.LOGICAL_CONTRADICTION)
+        findings = parse_findings(raw, ErrorCategory.LOGICAL_CONTRADICTION)
         assert len(findings) == 1
         assert findings[0].category == ErrorCategory.LOGICAL_CONTRADICTION
         assert findings[0].severity == ErrorSeverity.HIGH
@@ -126,22 +126,22 @@ class TestParseFindingsHelper:
         assert findings[0].turn_range == (0, 3)
 
     def test_empty_json_array(self) -> None:
-        findings = _parse_findings("[]", ErrorCategory.LOGICAL_CONTRADICTION)
+        findings = parse_findings("[]", ErrorCategory.LOGICAL_CONTRADICTION)
         assert findings == ()
 
     def test_none_input(self) -> None:
-        findings = _parse_findings(None, ErrorCategory.LOGICAL_CONTRADICTION)
+        findings = parse_findings(None, ErrorCategory.LOGICAL_CONTRADICTION)
         assert findings == ()
 
     def test_malformed_json(self) -> None:
-        findings = _parse_findings(
+        findings = parse_findings(
             "not json",
             ErrorCategory.LOGICAL_CONTRADICTION,
         )
         assert findings == ()
 
     def test_non_array_json(self) -> None:
-        findings = _parse_findings(
+        findings = parse_findings(
             '{"key": "value"}',
             ErrorCategory.LOGICAL_CONTRADICTION,
         )
@@ -154,13 +154,13 @@ class TestParseFindingsHelper:
                 {"description": "Valid finding", "severity": "medium"},
             ]
         )
-        findings = _parse_findings(raw, ErrorCategory.NUMERICAL_DRIFT)
+        findings = parse_findings(raw, ErrorCategory.NUMERICAL_DRIFT)
         assert len(findings) == 1
         assert findings[0].description == "Valid finding"
 
     def test_default_severity(self) -> None:
         raw = json.dumps([{"description": "Some issue"}])
-        findings = _parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
         assert findings[0].severity == ErrorSeverity.MEDIUM
 
     def test_invalid_turn_range_ignored(self) -> None:
@@ -173,7 +173,30 @@ class TestParseFindingsHelper:
                 },
             ]
         )
-        findings = _parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].turn_range is None
+
+    def test_whitespace_only_description_skipped(self) -> None:
+        raw = json.dumps([{"description": "   ", "severity": "high"}])
+        findings = parse_findings(raw, ErrorCategory.NUMERICAL_DRIFT)
+        assert findings == ()
+
+    def test_description_stripped(self) -> None:
+        raw = json.dumps([{"description": "  padded  "}])
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].description == "padded"
+
+    def test_boolean_turn_values_ignored(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    "description": "Issue",
+                    "turn_start": True,
+                    "turn_end": True,
+                },
+            ]
+        )
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
         assert findings[0].turn_range is None
 
 
@@ -233,6 +256,49 @@ class TestSemanticDetectorCategories:
             model_id="test-small-001",
         )
         assert d.category == ErrorCategory.COORDINATION_FAILURE
+
+
+@pytest.mark.unit
+class TestSemanticDetectorPromptClassId:
+    """Each detector exposes a distinct, stable prompt-class identifier."""
+
+    @pytest.mark.parametrize(
+        ("cls", "expected"),
+        [
+            (
+                SemanticContradictionDetector,
+                "semantic_detector.logical_contradiction",
+            ),
+            (
+                SemanticNumericalVerificationDetector,
+                "semantic_detector.numerical_drift",
+            ),
+            (
+                SemanticMissingReferenceDetector,
+                "semantic_detector.context_omission",
+            ),
+            (
+                SemanticCoordinationDetector,
+                "semantic_detector.coordination_failure",
+            ),
+        ],
+    )
+    def test_prompt_class_id(self, cls: type, expected: str) -> None:
+        detector = cls(provider=_mock_provider(), model_id="test-small-001")
+        assert detector.prompt_class_id == expected
+
+    def test_prompt_class_ids_are_distinct(self) -> None:
+        classes = (
+            SemanticContradictionDetector,
+            SemanticNumericalVerificationDetector,
+            SemanticMissingReferenceDetector,
+            SemanticCoordinationDetector,
+        )
+        ids = {
+            cls(provider=_mock_provider(), model_id="test-small-001").prompt_class_id
+            for cls in classes
+        }
+        assert len(ids) == len(classes)
 
 
 # ── Detection behavior ─────────────────────────────────────────
@@ -416,7 +482,7 @@ class TestSemanticDetectorBehavior:
 
 
 @pytest.mark.unit
-class TestSec1SemanticDetectorFences:
+class TestUntrustedContentFences:
     """Each detector wraps conversation text in ``<task-data>`` + directive."""
 
     @pytest.mark.parametrize(

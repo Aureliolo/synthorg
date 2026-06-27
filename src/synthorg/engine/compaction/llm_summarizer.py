@@ -9,7 +9,7 @@ the caller passes in, logged as a fallback so the downgrade is never
 silent.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -41,7 +41,13 @@ _SYSTEM_PROMPT = (
 )
 
 # Framework-overhead attribution for the compaction summary call.
-_SUMMARY_AGENT_ID: NotBlankStr = NotBlankStr("system")
+_SUMMARY_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system")
+
+# Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
+# directly-constructed summariser matches the wired path, which sources
+# these from the compaction domain config (workers/_engine_assembly.py).
+_DEFAULT_TEMPERATURE: Final[float] = 0.3
+_DEFAULT_MAX_TOKENS: Final[int] = 500
 
 
 @runtime_checkable
@@ -69,8 +75,10 @@ class LLMSummarizer:
     Args:
         provider: Completion port used to generate the summary.
         model: Model id for the summary call.
-        temperature: Sampling temperature (pinned explicitly).
-        max_tokens: Max tokens for the summary response.
+        temperature: Sampling temperature (pinned explicitly); defaults to
+            the compaction domain-config value.
+        max_tokens: Max tokens for the summary response; defaults to the
+            compaction domain-config value.
         cost_tracker: Sink for the per-call cost record (``None`` makes
             recording a no-op).
     """
@@ -79,9 +87,9 @@ class LLMSummarizer:
         self,
         *,
         provider: CompletionPort,
-        model: str,
-        temperature: float,
-        max_tokens: int,
+        model: NotBlankStr,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
         cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
@@ -114,6 +122,11 @@ class LLMSummarizer:
         """
         transcript = _build_transcript(archivable)
         if not transcript:
+            logger.debug(
+                CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK,
+                reason="empty_transcript",
+                archived_count=len(archivable),
+            )
             return fallback_text
         identity = current_execution_identity()
         execution_id = (

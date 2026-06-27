@@ -251,12 +251,12 @@ def _select_loader(
 ) -> ScopedContextLoader | None:
     """Select a context loader for the requested detection scope.
 
-    TASK_TREE detectors are skipped (``None`` returned) when no task
-    repository is configured -- the previous behaviour silently fell
-    back to :class:`SameTaskLoader`, which produced a context with
-    ``scope=SAME_TASK``, causing TASK_TREE detectors to run against
-    missing delegation/review data.  Skipping them instead keeps
-    every detector aligned with its declared scope.
+    TASK_TREE detectors require a task repository to load delegation and
+    review history; returning ``None`` here signals the caller to skip them
+    rather than run them against the wrong context. A :class:`SameTaskLoader`
+    fallback would expose ``scope=SAME_TASK``, so a TASK_TREE detector would
+    silently check missing delegation/review data instead of its declared
+    scope.
 
     Args:
         scope: Detection scope requested by a detector category.
@@ -295,8 +295,9 @@ async def classify_execution_errors(  # noqa: PLR0913
     dispatches results to registered sinks.
 
     Rate limiting is handled by the ``BaseCompletionProvider``
-    internally -- semantic detectors no longer accept a separate
-    rate limiter to avoid double-throttling.
+    internally; semantic detectors do not take a separate rate limiter
+    because a second limiter on the same shared instance would
+    double-throttle.
 
     Returns ``None`` when the taxonomy is disabled.  Never raises;
     all exceptions except ``MemoryError``/``RecursionError`` are

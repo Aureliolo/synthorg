@@ -31,6 +31,7 @@ from synthorg.knowledge.models import KnowledgeHit
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     ToolDefinition,
 )
@@ -64,6 +65,20 @@ ENTAILMENT_MAX_TOKENS: Final[int] = 256
 
 LLM_TEMPERATURE: Final[float] = 0.0
 """Pinned temperature for both calls (harness determinism)."""
+
+EXTRACTION_CONFIG: Final[CompletionConfig] = CompletionConfig(
+    temperature=LLM_TEMPERATURE,
+    max_tokens=EXTRACTION_MAX_TOKENS,
+)
+"""Claim-extraction sampling: temperature ``LLM_TEMPERATURE`` (0.0), capped
+at ``EXTRACTION_MAX_TOKENS`` output tokens."""
+
+ENTAILMENT_CONFIG: Final[CompletionConfig] = CompletionConfig(
+    temperature=LLM_TEMPERATURE,
+    max_tokens=ENTAILMENT_MAX_TOKENS,
+)
+"""Per-claim entailment sampling: temperature ``LLM_TEMPERATURE`` (0.0),
+capped at ``ENTAILMENT_MAX_TOKENS`` output tokens."""
 
 _CONFIDENCE_FLOOR: Final[float] = 0.0
 _CONFIDENCE_CEILING: Final[float] = 1.0

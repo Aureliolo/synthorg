@@ -127,7 +127,7 @@ When coordination metrics collection is enabled, the system classifies coordinat
 | **Logical contradiction** | Agent asserts both "X is true" and "X is false" | Regex assertion matching | LLM reasoning over assistant texts | SAME_TASK |
 | **Numerical drift** | Accumulated errors from cascading rounding (>5% deviation) | Context-labelled number extraction + % drift | LLM cross-verification of numerical claims | SAME_TASK |
 | **Context omission** | Failure to reference previously established entities | Capitalized entity set diff (first-half/second-half) | LLM entity introduction/disposition tracking | SAME_TASK |
-| **Coordination failure** | Message misinterpretation, task allocation conflicts | Tool errors + error finish reasons | LLM classification of coordination breakdowns | SAME_TASK |
+| **Coordination failure** | Message misinterpretation, task allocation conflicts | Tool errors + error finish reasons | LLM classification of coordination breakdowns | TASK_TREE |
 | **Delegation protocol violation** | Broken delegation chains, missing parent linkage | Structural check: parent_task_id, delegation_chain integrity | - | TASK_TREE |
 | **Review pipeline violation** | PASS without stages, PASS contradicting FAIL stage | Structural check: verdict/stage consistency | - | TASK_TREE |
 | **Authority breach attempt** | Execution cost exceeding authority budget limit | Budget comparison: total turn cost vs limit | - | SAME_TASK |
