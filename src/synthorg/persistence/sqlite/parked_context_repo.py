@@ -156,7 +156,7 @@ INSERT OR REPLACE INTO parked_contexts (
         logger.debug(PERSISTENCE_PARKED_CONTEXT_QUERIED, count=len(results))
         return results
 
-    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+    async def get_by_approval(self, approval_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by approval ID.
 
         Returns:
