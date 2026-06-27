@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _CONTROLLERS_DIR = _REPO_ROOT / "src" / "synthorg" / "api" / "controllers"
-_A2A_GATEWAY_FILE = _REPO_ROOT / "src" / "synthorg" / "a2a" / "gateway.py"
+_A2A_GATEWAY_FILE = _REPO_ROOT / "src" / "synthorg" / "api" / "a2a" / "gateway.py"
 _AUTH_CONTROLLERS_DIR = _REPO_ROOT / "src" / "synthorg" / "api" / "auth" / "controllers"
 _AUTH_IDENTITY_FILE = _AUTH_CONTROLLERS_DIR / "identity.py"
 
@@ -43,12 +43,12 @@ def _auth_controller_files() -> list[Path]:
 def _guarded_source_files() -> list[Path]:
     """Every file that may carry a ``per_op_rate_limit_from_policy`` site.
 
-    Includes the controllers directory plus the two stand-alone modules
-    that own rate-limited entry points outside ``api/controllers/``
-    (``a2a/gateway.py`` and ``api/auth/controller.py``). The AST-wide
-    assertions below scan this superset so neither stand-alone module
-    can drift back to a bare ``per_op_rate_limit`` call without the
-    test failing.
+    Includes the controllers directory plus the stand-alone modules that
+    own rate-limited entry points outside ``api/controllers/``: the a2a
+    JSON-RPC gateway (``api/a2a/gateway.py``) and the auth controllers. The
+    AST-wide assertions below scan this superset so no guarded module can
+    drift back to a bare ``per_op_rate_limit`` call without the test
+    failing.
     """
     return sorted(
         {

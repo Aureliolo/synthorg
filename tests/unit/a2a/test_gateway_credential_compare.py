@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 import pytest
 
-from synthorg.a2a import gateway
+from synthorg.api.a2a import gateway
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def credentials_match() -> Callable[[str, str], bool]:
     )
     if helper is None:
         pytest.fail(
-            "expected `_credentials_match` helper in synthorg.a2a.gateway "
+            "expected `_credentials_match` helper in synthorg.api.a2a.gateway "
             "for constant-time credential comparison via hmac.compare_digest",
         )
     return helper

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.a2a import gateway as gateway_mod
+from synthorg.api.a2a import gateway as gateway_mod
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 

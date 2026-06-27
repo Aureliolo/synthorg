@@ -30,7 +30,7 @@ Key integration points:
 
 The A2A protocol defines how autonomous agents discover each other's capabilities and delegate tasks across organisational boundaries.
 
-Within a single organisation, agents communicate over the internal message bus. For cross-organisation and cross-framework interoperability, SynthOrg ships an opt-in A2A gateway (`src/synthorg/a2a/`) that exposes capability discovery via a `.well-known` agent card and accepts delegated tasks from allowlisted peers. The gateway is the authorisation boundary: only peers on the connection allowlist may interact with it.
+Within a single organisation, agents communicate over the internal message bus. For cross-organisation and cross-framework interoperability, SynthOrg ships an opt-in A2A gateway (inbound Litestar controllers under `src/synthorg/api/a2a/`, federation domain logic under `src/synthorg/a2a/`) that exposes capability discovery via a `.well-known` agent card and accepts delegated tasks from allowlisted peers. The gateway is the authorisation boundary: only peers on the connection allowlist may interact with it.
 
 ---
 

@@ -15,7 +15,7 @@ This page is the status-and-architecture reference: what ships today, how it map
 
 | Capability | Status |
 |------------|--------|
-| A2A gateway (`src/synthorg/a2a/gateway.py`) | Shipped |
+| A2A gateway (`src/synthorg/api/a2a/gateway.py`) | Shipped |
 | Agent Card serving (`GET /.well-known/agent-card.json`) | Shipped |
 | JSON-RPC task submission + SSE streaming | Shipped |
 | Agent Card projection from internal `AgentIdentity` | Shipped |

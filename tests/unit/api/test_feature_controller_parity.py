@@ -13,8 +13,8 @@ from litestar.handlers import WebsocketRouteHandler
 
 from synthorg._core.features import ControllerRegistration, discover_features
 from synthorg._demo.controller import DemoController
-from synthorg.a2a.gateway import A2AGatewayController
-from synthorg.a2a.well_known import WellKnownAgentCardController
+from synthorg.api.a2a.gateway import A2AGatewayController
+from synthorg.api.a2a.well_known import WellKnownAgentCardController
 from synthorg.api.controllers import ALL_CONTROLLERS, ws_handler
 
 pytestmark = pytest.mark.unit
