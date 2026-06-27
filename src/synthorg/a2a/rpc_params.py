@@ -90,8 +90,25 @@ class A2ATaskCancelParams(BaseModel):
     id: NotBlankStr = Field(description="Task identifier")
 
 
+class A2ASkillQueryParams(BaseModel):
+    """Typed params for the ``skills/query`` RPC.
+
+    Attributes:
+        method: Discriminator literal (always ``"skills/query"``).
+        skill: Skill id or tag to discover peers for (case-insensitive).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    method: Literal["skills/query"] = Field(
+        default="skills/query",
+        description="RPC method discriminator",
+    )
+    skill: NotBlankStr = Field(description="Skill id or tag to match")
+
+
 A2ARpcParams = Annotated[
-    A2AMessageSendParams | A2ATaskGetParams | A2ATaskCancelParams,
+    A2AMessageSendParams | A2ATaskGetParams | A2ATaskCancelParams | A2ASkillQueryParams,
     Discriminator("method"),
 ]
 """Discriminated union of typed A2A RPC params.
@@ -133,6 +150,7 @@ def parse_rpc_params(rpc_request: JsonRpcRequest) -> A2ARpcParams:
 __all__ = [
     "A2AMessageSendParams",
     "A2ARpcParams",
+    "A2ASkillQueryParams",
     "A2ATaskCancelParams",
     "A2ATaskGetParams",
     "parse_rpc_params",

@@ -2,9 +2,9 @@
 """A2A JSON-RPC 2.0 gateway controller.
 
 Handles inbound A2A requests dispatched by method name:
-``message/send``, ``tasks/get``, ``tasks/cancel``.  All inbound
-requests are validated against the peer allowlist and connection
-catalog credentials.
+``message/send``, ``tasks/get``, ``tasks/cancel``, ``skills/query``.
+All inbound requests are validated against the peer allowlist and
+connection catalog credentials.
 
 One cohesive responsibility: be the inbound A2A wire boundary. The
 controller, the JSON-RPC envelope parser, the peer-credential
@@ -43,11 +43,13 @@ from synthorg.a2a.models import (
 )
 from synthorg.a2a.rpc_params import (
     A2AMessageSendParams,
+    A2ASkillQueryParams,
     A2ATaskCancelParams,
     A2ATaskGetParams,
     parse_rpc_params,
 )
 from synthorg.a2a.security import validate_peer
+from synthorg.a2a.state import A2aStateSlice
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
@@ -78,6 +80,7 @@ from synthorg.observability.events.a2a import (
     A2A_JSONRPC_METHOD_NOT_FOUND,
     A2A_JSONRPC_PARSE_ERROR,
     A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
+    A2A_SKILLS_QUERIED,
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
     A2A_TASK_METHOD_REJECTED,
@@ -93,6 +96,7 @@ _SUPPORTED_METHODS = frozenset(
         "message/send",
         "tasks/get",
         "tasks/cancel",
+        "skills/query",
     }
 )
 
@@ -481,6 +485,8 @@ async def _dispatch_method(
                 result = await _handle_tasks_get(app_state, params, peer_name)
             case A2ATaskCancelParams():
                 result = await _handle_tasks_cancel(app_state, params, peer_name)
+            case A2ASkillQueryParams():
+                result = await _handle_skills_query(app_state, params, peer_name)
             case _:  # pragma: no cover -- enforced exhaustive over A2ARpcParams
                 # mypy proves this branch is unreachable via the
                 # closed ``A2ARpcParams`` union; we still keep it as a
@@ -1006,6 +1012,49 @@ async def _handle_tasks_get(
     return {
         "id": str(task.id),
         "state": to_a2a(task.status).value,
+    }
+
+
+async def _handle_skills_query(
+    app_state: AppState,
+    params: A2ASkillQueryParams,
+    peer_name: str,
+) -> dict[str, JsonValue]:
+    """Handle ``skills/query`` -- discover known peers advertising a skill.
+
+    Searches this node's :class:`PeerRegistry` (peers learned via A2A
+    federation) for cards advertising ``params.skill`` by id or tag and
+    returns the matching peer names so the caller can route to one.
+
+    Args:
+        app_state: Application state container.
+        params: Typed ``skills/query`` parameters.
+        peer_name: Authenticated peer name.
+
+    Returns:
+        ``{"skill": ..., "peers": [...]}`` with the matching peer names.
+
+    Raises:
+        _A2AMethodError: With a 503 status when peer discovery is not
+            wired (persistence-less boot).
+    """
+    registry = app_state.slice(A2aStateSlice).peer_registry
+    if registry is None:
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            "Peer discovery unavailable",
+            http_status=503,
+        )
+    matches = await registry.find_by_skill(params.skill)
+    logger.info(
+        A2A_SKILLS_QUERIED,
+        skill=str(params.skill),
+        match_count=len(matches),
+        peer_name=peer_name,
+    )
+    return {
+        "skill": str(params.skill),
+        "peers": list(matches),
     }
 
 

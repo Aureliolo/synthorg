@@ -73,6 +73,35 @@ class PeerRegistry:
         async with self._lock:
             return self._peers.get(key)
 
+    async def find_by_skill(self, skill: str) -> tuple[str, ...]:
+        """Return peers advertising a skill matching ``skill``.
+
+        Matches case-insensitively against each advertised skill's ``id``
+        and its ``tags``, so a caller can route by either the canonical
+        skill identifier or a searchable tag. Results are sorted for
+        deterministic negotiation/routing.
+
+        Args:
+            skill: Skill id or tag to match (case-insensitive).
+
+        Returns:
+            Sorted peer names whose card advertises the skill; empty when
+            ``skill`` is blank or no peer matches.
+        """
+        needle = skill.strip().lower()
+        if not needle:
+            return ()
+        matches: list[str] = []
+        async with self._lock:
+            for name, card in self._peers.items():
+                if any(
+                    sk.id.lower() == needle
+                    or any(tag.lower() == needle for tag in sk.tags)
+                    for sk in card.skills
+                ):
+                    matches.append(name)
+        return tuple(sorted(matches))
+
     async def remove(self, peer_name: str) -> bool:
         """Remove a peer from the registry.
 

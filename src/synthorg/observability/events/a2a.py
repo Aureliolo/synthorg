@@ -58,6 +58,7 @@ A2A_STREAM_CLOSED: Final[str] = "a2a.stream.closed"
 A2A_PEER_REGISTERED: Final[str] = "a2a.peer.registered"
 A2A_PEER_REMOVED: Final[str] = "a2a.peer.removed"
 A2A_PEER_DISCOVERED: Final[str] = "a2a.peer.discovered"
+A2A_SKILLS_QUERIED: Final[str] = "a2a.skills.queried"
 
 # -- Push notifications ----------------------------------------------------
 
