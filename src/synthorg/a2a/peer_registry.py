@@ -13,6 +13,7 @@ from types import MappingProxyType
 from synthorg.a2a.models import (
     A2AAgentCard,
 )
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_PEER_REGISTERED,
@@ -88,7 +89,7 @@ class PeerRegistry:
             Sorted peer names whose card advertises the skill; empty when
             ``skill`` is blank or no peer matches.
         """
-        needle = skill.strip().lower()
+        needle = normalize_ascii_lowercase(skill)
         if not needle:
             return ()
         matches: list[str] = []

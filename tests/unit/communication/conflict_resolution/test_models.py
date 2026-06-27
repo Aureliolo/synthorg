@@ -272,10 +272,11 @@ class TestDissentRecordValidation:
 @pytest.mark.unit
 class TestConflictResolutionOutcome:
     def test_all_outcomes_exist(self) -> None:
-        # Six outcomes: four strategy outcomes plus two human-queue
-        # terminal states (RESOLVED_BY_HUMAN, REJECTED_BY_HUMAN)
-        # added by the escalation queue.
-        assert len(ConflictResolutionOutcome) == 6
+        # Seven outcomes: five strategy outcomes (authority, debate,
+        # hybrid, evidence) plus two human-queue terminal states
+        # (RESOLVED_BY_HUMAN, REJECTED_BY_HUMAN) added by the escalation
+        # queue, and ESCALATED_TO_HUMAN.
+        assert len(ConflictResolutionOutcome) == 7
 
     @pytest.mark.parametrize(
         "outcome",
@@ -283,6 +284,7 @@ class TestConflictResolutionOutcome:
             ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY,
             ConflictResolutionOutcome.RESOLVED_BY_DEBATE,
             ConflictResolutionOutcome.RESOLVED_BY_HYBRID,
+            ConflictResolutionOutcome.RESOLVED_BY_EVIDENCE,
             ConflictResolutionOutcome.RESOLVED_BY_HUMAN,
             ConflictResolutionOutcome.REJECTED_BY_HUMAN,
             ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
