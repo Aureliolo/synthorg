@@ -7,7 +7,7 @@ x-logging: &logging
 services:
   postgres:
     # renovate: datasource=docker depName=dhi.io/postgres
-    image: dhi.io/postgres:18-debian13@sha256:0e7e99976a6fe74dacc6669f8102cc79c0ca075549ee0df5add51d6c4bf9578d
+    image: dhi.io/postgres:18-debian13@sha256:50a57c1207428c0630383ae04558b41d4d989fee13f2142295d6cbdbda7b40cf
     ports:
       - "${POSTGRES_PORT:-3002}:5432"
     volumes:
