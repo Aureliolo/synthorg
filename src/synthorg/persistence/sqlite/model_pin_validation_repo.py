@@ -88,7 +88,7 @@ def _row_to_record(row: Row) -> ModelPinValidationRow:
             tier=cast("TierName", str(row["tier"])),
             passed=bool(row["passed"]),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         error_type = type(exc).__name__
         error_desc = safe_error_description(exc)
         msg = f"Failed to parse model pin validation row: {error_type} ({error_desc})"
