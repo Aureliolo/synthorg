@@ -288,3 +288,28 @@ class TestLlmRetryResponseStrategyValidator:
             {"alternative_strategy": value},
         )
         assert response.alternative_strategy is None
+
+
+@pytest.mark.unit
+class TestSupervisorRouterCompletionBounds:
+    """Both LLM calls carry an explicit, bounded ``max_tokens``."""
+
+    async def test_route_pins_max_tokens(self) -> None:
+        provider = _mock_provider(
+            json.dumps({"workers": ["semantic"], "reason": "broad"}),
+        )
+        supervisor = SupervisorRouter(provider=provider, model="test-small-001")
+        await supervisor.route(_make_query())
+        config = provider.complete.call_args.kwargs["config"]
+        assert config.temperature == 0.0
+        assert config.max_tokens == 256
+
+    async def test_retry_pins_max_tokens(self) -> None:
+        provider = _mock_provider(
+            json.dumps({"retry": True, "reason": "too narrow"}),
+        )
+        supervisor = SupervisorRouter(provider=provider, model="test-small-001")
+        result = FinalRetrievalResult(candidates=(_make_candidate(0.1),))
+        await supervisor.evaluate_for_retry(_make_query(), result)
+        config = provider.complete.call_args.kwargs["config"]
+        assert config.max_tokens == 256

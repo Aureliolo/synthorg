@@ -108,6 +108,20 @@ class TestLLMQuerySpecificReranker:
         assert result[1].combined_score == 0.9
 
     @pytest.mark.unit
+    async def test_rerank_pins_bounded_max_tokens(self) -> None:
+        provider = _mock_provider([1, 0])
+        reranker = LLMQuerySpecificReranker(
+            provider=provider,
+            model="test-small-001",
+        )
+        c1 = _make_candidate("mem-1", 0.9)
+        c2 = _make_candidate("mem-2", 0.7)
+        await reranker.rerank(_make_query(), (c1, c2))
+        config = provider.complete.call_args.kwargs["config"]
+        assert config.temperature == 0.0
+        assert config.max_tokens == 512
+
+    @pytest.mark.unit
     async def test_rerank_single_candidate_passthrough(self) -> None:
         provider = _mock_provider([0])
         reranker = LLMQuerySpecificReranker(

@@ -87,10 +87,18 @@ _DEFAULT_FALLBACK_WORKERS = ("semantic",)
 _DEFAULT_MAX_WORKERS_PER_QUERY: Final[int] = 2
 _DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
 
+# Both calls emit a short JSON object (a worker list + reason, or a
+# retry verdict + corrected query); 256 tokens covers either with
+# headroom while bounding cost regardless of the provider default.
+_ROUTING_MAX_TOKENS: Final[int] = 256
+
 # Routing decisions and retry-evaluation must be deterministic so the
 # same query produces the same worker selection across runs; pin
 # ``temperature=0.0`` regardless of provider defaults.
-_ROUTING_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
+_ROUTING_COMPLETION_CONFIG = CompletionConfig(
+    temperature=0.0,
+    max_tokens=_ROUTING_MAX_TOKENS,
+)
 
 
 class _LlmRoutingResponse(

@@ -235,6 +235,49 @@ class TestSemanticDetectorCategories:
         assert d.category == ErrorCategory.COORDINATION_FAILURE
 
 
+@pytest.mark.unit
+class TestSemanticDetectorPromptClassId:
+    """Each detector exposes a distinct, stable prompt-class identifier."""
+
+    @pytest.mark.parametrize(
+        ("cls", "expected"),
+        [
+            (
+                SemanticContradictionDetector,
+                "semantic_detector.logical_contradiction",
+            ),
+            (
+                SemanticNumericalVerificationDetector,
+                "semantic_detector.numerical_drift",
+            ),
+            (
+                SemanticMissingReferenceDetector,
+                "semantic_detector.context_omission",
+            ),
+            (
+                SemanticCoordinationDetector,
+                "semantic_detector.coordination_failure",
+            ),
+        ],
+    )
+    def test_prompt_class_id(self, cls: type, expected: str) -> None:
+        detector = cls(provider=_mock_provider(), model_id="test-small-001")
+        assert detector.prompt_class_id == expected
+
+    def test_prompt_class_ids_are_distinct(self) -> None:
+        classes = (
+            SemanticContradictionDetector,
+            SemanticNumericalVerificationDetector,
+            SemanticMissingReferenceDetector,
+            SemanticCoordinationDetector,
+        )
+        ids = {
+            cls(provider=_mock_provider(), model_id="test-small-001").prompt_class_id
+            for cls in classes
+        }
+        assert len(ids) == len(classes)
+
+
 # ── Detection behavior ─────────────────────────────────────────
 
 

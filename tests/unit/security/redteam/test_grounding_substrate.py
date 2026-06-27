@@ -22,7 +22,14 @@ from synthorg.providers.models import (
     ToolCall,
 )
 from synthorg.providers.protocol import CompletionProvider
-from synthorg.security.redteam.grounding._llm import EXTRACT_CLAIMS_TOOL_NAME
+from synthorg.security.redteam.grounding._llm import (
+    ENTAILMENT_CONFIG,
+    ENTAILMENT_MAX_TOKENS,
+    EXTRACT_CLAIMS_TOOL_NAME,
+    EXTRACTION_CONFIG,
+    EXTRACTION_MAX_TOKENS,
+    GROUNDING_VERDICT_TOOL_NAME,
+)
 from synthorg.security.redteam.grounding.models import UngroundedClaim
 from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.grounding.resolver import GroundingSubstrateContext
@@ -257,6 +264,33 @@ class TestEscalation:
         assert claim.source == "knowledge_substrate"
         assert claim.confidence == pytest.approx(0.95)
         assert "47%" in claim.excerpt
+
+    async def test_extraction_and_entailment_use_purpose_distinct_configs(
+        self,
+    ) -> None:
+        provider = _provider(
+            [
+                _extract_response(["Revenue grew 47% last quarter."]),
+                _verdict_response("unsupported", 0.95),
+            ]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        extraction_call, entailment_call = provider.complete.call_args_list
+        assert extraction_call.kwargs["config"] is EXTRACTION_CONFIG
+        assert extraction_call.kwargs["config"].max_tokens == EXTRACTION_MAX_TOKENS
+        assert extraction_call.kwargs["tools"][0].name == EXTRACT_CLAIMS_TOOL_NAME
+        assert entailment_call.kwargs["config"] is ENTAILMENT_CONFIG
+        assert entailment_call.kwargs["config"].max_tokens == ENTAILMENT_MAX_TOKENS
+        assert entailment_call.kwargs["tools"][0].name == GROUNDING_VERDICT_TOOL_NAME
 
     async def test_search_scoped_to_project(self) -> None:
         knowledge = _knowledge((_hit(),))

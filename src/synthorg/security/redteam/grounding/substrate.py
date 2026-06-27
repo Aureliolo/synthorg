@@ -49,11 +49,10 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.security.redteam.grounding._llm import (
-    ENTAILMENT_MAX_TOKENS,
+    ENTAILMENT_CONFIG,
     EXTRACT_CLAIMS_TOOL,
-    EXTRACTION_MAX_TOKENS,
+    EXTRACTION_CONFIG,
     GROUNDING_VERDICT_TOOL,
-    LLM_TEMPERATURE,
     MAX_DELIVERABLE_CHARS,
     build_entailment_messages,
     build_extraction_messages,
@@ -258,12 +257,10 @@ class KnowledgeSubstrateGroundingChecker:
                 original_length=len(deliverable_content),
                 cap=MAX_DELIVERABLE_CHARS,
             )
-        response = await self._complete(
+        response = await self._complete_extraction(
             context,
             execution_id,
             messages=build_extraction_messages(deliverable_content),
-            tools=[EXTRACT_CLAIMS_TOOL],
-            max_tokens=EXTRACTION_MAX_TOKENS,
         )
         return parse_extracted_claims(response)
 
@@ -319,12 +316,10 @@ class KnowledgeSubstrateGroundingChecker:
             return None
 
         try:
-            response = await self._complete(
+            response = await self._complete_entailment(
                 context,
                 execution_id,
                 messages=build_entailment_messages(claim, hits),
-                tools=[GROUNDING_VERDICT_TOOL],
-                max_tokens=ENTAILMENT_MAX_TOKENS,
             )
         except asyncio.CancelledError:
             raise
@@ -363,14 +358,54 @@ class KnowledgeSubstrateGroundingChecker:
             expected_source_kind=None,
         )
 
-    async def _complete(
+    async def _complete_extraction(
+        self,
+        context: GroundingSubstrateContext,
+        execution_id: NotBlankStr,
+        *,
+        messages: list[ChatMessage],
+    ) -> CompletionResponse:
+        """Run the claim-extraction completion under a cost-recording scope.
+
+        Returns:
+            The provider's completion response.
+        """
+        return await self._run_completion(
+            context,
+            execution_id,
+            messages=messages,
+            tools=[EXTRACT_CLAIMS_TOOL],
+            config=EXTRACTION_CONFIG,
+        )
+
+    async def _complete_entailment(
+        self,
+        context: GroundingSubstrateContext,
+        execution_id: NotBlankStr,
+        *,
+        messages: list[ChatMessage],
+    ) -> CompletionResponse:
+        """Run the per-claim entailment completion under a cost-recording scope.
+
+        Returns:
+            The provider's completion response.
+        """
+        return await self._run_completion(
+            context,
+            execution_id,
+            messages=messages,
+            tools=[GROUNDING_VERDICT_TOOL],
+            config=ENTAILMENT_CONFIG,
+        )
+
+    async def _run_completion(
         self,
         context: GroundingSubstrateContext,
         execution_id: NotBlankStr,
         *,
         messages: list[ChatMessage],
         tools: list[ToolDefinition],
-        max_tokens: int,
+        config: CompletionConfig,
     ) -> CompletionResponse:
         """Run one structured completion under a cost-recording scope.
 
@@ -387,8 +422,5 @@ class KnowledgeSubstrateGroundingChecker:
                 messages,
                 context.model_id,
                 tools=tools,
-                config=CompletionConfig(
-                    temperature=LLM_TEMPERATURE,
-                    max_tokens=max_tokens,
-                ),
+                config=config,
             )

@@ -32,7 +32,7 @@ class _FakeProvider:
     ) -> None:
         self._content = content
         self._error = error
-        self.calls: list[tuple[list[ChatMessage], str]] = []
+        self.calls: list[tuple[list[ChatMessage], str, CompletionConfig | None]] = []
 
     async def complete(
         self,
@@ -41,7 +41,7 @@ class _FakeProvider:
         *,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        self.calls.append((messages, model))
+        self.calls.append((messages, model, config))
         if self._error is not None:
             raise self._error
         return _response(self._content)
@@ -68,6 +68,15 @@ class TestLLMSummarizer:
         )
         assert out == "A concise semantic summary."
         assert provider.calls
+
+    async def test_default_sampling_params_match_compaction_defaults(self) -> None:
+        provider = _FakeProvider(content="summary")
+        summarizer = LLMSummarizer(provider=provider, model="example-small-001")
+        await summarizer.summarize(_archivable(), fallback_text=_FALLBACK)
+        _, _, config = provider.calls[0]
+        assert config is not None
+        assert config.temperature == pytest.approx(0.3)
+        assert config.max_tokens == 500
 
     async def test_empty_content_falls_back(self) -> None:
         provider = _FakeProvider(content="   ")

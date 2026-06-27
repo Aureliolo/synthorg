@@ -18,6 +18,7 @@ from synthorg.budget.coordination_config import (
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
@@ -225,6 +226,11 @@ class _BaseSemanticDetector(ABC):
 
     @property
     @abstractmethod
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+
+    @property
+    @abstractmethod
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
 
@@ -397,6 +403,12 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
 
     @property
     @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return NotBlankStr("semantic_detector.logical_contradiction")
+
+    @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.SAME_TASK})
@@ -425,6 +437,12 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.NUMERICAL_DRIFT
+
+    @property
+    @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return NotBlankStr("semantic_detector.numerical_drift")
 
     @property
     @override
@@ -461,6 +479,12 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 
     @property
     @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return NotBlankStr("semantic_detector.context_omission")
+
+    @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -491,6 +515,12 @@ class SemanticCoordinationDetector(_BaseSemanticDetector):
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.COORDINATION_FAILURE
+
+    @property
+    @override
+    def prompt_class_id(self) -> NotBlankStr:
+        """Stable per-purpose identifier for this detector's prompt class."""
+        return NotBlankStr("semantic_detector.coordination_failure")
 
     @property
     @override

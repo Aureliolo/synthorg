@@ -29,10 +29,18 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
+# The reranker emits only a ranking array of candidate indices, bounded
+# by ``RetrievalQuery.max_results`` (<= 100); 512 tokens fits 100 indices
+# with ample headroom before truncation forces the graceful fallback.
+_RERANK_MAX_TOKENS: Final[int] = 512
+
 # Re-ranking must be deterministic across CI shards so cache keys
 # remain stable. Temperature=0.0 also minimises the chance of the
 # LLM returning a malformed ranking array that forces a fallback.
-_RERANK_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
+_RERANK_COMPLETION_CONFIG = CompletionConfig(
+    temperature=0.0,
+    max_tokens=_RERANK_MAX_TOKENS,
+)
 
 
 class RankingLLMResponse(BaseModel):
