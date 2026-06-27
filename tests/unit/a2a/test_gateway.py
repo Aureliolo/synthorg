@@ -4,16 +4,16 @@ import pytest
 from litestar import Request
 from litestar.testing import RequestFactory
 
-from synthorg.a2a.gateway import (
-    _error_response,
-    _extract_peer_name,
-    _success_response,
-)
 from synthorg.a2a.models import (
     A2A_PEER_NOT_ALLOWED,
     JSONRPC_METHOD_NOT_FOUND,
 )
 from synthorg.a2a.rpc_params import A2AMessageSendParams
+from synthorg.api.a2a.gateway import (
+    _error_response,
+    _extract_peer_name,
+    _success_response,
+)
 from synthorg.api.state import AppState
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
@@ -116,7 +116,7 @@ class TestSupportedMethods:
     @pytest.mark.unit
     def test_all_methods(self) -> None:
         """All expected methods are in the supported set."""
-        from synthorg.a2a.gateway import _SUPPORTED_METHODS
+        from synthorg.api.a2a.gateway import _SUPPORTED_METHODS
 
         expected = {
             "message/send",
@@ -141,8 +141,8 @@ class TestMethodHandlers:
         """
         from typing import get_args
 
-        from synthorg.a2a.gateway import _SUPPORTED_METHODS
         from synthorg.a2a.rpc_params import A2ARpcParams
+        from synthorg.api.a2a.gateway import _SUPPORTED_METHODS
 
         # ``Annotated[Union[...], Discriminator(...)]`` -> first arg
         # is the union itself; ``get_args`` on the union yields the
@@ -160,7 +160,7 @@ class TestMethodHandlers:
         """All three method handlers are async callables."""
         import inspect
 
-        from synthorg.a2a.gateway import (
+        from synthorg.api.a2a.gateway import (
             _handle_message_send,
             _handle_tasks_cancel,
             _handle_tasks_get,
@@ -181,7 +181,7 @@ class TestParseJsonrpc:
     @pytest.mark.unit
     def test_valid_request(self) -> None:
         """Valid JSON-RPC request is parsed successfully."""
-        from synthorg.a2a.gateway import _parse_jsonrpc
+        from synthorg.api.a2a.gateway import _parse_jsonrpc
 
         body = b'{"jsonrpc":"2.0","id":"1","method":"message/send","params":{}}'
         result = _parse_jsonrpc(body)
@@ -191,7 +191,7 @@ class TestParseJsonrpc:
     @pytest.mark.unit
     def test_invalid_json(self) -> None:
         """Invalid JSON returns None."""
-        from synthorg.a2a.gateway import _parse_jsonrpc
+        from synthorg.api.a2a.gateway import _parse_jsonrpc
 
         result = _parse_jsonrpc(b"not json {{{")
         assert result is None
@@ -199,7 +199,7 @@ class TestParseJsonrpc:
     @pytest.mark.unit
     def test_missing_method(self) -> None:
         """Missing method field returns None."""
-        from synthorg.a2a.gateway import _parse_jsonrpc
+        from synthorg.api.a2a.gateway import _parse_jsonrpc
 
         result = _parse_jsonrpc(b'{"jsonrpc":"2.0","id":"1","params":{}}')
         assert result is None
@@ -207,7 +207,7 @@ class TestParseJsonrpc:
     @pytest.mark.unit
     def test_empty_body(self) -> None:
         """Empty body returns None."""
-        from synthorg.a2a.gateway import _parse_jsonrpc
+        from synthorg.api.a2a.gateway import _parse_jsonrpc
 
         result = _parse_jsonrpc(b"")
         assert result is None
@@ -219,7 +219,7 @@ class TestA2AMethodError:
     @pytest.mark.unit
     def test_default_http_status(self) -> None:
         """Default HTTP status is 400."""
-        from synthorg.a2a.gateway import _A2AMethodError
+        from synthorg.api.a2a.gateway import _A2AMethodError
 
         err = _A2AMethodError(-32602, "Invalid params")
         assert err.http_status == 400
@@ -229,7 +229,7 @@ class TestA2AMethodError:
     @pytest.mark.unit
     def test_custom_http_status(self) -> None:
         """Custom HTTP status is respected."""
-        from synthorg.a2a.gateway import _A2AMethodError
+        from synthorg.api.a2a.gateway import _A2AMethodError
 
         err = _A2AMethodError(-32001, "Not found", http_status=404)
         assert err.http_status == 404
@@ -241,7 +241,7 @@ class TestValidateTaskOwnership:
     @pytest.mark.unit
     def test_accepts_owning_peer(self) -> None:
         """The peer that created the task may access it."""
-        from synthorg.a2a.gateway import _validate_task_ownership
+        from synthorg.api.a2a.gateway import _validate_task_ownership
 
         # _make_task stamps created_by="a2a-gateway:peer-a".
         _validate_task_ownership(_make_task("task-0", TaskStatus.CREATED), "peer-a")
@@ -249,8 +249,11 @@ class TestValidateTaskOwnership:
     @pytest.mark.unit
     def test_rejects_foreign_peer_with_404(self) -> None:
         """Another peer's access 404s (does not leak task existence)."""
-        from synthorg.a2a.gateway import _A2AMethodError, _validate_task_ownership
         from synthorg.a2a.models import A2A_TASK_NOT_FOUND
+        from synthorg.api.a2a.gateway import (
+            _A2AMethodError,
+            _validate_task_ownership,
+        )
 
         with pytest.raises(_A2AMethodError) as exc_info:
             _validate_task_ownership(_make_task("task-0", TaskStatus.CREATED), "peer-b")
@@ -264,7 +267,7 @@ class TestRequireTaskEngine:
     @pytest.mark.unit
     def test_returns_engine_when_available(self) -> None:
         """Returns the task engine when wired."""
-        from synthorg.a2a.gateway import _require_task_engine
+        from synthorg.api.a2a.gateway import _require_task_engine
         from synthorg.engine.task_engine import TaskEngine
 
         task_engine = mock_of[TaskEngine]()
@@ -275,7 +278,10 @@ class TestRequireTaskEngine:
     @pytest.mark.unit
     def test_raises_method_error_when_unavailable(self) -> None:
         """Raises _A2AMethodError when engine not wired."""
-        from synthorg.a2a.gateway import _A2AMethodError, _require_task_engine
+        from synthorg.api.a2a.gateway import (
+            _A2AMethodError,
+            _require_task_engine,
+        )
 
         app_state = make_app_state()
         with pytest.raises(_A2AMethodError) as exc_info:
@@ -291,7 +297,7 @@ class TestVerifyPeerCredentials:
         """No catalog: graceful pass-through."""
         from unittest.mock import MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         app_state = make_app_state()
         request = MagicMock(spec=Request)
@@ -310,7 +316,7 @@ class TestVerifyPeerCredentials:
         credentials must not silently grant access."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(return_value={})
@@ -329,7 +335,7 @@ class TestVerifyPeerCredentials:
         """Matching API key passes."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -351,7 +357,7 @@ class TestVerifyPeerCredentials:
         """Mismatched API key is rejected."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -373,7 +379,7 @@ class TestVerifyPeerCredentials:
         """Missing API key header when stored key exists."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -395,7 +401,7 @@ class TestVerifyPeerCredentials:
         """A catalog record whose api_key is blank must not grant access."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -418,7 +424,7 @@ class TestVerifyPeerCredentials:
         """A catalog record whose access_token is blank must not grant access."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -440,7 +446,7 @@ class TestVerifyPeerCredentials:
         """A stored bearer token with no token presented is denied."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -462,7 +468,7 @@ class TestVerifyPeerCredentials:
         """Matching bearer token passes."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -487,7 +493,7 @@ class TestVerifyPeerCredentials:
         """Mismatched bearer token is rejected."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -512,7 +518,7 @@ class TestVerifyPeerCredentials:
         """mTLS scheme has no header-level check."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -538,7 +544,7 @@ class TestVerifyPeerCredentials:
         """
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -560,7 +566,7 @@ class TestVerifyPeerCredentials:
         """Catalog errors result in denial."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.a2a.gateway import _verify_peer_credentials
+        from synthorg.api.a2a.gateway import _verify_peer_credentials
 
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
@@ -704,7 +710,7 @@ class TestHandleMessageSend:
     @pytest.mark.unit
     async def test_creates_task_and_returns_state(self) -> None:
         """Creates the task through ``create_task`` and maps its status."""
-        from synthorg.a2a.gateway import _handle_message_send
+        from synthorg.api.a2a.gateway import _handle_message_send
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
@@ -728,12 +734,12 @@ class TestHandleMessageSend:
         """A message with more parts than the cap raises invalid-params."""
         from unittest.mock import AsyncMock, patch
 
-        from synthorg.a2a.gateway import (
+        from synthorg.a2a.models import JSONRPC_INVALID_PARAMS
+        from synthorg.api.a2a.gateway import (
             _A2AMethodError,
             _handle_message_send,
             _resolve_max_message_parts,
         )
-        from synthorg.a2a.models import JSONRPC_INVALID_PARAMS
         from synthorg.engine.task_engine import TaskEngine
 
         engine = mock_of[TaskEngine]()
@@ -741,7 +747,10 @@ class TestHandleMessageSend:
         capped = AsyncMock(spec=_resolve_max_message_parts, return_value=1)
 
         with (
-            patch("synthorg.a2a.gateway._resolve_max_message_parts", new=capped),
+            patch(
+                "synthorg.api.a2a.gateway._resolve_max_message_parts",
+                new=capped,
+            ),
             pytest.raises(_A2AMethodError) as exc_info,
         ):
             await _handle_message_send(app_state, _send_params(parts=2), "peer-a")
@@ -753,7 +762,7 @@ class TestHandleMessageSend:
         """A message with exactly the cap is accepted (boundary)."""
         from unittest.mock import AsyncMock, patch
 
-        from synthorg.a2a.gateway import (
+        from synthorg.api.a2a.gateway import (
             _handle_message_send,
             _resolve_max_message_parts,
         )
@@ -765,7 +774,10 @@ class TestHandleMessageSend:
         app_state = _app_state_with_engine(engine)
         at_cap = AsyncMock(spec=_resolve_max_message_parts, return_value=2)
 
-        with patch("synthorg.a2a.gateway._resolve_max_message_parts", new=at_cap):
+        with patch(
+            "synthorg.api.a2a.gateway._resolve_max_message_parts",
+            new=at_cap,
+        ):
             result = await _handle_message_send(app_state, _send_params(parts=2), "p")
         assert result == {"id": sid("task-1"), "state": "working"}
         engine.create_task.assert_awaited_once()
@@ -774,7 +786,7 @@ class TestHandleMessageSend:
     async def test_duplicate_message_id_replays_same_task(self) -> None:
         """Regression (audit 133): a retried message/send with the same
         message_id returns the same task and creates exactly one task."""
-        from synthorg.a2a.gateway import _handle_message_send
+        from synthorg.api.a2a.gateway import _handle_message_send
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
@@ -812,8 +824,8 @@ class TestHandleTasksGet:
     @pytest.mark.unit
     async def test_returns_state_for_existing_task(self) -> None:
         """Maps an existing task's status to the A2A state."""
-        from synthorg.a2a.gateway import _handle_tasks_get
         from synthorg.a2a.rpc_params import A2ATaskGetParams
+        from synthorg.api.a2a.gateway import _handle_tasks_get
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
@@ -834,9 +846,12 @@ class TestHandleTasksGet:
     @pytest.mark.unit
     async def test_missing_task_raises_404(self) -> None:
         """A missing task surfaces as a 404 method error."""
-        from synthorg.a2a.gateway import _A2AMethodError, _handle_tasks_get
         from synthorg.a2a.models import A2A_TASK_NOT_FOUND
         from synthorg.a2a.rpc_params import A2ATaskGetParams
+        from synthorg.api.a2a.gateway import (
+            _A2AMethodError,
+            _handle_tasks_get,
+        )
         from synthorg.engine.task_engine import TaskEngine
 
         engine = mock_of[TaskEngine]()
@@ -859,8 +874,8 @@ class TestHandleTasksCancel:
     @pytest.mark.unit
     async def test_cancels_non_terminal_task(self) -> None:
         """Cancels a cancellable task and returns the updated state."""
-        from synthorg.a2a.gateway import _handle_tasks_cancel
         from synthorg.a2a.rpc_params import A2ATaskCancelParams
+        from synthorg.api.a2a.gateway import _handle_tasks_cancel
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
@@ -885,9 +900,12 @@ class TestHandleTasksCancel:
     @pytest.mark.unit
     async def test_missing_task_raises_404(self) -> None:
         """A cancel for an unknown task surfaces as 404 before cancelling."""
-        from synthorg.a2a.gateway import _A2AMethodError, _handle_tasks_cancel
         from synthorg.a2a.models import A2A_TASK_NOT_FOUND
         from synthorg.a2a.rpc_params import A2ATaskCancelParams
+        from synthorg.api.a2a.gateway import (
+            _A2AMethodError,
+            _handle_tasks_cancel,
+        )
         from synthorg.engine.task_engine import TaskEngine
 
         engine = mock_of[TaskEngine]()
@@ -907,9 +925,12 @@ class TestHandleTasksCancel:
     @pytest.mark.unit
     async def test_terminal_task_is_not_cancelable(self) -> None:
         """A task already in a terminal state is rejected before cancelling."""
-        from synthorg.a2a.gateway import _A2AMethodError, _handle_tasks_cancel
         from synthorg.a2a.models import A2A_TASK_NOT_CANCELABLE
         from synthorg.a2a.rpc_params import A2ATaskCancelParams
+        from synthorg.api.a2a.gateway import (
+            _A2AMethodError,
+            _handle_tasks_cancel,
+        )
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
@@ -947,9 +968,9 @@ class TestDispatchEngineErrors:
         expected_status: int,
     ) -> None:
         """Engine errors raised mid-cancel map to their wire status, not 500."""
-        from synthorg.a2a import gateway as gw
-        from synthorg.a2a.gateway import _dispatch_method
         from synthorg.a2a.models import JsonRpcRequest
+        from synthorg.api.a2a import gateway as gw
+        from synthorg.api.a2a.gateway import _dispatch_method
         from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 

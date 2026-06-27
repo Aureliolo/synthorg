@@ -1212,7 +1212,7 @@ def _reset_structlog_state() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _reset_a2a_card_cache() -> Iterator[None]:
-    """Clear ``synthorg.a2a.well_known._card_cache`` before and after every test.
+    """Clear the a2a well-known ``_card_cache`` before and after every test.
 
     The cache is intentionally module-global at runtime (Agent Cards
     are expensive to rebuild and the controller serves them under TTL
@@ -1221,7 +1221,7 @@ def _reset_a2a_card_cache() -> Iterator[None]:
     later host-key probe; the post-test clear protects the next
     worker hop in xdist work-stealing.
     """
-    from synthorg.a2a.well_known import _card_cache
+    from synthorg.api.a2a.well_known import _card_cache
 
     _card_cache.clear()
     yield
