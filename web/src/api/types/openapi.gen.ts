@@ -10957,6 +10957,10 @@ export type components = {
              * @default 3
              */
             readonly pattern_min_agents: number;
+            /** @description Per-pillar weakness thresholds keyed by pillar value; a pillar absent here falls back to ``pattern_weakness_threshold``. Lets operators hold, say, governance to a stricter bar than efficiency. */
+            readonly pattern_thresholds: {
+                readonly [key: string]: number;
+            };
             /**
              * @description Pillar score below which the pillar is weak for an agent
              * @default 5
