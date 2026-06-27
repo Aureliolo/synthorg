@@ -2523,5 +2523,5 @@ CREATE TABLE model_pin_validations (
     prompt_class_id TEXT NOT NULL PRIMARY KEY
     CHECK (LENGTH(TRIM(prompt_class_id)) > 0),
     validated_at TEXT NOT NULL,
-    tier TEXT NOT NULL CHECK (LENGTH(TRIM(tier)) > 0)
+    tier TEXT NOT NULL CHECK (tier IN ('large', 'medium', 'small', 'local-small'))
 );
