@@ -128,7 +128,6 @@ async def test_clean_grade_stamps_validated_at_from_clock() -> None:
     assert len(repo.saved) == _PURPOSE_COUNT
     for row in repo.saved:
         assert row.validated_at == clock.now()
-        assert row.passed is True
         assert row.tier == tier_for_purpose(row.prompt_class_id)
 
 

@@ -57,7 +57,6 @@ class ModelPinValidationLedger:
             prompt_class_id=prompt_class_id,
             validated_at=self._clock.now(),
             tier=tier,
-            passed=True,
         )
         await self._repository.save(row)
 

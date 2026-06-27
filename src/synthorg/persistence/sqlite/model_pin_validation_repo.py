@@ -40,15 +40,14 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: Final[int] = 1_000
 
-_SELECT_COLS: Final[str] = "prompt_class_id, validated_at, tier, passed"
+_SELECT_COLS: Final[str] = "prompt_class_id, validated_at, tier"
 
 _UPSERT_SQL = f"""
     INSERT INTO model_pin_validations ({_SELECT_COLS})
-    VALUES (?, ?, ?, ?)
+    VALUES (?, ?, ?)
     ON CONFLICT(prompt_class_id) DO UPDATE SET
         validated_at = excluded.validated_at,
-        tier = excluded.tier,
-        passed = excluded.passed
+        tier = excluded.tier
 """  # noqa: S608 -- column list is a compile-time constant
 
 
@@ -86,7 +85,6 @@ def _row_to_record(row: Row) -> ModelPinValidationRow:
             prompt_class_id=PromptPurposeId(str(row["prompt_class_id"])),
             validated_at=coerce_row_timestamp(row["validated_at"]),
             tier=cast("TierName", str(row["tier"])),
-            passed=bool(row["passed"]),
         )
     except (ValueError, TypeError, KeyError, IndexError) as exc:
         error_type = type(exc).__name__
@@ -131,7 +129,6 @@ class SQLiteModelPinValidationRepository:
             class_id,
             format_iso_utc(entity.validated_at),
             str(entity.tier),
-            int(entity.passed),
         )
         async with self._write_context():
             try:

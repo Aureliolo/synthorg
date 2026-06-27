@@ -64,13 +64,11 @@ def _make_row(
     *,
     prompt_class_id: PromptPurposeId = PromptPurposeId.MEMORY_RERANK,
     tier: TierName = "small",
-    passed: bool = True,
 ) -> ModelPinValidationRow:
     return ModelPinValidationRow(
         prompt_class_id=prompt_class_id,
         validated_at=_NOW,
         tier=tier,
-        passed=passed,
     )
 
 
@@ -83,7 +81,6 @@ class TestModelPinValidationRepository:
         assert fetched is not None
         assert fetched.prompt_class_id == PromptPurposeId.MEMORY_RERANK
         assert fetched.tier == "small"
-        assert fetched.passed is True
         assert fetched.validated_at.tzinfo is not None
 
     async def test_get_returns_none_when_absent(
@@ -96,13 +93,12 @@ class TestModelPinValidationRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        await repo.save(_make_row(tier="small", passed=True))
-        await repo.save(_make_row(tier="medium", passed=False))
+        await repo.save(_make_row(tier="small"))
+        await repo.save(_make_row(tier="medium"))
 
         fetched = await repo.get(NotBlankStr("system:memory:rerank"))
         assert fetched is not None
         assert fetched.tier == "medium"
-        assert fetched.passed is False
         items = await repo.list_items()
         rerank = [
             r for r in items if r.prompt_class_id == PromptPurposeId.MEMORY_RERANK

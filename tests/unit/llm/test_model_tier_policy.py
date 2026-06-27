@@ -8,6 +8,7 @@ through ``heuristic_tier``, and a sample of grounded assignments.
 import pytest
 
 from synthorg.budget.model_tier import TIERS, heuristic_tier
+from synthorg.llm import model_tier_policy
 from synthorg.llm.model_tier_policy import (
     PromptTierKind,
     assignment_for_purpose,
@@ -76,6 +77,21 @@ def test_assignment_accepts_str_and_enum() -> None:
 def test_assignment_rejects_unknown_purpose() -> None:
     with pytest.raises(ValueError, match="system:not:a:purpose"):
         assignment_for_purpose("system:not:a:purpose")
+
+
+def test_duplicate_policy_entries_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A purpose repeated in the spec table must fail the import-time build,
+    # not silently let the later row win and change the pinned tier.
+    monkeypatch.setattr(
+        model_tier_policy,
+        "_TIER_POLICY_SPECS",
+        (
+            *model_tier_policy._TIER_POLICY_SPECS,
+            (PromptPurposeId.MEMORY_RERANK, PromptTierKind.JUDGE_GRADE_VERIFY),
+        ),
+    )
+    with pytest.raises(ValueError, match="duplicated in tier policy"):
+        model_tier_policy._build_policy()
 
 
 @pytest.mark.parametrize(
