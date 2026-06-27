@@ -11,6 +11,7 @@ directly, matching the pattern in ``test_check_no_magic_numbers.py``.
 """
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Protocol, cast
@@ -18,6 +19,23 @@ from typing import Protocol, cast
 import pytest
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip every ``GIT_*`` env var for the duration of each test.
+
+    The gate's ``git ls-files`` subprocess inherits this process's
+    environment. Under a pre-push hook ``GIT_DIR`` / ``GIT_WORK_TREE`` /
+    ``GIT_INDEX_FILE`` point at the real synthorg repo, which would let the
+    scan escape the test's ``tmp_path`` sandbox and read the live tree. With
+    them cleared, git resolves via ``cwd`` alone (a non-repo ``tmp_path``),
+    so the gate's only filesystem access is the rglob fallback over the
+    sandbox. A test must NEVER touch real repo data.
+    """
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(key, raising=False)
+
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_cost_scope_purpose.py"
