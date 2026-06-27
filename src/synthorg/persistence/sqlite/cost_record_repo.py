@@ -74,10 +74,12 @@ class SQLiteCostRecordRepository:
                     """\
 INSERT INTO cost_records (
     agent_id, task_id, provider, model, input_tokens,
-    output_tokens, cost, currency, timestamp, call_category
+    output_tokens, cost, currency, timestamp, call_category,
+    prompt_class_id
 ) VALUES (
     :agent_id, :task_id, :provider, :model, :input_tokens,
-    :output_tokens, :cost, :currency, :timestamp, :call_category
+    :output_tokens, :cost, :currency, :timestamp, :call_category,
+    :prompt_class_id
 )""",
                     data,
                 )
@@ -122,7 +124,8 @@ INSERT INTO cost_records (
 
         sql = """\
 SELECT agent_id, task_id, provider, model, input_tokens,
-       output_tokens, cost, currency, timestamp, call_category
+       output_tokens, cost, currency, timestamp, call_category,
+       prompt_class_id
 FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

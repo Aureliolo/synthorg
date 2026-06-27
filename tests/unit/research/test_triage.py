@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.budget.tracker import CostTracker
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import (
     AcademicSourceLocator,
@@ -18,7 +20,7 @@ from synthorg.research.triage.hybrid import HybridCredibilityTriage
 from synthorg.research.triage.llm import LlmCredibilityTriage
 from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
-from tests.unit.research._fakes import scripted_response
+from tests.unit.research._fakes import CtxCapturingProvider, scripted_response
 
 pytestmark = pytest.mark.unit
 
@@ -129,6 +131,22 @@ async def test_llm_triage_parses_verdicts_and_defaults_missing() -> None:
     assert scored["src-0-0"].passed is True
     assert scored["src-0-1"].score == 0.0
     assert scored["src-0-1"].passed is False
+
+
+async def test_llm_triage_opens_purpose_scope() -> None:
+    items = (_web_item("src-0-0", snippet="alpha"),)
+    payload = json.dumps({"verdicts": []})
+    provider = CtxCapturingProvider(payload)
+    tracker = CostTracker()
+    triage = LlmCredibilityTriage(provider=provider, model="m", cost_tracker=tracker)
+
+    await triage.triage(items, brief=_brief())
+    await tracker.drain_pending_records()
+
+    assert provider.was_called
+    ctx = provider.captured
+    assert ctx is not None
+    assert ctx.prompt_class_id is PromptPurposeId.RESEARCH_TRIAGE
 
 
 # ── Hybrid ───────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.cost_recording import (
     CostRecordingContext,
     current_cost_context,
@@ -124,6 +125,7 @@ async def test_planner_opens_system_cost_scope() -> None:
     assert ctx.call_category is LLMCallCategory.SYSTEM
     assert ctx.task_id == "system:research:planning:b1"
     assert ctx.project_id == "proj-1"
+    assert ctx.prompt_class_id is PromptPurposeId.RESEARCH_PLANNING
 
 
 async def test_planner_without_tracker_opens_no_scope() -> None:

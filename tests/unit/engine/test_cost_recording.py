@@ -18,6 +18,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
+from synthorg.llm.prompt_purpose import PromptPurposeId
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -120,6 +121,31 @@ class TestRecordExecutionCosts:
         assert len(tracker.records) == 2
         assert tracker.records[0].cost == 0.01
         assert tracker.records[1].cost == 0.02
+
+    async def test_prompt_class_id_threads_into_record(self) -> None:
+        turns = (_turn(turn_number=1, cost=0.01, input_tokens=100, output_tokens=50),)
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result(turns),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,
+            prompt_class_id=PromptPurposeId.MEMORY_RERANK,
+        )
+        assert tracker.records[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
+
+    async def test_prompt_class_id_defaults_none(self) -> None:
+        turns = (_turn(turn_number=1, cost=0.01, input_tokens=100, output_tokens=50),)
+        tracker = _FakeTracker()
+        await record_execution_costs(
+            _result(turns),
+            _identity(),
+            "agent-1",
+            "task-1",
+            tracker=tracker,
+        )
+        assert tracker.records[0].prompt_class_id is None
 
     async def test_skips_zero_cost_zero_tokens(self) -> None:
         turns = (_turn(cost=0.0, input_tokens=0, output_tokens=0),)

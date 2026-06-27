@@ -94,6 +94,7 @@ CREATE TABLE cost_records (
     CHECK (currency ~ '^[A-Z]{3}$'),
     timestamp TIMESTAMPTZ NOT NULL,
     call_category TEXT,
+    prompt_class_id TEXT,
     PRIMARY KEY (rowid, timestamp)
 );
 

@@ -40,6 +40,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   currency: fc.constant(DEFAULT_CURRENCY),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
+  prompt_class_id: fc.oneof(fc.stringMatching(/^system:[a-z_:]{3,30}$/), fc.constant(null)),
   accuracy_effort_ratio: fc.oneof(fc.double({ min: 0, max: 1, noNaN: true }), fc.constant(null)),
   latency_ms: fc.oneof(fc.double({ min: 0, max: 10000, noNaN: true }), fc.constant(null)),
   cache_hit: fc.oneof(fc.boolean(), fc.constant(null)),

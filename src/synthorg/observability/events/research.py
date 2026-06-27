@@ -39,6 +39,13 @@ RESEARCH_RUN_FAILED: Final[str] = "research.run.failed"
 RESEARCH_LLM_OUTPUT_INVALID: Final[str] = "research.llm.output_invalid"
 """Emitted at WARNING when an LLM stage returns unparseable structured output."""
 
+RESEARCH_PLANNER_FALLBACK: Final[str] = "research.planner.fallback"
+"""Emitted at DEBUG when the planner yields no usable sub-queries and the
+pipeline falls back to one direct query per enabled source."""
+
+RESEARCH_TRIAGE_BATCH_SCORED: Final[str] = "research.triage.batch_scored"
+"""Emitted at DEBUG after each credibility-triage batch, with the verdict count."""
+
 RESEARCH_BUDGET_EXCEEDED: Final[str] = "research.budget.exceeded"
 """Emitted at WARNING before a run is rejected for exceeding its cost budget."""
 

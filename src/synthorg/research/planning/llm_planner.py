@@ -18,8 +18,12 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.observability.events.research import (
+    RESEARCH_LLM_OUTPUT_INVALID,
+    RESEARCH_PLANNER_FALLBACK,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text, extract_json_object
 from synthorg.research._args import PlannerOutput
@@ -79,6 +83,7 @@ class LlmQueryPlanner:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:planning:{brief.brief_id}"),
             project_id=brief.project_id,
+            purpose=PromptPurposeId.RESEARCH_PLANNING,
         )
         output = self._parse(content)
         sub_queries = self._build_sub_queries(brief, output)
@@ -144,6 +149,12 @@ class LlmQueryPlanner:
             )
         if kept:
             return tuple(kept)
+        logger.debug(
+            RESEARCH_PLANNER_FALLBACK,
+            brief_id=brief.brief_id,
+            enabled_source_count=len(brief.enabled_source_types),
+            reason="planner_produced_no_usable_queries",
+        )
         return tuple(
             SubQuery(
                 index=index,

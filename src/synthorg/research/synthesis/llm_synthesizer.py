@@ -21,6 +21,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
     RESEARCH_LLM_OUTPUT_INVALID,
@@ -112,6 +113,7 @@ class LlmSynthesizer:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:synthesis:{brief.brief_id}"),
             project_id=brief.project_id,
+            purpose=PromptPurposeId.RESEARCH_SYNTHESIS,
         )
         output = self._parse(content)
         claims = tuple(

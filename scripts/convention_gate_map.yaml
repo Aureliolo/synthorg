@@ -91,6 +91,11 @@ mandatory_rules:
     header: Error-Code Uniqueness
     gate: scripts/check_error_code_uniqueness.py
 
+  - id: claude-md::cost-attribution-purpose
+    file: CLAUDE.md
+    header: Cost Attribution Purpose
+    gate: scripts/check_cost_scope_purpose.py
+
   - id: claude-md::doc-numeric-claims
     file: CLAUDE.md
     header: Doc Numeric Claims

@@ -114,7 +114,8 @@ CREATE TABLE cost_records (
     currency TEXT NOT NULL DEFAULT 'USD'
     CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     timestamp TEXT NOT NULL,
-    call_category TEXT
+    call_category TEXT,
+    prompt_class_id TEXT
 );
 
 CREATE INDEX idx_cost_records_agent_id ON cost_records (agent_id);

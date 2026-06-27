@@ -40,6 +40,8 @@ class CostRecord(BaseModel):
     Attributes:
         agent_id: Agent identifier (string reference).
         task_id: Task identifier (string reference).
+        prompt_class_id: Prompt-class identifier for purpose attribution
+            (``None`` when the call carries no system prompt purpose).
         provider: LLM provider name.
         model: Model identifier.
         input_tokens: Input token count.
@@ -76,6 +78,15 @@ class CostRecord(BaseModel):
     project_id: NotBlankStr | None = Field(
         default=None,
         description="Project this cost belongs to",
+    )
+    prompt_class_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Prompt-class identifier for purpose attribution. When non-null "
+            "the value is a PromptPurposeId (e.g. 'system:memory:rerank'); "
+            "stored as a free-form string rather than the enum so reads stay "
+            "valid across registry additions"
+        ),
     )
     provider: NotBlankStr = Field(description="LLM provider name")
     model: NotBlankStr = Field(description="Model identifier")

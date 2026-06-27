@@ -47,6 +47,7 @@ Every API call is tracked with full context:
 {
   "agent_id": "sarah_chen",
   "task_id": "123e4567-e89b-12d3-a456-426614174000",
+  "prompt_class_id": "system:memory:rerank",
   "provider": "example-provider",
   "model": "example-medium-001",
   "input_tokens": 4500,
@@ -101,16 +102,19 @@ models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 
 1. **Provider-layer chokepoint** (`synthorg.providers.cost_recording`). A
    `cost_recording_scope(...)` async context manager binds per-call recording
-   context (`agent_id`, `task_id`, `project_id`, `call_category`, `currency`,
-   `cost_tracker`) to the current `asyncio.Task` via `contextvars`. Inside
-   `BaseCompletionProvider.complete()`, the chokepoint reads the active context
-   after a successful response and emits a `CostRecord` to the bound tracker.
-   Every non-engine LLM call site (memory consolidation, classification,
-   verification graders, intake, evolution, HR judges, security evaluators,
-   meetings, Chief of Staff, etc.) opens this scope so every paid LLM call is
-   accounted for. A pre-push lint
-   (`scripts/check_provider_complete_chokepoint.py`) blocks any new call site
-   that bypasses the chokepoint.
+   context (`agent_id`, `task_id`, `project_id`, `purpose`, `call_category`,
+   `currency`, `cost_tracker`) to the current `asyncio.Task` via `contextvars`.
+   Inside `BaseCompletionProvider.complete()`, the chokepoint reads the active
+   context after a successful response and emits a `CostRecord` to the bound
+   tracker. The `purpose` (a `PromptPurposeId` from `llm/prompt_purpose.py`, or
+   `None`) is stamped onto `CostRecord.prompt_class_id` so spend can be sliced
+   by prompt purpose. Every non-engine LLM call site (memory consolidation,
+   classification, verification graders, intake, evolution, HR judges, security
+   evaluators, meetings, Chief of Staff, etc.) opens this scope so every paid
+   LLM call is accounted for. Two pre-push lints guard it:
+   `scripts/check_provider_complete_chokepoint.py` blocks any new call site that
+   bypasses the chokepoint, and `scripts/check_cost_scope_purpose.py` blocks any
+   `cost_recording_scope()` call that omits `purpose=`.
 2. **Engine post-execution recorder** (`synthorg.engine.cost_recording`). The
    main agent execution loop builds per-turn `TurnRecord`s (carrying additional
    metadata the chokepoint cannot reconstruct, e.g. cumulative retry counts and

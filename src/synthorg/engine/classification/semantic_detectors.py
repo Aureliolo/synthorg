@@ -285,6 +285,8 @@ class _BaseSemanticDetector(ABC):
                 cost_tracker=self._cost_tracker,
                 agent_id=context.agent_id,
                 task_id=context.task_id,
+                # Per-task runtime classification, not a system prompt class.
+                purpose=None,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

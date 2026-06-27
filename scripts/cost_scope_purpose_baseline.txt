@@ -1,0 +1,42 @@
+# cost_recording_scope() call sites that do not yet pass purpose=. Each line
+# is `path:lineno:col` (POSIX path, 1-indexed line, 0-indexed column) sorted
+# in deterministic order.
+#
+# scripts/check_cost_scope_purpose.py reads this file to suppress violations
+# at these exact locations. A call site NOT in this list fails the pre-push
+# hook. The list shrinks monotonically: a site drops out once it passes
+# purpose=.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_cost_scope_purpose.py --update
+src/synthorg/client/generators/llm.py:116:19
+src/synthorg/engine/evolution/proposers/separate_analyzer.py:346:23
+src/synthorg/engine/intake/strategies/agent_intake.py:122:23
+src/synthorg/engine/intervention/proposer.py:127:23
+src/synthorg/engine/quality/decomposers/llm.py:367:19
+src/synthorg/engine/quality/graders/llm.py:330:23
+src/synthorg/engine/workspace/semantic_llm.py:230:23
+src/synthorg/hr/performance/llm_calibration_sampler.py:377:19
+src/synthorg/hr/performance/llm_judge_quality_strategy.py:342:19
+src/synthorg/hr/training/curation/llm_curated.py:147:23
+src/synthorg/memory/consolidation/abstractive.py:139:23
+src/synthorg/memory/consolidation/compressor.py:262:23
+src/synthorg/memory/consolidation/llm_op.py:390:23
+src/synthorg/memory/embedding/fine_tune_query.py:179:23
+src/synthorg/memory/procedural/proposer.py:186:23
+src/synthorg/memory/procedural/success_proposer.py:175:23
+src/synthorg/memory/retrieval/hierarchical/supervisor.py:318:19
+src/synthorg/memory/retrieval/hierarchical/supervisor.py:400:19
+src/synthorg/memory/retrieval/reranking/llm_reranker.py:333:19
+src/synthorg/meta/charter/strategy.py:156:23
+src/synthorg/meta/chief_of_staff/chat.py:266:23
+src/synthorg/meta/chief_of_staff/narrative/synthesiser.py:120:23
+src/synthorg/meta/chief_of_staff/propose.py:392:23
+src/synthorg/meta/chief_of_staff/routing.py:348:23
+src/synthorg/meta/strategies/code_modification.py:316:19
+src/synthorg/meta/toolsmith/strategy.py:185:19
+src/synthorg/security/llm_evaluator.py:256:23
+src/synthorg/security/redteam/grounding/substrate.py:494:19
+src/synthorg/security/safety_classifier.py:399:19
+src/synthorg/security/uncertainty.py:445:27
+src/synthorg/security/visionverify/verifiers/llm_vision.py:256:19

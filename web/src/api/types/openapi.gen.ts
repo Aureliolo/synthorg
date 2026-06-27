@@ -9778,6 +9778,8 @@ export type components = {
             readonly output_tokens: number;
             /** @description Project this cost belongs to */
             readonly project_id: string | null;
+            /** @description Prompt-class identifier for purpose attribution. When non-null the value is a PromptPurposeId (e.g. 'system:memory:rerank'); stored as a free-form string rather than the enum so reads stay valid across registry additions */
+            readonly prompt_class_id: string | null;
             /** @description LLM provider name */
             readonly provider: string;
             /** @description Number of retry attempts before success */
