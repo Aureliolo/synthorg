@@ -328,27 +328,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
-        key="rate_limit_floor_max_requests",
-        type=SettingType.INTEGER,
-        default="10000",
-        description=(
-            "Per-IP request floor per time window across the whole API,"
-            " including auth-rejected requests (defence-in-depth against"
-            " invalid-auth floods). Wraps both user-gated tiers, so it must"
-            " be >= rate_limit_unauth_max_requests AND"
-            " rate_limit_auth_max_requests."
-        ),
-        group="Rate Limiting",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-        min_value=1,
-        max_value=1_000_000,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
         key="rate_limit_unauth_max_requests",
         type=SettingType.INTEGER,
         default="20",

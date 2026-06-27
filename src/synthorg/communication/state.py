@@ -28,6 +28,9 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 from synthorg.communication.conflict_resolution.escalation.sweeper import (
     EscalationExpirationSweeper,
 )
+from synthorg.communication.conflict_resolution.service import (
+    ConflictResolutionService,
+)
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
@@ -59,6 +62,7 @@ class CommunicationStateSlice(BaseFeatureStateSlice):
     escalation_processor: DecisionProcessor | None = None
     escalation_sweeper: EscalationExpirationSweeper | None = None
     escalation_notify_subscriber: EscalationNotifySubscriber | None = None
+    conflict_resolution_service: ConflictResolutionService | None = None
 
 
 def message_bus_of(app_state: AppStateSliceMixin) -> MessageBus:

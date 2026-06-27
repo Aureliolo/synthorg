@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from litestar.channels import ChannelsPlugin
 from litestar.types import Middleware
 
+from synthorg.api._comms_conflict_wiring import wire_conflict_resolution_service
 from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
     _build_configured_trust_service,
@@ -202,14 +203,16 @@ def _wire_communication_services(
             meeting_service=MeetingService(orchestrator=meeting_orchestrator),
         )
 
-    escalation_config = effective_config.communication.conflict_resolution.escalation
+    cr_config = effective_config.communication.conflict_resolution
+    escalation_config = cr_config.escalation
     escalation_store = build_escalation_queue_store(escalation_config, persistence)
     escalation_registry = PendingFuturesRegistry()
+    escalation_processor = build_decision_processor(escalation_config)
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
     app_state.wire(
         CommunicationStateSlice,
         escalation_store=escalation_store,
-        escalation_processor=build_decision_processor(escalation_config),
+        escalation_processor=escalation_processor,
         escalation_registry=escalation_registry,
         escalation_sweeper=EscalationExpirationSweeper(
             escalation_store,
@@ -222,6 +225,15 @@ def _wire_communication_services(
             reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
             config_resolver=config_resolver,
         ),
+    )
+    wire_conflict_resolution_service(
+        app_state,
+        effective_config=effective_config,
+        config=cr_config,
+        message_bus=message_bus,
+        escalation_store=escalation_store,
+        escalation_processor=escalation_processor,
+        escalation_registry=escalation_registry,
     )
     return config_resolver
 
