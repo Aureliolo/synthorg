@@ -117,9 +117,10 @@ class TestLLMQuerySpecificReranker:
         c1 = _make_candidate("mem-1", 0.9)
         c2 = _make_candidate("mem-2", 0.7)
         await reranker.rerank(_make_query(), (c1, c2))
-        config = provider.complete.call_args.kwargs["config"]
+        config = provider.complete.call_args.kwargs.get("config")
+        assert config is not None
         assert config.temperature == 0.0
-        assert config.max_tokens == 512
+        assert config.max_tokens == 4096
 
     @pytest.mark.unit
     async def test_rerank_single_candidate_passthrough(self) -> None:

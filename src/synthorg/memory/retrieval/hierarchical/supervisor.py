@@ -87,15 +87,17 @@ _DEFAULT_FALLBACK_WORKERS = ("semantic",)
 _DEFAULT_MAX_WORKERS_PER_QUERY: Final[int] = 2
 _DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
 
-# Both calls emit a short JSON object (a worker list + reason, or a
-# retry verdict + corrected query); 256 tokens covers either with
-# headroom while bounding cost regardless of the provider default.
+# Both calls emit a short JSON object: routing returns a worker list +
+# reason; retry returns a verdict, an optional corrected query, an
+# optional strategy, and a free-text reason. 256 tokens covers the
+# widest of these with headroom while bounding cost regardless of the
+# provider default.
 _ROUTING_MAX_TOKENS: Final[int] = 256
 
 # Routing decisions and retry-evaluation must be deterministic so the
 # same query produces the same worker selection across runs; pin
 # ``temperature=0.0`` regardless of provider defaults.
-_ROUTING_COMPLETION_CONFIG = CompletionConfig(
+_ROUTING_COMPLETION_CONFIG: Final[CompletionConfig] = CompletionConfig(
     temperature=0.0,
     max_tokens=_ROUTING_MAX_TOKENS,
 )
@@ -343,6 +345,11 @@ class SupervisorRouter:
             : self._max_workers
         ]
         if not workers:
+            logger.debug(
+                MEMORY_HIERARCHICAL_ROUTING,
+                action="invalid_workers_filtered",
+                llm_workers=list(routing.workers),
+            )
             workers = _DEFAULT_FALLBACK_WORKERS
         reason = routing.reason
         logger.info(
@@ -377,10 +384,9 @@ class SupervisorRouter:
             count=len(result.candidates),
             avg_score=avg_score,
         )
-        # Wrap the untrusted ``query.text`` so a malicious query
-        # body cannot inject instructions into the retry evaluator.
-        # The candidate-count summary is fixed-format numeric data,
-        # so it stays outside the fence.
+        # Wrap the untrusted ``query.text`` so a malicious query body cannot
+        # inject instructions into the retry evaluator. The candidate-count
+        # summary is fixed-format numeric data, so it stays outside the fence.
         wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         user_content = (
             f"Original query:\n{wrapped_query}\n"
@@ -403,6 +409,11 @@ class SupervisorRouter:
                 config=_ROUTING_COMPLETION_CONFIG,
             )
         if response.content is None:
+            logger.warning(
+                MEMORY_HIERARCHICAL_RETRY,
+                action="eval_failed",
+                reason="empty_content",
+            )
             return None
         try:
             parsed = json.loads(response.content)
@@ -417,6 +428,11 @@ class SupervisorRouter:
             return None
         retry = parse_typed("memory.retry", parsed, _LlmRetryResponse)
         if not retry.retry:
+            logger.debug(
+                MEMORY_HIERARCHICAL_RETRY,
+                action="llm_no_retry",
+                reason=retry.reason,
+            )
             return None
 
         corrected_query = None
@@ -439,17 +455,15 @@ class SupervisorRouter:
                 )
                 corrected_query = None
 
-        alt_strategy = retry.alternative_strategy
-        reason = retry.reason
         logger.info(
             MEMORY_HIERARCHICAL_RETRY,
             action="correction",
             has_corrected_query=corrected_query is not None,
-            alternative_strategy=alt_strategy,
-            reason=reason,
+            alternative_strategy=retry.alternative_strategy,
+            reason=retry.reason,
         )
         return RetrievalRetryCorrection(
             corrected_query=corrected_query,
-            alternative_strategy=alt_strategy,
-            reason=reason,
+            alternative_strategy=retry.alternative_strategy,
+            reason=retry.reason,
         )

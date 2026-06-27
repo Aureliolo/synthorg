@@ -265,33 +265,6 @@ class TestEscalation:
         assert claim.confidence == pytest.approx(0.95)
         assert "47%" in claim.excerpt
 
-    async def test_extraction_and_entailment_use_purpose_distinct_configs(
-        self,
-    ) -> None:
-        provider = _provider(
-            [
-                _extract_response(["Revenue grew 47% last quarter."]),
-                _verdict_response("unsupported", 0.95),
-            ]
-        )
-        checker = _checker(
-            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
-        )
-
-        await checker.check(
-            deliverable_content=_NUMERIC_DELIVERABLE,
-            execution_id=_EXEC,
-            project_id=_PROJECT,
-        )
-
-        extraction_call, entailment_call = provider.complete.call_args_list
-        assert extraction_call.kwargs["config"] is EXTRACTION_CONFIG
-        assert extraction_call.kwargs["config"].max_tokens == EXTRACTION_MAX_TOKENS
-        assert extraction_call.kwargs["tools"][0].name == EXTRACT_CLAIMS_TOOL_NAME
-        assert entailment_call.kwargs["config"] is ENTAILMENT_CONFIG
-        assert entailment_call.kwargs["config"].max_tokens == ENTAILMENT_MAX_TOKENS
-        assert entailment_call.kwargs["tools"][0].name == GROUNDING_VERDICT_TOOL_NAME
-
     async def test_search_scoped_to_project(self) -> None:
         knowledge = _knowledge((_hit(),))
         provider = _provider(
@@ -520,3 +493,36 @@ class TestSearchLimitGuard:
     def test_non_positive_search_limit_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="search_limit"):
             KnowledgeSubstrateGroundingChecker(resolver=lambda: None, search_limit=0)
+
+
+class TestSubstrateCompletionRouting:
+    """Extraction and entailment each route through their own sampling config."""
+
+    async def test_extraction_and_entailment_use_purpose_distinct_configs(
+        self,
+    ) -> None:
+        provider = _provider(
+            [
+                _extract_response(["Revenue grew 47% last quarter."]),
+                _verdict_response("unsupported", 0.95),
+            ]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        extraction_call, entailment_call = provider.complete.call_args_list
+        extraction_config = extraction_call.kwargs.get("config")
+        entailment_config = entailment_call.kwargs.get("config")
+        assert extraction_config is EXTRACTION_CONFIG
+        assert extraction_config.max_tokens == EXTRACTION_MAX_TOKENS
+        assert extraction_call.kwargs["tools"][0].name == EXTRACT_CLAIMS_TOOL_NAME
+        assert entailment_config is ENTAILMENT_CONFIG
+        assert entailment_config.max_tokens == ENTAILMENT_MAX_TOKENS
+        assert entailment_call.kwargs["tools"][0].name == GROUNDING_VERDICT_TOOL_NAME

@@ -70,13 +70,15 @@ EXTRACTION_CONFIG: Final[CompletionConfig] = CompletionConfig(
     temperature=LLM_TEMPERATURE,
     max_tokens=EXTRACTION_MAX_TOKENS,
 )
-"""Sampling config for the claim-extraction operation."""
+"""Claim-extraction sampling: temperature ``LLM_TEMPERATURE`` (0.0), capped
+at ``EXTRACTION_MAX_TOKENS`` output tokens."""
 
 ENTAILMENT_CONFIG: Final[CompletionConfig] = CompletionConfig(
     temperature=LLM_TEMPERATURE,
     max_tokens=ENTAILMENT_MAX_TOKENS,
 )
-"""Sampling config for the per-claim entailment operation."""
+"""Per-claim entailment sampling: temperature ``LLM_TEMPERATURE`` (0.0),
+capped at ``ENTAILMENT_MAX_TOKENS`` output tokens."""
 
 _CONFIDENCE_FLOOR: Final[float] = 0.0
 _CONFIDENCE_CEILING: Final[float] = 1.0

@@ -136,6 +136,9 @@ class DefaultHierarchicalRetriever:
         )
         if self._supervisor.reflective_retry_enabled:
             max_retries = self._supervisor.max_retry_count
+            # See docs/reference/retry-patterns.md: Pattern B -- semantic
+            # self-correction, not transient-I/O retry. No sleep; each
+            # iteration changes the query / worker strategy.
             while retries < max_retries:
                 correction = await self._supervisor.evaluate_for_retry(
                     current_query,

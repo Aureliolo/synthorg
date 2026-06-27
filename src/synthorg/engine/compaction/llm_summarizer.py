@@ -41,7 +41,7 @@ _SYSTEM_PROMPT = (
 )
 
 # Framework-overhead attribution for the compaction summary call.
-_SUMMARY_AGENT_ID: NotBlankStr = NotBlankStr("system")
+_SUMMARY_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system")
 
 # Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
 # directly-constructed summariser matches the wired path, which sources
@@ -87,7 +87,7 @@ class LLMSummarizer:
         self,
         *,
         provider: CompletionPort,
-        model: str,
+        model: NotBlankStr,
         temperature: float = _DEFAULT_TEMPERATURE,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         cost_tracker: CostTrackerProtocol | None = None,
@@ -122,6 +122,11 @@ class LLMSummarizer:
         """
         transcript = _build_transcript(archivable)
         if not transcript:
+            logger.debug(
+                CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK,
+                reason="empty_transcript",
+                archived_count=len(archivable),
+            )
             return fallback_text
         identity = current_execution_identity()
         execution_id = (

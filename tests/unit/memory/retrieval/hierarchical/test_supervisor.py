@@ -300,7 +300,8 @@ class TestSupervisorRouterCompletionBounds:
         )
         supervisor = SupervisorRouter(provider=provider, model="test-small-001")
         await supervisor.route(_make_query())
-        config = provider.complete.call_args.kwargs["config"]
+        config = provider.complete.call_args.kwargs.get("config")
+        assert config is not None
         assert config.temperature == 0.0
         assert config.max_tokens == 256
 
@@ -311,5 +312,7 @@ class TestSupervisorRouterCompletionBounds:
         supervisor = SupervisorRouter(provider=provider, model="test-small-001")
         result = FinalRetrievalResult(candidates=(_make_candidate(0.1),))
         await supervisor.evaluate_for_retry(_make_query(), result)
-        config = provider.complete.call_args.kwargs["config"]
+        config = provider.complete.call_args.kwargs.get("config")
+        assert config is not None
+        assert config.temperature == 0.0
         assert config.max_tokens == 256

@@ -21,6 +21,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_RERANK_CACHE_HIT,
     MEMORY_RERANK_CACHE_MISS,
     MEMORY_RERANK_COMPLETE,
     MEMORY_RERANK_FAILED,
@@ -29,15 +30,19 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
-# The reranker emits only a ranking array of candidate indices, bounded
-# by ``RetrievalQuery.max_results`` (<= 100); 512 tokens fits 100 indices
-# with ample headroom before truncation forces the graceful fallback.
-_RERANK_MAX_TOKENS: Final[int] = 512
+# The reranker emits a ranking array with one index per input candidate.
+# Reranking runs on the full pre-truncation pool (``MemoryRetriever``
+# reranks before the top-k cut), so the array can reach
+# ``MemoryRetrievalConfig.max_memories * candidate_pool_multiplier``
+# (<= 100 * 10 = 1000) entries when the diversity penalty is enabled.
+# 4096 tokens fits a 1000-index array with headroom; truncation past the
+# cap degrades gracefully to the original order.
+_RERANK_MAX_TOKENS: Final[int] = 4096
 
 # Re-ranking must be deterministic across CI shards so cache keys
 # remain stable. Temperature=0.0 also minimises the chance of the
 # LLM returning a malformed ranking array that forces a fallback.
-_RERANK_COMPLETION_CONFIG = CompletionConfig(
+_RERANK_COMPLETION_CONFIG: Final[CompletionConfig] = CompletionConfig(
     temperature=0.0,
     max_tokens=_RERANK_MAX_TOKENS,
 )
@@ -155,6 +160,11 @@ class LLMQuerySpecificReranker:
             RecursionError: If the related operation fails.
         """
         if len(candidates) <= 1:
+            logger.debug(
+                MEMORY_RERANK_COMPLETE,
+                candidate_count=len(candidates),
+                reason="single_candidate",
+            )
             return candidates
 
         candidate_ids = tuple(c.entry.id for c in candidates)
@@ -165,29 +175,14 @@ class LLMQuerySpecificReranker:
             candidate_ids
         )
         by_id = {c.entry.id: c for c in candidates}
-        cache_key = ""
+        cache_key = (
+            _build_cache_key(query.text, candidate_ids) if cache_eligible else ""
+        )
 
-        # Check cache -- returns stored ID ordering, we reapply to
-        # the current candidate set so fresh state always wins.
-        # Cache faults degrade to a cold rerank rather than failing
-        # retrieval; this is an optional optimization.
-        if cache_eligible and self._cache is not None:
-            cache_key = _build_cache_key(query.text, candidate_ids)
-            try:
-                cached_ids = await self._cache.get(cache_key)
-            except builtins.MemoryError, RecursionError:
-                raise
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    MEMORY_RERANK_CACHE_MISS,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    reason="cache_get_failed",
-                )
-                cached_ids = None
-            if cached_ids is not None and set(cached_ids) == set(by_id):
-                return tuple(by_id[cid] for cid in cached_ids)
+        if cache_eligible:
+            cached = await self._read_cached_order(cache_key, by_id)
+            if cached is not None:
+                return cached
 
         try:
             reranked = await self._rerank_via_llm(query, candidates)
@@ -217,29 +212,83 @@ class LLMQuerySpecificReranker:
                 query_length=len(query.text),
             )
             return candidates
-        else:
-            if cache_eligible and self._cache is not None and cache_key:
-                try:
-                    await self._cache.put(
-                        cache_key,
-                        tuple(c.entry.id for c in reranked),
-                    )
-                except builtins.MemoryError, RecursionError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        MEMORY_RERANK_CACHE_MISS,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                        reason="cache_put_failed",
-                    )
-            logger.info(
-                MEMORY_RERANK_COMPLETE,
-                candidate_count=len(reranked),
-                query_length=len(query.text),
+
+        if cache_eligible and cache_key:
+            await self._write_cached_order(cache_key, reranked)
+        logger.info(
+            MEMORY_RERANK_COMPLETE,
+            candidate_count=len(reranked),
+            query_length=len(query.text),
+        )
+        return reranked
+
+    async def _read_cached_order(
+        self,
+        cache_key: str,
+        by_id: dict[str, RetrievalCandidate],
+    ) -> tuple[RetrievalCandidate, ...] | None:
+        """Return the cached ordering reapplied to the live candidate set.
+
+        Re-applies the stored ID ordering to the current candidates so
+        fresh state always wins. Cache faults degrade to a cold rerank
+        rather than failing retrieval; this is an optional optimization.
+
+        Returns:
+            The cached candidates in stored order, or ``None`` on a miss,
+            a stale ID set, or a cache fault.
+
+        Raises:
+            MemoryError: Propagated; never degraded to a cold rerank.
+            RecursionError: Propagated; never degraded to a cold rerank.
+        """
+        if self._cache is None:
+            return None
+        try:
+            cached_ids = await self._cache.get(cache_key)
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_RERANK_CACHE_MISS,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="cache_get_failed",
             )
-            return reranked
+            return None
+        if cached_ids is not None and set(cached_ids) == set(by_id):
+            logger.debug(MEMORY_RERANK_CACHE_HIT, candidate_count=len(by_id))
+            return tuple(by_id[cid] for cid in cached_ids)
+        return None
+
+    async def _write_cached_order(
+        self,
+        cache_key: str,
+        reranked: tuple[RetrievalCandidate, ...],
+    ) -> None:
+        """Persist the reranked ID ordering; cache faults are non-fatal.
+
+        Raises:
+            MemoryError: Propagated; never swallowed as a cache fault.
+            RecursionError: Propagated; never swallowed as a cache fault.
+        """
+        if self._cache is None:
+            return
+        try:
+            await self._cache.put(
+                cache_key,
+                tuple(c.entry.id for c in reranked),
+            )
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_RERANK_CACHE_MISS,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                reason="cache_put_failed",
+            )
 
     async def _rerank_via_llm(
         self,
@@ -296,30 +345,37 @@ class LLMQuerySpecificReranker:
             )
             return candidates
 
+        # A malformed or incomplete ranking is the visible symptom of a
+        # systematic provider regression or an output truncated past
+        # ``_RERANK_MAX_TOKENS``; log at WARNING (matching the supervisor)
+        # so the silent fall-back to original order is operationally
+        # observable rather than buried at DEBUG.
         try:
             parsed = json.loads(response.content)
             ranking = RankingLLMResponse.model_validate(parsed).ranking
         except json.JSONDecodeError as exc:
-            logger.debug(
+            logger.warning(
                 MEMORY_RERANK_FAILED,
                 error="LLM returned non-JSON content",
                 error_type=type(exc).__name__,
                 candidate_count=len(candidates),
+                query_length=len(query.text),
             )
             return candidates
         except ValidationError as exc:
-            logger.debug(
+            logger.warning(
                 MEMORY_RERANK_FAILED,
                 error="Invalid ranking response shape from LLM",
                 error_type=type(exc).__name__,
                 candidate_count=len(candidates),
+                query_length=len(query.text),
             )
             return candidates
 
         # Validate ranking indices
         n = len(candidates)
         if sorted(ranking) != list(range(n)):
-            logger.debug(
+            logger.warning(
                 MEMORY_RERANK_FAILED,
                 error="Invalid ranking indices from LLM",
                 expected_count=n,
