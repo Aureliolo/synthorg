@@ -195,11 +195,14 @@ class SQLiteAuditChainRepository:
             Number of rows removed.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If *threshold* is naive or the delete fails.
         """
+        if threshold.tzinfo is None:
+            msg = "audit chain purge threshold must be timezone-aware"
+            raise QueryError(msg)
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 async with self._db.execute(
                     "DELETE FROM audit_chain_entries WHERE timestamp < ?",
                     (format_iso_utc(threshold),),

@@ -897,13 +897,19 @@ def build_default_tools_from_config(  # noqa: PLR0913
                 category=ToolCategory.TERMINAL,
             )
         except KeyError:
-            logger.warning(
+            # TERMINAL is force-routed to the hardened container backend by
+            # merge_secure_backend_defaults, so a missing backend here is a
+            # real misconfiguration. Fail closed: re-raise rather than fall
+            # back to an unsandboxed in-process shell for agent-driven
+            # terminal execution -- the exact surface this hardening isolates.
+            logger.error(
                 TOOL_FACTORY_ERROR,
                 error=(
-                    "No sandbox backend for TERMINAL category; "
-                    "terminal tools will operate without sandbox"
+                    "No sandbox backend for the force-secured TERMINAL "
+                    "category; refusing to register terminal tools unsandboxed"
                 ),
             )
+            raise
 
     # Resolve code execution sandbox if configured.
     code_execution_sandbox: SandboxBackend | None = None

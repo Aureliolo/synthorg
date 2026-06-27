@@ -11018,7 +11018,7 @@ export type components = {
              * @default 3
              */
             readonly pattern_min_agents: number;
-            /** @description Per-pillar weakness thresholds keyed by pillar value; a pillar absent here falls back to ``pattern_weakness_threshold``. Lets operators hold, say, governance to a stricter bar than efficiency. */
+            /** @description Per-pillar weakness thresholds keyed by pillar value; a pillar absent here falls back to ``pattern_weakness_threshold``. Each override carries the same 0-10 bound so an out-of-range value is rejected. Lets operators hold, say, governance to a stricter bar than efficiency. */
             readonly pattern_thresholds: {
                 readonly [key: string]: number;
             };

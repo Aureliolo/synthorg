@@ -17,6 +17,7 @@ from synthorg.hr.promotion.models import PromotionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.promotion_history import (
     PERSISTENCE_PROMOTION_HISTORY_APPEND_FAILED,
+    PERSISTENCE_PROMOTION_HISTORY_DESERIALIZE_FAILED,
     PERSISTENCE_PROMOTION_HISTORY_QUERIED,
     PERSISTENCE_PROMOTION_HISTORY_QUERY_FAILED,
 )
@@ -150,7 +151,7 @@ class PostgresPromotionHistoryRepository:
         except Exception as exc:
             msg = "corrupt promotion_history row(s)"
             logger.warning(
-                PERSISTENCE_PROMOTION_HISTORY_QUERY_FAILED,
+                PERSISTENCE_PROMOTION_HISTORY_DESERIALIZE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

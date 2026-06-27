@@ -107,6 +107,16 @@ class TrustService:
         self._state_repo = state_repo
         self._history_repo = history_repo
 
+    def detach_persistence(self) -> None:
+        """Drop the durable repositories, reverting to in-memory only.
+
+        Called when :meth:`hydrate` fails after :meth:`attach_persistence`
+        so the service cannot persist mutations from an un-restored cache,
+        which would overwrite durable trust state/history with stale data.
+        """
+        self._state_repo = None
+        self._history_repo = None
+
     async def hydrate(self) -> None:
         """Load durable trust state + change history into the caches.
 
@@ -295,7 +305,11 @@ class TrustService:
                 update={"last_evaluated_at": now},
             )
             self._trust_states[key] = evaluated
-        await self._persist_state(evaluated)
+            # Persist inside the lock so the durable upsert is ordered with
+            # the in-memory transition; an unlocked write-through lets a
+            # concurrent update's save land out of order and regress trust
+            # after restart.
+            await self._persist_state(evaluated)
 
         logger.debug(
             TRUST_EVALUATE_COMPLETE,
@@ -383,9 +397,12 @@ class TrustService:
             updated = state.model_copy(update=state_update)
             self._trust_states[key] = updated
             self._change_history.setdefault(key, []).append(record)
-
-        await self._persist_state(updated)
-        await self._persist_record(record)
+            # Persist inside the lock so the durable state + history writes
+            # stay ordered with the in-memory transition; releasing first
+            # lets a concurrent change's save overtake this one and regress
+            # trust after restart.
+            await self._persist_state(updated)
+            await self._persist_record(record)
 
         logger.info(
             TRUST_LEVEL_CHANGED,
@@ -452,7 +469,6 @@ class TrustService:
         # updated this key in the gap; an unlocked RMW here would
         # clobber that update with a stale base.
         key = str(agent_id)
-        decayed: TrustState | None = None
         async with self._state_lock:
             state = self._trust_states.get(key)
             if state is not None:
@@ -461,8 +477,9 @@ class TrustService:
                     update={"last_decay_check_at": now},
                 )
                 self._trust_states[key] = decayed
-        if decayed is not None:
-            await self._persist_state(decayed)
+                # Persist inside the lock so the decay upsert is ordered with
+                # the in-memory transition (no out-of-order regress).
+                await self._persist_state(decayed)
 
         return result
 

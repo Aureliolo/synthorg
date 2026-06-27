@@ -258,9 +258,14 @@ def merge_secure_backend_defaults(
         if category not in merged:
             merged[category] = "docker"
             changed = True
-    if not changed:
-        return config
-    return config.model_copy(update={"overrides": merged})
+    # Forcing docker for untrusted categories newly references the docker
+    # backend, so layer the hardened gVisor runtime defaults on too;
+    # otherwise code_execution/terminal would run on plain docker. Idempotent
+    # and a no-op when docker is not referenced.
+    secure_config = (
+        config if not changed else config.model_copy(update={"overrides": merged})
+    )
+    return merge_gvisor_defaults(secure_config)
 
 
 def resolve_sandbox_for_category(

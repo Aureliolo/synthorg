@@ -10,6 +10,7 @@ import json
 import sqlite3
 
 import aiosqlite
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -63,13 +64,17 @@ def _row_to_request(payload: object) -> HiringRequest:
         The reconstructed ``HiringRequest``.
 
     Raises:
-        QueryError: If the payload is not a JSON object.
+        QueryError: If the payload is not a JSON object or fails validation.
     """
     data = json.loads(str(payload)) if payload else {}
     if not isinstance(data, dict):
         msg = f"hiring_requests.payload is not a JSON object: {data!r}"
         raise QueryError(msg)
-    return HiringRequest.model_validate(data)
+    try:
+        return HiringRequest.model_validate(data)
+    except ValidationError as exc:
+        msg = f"corrupt hiring_requests payload: {data!r}"
+        raise QueryError(msg) from exc
 
 
 class SQLiteHiringRequestRepository:
@@ -96,8 +101,8 @@ class SQLiteHiringRequestRepository:
             QueryError: If the write fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 await self._db.execute(_UPSERT_SQL, _to_params(entity))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -142,8 +147,8 @@ class SQLiteHiringRequestRepository:
             QueryError: If the delete fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 async with self._db.execute(
                     "DELETE FROM hiring_requests WHERE id = ?",
                     (str(entity_id),),

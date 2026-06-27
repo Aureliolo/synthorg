@@ -125,11 +125,13 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 max_card_bytes=effective_config.a2a.max_request_body_bytes,
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # If the client was built but never handed to a committed
-        # A2AClient (this branch skips the slice swap below), close it so
-        # the orphaned connection pool does not leak. Run this before
-        # ``reraise_critical`` so a critical error still releases the pool.
-        if a2a_client_obj is None and a2a_http_client is not None:
+        # This branch skips the slice swap below, so any http client built
+        # here is orphaned regardless of whether the wrapping A2AClient was
+        # constructed: a later failure point (e.g. PeerDiscoveryClient) raises
+        # after ``a2a_client_obj`` is assigned but before the client is
+        # committed. Close it so the connection pool does not leak. Run this
+        # before ``reraise_critical`` so a critical error still releases it.
+        if a2a_http_client is not None:
             _close_orphaned_async_client(a2a_http_client)
         reraise_critical(exc)
         logger.warning(

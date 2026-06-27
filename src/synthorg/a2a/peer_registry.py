@@ -28,7 +28,7 @@ class PeerRegistry:
 
     Coroutine-safe: concurrent asyncio tasks in the same event loop are
     serialised by an :class:`asyncio.Lock` (this does not guard against
-    OS-thread concurrency). Peer names are normalized to lowercase for
+    OS-thread concurrency). Peer names are normalised to lowercase for
     case-insensitive lookup.
     """
 

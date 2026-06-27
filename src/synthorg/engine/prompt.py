@@ -211,7 +211,10 @@ def build_system_prompt(  # noqa: PLR0913
     # turns' message history (loop_tool_execution._wrap_tool_result), so
     # its standing untrusted-content directive must declare that fence up
     # front even though the fenced payload is not a system-prompt section.
-    fences_tool_results = bool(available_tools)
+    # The live runtime path injects tools as ``l1_summaries`` (not
+    # ``available_tools``), so either signal means the agent is tool-capable
+    # and the fence must be declared.
+    fences_tool_results = bool(available_tools or l1_summaries)
     max_directive_tags: tuple[str, ...] = (
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
         *((TAG_CONFIG_VALUE,) if org_policies else ()),

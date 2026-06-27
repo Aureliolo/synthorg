@@ -70,8 +70,10 @@ class TestPromotionHistoryRepository:
     ) -> None:
         r1 = _record(when=_NOW)
         r2 = _record(when=_NOW + timedelta(hours=2))
-        await backend.promotion_history.append(r1)
+        # Append out of chronological order so the assertion pins
+        # ``effective_at DESC`` rather than passing for an insertion/id order.
         await backend.promotion_history.append(r2)
+        await backend.promotion_history.append(r1)
 
         results = await backend.promotion_history.query(
             PromotionHistoryFilterSpec(agent_id=NotBlankStr("agent-alpha"))

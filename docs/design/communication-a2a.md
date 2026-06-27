@@ -128,7 +128,7 @@ a bidirectional reference for the gateway translation layer.
 | SynthOrg | A2A | Notes |
 |----------|-----|-------|
 | `Message` (internal) | `Message` + `Part[]` (A2A) | Internal message content maps to A2A text parts |
-| `DelegationRequest` | `tasks/send` (JSON-RPC) | Task creation |
+| `DelegationRequest` | `message/send` (JSON-RPC) | Task creation |
 | `DelegationResult` | `tasks/get` response | Task completion/status |
 | `TaskExecution` state | Task object + `status` | Ongoing task tracking |
 | MessageBus channels | - | No A2A equivalent; internal routing only |
@@ -144,7 +144,7 @@ The dashboard also uses SSE for observability and the HITL interrupt/resume prot
 |----------|-----------|----------|----------|
 | Web dashboard | SSE | AG-UI projected events | Observability + HITL interrupt/resume |
 | Web dashboard | WebSocket | Custom events | Bidirectional UI actions (chat, settings) |
-| External A2A client | SSE | `tasks/sendSubscribe` | Task progress streaming |
+| External A2A client | SSE | `message/stream` | Task progress streaming |
 
 The `EventStreamHub` is the single event source for all SSE consumers (hub-driven
 architecture). Both the AG-UI dashboard and the A2A gateway subscribe
@@ -159,7 +159,7 @@ SynthOrg agents can delegate tasks to external A2A agents through the outbound c
 
 1. **Discovery**: Fetch the external agent's Agent Card from its well-known URL
 2. **Skill import**: Deserialise `AgentSkill[]` into internal `Skill` model (lossless)
-3. **Task creation**: Send `tasks/send` JSON-RPC request with auth credentials
+3. **Task creation**: Send `message/send` JSON-RPC request with auth credentials
 4. **Monitoring**: Subscribe to task updates via SSE or poll via `tasks/get`
 5. **State mapping**: Map external A2A task states back to internal states (see table above)
 

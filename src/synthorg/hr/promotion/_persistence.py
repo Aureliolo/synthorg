@@ -14,6 +14,7 @@ from typing import Final
 from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.hr.errors import PromotionError
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.promotion.models import PromotionRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -93,7 +94,18 @@ class PromotionPersistenceMixin:
         )
 
     async def _persist_record(self, record: PromotionRecord) -> None:
-        """Best-effort write-through of one promotion record."""
+        """Write-through one promotion record; fail closed on error.
+
+        The per-agent cooldown that gates double-promotion is rebuilt from
+        durable history at startup, so a missed append must abort the apply
+        rather than leave live state ahead of the durable record. A failure
+        therefore raises so the caller persists *before* mutating live state.
+        A persistence-less boot (no repo) is a no-op: nothing is rehydrated,
+        so there is no divergence to prevent.
+
+        Raises:
+            PromotionError: If the durable append fails.
+        """
         if self._history_repo is None:
             return
         try:
@@ -106,3 +118,5 @@ class PromotionPersistenceMixin:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            msg = f"Failed to persist promotion record for {record.agent_id!s}"
+            raise PromotionError(msg) from exc

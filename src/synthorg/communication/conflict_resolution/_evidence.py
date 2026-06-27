@@ -36,7 +36,10 @@ _CAUSAL_MARKERS: Final[tuple[str, ...]] = (
     "consequently",
     "hence",
 )
-_CLAIM_SPLIT: Final[re.Pattern[str]] = re.compile(r"[.;\n]+")
+# Split on sentence boundaries but never inside a decimal number: a ``.``
+# flanked by digits (``0.75``) is not a claim boundary, otherwise one
+# quantitative claim fragments into several and over-scores the position.
+_CLAIM_SPLIT: Final[re.Pattern[str]] = re.compile(r"(?:(?<!\d)\.(?!\d)|[;\n])+")
 _DIGIT: Final[re.Pattern[str]] = re.compile(r"\d")
 
 

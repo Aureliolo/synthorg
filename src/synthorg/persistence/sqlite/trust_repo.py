@@ -213,8 +213,8 @@ class SQLiteTrustStateRepository:
             QueryError: If the write fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 await self._db.execute(_STATE_UPSERT_SQL, _state_to_params(entity))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -265,8 +265,8 @@ class SQLiteTrustStateRepository:
             QueryError: If the delete fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 async with self._db.execute(
                     "DELETE FROM trust_states WHERE agent_id = ?",
                     (str(entity_id),),
@@ -378,8 +378,8 @@ class SQLiteTrustChangeHistoryRepository:
             QueryError: If the write fails.
         """
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 await self._db.execute(_HISTORY_INSERT_SQL, _record_to_params(event))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -452,11 +452,14 @@ class SQLiteTrustChangeHistoryRepository:
             Number of rows removed.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If *threshold* is naive or the delete fails.
         """
+        if threshold.tzinfo is None:
+            msg = "trust history purge threshold must be timezone-aware"
+            raise QueryError(msg)
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 async with self._db.execute(
                     "DELETE FROM trust_change_history WHERE timestamp < ?",
                     (format_iso_utc(threshold),),

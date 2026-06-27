@@ -8,7 +8,7 @@ Shipped defaults: all pillars enabled with recommended weights.
 """
 
 import copy
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -316,13 +316,14 @@ class EvalLoopConfig(BaseModel):
         le=10.0,
         description="Pillar score below which the pillar is weak for an agent",
     )
-    pattern_thresholds: dict[str, float] = Field(
+    pattern_thresholds: dict[str, Annotated[float, Field(ge=0.0, le=10.0)]] = Field(
         default_factory=dict,
         description=(
             "Per-pillar weakness thresholds keyed by pillar value; a pillar"
-            " absent here falls back to ``pattern_weakness_threshold``. Lets"
-            " operators hold, say, governance to a stricter bar than"
-            " efficiency."
+            " absent here falls back to ``pattern_weakness_threshold``. Each"
+            " override carries the same 0-10 bound so an out-of-range value is"
+            " rejected. Lets operators hold, say, governance to a stricter bar"
+            " than efficiency."
         ),
     )
     pattern_min_agents: int = Field(

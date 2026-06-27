@@ -257,6 +257,12 @@ class MCPToolInvoker:
         with _tracer.start_as_current_span(
             "mcp.tool.invoke",
             attributes={"mcp.tool": tool_name},
+            # Never let OTel auto-record exceptions: a re-raised critical that
+            # escapes this span would otherwise emit an exception event with
+            # frame locals (secret-leak risk, SEC-1). Outcome/error_type are
+            # set explicitly below from redaction-safe values.
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             try:
                 result = await handler(

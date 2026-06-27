@@ -102,3 +102,5 @@ CREATE TABLE agent_contributions (
 );
 CREATE INDEX idx_agent_contributions_agent
 ON agent_contributions (agent_id, id DESC);
+CREATE INDEX idx_agent_contributions_subtask
+ON agent_contributions (subtask_id, id DESC);

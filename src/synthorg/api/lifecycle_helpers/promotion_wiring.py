@@ -69,10 +69,13 @@ async def wire_promotion(
     # state before the cycle scheduler can run, so a crashloop cannot
     # re-enable promotion by discarding the in-memory cooldown.
     if app_state.slice(PersistenceStateSlice).backend is not None:
-        service.attach_persistence(
-            history_repo=persistence_of(app_state).promotion_history,
-        )
         try:
+            # Resolve the repo and attach inside the guard: a partially wired
+            # backend can raise on lookup, and that must disable promotion
+            # (fail safe) rather than abort startup.
+            service.attach_persistence(
+                history_repo=persistence_of(app_state).promotion_history,
+            )
             await service.hydrate()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

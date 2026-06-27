@@ -132,12 +132,19 @@ def _run_one(stem: str) -> tuple[int, str]:
         # each gate sees the same import path the runner started with.
         sys.path = saved_path
         # Best-effort cwd restore: if a gate chdir'd into a tempdir it then
-        # removed, ``Path.cwd()`` raises -- swallow it so the runner still
-        # advances to the next gate and reports the aggregate rather than
-        # dying here with a raw traceback.
+        # removed, ``Path.cwd()`` raises and the process is left in an invalid
+        # directory, so the next gate's relative-path reads break. Recover to a
+        # known-good dir -- the saved cwd, or the repo root when the saved cwd
+        # is itself gone -- rather than swallowing the error and advancing with
+        # a broken cwd.
         try:
-            if Path.cwd() != saved_cwd:
-                os.chdir(saved_cwd)
+            current_cwd: Path | None = Path.cwd()
+        except OSError:
+            current_cwd = None
+        target_cwd = saved_cwd if saved_cwd.is_dir() else _SCRIPTS.parent
+        try:
+            if current_cwd != target_cwd:
+                os.chdir(target_cwd)
         except OSError:
             pass
 

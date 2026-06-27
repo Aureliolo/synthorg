@@ -45,6 +45,11 @@ async def _try_wire_trust_persistence(app_state: AppState) -> None:
         await trust_service.hydrate()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        # Roll back the attach so a hydrate failure leaves the service truly
+        # in-memory only. Otherwise the repos stay wired over an un-restored
+        # cache and later mutations would overwrite durable state with stale
+        # data -- the corruption this degraded path exists to avoid.
+        trust_service.detach_persistence()
         logger.warning(
             API_TRUST_PERSISTENCE_DEGRADED,
             note="trust persistence wiring failed; in-memory only",

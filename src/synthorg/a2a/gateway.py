@@ -964,9 +964,12 @@ async def _handle_message_send(
     # A2A peers retry ``message/send`` on a 503 / transport error. Wrap the
     # create in the durable idempotency guard keyed on the caller-supplied
     # ``message_id`` so a retry replays to the same task instead of
-    # double-creating + double-dispatching agent work.
+    # double-creating + double-dispatching agent work. Scope the cache by
+    # ``peer_name`` too: tasks are peer-owned, so two peers reusing the same
+    # ``message_id`` must not collide and hand one peer another's cached task
+    # id (which would precede the per-peer ownership checks).
     outcome = await idempotency_service_of(app_state).run_idempotent(
-        scope=NotBlankStr("a2a:message_send"),
+        scope=NotBlankStr(f"a2a:message_send:{peer_name}"),
         key=NotBlankStr(str(params.message_id)),
         callback=_create_task_state,
     )

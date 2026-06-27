@@ -482,19 +482,6 @@ class PromotionService(PromotionPersistenceMixin):
                 updates["model"] = identity.model.model_copy(
                     update={"model_id": NotBlankStr(new_model_id)},
                 )
-                logger.info(
-                    PROMOTION_MODEL_CHANGED,
-                    agent_id=request.agent_id,
-                    old_model=str(identity.model.model_id),
-                    new_model=new_model_id,
-                )
-            await self._registry.update_identity(request.agent_id, **updates)
-            logger.info(
-                HR_AGENT_STATUS_TRANSITIONED,
-                agent_id=request.agent_id,
-                from_status=request.current_level.value,
-                to_status=request.target_level.value,
-            )
 
             now = datetime.now(UTC)
             record = build_promotion_record(
@@ -504,12 +491,32 @@ class PromotionService(PromotionPersistenceMixin):
                 initiated_by=initiated_by,
                 now=now,
             )
+            # Persist the durable history record BEFORE mutating live state.
+            # The per-agent cooldown that prevents double-promotion is rebuilt
+            # from this history on restart, so live state must never run ahead
+            # of it. ``_persist_record`` raises (fail closed) on a durable miss,
+            # aborting the apply before the registry/cooldown change.
+            await self._persist_record(record)
+
+            await self._registry.update_identity(request.agent_id, **updates)
+            if new_model_id is not None:
+                logger.info(
+                    PROMOTION_MODEL_CHANGED,
+                    agent_id=request.agent_id,
+                    old_model=str(identity.model.model_id),
+                    new_model=new_model_id,
+                )
+            logger.info(
+                HR_AGENT_STATUS_TRANSITIONED,
+                agent_id=request.agent_id,
+                from_status=request.current_level.value,
+                to_status=request.target_level.value,
+            )
             self._promotion_history.setdefault(str(request.agent_id), []).append(record)
             if self._config.cooldown_hours > 0:
                 self._cooldown_until[str(request.agent_id)] = now + timedelta(
                     hours=self._config.cooldown_hours
                 )
-            await self._persist_record(record)
         return record
 
     def _recheck_cooldown_locked(self, agent_id: NotBlankStr) -> None:

@@ -151,12 +151,14 @@ class AgentEngineFactoriesMixin:
                 event_hub=self._event_stream_hub,
                 interrupt_store=self._interrupt_store,
                 interrupt_timeout_seconds=timeout,
+                clock=self._clock,
             )
         return ApprovalGate(
             park_service=ParkService(),
             parked_context_repo=self._parked_context_repo,
             event_hub=self._event_stream_hub,
             interrupt_store=self._interrupt_store,
+            clock=self._clock,
         )
 
     def _make_default_loop(self) -> ExecutionLoop:

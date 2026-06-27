@@ -574,6 +574,28 @@ async def _run_shutdown(  # noqa: PLR0913
             service="auto_wired_settings_dispatcher",
         )
         tasks.auto_wired_dispatcher = None
+    # Stop the durable audit-chain writer BEFORE ``_safe_shutdown`` runs, because
+    # that call disconnects persistence; the writer's drain flushes queued audit
+    # entries through ``repo.append()``, which needs a live backend. Running it
+    # afterwards would flush against a disconnected DB and drop the tail. The
+    # sink stays attached as a logging handler (late shutdown lines still chain);
+    # only its durable writer is stopped here.
+    from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
+        AuditChainSink,
+    )
+    from synthorg.observability.sinks import (  # noqa: PLC0415
+        iter_logging_handlers,
+    )
+
+    for handler in iter_logging_handlers():
+        if isinstance(handler, AuditChainSink):
+            await _try_stop(
+                handler.aclose_persistence(),
+                API_APP_SHUTDOWN,
+                "Failed to close audit-chain persistence",
+                timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="audit_chain_persistence",
+            )
     await _safe_shutdown(
         task_engine,
         meeting_scheduler,
@@ -621,28 +643,6 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="otlp_trace_handler",
         )
-    # Stop the durable audit-chain writer before tearing down logging so its
-    # background drain task flushes queued audit entries to persistence rather
-    # than dropping them on exit. The sink stays attached as a logging handler
-    # (late shutdown lines still chain), but its durable writer must be stopped
-    # explicitly: ``teardown_logging`` only closes the OTLP/HTTP batch handlers.
-    from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
-        AuditChainSink,
-    )
-    from synthorg.observability.sinks import (  # noqa: PLC0415
-        iter_logging_handlers,
-    )
-
-    for handler in iter_logging_handlers():
-        if isinstance(handler, AuditChainSink):
-            await _try_stop(
-                handler.aclose_persistence(),
-                API_APP_SHUTDOWN,
-                "Failed to close audit-chain persistence",
-                timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-                service="audit_chain_persistence",
-            )
-
     # Flush and close buffering log handlers last, once every other
     # service has emitted its shutdown lines, so the OTLP exporter's
     # queued records and flusher thread are not lost on exit.

@@ -25,6 +25,7 @@ class _FakeAuditChainRepo:
 
     def __init__(self) -> None:
         self.entries: list[ChainEntry] = []
+        self.query_calls = 0
 
     async def append(self, entry: ChainEntry) -> None:
         self.entries.append(entry)
@@ -36,6 +37,7 @@ class _FakeAuditChainRepo:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[ChainEntry, ...]:
+        self.query_calls += 1
         rows = sorted(self.entries, key=lambda e: e.position)
         if filter_spec.min_position is not None:
             rows = [e for e in rows if e.position >= filter_spec.min_position]
@@ -80,16 +82,25 @@ async def test_enqueue_overflow_drops_without_blocking() -> None:
     assert repo.entries == []
 
 
-async def test_hydrate_restores_chain_and_passes_verification() -> None:
+async def test_hydrate_restores_chain_and_passes_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo = _FakeAuditChainRepo()
     for entry in _entries(7):
         await repo.append(entry)
-    # Small page size to exercise the cursor pagination across pages.
+    # Shrink the hydrate page size below the seeded count so the cursor
+    # pagination genuinely spans multiple pages (ceil(7/3) = 3 fetches)
+    # instead of degrading to a single query that would still pass.
+    monkeypatch.setattr(
+        "synthorg.observability.audit_chain.durable_writer._HYDRATE_PAGE_SIZE",
+        3,
+    )
     writer = DurableAuditChainWriter(repo)
     chain = HashChain()
     await writer.hydrate(chain)
     assert [e.position for e in chain.entries] == list(range(7))
     assert chain.verify_integrity()
+    assert repo.query_calls == 3
 
 
 async def test_hydrate_flags_a_broken_chain() -> None:

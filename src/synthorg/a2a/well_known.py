@@ -118,7 +118,7 @@ async def _put_cached_card(  # noqa: PLR0913 -- cache identity + TTL + bound
         max_entries: Hard cap on cached entries enforced before insert
             (operator-tuned ``a2a.card_cache_max_entries``).
     """
-    if ttl <= 0:
+    if ttl <= 0 or max_entries <= 0:
         return
     active_clock = clock or _default_clock
     async with _cache_lock:
@@ -142,9 +142,10 @@ def _evict_for_insert(cache_key: str, active_clock: Clock, max_entries: int) -> 
         active_clock: Clock used to identify expired entries.
         max_entries: Hard cap on cached entries before eviction kicks in.
     """
-    if cache_key in _card_cache:
-        del _card_cache[cache_key]
-        return
+    # Refresh-in-place still re-evaluates the cap: drop the existing key then
+    # fall through so a lowered ``max_entries`` is enforced rather than
+    # re-inserting the refreshed card over the new, smaller cap.
+    _card_cache.pop(cache_key, None)
     if len(_card_cache) < max_entries:
         return
     now = active_clock.monotonic()
@@ -153,7 +154,9 @@ def _evict_for_insert(cache_key: str, active_clock: Clock, max_entries: int) -> 
     ]
     for key in expired:
         del _card_cache[key]
-    while len(_card_cache) >= max_entries:
+    # ``_card_cache and`` guards a non-positive cap that slips past the caller
+    # from calling ``next(iter(...))`` on an empty cache.
+    while _card_cache and len(_card_cache) >= max_entries:
         del _card_cache[next(iter(_card_cache))]
 
 

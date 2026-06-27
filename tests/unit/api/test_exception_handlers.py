@@ -26,6 +26,7 @@ from synthorg.api.exception_handlers import (
     handle_unexpected,
 )
 from synthorg.backup.errors import (
+    BackupConfigurationError,
     BackupError,
     BackupInProgressError,
     BackupNotFoundError,
@@ -383,8 +384,17 @@ class TestExceptionHandlers:
                 "Component backup or restore step failed",
                 ErrorCode.BACKUP_COMPONENT_FAILED,
             ),
+            (
+                BackupConfigurationError,
+                "Backup handler configuration is invalid",
+                ErrorCode.BACKUP_CONFIGURATION_INVALID,
+            ),
         ],
-        ids=["retention_error", "component_backup_error"],
+        ids=[
+            "retention_error",
+            "component_backup_error",
+            "backup_configuration_error",
+        ],
     )
     async def test_other_backup_subtypes_map_to_structured_500(
         self,
@@ -392,7 +402,7 @@ class TestExceptionHandlers:
         expected_detail: str,
         expected_code: ErrorCode,
     ) -> None:
-        """``RetentionError`` and ``ComponentBackupError`` carry distinct codes.
+        """Backup subtypes carry distinct, structured 5xx error codes.
 
         Each routes through the structured 5xx dispatch with its own
         ``error_code`` so operators can alert on a pruning failure or a

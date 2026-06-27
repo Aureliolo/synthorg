@@ -533,12 +533,19 @@ class PerformanceTracker:
                 agent_key = str(contrib.agent_id)
                 self._contributions.setdefault(agent_key, []).append(contrib)
 
-        # Durably persist each contribution best-effort so the
-        # accumulator survives restarts and is queryable for retrospective
-        # attribution analytics (the in-memory list is otherwise discarded
-        # on every restart). Fail-open, mirroring ``_persist_metric``.
-        for contrib in contributions:
-            await self._persist_contribution(contrib)
+        # Durably persist contributions best-effort so the accumulator
+        # survives restarts and is queryable for retrospective attribution
+        # analytics (the in-memory list is otherwise discarded on restart).
+        # Persist concurrently so a slow backend costs ~one shared timeout
+        # window for the whole batch rather than one timeout per
+        # contribution (``len * _PERSIST_TIMEOUT_SECONDS`` on the serial
+        # path). Each ``_persist_contribution`` is fail-open, so a per-item
+        # failure is logged without aborting the batch; only a re-raised
+        # critical (MemoryError/RecursionError) propagates.
+        if contributions:
+            async with asyncio.TaskGroup() as tg:
+                for contrib in contributions:
+                    tg.create_task(self._persist_contribution(contrib))
 
         if contributions:
             logger.info(

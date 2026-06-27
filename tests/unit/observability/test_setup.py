@@ -71,12 +71,24 @@ class TestTeardownLogging:
                 root.removeHandler(otlp)
 
     async def test_leaves_console_handlers_attached(self) -> None:
-        configure_logging(_console_only_config())
         root = logging.getLogger()
-        before = root.handlers[:]
-        await teardown_logging()
-        # No buffering handler present, so the console handler is untouched.
-        assert root.handlers == before
+        # ``configure_logging`` rewrites the process-global root logger;
+        # snapshot and restore it so this test cannot leak a console handler
+        # into later, order-dependent tests.
+        original_handlers = root.handlers[:]
+        original_level = root.level
+        try:
+            configure_logging(_console_only_config())
+            before = root.handlers[:]
+            await teardown_logging()
+            # No buffering handler present, so the console handler is untouched.
+            assert root.handlers == before
+        finally:
+            for handler in root.handlers[:]:
+                root.removeHandler(handler)
+            for handler in original_handlers:
+                root.addHandler(handler)
+            root.setLevel(original_level)
 
 
 @pytest.mark.unit

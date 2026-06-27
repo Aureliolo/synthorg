@@ -10,6 +10,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -68,13 +69,17 @@ def _row_to_request(payload: object) -> HiringRequest:
         The reconstructed ``HiringRequest``.
 
     Raises:
-        QueryError: If the payload is not a JSON object.
+        QueryError: If the payload is not a JSON object or fails validation.
     """
     data = json.loads(payload) if isinstance(payload, str) else payload
     if not isinstance(data, dict):
         msg = f"hiring_requests.payload is not a JSON object: {data!r}"
         raise QueryError(msg)
-    return HiringRequest.model_validate(data)
+    try:
+        return HiringRequest.model_validate(data)
+    except ValidationError as exc:
+        msg = f"corrupt hiring_requests payload: {data!r}"
+        raise QueryError(msg) from exc
 
 
 class PostgresHiringRequestRepository:

@@ -1215,6 +1215,110 @@ class _FakePrincipleOverrideRepository:
         return ()
 
 
+class _FakeTrustStateRepository:
+    """Minimal TrustStateRepository conforming to the protocol shape."""
+
+    async def save(self, entity: object, /) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr, /) -> object | None:
+        del entity_id
+        return None
+
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        del entity_id
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def purge_before(self, threshold: object, /) -> int:
+        del threshold
+        return 0
+
+
+class _FakeAppendOnlyRepository:
+    """Minimal AppendOnlyRepository conforming to the protocol shape."""
+
+    async def append(self, event: object, /) -> None:
+        del event
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def purge_before(self, threshold: object, /) -> int:
+        del threshold
+        return 0
+
+
+class _FakeAuditChainRepository(_FakeAppendOnlyRepository):
+    """Minimal AuditChainRepository: append-only plus ``get_tail``."""
+
+    async def get_tail(self) -> object | None:
+        return None
+
+
+class _FakeHiringRequestRepository:
+    """Minimal HiringRequestRepository conforming to the protocol shape."""
+
+    async def save(self, entity: object, /) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr, /) -> object | None:
+        del entity_id
+        return None
+
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        del entity_id
+        return False
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: object) -> int:
+        del filter_spec
+        return 0
+
+
 class _FakeBackend:
     @property
     def kind(self) -> Literal["sqlite", "postgres"]:
@@ -1539,30 +1643,31 @@ class _FakeBackend:
         return _FakePrincipleOverrideRepository()
 
     @property
-    def trust_states(self) -> object:
-        # ``PersistenceBackend`` is ``@runtime_checkable``; the isinstance
-        # conformance check only verifies the attribute exists.
-        return object()
+    def trust_states(self) -> _FakeTrustStateRepository:
+        # Return a concrete repo-shaped fake (not bare ``object()``) so a
+        # backend that wires the wrong shape for these accessors is caught
+        # here, mirroring ``seen_claims`` / ``principle_overrides``.
+        return _FakeTrustStateRepository()
 
     @property
-    def trust_change_history(self) -> object:
-        return object()
+    def trust_change_history(self) -> _FakeAppendOnlyRepository:
+        return _FakeAppendOnlyRepository()
 
     @property
-    def promotion_history(self) -> object:
-        return object()
+    def promotion_history(self) -> _FakeAppendOnlyRepository:
+        return _FakeAppendOnlyRepository()
 
     @property
-    def hiring_requests(self) -> object:
-        return object()
+    def hiring_requests(self) -> _FakeHiringRequestRepository:
+        return _FakeHiringRequestRepository()
 
     @property
-    def agent_contributions(self) -> object:
-        return object()
+    def agent_contributions(self) -> _FakeAppendOnlyRepository:
+        return _FakeAppendOnlyRepository()
 
     @property
-    def audit_chain_entries(self) -> object:
-        return object()
+    def audit_chain_entries(self) -> _FakeAuditChainRepository:
+        return _FakeAuditChainRepository()
 
     @property
     def mcp_installations(self) -> object:

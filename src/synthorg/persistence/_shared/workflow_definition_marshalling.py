@@ -28,7 +28,6 @@ from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.workflow_def import (
     PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
-    PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
 from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence.workflow_definition_protocol import (
@@ -171,11 +170,6 @@ def validate_workflow_definition_revision(definition: WorkflowDefinition) -> Non
         msg = (
             f"Workflow definition revision must be >= 1, got"
             f" {definition.revision} for {definition.id!r}"
-        )
-        logger.warning(
-            PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-            definition_id=str(definition.id),
-            error=msg,
         )
         raise QueryError(msg)
 

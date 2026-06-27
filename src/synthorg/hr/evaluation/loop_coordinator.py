@@ -514,13 +514,25 @@ class EvalLoopCoordinator:
                     error=safe_error_description(exc),
                 )
                 continue
-            logger.info(
-                EVAL_LOOP_ACTION_DISPATCHED,
-                action_id=mapped,
-                pattern=pattern,
-                dispatched=True,
-                accepted=accepted,
-            )
+            if accepted:
+                logger.info(
+                    EVAL_LOOP_ACTION_DISPATCHED,
+                    action_id=mapped,
+                    pattern=pattern,
+                    dispatched=True,
+                    accepted=True,
+                )
+            else:
+                # No downstream handler claimed the action: it was dropped,
+                # not dispatched. Logging dispatched=True here would turn a
+                # silent drop into a success signal for operators/metrics.
+                logger.warning(
+                    EVAL_LOOP_ACTION_DISPATCHED,
+                    action_id=mapped,
+                    pattern=pattern,
+                    dispatched=False,
+                    accepted=False,
+                )
 
     def _should_trigger_training(
         self,

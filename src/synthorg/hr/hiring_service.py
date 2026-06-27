@@ -133,8 +133,25 @@ class HiringService:
         self._requests = loaded
         logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 
-    async def _store(self, request: HiringRequest) -> None:
-        """Update the in-memory set and best-effort persist the request."""
+    async def _store(
+        self,
+        request: HiringRequest,
+        *,
+        require_persist: bool = False,
+    ) -> None:
+        """Update the in-memory set and persist the request.
+
+        With ``require_persist`` a persistence failure raises ``HiringError``
+        instead of being swallowed, so a caller that already performed an
+        external side effect (approval-item write, agent registration) cannot
+        leave the request transition durable-less: a restart would otherwise
+        rehydrate stale request state while the side effect already exists,
+        wedging retries. A persistence-less boot (no repo) stays in-memory
+        only and never raises, since nothing is rehydrated on restart.
+
+        Raises:
+            HiringError: If ``require_persist`` and the durable save fails.
+        """
         self._requests[str(request.id)] = request
         if self._request_repo is None:
             return
@@ -148,6 +165,9 @@ class HiringService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            if require_persist:
+                msg = f"Failed to persist hiring request {request.id!s}"
+                raise HiringError(msg) from exc
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -340,20 +360,25 @@ class HiringService:
 
             previous_status = request.status
             if self._approval_store is None:
-                # Auto-approve when no approval store.
+                # Auto-approve when no approval store: no external side effect,
+                # so a swallowed persist failure only loses an in-memory status
+                # flip a restart would discard cleanly.
                 updated = request.model_copy(
                     update={
                         "status": HiringRequestStatus.APPROVED,
                         "selected_candidate_id": candidate_id,
                     },
                 )
+                await self._store(updated)
             else:
-                # Create an approval item.
+                # Create an approval item (durable external side effect), then
+                # require the request transition to persist: a swallowed save
+                # would let a restart rehydrate the pre-approval request while
+                # the approval item already exists, wedging retries.
                 updated = await self._submit_approval_item(
                     request, candidate, candidate_id
                 )
-
-            await self._store(updated)
+                await self._store(updated, require_persist=True)
 
         # Emit the status-transition log only when the status actually
         # flipped: the auto-approve branch goes PENDING -> APPROVED,
@@ -480,7 +505,11 @@ class HiringService:
         updated = request.model_copy(
             update={"status": HiringRequestStatus.INSTANTIATED},
         )
-        await self._store(updated)
+        # The agent is already registered by the caller, so this terminal
+        # transition must persist: a swallowed save would let a restart
+        # rehydrate the APPROVED request and re-drive instantiation against
+        # an agent that already exists.
+        await self._store(updated, require_persist=True)
         logger.info(
             HIRING_REQUEST_STATUS_TRANSITIONED,
             request_id=str(updated.id),

@@ -16,6 +16,7 @@ from synthorg.hr.promotion.models import PromotionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.promotion_history import (
     PERSISTENCE_PROMOTION_HISTORY_APPEND_FAILED,
+    PERSISTENCE_PROMOTION_HISTORY_DESERIALIZE_FAILED,
     PERSISTENCE_PROMOTION_HISTORY_QUERIED,
     PERSISTENCE_PROMOTION_HISTORY_QUERY_FAILED,
 )
@@ -158,7 +159,7 @@ class SQLitePromotionHistoryRepository:
         except Exception as exc:
             msg = "corrupt promotion_history row(s)"
             logger.warning(
-                PERSISTENCE_PROMOTION_HISTORY_QUERY_FAILED,
+                PERSISTENCE_PROMOTION_HISTORY_DESERIALIZE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -176,11 +177,14 @@ class SQLitePromotionHistoryRepository:
             Number of rows removed.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If *threshold* is naive or the delete fails.
         """
+        if threshold.tzinfo is None:
+            msg = "promotion history purge threshold must be timezone-aware"
+            raise QueryError(msg)
         async with self._write_context():
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
+                await self._db.execute("BEGIN IMMEDIATE")
                 async with self._db.execute(
                     "DELETE FROM promotion_history WHERE effective_at < ?",
                     (format_iso_utc(threshold),),

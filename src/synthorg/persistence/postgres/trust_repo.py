@@ -432,8 +432,11 @@ class PostgresTrustChangeHistoryRepository:
             Number of rows removed.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If *threshold* is naive or the delete fails.
         """
+        if threshold.tzinfo is None:
+            msg = "trust history purge threshold must be timezone-aware"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

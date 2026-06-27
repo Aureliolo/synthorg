@@ -124,10 +124,14 @@ class DurableAuditChainWriter:
         WARNING with the dropped count so it is never mistaken for a clean
         flush.
         """
-        if self._drain_task is None:
-            return
         drain_task = self._drain_task
-        self._drain_task = None
+        if drain_task is None:
+            return
+        # Keep ``self._drain_task`` published until the drainer has fully
+        # exited. Clearing it up front would let a concurrent ``start()`` see
+        # ``None`` and spawn a second drainer on the same queue while this one
+        # is still flushing (or blocked in ``repo.append()``); two drainers
+        # would interleave durable appends and reorder the persisted chain.
         # Non-blocking: a blocking put on a saturated queue would stall the
         # event loop while the drain is mid-append. If the sentinel is
         # undelivered (queue full) the timeout below cancels the drain.
@@ -142,6 +146,8 @@ class DurableAuditChainWriter:
             drain_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await drain_task
+        finally:
+            self._drain_task = None
         if timed_out:
             logger.warning(
                 AUDIT_CHAIN_PERSIST_STOPPED,
