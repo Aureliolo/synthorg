@@ -1,0 +1,90 @@
+"""Unit tests for the purpose-to-tier policy.
+
+Covers completeness (every ``PromptPurposeId`` mapped), the import-time
+drift guard, canonical tier values, the archetype model-id round-trip
+through ``heuristic_tier``, and a sample of grounded assignments.
+"""
+
+import pytest
+
+from synthorg.budget.model_tier import TIERS, heuristic_tier
+from synthorg.llm.model_tier_policy import (
+    PromptTierKind,
+    assignment_for_purpose,
+    model_id_for_purpose,
+    tier_for_purpose,
+    tier_model_id,
+    tier_policy_entries,
+)
+from synthorg.llm.prompt_purpose import PromptPurposeId
+
+pytestmark = pytest.mark.unit
+
+# The policy assigns only quality tiers, never the local archetype.
+_PROMPT_TIERS = frozenset({"large", "medium", "small"})
+
+
+def test_every_purpose_has_an_assignment() -> None:
+    for purpose_id in PromptPurposeId:
+        assignment = assignment_for_purpose(purpose_id)
+        assert assignment.purpose_id == purpose_id
+
+
+def test_policy_entries_cover_all_purposes_sorted() -> None:
+    entries = tier_policy_entries()
+    assert len(entries) == len(list(PromptPurposeId))
+    ids = [str(entry.purpose_id) for entry in entries]
+    assert ids == sorted(ids)
+
+
+def test_all_tiers_are_canonical_quality_tiers() -> None:
+    for purpose_id in PromptPurposeId:
+        tier = tier_for_purpose(purpose_id)
+        assert tier in _PROMPT_TIERS
+        assert tier in TIERS
+
+
+def test_kind_determines_tier() -> None:
+    for entry in tier_policy_entries():
+        expected = {
+            PromptTierKind.CLASSIFY_ROUTE_TRIAGE: "small",
+            PromptTierKind.JUDGE_GRADE_VERIFY: "medium",
+            PromptTierKind.SYNTHESISE_GENERATE_AUTHOR: "large",
+        }[entry.kind]
+        assert entry.tier == expected
+
+
+@pytest.mark.parametrize("tier", ["large", "medium", "small"])
+def test_tier_model_id_round_trips_through_heuristic(tier: str) -> None:
+    model_id = tier_model_id(tier)  # type: ignore[arg-type]
+    assert model_id == f"example-{tier}-001"
+    assert heuristic_tier(model_id) == tier
+
+
+def test_model_id_for_purpose_matches_tier() -> None:
+    for purpose_id in PromptPurposeId:
+        model_id = model_id_for_purpose(purpose_id)
+        assert heuristic_tier(model_id) == tier_for_purpose(purpose_id)
+
+
+def test_assignment_accepts_str_and_enum() -> None:
+    via_enum = assignment_for_purpose(PromptPurposeId.MEMORY_RERANK)
+    via_str = assignment_for_purpose("system:memory:rerank")
+    assert via_enum == via_str
+
+
+@pytest.mark.parametrize(
+    ("purpose_id", "expected_tier"),
+    [
+        (PromptPurposeId.SECURITY_SAFETY_CLASSIFIER, "small"),
+        (PromptPurposeId.MEMORY_RERANK, "small"),
+        (PromptPurposeId.SECURITY_LLM_EVALUATOR, "medium"),
+        (PromptPurposeId.VERIFICATION, "medium"),
+        (PromptPurposeId.RESEARCH_SYNTHESIS, "large"),
+        (PromptPurposeId.META_CODE_MODIFICATION, "large"),
+    ],
+)
+def test_grounded_sample_assignments(
+    purpose_id: PromptPurposeId, expected_tier: str
+) -> None:
+    assert tier_for_purpose(purpose_id) == expected_tier

@@ -61,6 +61,12 @@ A stagnation variant (``StagnationReason.QUALITY_EROSION``): the agent keeps wor
 
 A pluggable ``ExternalBenchmark`` protocol allows adopting external benchmark suites without modifying the framework. ``ExternalBenchmarkRegistry`` manages registration and execution. A run drives the agent under evaluation through an injected ``AgentRunner`` (``run_case(case) -> str``) and grades its live output; the registry is fail-closed, raising ``EvalBenchmarkAgentRunnerUnsetError`` when no runner is configured. Each case is isolated: a non-critical failure in the agent run or the grading is recorded as a failed case (tagged with the stage that broke) so one bad case never aborts the run, while interpreter-critical errors propagate.
 
+### Pin-Validation Benchmark
+
+The ``model-pin-validation`` benchmark is the bundled ``ExternalBenchmark`` that gives ``ModelPinMetadata`` a real consumer. It iterates the prompt-purpose registry and, for each prompt class, runs a canonical probe against the class's pinned design tier (from the [Model Tier Policy](../reference/model-tier-policy.md)) through a deterministic provider, then grades **drift** by comparing a live fingerprint (``sha256(model_id | temperature | top_p | max_tokens | output)``) against a committed golden snapshot. A mismatch (a tier reassignment, a sampling change, or a probe-pipeline change) fails the grade until the golden is regenerated with ``scripts/refresh_model_pin_golden.py``.
+
+On a clean grade the benchmark stamps ``validated_at`` for the prompt class through the ``ModelPinValidationRepository``, so ``ModelPinMetadata.model_version_pinned_at`` means "last validated against its tier", not "the day we wrote it". The stamp is best-effort: a persistence failure is logged but never flips a clean drift verdict. It is registered at boot in ``eval_loop_wiring.py`` and exercised by the coordinator's benchmark step.
+
 ## Agent Evaluation Testing
 
 Tests tagged ``@pytest.mark.agent_eval(category="file_operations")`` run separately from the default unit suite:

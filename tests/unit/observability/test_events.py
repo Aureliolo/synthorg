@@ -389,6 +389,9 @@ class TestEventConstants:
             # Deliverable provenance receipts: build / render / validate +
             # knowledge-usage and test-run capture events.
             "deliverable_receipts",
+            # Model-pin validation: tier-policy drift benchmark + the
+            # validator that stamps each prompt class's last-validated time.
+            "model_pins",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
