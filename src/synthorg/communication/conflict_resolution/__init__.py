@@ -17,6 +17,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolution,
     ConflictResolutionOutcome,
     DissentRecord,
+    EvidenceItem,
 )
 from synthorg.communication.conflict_resolution.protocol import (
     ConflictResolver,
@@ -37,6 +38,7 @@ __all__ = [
     "ConflictResolver",
     "DebateConfig",
     "DissentRecord",
+    "EvidenceItem",
     "HybridConfig",
     "JudgeDecision",
     "JudgeEvaluator",

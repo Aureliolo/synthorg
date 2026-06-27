@@ -9,6 +9,7 @@ authority or human escalation based on configuration.
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution._helpers import (
     find_losers,
     find_position,
@@ -187,6 +188,7 @@ class HybridResolver:
                     dissenting_position=pos.position,
                     strategy_used=ConflictResolutionStrategy.HYBRID,
                     timestamp=datetime.now(UTC),
+                    minority_evidence=extract_evidence(pos.reasoning),
                     metadata=(("escalation_reason", "ambiguous_review"),),
                 )
                 for pos in conflict.positions
@@ -202,6 +204,7 @@ class HybridResolver:
                 dissenting_position=loser.position,
                 strategy_used=ConflictResolutionStrategy.HYBRID,
                 timestamp=datetime.now(UTC),
+                minority_evidence=extract_evidence(loser.reasoning),
             )
             for loser in losers
         )

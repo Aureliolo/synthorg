@@ -11,6 +11,7 @@ seniority among positions wins).
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution._helpers import (
     find_losers,
     find_position_or_raise,
@@ -186,6 +187,7 @@ class DebateResolver:
                 dissenting_position=loser.position,
                 strategy_used=ConflictResolutionStrategy.DEBATE,
                 timestamp=datetime.now(UTC),
+                minority_evidence=extract_evidence(loser.reasoning),
                 metadata=(("judge", resolution.decided_by),),
             )
             for loser in losers
