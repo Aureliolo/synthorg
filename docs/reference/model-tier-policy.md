@@ -9,14 +9,15 @@ A model pin records a **design tier**, not a vendor model. SynthOrg is
 provider-agnostic: no canonical vendor model is privileged, so a prompt
 class pins one of the vendor-agnostic archetype tiers
 (`example-large-001`, `example-medium-001`, `example-small-001`) that
-[`heuristic_tier`](../../src/synthorg/budget/model_tier.py) resolves. This
-page documents which tier each system prompt class is pinned to and the
+`heuristic_tier` (in `synthorg.budget.model_tier`) resolves. This page
+documents which tier each system prompt class is pinned to and the
 reasoning behind it.
 
 The policy lives in `synthorg.llm.model_tier_policy`. It maps every
-`PromptPurposeId` in the [prompt-purpose registry](../design/evaluation-loop.md)
-to a tier, with an import-time guard that rejects any purpose missing an
-entry. The [pin-validation benchmark](#pin-validation-benchmark) consumes
+`PromptPurposeId` in the prompt-purpose registry
+(`synthorg.llm.prompt_purpose`) to a tier, with an import-time guard that
+rejects any purpose missing an entry. The
+[pin-validation benchmark](#pin-validation-benchmark) consumes
 the policy to validate each prompt class against its pinned tier, and the
 per-class `ModelPinMetadata` rollout assigns its tiers from it.
 
@@ -94,7 +95,9 @@ canonical pin (the policy tier plus the deterministic sampling
 parameters), runs a canonical probe against the pinned tier through a
 deterministic provider, and grades **drift** by comparing a live
 fingerprint, `sha256(model_id | temperature | top_p | max_tokens | output)`,
-against a committed golden snapshot (`pin_golden.json`).
+against a committed golden snapshot (`pin_golden.json`). The floats are
+formatted to a fixed six-decimal precision in the digest so it is
+reproducible across runs and platforms.
 
 A mismatch (a tier reassignment, a sampling change, or a probe-pipeline
 change) fails the grade until the golden is deliberately regenerated with
@@ -103,9 +106,11 @@ independent snapshot, the check is a genuine regression gate, not a
 "pin checks the pin" tautology.
 
 On a clean grade the benchmark stamps `validated_at` for the prompt class
-through the `ModelPinValidationRepository`, so
-`ModelPinMetadata.model_version_pinned_at` means "last validated against
-its tier", not "the day we wrote it". The stamp is best-effort: a
+through the `ModelPinValidationLedger` (a one-row-per-class
+`ModelPinValidationRepository` record). That `validated_at` is the durable
+"last validated against its tier" timestamp the audit dashboard reads, the
+live counterpart to a prompt class's static
+`ModelPinMetadata.model_version_pinned_at`. The stamp is best-effort: a
 persistence failure is logged but never flips a clean drift verdict.
 
 ## Changing a pin

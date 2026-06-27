@@ -123,6 +123,9 @@ class TestModelPinValidationRepository:
 
         page = await repo.list_items(limit=1, offset=1)
         assert len(page) == 1
+        # offset=1 over the ascending order returns the second id, not just
+        # any single row.
+        assert str(page[0].prompt_class_id) == ids[1]
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)

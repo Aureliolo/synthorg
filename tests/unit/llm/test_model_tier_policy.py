@@ -73,6 +73,11 @@ def test_assignment_accepts_str_and_enum() -> None:
     assert via_enum == via_str
 
 
+def test_assignment_rejects_unknown_purpose() -> None:
+    with pytest.raises(ValueError, match="system:not:a:purpose"):
+        assignment_for_purpose("system:not:a:purpose")
+
+
 @pytest.mark.parametrize(
     ("purpose_id", "expected_tier"),
     [

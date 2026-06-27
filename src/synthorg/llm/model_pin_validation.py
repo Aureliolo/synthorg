@@ -4,10 +4,11 @@ A :class:`ModelPinValidationRow` is the durable answer to "when was this
 prompt class's model pin last validated against its tier, and did it
 pass?". The pin-validation benchmark
 (:mod:`synthorg.hr.evaluation.pin_validation_benchmark`) writes one row
-per prompt class on a clean drift grade, so
-``ModelPinMetadata.model_version_pinned_at`` means "last validated", not
-"the day we wrote it". The audit dashboard reads these rows to surface
-pin freshness per prompt purpose.
+per prompt class on a clean drift grade, so :attr:`validated_at` is the
+durable "last validated" timestamp rather than a value baked at write
+time. The audit dashboard reads these rows to surface pin freshness per
+prompt purpose (the live counterpart to a prompt class's static
+``ModelPinMetadata.model_version_pinned_at``).
 
 The row is keyed by ``prompt_class_id`` (a :class:`PromptPurposeId`), and
 its ``tier`` is a canonical :class:`~synthorg.budget.model_tier.TierName`,

@@ -455,7 +455,7 @@ file in `src/synthorg/observability/events/` is one domain module):
 `classification`, `verification`, `rollout`, `chief_of_staff`,
 `analytics`, `integrations`, `a2a`, `budget`, `quota`, `coordination`,
 `security`, `red_team`, `audit_chain`, `provider`, `eval_loop`,
-`prompt_purpose`.
+`prompt_purpose`, `model_pins`.
 
 The `security` domain is special: every constant whose value starts
 with `security.` (or `tool.registry.integrity.`) is signed and

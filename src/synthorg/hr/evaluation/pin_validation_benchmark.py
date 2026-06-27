@@ -11,13 +11,14 @@ through a real ``provider.complete`` call; :meth:`grade` recomputes the
 live fingerprint and compares it to the golden. A mismatch is drift.
 
 On a clean grade the benchmark stamps ``validated_at`` for the class
-through the :class:`ModelPinValidationLedger`, so a passing grade *is* the
-eval refresh that makes ``model_version_pinned_at`` mean "last validated".
-The stamp is best-effort: a persistence failure is logged but never flips
-the drift verdict, which depends only on the fingerprint comparison.
+through the :class:`ModelPinValidationLedger`, so a passing grade is the
+eval refresh that records when the class was last validated against its
+tier. The stamp is best-effort: a persistence failure is logged but never
+flips the drift verdict, which depends only on the fingerprint comparison.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -38,9 +39,10 @@ from synthorg.hr.evaluation.pin_probe import (
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY, PromptPurposeId
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.model_pins import (
     MODEL_PIN_BENCHMARK_DRIFT,
+    MODEL_PIN_GOLDEN_ABSENT,
     MODEL_PIN_VALIDATION_STAMP_FAILED,
     MODEL_PIN_VALIDATION_STAMPED,
 )
@@ -73,7 +75,7 @@ class ModelPinValidationBenchmark:
         golden: dict[str, str],
         ledger: ModelPinValidationLedger | None = None,
     ) -> None:
-        self._golden = dict(golden)
+        self._golden: Mapping[str, str] = MappingProxyType(dict(golden))
         self._ledger = ledger
 
     @property
@@ -137,6 +139,20 @@ class ModelPinValidationBenchmark:
         pin = pin_from_case_metadata(case.metadata)
         live = fingerprint_for(pin, agent_output)
         expected = case.expected_output
+        if not expected:
+            # An empty expected fingerprint means the class is absent from
+            # the committed golden (a fresh checkout, a forgotten regen, or
+            # a newly-added purpose), not a genuine algorithm/tier change.
+            # Surface it distinctly so an operator runs the regen rather
+            # than hunting a non-existent drift.
+            logger.warning(MODEL_PIN_GOLDEN_ABSENT, prompt_class_id=case.id)
+            return BenchmarkGrade(
+                passed=False,
+                score=0.0,
+                explanation=(
+                    "absent from golden; run scripts/refresh_model_pin_golden.py"
+                ),
+            )
         if live != expected:
             logger.warning(
                 MODEL_PIN_BENCHMARK_DRIFT,
@@ -177,11 +193,13 @@ class ModelPinValidationBenchmark:
             await self._ledger.record(prompt_class_id=pid, tier=tier, passed=True)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            log_exception_redacted(
-                logger,
+            # WARNING, not ERROR: the stamp is best-effort and its failure
+            # never affects the (clean) drift verdict, so it must not page.
+            logger.warning(
                 MODEL_PIN_VALIDATION_STAMP_FAILED,
-                exc,
                 prompt_class_id=case.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
         logger.info(MODEL_PIN_VALIDATION_STAMPED, prompt_class_id=case.id, tier=tier)

@@ -416,6 +416,27 @@ class TestEventConstants:
         assert EVAL_LOOP_BENCHMARK_STARTED == "eval.loop.benchmark_started"
         assert EVAL_LOOP_BENCHMARK_CASE_FAILED == "eval.loop.benchmark_case_failed"
 
+    def test_model_pins_events_exist(self) -> None:
+        from synthorg.observability.events.model_pins import (
+            MODEL_PIN_BENCHMARK_DRIFT,
+            MODEL_PIN_GOLDEN_ABSENT,
+            MODEL_PIN_GOLDEN_MALFORMED,
+            MODEL_PIN_VALIDATION_FAILED,
+            MODEL_PIN_VALIDATION_FETCHED,
+            MODEL_PIN_VALIDATION_LISTED,
+            MODEL_PIN_VALIDATION_STAMP_FAILED,
+            MODEL_PIN_VALIDATION_STAMPED,
+        )
+
+        assert MODEL_PIN_VALIDATION_FETCHED == "model_pin.validation.fetched"
+        assert MODEL_PIN_VALIDATION_LISTED == "model_pin.validation.listed"
+        assert MODEL_PIN_VALIDATION_FAILED == "model_pin.validation.failed"
+        assert MODEL_PIN_BENCHMARK_DRIFT == "model_pin.benchmark.drift"
+        assert MODEL_PIN_VALIDATION_STAMPED == "model_pin.validation.stamped"
+        assert MODEL_PIN_VALIDATION_STAMP_FAILED == "model_pin.validation.stamp_failed"
+        assert MODEL_PIN_GOLDEN_ABSENT == "model_pin.golden.absent"
+        assert MODEL_PIN_GOLDEN_MALFORMED == "model_pin.golden.malformed"
+
     def test_analytics_events_exist(self) -> None:
         from synthorg.observability.events.analytics import (
             ANALYTICS_FORECAST_QUERIED,

@@ -72,7 +72,12 @@ def load_pin_golden(path: Path | None = None) -> Mapping[str, str]:
     """
     golden_path = path if path is not None else GOLDEN_PATH
     if not golden_path.exists():
-        logger.warning(MODEL_PIN_GOLDEN_ABSENT, path=str(golden_path))
+        logger.warning(
+            MODEL_PIN_GOLDEN_ABSENT,
+            path=str(golden_path),
+            consequence="every prompt class will report pin drift",
+            action="run scripts/refresh_model_pin_golden.py to regenerate",
+        )
         return {}
     raw = golden_path.read_text(encoding="utf-8")
     try:
@@ -109,8 +114,8 @@ def golden_diff(
     """Return the prompt-class ids whose live fingerprint drifted.
 
     A class is drifted when it is absent from the golden or its live
-    fingerprint differs. Surfaced by the regen script so a maintainer
-    sees exactly which pins changed.
+    fingerprint differs. The regen script reports it so a maintainer sees
+    exactly which pins changed before the golden is overwritten.
 
     Returns:
         Sorted tuple of drifted ``prompt_class_id`` values.

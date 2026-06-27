@@ -7,9 +7,8 @@ chokepoint itself, the engine call path, infra probes) or open a
 chokepoint inside ``BaseCompletionProvider.complete`` emits a
 :class:`CostRecord` for the call.
 
-Issue #1598 flagged 23 of 24 LLM completion paths bypassing cost
-recording.  This gate locks the closed-form invariant in place so
-future LLM call sites do not silently regress.
+This gate locks the closed-form invariant in place so future LLM call
+sites do not silently regress past the cost-recording chokepoint.
 
 Usage:
     python scripts/check_provider_complete_chokepoint.py

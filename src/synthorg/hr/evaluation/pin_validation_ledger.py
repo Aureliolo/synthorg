@@ -2,7 +2,7 @@
 """Durable ledger of prompt-class pin validations.
 
 :class:`ModelPinValidationLedger` is the validator's write seam: it
-stamps ``model_version_pinned_at`` for a prompt class by persisting a
+stamps ``validated_at`` for a prompt class by persisting a
 :class:`ModelPinValidationRow` through the
 :class:`ModelPinValidationRepository`, sourcing the timestamp from the
 injected :class:`Clock`. The pin-validation benchmark calls it on a clean

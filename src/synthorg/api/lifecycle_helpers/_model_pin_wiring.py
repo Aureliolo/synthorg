@@ -13,6 +13,8 @@ no backend still wires the benchmark (drift checks run), but with no
 ledger, so ``validated_at`` is not stamped until a backend is present.
 """
 
+from typing import Final
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.evaluation.external_benchmark_registry import ExternalBenchmarkRegistry
@@ -30,7 +32,7 @@ from synthorg.providers.drivers.scripted import ScriptedDriver
 
 logger = get_logger(__name__)
 
-_PROBE_PROVIDER_NAME = "pin-validation-probe"
+_PROBE_PROVIDER_NAME: Final[str] = "pin-validation-probe"
 
 
 def _build_pin_validation_repo(
@@ -74,15 +76,17 @@ def _build_pin_validation_repo(
             backend, sqlite=_build_sqlite, postgres=_build_postgres
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # A backend that is wired but cannot yield a usable DB handle (a
-        # test double, or a backend not yet fully connected) is treated like
-        # an absent one: the drift benchmark still runs, only the validator
-        # stamp is skipped. Never let it break the startup lifespan.
+        # A backend that is wired but from which the repo cannot be built (a
+        # test double, an unregistered backend kind, a not-yet-connected
+        # backend) is treated like an absent one: the drift benchmark still
+        # runs, only the validator stamp is skipped. Never let it break the
+        # startup lifespan. The note stays cause-agnostic (the error_type
+        # field carries the real category) rather than guessing connectivity.
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="model_pin_validation",
-            note="backend present but no usable DB handle; validated_at not stamped",
+            note="pin-validation repo construction failed; validated_at not stamped",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -102,10 +106,23 @@ def build_pin_validation_registry(app_state: AppState) -> ExternalBenchmarkRegis
         if repo is not None
         else None
     )
-    benchmark = ModelPinValidationBenchmark(
-        golden=dict(load_pin_golden()),
-        ledger=ledger,
-    )
+    try:
+        golden = dict(load_pin_golden())
+    except ValueError as exc:
+        # A malformed committed artifact must degrade to the absent-file
+        # behaviour (empty golden, every pin reports drift) rather than crash
+        # the startup lifespan. ERROR, not WARNING: a corrupt committed
+        # artifact is an operator-actionable defect, not a transient event.
+        logger.error(
+            API_APP_STARTUP,
+            service="model_pin_validation",
+            note="pin golden artifact malformed; every pin will report drift",
+            action="run scripts/refresh_model_pin_golden.py",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        golden = {}
+    benchmark = ModelPinValidationBenchmark(golden=golden, ledger=ledger)
     runner = PinProbeRunner(
         provider=ScriptedDriver(provider_name=_PROBE_PROVIDER_NAME),
     )

@@ -29,7 +29,7 @@ at import rather than silently defaulting.
 from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final
+from typing import Final, assert_never
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -50,13 +50,25 @@ class PromptTierKind(StrEnum):
     SYNTHESISE_GENERATE_AUTHOR = "synthesise_generate_author"
 
 
-_KIND_TIER: Final[Mapping[PromptTierKind, TierName]] = MappingProxyType(
-    {
-        PromptTierKind.CLASSIFY_ROUTE_TRIAGE: "small",
-        PromptTierKind.JUDGE_GRADE_VERIFY: "medium",
-        PromptTierKind.SYNTHESISE_GENERATE_AUTHOR: "large",
-    },
-)
+def _tier_for_kind(kind: PromptTierKind) -> TierName:
+    """Map a cognitive-load kind to its canonical tier.
+
+    A ``match`` with :func:`assert_never` rather than a lookup table so a
+    newly-added :class:`PromptTierKind` member without a tier is a mypy
+    exhaustiveness error at type-check time, not a runtime ``KeyError``.
+
+    Returns:
+        The canonical tier label for *kind*.
+    """
+    match kind:
+        case PromptTierKind.CLASSIFY_ROUTE_TRIAGE:
+            return "small"
+        case PromptTierKind.JUDGE_GRADE_VERIFY:
+            return "medium"
+        case PromptTierKind.SYNTHESISE_GENERATE_AUTHOR:
+            return "large"
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 class ModelTierAssignment(BaseModel):
@@ -71,7 +83,7 @@ class ModelTierAssignment(BaseModel):
     @property
     def tier(self) -> TierName:
         """Return the canonical tier derived from :attr:`kind`."""
-        return _KIND_TIER[self.kind]
+        return _tier_for_kind(self.kind)
 
 
 _S = PromptTierKind.CLASSIFY_ROUTE_TRIAGE
@@ -153,7 +165,8 @@ def assignment_for_purpose(
         The :class:`ModelTierAssignment` for that purpose.
 
     Raises:
-        KeyError: If ``purpose_id`` is not a registered purpose.
+        ValueError: If ``purpose_id`` is not a registered purpose (the
+            ``PromptPurposeId(...)`` coercion rejects an unknown value).
     """
     key = PromptPurposeId(str(purpose_id))
     return _POLICY[key]

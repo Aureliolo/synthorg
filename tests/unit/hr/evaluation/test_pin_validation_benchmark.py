@@ -12,6 +12,7 @@ from typing import override
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
@@ -30,6 +31,7 @@ from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedge
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY, PromptPurposeId
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from tests._shared import FakeClock
 
@@ -39,26 +41,30 @@ _PURPOSE_COUNT = len(list(PromptPurposeId))
 
 
 class _FakeRepo:
-    """In-memory pin-validation repository capturing saved rows."""
+    """In-memory pin-validation repository matching the protocol surface."""
 
     def __init__(self) -> None:
         self.saved: list[ModelPinValidationRow] = []
 
-    async def save(self, entity: ModelPinValidationRow) -> None:
+    async def save(self, entity: ModelPinValidationRow, /) -> None:
+        self.saved = [
+            r for r in self.saved if r.prompt_class_id != entity.prompt_class_id
+        ]
         self.saved.append(entity)
 
-    async def get(self, entity_id: str) -> ModelPinValidationRow | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ModelPinValidationRow | None:
         for row in self.saved:
             if str(row.prompt_class_id) == str(entity_id):
                 return row
         return None
 
-    async def delete(self, entity_id: str) -> bool:
-        del entity_id
-        return False
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
+        before = len(self.saved)
+        self.saved = [r for r in self.saved if str(r.prompt_class_id) != str(entity_id)]
+        return len(self.saved) < before
 
     async def list_items(
-        self, *, limit: int = 100, offset: int = 0
+        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
     ) -> tuple[ModelPinValidationRow, ...]:
         del limit, offset
         return tuple(self.saved)
@@ -75,7 +81,7 @@ class _FailingRepo(_FakeRepo):
 
 
 def _runner() -> PinProbeRunner:
-    return PinProbeRunner(provider=ScriptedDriver(provider_name="test-probe"))
+    return PinProbeRunner(provider=ScriptedDriver(provider_name="test-provider"))
 
 
 async def _grade_all(
@@ -102,8 +108,11 @@ async def test_all_cases_pass_against_committed_golden() -> None:
     benchmark = ModelPinValidationBenchmark(golden=dict(load_pin_golden()))
     results = await _grade_all(benchmark, _runner())
     assert len(results) == _PURPOSE_COUNT
-    assert all(grade.passed for _, grade in results)
-    assert all(grade.score == pytest.approx(1.0) for _, grade in results)
+    for case, grade in results:
+        assert grade.passed, f"{case.id} failed: {grade.explanation}"
+        assert grade.score == pytest.approx(1.0), (
+            f"{case.id} score {grade.score} != 1.0"
+        )
 
 
 async def test_clean_grade_stamps_validated_at_from_clock() -> None:
@@ -132,7 +141,7 @@ async def test_mutated_pin_is_drift() -> None:
         id=str(purpose_id),
         behavior_tags=(BehaviorTag.VERIFICATION,),
         input_data=probe_input_data(purpose_id),
-        expected_output=benchmark._golden[str(purpose_id)],
+        expected_output=dict(load_pin_golden())[str(purpose_id)],
         metadata={PIN_META_KEY: pin_metadata_payload(mutated)},
     )
     output = await _runner().run_case(case)
@@ -172,3 +181,36 @@ async def test_behavior_tag_filter() -> None:
         )
     ]
     assert len(included) == _PURPOSE_COUNT
+
+
+async def test_absent_golden_grades_every_case_as_drift() -> None:
+    # An empty golden (fresh checkout / forgotten regen) must fail every
+    # case, never silently pass: expected_output is "" so no live
+    # fingerprint can match.
+    benchmark = ModelPinValidationBenchmark(golden={})
+    results = await _grade_all(benchmark, _runner())
+    assert len(results) == _PURPOSE_COUNT
+    assert all(not grade.passed for _, grade in results)
+    assert all("absent from golden" in grade.explanation for _, grade in results)
+
+
+async def test_critical_error_in_stamp_propagates() -> None:
+    # A best-effort stamp swallows persistence errors, but interpreter-
+    # critical errors must still propagate (reraise_critical), never be
+    # masked as a stamp-failure warning.
+    class _CriticalRepo(_FakeRepo):
+        @override
+        async def save(self, entity: ModelPinValidationRow, /) -> None:
+            del entity
+            raise MemoryError
+
+    ledger = ModelPinValidationLedger(_CriticalRepo(), clock=FakeClock())
+    benchmark = ModelPinValidationBenchmark(
+        golden=dict(load_pin_golden()), ledger=ledger
+    )
+    runner = _runner()
+    async for case in benchmark.load_test_cases():
+        output = await runner.run_case(case)
+        with pytest.raises(MemoryError):
+            await benchmark.grade(case=case, agent_output=output)
+        break

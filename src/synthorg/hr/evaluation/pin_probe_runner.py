@@ -7,7 +7,7 @@ case it reconstructs the pin the case carries, runs the canonical probe
 against the pinned tier model through a real
 :meth:`CompletionProvider.complete` call with the pinned sampling
 parameters, and returns the provider's raw output for the grader to
-fingerprint. The injected provider is deterministic (a
+fingerprint. The benchmark injects a deterministic provider (typically a
 :class:`~synthorg.providers.drivers.scripted.ScriptedDriver`), so the
 probe is reproducible with no network or spend.
 """
@@ -42,6 +42,11 @@ class PinProbeRunner:
         Returns:
             The provider's raw output string (empty when the provider
             returns no content).
+
+        Raises:
+            KeyError: If *case* carries no pin payload (``PIN_META_KEY``
+                absent from its ``metadata``) -- i.e. it is not a
+                pin-validation case.
         """
         pin = pin_from_case_metadata(case.metadata)
         response = await self._provider.complete(

@@ -8,17 +8,18 @@ against the pinned tier. It is the single place that turns a
 sampling parameters) and the probe prompt, so the benchmark's case builder,
 its grader, and the probe runner all read one definition.
 
-Wave 1B pins the canonical sampling defaults system prompt classes use
-(deterministic ``temperature=0.0`` / ``top_p=1.0`` and a per-tier output
-ceiling). Wave 2's per-class ``ModelPinMetadata`` rollout replaces these
-with the real per-class parameters; the golden regenerates when it does.
+The canonical pin uses provisional deterministic sampling defaults
+(``temperature=0.0`` / ``top_p=1.0`` and a per-tier output ceiling). They
+are provisional because the per-class ``ModelPinMetadata`` rollout will
+later supply the real per-class parameters; the golden regenerates when
+it does.
 """
 
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.budget.model_tier import TierName
+from synthorg.budget.model_tier import TIERS, TierName
 from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.pin_fingerprint import pin_fingerprint
@@ -31,10 +32,11 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 #: Metadata key under which an ``EvalTestCase`` carries its pin payload.
 PIN_META_KEY: Final[str] = "pin"
 
-#: Sentinel "never validated by an eval refresh yet" timestamp. The
-#: benchmark's canonical pins carry it until the validator stamps a real
-#: ``validated_at``; it is excluded from the drift fingerprint (the
-#: fingerprint must not change when the validator writes a timestamp).
+#: Sentinel "never validated by an eval refresh yet" timestamp carried as
+#: ``model_version_pinned_at`` by every canonical pin. It is excluded from
+#: the drift fingerprint, so the live "last validated" record the
+#: validator persists (``ModelPinValidationRow.validated_at``) can advance
+#: without changing any fingerprint.
 _UNVALIDATED_AT: Final = parse_iso_utc("1970-01-01T00:00:00Z")
 
 #: Canonical deterministic sampling parameters for a system prompt class.
@@ -50,6 +52,14 @@ _TIER_MAX_TOKENS: Final[Mapping[TierName, int]] = MappingProxyType(
         "local-small": 1024,
     },
 )
+
+# Fail at import (mirroring the policy's own drift guard) if a new canonical
+# tier is added to ``TierName`` without a ceiling here, rather than surfacing
+# a KeyError on the first ``canonical_pin_for`` call for that tier.
+_missing_tier_ceilings = TIERS - set(_TIER_MAX_TOKENS)
+if _missing_tier_ceilings:
+    msg = f"Tiers missing a max-tokens ceiling: {sorted(_missing_tier_ceilings)}"
+    raise ValueError(msg)
 
 
 def canonical_pin_for(purpose_id: str | PromptPurposeId) -> ModelPinMetadata:

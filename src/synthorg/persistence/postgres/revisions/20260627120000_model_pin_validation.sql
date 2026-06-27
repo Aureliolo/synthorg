@@ -1,6 +1,6 @@
 -- Prompt-class pin-validation results: one row per prompt_class_id,
 -- written by the pin-validation benchmark on a clean drift grade so
--- model_version_pinned_at means "last validated", not "the day we wrote it".
+-- validated_at records when the pin was last validated against its tier.
 
 CREATE TABLE model_pin_validations (
     prompt_class_id TEXT NOT NULL PRIMARY KEY

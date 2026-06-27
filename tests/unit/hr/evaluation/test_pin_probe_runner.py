@@ -90,7 +90,7 @@ async def test_runner_drives_pinned_model_and_config() -> None:
 
 
 async def test_runner_is_deterministic() -> None:
-    runner = PinProbeRunner(provider=ScriptedDriver(provider_name="test-probe"))
+    runner = PinProbeRunner(provider=ScriptedDriver(provider_name="test-provider"))
     first = await runner.run_case(_case())
     second = await runner.run_case(_case())
     assert first == second

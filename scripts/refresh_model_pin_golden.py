@@ -15,7 +15,11 @@ Usage:
 import asyncio
 import json
 
-from synthorg.hr.evaluation.pin_fingerprint import GOLDEN_PATH
+from synthorg.hr.evaluation.pin_fingerprint import (
+    GOLDEN_PATH,
+    golden_diff,
+    load_pin_golden,
+)
 from synthorg.hr.evaluation.pin_probe import fingerprint_for, pin_from_case_metadata
 from synthorg.hr.evaluation.pin_probe_runner import PinProbeRunner
 from synthorg.hr.evaluation.pin_validation_benchmark import ModelPinValidationBenchmark
@@ -42,12 +46,19 @@ async def _compute_golden() -> dict[str, str]:
 
 def main() -> None:
     """Compute and write the golden fingerprint artifact."""
-    golden = asyncio.run(_compute_golden())
+    live = asyncio.run(_compute_golden())
+    changed = golden_diff(live, load_pin_golden())
     GOLDEN_PATH.write_text(
-        json.dumps(golden, indent=2, sort_keys=True) + "\n",
+        json.dumps(live, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"Wrote {len(golden)} fingerprints to {GOLDEN_PATH}")
+    print(f"Wrote {len(live)} fingerprints to {GOLDEN_PATH}")
+    if changed:
+        print(f"Changed pins ({len(changed)}):")
+        for class_id in changed:
+            print(f"  - {class_id}")
+    else:
+        print("No pins changed.")
 
 
 if __name__ == "__main__":

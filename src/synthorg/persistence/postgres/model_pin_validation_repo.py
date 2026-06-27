@@ -7,7 +7,7 @@ Sibling of :class:`SQLiteModelPinValidationRepository` backed by
 ``prompt_class_id``.
 """
 
-from typing import cast
+from typing import Final, cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -33,9 +33,9 @@ from synthorg.persistence._shared import (
 
 logger = get_logger(__name__)
 
-_MAX_PAGE_LIMIT: int = 1_000
+_MAX_PAGE_LIMIT: Final[int] = 1_000
 
-_SELECT_COLS = "prompt_class_id, validated_at, tier, passed"
+_SELECT_COLS: Final[str] = "prompt_class_id, validated_at, tier, passed"
 
 _UPSERT_SQL = f"""
     INSERT INTO model_pin_validations ({_SELECT_COLS})
@@ -51,7 +51,7 @@ def _row_to_record(row: DictRow) -> ModelPinValidationRow:
     """Convert a Postgres dict row into a :class:`ModelPinValidationRow`.
 
     Returns:
-        Result of type ``ModelPinValidationRow``.
+        The parsed :class:`ModelPinValidationRow`.
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
@@ -64,15 +64,14 @@ def _row_to_record(row: DictRow) -> ModelPinValidationRow:
             passed=bool(row["passed"]),
         )
     except (ValueError, TypeError, KeyError) as exc:
-        msg = (
-            f"Failed to parse model pin validation row: "
-            f"{type(exc).__name__} ({safe_error_description(exc)})"
-        )
+        error_type = type(exc).__name__
+        error_desc = safe_error_description(exc)
+        msg = f"Failed to parse model pin validation row: {error_type} ({error_desc})"
         logger.warning(
             MODEL_PIN_VALIDATION_FAILED,
             operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error_type=error_type,
+            error=error_desc,
         )
         raise QueryError(msg) from exc
 
@@ -153,7 +152,10 @@ class PostgresModelPinValidationRepository:
                 await cur.execute(sql, (entity_id,))
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to fetch pin validation {entity_id!r}"
+            msg = (
+                f"Failed to fetch pin validation {entity_id!r}: "
+                f"{type(exc).__name__} ({safe_error_description(exc)})"
+            )
             logger.warning(
                 MODEL_PIN_VALIDATION_FAILED,
                 operation="get",
@@ -228,7 +230,10 @@ class PostgresModelPinValidationRepository:
                 rowcount = cur.rowcount
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to delete pin validation {entity_id!r}"
+            msg = (
+                f"Failed to delete pin validation {entity_id!r}: "
+                f"{type(exc).__name__} ({safe_error_description(exc)})"
+            )
             logger.warning(
                 MODEL_PIN_VALIDATION_FAILED,
                 operation="delete",
