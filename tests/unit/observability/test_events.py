@@ -286,6 +286,7 @@ class TestEventConstants:
             "personality",
             "preset",
             "prompt",
+            "prompt_purpose",
             "provider",
             "quota",
             "research",

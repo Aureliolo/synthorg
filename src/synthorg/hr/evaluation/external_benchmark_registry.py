@@ -9,19 +9,25 @@ import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.execution.turn import BehaviorTag
+from synthorg.hr.evaluation.errors import EvalBenchmarkAgentRunnerUnsetError
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     BenchmarkRunResult,
+    EvalTestCase,
 )
 from synthorg.hr.evaluation.external_benchmark_protocol import (
+    AgentRunner,
     ExternalBenchmark,
 )
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED,
+    EVAL_LOOP_BENCHMARK_CASE_FAILED,
     EVAL_LOOP_BENCHMARK_EXECUTED,
+    EVAL_LOOP_BENCHMARK_FAILED,
     EVAL_LOOP_BENCHMARK_NOT_FOUND,
 )
 
@@ -36,10 +42,11 @@ class ExternalBenchmarkRegistry:
     mutated via copy-on-write in ``register()``.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, agent_runner: AgentRunner | None = None) -> None:
         self._benchmarks: MappingProxyType[str, ExternalBenchmark] = MappingProxyType(
             {}
         )
+        self._agent_runner = agent_runner
 
     def register(self, benchmark: ExternalBenchmark) -> None:
         """Register a benchmark by name.
@@ -103,11 +110,12 @@ class ExternalBenchmarkRegistry:
         *,
         behavior_tags: frozenset[BehaviorTag] | None = None,
     ) -> BenchmarkRunResult:
-        """Run a single benchmark and collect results.
+        """Run a single benchmark against the configured agent runner.
 
-        Grades each test case against its expected output as a
-        baseline self-check.  A real agent execution callback will
-        be added when the eval loop wires up live agent runs.
+        Each test case is run through the injected :class:`AgentRunner`
+        and graded on the agent's live output. A case that fails its run
+        or grading is isolated (scored as failed) so one bad case never
+        aborts the run.
 
         Args:
             name: Registered benchmark name.
@@ -117,9 +125,12 @@ class ExternalBenchmarkRegistry:
             Aggregated benchmark run result.
 
         Raises:
-            Exception: Raised when the relevant invariant fails.
+            KeyError: If the benchmark is not registered.
+            EvalBenchmarkAgentRunnerUnsetError: If no agent runner was
+                configured on the registry.
         """
         benchmark = self.get(name)
+        runner = self._require_agent_runner(name)
         cases_run = 0
         passed_count = 0
         total_score = 0.0
@@ -127,23 +138,7 @@ class ExternalBenchmarkRegistry:
         async for case in benchmark.load_test_cases(
             behavior_tags=behavior_tags,
         ):
-            # In a real run, agent_output_fn would execute the agent.
-            # For now, grade against the expected output as a baseline.
-            try:
-                grade: BenchmarkGrade = await benchmark.grade(
-                    case=case,
-                    agent_output=case.expected_output,
-                )
-            except Exception as exc:
-                log_exception_redacted(
-                    logger,
-                    EVAL_LOOP_BENCHMARK_EXECUTED,
-                    exc,
-                    benchmark_name=name,
-                    case_id=getattr(case, "id", "unknown"),
-                    context="grading_error",
-                )
-                raise
+            grade = await self._grade_case(benchmark, runner, name, case)
             cases_run += 1
             if grade.passed:
                 passed_count += 1
@@ -166,3 +161,60 @@ class ExternalBenchmarkRegistry:
             average_score=avg_score,
             completed_at=datetime.now(UTC),
         )
+
+    def _require_agent_runner(self, name: str) -> AgentRunner:
+        """Return the configured agent runner or fail closed.
+
+        Args:
+            name: Benchmark name, for the failure log context.
+
+        Returns:
+            The configured :class:`AgentRunner`.
+
+        Raises:
+            EvalBenchmarkAgentRunnerUnsetError: If none was configured.
+        """
+        if self._agent_runner is None:
+            logger.warning(
+                EVAL_LOOP_BENCHMARK_FAILED,
+                benchmark_name=name,
+                error_type=EvalBenchmarkAgentRunnerUnsetError.__name__,
+            )
+            raise EvalBenchmarkAgentRunnerUnsetError
+        return self._agent_runner
+
+    async def _grade_case(
+        self,
+        benchmark: ExternalBenchmark,
+        runner: AgentRunner,
+        name: str,
+        case: EvalTestCase,
+    ) -> BenchmarkGrade:
+        """Run and grade a single case, isolating non-critical failures.
+
+        Args:
+            benchmark: The benchmark being run.
+            runner: The agent runner producing the output.
+            name: Benchmark name, for the failure log context.
+            case: The test case to run and grade.
+
+        Returns:
+            The grade, or a failed grade if the run or grading raised.
+        """
+        try:
+            agent_output = await runner.run_case(case)
+            return await benchmark.grade(case=case, agent_output=agent_output)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                EVAL_LOOP_BENCHMARK_CASE_FAILED,
+                exc,
+                benchmark_name=name,
+                case_id=case.id,
+            )
+            return BenchmarkGrade(
+                passed=False,
+                score=0.0,
+                explanation="agent run or grading error",
+            )

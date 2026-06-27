@@ -16,6 +16,28 @@ from synthorg.hr.evaluation.external_benchmark_models import (
 
 
 @runtime_checkable
+class AgentRunner(Protocol):
+    """Executes the agent under evaluation against a single test case.
+
+    The returned string is the agent's raw output, the value
+    :meth:`ExternalBenchmark.grade` scores. Injected into
+    :class:`ExternalBenchmarkRegistry` so a benchmark run drives a live
+    agent instead of self-grading the expected output.
+    """
+
+    async def run_case(self, case: EvalTestCase) -> str:
+        """Run the agent for *case* and return its raw output string.
+
+        Args:
+            case: The test case to present to the agent.
+
+        Returns:
+            The agent's raw output string.
+        """
+        ...
+
+
+@runtime_checkable
 class ExternalBenchmark(Protocol):
     """Pluggable external benchmark adapter.
 

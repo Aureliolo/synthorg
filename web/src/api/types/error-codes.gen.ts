@@ -176,6 +176,7 @@ export const ErrorCode = {
     CHARTER_INTERVIEW_UNAVAILABLE: 8043,
     KNOWLEDGE_SYNTHESIS_ERROR: 8044,
     KNOWLEDGE_SYNTHESIS_UNAVAILABLE: 8045,
+    EVAL_BENCHMARK_RUNNER_UNSET: 8046,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
