@@ -1,5 +1,22 @@
-import YAML from 'js-yaml'
+import * as YAML from 'js-yaml'
 import type { CompanyConfig } from '@/api/types/org'
+
+/**
+ * Cap on YAML aliases per document when parsing untrusted input. Bounds
+ * alias-expansion ("billion laughs") DoS: far above any legitimate config's
+ * anchor usage, far below a malicious bomb.
+ */
+const MAX_YAML_ALIASES = 100
+
+/**
+ * Hardened load options for untrusted YAML. The YAML 1.2 core schema rejects
+ * the dangerous `!!js/function` / `!!js/regexp` tags; the bounded alias count
+ * caps quadratic alias/merge expansion.
+ */
+export const UNTRUSTED_YAML_LOAD_OPTIONS = {
+  schema: YAML.CORE_SCHEMA,
+  maxAliases: MAX_YAML_ALIASES,
+}
 
 /**
  * Serialize a CompanyConfig to a YAML string for the code editor.
@@ -17,7 +34,7 @@ export function serializeToYaml(config: CompanyConfig): string {
  * Throws if the input is not valid YAML or not an object at the top level.
  */
 export function parseYaml(yamlStr: string): Record<string, unknown> {
-  const result = YAML.load(yamlStr, { schema: YAML.CORE_SCHEMA })
+  const result = YAML.load(yamlStr, UNTRUSTED_YAML_LOAD_OPTIONS)
   if (result === null || result === undefined || typeof result !== 'object' || Array.isArray(result)) {
     throw new Error('YAML must be a mapping (object) at the top level')
   }

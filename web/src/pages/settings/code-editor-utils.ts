@@ -8,10 +8,11 @@
  * structured error reporting in entriesToObject.
  */
 
-import YAML from 'js-yaml'
+import * as YAML from 'js-yaml'
 import type { SettingEntry } from '@/api/types/settings'
 import type { CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { createLogger } from '@/lib/logger'
+import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
 
 const log = createLogger('settings')
 
@@ -130,10 +131,10 @@ function parseRawDocument(text: string, format: CodeFormat): unknown {
     case 'json':
       return JSON.parse(text)
     case 'yaml':
-      // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
-      // tags that could execute arbitrary code. Do not change to
-      // DEFAULT_SCHEMA.
-      return YAML.load(text, { schema: YAML.CORE_SCHEMA })
+      // Untrusted input: UNTRUSTED_YAML_LOAD_OPTIONS pins the YAML 1.2 core
+      // schema (rejecting the code-executing !!js/function / !!js/regexp tags)
+      // and bounds alias expansion. Never parse untrusted YAML without it.
+      return YAML.load(text, UNTRUSTED_YAML_LOAD_OPTIONS)
     default:
       throw new Error(`Unsupported format: ${String(format)}`)
   }

@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 

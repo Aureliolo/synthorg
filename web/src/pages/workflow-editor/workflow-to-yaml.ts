@@ -4,7 +4,7 @@
  * Mirrors the backend export logic for live preview in the editor. Uses
  * js-yaml (already a project dependency).
  */
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 
 /** A depends_on entry: plain string or object with explicit branch. */

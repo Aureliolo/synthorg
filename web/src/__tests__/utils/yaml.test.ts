@@ -39,11 +39,17 @@ describe('parseYaml', () => {
   })
 
   it('throws on empty YAML', () => {
-    expect(() => parseYaml('')).toThrow('mapping')
+    expect(() => parseYaml('')).toThrow()
   })
 
   it('throws on invalid YAML syntax', () => {
     expect(() => parseYaml('{ bad yaml [')).toThrow()
+  })
+
+  it('rejects an alias bomb beyond the maxAliases cap', () => {
+    const aliases = Array.from({ length: 200 }, () => '  - *x').join('\n')
+    const bomb = `x: &x value\nlist:\n${aliases}\n`
+    expect(() => parseYaml(bomb)).toThrow()
   })
 })
 

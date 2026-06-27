@@ -1,4 +1,4 @@
-import YAML from 'js-yaml'
+import * as YAML from 'js-yaml'
 import type { SettingEntry } from '@/api/types/settings'
 import {
   type CodeFormat,
