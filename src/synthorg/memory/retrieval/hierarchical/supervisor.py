@@ -348,7 +348,7 @@ class SupervisorRouter:
             logger.debug(
                 MEMORY_HIERARCHICAL_ROUTING,
                 action="invalid_workers_filtered",
-                llm_workers=list(routing.workers),
+                llm_worker_count=len(routing.workers),
             )
             workers = _DEFAULT_FALLBACK_WORKERS
         reason = routing.reason
