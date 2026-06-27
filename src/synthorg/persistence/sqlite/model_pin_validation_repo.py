@@ -24,11 +24,9 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.model_pins import (
-    MODEL_PIN_VALIDATION_DELETED,
     MODEL_PIN_VALIDATION_FAILED,
     MODEL_PIN_VALIDATION_FETCHED,
     MODEL_PIN_VALIDATION_LISTED,
-    MODEL_PIN_VALIDATION_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
@@ -171,9 +169,6 @@ class SQLiteModelPinValidationRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        logger.info(
-            MODEL_PIN_VALIDATION_SAVED, operation="save", prompt_class_id=class_id
-        )
 
     async def get(self, entity_id: NotBlankStr) -> ModelPinValidationRow | None:
         """Get a validation row by ``prompt_class_id``, or ``None`` if absent.
@@ -281,14 +276,7 @@ class SQLiteModelPinValidationRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        deleted = rowcount > 0
-        logger.info(
-            MODEL_PIN_VALIDATION_DELETED,
-            operation="delete",
-            prompt_class_id=entity_id,
-            deleted=deleted,
-        )
-        return deleted
+        return rowcount > 0
 
 
 __all__ = ["SQLiteModelPinValidationRepository"]

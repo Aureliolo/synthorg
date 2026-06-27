@@ -422,17 +422,13 @@ class TestEventConstants:
             MODEL_PIN_CASE_MISMATCH,
             MODEL_PIN_GOLDEN_ABSENT,
             MODEL_PIN_GOLDEN_MALFORMED,
-            MODEL_PIN_VALIDATION_DELETED,
             MODEL_PIN_VALIDATION_FAILED,
             MODEL_PIN_VALIDATION_FETCHED,
             MODEL_PIN_VALIDATION_LISTED,
-            MODEL_PIN_VALIDATION_SAVED,
             MODEL_PIN_VALIDATION_STAMP_FAILED,
             MODEL_PIN_VALIDATION_STAMPED,
         )
 
-        assert MODEL_PIN_VALIDATION_SAVED == "model_pin.validation.saved"
-        assert MODEL_PIN_VALIDATION_DELETED == "model_pin.validation.deleted"
         assert MODEL_PIN_VALIDATION_FETCHED == "model_pin.validation.fetched"
         assert MODEL_PIN_VALIDATION_LISTED == "model_pin.validation.listed"
         assert MODEL_PIN_VALIDATION_FAILED == "model_pin.validation.failed"

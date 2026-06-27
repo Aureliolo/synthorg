@@ -2,9 +2,10 @@
 
 from typing import Final
 
-# Persistence repository (model_pin_validations table).
-MODEL_PIN_VALIDATION_SAVED: Final[str] = "model_pin.validation.saved"
-MODEL_PIN_VALIDATION_DELETED: Final[str] = "model_pin.validation.deleted"
+# Persistence repository (model_pin_validations table). Mutations are not
+# logged at the repository layer (the persistence-boundary gate forbids it);
+# the validation state transition is logged at INFO one layer up, by the
+# ledger/benchmark, via MODEL_PIN_VALIDATION_STAMPED.
 MODEL_PIN_VALIDATION_FETCHED: Final[str] = "model_pin.validation.fetched"
 MODEL_PIN_VALIDATION_LISTED: Final[str] = "model_pin.validation.listed"
 MODEL_PIN_VALIDATION_FAILED: Final[str] = "model_pin.validation.failed"
