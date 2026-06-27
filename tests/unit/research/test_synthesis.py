@@ -148,15 +148,17 @@ async def test_synthesiser_opens_purpose_scope() -> None:
         }
     )
     provider = CtxCapturingProvider(payload)
+    tracker = CostTracker()
     synth = LlmSynthesizer(
         provider=provider,
         model="example-medium-001",
         binder=CitationBinder(),
         clock=FakeClock(start=_NOW),
-        cost_tracker=CostTracker(),
+        cost_tracker=tracker,
     )
 
     await synth.synthesize(_brief(), _plan(), (_item("src-0-0"),), sources_consulted=1)
+    await tracker.drain_pending_records()
 
     assert provider.was_called
     ctx = provider.captured

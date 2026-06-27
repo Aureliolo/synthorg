@@ -137,11 +137,11 @@ async def test_llm_triage_opens_purpose_scope() -> None:
     items = (_web_item("src-0-0", snippet="alpha"),)
     payload = json.dumps({"verdicts": []})
     provider = CtxCapturingProvider(payload)
-    triage = LlmCredibilityTriage(
-        provider=provider, model="m", cost_tracker=CostTracker()
-    )
+    tracker = CostTracker()
+    triage = LlmCredibilityTriage(provider=provider, model="m", cost_tracker=tracker)
 
     await triage.triage(items, brief=_brief())
+    await tracker.drain_pending_records()
 
     assert provider.was_called
     ctx = provider.captured

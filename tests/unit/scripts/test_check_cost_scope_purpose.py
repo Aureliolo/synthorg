@@ -172,6 +172,20 @@ async def run() -> None:
         await provider.complete(messages, model)
 """
 
+_CALL_ALIAS_MISSING = """\
+from synthorg.providers.cost_recording import cost_recording_scope as crs
+
+
+async def run() -> None:
+    async with crs(
+        cost_tracker=tracker,
+        agent_id=agent_id,
+        task_id=task_id,
+        call_category=category,
+    ):
+        await provider.complete(messages, model)
+"""
+
 
 def test_missing_purpose_flagged(write_py: WritePy) -> None:
     path = write_py(_CALL_MISSING)
@@ -199,6 +213,13 @@ def test_kwargs_spread_fails_closed(write_py: WritePy) -> None:
 def test_attribute_call_missing_purpose_flagged(write_py: WritePy) -> None:
     path = write_py(_CALL_ATTR_MISSING)
     assert len(_MODULE._scan_file(path, "src/synthorg/foo.py")) == 1
+
+
+def test_aliased_import_call_missing_purpose_flagged(write_py: WritePy) -> None:
+    path = write_py(_CALL_ALIAS_MISSING)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].lineno == 5
 
 
 def test_lint_allow_marker_suppresses(write_py: WritePy) -> None:
@@ -279,6 +300,15 @@ def test_main_baselined_violation_returns_zero(tmp_path: Path) -> None:
 def test_main_corrupt_baseline_returns_two(tmp_path: Path) -> None:
     _make_repo(tmp_path, violation=True)
     _write_repo_baseline(tmp_path, "not-a-valid-entry\n")
+    assert _MODULE.main(["--repo-root", str(tmp_path)]) == 2
+
+
+def test_main_stale_baseline_entry_returns_two(tmp_path: Path) -> None:
+    foo = _make_repo(tmp_path, violation=True)
+    hits = _MODULE._scan_file(foo, "src/synthorg/foo.py")
+    live = "\n".join(h.baseline_key() for h in hits)
+    stale = "src/synthorg/gone.py:1:0"
+    _write_repo_baseline(tmp_path, f"{live}\n{stale}\n")
     assert _MODULE.main(["--repo-root", str(tmp_path)]) == 2
 
 

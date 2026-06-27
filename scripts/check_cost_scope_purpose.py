@@ -65,6 +65,7 @@ else:
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg"
 _TARGET_CALL: Final[str] = "cost_recording_scope"
+_TARGET_MODULE: Final[str] = "synthorg.providers.cost_recording"
 _REQUIRED_KEYWORD: Final[str] = "purpose"
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: cost-scope-purpose"
 _BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^.+:\d+:\d+$")
@@ -241,11 +242,42 @@ def _marker_lines(text: str, rel: str) -> set[int]:
     return lines
 
 
-def _is_target_call(node: ast.Call) -> bool:
-    """Return True iff *node* calls ``cost_recording_scope`` (name or attr)."""
+def _imported_target_aliases(tree: ast.AST) -> set[str]:
+    """Return the local names ``cost_recording_scope`` is reachable under.
+
+    A direct-name import can bind the chokepoint to an alias
+    (``from synthorg.providers.cost_recording import cost_recording_scope as
+    crs``); without resolving the alias the gate would miss ``async with
+    crs(...)`` and let that call skip the ``purpose=`` check. The canonical
+    name is always included so the common unaliased case needs no import to be
+    present.
+
+    Returns:
+        The set of local names that refer to ``cost_recording_scope``.
+    """
+    names = {_TARGET_CALL}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == _TARGET_MODULE:
+            for alias in node.names:
+                if alias.name == _TARGET_CALL:
+                    names.add(alias.asname or alias.name)
+    return names
+
+
+def _is_target_call(node: ast.Call, target_names: set[str]) -> bool:
+    """Return True iff *node* calls ``cost_recording_scope`` (name or attr).
+
+    *target_names* carries the canonical name plus any import aliases bound in
+    the same module (see :func:`_imported_target_aliases`). Attribute access
+    (``module.cost_recording_scope(...)``) still matches on the attribute name
+    alone, since the base object is opaque to a static scan.
+
+    Returns:
+        ``True`` when *node* calls the chokepoint under any reachable name.
+    """
     func = node.func
     if isinstance(func, ast.Name):
-        return func.id == _TARGET_CALL
+        return func.id in target_names
     if isinstance(func, ast.Attribute):
         return func.attr == _TARGET_CALL
     return False
@@ -275,9 +307,10 @@ def _scan_file(path: Path, rel: str) -> list[_Hit]:
     """
     text, tree = read_and_parse(path)
     marked = _marker_lines(text, rel)
+    target_names = _imported_target_aliases(tree)
     hits: list[_Hit] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not _is_target_call(node):
+        if not isinstance(node, ast.Call) or not _is_target_call(node, target_names):
             continue
         if _has_purpose_keyword(node) or node.lineno in marked:
             continue
@@ -412,6 +445,22 @@ def cmd_scan(project_root: Path) -> int:
         hits = _scan_all(project_root)
     except GateSourceError as exc:
         print(f"check_cost_scope_purpose: {exc}", file=sys.stderr)
+        return 2
+    live_keys = {h.baseline_key() for h in hits}
+    stale_entries = sorted(baseline - live_keys, key=_baseline_sort_key)
+    if stale_entries:
+        baseline_rel = _baseline_path(project_root).relative_to(project_root).as_posix()
+        for entry in stale_entries:
+            print(f"{baseline_rel}: stale baseline entry {entry}", file=sys.stderr)
+        print(
+            f"\n{len(stale_entries)} baseline entr"
+            f"{'y' if len(stale_entries) == 1 else 'ies'} no longer match a "
+            "violating call site. A fixed site that stays allowlisted would "
+            "silently suppress a future omission reusing the same "
+            "path:lineno:col. Remove the stale line(s), or regenerate with "
+            "'uv run python scripts/check_cost_scope_purpose.py --update'.",
+            file=sys.stderr,
+        )
         return 2
     new_violations = [h for h in hits if h.baseline_key() not in baseline]
     if not new_violations:
