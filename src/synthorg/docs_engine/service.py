@@ -60,6 +60,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_HISTORY_READ,
     DOC_NOT_FOUND,
+    DOC_READ_FAILED,
     DOC_RETRIEVED,
     DOC_SEARCH_COMPLETE,
     DOC_SEARCH_START,
@@ -524,11 +525,23 @@ class DocsService:
                 return await asyncio.to_thread(full_path.read_bytes)
             except FileNotFoundError as exc:
                 msg = f"living doc bytes not found at {rel_path!r}"
+                logger.warning(
+                    DOC_NOT_FOUND,
+                    rel_path=rel_path,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 raise DocNotFoundError(msg) from exc
             except OSError as exc:
                 msg = (
                     f"failed to read living doc bytes at {rel_path!r}: "
                     f"{safe_error_description(exc)}"
+                )
+                logger.warning(
+                    DOC_READ_FAILED,
+                    rel_path=rel_path,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise DocCommitError(msg) from exc
         ancestry_rc, _, _ = await run_git_subprocess(

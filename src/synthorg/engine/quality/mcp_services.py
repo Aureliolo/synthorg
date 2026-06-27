@@ -1,4 +1,4 @@
-# ruff: noqa: D102, EM101, PLR0913
+# ruff: noqa: D102, PLR0913
 """Quality facades for the MCP handler layer.
 
 Three facades: QualityFacadeService wraps the performance tracker's
@@ -10,7 +10,7 @@ import asyncio
 import copy
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, NoReturn, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict
@@ -20,6 +20,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
+    QUALITY_CAPABILITY_UNAVAILABLE,
     REVIEW_CREATED_VIA_MCP,
     REVIEW_UPDATED_VIA_MCP,
 )
@@ -31,6 +32,25 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _QUALITY_SCORE_ROUNDING: Final[int] = 4
+
+
+def _capability_unavailable(capability: str, reason: str) -> NoReturn:
+    """Log the missing tracker/repo capability before refusing the call.
+
+    The guard fires when an optional collaborator does not expose a method
+    the facade needs, so the controller honestly 503s instead of attribute-
+    erroring. Logged at WARNING so the gap is visible in the audit trail.
+
+    Raises:
+        CapabilityNotSupportedError: Always -- this is the refusal path.
+    """
+    logger.warning(
+        QUALITY_CAPABILITY_UNAVAILABLE,
+        capability=capability,
+        reason=reason,
+        error_type=CapabilityNotSupportedError.__name__,
+    )
+    raise CapabilityNotSupportedError(capability, reason)
 
 
 class QualityScoreEntry(BaseModel):
@@ -109,7 +129,7 @@ class QualityFacadeService:
     async def get_summary(self) -> Mapping[str, object]:
         fn = getattr(self._tracker, "get_task_metrics", None)
         if not callable(fn):
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "quality_summary",
                 "PerformanceTracker does not expose get_task_metrics",
             )
@@ -129,7 +149,7 @@ class QualityFacadeService:
             if callable(dump_fn):
                 return cast("Mapping[str, object]", dump_fn(mode="json"))
             return dict(snapshot.__dict__) if snapshot else {}
-        raise CapabilityNotSupportedError(
+        _capability_unavailable(
             "quality_agent",
             "PerformanceTracker does not expose get_snapshot",
         )
@@ -163,7 +183,7 @@ class QualityFacadeService:
             raise ValueError(msg)
         fn = getattr(self._tracker, "get_task_metrics", None)
         if not callable(fn):
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "quality_scores",
                 "PerformanceTracker does not expose get_task_metrics",
             )
@@ -353,13 +373,13 @@ class EvaluationVersionService:
     async def list_versions(self) -> Sequence[object]:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "evaluation_versions_list",
                 "persistence backend does not expose evaluation_config_versions",
             )
         fn = getattr(repo, "list_versions", None)
         if not callable(fn):
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "evaluation_versions_list",
                 "evaluation_config_versions repository does not expose list_versions",
             )
@@ -371,13 +391,13 @@ class EvaluationVersionService:
     ) -> object | None:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "evaluation_versions_get",
                 "persistence backend does not expose evaluation_config_versions",
             )
         fn = getattr(repo, "get_version", None)
         if not callable(fn):
-            raise CapabilityNotSupportedError(
+            _capability_unavailable(
                 "evaluation_versions_get",
                 "evaluation_config_versions repository does not expose get_version",
             )

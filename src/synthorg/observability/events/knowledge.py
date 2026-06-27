@@ -105,3 +105,7 @@ KNOWLEDGE_TICKET_FETCHED: Final[str] = "knowledge.ticket.fetched"
 KNOWLEDGE_TICKET_FETCH_BLOCKED: Final[str] = "knowledge.ticket.fetch_blocked"
 """Emitted at WARNING when a ticket fetch is SSRF-blocked, returns non-2xx,
 or yields a malformed payload."""
+
+KNOWLEDGE_URI_VALIDATION_FAILED: Final[str] = "knowledge.uri.validation_failed"
+"""Emitted at WARNING when a filesystem-ingestion URI cannot be resolved to a
+path (path-traversal defence for REPO/PDF loaders)."""
