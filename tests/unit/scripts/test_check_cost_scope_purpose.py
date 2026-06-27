@@ -186,6 +186,23 @@ async def run() -> None:
         await provider.complete(messages, model)
 """
 
+_CALL_REBIND_MISSING = """\
+from synthorg.providers.cost_recording import cost_recording_scope
+
+crs = cost_recording_scope
+crs2 = crs
+
+
+async def run() -> None:
+    async with crs2(
+        cost_tracker=tracker,
+        agent_id=agent_id,
+        task_id=task_id,
+        call_category=category,
+    ):
+        await provider.complete(messages, model)
+"""
+
 
 def test_missing_purpose_flagged(write_py: WritePy) -> None:
     path = write_py(_CALL_MISSING)
@@ -220,6 +237,13 @@ def test_aliased_import_call_missing_purpose_flagged(write_py: WritePy) -> None:
     hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
     assert len(hits) == 1
     assert hits[0].lineno == 5
+
+
+def test_rebound_alias_call_missing_purpose_flagged(write_py: WritePy) -> None:
+    path = write_py(_CALL_REBIND_MISSING)
+    hits = _MODULE._scan_file(path, "src/synthorg/foo.py")
+    assert len(hits) == 1
+    assert hits[0].lineno == 8
 
 
 def test_lint_allow_marker_suppresses(write_py: WritePy) -> None:

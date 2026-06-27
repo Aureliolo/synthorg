@@ -242,15 +242,23 @@ def _marker_lines(text: str, rel: str) -> set[int]:
     return lines
 
 
-def _imported_target_aliases(tree: ast.AST) -> set[str]:
-    """Return the local names ``cost_recording_scope`` is reachable under.
+def _target_call_names(tree: ast.AST) -> set[str]:
+    """Return every local name that resolves to ``cost_recording_scope``.
 
-    A direct-name import can bind the chokepoint to an alias
-    (``from synthorg.providers.cost_recording import cost_recording_scope as
-    crs``); without resolving the alias the gate would miss ``async with
-    crs(...)`` and let that call skip the ``purpose=`` check. The canonical
-    name is always included so the common unaliased case needs no import to be
-    present.
+    Covers each binding form so a call cannot dodge the ``purpose=`` check by
+    renaming the chokepoint:
+
+    * the canonical name itself;
+    * an import alias
+      (``from synthorg.providers.cost_recording import cost_recording_scope as
+      crs``);
+    * a plain post-import rebinding (``crs = cost_recording_scope``), resolved
+      to a fixpoint so a multi-hop chain (``a = cost_recording_scope; b = a``)
+      is collapsed too. ``ast.walk`` yields no source order, so a single pass
+      could otherwise miss ``b = a`` visited before its ``a`` binding.
+
+    Attribute access (``module.cost_recording_scope(...)``) is matched
+    separately in :func:`_is_target_call` on the attribute name alone.
 
     Returns:
         The set of local names that refer to ``cost_recording_scope``.
@@ -261,16 +269,28 @@ def _imported_target_aliases(tree: ast.AST) -> set[str]:
             for alias in node.names:
                 if alias.name == _TARGET_CALL:
                     names.add(alias.asname or alias.name)
+    assigns = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)]
+    changed = True
+    while changed:
+        changed = False
+        for node in assigns:
+            value = node.value
+            if not isinstance(value, ast.Name) or value.id not in names:
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id not in names:
+                    names.add(target.id)
+                    changed = True
     return names
 
 
 def _is_target_call(node: ast.Call, target_names: set[str]) -> bool:
     """Return True iff *node* calls ``cost_recording_scope`` (name or attr).
 
-    *target_names* carries the canonical name plus any import aliases bound in
-    the same module (see :func:`_imported_target_aliases`). Attribute access
-    (``module.cost_recording_scope(...)``) still matches on the attribute name
-    alone, since the base object is opaque to a static scan.
+    *target_names* carries the canonical name plus any alias or rebinding that
+    resolves to the chokepoint (see :func:`_target_call_names`). Attribute
+    access (``module.cost_recording_scope(...)``) still matches on the
+    attribute name alone, since the base object is opaque to a static scan.
 
     Returns:
         ``True`` when *node* calls the chokepoint under any reachable name.
@@ -307,7 +327,7 @@ def _scan_file(path: Path, rel: str) -> list[_Hit]:
     """
     text, tree = read_and_parse(path)
     marked = _marker_lines(text, rel)
-    target_names = _imported_target_aliases(tree)
+    target_names = _target_call_names(tree)
     hits: list[_Hit] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_target_call(node, target_names):

@@ -29,6 +29,7 @@ function makeRecord(overrides: Partial<CostRecord> = {}): CostRecord {
     currency: DEFAULT_CURRENCY,
     timestamp: '2026-03-20T10:00:00Z',
     call_category: 'productive',
+    prompt_class_id: null,
     accuracy_effort_ratio: null,
     latency_ms: null,
     cache_hit: null,

@@ -81,6 +81,7 @@ const mockForecast: ForecastResponse = {
 function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost' | 'timestamp' | 'call_category'>): CostRecord {
   return {
     project_id: null,
+    prompt_class_id: null,
     currency: DEFAULT_CURRENCY,
     accuracy_effort_ratio: null,
     latency_ms: null,
