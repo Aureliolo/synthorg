@@ -570,7 +570,7 @@ class TestExceptionMapping:
             model="test",
             llm_provider="example-provider",
         )
-        exc.headers = {"retry-after": "30"}  # type: ignore[attr-defined]
+        exc.headers = {"retry-after": "30"}
 
         with patch(
             _PATCH_ACOMPLETION,
@@ -592,7 +592,7 @@ class TestExceptionMapping:
             model="test",
             llm_provider="example-provider",
         )
-        exc.headers = {"Retry-After": "15"}  # type: ignore[attr-defined]
+        exc.headers = {"Retry-After": "15"}
 
         with patch(
             _PATCH_ACOMPLETION,
@@ -635,7 +635,7 @@ class TestExceptionMapping:
             model="test",
             llm_provider="example-provider",
         )
-        exc.headers = {  # type: ignore[attr-defined]
+        exc.headers = {
             "retry-after": "Wed, 21 Oct 2025 07:28:00 GMT",
         }
 
