@@ -406,13 +406,13 @@ def reapply_console_level(raw: str) -> bool:
             flush=True,
         )
         return False
-    from synthorg.observability.sinks import CONSOLE_HANDLER_NAME  # noqa: PLC0415
-    from synthorg.observability.startup_wiring import (  # noqa: PLC0415
-        _iter_logging_handlers,
+    from synthorg.observability.sinks import (  # noqa: PLC0415
+        CONSOLE_HANDLER_NAME,
+        iter_logging_handlers,
     )
 
     applied = False
-    for handler in _iter_logging_handlers():
+    for handler in iter_logging_handlers():
         if handler.get_name() == CONSOLE_HANDLER_NAME:
             handler.setLevel(level.value)
             applied = True

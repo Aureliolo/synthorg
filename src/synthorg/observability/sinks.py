@@ -30,6 +30,24 @@ from synthorg.observability.redaction import safe_error_description
 # observability-settings step can locate and re-level it.
 CONSOLE_HANDLER_NAME = "synthorg-console"
 
+
+def iter_logging_handlers() -> list[logging.Handler]:
+    """Return every handler attached anywhere in the logging hierarchy.
+
+    Includes the root logger and every concrete ``logging.Logger`` instance
+    created so far. Lives in this leaf sink module (rather than
+    ``startup_wiring``, which reaches up into the api layer) so the console
+    re-level step can find handlers without dragging the api layer into the
+    observability foundation.
+    """
+    handlers: list[logging.Handler] = list(logging.getLogger().handlers)
+    manager = logging.Logger.manager
+    for logger_ref in manager.loggerDict.values():
+        if isinstance(logger_ref, logging.Logger):
+            handlers.extend(logger_ref.handlers)
+    return handlers
+
+
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
 # so log entries may never reach disk in a long-running server with

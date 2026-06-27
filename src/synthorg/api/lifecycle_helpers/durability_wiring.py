@@ -65,8 +65,8 @@ async def _try_wire_audit_chain_persistence(app_state: AppState) -> None:
     from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
         AuditChainSink,
     )
-    from synthorg.observability.startup_wiring import (  # noqa: PLC0415
-        _iter_logging_handlers,
+    from synthorg.observability.sinks import (  # noqa: PLC0415
+        iter_logging_handlers,
     )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
@@ -76,7 +76,7 @@ async def _try_wire_audit_chain_persistence(app_state: AppState) -> None:
     if app_state.slice(PersistenceStateSlice).backend is None:
         return
     repo = persistence_of(app_state).audit_chain_entries
-    for handler in _iter_logging_handlers():
+    for handler in iter_logging_handlers():
         if not isinstance(handler, AuditChainSink):
             continue
         try:
