@@ -123,6 +123,11 @@ export default tseslint.config(
       // the codebase; ``{ null: 'ignore' }`` permits it while still forbidding
       // every other loose comparison.
       eqeqeq: ['error', 'always', { null: 'ignore' }],
+      // ``recommended`` enables this rule but leaves its relational-comparison
+      // check off by default; turn it on so an always-constant ``<``/``<=``/
+      // ``>``/``>=`` between two literals (e.g. ``1 < 2``) is flagged like the
+      // constant ``===``/``&&`` cases the rule already catches.
+      'no-constant-binary-expression': ['error', { checkRelationalComparisons: true }],
       // Forbid raw ``style="..."`` string props (must be an object).
       '@eslint-react/dom-no-string-style-prop': 'error',
       // Require an explicit ``sandbox`` on <iframe> (security).
