@@ -66,7 +66,7 @@ def parse_findings(
             category=category.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            raw_snippet=raw[:200],
+            raw_length=len(raw),
         )
         return ()
     if not isinstance(items, list):
@@ -109,7 +109,7 @@ def _parse_single_finding(
         )
         return None
     desc = item.get("description", "")
-    if not desc or not isinstance(desc, str):
+    if not isinstance(desc, str) or not desc.strip():
         logger.debug(
             DETECTOR_PARSE_ERROR,
             category=category.value,
@@ -117,6 +117,7 @@ def _parse_single_finding(
             reason="missing or empty description",
         )
         return None
+    desc = desc.strip()
     severity = _SEVERITY_MAP.get(
         str(item.get("severity", "medium")).lower(),
         ErrorSeverity.MEDIUM,
@@ -130,13 +131,15 @@ def _parse_single_finding(
             reason="evidence is not a list, coercing to empty",
         )
         evidence_raw = []
-    evidence = tuple(str(e) for e in evidence_raw if isinstance(e, str) and e.strip())
+    evidence = tuple(e for e in evidence_raw if isinstance(e, str) and e.strip())
     turn_range: tuple[int, int] | None = None
     turn_start = item.get("turn_start")
     turn_end = item.get("turn_end")
     if (
         isinstance(turn_start, int)
+        and not isinstance(turn_start, bool)
         and isinstance(turn_end, int)
+        and not isinstance(turn_end, bool)
         and turn_start >= 0
         and turn_end >= turn_start
     ):

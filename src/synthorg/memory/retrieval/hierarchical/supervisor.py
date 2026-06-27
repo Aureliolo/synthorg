@@ -431,7 +431,7 @@ class SupervisorRouter:
             logger.debug(
                 MEMORY_HIERARCHICAL_RETRY,
                 action="llm_no_retry",
-                reason=retry.reason,
+                has_reason=bool(retry.reason),
             )
             return None
 
@@ -460,7 +460,7 @@ class SupervisorRouter:
             action="correction",
             has_corrected_query=corrected_query is not None,
             alternative_strategy=retry.alternative_strategy,
-            reason=retry.reason,
+            has_reason=bool(retry.reason),
         )
         return RetrievalRetryCorrection(
             corrected_query=corrected_query,

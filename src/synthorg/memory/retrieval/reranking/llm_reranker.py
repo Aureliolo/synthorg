@@ -256,7 +256,11 @@ class LLMQuerySpecificReranker:
                 reason="cache_get_failed",
             )
             return None
-        if cached_ids is not None and set(cached_ids) == set(by_id):
+        if (
+            cached_ids is not None
+            and len(cached_ids) == len(by_id)
+            and set(cached_ids) == set(by_id)
+        ):
             logger.debug(MEMORY_RERANK_CACHE_HIT, candidate_count=len(by_id))
             return tuple(by_id[cid] for cid in cached_ids)
         return None

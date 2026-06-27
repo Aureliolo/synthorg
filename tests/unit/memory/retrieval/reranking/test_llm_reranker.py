@@ -223,6 +223,30 @@ class TestLLMQuerySpecificReranker:
         assert [c.entry.id for c in result2] == ["mem-2", "mem-1"]
 
     @pytest.mark.unit
+    async def test_rerank_duplicate_cached_ids_falls_through(self) -> None:
+        provider = _mock_provider([1, 0])
+        cache = RerankerCache()
+        reranker = LLMQuerySpecificReranker(
+            provider=provider,
+            model="test-small-001",
+            cache=cache,
+        )
+        c1 = _make_candidate("mem-1", 0.9)
+        c2 = _make_candidate("mem-2", 0.7)
+        query = _make_query()
+        # Poison the cache with an ordering whose ID set matches the
+        # live candidates but carries a duplicate (a non-permutation).
+        key = _build_cache_key(query.text, ("mem-1", "mem-2"))
+        await cache.put(key, ("mem-1", "mem-1", "mem-2"))
+
+        result = await reranker.rerank(query, (c1, c2))
+
+        # The duplicate-bearing entry must be ignored: a fresh LLM
+        # rerank runs instead of replaying the non-permutation.
+        provider.complete.assert_awaited_once()
+        assert [c.entry.id for c in result] == ["mem-2", "mem-1"]
+
+    @pytest.mark.unit
     async def test_rerank_empty_returns_empty(self) -> None:
         provider = _mock_provider([])
         reranker = LLMQuerySpecificReranker(

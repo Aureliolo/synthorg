@@ -176,6 +176,29 @@ class TestParseFindingsHelper:
         findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
         assert findings[0].turn_range is None
 
+    def test_whitespace_only_description_skipped(self) -> None:
+        raw = json.dumps([{"description": "   ", "severity": "high"}])
+        findings = parse_findings(raw, ErrorCategory.NUMERICAL_DRIFT)
+        assert findings == ()
+
+    def test_description_stripped(self) -> None:
+        raw = json.dumps([{"description": "  padded  "}])
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].description == "padded"
+
+    def test_boolean_turn_values_ignored(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    "description": "Issue",
+                    "turn_start": True,
+                    "turn_end": True,
+                },
+            ]
+        )
+        findings = parse_findings(raw, ErrorCategory.CONTEXT_OMISSION)
+        assert findings[0].turn_range is None
+
 
 # ── Protocol compliance ────────────────────────────────────────
 
