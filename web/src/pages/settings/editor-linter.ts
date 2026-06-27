@@ -8,8 +8,9 @@
 import { type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { linter, type Diagnostic } from '@codemirror/lint'
-import YAML from 'js-yaml'
+import * as YAML from 'js-yaml'
 import type { SettingEntry, SettingType } from '@/api/types/settings'
+import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
 
 /* eslint-disable security/detect-non-literal-regexp --
    Every RegExp in this file is built from operator-supplied namespace /
@@ -269,7 +270,7 @@ type ParseOutcome =
 function parseSettingsDoc(text: string, format: 'json' | 'yaml'): ParseOutcome {
   let raw: unknown
   try {
-    raw = format === 'json' ? JSON.parse(text) : YAML.load(text, { schema: YAML.CORE_SCHEMA })
+    raw = format === 'json' ? JSON.parse(text) : YAML.load(text, UNTRUSTED_YAML_LOAD_OPTIONS)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Parse error'
     const { from, to } = errorPosition(err, text)

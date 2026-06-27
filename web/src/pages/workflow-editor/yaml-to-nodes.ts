@@ -4,9 +4,10 @@
  * Reverse of workflow-to-yaml.ts. Reconstructs the visual graph from the
  * flat step list format using a two-pass approach (validate, then emit).
  */
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 import { isObject } from '@/utils/type-guards'
+import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
 import {
   connectStartAndEnd,
   emitEdgesFromStepMap,
@@ -87,7 +88,7 @@ function parseYamlDocument(
 ): unknown[] | null {
   let parsed: unknown
   try {
-    parsed = yaml.load(yamlStr, { schema: yaml.CORE_SCHEMA })
+    parsed = yaml.load(yamlStr, UNTRUSTED_YAML_LOAD_OPTIONS)
   } catch (err) {
     acc.errors.push(
       `YAML parse error: ${err instanceof Error ? err.message : String(err)}`,
