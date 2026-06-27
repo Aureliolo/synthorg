@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assignment.models import AgentWorkload
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.scaling.enums import (
     ScalingActionType,
@@ -99,6 +100,13 @@ class ScalingContext(BaseModel):
         default_factory=dict,
         description="Raw performance snapshots keyed by agent_id",
     )
+    agent_workloads: tuple[AgentWorkload, ...] = Field(
+        default=(),
+        description=(
+            "Per-agent workload snapshots, retained so a HIRE strategy can"
+            " pick the least-loaded existing agent as the overflow handler"
+        ),
+    )
     evaluated_at: AwareDatetime = Field(
         description="When the context was built",
     )
@@ -121,6 +129,10 @@ class ScalingDecision(BaseModel):
         target_role: Role to hire for (None for prunes).
         target_skills: Skills required for hire target.
         target_department: Department for hire target.
+        agent_delegate: For a HIRE, the existing agent assigned to absorb
+            the queued work while the new hire is being instantiated (the
+            overflow handler). ``None`` for non-HIRE actions and when no
+            suitable existing agent is available.
         rationale: Human-readable explanation.
         confidence: Strategy confidence in this decision (0.0--1.0).
         signals: Signals that informed this decision.
@@ -154,6 +166,13 @@ class ScalingDecision(BaseModel):
     target_department: NotBlankStr | None = Field(
         default=None,
         description="Department for hire target",
+    )
+    agent_delegate: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Existing agent assigned to absorb queued work while a HIRE"
+            " instantiates (overflow handler); None for non-HIRE actions"
+        ),
     )
     rationale: NotBlankStr = Field(
         description="Human-readable explanation",
@@ -203,6 +222,19 @@ class ScalingDecision(BaseModel):
                 field="target_fields",
                 action_type="PRUNE",
                 reason="missing_target_agent_id",
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_delegate is not None
+            and self.action_type != ScalingActionType.HIRE
+        ):
+            msg = "agent_delegate is only valid on HIRE decisions"
+            logger.warning(
+                HR_SCALING_MODEL_VALIDATION_FAILED,
+                model="ScalingDecision",
+                field="agent_delegate",
+                action_type=self.action_type.value,
+                reason="delegate_on_non_hire",
             )
             raise ValueError(msg)
         return self

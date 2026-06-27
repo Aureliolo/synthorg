@@ -178,6 +178,7 @@ class HiringService:
         level: str,
         required_skills: tuple[NotBlankStr, ...] = (),
         reason: NotBlankStr,
+        agent_delegate: NotBlankStr | None = None,
         budget_limit_monthly: float | None = None,
         template_name: str | None = None,
     ) -> HiringRequest:
@@ -190,6 +191,8 @@ class HiringService:
             level: Desired seniority level.
             required_skills: Required skills.
             reason: Business justification.
+            agent_delegate: Existing agent assigned to absorb queued work
+                while this hire instantiates (overflow handler).
             budget_limit_monthly: Optional monthly budget limit.
             template_name: Template for candidate generation.
 
@@ -206,6 +209,7 @@ class HiringService:
             level=self._parse_level(level),
             required_skills=required_skills,
             reason=reason,
+            agent_delegate=agent_delegate,
             budget_limit_monthly=budget_limit_monthly,
             template_name=template_name,
             created_at=datetime.now(UTC),
