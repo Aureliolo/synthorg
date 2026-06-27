@@ -286,6 +286,7 @@ class TestEventConstants:
             "personality",
             "preset",
             "prompt",
+            "prompt_purpose",
             "provider",
             "quota",
             "research",
@@ -391,6 +392,26 @@ class TestEventConstants:
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
+
+    def test_prompt_purpose_events_exist(self) -> None:
+        from synthorg.observability.events.prompt_purpose import (
+            PROMPT_PURPOSE_ALREADY_REGISTERED,
+            PROMPT_PURPOSE_NOT_FOUND,
+        )
+
+        assert PROMPT_PURPOSE_ALREADY_REGISTERED == (
+            "prompt_purpose.already_registered"
+        )
+        assert PROMPT_PURPOSE_NOT_FOUND == "prompt_purpose.not_found"
+
+    def test_eval_loop_benchmark_events_exist(self) -> None:
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_BENCHMARK_CASE_FAILED,
+            EVAL_LOOP_BENCHMARK_STARTED,
+        )
+
+        assert EVAL_LOOP_BENCHMARK_STARTED == "eval.loop.benchmark_started"
+        assert EVAL_LOOP_BENCHMARK_CASE_FAILED == "eval.loop.benchmark_case_failed"
 
     def test_analytics_events_exist(self) -> None:
         from synthorg.observability.events.analytics import (

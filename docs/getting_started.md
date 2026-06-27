@@ -137,6 +137,7 @@ synthorg/
     config/             # YAML config loading and validation
     core/               # Shared domain models
     engine/             # Agent execution engine
+    llm/                # Prompt-purpose registry, model-pin metadata
     memory/             # Persistent agent memory
     providers/          # LLM provider abstraction
     security/           # SecOps, approval gates, sandboxing

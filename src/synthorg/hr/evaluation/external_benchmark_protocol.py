@@ -1,8 +1,9 @@
 """External benchmark protocol for pluggable benchmark adoption.
 
 Defines the ``ExternalBenchmark`` runtime-checkable protocol that
-benchmark adapters implement.  No specific benchmarks are adopted
-in this issue -- the infrastructure is ready for future integration.
+benchmark adapters implement, and the ``AgentRunner`` protocol that
+produces the output a benchmark grades. No specific benchmark suites are
+bundled; adopt one by registering an ``ExternalBenchmark`` adapter.
 """
 
 from collections.abc import AsyncIterator
@@ -13,6 +14,28 @@ from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     EvalTestCase,
 )
+
+
+@runtime_checkable
+class AgentRunner(Protocol):
+    """Executes the agent under evaluation against a single test case.
+
+    The returned string is the agent's raw output, the value
+    :meth:`ExternalBenchmark.grade` scores. Injected into
+    :class:`ExternalBenchmarkRegistry` so a benchmark run drives a live
+    agent instead of self-grading the expected output.
+    """
+
+    async def run_case(self, case: EvalTestCase) -> str:
+        """Run the agent for *case* and return its raw output string.
+
+        Args:
+            case: The test case to present to the agent.
+
+        Returns:
+            The agent's raw output string.
+        """
+        ...
 
 
 @runtime_checkable

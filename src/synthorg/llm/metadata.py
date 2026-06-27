@@ -1,8 +1,8 @@
 """Model-pin metadata for prompt classes.
 
-Every prompt class that wraps an LLM call exposes a
-:class:`ModelPinMetadata` instance via a ``metadata`` property. The
-metadata captures:
+:class:`ModelPinMetadata` is the schema a prompt class that wraps an LLM
+call uses to pin the model + sampling parameters it was validated
+against. The metadata captures:
 
 - ``prompt_class_id``: stable identifier for the prompt class (used
   by the golden-eval pipeline to locate fixtures and by audit
@@ -23,6 +23,7 @@ field-name drift in dashboards.
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.prompt_purpose import PromptPurposeId
 
 
 class ModelPinMetadata(BaseModel):
@@ -30,7 +31,7 @@ class ModelPinMetadata(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    prompt_class_id: NotBlankStr = Field(
+    prompt_class_id: PromptPurposeId = Field(
         description="Stable identifier for the prompt class",
     )
     model: NotBlankStr = Field(description="Pinned model identifier")
