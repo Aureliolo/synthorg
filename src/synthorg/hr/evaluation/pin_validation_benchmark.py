@@ -37,11 +37,13 @@ from synthorg.hr.evaluation.pin_probe import (
     probe_input_data,
 )
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
+from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_tier_policy import tier_for_purpose
-from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY, PromptPurposeId
+from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.model_pins import (
     MODEL_PIN_BENCHMARK_DRIFT,
+    MODEL_PIN_CASE_MISMATCH,
     MODEL_PIN_GOLDEN_ABSENT,
     MODEL_PIN_VALIDATION_STAMP_FAILED,
     MODEL_PIN_VALIDATION_STAMPED,
@@ -137,6 +139,24 @@ class ModelPinValidationBenchmark:
             a failing grade tagged with the drift otherwise.
         """
         pin = pin_from_case_metadata(case.metadata)
+        if str(pin.prompt_class_id) != str(case.id):
+            # The case id and its pinned prompt_class_id must name the same
+            # class; otherwise we would grade class A against class B's golden
+            # and could stamp the wrong entity as validated. A mismatch is a
+            # malformed case, not drift, so fail without touching the ledger.
+            logger.warning(
+                MODEL_PIN_CASE_MISMATCH,
+                case_id=case.id,
+                pin_class_id=str(pin.prompt_class_id),
+            )
+            return BenchmarkGrade(
+                passed=False,
+                score=0.0,
+                explanation=(
+                    f"malformed case: id {case.id} != pinned "
+                    f"prompt_class_id {pin.prompt_class_id}"
+                ),
+            )
         live = fingerprint_for(pin, agent_output)
         expected = case.expected_output
         if not expected:
@@ -168,41 +188,43 @@ class ModelPinValidationBenchmark:
                     f"!= golden {expected[:_FINGERPRINT_PREVIEW]}"
                 ),
             )
-        await self._stamp_validation(case)
+        await self._stamp_validation(pin)
         return BenchmarkGrade(
             passed=True,
             score=1.0,
             explanation="pin validated: fingerprint matches golden",
         )
 
-    async def _stamp_validation(self, case: EvalTestCase) -> None:
-        """Stamp ``validated_at`` for a cleanly-graded class (best-effort).
+    async def _stamp_validation(self, pin: ModelPinMetadata) -> None:
+        """Stamp ``validated_at`` for the fingerprinted class (best-effort).
 
-        A persistence failure is logged but never propagated, so a DB
-        hiccup cannot flip a clean drift verdict to failed. Interpreter-
+        Stamps ``pin.prompt_class_id`` -- the entity that was actually
+        fingerprinted -- so the ledger records the validated class, not the
+        case label. A persistence failure is logged but never propagated, so
+        a DB hiccup cannot flip a clean drift verdict to failed; interpreter-
         critical errors propagate.
 
         Args:
-            case: The cleanly-graded case to stamp.
+            pin: The cleanly-graded class's pin.
         """
         if self._ledger is None:
             return
-        pid = PromptPurposeId(str(case.id))
+        pid = pin.prompt_class_id
         tier = tier_for_purpose(pid)
         try:
-            await self._ledger.record(prompt_class_id=pid, tier=tier, passed=True)
+            await self._ledger.record(prompt_class_id=pid, tier=tier)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # WARNING, not ERROR: the stamp is best-effort and its failure
             # never affects the (clean) drift verdict, so it must not page.
             logger.warning(
                 MODEL_PIN_VALIDATION_STAMP_FAILED,
-                prompt_class_id=case.id,
+                prompt_class_id=str(pid),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             return
-        logger.info(MODEL_PIN_VALIDATION_STAMPED, prompt_class_id=case.id, tier=tier)
+        logger.info(MODEL_PIN_VALIDATION_STAMPED, prompt_class_id=str(pid), tier=tier)
 
 
 __all__ = ["ModelPinValidationBenchmark"]

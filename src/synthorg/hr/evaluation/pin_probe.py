@@ -19,7 +19,10 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict
+
 from synthorg.budget.model_tier import TIERS, TierName
+from synthorg.core.boundary import parse_typed
 from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.pin_fingerprint import pin_fingerprint
@@ -30,7 +33,23 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 #: Metadata key under which an ``EvalTestCase`` carries its pin payload.
+#: Kept in sync with the ``pin`` field of :class:`_PinCaseMetadata`.
 PIN_META_KEY: Final[str] = "pin"
+
+
+class _PinCaseMetadata(BaseModel):
+    """Typed envelope for an ``EvalTestCase``'s pin metadata mapping.
+
+    The serialisation boundary between ``load_test_cases`` (which writes
+    ``metadata``) and ``grade`` / the probe runner (which read it). Parsing
+    the whole mapping through this model (``extra="forbid"``) rejects a
+    malformed or padded envelope, not only a malformed inner pin.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    pin: ModelPinMetadata
+
 
 #: Sentinel "never validated by an eval refresh yet" timestamp carried as
 #: ``model_version_pinned_at`` by every canonical pin. It is excluded from
@@ -131,13 +150,18 @@ def pin_metadata_payload(pin: ModelPinMetadata) -> dict[str, object]:
 def pin_from_case_metadata(metadata: Mapping[str, object]) -> ModelPinMetadata:
     """Reconstruct the pin from a test case's metadata payload.
 
+    Parses the full metadata envelope through :func:`parse_typed`, so a
+    case missing its pin or carrying unexpected keys is rejected at this
+    boundary rather than only the inner pin being validated.
+
     Returns:
         The :class:`ModelPinMetadata` the case carries.
 
     Raises:
-        KeyError: If the metadata carries no pin payload.
+        ValidationError: If the metadata is not a well-formed pin
+            envelope (no ``pin`` payload, or unexpected keys).
     """
-    return ModelPinMetadata.model_validate(metadata[PIN_META_KEY])
+    return parse_typed("eval.pin_case", metadata, _PinCaseMetadata).pin
 
 
 def fingerprint_for(pin: ModelPinMetadata, output: str) -> str:

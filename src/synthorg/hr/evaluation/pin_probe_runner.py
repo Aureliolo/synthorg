@@ -44,9 +44,9 @@ class PinProbeRunner:
             returns no content).
 
         Raises:
-            KeyError: If *case* carries no pin payload (``PIN_META_KEY``
-                absent from its ``metadata``) -- i.e. it is not a
-                pin-validation case.
+            ValidationError: If *case* carries no well-formed pin payload
+                in its ``metadata`` -- i.e. it is not a pin-validation
+                case.
         """
         pin = pin_from_case_metadata(case.metadata)
         response = await self._provider.complete(

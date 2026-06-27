@@ -44,13 +44,16 @@ def pin_fingerprint(
 ) -> str:
     """Compute the stable drift fingerprint for a pinned prompt class.
 
-    The floats are formatted to a fixed precision so the digest is
-    reproducible across runs and platforms.
+    The sampling floats are serialised via their exact ``float.hex()``
+    representation, not a rounded presentation format: every distinct
+    ``temperature`` / ``top_p`` value hashes differently (so a real pin
+    change cannot be masked) while staying bit-reproducible across runs
+    and platforms.
 
     Returns:
         The hex SHA-256 digest of the canonical pin-plus-output string.
     """
-    canonical = f"{model_id}|{temperature:.6f}|{top_p:.6f}|{max_tokens:d}|{output}"
+    canonical = f"{model_id}|{temperature.hex()}|{top_p.hex()}|{max_tokens:d}|{output}"
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

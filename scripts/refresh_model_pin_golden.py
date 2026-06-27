@@ -47,7 +47,14 @@ async def _compute_golden() -> dict[str, str]:
 def main() -> None:
     """Compute and write the golden fingerprint artifact."""
     live = asyncio.run(_compute_golden())
-    changed = golden_diff(live, load_pin_golden())
+    try:
+        previous_golden = load_pin_golden()
+    except ValueError:
+        # A malformed committed golden is the exact corruption this
+        # recovery script exists to repair; treat it as empty so every
+        # live pin reports as changed and the rewrite still proceeds.
+        previous_golden = {}
+    changed = golden_diff(live, previous_golden)
     GOLDEN_PATH.write_text(
         json.dumps(live, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

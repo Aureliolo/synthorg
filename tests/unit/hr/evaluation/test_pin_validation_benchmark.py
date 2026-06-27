@@ -74,7 +74,7 @@ class _FailingRepo(_FakeRepo):
     """Repository whose save always fails, to exercise the guarded write."""
 
     @override
-    async def save(self, entity: ModelPinValidationRow) -> None:
+    async def save(self, entity: ModelPinValidationRow, /) -> None:
         del entity
         msg = "boom"
         raise QueryError(msg)
@@ -148,6 +148,30 @@ async def test_mutated_pin_is_drift() -> None:
     grade = await benchmark.grade(case=case, agent_output=output)
     assert grade.passed is False
     assert "drift" in grade.explanation
+
+
+async def test_case_id_pin_mismatch_fails_without_stamping() -> None:
+    # A case labelled as class A but pinning class B must fail as malformed,
+    # not validate A against B's golden, and must never stamp the ledger.
+    repo = _FakeRepo()
+    ledger = ModelPinValidationLedger(repo, clock=FakeClock())
+    benchmark = ModelPinValidationBenchmark(
+        golden=dict(load_pin_golden()), ledger=ledger
+    )
+    labelled = PromptPurposeId.MEMORY_RERANK
+    other_pin = canonical_pin_for(PromptPurposeId.RESEARCH_SYNTHESIS)
+    case = EvalTestCase(
+        id=str(labelled),
+        behavior_tags=(BehaviorTag.VERIFICATION,),
+        input_data=probe_input_data(labelled),
+        expected_output=dict(load_pin_golden())[str(labelled)],
+        metadata={PIN_META_KEY: pin_metadata_payload(other_pin)},
+    )
+    output = await _runner().run_case(case)
+    grade = await benchmark.grade(case=case, agent_output=output)
+    assert grade.passed is False
+    assert "malformed case" in grade.explanation
+    assert repo.saved == []
 
 
 async def test_ledger_write_failure_does_not_flip_clean_grade() -> None:

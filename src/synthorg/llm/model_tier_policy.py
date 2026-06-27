@@ -26,6 +26,7 @@ policy entry, mirroring ``_PROMPT_PURPOSE_SPECS`` in
 at import rather than silently defaulting.
 """
 
+from collections import Counter
 from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
@@ -137,8 +138,15 @@ def _build_policy() -> Mapping[PromptPurposeId, ModelTierAssignment]:
 
     Raises:
         ValueError: If a :class:`PromptPurposeId` member has no policy
-            entry, so a purpose added without a tier fails at import.
+            entry (a purpose added without a tier), or if a purpose
+            appears more than once (a duplicate row would silently win
+            and change the pinned tier). Both fail at import.
     """
+    counts = Counter(purpose_id for purpose_id, _ in _TIER_POLICY_SPECS)
+    duplicates = sorted(str(pid) for pid, count in counts.items() if count > 1)
+    if duplicates:
+        msg = f"Prompt purposes duplicated in tier policy: {duplicates}"
+        raise ValueError(msg)
     policy: dict[PromptPurposeId, ModelTierAssignment] = {
         purpose_id: ModelTierAssignment(purpose_id=purpose_id, kind=kind)
         for purpose_id, kind in _TIER_POLICY_SPECS

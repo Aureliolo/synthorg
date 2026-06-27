@@ -95,9 +95,10 @@ canonical pin (the policy tier plus the deterministic sampling
 parameters), runs a canonical probe against the pinned tier through a
 deterministic provider, and grades **drift** by comparing a live
 fingerprint, `sha256(model_id | temperature | top_p | max_tokens | output)`,
-against a committed golden snapshot (`pin_golden.json`). The floats are
-formatted to a fixed six-decimal precision in the digest so it is
-reproducible across runs and platforms.
+against a committed golden snapshot (`pin_golden.json`). The sampling
+floats are serialised by their exact `float.hex()` representation in the
+digest, so every distinct sampling value hashes differently and the
+digest stays bit-reproducible across runs and platforms.
 
 A mismatch (a tier reassignment, a sampling change, or a probe-pipeline
 change) fails the grade until the golden is deliberately regenerated with

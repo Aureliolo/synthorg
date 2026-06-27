@@ -41,20 +41,23 @@ class ModelPinValidationLedger:
         *,
         prompt_class_id: PromptPurposeId,
         tier: TierName,
-        passed: bool,
     ) -> None:
-        """Stamp a prompt class's pin validation at the current time.
+        """Stamp a prompt class's *successful* pin validation now.
+
+        Success-only by construction: it always persists a passing row, so
+        a failed/drift grade can never overwrite the last-known-good
+        ``validated_at``. Callers stamp this only on a clean grade; failure
+        outcomes stay in the benchmark result, not the durable ledger.
 
         Args:
             prompt_class_id: The validated prompt class.
             tier: The design tier validated against.
-            passed: Whether the drift grade passed.
         """
         row = ModelPinValidationRow(
             prompt_class_id=prompt_class_id,
             validated_at=self._clock.now(),
             tier=tier,
-            passed=passed,
+            passed=True,
         )
         await self._repository.save(row)
 

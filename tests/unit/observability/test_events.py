@@ -419,19 +419,25 @@ class TestEventConstants:
     def test_model_pins_events_exist(self) -> None:
         from synthorg.observability.events.model_pins import (
             MODEL_PIN_BENCHMARK_DRIFT,
+            MODEL_PIN_CASE_MISMATCH,
             MODEL_PIN_GOLDEN_ABSENT,
             MODEL_PIN_GOLDEN_MALFORMED,
+            MODEL_PIN_VALIDATION_DELETED,
             MODEL_PIN_VALIDATION_FAILED,
             MODEL_PIN_VALIDATION_FETCHED,
             MODEL_PIN_VALIDATION_LISTED,
+            MODEL_PIN_VALIDATION_SAVED,
             MODEL_PIN_VALIDATION_STAMP_FAILED,
             MODEL_PIN_VALIDATION_STAMPED,
         )
 
+        assert MODEL_PIN_VALIDATION_SAVED == "model_pin.validation.saved"
+        assert MODEL_PIN_VALIDATION_DELETED == "model_pin.validation.deleted"
         assert MODEL_PIN_VALIDATION_FETCHED == "model_pin.validation.fetched"
         assert MODEL_PIN_VALIDATION_LISTED == "model_pin.validation.listed"
         assert MODEL_PIN_VALIDATION_FAILED == "model_pin.validation.failed"
         assert MODEL_PIN_BENCHMARK_DRIFT == "model_pin.benchmark.drift"
+        assert MODEL_PIN_CASE_MISMATCH == "model_pin.benchmark.case_mismatch"
         assert MODEL_PIN_VALIDATION_STAMPED == "model_pin.validation.stamped"
         assert MODEL_PIN_VALIDATION_STAMP_FAILED == "model_pin.validation.stamp_failed"
         assert MODEL_PIN_GOLDEN_ABSENT == "model_pin.golden.absent"
