@@ -6,6 +6,7 @@ meta-loop produces. Each record enforces its own consistency invariant
 (e.g. a regressed rollout must carry a regression verdict).
 """
 
+import copy
 from datetime import UTC, datetime
 from typing import Self
 from uuid import UUID, uuid4
@@ -54,6 +55,16 @@ class RuleMatch(BaseModel):
     matched_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_signal_context(self) -> Self:
+        """Deep-copy ``signal_context`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``signal_context`` deep-copied.
+        """
+        object.__setattr__(self, "signal_context", copy.deepcopy(self.signal_context))
+        return self
 
 
 class GuardResult(BaseModel):

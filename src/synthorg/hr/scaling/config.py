@@ -48,6 +48,12 @@ class WorkloadScalingConfig(BaseModel):
             key="scaling_prune_threshold",
             parse=parse_float,
         ),
+        MirrorField(
+            field="max_concurrent_tasks",
+            namespace=SettingNamespace.HR,
+            key="scaling_workload_max_concurrent_tasks",
+            parse=parse_int,
+        ),
     )
 
     enabled: bool = Field(default=True, description="Strategy enabled")
@@ -63,6 +69,15 @@ class WorkloadScalingConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Prune when utilization drops below this",
+    )
+    max_concurrent_tasks: int = Field(
+        default=3,
+        ge=1,
+        le=50,
+        description=(
+            "Max concurrent tasks per agent used as the utilization"
+            " denominator when converting workloads into scaling signals."
+        ),
     )
 
     @model_validator(mode="before")

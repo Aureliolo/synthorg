@@ -34,6 +34,8 @@ class ConflictResolutionOutcome(StrEnum):
         RESOLVED_BY_AUTHORITY: Decided by seniority/hierarchy.
         RESOLVED_BY_DEBATE: Decided by structured debate + judge.
         RESOLVED_BY_HYBRID: Decided by hybrid review process.
+        RESOLVED_BY_EVIDENCE: Decided by deterministic evidence-weighted
+            synthesis (strongest-supported position).
         RESOLVED_BY_HUMAN: Human operator picked a winning position via the
             escalation queue.
         REJECTED_BY_HUMAN: Human operator rejected all positions via the
@@ -45,6 +47,7 @@ class ConflictResolutionOutcome(StrEnum):
     RESOLVED_BY_AUTHORITY = "resolved_by_authority"
     RESOLVED_BY_DEBATE = "resolved_by_debate"
     RESOLVED_BY_HYBRID = "resolved_by_hybrid"
+    RESOLVED_BY_EVIDENCE = "resolved_by_evidence"
     RESOLVED_BY_HUMAN = "resolved_by_human"
     REJECTED_BY_HUMAN = "rejected_by_human"
     ESCALATED_TO_HUMAN = "escalated_to_human"
@@ -192,6 +195,25 @@ class ConflictResolution(BaseModel):
         return self
 
 
+class EvidenceItem(BaseModel):
+    """A single weighted claim extracted from a position's reasoning.
+
+    Attributes:
+        claim: The evidentiary statement (a sentence of the reasoning).
+        weight: Relative strength in ``[0, 1]`` -- higher when the claim
+            carries quantitative or causal support.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    claim: NotBlankStr = Field(description="Evidentiary statement")
+    weight: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Relative evidence strength in [0, 1]",
+    )
+
+
 class DissentRecord(BaseModel):
     """Audit artifact for a resolved conflict.
 
@@ -205,6 +227,9 @@ class DissentRecord(BaseModel):
         dissenting_position: The overruled position text.
         strategy_used: Strategy that was used.
         timestamp: When the record was created.
+        minority_evidence: Weighted evidence extracted from the overruled
+            position's reasoning, retained so a later review can see what
+            support the minority view carried.
         metadata: Extra key-value metadata pairs.
     """
 
@@ -223,6 +248,10 @@ class DissentRecord(BaseModel):
         description="Strategy that resolved the conflict",
     )
     timestamp: AwareDatetime = Field(description="Record creation timestamp")
+    minority_evidence: tuple[EvidenceItem, ...] = Field(
+        default=(),
+        description="Weighted evidence from the overruled position",
+    )
     metadata: tuple[tuple[NotBlankStr, NotBlankStr], ...] = Field(
         default=(),
         description="Extra key-value metadata pairs",
@@ -251,7 +280,15 @@ class DissentRecord(BaseModel):
                 f"not found in conflict positions"
             )
             raise ValueError(msg)
-        if self.resolution.conflict_id != str(self.conflict.id):
+        # Compare by parsed UUID value, not string form: conflict_id is a
+        # NotBlankStr on the wire so it may arrive hyphenated, hex, or urn;
+        # a raw string compare would reject equivalent encodings of the
+        # same id.
+        try:
+            resolution_conflict_uuid = UUID(self.resolution.conflict_id)
+        except ValueError:
+            resolution_conflict_uuid = None
+        if resolution_conflict_uuid != self.conflict.id:
             msg = (
                 f"resolution.conflict_id {self.resolution.conflict_id!r} "
                 f"does not match conflict.id {str(self.conflict.id)!r}"

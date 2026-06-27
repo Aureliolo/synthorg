@@ -41,3 +41,21 @@ AUDIT_CHAIN_SIGNER_KEY_GENERATED: Final[str] = "audit_chain.signer.key_generated
 AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED: Final[str] = "audit_chain.signer.key_load_failed"
 AUDIT_CHAIN_SINK_INSTALLED: Final[str] = "audit_chain.sink.installed"
 AUDIT_CHAIN_SINK_DISABLED: Final[str] = "audit_chain.sink.disabled"
+
+# ── Durable persistence bridge ────────────────────────────────
+
+AUDIT_CHAIN_PERSIST_STARTED: Final[str] = "audit_chain.persist.started"
+AUDIT_CHAIN_PERSIST_STOPPED: Final[str] = "audit_chain.persist.stopped"
+AUDIT_CHAIN_PERSIST_HYDRATED: Final[str] = "audit_chain.persist.hydrated"
+AUDIT_CHAIN_PERSIST_DRAIN_FAILED: Final[str] = "audit_chain.persist.drain_failed"
+AUDIT_CHAIN_PERSIST_ENQUEUE_DROPPED: Final[str] = "audit_chain.persist.enqueue_dropped"
+AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED: Final[str] = (
+    "audit_chain.persist.integrity_failed"
+)
+"""Post-restore verification found a broken link in the rehydrated chain.
+
+A durable gap (an entry dropped on enqueue overflow that the live chain
+still counts) or a tampered row leaves the rebuilt chain unverifiable.
+Surfaced at WARNING so the tamper/loss signal is never silent; the chain
+is still loaded so new appends can continue from the rebuilt tail.
+"""

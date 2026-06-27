@@ -42,7 +42,11 @@ from synthorg.engine.prompt_result import (
     log_and_return,
     untrusted_content_directive_token_cost,
 )
-from synthorg.engine.prompt_safety import TAG_CONFIG_VALUE, TAG_TASK_DATA
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    TAG_TASK_DATA,
+    TAG_TOOL_RESULT,
+)
 from synthorg.engine.prompt_validation import (
     resolve_template,
     validate_max_tokens,
@@ -203,9 +207,18 @@ def build_system_prompt(  # noqa: PLR0913
     # directive actually appended (derived from surviving sections) is a
     # subset whose cost never exceeds the reservation.
     has_async_tasks = async_task_state is not None and bool(async_task_state.records)
+    # A tool-capable agent receives ``<tool-result>`` content in later
+    # turns' message history (loop_tool_execution._wrap_tool_result), so
+    # its standing untrusted-content directive must declare that fence up
+    # front even though the fenced payload is not a system-prompt section.
+    # The live runtime path injects tools as ``l1_summaries`` (not
+    # ``available_tools``), so either signal means the agent is tool-capable
+    # and the fence must be declared.
+    fences_tool_results = bool(available_tools or l1_summaries)
     max_directive_tags: tuple[str, ...] = (
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
         *((TAG_CONFIG_VALUE,) if org_policies else ()),
+        *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
     )
 
     try:
@@ -288,6 +301,10 @@ def build_system_prompt(  # noqa: PLR0913
             else ()
         ),
         *((TAG_CONFIG_VALUE,) if "org_policies" in result.sections else ()),
+        # Declared for tool-capable agents only: the ``<tool-result>``
+        # fence governs later-turn message history, not a section here, so
+        # it is gated on tool availability rather than a surviving section.
+        *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
     )
     result = append_untrusted_content_directive(result, directive_tags, estimator)
 

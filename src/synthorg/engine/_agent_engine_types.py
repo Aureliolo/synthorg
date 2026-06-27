@@ -14,6 +14,7 @@ from synthorg.docs_engine.tool_factory import DocsToolFactory
 from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.research.tool_factory import ResearchToolFactory
+from synthorg.tools.structure_map.tool_factory import StructureMapToolFactory
 
 type KnowledgeToolFactoryProvider = Callable[[], KnowledgeToolFactory | None]
 """Provider reading the live knowledge tool factory at per-task time."""
@@ -26,3 +27,6 @@ type ResearchToolFactoryProvider = Callable[[], ResearchToolFactory | None]
 
 type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
 """Provider reading the live project-brain tool factory at per-task time."""
+
+type StructureMapToolFactoryProvider = Callable[[], StructureMapToolFactory | None]
+"""Provider reading the live structure-map tool factory at per-task time."""

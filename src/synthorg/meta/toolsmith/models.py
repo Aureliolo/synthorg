@@ -5,6 +5,7 @@ lifecycle state, and the benchmark-validation result that gates a
 blueprint from ``VALIDATED`` to ``ACTIVE``.
 """
 
+import copy
 import itertools
 import re
 from datetime import datetime
@@ -202,6 +203,18 @@ class ToolBlueprint(BaseModel):
     activated_at: AwareDatetime | None = None
     retired_at: AwareDatetime | None = None
     validation: ToolValidationResult | None = None
+
+    @model_validator(mode="after")
+    def _deep_copy_parameters_schema(self) -> Self:
+        """Deep-copy ``parameters_schema`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``parameters_schema`` deep-copied.
+        """
+        object.__setattr__(
+            self, "parameters_schema", copy.deepcopy(self.parameters_schema)
+        )
+        return self
 
     @model_validator(mode="after")
     def _validate_name_capability_action(self) -> Self:

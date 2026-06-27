@@ -59,6 +59,23 @@ class UnknownArchitectureTargetError(RollbackMutationDeniedError):
     default_message: ClassVar[str] = "Unknown architecture-restore target"
 
 
+class CIValidatorHostExecutionError(SelfImprovementError):
+    """Raised when the CI validator would run agent code on the host.
+
+    Agent-authored test files execute arbitrary Python, so the CI
+    validator must run every ruff / mypy / pytest step inside a
+    container sandbox. A non-container (subprocess) backend would run
+    that code directly on the host (prompt-injection to host RCE), so
+    the validator fails closed at construction rather than degrading to
+    host execution.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.CI_HOST_EXECUTION_REFUSED
+    default_message: ClassVar[str] = (
+        "CI validator requires a container sandbox; refusing host execution"
+    )
+
+
 class ChiefOfStaffError(DomainError):
     """Base class for the conversational clarify-and-propose interface.
 

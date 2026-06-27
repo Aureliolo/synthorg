@@ -14,6 +14,8 @@ from pydantic import ConfigDict
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.hr.activity_service import ActivityFeedService
+from synthorg.hr.evaluation.cycle_scheduler import EvalLoopCycleScheduler
+from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.health.service import AgentHealthService
 from synthorg.hr.identity.version_service import AgentVersionService
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -48,6 +50,8 @@ class HrStateSlice(BaseFeatureStateSlice):
     promotion_service: PromotionService | None = None
     promotion_cycle_scheduler: PromotionCycleScheduler | None = None
     pruning_service: PruningService | None = None
+    eval_loop_coordinator: EvalLoopCoordinator | None = None
+    eval_loop_cycle_scheduler: EvalLoopCycleScheduler | None = None
 
 
 def agent_registry_of(app_state: AppStateSliceMixin) -> AgentRegistryService:

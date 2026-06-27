@@ -26,6 +26,28 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.redaction import safe_error_description
 
+# Stable name stamped on the CONSOLE ``StreamHandler`` so the post-resolver
+# observability-settings step can locate and re-level it.
+CONSOLE_HANDLER_NAME = "synthorg-console"
+
+
+def iter_logging_handlers() -> list[logging.Handler]:
+    """Return every handler attached anywhere in the logging hierarchy.
+
+    Includes the root logger and every concrete ``logging.Logger`` instance
+    created so far. Lives in this leaf sink module (rather than
+    ``startup_wiring``, which reaches up into the api layer) so the console
+    re-level step can find handlers without dragging the api layer into the
+    observability foundation.
+    """
+    handlers: list[logging.Handler] = list(logging.getLogger().handlers)
+    manager = logging.Logger.manager
+    for logger_ref in manager.loggerDict.values():
+        if isinstance(logger_ref, logging.Logger):
+            handlers.extend(logger_ref.handlers)
+    return handlers
+
+
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
 # so log entries may never reach disk in a long-running server with
@@ -259,16 +281,40 @@ class _LoggerNameFilter(logging.Filter):
         return True
 
 
+def _record_event_name(record: logging.LogRecord) -> str:
+    """Extract the structlog event name across all stdlib record shapes.
+
+    ``ProcessorFormatter.wrap_for_formatter`` (the main pipeline's final
+    processor) sets ``record.msg`` to the event_dict, or to a
+    ``(event_dict, foreign_pre_chain)`` tuple once a pre-chain is
+    attached; plain ``logger.info("x.y")`` emissions and third-party
+    loggers keep ``msg`` a string. Matching only the dict shape misses
+    every wrapped main-pipeline record, so the event name must be read
+    from the tuple's first element too.
+
+    Returns:
+        The event name, or the formatted message for a plain-string record.
+    """
+    msg = record.msg
+    if isinstance(msg, dict):
+        event = msg.get("event", "")
+    elif isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
+        event = msg[0].get("event", "")
+    elif isinstance(msg, str):
+        return record.getMessage()
+    else:
+        return str(msg)
+    return event if isinstance(event, str) else str(event)
+
+
 class _EventNameFilter(logging.Filter):
     """Filter records by structlog event name.
 
-    Records produced through ``structlog.stdlib.ProcessorFormatter.
-    wrap_for_formatter`` carry the processed event_dict as
-    ``record.msg`` (a ``dict`` with an ``event`` key plus all
-    structured kwargs).  Foreign records from third-party loggers
-    carry ``record.msg`` as a plain string -- in that case we
-    compare the string directly so the filter is robust across
-    both record shapes.
+    Records carry their event name in one of three ``record.msg`` shapes:
+    a ``dict`` event_dict (pre ``wrap_for_formatter``), a ``(event_dict,
+    ...)`` tuple (post ``wrap_for_formatter``, the main pipeline), or a
+    plain ``str`` (bare stdlib emissions). :func:`_record_event_name`
+    resolves all three so the exclude set applies uniformly.
 
     Args:
         exclude_events: Event names to drop (empty = drop nothing).
@@ -287,9 +333,7 @@ class _EventNameFilter(logging.Filter):
         """Return ``True`` if *record* is not in the exclude set."""
         if not self._exclude:
             return True
-        msg = record.msg
-        event = msg.get("event", "") if isinstance(msg, dict) else str(msg)
-        return event not in self._exclude
+        return _record_event_name(record) not in self._exclude
 
 
 class _ExactLevelFilter(logging.Filter):
@@ -486,6 +530,11 @@ def build_handler(
     match sink.sink_type:
         case SinkType.CONSOLE:
             handler = logging.StreamHandler(sys.stderr)
+            # Named so the post-resolver ``_apply_observability_settings``
+            # step can find the console handler and re-level it when the
+            # DB-resolved ``observability.log_level_console`` differs from
+            # the boot-time (env > YAML) value.
+            handler.set_name(CONSOLE_HANDLER_NAME)
         case SinkType.FILE:
             handler = _build_file_handler(sink, log_dir)
         case SinkType.SYSLOG:

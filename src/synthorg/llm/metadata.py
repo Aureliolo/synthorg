@@ -14,6 +14,8 @@ against. The metadata captures:
   the prompt has been re-evaluated against the live provider recently.
 - ``temperature`` and ``top_p``: deterministic sampling parameters
   for the call. Pinned so eval results stay reproducible.
+- ``max_tokens``: pinned output-token ceiling for the call, so a
+  prompt cannot silently exceed the budget it was evaluated against.
 
 The model is frozen and ``extra="forbid"`` so an accidental rename of
 a field surfaces at construction time rather than as a silent
@@ -40,3 +42,7 @@ class ModelPinMetadata(BaseModel):
     )
     temperature: float = Field(ge=0.0, le=2.0, description="Sampling temperature")
     top_p: float = Field(ge=0.0, le=1.0, description="Nucleus-sampling top-p")
+    max_tokens: int = Field(
+        gt=0,
+        description="Pinned output-token ceiling the prompt was evaluated against",
+    )

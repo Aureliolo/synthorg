@@ -175,6 +175,7 @@ class PushQueueCoordinator:
             if queue is not None:
                 await queue.put(None)
 
+        drain_timed_out = False
         try:
             # No ``asyncio.shield``: cancelling a hung git-push worker on
             # timeout is the correct escalation. ``wait_for`` cancels the
@@ -182,14 +183,19 @@ class PushQueueCoordinator:
             # worker's ``finally`` still fails every pending item's future.
             await asyncio.wait_for(worker, timeout=_DRAIN_TIMEOUT_SECONDS)
         except TimeoutError:
-            self._stop_failed = True
+            drain_timed_out = True
             logger.error(
                 WORKSPACE_PUSH_QUEUE_FAILED,
                 project_id=self._project_id,
                 reason="stop_drain_timeout",
             )
         finally:
+            # Set the unrestartable flag under the lifecycle lock so a
+            # concurrent ``start()`` (which reads it under the same lock)
+            # never observes a torn write.
             async with self._lifecycle_lock:
+                if drain_timed_out:
+                    self._stop_failed = True
                 if self._worker is worker:
                     self._worker = None
                     self._queue = None

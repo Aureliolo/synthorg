@@ -203,6 +203,33 @@ class AgentEngineContextMixin:
         )
         return ctx, system_prompt
 
+    async def _resolve_memory_token_budget(self, *, agent_id: str, task_id: str) -> int:
+        """Resolve the injected-memory token cap, failing safe to the default.
+
+        Returns:
+            The operator-configured ``engine.memory_context_token_budget``
+            when a resolver is wired and the value is positive, else
+            :data:`_DEFAULT_MEMORY_TOKEN_BUDGET`.
+        """
+        if self._config_resolver is None:
+            return _DEFAULT_MEMORY_TOKEN_BUDGET
+        try:
+            resolved = await self._config_resolver.get_int(
+                "engine", "memory_context_token_budget"
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="failed to read memory_context_token_budget, using default",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return _DEFAULT_MEMORY_TOKEN_BUDGET
+        return resolved if resolved > 0 else _DEFAULT_MEMORY_TOKEN_BUDGET
+
     async def _retrieve_injected_memory_messages(
         self,
         *,
@@ -227,13 +254,16 @@ class AgentEngineContextMixin:
         """
         if self._memory_injection_strategy is None:
             return ()
+        token_budget = await self._resolve_memory_token_budget(
+            agent_id=agent_id, task_id=str(task.id)
+        )
         try:
             messages: tuple[
                 ChatMessage, ...
             ] = await self._memory_injection_strategy.prepare_messages(
                 _NB_ADAPTER.validate_python(agent_id),
                 _NB_ADAPTER.validate_python(task.title),
-                _DEFAULT_MEMORY_TOKEN_BUDGET,
+                token_budget,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

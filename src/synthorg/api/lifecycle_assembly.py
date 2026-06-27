@@ -224,7 +224,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
                 error=safe_error_description(exc),
             )
             return
-        telemetry_collector.apply_enabled(enabled=enabled)
+        telemetry_collector.apply_resolved_enabled(enabled=enabled)
 
     startup = [*startup, _apply_telemetry_db_layer, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
@@ -283,6 +283,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         await wire_promotion(app_state, config=effective_config.promotion)
 
     startup = [*startup, _wire_promotion]
+
+    async def _wire_eval_loop() -> None:
+        from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
+            wire_eval_loop,
+        )
+
+        await wire_eval_loop(app_state)
+
+    startup = [*startup, _wire_eval_loop]
 
     async def _wire_pruning() -> None:
         from synthorg.api.lifecycle_helpers.pruning_wiring import (  # noqa: PLC0415

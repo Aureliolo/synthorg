@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.engine.quality.decomposer_protocol import CriteriaDecomposer
 from synthorg.engine.quality.decomposers.identity import (
     IdentityCriteriaDecomposer,
@@ -26,6 +27,7 @@ from synthorg.engine.quality.verification_factory import (
     build_decomposer,
     build_grader,
 )
+from tests._shared import mock_of
 from tests.unit.providers.conftest import FakeProvider
 
 
@@ -96,6 +98,19 @@ class TestFactory:
         assert d._max_probes_per_criterion == cfg.max_probes_per_criterion
         assert d._model_id == _tier_resolver(cfg.decomposer_model_tier)
 
+    def test_build_llm_decomposer_forwards_cost_tracker(self) -> None:
+        """The factory forwards cost_tracker so probes are cost-tracked."""
+        cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
+        tracker = mock_of[CostTrackerProtocol]()
+        d = build_decomposer(
+            cfg,
+            provider=FakeProvider(),
+            tier_resolver=_tier_resolver,
+            cost_tracker=tracker,
+        )
+        assert isinstance(d, LLMCriteriaDecomposer)
+        assert d._cost_tracker is tracker
+
     def test_build_heuristic_grader(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.HEURISTIC)
         g = build_grader(cfg)
@@ -127,6 +142,19 @@ class TestFactory:
         # VerificationConfig values must propagate into the grader.
         assert g._min_confidence_override == cfg.min_confidence_override
         assert g._model_id == _tier_resolver(cfg.grader_model_tier)
+
+    def test_build_llm_grader_forwards_cost_tracker(self) -> None:
+        """The factory forwards cost_tracker so grading calls are tracked."""
+        cfg = VerificationConfig(grader=GraderVariant.LLM)
+        tracker = mock_of[CostTrackerProtocol]()
+        g = build_grader(
+            cfg,
+            provider=FakeProvider(),
+            tier_resolver=_tier_resolver,
+            cost_tracker=tracker,
+        )
+        assert isinstance(g, LLMRubricGrader)
+        assert g._cost_tracker is tracker
 
     def test_each_build_produces_fresh_instance(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.IDENTITY)

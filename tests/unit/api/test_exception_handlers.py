@@ -26,6 +26,7 @@ from synthorg.api.exception_handlers import (
     handle_unexpected,
 )
 from synthorg.backup.errors import (
+    BackupConfigurationError,
     BackupError,
     BackupInProgressError,
     BackupNotFoundError,
@@ -371,22 +372,42 @@ class TestExceptionHandlers:
             assert body["error_detail"]["error_code"] == ErrorCode.INTERNAL_ERROR
 
     @pytest.mark.parametrize(
-        "exc_cls",
-        [RetentionError, ComponentBackupError],
-        ids=["retention_error", "component_backup_error"],
+        ("exc_cls", "expected_detail", "expected_code"),
+        [
+            (
+                RetentionError,
+                "Backup retention pruning failed",
+                ErrorCode.BACKUP_RETENTION_FAILED,
+            ),
+            (
+                ComponentBackupError,
+                "Component backup or restore step failed",
+                ErrorCode.BACKUP_COMPONENT_FAILED,
+            ),
+            (
+                BackupConfigurationError,
+                "Backup handler configuration is invalid",
+                ErrorCode.BACKUP_CONFIGURATION_INVALID,
+            ),
+        ],
+        ids=[
+            "retention_error",
+            "component_backup_error",
+            "backup_configuration_error",
+        ],
     )
     async def test_other_backup_subtypes_map_to_structured_500(
         self,
         exc_cls: type[BackupError],
+        expected_detail: str,
+        expected_code: ErrorCode,
     ) -> None:
-        """``RetentionError``, ``ComponentBackupError``.
+        """Backup subtypes carry distinct, structured 5xx error codes.
 
-        Pin the contract that every non-special-cased ``BackupError``
-        subtype routes through ``handle_backup_error``'s catch-all
-        branch and produces a structured 5xx with ``INTERNAL_ERROR``.
-        Adding an explicit branch for any of these in a future refactor
-        must update this test. ``RestoreError`` and ``ManifestError``
-        now carry distinct codes and have their own tests.
+        Each routes through the structured 5xx dispatch with its own
+        ``error_code`` so operators can alert on a pruning failure or a
+        per-component step failure specifically, while the upstream
+        message is still scrubbed to the class default.
         """
 
         @get("/test")
@@ -398,10 +419,10 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
-            assert body["error"] == "Backup operation failed"
+            assert body["error"] == expected_detail
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.INTERNAL_ERROR,
+                error_code=expected_code,
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )

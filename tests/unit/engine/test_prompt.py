@@ -86,7 +86,7 @@ class TestBuildSystemPrompt:
         self,
     ) -> None:
         """Two agents with different personality configs get different prompts."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
+        model_cfg = ModelConfig(provider="test-provider", model_id="test-small-001")
         hiring = date(2026, 1, 1)
 
         agent_a = AgentIdentity(
@@ -266,7 +266,7 @@ class TestBuildSystemPrompt:
 
     def test_new_personality_dimensions_with_custom_values(self) -> None:
         """Prompt reflects explicitly set personality dimensions."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
+        model_cfg = ModelConfig(provider="test-provider", model_id="test-small-001")
         agent = AgentIdentity(
             name="Custom Agent",
             role="Dev",
@@ -352,6 +352,29 @@ class TestUntrustedContentDirectiveInjection:
 
         assert "untrusted_content_directive" not in result.sections
         assert "## Untrusted Content" not in result.content
+
+    def test_tool_capable_agent_declares_tool_result_fence(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+    ) -> None:
+        """A tool-capable agent declares <tool-result> as untrusted up front."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            available_tools=sample_tool_definitions,
+        )
+
+        assert "untrusted_content_directive" in result.sections
+        assert "Any content enclosed in <tool-result>" in result.content
+
+    def test_no_tool_result_fence_without_tools(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """An agent with no tools never declares the <tool-result> fence."""
+        result = build_system_prompt(agent=sample_agent_with_personality)
+
+        assert "<tool-result>" not in result.content
 
     def test_org_policies_fenced_and_directed(
         self,

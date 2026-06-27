@@ -6,10 +6,10 @@ persisted when the entity content has actually changed.
 """
 
 import copy
-from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
     VERSION_SAVED,
@@ -38,10 +38,17 @@ class VersioningService[T: BaseModel]:
 
     Args:
         repo: Repository managing the entity's version snapshots.
+        clock: Time source for the snapshot timestamp (injectable for tests).
     """
 
-    def __init__(self, repo: VersionRepository[T]) -> None:
+    def __init__(
+        self,
+        repo: VersionRepository[T],
+        *,
+        clock: Clock | None = None,
+    ) -> None:
         self._repo = repo
+        self._clock = clock or SystemClock()
 
     async def snapshot_if_changed(
         self,
@@ -126,7 +133,7 @@ class VersioningService[T: BaseModel]:
             content_hash=content_hash,
             snapshot=frozen,
             saved_by=saved_by,
-            saved_at=datetime.now(UTC),
+            saved_at=self._clock.now(),
         )
 
     async def _resolve_conflict(

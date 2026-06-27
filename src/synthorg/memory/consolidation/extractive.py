@@ -10,6 +10,7 @@ import re
 from typing import Final
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     DUAL_MODE_EXTRACTIVE_PRESERVED,
@@ -98,7 +99,7 @@ def _build_anchors(
     if text_len <= anchor_length:
         return text, "", ""
 
-    start = text[:anchor_length] + "..."
+    start = clip_with_ellipsis(text, anchor_length)
 
     mid_offset = max(0, (text_len - anchor_length) // 2)
     mid = text[mid_offset : mid_offset + anchor_length]

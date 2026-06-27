@@ -172,7 +172,7 @@ def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> _SslKwargs:
 
     Empty / ``None`` overrides return an empty dict so the caller's
     ``**ssl_kwargs`` spread leaves the :class:`PostgresConfig` default
-    (``"require"``) in place.
+    (``"verify-full"``) in place.
 
     Returns:
         Result of type ``_SslKwargs``.
@@ -201,11 +201,11 @@ def build_postgres_persistence_config_from_url(
     hostname, port, and path are URL-decoded so credentials with
     reserved characters survive the round-trip.
 
-    The default ``ssl_mode`` from ``PostgresConfig`` (``"require"``)
-    rejects plaintext connections; for local Docker compose where the
-    backend talks to Postgres over an internal network without TLS,
-    callers can pass ``ssl_mode_override`` (typically sourced from
-    ``SYNTHORG_POSTGRES_SSL_MODE``).
+    The default ``ssl_mode`` from ``PostgresConfig`` (``"verify-full"``)
+    encrypts the wire and validates the server certificate; for local
+    Docker compose where the backend talks to Postgres over a trusted
+    internal network without TLS, callers can pass ``ssl_mode_override``
+    (typically sourced from ``SYNTHORG_POSTGRES_SSL_MODE``).
 
     Returns:
         Result of type ``PersistenceConfig``.

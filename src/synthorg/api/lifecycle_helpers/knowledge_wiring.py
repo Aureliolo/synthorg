@@ -10,7 +10,7 @@ poisoning the whole feature-wiring pass. Lives in its own module so the
 feature-wiring orchestrator stays within its size budget.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
@@ -23,6 +23,12 @@ if TYPE_CHECKING:
     from synthorg.knowledge.synthesis.protocol import Synthesizer
 
 logger = get_logger(__name__)
+
+# Governed ticket-fetch bounds. Sourced as module constants (not settings)
+# because the fetcher is a fixed governed transport, not an operator knob;
+# the SSRF policy below already fail-closes private hosts.
+_TICKET_FETCH_TIMEOUT_SECONDS: Final[float] = 30.0
+_TICKET_FETCH_MAX_BYTES: Final[int] = 5_242_880
 
 
 async def wire_knowledge_engine(
@@ -81,11 +87,29 @@ async def wire_knowledge_engine(
             error=safe_error_description(exc),
         )
         synthesizer = None
+    # Governed ticket fetcher: routes ticket ingestion through the same
+    # SSRF-validated, DNS-pinned egress the external-API tool uses, so a
+    # malicious ticket URI cannot reach the host's internal network.
+    from synthorg.knowledge.loaders.governed_ticket_fetcher import (  # noqa: PLC0415
+        GovernedTicketFetcher,
+    )
+    from synthorg.tools.external_api.httpx_provider import (  # noqa: PLC0415
+        HttpxExternalAccessProvider,
+    )
+    from synthorg.tools.network_validator import NetworkPolicy  # noqa: PLC0415
+
+    ticket_fetcher = GovernedTicketFetcher(
+        provider=HttpxExternalAccessProvider(),
+        policy=NetworkPolicy(),
+        timeout_seconds=_TICKET_FETCH_TIMEOUT_SECONDS,
+        max_response_bytes=_TICKET_FETCH_MAX_BYTES,
+    )
     service = build_knowledge_service(
         memory_backend=memory_backend_of(app_state),
         persistence=persistence_of(app_state),
         config=config,
         synthesizer=synthesizer,
+        ticket_fetcher=ticket_fetcher,
         clock=app_state.clock,
     )
     tool_factory = build_knowledge_tool_factory(service=service)

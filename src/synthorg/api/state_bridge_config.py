@@ -17,6 +17,7 @@ from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
     MemoryBridgeConfig,
+    ObservabilityBridgeConfig,
     WorkersBridgeConfig,
 )
 
@@ -39,6 +40,8 @@ class BridgeConfigState:
         "_applied",
         "_memory",
         "_memory_lock",
+        "_observability",
+        "_observability_lock",
         "_workers",
         "_workers_lock",
     )
@@ -51,6 +54,8 @@ class BridgeConfigState:
         self._workers_lock: threading.Lock = threading.Lock()
         self._memory: MemoryBridgeConfig = MemoryBridgeConfig()
         self._memory_lock: threading.Lock = threading.Lock()
+        self._observability: ObservabilityBridgeConfig = ObservabilityBridgeConfig()
+        self._observability_lock: threading.Lock = threading.Lock()
         # One-shot flag: bridge config applied exactly once per lifetime
         # even across re-entered lifespans (shared-app test fixtures).
         self._applied: bool = False
@@ -72,7 +77,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: Literal["_api", "_workers", "_memory"],
+        attr: Literal["_api", "_workers", "_memory", "_observability"],
         service: str,
         config: BaseModel,
     ) -> None:
@@ -102,7 +107,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: Literal["_api", "_workers", "_memory"],
+        attr: Literal["_api", "_workers", "_memory", "_observability"],
         service: str,
         updates: dict[str, object],
     ) -> None:
@@ -265,5 +270,48 @@ class BridgeConfigState:
             lock=self._memory_lock,
             attr="_memory",
             service="memory_bridge_config",
+            updates=updates,
+        )
+
+    @property
+    def observability(self) -> ObservabilityBridgeConfig:
+        """Return the current ``ObservabilityBridgeConfig`` snapshot.
+
+        Always non-None: ``__init__`` default-constructs an
+        ``ObservabilityBridgeConfig()`` (Field defaults == the registered
+        ``observability.*`` defaults) so a consumer reading it before
+        ``_apply_bridge_config`` or under a resolver outage still sees the
+        documented HTTP-handler / TSA-endpoint defaults.
+
+        Returns:
+            ``ObservabilityBridgeConfig`` instance.
+        """
+        return self._observability
+
+    def swap_observability(self, config: ObservabilityBridgeConfig) -> None:
+        """Replace the ``ObservabilityBridgeConfig`` snapshot wholesale.
+
+        Used by ``_apply_bridge_config`` at startup with the value
+        resolved through ``ConfigResolver.get_observability_bridge_config``.
+        Hot-reload paths must use :meth:`mutate_observability`.
+        """
+        self._swap(
+            lock=self._observability_lock,
+            attr="_observability",
+            service="observability_bridge_config",
+            config=config,
+        )
+
+    def mutate_observability(self, updates: dict[str, object]) -> None:
+        """Apply ``updates`` to the observability snapshot under a lock.
+
+        Re-validates via ``model_validate`` so an out-of-range operator
+        value raises ``ValidationError`` and the prior snapshot is
+        retained (mirrors :meth:`mutate_api`).
+        """
+        self._mutate(
+            lock=self._observability_lock,
+            attr="_observability",
+            service="observability_bridge_config",
             updates=updates,
         )

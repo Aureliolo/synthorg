@@ -1,8 +1,8 @@
 """WebhookService -- facade for ``synthorg_webhooks_*`` MCP tools."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.webhooks.definition_store_protocol import (
     WebhookDefinitionStore,
@@ -24,10 +24,17 @@ class WebhookService:
 
     Args:
         store: The backing definition store.
+        clock: Time source for the ``updated_at`` stamp (injectable for tests).
     """
 
-    def __init__(self, *, store: WebhookDefinitionStore) -> None:
+    def __init__(
+        self,
+        *,
+        store: WebhookDefinitionStore,
+        clock: Clock | None = None,
+    ) -> None:
         self._store = store
+        self._clock = clock or SystemClock()
 
     async def list_webhooks(
         self,
@@ -104,7 +111,7 @@ class WebhookService:
             current UTC time, after the store replace succeeds.
         """
         refreshed = definition.model_copy(
-            update={"updated_at": datetime.now(UTC)},
+            update={"updated_at": self._clock.now()},
         )
         await self._store.replace(refreshed)
         logger.info(

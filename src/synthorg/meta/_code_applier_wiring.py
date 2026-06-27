@@ -71,18 +71,46 @@ def maybe_install_code_applier(
     from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
         HttpGitHubClient,
     )
+    from synthorg.meta.errors import (  # noqa: PLC0415
+        CIValidatorHostExecutionError,
+    )
     from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
         LocalCIValidator,
     )
-
-    ci_validator = LocalCIValidator(
-        project_root=project_root.resolve(),
-        scope_validator=ScopeValidator(
-            allowed_paths=tuple(code_cfg.allowed_paths),
-            forbidden_paths=tuple(code_cfg.forbidden_paths),
-        ),
-        timeout_seconds=code_cfg.ci_timeout_seconds,
+    from synthorg.tools.sandbox.factory import (  # noqa: PLC0415
+        build_sandbox_backends,
     )
+    from synthorg.tools.sandbox.sandboxing_config import (  # noqa: PLC0415
+        SandboxingConfig,
+    )
+
+    resolved_root = project_root.resolve()
+    # Agent-authored test code must run inside a container, never on the
+    # host (prompt injection to host RCE). Build the container backend and
+    # fail closed (skip the applier) if it cannot be constructed or the
+    # validator refuses a non-container backend.
+    try:
+        sandbox = build_sandbox_backends(
+            config=SandboxingConfig(default_backend="docker"),
+            workspace=resolved_root,
+        )["docker"]
+        ci_validator = LocalCIValidator(
+            project_root=resolved_root,
+            scope_validator=ScopeValidator(
+                allowed_paths=tuple(code_cfg.allowed_paths),
+                forbidden_paths=tuple(code_cfg.forbidden_paths),
+            ),
+            sandbox=sandbox,
+            timeout_seconds=code_cfg.ci_timeout_seconds,
+        )
+    except (CIValidatorHostExecutionError, ValueError, KeyError) as exc:
+        logger.warning(
+            META_STRATEGY_REGISTERED,
+            altitude="code_modification_applier",
+            reason="skipped_no_container_sandbox",
+            error_type=type(exc).__name__,
+        )
+        return
     github_client = HttpGitHubClient(
         token=str(code_cfg.github_token),
         repo=str(code_cfg.github_repo),

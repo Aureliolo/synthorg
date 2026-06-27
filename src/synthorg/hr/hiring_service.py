@@ -5,7 +5,9 @@ Orchestrates the hiring pipeline: request creation, candidate
 generation, approval submission, and agent instantiation.
 """
 
+import asyncio
 from datetime import UTC, datetime
+from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -15,6 +17,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.concurrency import RefcountedLockMap
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -38,11 +41,19 @@ from synthorg.observability.events.hr import (
     HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
+    HR_HIRING_PERSIST_FAILED,
     HR_HIRING_REQUEST_CREATED,
     HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
+    HR_HIRING_REQUESTS_HYDRATED,
+)
+from synthorg.persistence.hiring_request_protocol import (
+    HiringRequestRepository,
 )
 from synthorg.security.autonomy.enums import ActionType
+
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+_HYDRATE_PAGE_SIZE: Final[int] = 100
 
 logger = get_logger(__name__)
 
@@ -70,11 +81,18 @@ class HiringService:
         approval_store: ApprovalStoreProtocol | None = None,
         onboarding_service: OnboardingService | None = None,
         default_model_config: ModelConfig | None = None,
+        request_repo: HiringRequestRepository | None = None,
     ) -> None:
         self._registry = registry
         self._approval_store = approval_store
         self._onboarding_service = onboarding_service
         self._default_model_config = default_model_config
+        # Durable backing store for in-flight requests. When attached
+        # (production) every lifecycle write is best-effort persisted and
+        # the in-flight set is rehydrated at startup so an approved
+        # request is not orphaned by a restart between approval and
+        # instantiation.
+        self._request_repo = request_repo
         self._requests: dict[str, HiringRequest] = {}
         # Serialises read-modify-write on ``_requests`` per request ID so two
         # concurrent pipeline steps on the same request cannot lose an update
@@ -83,6 +101,73 @@ class HiringService:
         # approval-store writes and registry registration). The map evicts a
         # request's lock once no step holds it, so it stays bounded.
         self._request_locks: RefcountedLockMap[str] = RefcountedLockMap()
+
+    def attach_persistence(self, *, request_repo: HiringRequestRepository) -> None:
+        """Attach the durable request repo after boot.
+
+        The service is built in the construction phase before
+        persistence exists; this is called from the on-startup wiring
+        hook. Pair with :meth:`hydrate`.
+        """
+        self._request_repo = request_repo
+
+    async def hydrate(self) -> None:
+        """Load durable in-flight requests into the in-memory set.
+
+        Idempotent and a no-op when no repository is attached.
+        """
+        if self._request_repo is None:
+            return
+        loaded: dict[str, HiringRequest] = {}
+        offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
+        while True:
+            batch = await self._request_repo.list_items(
+                limit=_HYDRATE_PAGE_SIZE, offset=offset
+            )
+            for request in batch:
+                loaded[str(request.id)] = request
+            if len(batch) < _HYDRATE_PAGE_SIZE:
+                break
+            offset += _HYDRATE_PAGE_SIZE
+        self._requests = loaded
+        logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
+
+    async def _store(
+        self,
+        request: HiringRequest,
+        *,
+        require_persist: bool = False,
+    ) -> None:
+        """Update the in-memory set and persist the request.
+
+        With ``require_persist`` a persistence failure raises ``HiringError``
+        instead of being swallowed, so a caller that already performed an
+        external side effect (approval-item write, agent registration) cannot
+        leave the request transition durable-less: a restart would otherwise
+        rehydrate stale request state while the side effect already exists,
+        wedging retries. A persistence-less boot (no repo) stays in-memory
+        only and never raises, since nothing is rehydrated on restart.
+
+        Raises:
+            HiringError: If ``require_persist`` and the durable save fails.
+        """
+        self._requests[str(request.id)] = request
+        if self._request_repo is None:
+            return
+        try:
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await self._request_repo.save(request)
+        except (PersistenceError, TimeoutError) as exc:
+            logger.warning(
+                HR_HIRING_PERSIST_FAILED,
+                request_id=str(request.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            if require_persist:
+                msg = f"Failed to persist hiring request {request.id!s}"
+                raise HiringError(msg) from exc
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -116,6 +201,7 @@ class HiringService:
         level: str,
         required_skills: tuple[NotBlankStr, ...] = (),
         reason: NotBlankStr,
+        agent_delegate: NotBlankStr | None = None,
         budget_limit_monthly: float | None = None,
         template_name: str | None = None,
     ) -> HiringRequest:
@@ -128,6 +214,8 @@ class HiringService:
             level: Desired seniority level.
             required_skills: Required skills.
             reason: Business justification.
+            agent_delegate: Existing agent assigned to absorb queued work
+                while this hire instantiates (overflow handler).
             budget_limit_monthly: Optional monthly budget limit.
             template_name: Template for candidate generation.
 
@@ -144,11 +232,12 @@ class HiringService:
             level=self._parse_level(level),
             required_skills=required_skills,
             reason=reason,
+            agent_delegate=agent_delegate,
             budget_limit_monthly=budget_limit_monthly,
             template_name=template_name,
             created_at=datetime.now(UTC),
         )
-        self._requests[str(request.id)] = request
+        await self._store(request)
 
         logger.info(
             HR_HIRING_REQUEST_CREATED,
@@ -199,7 +288,7 @@ class HiringService:
             updated = request.model_copy(
                 update={"candidates": (*request.candidates, candidate)},
             )
-            self._requests[str(updated.id)] = updated
+            await self._store(updated)
 
         logger.info(
             HR_HIRING_CANDIDATE_GENERATED,
@@ -271,20 +360,25 @@ class HiringService:
 
             previous_status = request.status
             if self._approval_store is None:
-                # Auto-approve when no approval store.
+                # Auto-approve when no approval store: no external side effect,
+                # so a swallowed persist failure only loses an in-memory status
+                # flip a restart would discard cleanly.
                 updated = request.model_copy(
                     update={
                         "status": HiringRequestStatus.APPROVED,
                         "selected_candidate_id": candidate_id,
                     },
                 )
+                await self._store(updated)
             else:
-                # Create an approval item.
+                # Create an approval item (durable external side effect), then
+                # require the request transition to persist: a swallowed save
+                # would let a restart rehydrate the pre-approval request while
+                # the approval item already exists, wedging retries.
                 updated = await self._submit_approval_item(
                     request, candidate, candidate_id
                 )
-
-            self._requests[str(updated.id)] = updated
+                await self._store(updated, require_persist=True)
 
         # Emit the status-transition log only when the status actually
         # flipped: the auto-approve branch goes PENDING -> APPROVED,
@@ -374,7 +468,7 @@ class HiringService:
 
             identity = self._build_agent_identity(candidate)
             await self._register_agent(identity, request)
-            self._apply_instantiated_status(request)
+            await self._apply_instantiated_status(request)
 
         # Onboarding runs outside the lock: it is non-fatal and should
         # not hold up other pipeline steps on the same request.
@@ -396,7 +490,7 @@ class HiringService:
         # is what keeps the unbounded-lock growth in check.
         return identity
 
-    def _apply_instantiated_status(self, request: HiringRequest) -> None:
+    async def _apply_instantiated_status(self, request: HiringRequest) -> None:
         """Persist the APPROVED -> INSTANTIATED status flip and log it.
 
         Logs AFTER the dict write succeeds and before downstream
@@ -411,7 +505,11 @@ class HiringService:
         updated = request.model_copy(
             update={"status": HiringRequestStatus.INSTANTIATED},
         )
-        self._requests[str(updated.id)] = updated
+        # The agent is already registered by the caller, so this terminal
+        # transition must persist: a swallowed save would let a restart
+        # rehydrate the APPROVED request and re-drive instantiation against
+        # an agent that already exists.
+        await self._store(updated, require_persist=True)
         logger.info(
             HIRING_REQUEST_STATUS_TRANSITIONED,
             request_id=str(updated.id),

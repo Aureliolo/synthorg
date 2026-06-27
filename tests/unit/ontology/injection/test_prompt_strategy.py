@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.text_estimation import DefaultTokenEstimator
+from synthorg.engine.prompt_safety import (
+    TAG_KNOWLEDGE,
+    untrusted_content_directive,
+)
 from synthorg.ontology.injection.prompt import (
     PromptInjectionStrategy,
     format_entity,
@@ -76,6 +80,23 @@ class TestPromptInjectionStrategy:
         assert "Entity Definitions" in messages[0].content
         assert "Task" in messages[0].content
         assert "AgentIdentity" in messages[0].content
+
+    async def test_entities_are_fenced_as_untrusted(
+        self,
+        mock_backend: AsyncMock,
+    ) -> None:
+        """Entity blocks are wrapped as untrusted and a directive names the fence."""
+        strategy = PromptInjectionStrategy(backend=mock_backend)
+        messages = await strategy.prepare_messages(
+            agent_id="agent-1",
+            task_context="Do some work",
+            token_budget=5000,
+        )
+        content = messages[0].content
+        assert content is not None
+        assert f"<{TAG_KNOWLEDGE}>" in content
+        assert f"</{TAG_KNOWLEDGE}>" in content
+        assert untrusted_content_directive((TAG_KNOWLEDGE,)) in content
 
     async def test_only_core_entities_injected(
         self,

@@ -8,7 +8,8 @@ resources are fetched explicitly.
 See ``docs/design/tools.md`` (Progressive Tool Disclosure section).
 """
 
-from typing import Literal
+import copy
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -84,6 +85,18 @@ class ToolL2Body(BaseModel):
         default=(),
         description="Known failure scenarios",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_parameter_schema(self) -> Self:
+        """Deep-copy ``parameter_schema`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``parameter_schema`` deep-copied.
+        """
+        object.__setattr__(
+            self, "parameter_schema", copy.deepcopy(self.parameter_schema)
+        )
+        return self
 
 
 # ── L3: Explicit-request resource ───────────────────────────────

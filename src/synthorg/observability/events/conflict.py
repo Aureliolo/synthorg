@@ -13,6 +13,9 @@ CONFLICT_DISSENT_RECORDED: Final[str] = "conflict.dissent.recorded"
 # Authority strategy
 CONFLICT_AUTHORITY_DECIDED: Final[str] = "conflict.authority.decided"
 
+# Evidence-weighted strategy
+CONFLICT_EVIDENCE_DECIDED: Final[str] = "conflict.evidence.decided"
+
 # Debate strategy
 CONFLICT_DEBATE_STARTED: Final[str] = "conflict.debate.started"
 CONFLICT_DEBATE_JUDGE_DECIDED: Final[str] = "conflict.debate.judge_decided"

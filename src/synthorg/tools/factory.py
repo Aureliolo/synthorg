@@ -39,6 +39,7 @@ from synthorg.tools.git_tools import (
 )
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
+    merge_secure_backend_defaults,
     resolve_sandbox_for_category,
 )
 from synthorg.tools.web.html_parser import HtmlParserTool
@@ -861,6 +862,15 @@ def build_default_tools_from_config(  # noqa: PLR0913
         source="config",
     )
 
+    # Force untrusted-exec categories (code_execution, terminal) onto the
+    # container backend before any per-category resolution, so agent code
+    # never runs in the API process even when the global default is
+    # subprocess. Shadowing ``config`` makes every ``config.sandboxing``
+    # read below see the hardened overrides.
+    config = config.model_copy(
+        update={"sandboxing": merge_secure_backend_defaults(config.sandboxing)},
+    )
+
     # Build sandbox backends once for all categories.
     resolved_backends = (
         sandbox_backends
@@ -887,13 +897,19 @@ def build_default_tools_from_config(  # noqa: PLR0913
                 category=ToolCategory.TERMINAL,
             )
         except KeyError:
-            logger.warning(
+            # TERMINAL is force-routed to the hardened container backend by
+            # merge_secure_backend_defaults, so a missing backend here is a
+            # real misconfiguration. Fail closed: re-raise rather than fall
+            # back to an unsandboxed in-process shell for agent-driven
+            # terminal execution -- the exact surface this hardening isolates.
+            logger.error(
                 TOOL_FACTORY_ERROR,
                 error=(
-                    "No sandbox backend for TERMINAL category; "
-                    "terminal tools will operate without sandbox"
+                    "No sandbox backend for the force-secured TERMINAL "
+                    "category; refusing to register terminal tools unsandboxed"
                 ),
             )
+            raise
 
     # Resolve code execution sandbox if configured.
     code_execution_sandbox: SandboxBackend | None = None

@@ -47,6 +47,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.A2A,
+        key="card_cache_max_entries",
+        type=SettingType.INTEGER,
+        default="512",
+        description=(
+            "Hard cap on cached Agent Cards served from the"
+            " ``.well-known`` endpoints; bounds the process-local cache"
+            " across agent and host churn."
+        ),
+        group="Gateway",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.A2A,
         key="max_message_parts",
         type=SettingType.INTEGER,
         default="100",

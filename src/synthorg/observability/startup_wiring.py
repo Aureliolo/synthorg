@@ -9,13 +9,14 @@ from environment configuration and stashes it on ``AppState`` so
 :mod:`synthorg.observability.tracing.instrumentation` can look up
 the active tracer.
 
-All wiring is idempotent: repeated calls leave the first registered
-callback in place. Test-fixture startups re-run ``on_startup``, and
-overwriting live callbacks mid-request would double-count metrics
-or swap out the running trace handler.
+Sink installation and trace-handler wiring are idempotent: repeated
+calls leave the first registered handler in place, so a test-fixture
+startup that re-runs ``on_startup`` does not swap out the running trace
+handler mid-request. The Prometheus export callbacks are re-registered
+on each call (the closures are recreated), which is safe because they
+are pure forwarders to the process-wide collector.
 """
 
-import logging
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -30,6 +31,7 @@ from synthorg.observability.events.tracing import (
 from synthorg.observability.http_handler import HttpBatchHandler
 from synthorg.observability.metrics_hub import set_active_collector
 from synthorg.observability.otlp_handler import OtlpHandler
+from synthorg.observability.sinks import iter_logging_handlers
 from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.observability.syslog_handler import CountingSysLogHandler
 from synthorg.observability.tracing import (
@@ -48,21 +50,6 @@ logger = get_logger(__name__)
 _TRACE_ENDPOINT_ENV = "SYNTHORG_TRACE_OTLP_ENDPOINT"
 _TRACE_SERVICE_NAME_ENV = "SYNTHORG_TRACE_SERVICE_NAME"
 _TRACE_SAMPLING_RATIO_ENV = "SYNTHORG_TRACE_SAMPLING_RATIO"
-
-
-def _iter_logging_handlers() -> list[logging.Handler]:
-    """Return every handler attached anywhere in the logging hierarchy.
-
-    Includes the root logger and every concrete ``logging.Logger``
-    instance created so far. Sink wiring runs once at startup so
-    the O(n) walk is not a hot path.
-    """
-    handlers: list[logging.Handler] = list(logging.getLogger().handlers)
-    manager = logging.Logger.manager
-    for logger_ref in manager.loggerDict.values():
-        if isinstance(logger_ref, logging.Logger):
-            handlers.extend(logger_ref.handlers)
-    return handlers
 
 
 def _load_trace_config() -> TraceConfig:
@@ -132,7 +119,7 @@ def _wire_prometheus_sinks(collector: PrometheusCollector) -> None:
 
         return _callback
 
-    for handler in _iter_logging_handlers():
+    for handler in iter_logging_handlers():
         if isinstance(handler, OtlpHandler):
             handler.set_export_callback(_otlp_callback)
         elif isinstance(handler, AuditChainSink):

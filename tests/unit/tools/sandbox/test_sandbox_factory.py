@@ -15,6 +15,7 @@ from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     cleanup_sandbox_backends,
     merge_gvisor_defaults,
+    merge_secure_backend_defaults,
     resolve_sandbox_for_category,
 )
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
@@ -383,3 +384,44 @@ class TestMergeGvisorDefaults:
         )
         merged = merge_gvisor_defaults(config)
         assert merged is config
+
+
+class TestMergeSecureBackendDefaults:
+    """Tests for merge_secure_backend_defaults()."""
+
+    def test_forces_untrusted_categories_to_docker(self) -> None:
+        """code_execution + terminal route to docker even on a subprocess default."""
+        config = SandboxingConfig(default_backend="subprocess")
+        merged = merge_secure_backend_defaults(config)
+        assert merged.backend_for_category("code_execution") == "docker"
+        assert merged.backend_for_category("terminal") == "docker"
+        # The global default is untouched for low-risk categories.
+        assert merged.default_backend == "subprocess"
+        assert merged.backend_for_category("file_read") == "subprocess"
+
+    def test_operator_override_wins(self) -> None:
+        """An explicit operator override is never overwritten."""
+        config = SandboxingConfig(
+            default_backend="subprocess",
+            overrides={"code_execution": "subprocess"},
+        )
+        merged = merge_secure_backend_defaults(config)
+        assert merged.backend_for_category("code_execution") == "subprocess"
+        assert merged.backend_for_category("terminal") == "docker"
+
+    def test_gvisor_defaults_applied_when_already_routed(self) -> None:
+        """Already-routed untrusted categories still gain gVisor runtimes.
+
+        ``merge_secure_backend_defaults`` always layers the hardened gVisor
+        runtime once docker is referenced, so code_execution/terminal never
+        run on plain docker even when an override already pinned the backend.
+        """
+        config = SandboxingConfig(
+            default_backend="subprocess",
+            overrides={"code_execution": "docker", "terminal": "docker"},
+        )
+        merged = merge_secure_backend_defaults(config)
+        assert merged.backend_for_category("code_execution") == "docker"
+        assert merged.backend_for_category("terminal") == "docker"
+        assert merged.docker.runtime_overrides["code_execution"] == "runsc"
+        assert merged.docker.runtime_overrides["terminal"] == "runsc"

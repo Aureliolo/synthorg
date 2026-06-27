@@ -4,6 +4,7 @@ Provides the idempotent :func:`configure_logging` entry point that
 wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
+import asyncio
 import logging
 import sys
 from collections.abc import Mapping
@@ -13,6 +14,7 @@ from types import MappingProxyType
 import structlog
 from structlog.typing import Processor
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.log_trace_correlation import inject_trace_context
@@ -375,6 +377,49 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     return config.model_copy(update={"sinks": tuple(new_sinks)})
 
 
+def reapply_console_level(raw: str) -> bool:
+    """Re-level the live CONSOLE handler from a runtime-resolved value.
+
+    The console level is first applied at ``configure_logging`` time from
+    the bootstrap chain (env > YAML). Once the DB-backed resolver is wired,
+    the startup ``_apply_observability_settings`` step calls this with the
+    DB-resolved ``observability.log_level_console`` so an operator value
+    takes effect without a full ``configure_logging`` rebuild (which would
+    re-attach every handler, including the audit-chain sink).
+
+    Args:
+        raw: The resolved level string (case-insensitive); blank is a no-op.
+
+    Returns:
+        ``True`` when a console handler was found and re-levelled.
+    """
+    cleaned = raw.strip()
+    if not cleaned:
+        return False
+    try:
+        level = LogLevel(cleaned.upper())
+    except ValueError:
+        valid = ", ".join(lvl.value.lower() for lvl in LogLevel)
+        print(  # noqa: T201
+            f"WARNING: Invalid runtime console-level {cleaned!r}. "
+            f"Valid values: {valid}. Leaving console level unchanged.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+    from synthorg.observability.sinks import (  # noqa: PLC0415
+        CONSOLE_HANDLER_NAME,
+        iter_logging_handlers,
+    )
+
+    applied = False
+    for handler in iter_logging_handlers():
+        if handler.get_name() == CONSOLE_HANDLER_NAME:
+            handler.setLevel(level.value)
+            applied = True
+    return applied
+
+
 def configure_logging(
     config: LogConfig | None = None,
     *,
@@ -435,3 +480,44 @@ def configure_logging(
 
     # 8. Apply per-logger levels (after taming so user overrides take precedence)
     _apply_logger_levels(config)
+
+
+async def teardown_logging() -> None:
+    """Flush and close buffering log handlers on application shutdown.
+
+    The OTLP and HTTP batch handlers queue records and a background
+    thread drains them; the queued tail and (for OTLP) the flusher
+    thread are lost unless the handler is closed, which flushes and
+    joins. Console/file/syslog handlers buffer nothing and stay attached
+    so late-shutdown log lines still emit. Closing is offloaded because
+    the OTLP close blocks on its flusher-thread join.
+    """
+    # Local imports: these handler modules import back into
+    # ``synthorg.core.normalization`` -> ``synthorg.observability``, so a
+    # module-level import here closes a cold-import cycle.
+    from synthorg.observability.http_handler import (  # noqa: PLC0415
+        HttpBatchHandler,
+    )
+    from synthorg.observability.otlp_handler import OtlpHandler  # noqa: PLC0415
+
+    root_logger = logging.getLogger()
+    buffering = tuple(
+        handler
+        for handler in root_logger.handlers[:]
+        if isinstance(handler, (OtlpHandler, HttpBatchHandler))
+    )
+    for handler in buffering:
+        root_logger.removeHandler(handler)
+        try:
+            await asyncio.to_thread(handler.close)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # A blocked flush on one remote handler must not skip closing
+            # the rest. The logger's own buffering handlers are being torn
+            # down here, so report to stderr rather than via logging.
+            print(  # noqa: T201 -- shutdown path, logger handlers detaching
+                f"WARNING: {type(handler).__name__}.close() failed: "
+                f"{type(exc).__name__}",
+                file=sys.stderr,
+                flush=True,
+            )

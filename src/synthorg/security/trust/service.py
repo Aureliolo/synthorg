@@ -6,14 +6,16 @@ and trust level changes for agents.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.trust import (
     TRUST_APPROVAL_REQUIRED,
     TRUST_APPROVAL_STORE_MISSING,
@@ -23,6 +25,13 @@ from synthorg.observability.events.trust import (
     TRUST_EVALUATE_START,
     TRUST_INITIALIZED,
     TRUST_LEVEL_CHANGED,
+    TRUST_PERSIST_FAILED,
+    TRUST_STATE_HYDRATED,
+)
+from synthorg.persistence.trust_state_protocol import (
+    TrustChangeHistoryFilterSpec,
+    TrustChangeHistoryRepository,
+    TrustStateRepository,
 )
 from synthorg.security.trust.config import TrustConfig
 from synthorg.security.trust.enums import TrustChangeReason
@@ -33,6 +42,9 @@ from synthorg.security.trust.models import (
     TrustState,
 )
 from synthorg.security.trust.protocol import TrustStrategy
+
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+_HYDRATE_PAGE_SIZE: Final[int] = 100
 
 logger = get_logger(__name__)
 
@@ -56,10 +68,19 @@ class TrustService:
         strategy: TrustStrategy,
         config: TrustConfig,
         approval_store: ApprovalStoreProtocol | None = None,
+        state_repo: TrustStateRepository | None = None,
+        history_repo: TrustChangeHistoryRepository | None = None,
     ) -> None:
         self._strategy = strategy
         self._config = config
         self._approval_store = approval_store
+        # Durable backing store. When attached (production), every state
+        # mutation is best-effort written through and the in-memory dicts
+        # are hydrated from it at startup so elevated-trust decisions and
+        # their audit trail survive restarts. When absent (tests), the
+        # dicts are the sole store, matching the pre-durability behaviour.
+        self._state_repo = state_repo
+        self._history_repo = history_repo
         self._trust_states: dict[str, TrustState] = {}
         self._change_history: dict[str, list[TrustChangeRecord]] = {}
         # Hot-path lock guarding _trust_states + _change_history.
@@ -70,6 +91,113 @@ class TrustService:
         # apply_trust_change is similarly non-atomic. Lock the full
         # read-modify-write region in both methods.
         self._state_lock = asyncio.Lock()
+
+    def attach_persistence(
+        self,
+        *,
+        state_repo: TrustStateRepository,
+        history_repo: TrustChangeHistoryRepository,
+    ) -> None:
+        """Attach durable repositories after the backend is connected.
+
+        The service is constructed in the synchronous construction phase
+        before persistence exists; this is called from the on-startup
+        wiring hook once the backend is live. Pair with :meth:`hydrate`.
+        """
+        self._state_repo = state_repo
+        self._history_repo = history_repo
+
+    def detach_persistence(self) -> None:
+        """Drop the durable repositories, reverting to in-memory only.
+
+        Called when :meth:`hydrate` fails after :meth:`attach_persistence`
+        so the service cannot persist mutations from an un-restored cache,
+        which would overwrite durable trust state/history with stale data.
+        """
+        self._state_repo = None
+        self._history_repo = None
+
+    async def hydrate(self) -> None:
+        """Load durable trust state + change history into the caches.
+
+        Called once at startup after the persistence backend is wired.
+        Idempotent and a no-op when no repositories are attached.
+        """
+        if self._state_repo is None or self._history_repo is None:
+            return
+        states: dict[str, TrustState] = {}
+        offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
+        while True:
+            batch = await self._state_repo.list_items(
+                limit=_HYDRATE_PAGE_SIZE, offset=offset
+            )
+            for state in batch:
+                states[str(state.agent_id)] = state
+            if len(batch) < _HYDRATE_PAGE_SIZE:
+                break
+            offset += _HYDRATE_PAGE_SIZE
+        history: dict[str, list[TrustChangeRecord]] = {}
+        offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
+        while True:
+            records = await self._history_repo.query(
+                TrustChangeHistoryFilterSpec(), limit=_HYDRATE_PAGE_SIZE, offset=offset
+            )
+            for record in records:
+                history.setdefault(str(record.agent_id), []).append(record)
+            if len(records) < _HYDRATE_PAGE_SIZE:
+                break
+            offset += _HYDRATE_PAGE_SIZE
+        # The history query returns newest-first; reverse each agent's
+        # list so the in-memory order matches append order (oldest-first).
+        for records_list in history.values():
+            records_list.reverse()
+        async with self._state_lock:
+            self._trust_states = states
+            self._change_history = history
+        logger.info(
+            TRUST_STATE_HYDRATED,
+            agents=len(states),
+            change_records=sum(len(v) for v in history.values()),
+        )
+
+    async def _persist_state(self, state: TrustState) -> None:
+        """Best-effort write-through of one trust state.
+
+        Persistence failures degrade durability for that one update but
+        never break the running flow; the in-memory cache stays
+        authoritative for the live process.
+        """
+        if self._state_repo is None:
+            return
+        try:
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await self._state_repo.save(state)
+        except (PersistenceError, TimeoutError) as exc:
+            logger.warning(
+                TRUST_PERSIST_FAILED,
+                agent_id=str(state.agent_id),
+                kind="state",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    async def _persist_record(self, record: TrustChangeRecord) -> None:
+        """Best-effort append of one change record to the durable trail."""
+        if self._history_repo is None:
+            return
+        try:
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await self._history_repo.append(record)
+        except (PersistenceError, TimeoutError) as exc:
+            logger.warning(
+                TRUST_PERSIST_FAILED,
+                agent_id=str(record.agent_id),
+                kind="history",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     def get_or_initialize_agent(self, agent_id: NotBlankStr) -> TrustState:
         """Return the agent's trust state, creating it once on first sight.
@@ -173,9 +301,15 @@ class TrustService:
             # Re-read in case another coroutine raced us; merge the
             # last_evaluated_at update onto whatever the latest state is.
             current = self._trust_states.get(key, state)
-            self._trust_states[key] = current.model_copy(
+            evaluated = current.model_copy(
                 update={"last_evaluated_at": now},
             )
+            self._trust_states[key] = evaluated
+            # Persist inside the lock so the durable upsert is ordered with
+            # the in-memory transition; an unlocked write-through lets a
+            # concurrent update's save land out of order and regress trust
+            # after restart.
+            await self._persist_state(evaluated)
 
         logger.debug(
             TRUST_EVALUATE_COMPLETE,
@@ -263,6 +397,12 @@ class TrustService:
             updated = state.model_copy(update=state_update)
             self._trust_states[key] = updated
             self._change_history.setdefault(key, []).append(record)
+            # Persist inside the lock so the durable state + history writes
+            # stay ordered with the in-memory transition; releasing first
+            # lets a concurrent change's save overtake this one and regress
+            # trust after restart.
+            await self._persist_state(updated)
+            await self._persist_record(record)
 
         logger.info(
             TRUST_LEVEL_CHANGED,
@@ -333,10 +473,13 @@ class TrustService:
             state = self._trust_states.get(key)
             if state is not None:
                 now = datetime.now(UTC)
-                updated = state.model_copy(
+                decayed = state.model_copy(
                     update={"last_decay_check_at": now},
                 )
-                self._trust_states[key] = updated
+                self._trust_states[key] = decayed
+                # Persist inside the lock so the decay upsert is ordered with
+                # the in-memory transition (no out-of-order regress).
+                await self._persist_state(decayed)
 
         return result
 

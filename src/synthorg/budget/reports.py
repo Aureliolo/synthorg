@@ -17,7 +17,7 @@ from typing import Final
 from synthorg.budget._aggregation import sum_tokens
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.currency import assert_currencies_match
+from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.budget.report_models import (
     ModelDistribution,
     PeriodComparison,
@@ -150,6 +150,7 @@ class ReportGenerator:
                 start,
                 end,
                 total_cost,
+                currency=summary.period.currency,
             )
 
         report = SpendingReport(
@@ -179,11 +180,26 @@ class ReportGenerator:
         current_start: datetime,
         current_end: datetime,
         current_cost: float,
+        *,
+        currency: CurrencyCode | None,
     ) -> PeriodComparison | None:
         """Build a period comparison with the previous period.
 
+        Args:
+            current_start: Start of the current reporting window.
+            current_end: End of the current reporting window.
+            current_cost: Total cost of the current window.
+            currency: The current window's ISO 4217 currency, used to
+                reject a cross-currency delta when the operator changed
+                ``budget.currency`` between the two periods.
+
         Returns:
             The resulting ``PeriodComparison``, or ``None`` when unavailable.
+
+        Raises:
+            MixedCurrencyAggregationError: When the previous period was
+                denominated in a different currency, so subtracting the
+                two totals would be meaningless.
         """
         duration = current_end - current_start
         prev_start = current_start - duration
@@ -197,6 +213,15 @@ class ReportGenerator:
 
         if prev_cost == 0.0 and current_cost == 0.0:
             return None
+
+        # Reject a cross-currency comparison: an empty period carries no
+        # currency (``None``) and never conflicts, but two non-None codes
+        # that differ make the delta nonsensical.
+        assert_currencies_match(
+            code
+            for code in (currency, prev_summary.period.currency)
+            if code is not None
+        )
 
         return PeriodComparison(
             current_period_cost=current_cost,

@@ -15,9 +15,9 @@ one mixed-orchestration site that benefits from the service boundary.
 """
 
 import uuid
-from datetime import UTC, datetime
 
 from synthorg.core.artifact import Artifact, ArtifactType
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
 from synthorg.core.types import NotBlankStr
@@ -46,16 +46,18 @@ logger = get_logger(__name__)
 class ArtifactService:
     """CRUD orchestration for artifacts with uniform audit logging."""
 
-    __slots__ = ("_repo", "_storage")
+    __slots__ = ("_clock", "_repo", "_storage")
 
     def __init__(
         self,
         *,
         repo: ArtifactRepository,
         storage: ArtifactStorageBackend | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._repo = repo
         self._storage = storage
+        self._clock = clock or SystemClock()
 
     async def list_artifacts(
         self,
@@ -118,7 +120,7 @@ class ArtifactService:
             description=description,
             content_type=content_type,
             project_id=project_id,
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
         )
         created = await self._repo.save_returning_outcome(artifact)
         logger.info(

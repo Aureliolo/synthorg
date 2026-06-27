@@ -24,6 +24,10 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_APPROVED,
+    SECURITY_APPROVAL_REJECTED,
+)
 from tests._shared import as_uuid, make_app_state, sid
 from tests.unit.meta.mcp.conftest import make_test_actor
 
@@ -306,17 +310,25 @@ class TestApprovalsApprove:
         )
         handler = APPROVAL_HANDLERS["synthorg_approvals_approve"]
 
-        result = await handler(
-            app_state=fake_app_state,
-            arguments={"approval_id": "a1", "comment": "LGTM"},
-            actor=actor,
-        )
+        with structlog.testing.capture_logs() as logs:
+            result = await handler(
+                app_state=fake_app_state,
+                arguments={"approval_id": "a1", "comment": "LGTM"},
+                actor=actor,
+            )
         body = json.loads(result)
 
         assert body["status"] == "ok"
         assert body["data"]["status"] == "approved"
         assert body["data"]["decided_by"] == str(actor.id)
         assert body["data"]["decision_reason"] == "LGTM"
+
+        # The signed security.* audit event is chained for the decision.
+        chained = [e for e in logs if e.get("event") == SECURITY_APPROVAL_APPROVED]
+        assert len(chained) == 1
+        assert chained[0]["approval_id"] == "a1"
+        assert chained[0]["actor_agent_id"] == str(actor.id)
+        assert chained[0]["reason"] == "LGTM"
 
     async def test_approve_not_found(
         self,
@@ -410,6 +422,13 @@ class TestApprovalsReject:
         assert audit[0]["actor_agent_id"] == str(actor.id)
         assert audit[0]["reason"] == "violates policy X"
         assert audit[0]["target_id"] == "a1"
+
+        # The signed security.* audit event is chained for the decision.
+        chained = [e for e in logs if e.get("event") == SECURITY_APPROVAL_REJECTED]
+        assert len(chained) == 1
+        assert chained[0]["approval_id"] == "a1"
+        assert chained[0]["actor_agent_id"] == str(actor.id)
+        assert chained[0]["reason"] == "violates policy X"
 
     async def test_reject_without_confirm(
         self,

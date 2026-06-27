@@ -28,3 +28,32 @@ def clip_text(text: str, limit: int) -> str:
         msg = f"limit must be non-negative, got {limit}"
         raise ValueError(msg)
     return text[:limit]
+
+
+def clip_with_ellipsis(text: str, limit: int, *, marker: str = "...") -> str:
+    """Clip ``text`` to ``limit`` chars, appending ``marker`` when truncated.
+
+    Returns ``text`` unchanged when it already fits within ``limit``; only
+    over-long inputs are sliced and get the trailing ``marker``. The marker
+    is appended *after* the slice, so the result can exceed ``limit`` by
+    ``len(marker)`` -- callers that must bound the total length pass
+    ``limit - len(marker)``.
+
+    Args:
+        text: The text to clip.
+        limit: Maximum character count to retain before the marker; must be
+            non-negative.
+        marker: Suffix appended when ``text`` is truncated.
+
+    Returns:
+        ``text`` when it fits, else ``text[:limit] + marker``.
+
+    Raises:
+        ValueError: When ``limit`` is negative (see :func:`clip_text`).
+    """
+    if limit < 0:
+        msg = f"limit must be non-negative, got {limit}"
+        raise ValueError(msg)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + marker

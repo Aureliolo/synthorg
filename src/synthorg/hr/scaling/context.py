@@ -2,12 +2,13 @@
 
 import asyncio
 import copy
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from types import MappingProxyType
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assignment.models import AgentWorkload
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
 from synthorg.hr.scaling.protocols import ScalingSignalSource
 from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
@@ -134,6 +135,16 @@ class ScalingContextBuilder:
             else MappingProxyType({})
         )
 
+        # Per-agent workloads (frozen models) are surfaced on the context so
+        # a HIRE strategy can pick the least-loaded existing agent as the
+        # overflow handler; the signal sources only expose aggregates.
+        raw_workloads = (workload_kwargs or {}).get("workloads", ())
+        agent_workloads = (
+            tuple(w for w in raw_workloads if isinstance(w, AgentWorkload))
+            if isinstance(raw_workloads, Sequence)
+            else ()
+        )
+
         context = ScalingContext(
             agent_ids=agent_ids,
             workload_signals=workload_signals,
@@ -142,6 +153,7 @@ class ScalingContextBuilder:
             skill_signals=skill_signals,
             benchmark_signals=benchmark_signals,
             performance_snapshots=perf_snapshots,
+            agent_workloads=agent_workloads,
             evaluated_at=datetime.now(UTC),
         )
         logger.debug(

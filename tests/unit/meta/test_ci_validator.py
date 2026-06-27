@@ -1,10 +1,12 @@
 """Unit tests for local CI validator."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.meta.errors import CIValidatorHostExecutionError
 from synthorg.meta.validation.ci_validator import (
     LocalCIValidator,
     _discover_test_files,
@@ -12,6 +14,8 @@ from synthorg.meta.validation.ci_validator import (
     _is_safe_ci_path,
 )
 from synthorg.meta.validation.scope_validator import ScopeValidator
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
 
 pytestmark = pytest.mark.unit
 
@@ -20,15 +24,52 @@ pytestmark = pytest.mark.unit
 _ALLOW_ALL = ScopeValidator(allowed_paths=("*",), forbidden_paths=())
 
 
+def _sandbox_result(
+    *,
+    returncode: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+    timed_out: bool = False,
+) -> SandboxResult:
+    return SandboxResult(
+        stdout=stdout,
+        stderr=stderr,
+        returncode=returncode,
+        timed_out=timed_out,
+    )
+
+
+def _make_sandbox(
+    results: Sequence[SandboxResult] | SandboxResult | None = None,
+    *,
+    backend_type: str = "docker",
+    execute_side_effect: object = None,
+) -> MagicMock:
+    """Build a mock container ``SandboxBackend`` for the validator."""
+    sandbox = MagicMock(spec=SandboxBackend)
+    sandbox.get_backend_type = MagicMock(return_value=backend_type)
+    if execute_side_effect is not None:
+        sandbox.execute = AsyncMock(side_effect=execute_side_effect)
+    elif isinstance(results, SandboxResult):
+        sandbox.execute = AsyncMock(return_value=results)
+    elif results is not None:
+        sandbox.execute = AsyncMock(side_effect=list(results))
+    else:
+        sandbox.execute = AsyncMock(return_value=_sandbox_result())
+    return sandbox
+
+
 def _make_validator(
     *,
     timeout_seconds: int = 10,
     scope_validator: ScopeValidator = _ALLOW_ALL,
+    sandbox: MagicMock | None = None,
 ) -> LocalCIValidator:
     """Build a validator rooted at the (absolute) current directory."""
     return LocalCIValidator(
         project_root=Path.cwd(),
         scope_validator=scope_validator,
+        sandbox=sandbox if sandbox is not None else _make_sandbox(),
         timeout_seconds=timeout_seconds,
     )
 
@@ -84,18 +125,6 @@ _BYPASS_TEST_DISCOVERY = patch(
 )
 
 
-def _mock_subprocess(
-    returncode: int = 0,
-    stdout: bytes = b"",
-    stderr: bytes = b"",
-) -> AsyncMock:
-    """Create a mock subprocess that returns the given code."""
-    proc = AsyncMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(stdout, stderr))
-    return proc
-
-
 class TestLocalCIValidator:
     """LocalCIValidator tests."""
 
@@ -104,22 +133,22 @@ class TestLocalCIValidator:
             LocalCIValidator(
                 project_root=Path("relative/root"),
                 scope_validator=_ALLOW_ALL,
+                sandbox=_make_sandbox(),
+            )
+
+    def test_init_rejects_host_subprocess_backend(self) -> None:
+        """A non-container (host) backend is refused (fail closed)."""
+        with pytest.raises(CIValidatorHostExecutionError):
+            LocalCIValidator(
+                project_root=Path.cwd(),
+                scope_validator=_ALLOW_ALL,
+                sandbox=_make_sandbox(backend_type="subprocess"),
             )
 
     async def test_all_steps_pass(self) -> None:
-        validator = _make_validator()
-        mock_proc = _mock_subprocess(returncode=0)
-        with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                return_value=mock_proc,
-            ),
-            _BYPASS_FILE_CHECK,
-            _BYPASS_TEST_DISCOVERY,
-        ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+        validator = _make_validator(sandbox=_make_sandbox(_sandbox_result()))
+        with _BYPASS_FILE_CHECK, _BYPASS_TEST_DISCOVERY:
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert result.passed
         assert result.lint_passed
         assert result.typecheck_passed
@@ -128,61 +157,31 @@ class TestLocalCIValidator:
         assert result.duration_seconds >= 0.0
 
     async def test_lint_failure_short_circuits(self) -> None:
-        validator = _make_validator()
-        fail_proc = _mock_subprocess(
-            returncode=1,
-            stdout=b"E501 line too long",
+        sandbox = _make_sandbox(
+            _sandbox_result(returncode=1, stdout="E501 line too long")
         )
-        call_count = 0
-
-        async def counting_create(*args: object, **kwargs: object) -> AsyncMock:
-            nonlocal call_count
-            call_count += 1
-            return fail_proc
-
-        with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                side_effect=counting_create,
-            ),
-            _BYPASS_FILE_CHECK,
-            _BYPASS_TEST_DISCOVERY,
-        ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+        validator = _make_validator(sandbox=sandbox)
+        with _BYPASS_FILE_CHECK, _BYPASS_TEST_DISCOVERY:
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert not result.passed
         assert not result.lint_passed
         assert not result.typecheck_passed
         assert not result.tests_passed
         assert len(result.errors) == 1
         assert "lint" in result.errors[0]
-        # Only lint was called (short-circuit).
-        assert call_count == 1
+        # Only lint ran (short-circuit): a single sandbox.execute call.
+        assert sandbox.execute.await_count == 1
 
     async def test_typecheck_failure_skips_tests(self) -> None:
-        validator = _make_validator()
-        pass_proc = _mock_subprocess(returncode=0)
-        fail_proc = _mock_subprocess(
-            returncode=1,
-            stderr=b"error: incompatible types",
+        sandbox = _make_sandbox(
+            [
+                _sandbox_result(returncode=0),
+                _sandbox_result(returncode=1, stderr="error: incompatible types"),
+            ]
         )
-        calls = [pass_proc, fail_proc]
-
-        async def sequential_create(*args: object, **kwargs: object) -> AsyncMock:
-            return calls.pop(0)
-
-        with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                side_effect=sequential_create,
-            ),
-            _BYPASS_FILE_CHECK,
-            _BYPASS_TEST_DISCOVERY,
-        ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+        validator = _make_validator(sandbox=sandbox)
+        with _BYPASS_FILE_CHECK, _BYPASS_TEST_DISCOVERY:
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert not result.passed
         assert result.lint_passed
         assert not result.typecheck_passed
@@ -191,74 +190,35 @@ class TestLocalCIValidator:
         assert "typecheck" in result.errors[0]
 
     async def test_timeout_captured(self) -> None:
-        validator = _make_validator(timeout_seconds=1)
-
-        async def timeout_create(*args: object, **kwargs: object) -> AsyncMock:
-            proc = AsyncMock()
-
-            async def slow_communicate() -> None:
-                raise TimeoutError
-
-            proc.communicate = slow_communicate
-            # ``Process.kill`` is synchronous on a real subprocess; keep it a
-            # plain mock so the timeout path's un-awaited ``proc.kill()`` does
-            # not leave a dangling coroutine for the GC to warn about.
-            proc.kill = MagicMock()
-            return proc
-
-        with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                side_effect=timeout_create,
-            ),
-            _BYPASS_FILE_CHECK,
-            _BYPASS_TEST_DISCOVERY,
-        ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+        sandbox = _make_sandbox(_sandbox_result(timed_out=True))
+        validator = _make_validator(timeout_seconds=1, sandbox=sandbox)
+        with _BYPASS_FILE_CHECK, _BYPASS_TEST_DISCOVERY:
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert not result.passed
         assert not result.lint_passed
         assert "timed out" in result.errors[0]
 
-    async def test_command_not_found(self) -> None:
-        validator = _make_validator()
-
-        async def fnf_create(*args: object, **kwargs: object) -> None:
-            raise FileNotFoundError
-
-        with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                side_effect=fnf_create,
-            ),
-            _BYPASS_FILE_CHECK,
-            _BYPASS_TEST_DISCOVERY,
-        ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+    async def test_sandbox_execution_error_fails_closed(self) -> None:
+        """A sandbox failure (e.g. Docker down) fails the step, not the host."""
+        sandbox = _make_sandbox(execute_side_effect=RuntimeError("docker down"))
+        validator = _make_validator(sandbox=sandbox)
+        with _BYPASS_FILE_CHECK, _BYPASS_TEST_DISCOVERY:
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert not result.passed
-        assert "command not found" in result.errors[0]
+        assert not result.lint_passed
+        assert "sandbox error" in result.errors[0]
 
     async def test_no_test_files_fails_closed(self) -> None:
         """When no test files are discovered, CI must fail."""
-        validator = _make_validator()
-        mock_proc = _mock_subprocess(returncode=0)
+        validator = _make_validator(sandbox=_make_sandbox(_sandbox_result()))
         with (
-            patch(
-                "synthorg.meta.validation.ci_validator.asyncio.create_subprocess_exec",
-                return_value=mock_proc,
-            ),
             _BYPASS_FILE_CHECK,
             patch(
                 "synthorg.meta.validation.ci_validator._discover_test_files",
                 return_value=[],
             ),
         ):
-            result = await validator.validate(
-                changed_files=_FAKE_FILES,
-            )
+            result = await validator.validate(changed_files=_FAKE_FILES)
         assert not result.passed
         assert not result.tests_passed
         assert any("no matching test files" in e for e in result.errors)

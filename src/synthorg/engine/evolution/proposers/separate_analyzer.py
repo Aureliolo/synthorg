@@ -18,6 +18,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
@@ -182,9 +183,7 @@ def _summarise_memories(
     lines: list[str] = []
     for entry in recent:
         raw = entry.content
-        clipped = (
-            raw if len(raw) <= content_max_chars else raw[:content_max_chars] + "..."
-        )
+        clipped = clip_with_ellipsis(raw, content_max_chars)
         lines.append(
             f"  - memory_id={entry.id} category={entry.category.value} "
             f"content={clipped!r}"

@@ -122,6 +122,8 @@ class TestSupportedMethods:
             "message/send",
             "tasks/get",
             "tasks/cancel",
+            "skills/query",
+            "skills/negotiate",
         }
         assert expected == _SUPPORTED_METHODS
 
@@ -234,15 +236,26 @@ class TestA2AMethodError:
 
 
 class TestValidateTaskOwnership:
-    """Task ownership validation stub."""
+    """Task ownership is enforced per originating peer."""
 
     @pytest.mark.unit
-    def test_ownership_check_is_noop(self) -> None:
-        """Ownership check accepts any authenticated peer."""
+    def test_accepts_owning_peer(self) -> None:
+        """The peer that created the task may access it."""
         from synthorg.a2a.gateway import _validate_task_ownership
 
-        # Should not raise; the task argument is never inspected.
-        _validate_task_ownership(_make_task("task-0", TaskStatus.CREATED), "any-peer")
+        # _make_task stamps created_by="a2a-gateway:peer-a".
+        _validate_task_ownership(_make_task("task-0", TaskStatus.CREATED), "peer-a")
+
+    @pytest.mark.unit
+    def test_rejects_foreign_peer_with_404(self) -> None:
+        """Another peer's access 404s (does not leak task existence)."""
+        from synthorg.a2a.gateway import _A2AMethodError, _validate_task_ownership
+        from synthorg.a2a.models import A2A_TASK_NOT_FOUND
+
+        with pytest.raises(_A2AMethodError) as exc_info:
+            _validate_task_ownership(_make_task("task-0", TaskStatus.CREATED), "peer-b")
+        assert exc_info.value.http_status == 404
+        assert exc_info.value.code == A2A_TASK_NOT_FOUND
 
 
 class TestRequireTaskEngine:
@@ -578,7 +591,9 @@ def _make_task(task_id: str, status: TaskStatus) -> Task:
         description="A2A inbound task",
         type=TaskType.ADMIN,
         project="a2a-inbound",
-        created_by="a2a-gateway",
+        # Stamped with the originating peer so the ownership check passes
+        # for the default "peer-a" caller in the handler tests.
+        created_by="a2a-gateway:peer-a",
         status=status,
         assigned_to=None if status is TaskStatus.CREATED else "a2a-agent",
     )
@@ -706,7 +721,7 @@ class TestHandleMessageSend:
         assert call.kwargs["requested_by"] == "a2a-gateway:peer-a"
         task_data = call.args[0]
         assert task_data.project == "a2a-inbound"
-        assert task_data.created_by == "a2a-gateway"
+        assert task_data.created_by == "a2a-gateway:peer-a"
 
     @pytest.mark.unit
     async def test_rejects_message_exceeding_part_cap(self) -> None:

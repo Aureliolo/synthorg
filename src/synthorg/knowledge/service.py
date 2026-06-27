@@ -52,6 +52,7 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_UNCHANGED,
     KNOWLEDGE_SYNTHESIS_FAILED,
     KNOWLEDGE_SYNTHESISED,
+    KNOWLEDGE_URI_VALIDATION_FAILED,
 )
 from synthorg.persistence.knowledge_protocol import (
     KnowledgeSourceFilter,
@@ -376,6 +377,11 @@ class KnowledgeService:
             resolved = Path(uri).resolve()
         except OSError as exc:
             msg = "source URI could not be resolved to a filesystem path"
+            logger.warning(
+                KNOWLEDGE_URI_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise KnowledgeValidationError(msg) from exc
         if not resolved.is_relative_to(resolved_root):
             msg = "source URI escapes the configured knowledge.repo_root"

@@ -7,7 +7,8 @@ is handled by the evaluation service and strategies at scoring time.
 Shipped defaults: all pillars enabled with recommended weights.
 """
 
-from typing import Self
+import copy
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -315,6 +316,16 @@ class EvalLoopConfig(BaseModel):
         le=10.0,
         description="Pillar score below which the pillar is weak for an agent",
     )
+    pattern_thresholds: dict[str, Annotated[float, Field(ge=0.0, le=10.0)]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-pillar weakness thresholds keyed by pillar value; a pillar"
+            " absent here falls back to ``pattern_weakness_threshold``. Each"
+            " override carries the same 0-10 bound so an out-of-range value is"
+            " rejected. Lets operators hold, say, governance to a stricter bar"
+            " than efficiency."
+        ),
+    )
     pattern_min_agents: int = Field(
         default=3,
         ge=1,
@@ -328,6 +339,26 @@ class EvalLoopConfig(BaseModel):
             "action identifiers are rejected at config load."
         ),
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_mutable_mappings(self) -> Self:
+        """Detach the mutable mapping fields from any caller-held dict.
+
+        ``frozen=True`` blocks reassignment but not in-place mutation of a
+        ``dict`` the caller still holds a reference to; deep-copying at
+        construction makes the frozen contract real for these fields.
+
+        Returns:
+            ``self`` with the mapping fields replaced by deep copies.
+        """
+        object.__setattr__(
+            self, "pattern_thresholds", copy.deepcopy(self.pattern_thresholds)
+        )
+        if self.pattern_action_map is not None:
+            object.__setattr__(
+                self, "pattern_action_map", copy.deepcopy(self.pattern_action_map)
+            )
+        return self
 
 
 class EvaluationConfig(BaseModel):

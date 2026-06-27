@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assignment.models import AgentWorkload
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision
 from synthorg.observability import get_logger
@@ -19,6 +20,29 @@ _DEFAULT_PRUNE_THRESHOLD: Final[float] = 0.3
 
 _NAME = NotBlankStr("workload")
 _ACTION_TYPES = frozenset({ScalingActionType.HIRE, ScalingActionType.PRUNE})
+
+
+def _select_overflow_handler(
+    workloads: tuple[AgentWorkload, ...],
+) -> NotBlankStr | None:
+    """Pick the existing agent best placed to absorb queued work on a hire.
+
+    The least-loaded active agent (fewest in-progress tasks) is chosen as
+    the overflow handler so the new hire's queued work is absorbed by the
+    agent with the most spare capacity while the hire instantiates. Ties
+    break on ``agent_id`` for a deterministic choice.
+
+    Args:
+        workloads: Per-agent workload snapshots from the scaling context.
+
+    Returns:
+        The chosen agent's id, or ``None`` when no workload data is
+        available (the decision then carries no delegate).
+    """
+    if not workloads:
+        return None
+    least = min(workloads, key=lambda w: (w.active_task_count, w.agent_id))
+    return least.agent_id
 
 
 class WorkloadAutoScaleStrategy:
@@ -105,6 +129,7 @@ class WorkloadAutoScaleStrategy:
                     action_type=ScalingActionType.HIRE,
                     source_strategy=ScalingStrategyName.WORKLOAD,
                     target_role=NotBlankStr("general"),
+                    agent_delegate=_select_overflow_handler(context.agent_workloads),
                     rationale=NotBlankStr(
                         f"avg utilization {avg_util.value:.0%} exceeds "
                         f"threshold {self._hire_threshold:.0%}"

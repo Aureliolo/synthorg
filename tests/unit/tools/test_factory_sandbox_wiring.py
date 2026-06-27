@@ -197,13 +197,17 @@ class TestFactorySandboxWiring:
         mock_subprocess_cls.return_value = MagicMock(spec=SandboxBackend)
         config = RootConfig(company_name="test-corp")
 
-        # Explicit sandbox_backends path
+        # Explicit sandbox_backends path. The secure default forces the
+        # CODE_EXECUTION (and TERMINAL) categories onto the ``docker``
+        # backend, so the explicit map must supply one or ``code_runner``
+        # is dropped fail-closed; production wiring builds both backends.
         tools_explicit = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
             web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
             sandbox_backends={
                 "subprocess": MagicMock(spec=SandboxBackend),
+                "docker": MagicMock(spec=SandboxBackend),
             },
         )
 

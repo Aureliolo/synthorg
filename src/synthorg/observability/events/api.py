@@ -11,6 +11,13 @@ API_REQUEST_ERROR: Final[str] = "api.request.error"
 API_HEALTH_CHECK: Final[str] = "api.health.check"
 API_APP_STARTUP: Final[str] = "api.app.startup"
 API_APP_SHUTDOWN: Final[str] = "api.app.shutdown"
+# A security-critical durable subsystem silently degraded to in-memory-only
+# at boot (its persistence wiring failed). Distinct from the generic
+# startup event so operators can alert on durability loss specifically.
+API_TRUST_PERSISTENCE_DEGRADED: Final[str] = "api.app.trust_persistence_degraded"
+API_AUDIT_CHAIN_PERSISTENCE_DEGRADED: Final[str] = (
+    "api.app.audit_chain_persistence_degraded"
+)
 API_APP_DRAIN_STARTED: Final[str] = "api.app.drain.started"
 API_APP_DRAIN_COMPLETED: Final[str] = "api.app.drain.completed"
 API_APP_DRAIN_TIMEOUT: Final[str] = "api.app.drain.timeout"

@@ -98,3 +98,14 @@ KNOWLEDGE_REINDEX_STARTED: Final[str] = "knowledge.reindex.started"
 
 KNOWLEDGE_LIST_REQUESTED: Final[str] = "knowledge.list.requested"
 """Emitted at DEBUG when the list endpoint is called, with filter params."""
+
+KNOWLEDGE_TICKET_FETCHED: Final[str] = "knowledge.ticket.fetched"
+"""Emitted at INFO when the governed ticket fetcher returns a thread."""
+
+KNOWLEDGE_TICKET_FETCH_BLOCKED: Final[str] = "knowledge.ticket.fetch_blocked"
+"""Emitted at WARNING when a ticket fetch is SSRF-blocked, returns non-2xx,
+or yields a malformed payload."""
+
+KNOWLEDGE_URI_VALIDATION_FAILED: Final[str] = "knowledge.uri.validation_failed"
+"""Emitted at WARNING when a filesystem-ingestion URI cannot be resolved to a
+path (path-traversal defence for REPO/PDF loaders)."""

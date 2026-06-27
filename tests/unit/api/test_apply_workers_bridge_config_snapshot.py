@@ -15,7 +15,7 @@ from typing import cast
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.lifecycle_helpers.config_apply import (
+from synthorg.api.lifecycle_helpers.bridge_snapshots import (
     _apply_workers_bridge_config_snapshot,
 )
 from synthorg.api.state import AppState
@@ -74,7 +74,7 @@ class TestApplyWorkersBridgeConfigSnapshot:
 
         warnings: list[tuple[str, dict[str, object]]] = []
 
-        from synthorg.api.lifecycle_helpers import config_apply as mod
+        from synthorg.api.lifecycle_helpers import bridge_snapshots as mod
 
         original = mod.logger.warning
 

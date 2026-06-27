@@ -41,7 +41,7 @@ class TestRedTeamReportNotFoundError:
         err = RedTeamReportNotFoundError(execution_id="exec-1")
         assert err.execution_id == "exec-1"
         assert err.status_code == 500
-        assert err.error_code is ErrorCode.ENGINE_ERROR
+        assert err.error_code is ErrorCode.RED_TEAM_REPORT_MISSING
         assert err.error_category is ErrorCategory.INTERNAL
 
 

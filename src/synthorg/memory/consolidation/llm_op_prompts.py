@@ -6,6 +6,7 @@ empty.  Kept separate from the op so the prompt text and the
 deterministic fallback can be exercised in isolation.
 """
 
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
     untrusted_content_directive,
@@ -49,10 +50,6 @@ def fallback_summary(
         return ""
     lines = [f"Consolidated {entries[0].category.value} memories:"]
     for entry in entries:
-        truncated = (
-            entry.content[:truncate_length] + "..."
-            if len(entry.content) > truncate_length
-            else entry.content
-        )
+        truncated = clip_with_ellipsis(entry.content, truncate_length)
         lines.append(f"- {truncated}")
     return "\n".join(lines)

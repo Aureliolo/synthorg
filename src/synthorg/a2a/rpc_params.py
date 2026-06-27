@@ -90,8 +90,53 @@ class A2ATaskCancelParams(BaseModel):
     id: NotBlankStr = Field(description="Task identifier")
 
 
+class A2ASkillQueryParams(BaseModel):
+    """Typed params for the ``skills/query`` RPC.
+
+    Attributes:
+        method: Discriminator literal (always ``"skills/query"``).
+        skill: Skill id or tag to discover peers for (case-insensitive).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    method: Literal["skills/query"] = Field(
+        default="skills/query",
+        description="RPC method discriminator",
+    )
+    skill: NotBlankStr = Field(description="Skill id or tag to match")
+
+
+class A2ASkillNegotiateParams(BaseModel):
+    """Typed params for the ``skills/negotiate`` RPC.
+
+    Sent after a ``skills/query`` has surfaced candidate peers: the caller
+    names a single peer and the skill it intends to route, and the gateway
+    confirms the peer is registered and still advertises the skill before
+    the caller routes the task to it.
+
+    Attributes:
+        method: Discriminator literal (always ``"skills/negotiate"``).
+        skill: Skill id or tag the caller intends to route (case-insensitive).
+        peer_name: The registered peer selected from a prior ``skills/query``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    method: Literal["skills/negotiate"] = Field(
+        default="skills/negotiate",
+        description="RPC method discriminator",
+    )
+    skill: NotBlankStr = Field(description="Skill id or tag to negotiate")
+    peer_name: NotBlankStr = Field(description="Registered peer to negotiate with")
+
+
 A2ARpcParams = Annotated[
-    A2AMessageSendParams | A2ATaskGetParams | A2ATaskCancelParams,
+    A2AMessageSendParams
+    | A2ATaskGetParams
+    | A2ATaskCancelParams
+    | A2ASkillQueryParams
+    | A2ASkillNegotiateParams,
     Discriminator("method"),
 ]
 """Discriminated union of typed A2A RPC params.
@@ -117,9 +162,9 @@ def parse_rpc_params(rpc_request: JsonRpcRequest) -> A2ARpcParams:
         rpc_request: A validated :class:`JsonRpcRequest`.
 
     Returns:
-        One of :class:`A2AMessageSendParams`,
-        :class:`A2ATaskGetParams`, or :class:`A2ATaskCancelParams`,
-        chosen by the envelope's ``method`` field.
+        The :class:`A2ARpcParams` variant matching the envelope's
+        ``method`` field (message/send, tasks/get, tasks/cancel,
+        skills/query, or skills/negotiate).
 
     Raises:
         ValidationError: When the params shape does not match the
@@ -133,6 +178,8 @@ def parse_rpc_params(rpc_request: JsonRpcRequest) -> A2ARpcParams:
 __all__ = [
     "A2AMessageSendParams",
     "A2ARpcParams",
+    "A2ASkillNegotiateParams",
+    "A2ASkillQueryParams",
     "A2ATaskCancelParams",
     "A2ATaskGetParams",
     "parse_rpc_params",

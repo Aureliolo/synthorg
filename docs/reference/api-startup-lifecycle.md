@@ -12,8 +12,14 @@ The API boots in two phases. **Construction** (the `create_app` body) wires sync
 - `agent_registry` must be built BEFORE `auto_wire_meetings`.
 - `tunnel_provider` is wired unconditionally (not gated by `integrations.enabled`).
 - `message_bus.set_quadratic_alert_sink(DispatcherQuadraticAlertSink(...))` is called after the notification dispatcher is built, binding the in-memory bus's quadratic-fan-out enforcer to the dispatcher through the `MessageBus` protocol seam (the NATS backend is a no-op). This is a protocol call, not an `isinstance(InMemoryMessageBus)` + concrete-attr read.
+- `ConflictResolutionService` is built and installed on `CommunicationStateSlice` by `wire_conflict_resolution_service` (`api/_comms_conflict_wiring.py`): the hierarchy comes from the boot company snapshot and the human resolver reuses the already-wired escalation store/processor/registry.
+- `PeerDiscoveryClient` is built from the peer registry + SSRF network validator and placed on `A2aStateSlice.peer_discovery` so the gateway's `skills/query` / `skills/negotiate` handlers can resolve learned peers.
 
 ## On-startup ordering invariants
+
+- Durable security/HR state wires best-effort after persistence connects, inside `install_runtime_services` via `durability_wiring.py`: `_try_wire_trust_persistence` attaches the trust state + change-history repos and hydrates `TrustService`; `_try_wire_audit_chain_persistence` attaches a `DurableAuditChainWriter` to each live `AuditChainSink` (hydrate + verify + drain). Both are idempotent and degrade to in-memory-only on failure, logging the dedicated `API_TRUST_PERSISTENCE_DEGRADED` / `API_AUDIT_CHAIN_PERSISTENCE_DEGRADED` events. `PromotionService` similarly attaches its durable history repo and hydrates the cooldown in `wire_promotion`; a hydrate failure disables promotion (fail-safe) rather than re-promoting on un-restored cooldown.
+- The closed-loop `EvalLoopCoordinator` is built from the performance tracker + training service in `wire_eval_loop` and published on `HrStateSlice`; the periodic `EvalLoopCycleScheduler` that drives `run_cycle` is opt-in (`hr.eval_loop_cycle_enabled`) and re-reads `hr.eval_loop_cycle_paused` each tick.
+- The observability bridge config arm is applied alongside the notification dispatcher: `ObservabilityBridgeSettingsSubscriber` watches the `observability.*` keys and recomposes `get_observability_bridge_config()` so console-level / telemetry-enabled edits take effect via the settings dispatcher.
 
 - `SettingsService` auto-wire must precede `WorkflowExecutionObserver` registration, so it picks up the resolver-driven `max_subworkflow_depth` instead of the seed default.
 - `OntologyService` wires after `persistence.connect()` via `_wire_ontology_service`.

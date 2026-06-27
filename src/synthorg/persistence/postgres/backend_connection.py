@@ -57,6 +57,15 @@ def _build_conninfo(config: PostgresConfig) -> str:
         Result of type ``str``.
     """
     connect_timeout = max(2, math.ceil(config.connect_timeout_seconds))
+    # Only pass cert paths libpq when configured; ``make_conninfo`` would
+    # otherwise emit empty ``sslrootcert=`` keys that libpq rejects.
+    ssl_paths: dict[str, str] = {}
+    if config.ssl_root_cert_path is not None:
+        ssl_paths["sslrootcert"] = str(config.ssl_root_cert_path)
+    if config.ssl_cert_path is not None:
+        ssl_paths["sslcert"] = str(config.ssl_cert_path)
+    if config.ssl_key_path is not None:
+        ssl_paths["sslkey"] = str(config.ssl_key_path)
     return psycopg.conninfo.make_conninfo(
         host=config.host,
         port=config.port,
@@ -66,6 +75,7 @@ def _build_conninfo(config: PostgresConfig) -> str:
         sslmode=config.ssl_mode,
         application_name=config.application_name,
         connect_timeout=connect_timeout,
+        **ssl_paths,
     )
 
 

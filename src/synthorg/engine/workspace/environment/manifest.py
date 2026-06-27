@@ -124,7 +124,7 @@ class ManifestEnvironmentStrategy:
             written filename when a fresh manifest was created;
             ``seeded=False`` when one already existed.
         """
-        if self.detect(workspace_path):
+        if await asyncio.to_thread(self.detect, workspace_path):
             return ScaffoldResult(seeded=False)
         path = self._manifest_path(workspace_path)
         await asyncio.to_thread(
@@ -288,7 +288,9 @@ class ManifestEnvironmentStrategy:
                     f"{command!r}"
                 )
                 raise EnvironmentProvisionError(msg)
-        declaration_hash = self.declaration_hash(workspace_path)
+        declaration_hash = await asyncio.to_thread(
+            self.declaration_hash, workspace_path
+        )
         logger.info(
             ENVIRONMENT_PROVISIONED,
             project_id=str(project_id),

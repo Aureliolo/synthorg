@@ -8,7 +8,7 @@ All red-team errors descend from :class:`RedTeamError`, which is an
 from typing import ClassVar
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.errors import EngineError
 
 
@@ -33,7 +33,7 @@ class RedTeamReportNotFoundError(RedTeamError):
     """
 
     status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_REPORT_MISSING
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = (
         "Red-team agent did not produce a report for the deliverable"
@@ -41,7 +41,7 @@ class RedTeamReportNotFoundError(RedTeamError):
 
     def __init__(self, *, execution_id: NotBlankStr) -> None:
         super().__init__(self.default_message)
-        self.execution_id: NotBlankStr = execution_id
+        self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
 class RedTeamReportValidationError(RedTeamError):
@@ -70,7 +70,7 @@ class RedTeamDispatchError(RedTeamError):
     """
 
     status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_DISPATCH_FAILED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = (
         "Red-team agent dispatch failed before the agent could file a report"
@@ -94,7 +94,7 @@ class RedTeamReportAlreadyExistsError(RedTeamError):
 
     def __init__(self, *, execution_id: NotBlankStr) -> None:
         super().__init__(self.default_message)
-        self.execution_id: NotBlankStr = execution_id
+        self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
 class RedTeamRoleMissingError(RedTeamError):
@@ -106,7 +106,7 @@ class RedTeamRoleMissingError(RedTeamError):
     """
 
     status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_ROLE_MISSING
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = (
         "Built-in red-team role missing from BUILTIN_ROLES catalog"
@@ -124,7 +124,7 @@ class RedTeamRuntimeSeedIncompleteError(RedTeamError):
     """
 
     status_code: ClassVar[int] = 500
-    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_RUNTIME_SEED_INCOMPLETE
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = (
         "Red-team runtime seed is incomplete (report_repo / submit_tool unset)"

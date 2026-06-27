@@ -251,6 +251,7 @@ def _try_wire_performance_persistence(app_state: AppState) -> None:
         tracker.attach_metric_repos(
             task_metric_repo=persistence.task_metrics,
             collab_metric_repo=persistence.collaboration_metrics,
+            contribution_repo=persistence.agent_contributions,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

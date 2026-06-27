@@ -240,7 +240,14 @@ def _build_coordination_chain(
     )
     return build_coordination_middleware_chain(
         CoordinationMiddlewareConfig(),
-        deps={"replan_hook": replan_hook},
+        deps={
+            "replan_hook": replan_hook,
+            # The progress ledger's escalation threshold is the same
+            # "consecutive stalls before escalation" knob the replan hook
+            # already reads, so both share the operator-tuned
+            # ``coordination.max_stall_count`` rather than a second default.
+            "escalation_threshold": coord_section.max_stall_count,
+        },
     )
 
 
@@ -254,7 +261,7 @@ async def _build_runtime_coordinator(
 
     Resolves the operator-tuned decomposition model and routing-scorer
     weights, wires real git-worktree workspace isolation, then delegates
-    to the unit-tested :func:`build_coordinator` factory. The three
+    to the unit-tested :func:`build_coordinator` factory. The four
     resolution steps are independent, so they run concurrently under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The ``AgentTaskScorer``

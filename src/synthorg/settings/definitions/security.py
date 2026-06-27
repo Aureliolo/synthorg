@@ -31,6 +31,8 @@ _r.register(
         default="true",
         description="Master switch for the security subsystem",
         group="General",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
@@ -42,6 +44,8 @@ _r.register(
         default="true",
         description="Whether to record security audit entries",
         group="General",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
@@ -54,6 +58,7 @@ _r.register(
         description="Scan tool output for secrets and sensitive data",
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
@@ -66,6 +71,7 @@ _r.register(
         description="Response policy when output scan detects sensitive content",
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         enum_values=("redact", "withhold", "log_only", "autonomy_tiered"),
     )
 )

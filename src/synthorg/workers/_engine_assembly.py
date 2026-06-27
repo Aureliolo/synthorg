@@ -42,7 +42,10 @@ from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.factory import build_sandbox_backends
+from synthorg.tools.sandbox.factory import (
+    build_sandbox_backends,
+    merge_secure_backend_defaults,
+)
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
@@ -50,6 +53,7 @@ from synthorg.workers._agent_engine_collaborators import (
     boot_knowledge_tool_factory_provider,
     boot_research_tool_factory_provider,
     boot_steering_inbox,
+    boot_structure_map_tool_factory_provider,
 )
 
 if TYPE_CHECKING:
@@ -131,8 +135,11 @@ async def _build_tool_registry(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
     )
+    # Force untrusted-exec categories onto the container backend so the
+    # built map contains the docker backend the tool factory resolves to
+    # (the factory applies the same merge to its per-category lookup).
     sandbox_backends = build_sandbox_backends(
-        config=app_state.config.sandboxing,
+        config=merge_secure_backend_defaults(app_state.config.sandboxing),
         workspace=workspace_root,
         lifecycle_strategy=lifecycle_strategy,
     )
@@ -566,6 +573,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
         docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),
         research_tool_factory_provider=boot_research_tool_factory_provider(app_state),
+        structure_map_tool_factory_provider=(
+            boot_structure_map_tool_factory_provider(app_state)
+        ),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),

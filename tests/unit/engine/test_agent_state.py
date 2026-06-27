@@ -127,6 +127,16 @@ class TestAgentRuntimeStateIdle:
         assert state.last_activity_at is not None
         assert state.last_activity_at.tzinfo is not None
 
+    def test_idle_uses_injected_clock(self) -> None:
+        """The clock seam stamps last_activity_at from the injected clock."""
+        from tests._shared import FakeClock
+
+        fixed = datetime(2026, 6, 26, 9, 30, tzinfo=UTC)
+        state = AgentRuntimeState.idle(
+            "agent-idle", currency="EUR", clock=FakeClock(start=fixed)
+        )
+        assert state.last_activity_at == fixed
+
     def test_idle_with_blank_agent_id_raises(self) -> None:
         with pytest.raises(ValueError, match="whitespace"):
             AgentRuntimeState.idle("  ", currency="EUR")

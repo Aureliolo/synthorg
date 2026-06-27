@@ -40,6 +40,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_DEPLOYMENT_ID_LOADED,
     TELEMETRY_DISABLED,
     TELEMETRY_ENABLED,
+    TELEMETRY_ENABLED_RESOLVED,
     TELEMETRY_ENVIRONMENT_RESOLVED,
     TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
     TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
@@ -389,23 +390,39 @@ class TelemetryCollector:
         """Whether telemetry is enabled."""
         return self._config.enabled
 
-    def apply_enabled(self, *, enabled: bool) -> None:
-        """Override the resolved ``enabled`` flag before the collector starts.
+    def apply_resolved_enabled(self, *, enabled: bool) -> None:
+        """Fold a settings-resolved ``telemetry.enabled`` into the collector.
 
-        ``telemetry.enabled`` is resolved with full DB > env > default
-        precedence only after persistence connects, but the collector is
-        built earlier (env > default), so boot re-applies the authoritative
-        value here before :meth:`start` reads it. Rebinds ``self._config`` to
-        a fresh frozen copy via ``model_copy`` (the model is immutable);
-        intended for the pre-start boot hook only, before any task reads the
-        flag.
+        The constructor takes ``config.enabled`` from the bootstrap chain
+        (env > default) because the DB-backed ``ConfigResolver`` does not
+        exist at app-construction time. Once the settings service is wired,
+        the startup ``_apply_observability_settings`` step re-resolves
+        ``telemetry.enabled`` (DB > env > default) and calls this to apply
+        the authoritative value -- restoring the precedence the constructor
+        comment defers here.
+
+        Must be called before :meth:`start`: it rebuilds the reporter to
+        match the new flag, which is only safe while no deployment ID is
+        loaded and no heartbeat task is running.
 
         Args:
-            enabled: The authoritative resolved value.
+            enabled: The settings-resolved enabled flag.
+
+        Raises:
+            RuntimeError: When called after :meth:`start` / :meth:`shutdown`.
         """
+        if self._deployment_id is not None or self._closed:
+            msg = "apply_resolved_enabled must be called before start()"
+            raise RuntimeError(msg)
         if enabled == self._config.enabled:
             return
         self._config = self._config.model_copy(update={"enabled": enabled})
+        self._reporter = create_reporter(self._config)
+        logger.info(
+            TELEMETRY_ENABLED_RESOLVED,
+            enabled=enabled,
+            source="settings_resolver",
+        )
 
     @property
     def is_functional(self) -> bool:

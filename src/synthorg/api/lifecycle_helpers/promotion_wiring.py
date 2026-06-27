@@ -24,6 +24,7 @@ from synthorg.hr.promotion.factory import build_promotion_service
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import SettingsStateSlice
 
@@ -64,6 +65,30 @@ async def wire_promotion(
         approval_store=app_state.slice(ApprovalStateSlice).store,
         trust_service=app_state.slice(SecurityStateSlice).trust_service,
     )
+    # Attach the durable promotion-history repo + hydrate the cooldown
+    # state before the cycle scheduler can run, so a crashloop cannot
+    # re-enable promotion by discarding the in-memory cooldown.
+    if app_state.slice(PersistenceStateSlice).backend is not None:
+        try:
+            # Resolve the repo and attach inside the guard: a partially wired
+            # backend can raise on lookup, and that must disable promotion
+            # (fail safe) rather than abort startup.
+            service.attach_persistence(
+                history_repo=persistence_of(app_state).promotion_history,
+            )
+            await service.hydrate()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Fail safe: starting the scheduler on un-restored cooldown is
+            # the crashloop re-promotion bug durability exists to prevent.
+            logger.warning(
+                API_APP_STARTUP,
+                service="promotion",
+                note="cooldown hydrate failed; promotion disabled",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
     scheduler = PromotionCycleScheduler(
         service,
         interval_seconds=config.cycle_interval_seconds,

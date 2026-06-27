@@ -174,6 +174,54 @@ class SQLiteConversationParticipantRepository:
                 )
                 raise QueryError(msg) from exc
 
+    async def save_many(self, entities: tuple[ConversationParticipant, ...]) -> None:
+        """Upsert a whole roster batch in one transaction (all-or-nothing).
+
+        Raises:
+            ConstraintViolationError: On a duplicate
+                ``(conversation_id, agent_id)`` pair.
+            QueryError: On other database errors.
+        """
+        if not entities:
+            return
+        rows = [
+            (
+                str(entity.id),
+                entity.conversation_id,
+                entity.agent_id,
+                entity.agent_name,
+                entity.participant_role,
+                entity.status.value,
+                entity.added_by,
+                format_iso_utc(entity.added_at),
+            )
+            for entity in entities
+        ]
+        async with self._write_context():
+            try:
+                await self._db.executemany(_PARTICIPANT_UPSERT_SQL, rows)
+                await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await _safe_rollback(self._db, operation="save_many")
+                msg = f"Constraint violation saving {len(rows)} participants"
+                logger.warning(
+                    COS_GROUP_PARTICIPANT_FAILED,
+                    operation="save_many",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(self._db, operation="save_many")
+                msg = f"Failed to save {len(rows)} participants"
+                logger.warning(
+                    COS_GROUP_PARTICIPANT_FAILED,
+                    operation="save_many",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
     async def get(self, entity_id: NotBlankStr) -> ConversationParticipant | None:
         """Get a participant by id, or ``None`` if not found.
 

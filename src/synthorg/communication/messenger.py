@@ -1,7 +1,5 @@
 """Per-agent messenger facade over the message bus (see Communication design page)."""
 
-from datetime import UTC, datetime
-
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
 from synthorg.communication.enums import MessagePriority, MessageType
@@ -14,6 +12,7 @@ from synthorg.communication.subscription import (
     DeliveryEnvelope,
     Subscription,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -99,7 +98,7 @@ class AgentMessenger:
         ValueError: If *agent_id* or *agent_name* is blank.
     """
 
-    __slots__ = ("_agent_id", "_agent_name", "_bus", "_dispatcher")
+    __slots__ = ("_agent_id", "_agent_name", "_bus", "_clock", "_dispatcher")
 
     def __init__(
         self,
@@ -107,6 +106,8 @@ class AgentMessenger:
         agent_name: str,
         bus: MessageBus,
         dispatcher: MessageDispatcher | None = None,
+        *,
+        clock: Clock | None = None,
     ) -> None:
         if not agent_id.strip():
             logger.warning(
@@ -128,6 +129,7 @@ class AgentMessenger:
         self._agent_name = agent_name
         self._bus = bus
         self._dispatcher = dispatcher
+        self._clock = clock or SystemClock()
         logger.debug(
             COMM_MESSENGER_CREATED,
             agent_id=agent_id,
@@ -168,7 +170,7 @@ class AgentMessenger:
         """
         resolved = _resolve_parts(content, parts)
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             sender=self._agent_id,
             to=to,
             type=message_type,
@@ -218,7 +220,7 @@ class AgentMessenger:
         resolved = _resolve_parts(content, parts)
         channel = _direct_channel_name(self._agent_id, to)
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             sender=self._agent_id,
             to=to,
             type=message_type,
@@ -268,7 +270,7 @@ class AgentMessenger:
         """
         resolved = _resolve_parts(content, parts)
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             sender=self._agent_id,
             to=channel,
             type=message_type,

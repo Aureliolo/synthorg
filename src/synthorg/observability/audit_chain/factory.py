@@ -12,11 +12,12 @@ existing Prometheus / timeout wiring simply finds no sink to hook.
 
 import logging
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
-from synthorg.observability.audit_chain.config import AuditChainConfig
+from synthorg.observability.audit_chain.config import AuditChainConfig, TsaPreset
 from synthorg.observability.audit_chain.signer import build_ed25519_signer
 from synthorg.observability.audit_chain.sink import AuditChainSink
 from synthorg.observability.audit_chain.timestamping import (
@@ -55,6 +56,35 @@ def _load_trusted_roots(path: Path | None) -> tuple[bytes, ...]:
     return tuple(blocks)
 
 
+def _resolve_preset_urls() -> MappingProxyType[TsaPreset, str]:
+    """Build the per-preset TSA URL map from bootstrap-resolved settings.
+
+    The audit-chain sink is installed during ``configure_logging`` -- before
+    the DB-backed ``ConfigResolver`` exists -- so the operator-tunable
+    ``observability.tsa_endpoint_*`` values are resolved through the
+    bootstrap chain (env > registered default). A later ``/settings`` DB
+    edit to a TSA endpoint is therefore ``restart_required``; the live
+    snapshot still tracks it via ``ObservabilityBridgeSettingsSubscriber``.
+
+    Returns:
+        A mapping of each non-CUSTOM, non-NONE preset to its resolved URL.
+    """
+    from synthorg.settings.bootstrap_resolver import resolve_init_value  # noqa: PLC0415
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    keys: tuple[tuple[TsaPreset, str], ...] = (
+        (TsaPreset.FREETSA, "tsa_endpoint_freetsa"),
+        (TsaPreset.DIGICERT, "tsa_endpoint_digicert"),
+        (TsaPreset.SECTIGO, "tsa_endpoint_sectigo"),
+    )
+    return MappingProxyType(
+        {
+            preset: str(resolve_init_value(SettingNamespace.OBSERVABILITY, key).value)
+            for preset, key in keys
+        }
+    )
+
+
 def _build_timestamp_provider(config: AuditChainConfig) -> TimestampProvider:
     """Select the timestamp provider for *config*.
 
@@ -62,7 +92,7 @@ def _build_timestamp_provider(config: AuditChainConfig) -> TimestampProvider:
         A TSA-backed resilient provider when a TSA URL resolves, else
         the local-clock provider.
     """
-    tsa_url = config.effective_tsa_url()
+    tsa_url = config.effective_tsa_url(preset_urls=_resolve_preset_urls())
     if tsa_url is None:
         return LocalClockProvider()
     return ResilientTimestampProvider(

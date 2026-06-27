@@ -7,12 +7,12 @@ via :class:`~synthorg.persistence.repositories.AgentStateRepository` and
 is independent of the heavier checkpoint system.
 """
 
-from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 
@@ -142,6 +142,7 @@ class AgentRuntimeState(BaseModel):
         agent_id: NotBlankStr,
         *,
         currency: CurrencyCode,
+        clock: Clock | None = None,
     ) -> AgentRuntimeState:
         """Create an IDLE state for the given agent.
 
@@ -151,6 +152,9 @@ class AgentRuntimeState(BaseModel):
                 even when the balance is zero so the persisted row keeps
                 an unambiguous unit if the agent later transitions to
                 EXECUTING.
+            clock: Time source for ``last_activity_at`` (injectable for
+                tests); the model is frozen, so the seam is threaded
+                through this classmethod rather than an instance.
 
         Returns:
             A new ``AgentRuntimeState`` in IDLE status.
@@ -159,7 +163,7 @@ class AgentRuntimeState(BaseModel):
             agent_id=agent_id,
             status=ExecutionStatus.IDLE,
             currency=currency,
-            last_activity_at=datetime.now(UTC),
+            last_activity_at=(clock or SystemClock()).now(),
         )
 
     @classmethod
@@ -169,6 +173,7 @@ class AgentRuntimeState(BaseModel):
         status: ExecutionStatus,
         *,
         currency: CurrencyCode,
+        clock: Clock | None = None,
     ) -> AgentRuntimeState:
         """Create a runtime state from an ``AgentContext``.
 
@@ -177,6 +182,8 @@ class AgentRuntimeState(BaseModel):
             status: Must be ``EXECUTING`` or ``PAUSED`` (not ``IDLE``).
             currency: Operator's active ISO 4217 currency code used to
                 denominate ``context.accumulated_cost``.
+            clock: Time source for ``last_activity_at`` (injectable for
+                tests); threaded here because the model is frozen.
 
         Returns:
             A new ``AgentRuntimeState`` derived from the context.
@@ -196,6 +203,6 @@ class AgentRuntimeState(BaseModel):
             turn_count=context.turn_count,
             accumulated_cost=context.accumulated_cost.cost,
             currency=currency,
-            last_activity_at=datetime.now(UTC),
+            last_activity_at=(clock or SystemClock()).now(),
             started_at=context.started_at,
         )

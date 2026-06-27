@@ -11,6 +11,7 @@ seniority among positions wins).
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution._helpers import (
     find_losers,
     find_position_or_raise,
@@ -96,6 +97,12 @@ class DebateResolver:
             judge=judge_id,
         )
 
+        # Records the resolution path truthfully: a judged debate stays
+        # RESOLVED_BY_DEBATE, but an evaluator failure (or no evaluator)
+        # falls back to seniority and must be recorded as
+        # RESOLVED_BY_AUTHORITY so the persisted outcome and dissent audit
+        # trail do not misattribute the decision to a debate that never ran.
+        outcome = ConflictResolutionOutcome.RESOLVED_BY_DEBATE
         if self._judge_evaluator is not None:
             try:
                 winning_agent_id, reasoning = await self._judge_evaluator.evaluate(
@@ -111,6 +118,7 @@ class DebateResolver:
                     conflict_id=str(conflict.id),
                     judge=judge_id,
                 )
+                outcome = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
                 try:
                     winning_agent_id, reasoning = self._authority_fallback(
                         conflict,
@@ -141,6 +149,7 @@ class DebateResolver:
                 strategy="debate",
                 reason="no_judge_evaluator",
             )
+            outcome = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
             winning_agent_id, reasoning = self._authority_fallback(conflict)
 
         winning_pos = find_position_or_raise(conflict, winning_agent_id)
@@ -154,7 +163,7 @@ class DebateResolver:
 
         return ConflictResolution(
             conflict_id=str(conflict.id),
-            outcome=ConflictResolutionOutcome.RESOLVED_BY_DEBATE,
+            outcome=outcome,
             winning_agent_id=winning_agent_id,
             winning_position=winning_pos.position,
             decided_by=judge_id,
@@ -186,6 +195,7 @@ class DebateResolver:
                 dissenting_position=loser.position,
                 strategy_used=ConflictResolutionStrategy.DEBATE,
                 timestamp=datetime.now(UTC),
+                minority_evidence=extract_evidence(loser.reasoning),
                 metadata=(("judge", resolution.decided_by),),
             )
             for loser in losers

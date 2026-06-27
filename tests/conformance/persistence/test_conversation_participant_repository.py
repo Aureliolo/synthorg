@@ -157,6 +157,33 @@ class TestConversationParticipantRepository:
         assert fetched is not None
         assert fetched.status is ConversationParticipantStatus.REMOVED
 
+    async def test_save_many_enrols_whole_roster(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _save_conversation(backend, "conv-grp")
+        repo = _participant_repo(backend)
+        roster = tuple(
+            _make_participant(
+                participant_id=f"part-{i}",
+                agent_id=f"agent-{i:03d}",
+                offset_micros=i,
+            )
+            for i in range(3)
+        )
+        await repo.save_many(roster)
+        rows = await repo.query(
+            ConversationParticipantFilterSpec(conversation_id=sid("conv-grp"))
+        )
+        assert [r.id for r in rows] == [as_uuid(f"part-{i}") for i in range(3)]
+
+    async def test_save_many_empty_is_noop(self, backend: PersistenceBackend) -> None:
+        repo = _participant_repo(backend)
+        await repo.save_many(())
+        rows = await repo.query(
+            ConversationParticipantFilterSpec(conversation_id=sid("conv-grp"))
+        )
+        assert rows == ()
+
     async def test_query_scopes_to_conversation(
         self, backend: PersistenceBackend
     ) -> None:

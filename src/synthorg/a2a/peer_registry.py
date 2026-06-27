@@ -13,6 +13,7 @@ from types import MappingProxyType
 from synthorg.a2a.models import (
     A2AAgentCard,
 )
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (
     A2A_PEER_REGISTERED,
@@ -25,8 +26,10 @@ logger = get_logger(__name__)
 class PeerRegistry:
     """In-memory cache of discovered external A2A peers.
 
-    Thread-safe via asyncio.Lock.  Peer names are normalized
-    to lowercase for case-insensitive lookup.
+    Coroutine-safe: concurrent asyncio tasks in the same event loop are
+    serialised by an :class:`asyncio.Lock` (this does not guard against
+    OS-thread concurrency). Peer names are normalised to lowercase for
+    case-insensitive lookup.
     """
 
     __slots__ = ("_lock", "_peers")
@@ -72,6 +75,35 @@ class PeerRegistry:
         key = peer_name.lower()
         async with self._lock:
             return self._peers.get(key)
+
+    async def find_by_skill(self, skill: str) -> tuple[str, ...]:
+        """Return peers advertising a skill matching ``skill``.
+
+        Matches case-insensitively against each advertised skill's ``id``
+        and its ``tags``, so a caller can route by either the canonical
+        skill identifier or a searchable tag. Results are sorted for
+        deterministic negotiation/routing.
+
+        Args:
+            skill: Skill id or tag to match (case-insensitive).
+
+        Returns:
+            Sorted peer names whose card advertises the skill; empty when
+            ``skill`` is blank or no peer matches.
+        """
+        needle = normalize_ascii_lowercase(skill)
+        if not needle:
+            return ()
+        matches: list[str] = []
+        async with self._lock:
+            for name, card in self._peers.items():
+                if any(
+                    sk.id.lower() == needle
+                    or any(tag.lower() == needle for tag in sk.tags)
+                    for sk in card.skills
+                ):
+                    matches.append(name)
+        return tuple(sorted(matches))
 
     async def remove(self, peer_name: str) -> bool:
         """Remove a peer from the registry.

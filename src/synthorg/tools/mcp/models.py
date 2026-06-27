@@ -4,7 +4,10 @@ Defines ``MCPToolInfo`` for discovered tool metadata and
 ``MCPRawResult`` for raw MCP call results before mapping.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+import copy
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -33,6 +36,16 @@ class MCPToolInfo(BaseModel):
     server_name: NotBlankStr = Field(
         description="Name of the hosting MCP server",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_input_schema(self) -> Self:
+        """Deep-copy ``input_schema`` so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``input_schema`` deep-copied.
+        """
+        object.__setattr__(self, "input_schema", copy.deepcopy(self.input_schema))
+        return self
 
 
 class MCPRawResult(BaseModel):

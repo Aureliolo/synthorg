@@ -27,6 +27,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.promotion._approval_ops import create_approval, verify_approval
 from synthorg.hr.promotion._identity_guard import checked_identity
 from synthorg.hr.promotion._levels import next_level, prev_level
+from synthorg.hr.promotion._persistence import PromotionPersistenceMixin
 from synthorg.hr.promotion._record_builder import build_promotion_record
 from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
 from synthorg.hr.promotion.config import PromotionConfig
@@ -52,6 +53,9 @@ from synthorg.observability.events.promotion import (
     PROMOTION_REJECTED,
     PROMOTION_REQUESTED,
 )
+from synthorg.persistence.promotion_history_protocol import (
+    PromotionHistoryRepository,
+)
 from synthorg.security.trust.service import TrustService
 
 logger = get_logger(__name__)
@@ -68,7 +72,7 @@ PromotionNotificationCallback = Callable[
 ]
 
 
-class PromotionService:
+class PromotionService(PromotionPersistenceMixin):
     """Orchestrates agent promotions and demotions.
 
     Coordinates criteria evaluation, approval decisions, model
@@ -100,6 +104,7 @@ class PromotionService:
         approval_store: ApprovalStoreProtocol | None = None,
         trust_service: TrustService | None = None,
         on_notification: PromotionNotificationCallback | None = None,
+        history_repo: PromotionHistoryRepository | None = None,
     ) -> None:
         self._criteria = criteria_strategy
         self._approval = approval_strategy
@@ -110,6 +115,12 @@ class PromotionService:
         self._approval_store = approval_store
         self._trust_service = trust_service
         self._on_notification = on_notification
+        # Durable backing store for promotion records. When attached
+        # (production) every applied record is best-effort written
+        # through, and the in-memory history + cooldown are recomputed
+        # from it at startup so a crashloop cannot re-enable promotion by
+        # discarding the cooldown.
+        self._history_repo = history_repo
         self._promotion_history: dict[str, list[PromotionRecord]] = {}
         self._cooldown_until: dict[str, AwareDatetime] = {}
         # Per-agent lock serialising ``apply_promotion``: the cooldown
@@ -471,19 +482,6 @@ class PromotionService:
                 updates["model"] = identity.model.model_copy(
                     update={"model_id": NotBlankStr(new_model_id)},
                 )
-                logger.info(
-                    PROMOTION_MODEL_CHANGED,
-                    agent_id=request.agent_id,
-                    old_model=str(identity.model.model_id),
-                    new_model=new_model_id,
-                )
-            await self._registry.update_identity(request.agent_id, **updates)
-            logger.info(
-                HR_AGENT_STATUS_TRANSITIONED,
-                agent_id=request.agent_id,
-                from_status=request.current_level.value,
-                to_status=request.target_level.value,
-            )
 
             now = datetime.now(UTC)
             record = build_promotion_record(
@@ -492,6 +490,27 @@ class PromotionService:
                 new_model_id=new_model_id,
                 initiated_by=initiated_by,
                 now=now,
+            )
+            # Persist the durable history record BEFORE mutating live state.
+            # The per-agent cooldown that prevents double-promotion is rebuilt
+            # from this history on restart, so live state must never run ahead
+            # of it. ``_persist_record`` raises (fail closed) on a durable miss,
+            # aborting the apply before the registry/cooldown change.
+            await self._persist_record(record)
+
+            await self._registry.update_identity(request.agent_id, **updates)
+            if new_model_id is not None:
+                logger.info(
+                    PROMOTION_MODEL_CHANGED,
+                    agent_id=request.agent_id,
+                    old_model=str(identity.model.model_id),
+                    new_model=new_model_id,
+                )
+            logger.info(
+                HR_AGENT_STATUS_TRANSITIONED,
+                agent_id=request.agent_id,
+                from_status=request.current_level.value,
+                to_status=request.target_level.value,
             )
             self._promotion_history.setdefault(str(request.agent_id), []).append(record)
             if self._config.cooldown_hours > 0:

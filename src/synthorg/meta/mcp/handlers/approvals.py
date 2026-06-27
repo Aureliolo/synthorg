@@ -66,6 +66,10 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_APPROVED,
+    SECURITY_APPROVAL_REJECTED,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -329,6 +333,15 @@ async def _approve(
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    # Emit the signed ``security.*`` audit event so the tamper-evident
+    # audit chain records the approve decision; the ``mcp.*`` event above
+    # is operational only and is not chained.
+    logger.info(
+        SECURITY_APPROVAL_APPROVED,
+        approval_id=str(args.approval_id),
+        actor_agent_id=actor_id(actor),
+        reason=args.comment,
+    )
     return ok(data=saved.model_dump(mode="json"))
 
 
@@ -379,6 +392,13 @@ async def _reject(
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=approval_id,
+    )
+    # Chain the reject decision into the tamper-evident audit log.
+    logger.info(
+        SECURITY_APPROVAL_REJECTED,
+        approval_id=str(approval_id),
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
     )
     return ok(data=saved.model_dump(mode="json"))
 

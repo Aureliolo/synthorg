@@ -14,6 +14,7 @@ Two concrete strategies satisfy :class:`DecisionProcessor`:
 from typing import assert_never
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationDecision,
     RejectDecision,
@@ -86,6 +87,7 @@ def _build_dissent_records_from_resolution(
             dissenting_position=pos.position,
             strategy_used=ConflictResolutionStrategy.HUMAN,
             timestamp=timestamp,
+            minority_evidence=extract_evidence(pos.reasoning),
             metadata=(("escalation_reason", "human_review_required"),),
         )
         for pos in targets

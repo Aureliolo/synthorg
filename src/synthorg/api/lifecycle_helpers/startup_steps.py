@@ -16,6 +16,10 @@ from synthorg.api._app_wiring import (
     _try_wire_performance_persistence,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
+from synthorg.api.lifecycle_helpers.durability_wiring import (
+    _try_wire_audit_chain_persistence,
+    _try_wire_trust_persistence,
+)
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -91,11 +95,11 @@ def _publish_red_team_runtime(
 def _try_wire_ssrf_violation_recorder(app_state: AppState) -> None:
     """Install the fail-safe SSRF-violation recorder when persistence is up.
 
-    Turns the outbound SSRF guard's previously write-never violation store
-    into a live audit trail: every blocked URL is recorded as a PENDING
-    ``SsrfViolation`` for operator review via ``/providers/ssrf-violations``.
-    A persistence-less boot (dev / test fixtures) clears the recorder so the
-    chokepoint no-ops. Recording is best-effort and never weakens a block.
+    Gives the outbound SSRF guard a live audit trail: every blocked URL is
+    recorded as a PENDING ``SsrfViolation`` for operator review via
+    ``/providers/ssrf-violations``. A persistence-less boot (dev / test
+    fixtures) clears the recorder so the chokepoint no-ops. Recording is
+    best-effort and never weakens a block.
     """
     from synthorg.api.services.ssrf_violation_service import (  # noqa: PLC0415
         SsrfViolationService,
@@ -198,6 +202,12 @@ async def install_runtime_services(
     # backend is connected; a restart otherwise discards all recorded
     # task/collaboration performance metrics.
     _try_wire_performance_persistence(app_state)
+    # Attach durable trust repos + hydrate now the backend is connected;
+    # a restart otherwise discards all trust state and its audit trail.
+    await _try_wire_trust_persistence(app_state)
+    # Make the audit hash chain durable: hydrate from storage + drain new
+    # appends; a restart otherwise loses the tamper-evident chain.
+    await _try_wire_audit_chain_persistence(app_state)
     # Seed the measured benchmark-score repo from the committed artifact
     # (idempotent; measured arm only) now the cost-dial repo is wired.
     await seed_benchmark_scores(app_state)

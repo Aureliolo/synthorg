@@ -27,10 +27,16 @@ from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.persistence.postgres._backend_accessors import (
     _PostgresBackendRepositoryAccessors,
 )
+from synthorg.persistence.postgres.agent_contribution_repo import (
+    PostgresAgentContributionRepository,
+)
 from synthorg.persistence.postgres.agent_state_repo import (
     PostgresAgentStateRepository,
 )
 from synthorg.persistence.postgres.artifact_repo import PostgresArtifactRepository
+from synthorg.persistence.postgres.audit_chain_repo import (
+    PostgresAuditChainRepository,
+)
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
 from synthorg.persistence.postgres.ceremony_scheduler_state_repo import (
     PostgresCeremonySchedulerStateRepository,
@@ -73,6 +79,9 @@ from synthorg.persistence.postgres.flight_recorder_repo import (
 )
 from synthorg.persistence.postgres.heartbeat_repo import (
     PostgresHeartbeatRepository,
+)
+from synthorg.persistence.postgres.hiring_request_repo import (
+    PostgresHiringRequestRepository,
 )
 from synthorg.persistence.postgres.hr_repositories import (
     PostgresCollaborationMetricRepository,
@@ -143,6 +152,9 @@ from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.postgres.project_workspace_repo import (
     PostgresProjectWorkspaceRepository,
 )
+from synthorg.persistence.postgres.promotion_history_repo import (
+    PostgresPromotionHistoryRepository,
+)
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
@@ -182,6 +194,10 @@ from synthorg.persistence.postgres.training_plan_repo import (
 )
 from synthorg.persistence.postgres.training_result_repo import (
     PostgresTrainingResultRepository,
+)
+from synthorg.persistence.postgres.trust_repo import (
+    PostgresTrustChangeHistoryRepository,
+    PostgresTrustStateRepository,
 )
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
@@ -281,6 +297,12 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._connection_secrets = None
         self._oauth_states = None
         self._webhook_receipts = None
+        self._trust_states = None
+        self._trust_change_history = None
+        self._promotion_history = None
+        self._hiring_requests = None
+        self._agent_contributions = None
+        self._audit_chain_entries = None
 
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool.
@@ -395,3 +417,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._connection_secrets = PostgresConnectionSecretRepository(pool)
         self._oauth_states = PostgresOAuthStateRepository(pool)
         self._webhook_receipts = PostgresWebhookReceiptRepository(pool)
+        self._trust_states = PostgresTrustStateRepository(pool)
+        self._trust_change_history = PostgresTrustChangeHistoryRepository(pool)
+        self._promotion_history = PostgresPromotionHistoryRepository(pool)
+        self._hiring_requests = PostgresHiringRequestRepository(pool)
+        self._agent_contributions = PostgresAgentContributionRepository(pool)
+        self._audit_chain_entries = PostgresAuditChainRepository(pool)

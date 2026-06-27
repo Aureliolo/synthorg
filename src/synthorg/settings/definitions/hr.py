@@ -77,6 +77,82 @@ _r.register(
     )
 )
 
+# ── Closed-loop evaluation cycle scheduler ───────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_cycle_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Master switch for the periodic evaluation-loop cycle"
+            " scheduler. Off by default: the coordinator is constructed and"
+            " available at boot, but the background driver that runs"
+            " evaluation cycles on a cadence only starts when an operator"
+            " opts in (a cycle evaluates every agent's five-pillar"
+            " performance and can route corrective actions to training)."
+            " Baked at startup; toggling requires a restart."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_cycle_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the evaluation-loop cycle scheduler. When True"
+            " the periodic scheduler stays resident but every tick"
+            " short-circuits, pausing evaluation cycles without a restart."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_cycle_interval_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Cadence between automatic evaluation-loop cycles. Default 24h"
+            " keeps the closed loop low-overhead; the scheduler floors this"
+            " at 60 seconds. Resolved once at startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=60.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_cycle_window_hours",
+        type=SettingType.FLOAT,
+        default="168.0",
+        description=(
+            "Look-back window each evaluation cycle collects agent"
+            " performance metrics over. Default 168h (7 days) smooths"
+            " single-task noise into a stable pillar signal. Resolved once"
+            " at startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1.0,
+    )
+)
+
 # ── Workload scaling tuning knobs ────────────────────────────────
 
 _r.register(
@@ -104,6 +180,23 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_workload_max_concurrent_tasks",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Max concurrent tasks per agent used as the utilisation"
+            " denominator when the workload scaler reads agent load."
+        ),
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
     )
 )
 

@@ -90,12 +90,16 @@ class ConflictResolutionStrategy(StrEnum):
         DEBATE: Structured debate with judge evaluation.
         HUMAN: Escalate to human for resolution.
         HYBRID: Combination of automated review and escalation.
+        EVIDENCE_WEIGHTED: Deterministic synthesis that scores each
+            position by the strength of its reasoning/evidence and selects
+            the best-supported one (no LLM, no human).
     """
 
     AUTHORITY = "authority"
     DEBATE = "debate"
     HUMAN = "human"
     HYBRID = "hybrid"
+    EVIDENCE_WEIGHTED = "evidence_weighted"
 
 
 class QuadraticEnforcementStrategy(StrEnum):

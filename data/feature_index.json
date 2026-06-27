@@ -15,7 +15,8 @@
       "state_slice_fields": [
         "card_builder",
         "client",
-        "peer_registry"
+        "peer_registry",
+        "peer_discovery"
       ]
     },
     {
@@ -320,7 +321,8 @@
         "escalation_registry",
         "escalation_processor",
         "escalation_sweeper",
-        "escalation_notify_subscriber"
+        "escalation_notify_subscriber",
+        "conflict_resolution_service"
       ]
     },
     {
@@ -670,7 +672,9 @@
         "scaling_decision_service",
         "promotion_service",
         "promotion_cycle_scheduler",
-        "pruning_service"
+        "pruning_service",
+        "eval_loop_coordinator",
+        "eval_loop_cycle_scheduler"
       ]
     },
     {
@@ -1325,6 +1329,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-26T22:58:41.823420Z",
+  "generated_at": "2026-06-27T13:43:45.732711Z",
   "schema_version": 1
 }

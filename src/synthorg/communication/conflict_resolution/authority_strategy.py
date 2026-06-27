@@ -11,6 +11,7 @@ the winner across all participants.
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution._helpers import find_losers
 from synthorg.communication.conflict_resolution.models import (
     Conflict,
@@ -120,6 +121,7 @@ class AuthorityResolver:
                 dissenting_position=loser.position,
                 strategy_used=ConflictResolutionStrategy.AUTHORITY,
                 timestamp=datetime.now(UTC),
+                minority_evidence=extract_evidence(loser.reasoning),
             )
             for loser in losers
         )

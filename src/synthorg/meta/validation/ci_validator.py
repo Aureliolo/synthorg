@@ -1,16 +1,19 @@
 """Local CI validator for code modification proposals.
 
-Runs ruff check, mypy, and pytest against changed files using
-subprocess calls. Short-circuits on first failure to avoid
-wasting time on later steps.
+Runs ruff check, mypy, and pytest against changed files inside a
+container sandbox (agent-authored test code must never execute on the
+host). Short-circuits on first failure to avoid wasting time on later
+steps.
 """
 
 import asyncio
-import contextlib
 from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_clipping import clip_with_ellipsis
+from synthorg.meta.errors import CIValidatorHostExecutionError
 from synthorg.meta.models import CIValidationResult
 from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.observability import get_logger, safe_error_description
@@ -19,6 +22,8 @@ from synthorg.observability.events.meta import (
     META_CI_VALIDATION_PASSED,
     META_CI_VALIDATION_STARTED,
 )
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
@@ -26,12 +31,17 @@ _DEFAULT_TIMEOUT_SECONDS: Final[int] = 300
 
 _MAX_ERROR_OUTPUT_LENGTH: Final[int] = 2000
 
+# The CI validator must never execute agent-authored test code on the
+# host; only this container backend type is permitted.
+_HOST_BACKEND_TYPE: Final[str] = "subprocess"
+
 
 class LocalCIValidator:
     """Runs local CI checks (ruff, mypy, pytest) against changed files.
 
-    Each step runs as an async subprocess. Steps short-circuit on
-    failure: if lint fails, type-check and tests are skipped.
+    Each step runs inside the injected container sandbox. Steps
+    short-circuit on failure: if lint fails, type-check and tests are
+    skipped.
 
     The validator owns its ``project_root`` (validated absolute at
     construction, never a process-CWD default that could point the
@@ -55,14 +65,22 @@ class LocalCIValidator:
         *,
         project_root: Path,
         scope_validator: ScopeValidator,
+        sandbox: SandboxBackend,
         timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
         clock: Clock | None = None,
     ) -> None:
         if not project_root.is_absolute():
             msg = f"project_root must be an absolute path, got {project_root!r}"
             raise ValueError(msg)
+        # Fail closed: agent-authored test code runs arbitrary Python, so
+        # every step must run inside a container sandbox. A subprocess
+        # (host) backend would execute that code on the host (prompt
+        # injection to host RCE), so refuse it at construction.
+        if str(sandbox.get_backend_type()) == _HOST_BACKEND_TYPE:
+            raise CIValidatorHostExecutionError
         self._project_root = project_root
         self._scope_validator = scope_validator
+        self._sandbox = sandbox
         self._timeout = timeout_seconds
         self._clock = clock or SystemClock()
 
@@ -228,114 +246,77 @@ class LocalCIValidator:
         step_name: str,
         errors: list[str],
     ) -> bool:
-        """Run a subprocess and capture failure output.
+        """Run one validation step inside the container sandbox.
+
+        Agent-authored test files run arbitrary Python, so the command
+        is executed through the container ``SandboxBackend`` (enforced at
+        construction) rather than a host subprocess.
 
         Args:
             cmd: Command and arguments.
-            cwd: Working directory.
+            cwd: Working directory inside the sandbox workspace.
             step_name: Human-readable step name for error messages.
             errors: Mutable list to append error descriptions to.
 
         Returns:
-            True if the subprocess exited with code 0.
+            True if the step exited with code 0.
 
         Raises:
             CancelledError: Raised on the corresponding failure path.
         """
-        proc: asyncio.subprocess.Process | None = None
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
+            result = await self._sandbox.execute(
+                command=cmd[0],
+                args=tuple(cmd[1:]),
                 cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                timeout=float(self._timeout),
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=self._timeout,
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                META_CI_VALIDATION_FAILED,
+                step=step_name,
+                reason="sandbox_execution_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            return _check_returncode(
-                proc,
-                stdout,
-                stderr,
-                step_name,
-                errors,
-            )
-        except TimeoutError:
-            if proc is not None:
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await proc.wait()
+            errors.append(f"{step_name}: sandbox error: {safe_error_description(exc)}")
+            return False
+        if result.timed_out:
             logger.warning(
                 META_CI_VALIDATION_FAILED,
                 step=step_name,
                 reason="timeout",
                 timeout_seconds=self._timeout,
             )
-            errors.append(
-                f"{step_name}: timed out after {self._timeout}s",
-            )
+            errors.append(f"{step_name}: timed out after {self._timeout}s")
             return False
-        except asyncio.CancelledError:
-            if proc is not None:
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await proc.wait()
-            raise
-        except FileNotFoundError:
-            logger.warning(
-                META_CI_VALIDATION_FAILED,
-                step=step_name,
-                reason="command_not_found",
-                command=cmd[0],
-            )
-            errors.append(
-                f"{step_name}: command not found: {cmd[0]}",
-            )
-            return False
-        except OSError as exc:
-            if proc is not None:
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await proc.wait()
-            logger.warning(
-                META_CI_VALIDATION_FAILED,
-                step=step_name,
-                reason="subprocess_os_error",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            errors.append(
-                f"{step_name}: subprocess error: {safe_error_description(exc)}"
-            )
-            return False
+        return _check_sandbox_result(result, step_name, errors)
 
 
-def _check_returncode(
-    proc: asyncio.subprocess.Process,
-    stdout: bytes,
-    stderr: bytes,
+def _check_sandbox_result(
+    result: SandboxResult,
     step_name: str,
     errors: list[str],
 ) -> bool:
-    """Check subprocess exit code and capture errors.
+    """Check a sandbox step's exit code and capture failure output.
 
     Args:
-        proc: Completed subprocess.
-        stdout: Captured stdout bytes.
-        stderr: Captured stderr bytes.
+        result: The completed sandbox execution result.
         step_name: Human-readable step name for error messages.
         errors: Mutable list to append error descriptions to.
 
     Returns:
-        True if the subprocess exited with code 0.
+        True if the step exited with code 0.
     """
-    if proc.returncode != 0:
-        output = (
-            stdout.decode(errors="replace") + stderr.decode(errors="replace")
-        ).strip()
-        if len(output) > _MAX_ERROR_OUTPUT_LENGTH:
-            output = output[:_MAX_ERROR_OUTPUT_LENGTH] + "... (truncated)"
+    if result.returncode != 0:
+        output = clip_with_ellipsis(
+            (result.stdout + result.stderr).strip(),
+            _MAX_ERROR_OUTPUT_LENGTH,
+            marker="... (truncated)",
+        )
         errors.append(f"{step_name}: {output}")
         return False
     return True

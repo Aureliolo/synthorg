@@ -686,6 +686,7 @@ ignore_names = [
     # form, putting vulture-suppression syntax inside the contract.
     "judge_agent_id",  # JudgeEvaluator.evaluate (conflict_resolution)
     "agent_output",    # ExternalBenchmark.grade (hr/evaluation)
+    "action_id",       # PatternActionDispatcher.dispatch (hr/evaluation)
     "ticket_uri",      # TicketFetcher.fetch (knowledge/loaders)
     "im1",             # _StructuralSimilarity.__call__ (tools/browser/_ssim_differ)
     "im2",             # _StructuralSimilarity.__call__ (tools/browser/_ssim_differ)
