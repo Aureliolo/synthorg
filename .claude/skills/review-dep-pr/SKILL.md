@@ -370,6 +370,19 @@ The previous behaviour (asking "Merge all? / review individually / skip for now"
 
 ## Phase 8: Execute Decisions
 
+### ADOPT-decision gate (MANDATORY -- emit before any `gh pr merge`)
+
+Before executing ANY merge path below, enumerate every NEW FEATURE / IMPROVEMENT item Phase 3 produced and emit the per-PR verdict table covering all of them (each item is exactly one row), in this exact shape:
+
+| Item | Category | Verdict (ADOPT / DEFER / SKIP) | User answer? |
+|------|----------|--------------------------------|--------------|
+
+**Hard stop (completeness):** cross-check the rendered rows against the full Phase 3 NEW FEATURE / IMPROVEMENT item set before proceeding. If any such item is absent from the table, you MUST NOT call `gh pr merge` for that PR; a dropped row hides the very decision the gate exists to force, so omission is the loophole, not just an un-answered row. Re-emit the table with the missing item(s) added.
+
+**Hard stop (answer):** if any row's verdict is **ADOPT** or **DEFER** and its "User answer?" cell is not a recorded answer from a Phase 7 `AskUserQuestion` (the user explicitly chose to adopt, defer, or skip that item), you MUST NOT call `gh pr merge` for that PR. Go back and ask. Writing "deferred to a follow-up", "could adopt later", or any similar phrasing in prose, in the approval rationale's `Follow-ups:` line, or in the Phase 6 report does NOT satisfy this gate; only a recorded user answer does. A DEFER or SKIP disposition is valid only once the user has chosen it.
+
+This gate exists because the single most common failure of this skill is finding an adoptable new rule / flag / capability and then merging the PR while quietly shelving it in prose. The table makes that impossible: an un-answered ADOPT/DEFER row sits directly above the merge step, where it cannot be rationalised away mid-flow. An IMPROVEMENT that only required a verdict of SKIP (genuinely not applicable) may carry "n/a -- skip" in the answer cell without a question; only ADOPT (and a DEFER the user has not yet seen) forces the stop.
+
 Apply the merge-strategy choice from Phase 7 (when Phase 7 was asked).
 
 **Lockfile-only batch (Phase 7 skipped).** When Phase 6 detected only lockfile-only overlaps (per the Phase 5 trigger rule, Phase 7 was skipped), there is no user-supplied strategy to apply. Use the implicit lockfile-race default: pick one PR, run the "Merge as-is" path on it (CI must already be green; if not, hold the batch until it goes green or take the PR out of scope), wait for the squash merge to land on `main`, then trigger a rebase on the lockfile-conflicting PRs that didn't win the race. Trigger that rebase per the bot conventions documented under "Wave-based parallel" below (Renovate: `<rebaseLabel>` label; Dependabot: `@dependabot rebase`); wait for CI to refresh on the rebased head, then merge the next winner. Repeat until the batch is drained. No strategy question is asked; the operator can interrupt at any point if they want a different sequencing.
