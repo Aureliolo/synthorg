@@ -26,9 +26,11 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.observability.metrics_hub import record_mcp_handler_outcome
 from synthorg.observability.prometheus_labels import register_mcp_tool_names
+from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.tools.base import ToolExecutionResult
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 
 __all__ = ["MCPToolInvoker", "ToolHandler"]
@@ -248,46 +250,55 @@ class MCPToolInvoker:
         else:
             handler_arguments = deepcopy(arguments)
 
-        # Invoke handler.  Re-raise MemoryError/RecursionError
-        # (system-critical) and let application exceptions map to
-        # error results.
-        try:
-            result = await handler(
-                app_state=app_state,
-                arguments=handler_arguments,
-                actor=actor,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            error_type = type(exc).__name__
-            # safe_error_description avoids leaking secrets that
-            # str(exc) would expose (httpx POST bodies, Fernet
-            # payloads, OAuth refresh tokens). exc_info is
-            # intentionally omitted for the same reason -- frame
-            # locals can carry credentials.
-            logger.warning(
-                MCP_SERVER_INVOKE_FAILED,
-                tool_name=tool_name,
-                error_type=error_type,
-                error=safe_error_description(exc),
-            )
-            record_mcp_handler_outcome(
-                tool=tool_name,
-                outcome="error",
-                duration_sec=time.perf_counter() - invocation_start,
-            )
-            return ToolExecutionResult(
-                content=json.dumps(
-                    {
-                        "status": "error",
-                        "error_type": error_type,
-                        "message": safe_error_description(exc) or error_type,
-                        "domain_code": "handler_failure",
-                        "tool": tool_name,
-                    }
-                ),
-                is_error=True,
-            )
+        # Invoke handler under a trace span so the tool's execution is a
+        # first-class node in distributed traces. Re-raise
+        # MemoryError/RecursionError (system-critical) and let application
+        # exceptions map to error results.
+        with _tracer.start_as_current_span(
+            "mcp.tool.invoke",
+            attributes={"mcp.tool": tool_name},
+        ) as span:
+            try:
+                result = await handler(
+                    app_state=app_state,
+                    arguments=handler_arguments,
+                    actor=actor,
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                error_type = type(exc).__name__
+                span.set_attribute("mcp.outcome", "error")
+                span.set_attribute("mcp.error_type", error_type)
+                # safe_error_description avoids leaking secrets that
+                # str(exc) would expose (httpx POST bodies, Fernet
+                # payloads, OAuth refresh tokens). exc_info is
+                # intentionally omitted for the same reason -- frame
+                # locals can carry credentials, and the span is never
+                # given record_exception for the same redaction reason.
+                logger.warning(
+                    MCP_SERVER_INVOKE_FAILED,
+                    tool_name=tool_name,
+                    error_type=error_type,
+                    error=safe_error_description(exc),
+                )
+                record_mcp_handler_outcome(
+                    tool=tool_name,
+                    outcome="error",
+                    duration_sec=time.perf_counter() - invocation_start,
+                )
+                return ToolExecutionResult(
+                    content=json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": error_type,
+                            "message": safe_error_description(exc) or error_type,
+                            "domain_code": "handler_failure",
+                            "tool": tool_name,
+                        }
+                    ),
+                    is_error=True,
+                )
+            span.set_attribute("mcp.outcome", "success")
 
         logger.debug(
             MCP_SERVER_INVOKE_SUCCESS,
