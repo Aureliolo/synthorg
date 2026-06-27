@@ -109,6 +109,7 @@ def _run_one(stem: str) -> tuple[int, str]:
         return 1, f"gate script missing on disk: {script}"
     saved_argv = sys.argv
     saved_cwd = Path.cwd()
+    saved_path = list(sys.path)
     sys.argv = [str(script)]
     try:
         runpy.run_path(str(script), run_name="__main__")
@@ -126,6 +127,10 @@ def _run_one(stem: str) -> tuple[int, str]:
         return 0, ""
     finally:
         sys.argv = saved_argv
+        # A gate that mutates ``sys.path`` (directly or via ``runpy.run_path``)
+        # must not leak that change into the next gate; restore the snapshot so
+        # each gate sees the same import path the runner started with.
+        sys.path = saved_path
         # Best-effort cwd restore: if a gate chdir'd into a tempdir it then
         # removed, ``Path.cwd()`` raises -- swallow it so the runner still
         # advances to the next gate and reports the aggregate rather than
