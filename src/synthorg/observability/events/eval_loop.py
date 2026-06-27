@@ -20,6 +20,9 @@ EVAL_LOOP_METRICS_COMPUTED: Final[str] = "eval.loop.metrics_computed"
 EVAL_LOOP_AGENT_EVAL_FAILED: Final[str] = "eval.loop.agent_eval_failed"
 EVAL_LOOP_BENCHMARK_FAILED: Final[str] = "eval.loop.benchmark_failed"
 EVAL_LOOP_ACTION_PROPOSED: Final[str] = "eval.loop.action_proposed"
+# Emitted per action routed to a wired PatternActionDispatcher (INFO on
+# dispatch, WARNING when the dispatcher raises).
+EVAL_LOOP_ACTION_DISPATCHED: Final[str] = "eval.loop.action_dispatched"
 # Emitted at INFO when a cycle's identified corrective actions route to
 # the training pipeline (gated by ``EvalLoopConfig.training_on_actions``).
 EVAL_LOOP_TRAINING_TRIGGERED: Final[str] = "eval.loop.training_triggered"

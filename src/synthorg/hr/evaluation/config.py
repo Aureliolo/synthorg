@@ -315,6 +315,15 @@ class EvalLoopConfig(BaseModel):
         le=10.0,
         description="Pillar score below which the pillar is weak for an agent",
     )
+    pattern_thresholds: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Per-pillar weakness thresholds keyed by pillar value; a pillar"
+            " absent here falls back to ``pattern_weakness_threshold``. Lets"
+            " operators hold, say, governance to a stricter bar than"
+            " efficiency."
+        ),
+    )
     pattern_min_agents: int = Field(
         default=3,
         ge=1,

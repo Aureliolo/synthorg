@@ -39,10 +39,16 @@ from synthorg.hr.evaluation.external_benchmark_registry import (
     ExternalBenchmarkRegistry,
 )
 from synthorg.hr.evaluation.models import EvaluationReport
+from synthorg.hr.evaluation.pattern_action_dispatcher import PatternActionDispatcher
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_ACTION_DISPATCHED,
     EVAL_LOOP_ACTION_PROPOSED,
     EVAL_LOOP_AGENT_EVAL_FAILED,
     EVAL_LOOP_BENCHMARK_FAILED,
@@ -140,6 +146,7 @@ class EvalLoopCoordinator:
         dataset_builder: DogfoodingDatasetBuilder,
         benchmark_registry: ExternalBenchmarkRegistry,
         config: EvalLoopConfig | None = None,
+        action_dispatcher: PatternActionDispatcher | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._tracker = performance_tracker
@@ -149,6 +156,7 @@ class EvalLoopCoordinator:
         self._dataset_builder = dataset_builder
         self._benchmarks = benchmark_registry
         self._config = config or EvalLoopConfig()
+        self._action_dispatcher = action_dispatcher
         self._clock: Clock = clock or SystemClock()
 
     @property
@@ -198,8 +206,10 @@ class EvalLoopCoordinator:
             # 3. IDENTIFY: pattern detection (stub).
             observations = await self._identify_patterns(reports)
 
-            # 4. PROPOSE: action proposals (stub).
+            # 4. PROPOSE: action proposals, then dispatch each to its
+            # remediation service when a dispatcher is wired.
             proposed_actions = await self._propose_actions(observations)
+            await self._dispatch_actions(observations)
 
             # 5. DECIDE: a cycle that identified corrective actions routes
             # them to the training pipeline -- gated so training (an
@@ -333,7 +343,8 @@ class EvalLoopCoordinator:
         if not self._config.pattern_identifier_enabled or not reports:
             return ()
 
-        threshold = self._config.pattern_weakness_threshold
+        global_threshold = self._config.pattern_weakness_threshold
+        per_pillar = self._config.pattern_thresholds
         # Track unique weak agents per pillar (``pillar -> set[agent_id]``)
         # so the count reflects the number of distinct agents weak on a
         # pillar -- not the number of per-pillar score entries. This
@@ -347,7 +358,7 @@ class EvalLoopCoordinator:
             weak_pillars = {
                 score.pillar.value
                 for score in report.pillar_scores
-                if score.score < threshold
+                if score.score < per_pillar.get(score.pillar.value, global_threshold)
             }
             for pillar in weak_pillars:
                 weak_agents_per_pillar.setdefault(pillar, set()).add(report.agent_id)
@@ -372,7 +383,8 @@ class EvalLoopCoordinator:
                 EVAL_LOOP_PATTERN_IDENTIFIED,
                 pattern_count=len(patterns),
                 patterns=list(patterns),
-                threshold=threshold,
+                global_threshold=global_threshold,
+                per_pillar_overrides=len(per_pillar),
                 min_agents=min_agents,
             )
         return patterns
@@ -465,6 +477,50 @@ class EvalLoopCoordinator:
         if not mapped:
             return ("unmapped_pattern", None, {"pillar": pillar})
         return ("", mapped, {})
+
+    async def _dispatch_actions(
+        self,
+        patterns: tuple[NotBlankStr, ...],
+    ) -> None:
+        """Route each proposed action to its remediation service.
+
+        No-op when no dispatcher is wired (the loop keeps its propose +
+        log behaviour). Each unique mapped action is dispatched once, with
+        the first pattern that produced it; a dispatcher failure is logged
+        and the remaining actions still dispatch (criticals re-raise).
+
+        Args:
+            patterns: Weakness patterns from :meth:`_identify_patterns`.
+        """
+        if self._action_dispatcher is None or not patterns:
+            return
+        override = self._config.pattern_action_map or {}
+        seen: set[str] = set()
+        for pattern in patterns:
+            _, mapped, _ = self._classify_pattern(pattern, override)
+            if mapped is None or mapped in seen:
+                continue
+            seen.add(mapped)
+            try:
+                accepted = await self._action_dispatcher.dispatch(mapped, pattern)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    EVAL_LOOP_ACTION_DISPATCHED,
+                    action_id=mapped,
+                    pattern=pattern,
+                    dispatched=False,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
+            logger.info(
+                EVAL_LOOP_ACTION_DISPATCHED,
+                action_id=mapped,
+                pattern=pattern,
+                dispatched=True,
+                accepted=accepted,
+            )
 
     def _should_trigger_training(
         self,
