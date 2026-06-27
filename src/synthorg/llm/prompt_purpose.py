@@ -1,22 +1,23 @@
 # module-kind: code
 """Prompt-purpose registry: the single source of stable prompt-class IDs.
 
-Every system prompt class that wraps an LLM call has a stable
-:class:`PromptPurposeId`. The same identifier feeds two consumers: cost
-attribution slices spend/latency by purpose, and model-pin validation
-keys eval fixtures off it (it is the value carried by
-:attr:`ModelPinMetadata.prompt_class_id`). Keeping the vocabulary in one
-enum, with a registry that maps each id to its category and a
-human-readable description, means those consumers never invent or drift
-their own purpose strings.
+This registry is the single vocabulary of stable :class:`PromptPurposeId`
+values for the system prompt classes that wrap an LLM call. It is the
+identifier source two planned consumers share: cost attribution (slicing
+spend/latency by purpose) and model-pin validation (the value a
+:attr:`ModelPinMetadata.prompt_class_id` carries). Holding the ids in one
+enum, with a registry that maps each to its category and a human-readable
+description, means those consumers reference one vocabulary instead of
+inventing or drifting their own purpose strings.
 
-The id values mirror the ``system:<subsystem>:<purpose>`` taxonomy
-already used as ``cost_recording_scope`` ``task_id`` prefixes, so the
-registry describes purposes the codebase already emits rather than a
-parallel naming scheme.
+The id values are the static ``system:*`` prefix of the
+``cost_recording_scope`` ``task_id`` each prompt class already emits, so
+the registry describes purposes the codebase already produces rather than
+a parallel naming scheme. Most are ``system:<subsystem>:<purpose>``;
+classes whose whole subsystem is one prompt use the two-segment
+``system:<subsystem>`` (e.g. ``system:workspace``, ``system:intake``).
 """
 
-import copy
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
@@ -36,9 +37,9 @@ logger = get_logger(__name__)
 class PromptPurposeCategory(StrEnum):
     """Top-level subsystem a prompt purpose belongs to.
 
-    The category is the ``src/synthorg/`` package the prompt class lives
-    in, so dashboards can roll spend up by subsystem without a separate
-    mapping table.
+    The value is the ``src/synthorg/`` package directory the prompt class
+    lives in, so dashboards can roll spend up by subsystem without a
+    separate mapping table.
     """
 
     SECURITY = "security"
@@ -49,16 +50,19 @@ class PromptPurposeCategory(StrEnum):
     ENGINE = "engine"
     HR = "hr"
     CLIENT = "client"
-    PROVIDER = "provider"
+    PROVIDER = "providers"
 
 
 class PromptPurposeId(StrEnum):
     """Stable identifier for a system prompt class.
 
-    Values are the static ``system:<subsystem>:<purpose>`` prefix of the
-    ``cost_recording_scope`` ``task_id`` each prompt class already emits
-    (any per-invocation suffix is dropped: the id names the class, not
-    the call instance).
+    Values are the static ``system:*`` prefix of the
+    ``cost_recording_scope`` ``task_id`` each prompt class already emits;
+    any per-invocation suffix is dropped, so the id names the class, not
+    the call instance. Most are ``system:<subsystem>:<purpose>``; a class
+    that is its subsystem's only prompt uses the two-segment
+    ``system:<subsystem>`` form. The id prefix does not encode the
+    category: read :class:`PromptPurpose.category` for that.
     """
 
     SECURITY_SAFETY_CLASSIFIER = "system:security:safety_classifier"
@@ -141,7 +145,9 @@ class PromptPurposeRegistry:
         """
         key = str(purpose.id)
         existing = self._purposes.get(key)
-        if existing is not None and existing != purpose:
+        if existing is not None:
+            if existing == purpose:
+                return
             logger.warning(
                 PROMPT_PURPOSE_ALREADY_REGISTERED,
                 prompt_purpose_id=key,
@@ -149,7 +155,7 @@ class PromptPurposeRegistry:
             )
             msg = f"Prompt purpose {key!r} already registered with different metadata"
             raise ValueError(msg)
-        updated = copy.deepcopy(dict(self._purposes))
+        updated = dict(self._purposes)
         updated[key] = purpose
         self._purposes = MappingProxyType(updated)
 
@@ -191,7 +197,7 @@ class PromptPurposeRegistry:
         Returns:
             Tuple of :class:`PromptPurpose`.
         """
-        return tuple(self._purposes[key] for key in sorted(self._purposes))
+        return tuple(self._purposes[key] for key in self.list_ids())
 
     def by_category(self, category: PromptPurposeCategory) -> tuple[PromptPurpose, ...]:
         """List registered purposes in *category*, ordered by id.
@@ -390,17 +396,25 @@ _PROMPT_PURPOSE_SPECS: Final[
 
 
 def default_prompt_purpose_registry() -> PromptPurposeRegistry:
-    """Build a registry seeded with every canonical prompt purpose.
+    """Build a registry seeded from every ``_PROMPT_PURPOSE_SPECS`` entry.
 
     Returns:
-        A :class:`PromptPurposeRegistry` containing one entry per
-        :class:`PromptPurposeId` member.
+        A :class:`PromptPurposeRegistry` with one entry per spec.
+
+    Raises:
+        ValueError: If a :class:`PromptPurposeId` member has no spec entry,
+            so an id added without its metadata fails at import rather than
+            silently producing an under-seeded registry.
     """
     registry = PromptPurposeRegistry()
     for purpose_id, category, description in _PROMPT_PURPOSE_SPECS:
         registry.register(
             PromptPurpose(id=purpose_id, category=category, description=description)
         )
+    missing = [pid for pid in PromptPurposeId if pid not in registry]
+    if missing:
+        msg = f"Prompt purposes missing a spec entry: {sorted(map(str, missing))}"
+        raise ValueError(msg)
     return registry
 
 

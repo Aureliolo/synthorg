@@ -1,13 +1,14 @@
 """Cross-cutting LLM helpers: prompt-purpose registry, model pinning.
 
-:data:`PROMPT_PURPOSE_REGISTRY` is the single source of stable prompt
-purpose ids. The same :class:`PromptPurposeId` feeds cost attribution
-(spend/latency sliced by purpose) and model-pin validation (it is the
-value carried by :attr:`ModelPinMetadata.prompt_class_id`), so the two
-consumers share one identifier vocabulary instead of inventing strings.
+:data:`PROMPT_PURPOSE_REGISTRY` is the single vocabulary of stable prompt
+purpose ids. The same :class:`PromptPurposeId` is the identifier source
+for two planned consumers: cost attribution (spend/latency sliced by
+purpose) and model-pin validation (the value a
+:attr:`ModelPinMetadata.prompt_class_id` carries), so both reference one
+vocabulary instead of inventing their own strings.
 
-:class:`ModelPinMetadata` is the source of truth for the model + sampling
-parameters a prompt class commits to.
+:class:`ModelPinMetadata` is the schema for the model + sampling
+parameters a prompt class pins.
 """
 
 from synthorg.llm.metadata import ModelPinMetadata

@@ -1,8 +1,8 @@
 """Model-pin metadata for prompt classes.
 
-Every prompt class that wraps an LLM call exposes a
-:class:`ModelPinMetadata` instance via a ``metadata`` property. The
-metadata captures:
+:class:`ModelPinMetadata` is the schema a prompt class that wraps an LLM
+call uses to pin the model + sampling parameters it was validated
+against. The metadata captures:
 
 - ``prompt_class_id``: stable identifier for the prompt class (used
   by the golden-eval pipeline to locate fixtures and by audit

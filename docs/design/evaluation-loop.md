@@ -59,7 +59,7 @@ A stagnation variant (``StagnationReason.QUALITY_EROSION``): the agent keeps wor
 
 ## External Benchmarks
 
-A pluggable ``ExternalBenchmark`` protocol allows adopting external benchmark suites without modifying the framework. ``ExternalBenchmarkRegistry`` manages registration and execution.
+A pluggable ``ExternalBenchmark`` protocol allows adopting external benchmark suites without modifying the framework. ``ExternalBenchmarkRegistry`` manages registration and execution. A run drives the agent under evaluation through an injected ``AgentRunner`` (``run_case(case) -> str``) and grades its live output; the registry is fail-closed, raising ``EvalBenchmarkAgentRunnerUnsetError`` when no runner is configured. Each case is isolated: a non-critical failure in the agent run or the grading is recorded as a failed case (tagged with the stage that broke) so one bad case never aborts the run, while interpreter-critical errors propagate.
 
 ## Agent Evaluation Testing
 

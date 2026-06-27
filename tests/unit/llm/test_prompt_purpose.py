@@ -75,9 +75,14 @@ class TestPromptPurposeRegistryRegistration:
     def test_by_category(self) -> None:
         registry = default_prompt_purpose_registry()
         security = registry.by_category(PromptPurposeCategory.SECURITY)
-        assert security
+        assert len(security) > 0
         assert all(p.category is PromptPurposeCategory.SECURITY for p in security)
         assert PromptPurposeId.SECURITY_SAFETY_CLASSIFIER in {p.id for p in security}
+
+    def test_by_category_empty_when_none_match(self) -> None:
+        registry = PromptPurposeRegistry()
+        registry.register(_purpose())
+        assert registry.by_category(PromptPurposeCategory.CLIENT) == ()
 
 
 @pytest.mark.unit
@@ -98,20 +103,13 @@ class TestDefaultPromptPurposeRegistry:
 
     def test_seeded_descriptions_non_blank(self) -> None:
         for purpose in PROMPT_PURPOSE_REGISTRY.all_purposes():
-            assert purpose.description.strip()
+            assert purpose.description.strip(), f"blank description for {purpose.id}"
 
-    def test_default_registry_is_independent(self) -> None:
+    def test_default_registry_returns_fresh_instances(self) -> None:
         first = default_prompt_purpose_registry()
-        first.register(
-            _purpose(
-                PromptPurposeId.MEMORY_RERANK,
-                category=PromptPurposeCategory.MEMORY,
-                description=PROMPT_PURPOSE_REGISTRY.get(
-                    PromptPurposeId.MEMORY_RERANK
-                ).description,
-            )
-        )
-        assert len(default_prompt_purpose_registry()) == len(PromptPurposeId)
+        second = default_prompt_purpose_registry()
+        assert first is not second
+        assert first is not PROMPT_PURPOSE_REGISTRY
 
 
 @pytest.mark.unit
@@ -146,4 +144,12 @@ class TestPromptPurposeModel:
                 id="system:not:real",  # type: ignore[arg-type]
                 category=PromptPurposeCategory.MEMORY,
                 description="x",
+            )
+
+    def test_overlong_description_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PromptPurpose(
+                id=PromptPurposeId.MEMORY_RERANK,
+                category=PromptPurposeCategory.MEMORY,
+                description="x" * 257,
             )

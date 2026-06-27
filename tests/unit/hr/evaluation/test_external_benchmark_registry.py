@@ -46,8 +46,16 @@ class _StubAgentRunner:
 class _StubBenchmark:
     """Minimal ExternalBenchmark implementation for testing."""
 
-    def __init__(self, name: str = "test-bench") -> None:
+    def __init__(
+        self,
+        name: str = "test-bench",
+        *,
+        empty: bool = False,
+        raise_in_grade_on: str | None = None,
+    ) -> None:
         self._name = name
+        self._empty = empty
+        self._raise_in_grade_on = raise_in_grade_on
 
     @property
     def name(self) -> str:
@@ -66,6 +74,8 @@ class _StubBenchmark:
         *,
         behavior_tags: frozenset[BehaviorTag] | None = None,
     ) -> AsyncIterator[EvalTestCase]:
+        if self._empty:
+            return
         cases = [
             EvalTestCase(
                 id="case-1",
@@ -90,6 +100,9 @@ class _StubBenchmark:
         case: EvalTestCase,
         agent_output: str,
     ) -> BenchmarkGrade:
+        if self._raise_in_grade_on is not None and case.id == self._raise_in_grade_on:
+            exc = RuntimeError("grader boom")
+            raise exc
         passed = agent_output == case.expected_output
         return BenchmarkGrade(
             passed=passed,
@@ -119,6 +132,7 @@ class TestExternalBenchmarkRegistryRegistration:
         registry.register(bench)
         registry.register(bench)
         assert registry.get("test-bench") is bench
+        assert registry.list_registered() == ("test-bench",)
 
     def test_duplicate_different_instance_raises(self) -> None:
         registry = ExternalBenchmarkRegistry()
@@ -149,7 +163,7 @@ class TestExternalBenchmarkRegistryRunBenchmark:
         assert result.benchmark_name == "test-bench"
         assert result.cases_run == 2
         assert result.passed_count == 2
-        assert result.average_score == 1.0
+        assert result.average_score == pytest.approx(1.0)
         assert runner.calls == ["case-1", "case-2"]
 
     async def test_run_benchmark_grades_agent_output_not_expected(self) -> None:
@@ -160,7 +174,27 @@ class TestExternalBenchmarkRegistryRunBenchmark:
         result = await registry.run_benchmark("test-bench")
         assert result.cases_run == 2
         assert result.passed_count == 0
-        assert result.average_score == 0.0
+        assert result.average_score == pytest.approx(0.0)
+
+    async def test_run_benchmark_filters_by_behavior_tags(self) -> None:
+        runner = _StubAgentRunner(echo_expected=True)
+        registry = ExternalBenchmarkRegistry(agent_runner=runner)
+        registry.register(_StubBenchmark())
+        result = await registry.run_benchmark(
+            "test-bench",
+            behavior_tags=frozenset({BehaviorTag.FILE_OPERATIONS}),
+        )
+        assert result.cases_run == 1
+        assert result.passed_count == 1
+        assert runner.calls == ["case-1"]
+
+    async def test_run_benchmark_zero_cases(self) -> None:
+        registry = ExternalBenchmarkRegistry(agent_runner=_StubAgentRunner())
+        registry.register(_StubBenchmark(empty=True))
+        result = await registry.run_benchmark("test-bench")
+        assert result.cases_run == 0
+        assert result.passed_count == 0
+        assert result.average_score == pytest.approx(0.0)
 
     async def test_run_benchmark_without_runner_fails_closed(self) -> None:
         registry = ExternalBenchmarkRegistry()
@@ -170,17 +204,27 @@ class TestExternalBenchmarkRegistryRunBenchmark:
 
     async def test_run_benchmark_missing_raises(self) -> None:
         registry = ExternalBenchmarkRegistry(agent_runner=_StubAgentRunner())
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match="not registered"):
             await registry.run_benchmark("nonexistent")
 
-    async def test_run_benchmark_isolates_case_failure(self) -> None:
+    async def test_run_benchmark_isolates_runner_failure(self) -> None:
         runner = _StubAgentRunner(echo_expected=True, raise_on="case-1")
         registry = ExternalBenchmarkRegistry(agent_runner=runner)
         registry.register(_StubBenchmark())
         result = await registry.run_benchmark("test-bench")
         assert result.cases_run == 2
         assert result.passed_count == 1
-        assert result.average_score == 0.5
+        assert result.average_score == pytest.approx(0.5)
+        assert runner.calls == ["case-1", "case-2"]
+
+    async def test_run_benchmark_isolates_grader_failure(self) -> None:
+        runner = _StubAgentRunner(echo_expected=True)
+        registry = ExternalBenchmarkRegistry(agent_runner=runner)
+        registry.register(_StubBenchmark(raise_in_grade_on="case-1"))
+        result = await registry.run_benchmark("test-bench")
+        assert result.cases_run == 2
+        assert result.passed_count == 1
+        assert result.average_score == pytest.approx(0.5)
         assert runner.calls == ["case-1", "case-2"]
 
     async def test_run_benchmark_propagates_critical(self) -> None:

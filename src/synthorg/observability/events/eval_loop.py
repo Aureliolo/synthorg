@@ -11,6 +11,7 @@ EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED: Final[str] = (
     "eval.loop.benchmark_already_registered"
 )
 EVAL_LOOP_BENCHMARK_NOT_FOUND: Final[str] = "eval.loop.benchmark_not_found"
+EVAL_LOOP_BENCHMARK_STARTED: Final[str] = "eval.loop.benchmark_started"
 # A single test case failed its agent run or grading; the benchmark run
 # isolates it (scored as failed) and continues with the remaining cases.
 EVAL_LOOP_BENCHMARK_CASE_FAILED: Final[str] = "eval.loop.benchmark_case_failed"

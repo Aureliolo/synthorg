@@ -1,8 +1,9 @@
 """External benchmark protocol for pluggable benchmark adoption.
 
 Defines the ``ExternalBenchmark`` runtime-checkable protocol that
-benchmark adapters implement.  No specific benchmarks are adopted
-in this issue -- the infrastructure is ready for future integration.
+benchmark adapters implement, and the ``AgentRunner`` protocol that
+produces the output a benchmark grades. No specific benchmark suites are
+bundled; adopt one by registering an ``ExternalBenchmark`` adapter.
 """
 
 from collections.abc import AsyncIterator
