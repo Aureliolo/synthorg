@@ -656,8 +656,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 600,
-      "loc": 569,
-      "ratio": 0.948,
+      "loc": 570,
+      "ratio": 0.95,
       "tier": "service"
     },
     "src/synthorg/hr/performance/tracker.py": {
@@ -1691,7 +1691,7 @@
     },
     "synthorg.hr.hiring_service:HiringService": {
       "lcom4": 1,
-      "loc": 518
+      "loc": 519
     },
     "synthorg.hr.performance.tracker:PerformanceTracker": {
       "lcom4": 6,

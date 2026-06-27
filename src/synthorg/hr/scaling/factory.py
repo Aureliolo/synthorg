@@ -113,6 +113,12 @@ def create_scaling_strategies(
                 ),
             ),
         )
+    elif config.performance_pruning.enabled:
+        logger.debug(
+            HR_SCALING_FACTORY_ASSEMBLED,
+            component="strategies",
+            note="performance_pruning enabled but skipped (pruning_policy absent)",
+        )
 
     logger.debug(
         HR_SCALING_FACTORY_ASSEMBLED,
@@ -200,6 +206,22 @@ def create_scaling_context_builder(
         else None
     )
 
+    active_sources = [
+        name
+        for name, src in (
+            ("workload", workload_src),
+            ("budget", budget_src),
+            ("skill", skill_src),
+            ("performance", performance_src),
+            ("benchmark", benchmark_src),
+        )
+        if src is not None
+    ]
+    logger.debug(
+        HR_SCALING_FACTORY_ASSEMBLED,
+        component="context_builder",
+        sources=active_sources,
+    )
     return ScalingContextBuilder(
         workload_source=workload_src,
         budget_source=budget_src,
@@ -283,7 +305,7 @@ def create_scaling_trigger(config: ScalingConfig) -> ScalingTrigger:
     return trigger
 
 
-def build_scaling_service(  # noqa: PLR0913
+def build_scaling_service(  # noqa: PLR0913 -- explicit DI of the scaling service collaborators
     config: ScalingConfig,
     *,
     hiring_service: HiringService | None = None,
@@ -313,6 +335,11 @@ def build_scaling_service(  # noqa: PLR0913
         agent_registry: Agent lookup used to resolve target names when
             executing a PRUNE.
         approval_store: Approval store wired into the approval-gate guard.
+            When ``None`` the approval gate is intentionally omitted (the
+            decisions then flow through only the conflict / cooldown / rate
+            guards); the boot wiring never passes ``None`` -- it requires a
+            wired approval store before constructing the service -- so this
+            applies to tests and custom harnesses only.
         pruning_policy: Policy backing the performance-pruning strategy.
             Defaults to a :class:`ThresholdPruningPolicy` when omitted and
             performance pruning is enabled.
@@ -328,6 +355,11 @@ def build_scaling_service(  # noqa: PLR0913
     effective_policy = pruning_policy
     if effective_policy is None and config.performance_pruning.enabled:
         effective_policy = ThresholdPruningPolicy(ThresholdPruningPolicyConfig())
+        logger.debug(
+            HR_SCALING_FACTORY_ASSEMBLED,
+            component="pruning_policy",
+            note="default ThresholdPruningPolicy applied (no policy supplied)",
+        )
 
     strategies = create_scaling_strategies(
         config,

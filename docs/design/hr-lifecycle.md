@@ -278,7 +278,7 @@ The ``/scaling`` page shows:
 - **Recent decisions**: history with outcome and rationale
 
 Module: `src/synthorg/hr/scaling/` (models, protocols, strategies, signals,
-triggers, guards, config, factory, service).
+triggers, guards, context, config, factory, service).
 
 ### Boot wiring and rollout
 

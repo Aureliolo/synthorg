@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.pruning.policy import PruningPolicy
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.config import (
     BudgetCapConfig,
@@ -16,6 +17,7 @@ from synthorg.hr.scaling.config import (
     TriggerConfig,
     WorkloadScalingConfig,
 )
+from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.hr.scaling.factory import (
     build_scaling_service,
@@ -25,6 +27,9 @@ from synthorg.hr.scaling.factory import (
     create_scaling_trigger,
 )
 from synthorg.hr.scaling.service import ScalingService
+from synthorg.hr.scaling.strategies.performance_pruning import (
+    PerformancePruningStrategy,
+)
 from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
 from synthorg.hr.scaling.triggers.composite import CompositeScalingTrigger
 from synthorg.hr.scaling.triggers.threshold import SignalThresholdTrigger
@@ -139,7 +144,7 @@ class TestCreateScalingContextBuilder:
     def test_creates_builder(self) -> None:
         config = ScalingConfig()
         builder = create_scaling_context_builder(config)
-        assert builder is not None
+        assert isinstance(builder, ScalingContextBuilder)
 
     async def test_builder_surfaces_benchmark_regression(self, tmp_path: Path) -> None:
         """A configured history dir wires the benchmark source end to end."""
@@ -203,7 +208,18 @@ class TestBuildScalingService:
             offboarding_service=mock_of[OffboardingService](),
             agent_registry=AgentRegistryService(),
         )
-        # Collaborators are private to the orchestrator; the clean build with
-        # the configured strategies is the observable contract here.
+        # Collaborators are private to the orchestrator; assert the build stayed
+        # coherent (config + the expected strategies survive injection).
         assert service.config.enabled is True
-        assert self._names(service)
+        assert ScalingStrategyName.WORKLOAD.value in self._names(service)
+        assert ScalingStrategyName.BUDGET_CAP.value in self._names(service)
+
+    def test_explicit_pruning_policy_is_not_overridden(self) -> None:
+        # A caller-supplied policy must propagate to the performance-pruning
+        # strategy verbatim, not be replaced by the default ThresholdPruningPolicy.
+        explicit = mock_of[PruningPolicy]()
+        service = build_scaling_service(ScalingConfig(), pruning_policy=explicit)
+        pruning = next(
+            s for s in service.strategies if isinstance(s, PerformancePruningStrategy)
+        )
+        assert pruning._policy is explicit

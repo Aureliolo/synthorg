@@ -96,7 +96,7 @@ async def _wire(
     from synthorg.memory.state import org_memory_backend_of  # noqa: PLC0415
 
     repo = _build_pruning_request_repo(app_state)
-    # ``_wire_org_memory_backend`` runs inside ``_wire_features`` (before this
+    # ``wire_org_memory_backend`` runs inside ``_wire_features`` (before this
     # pruning hook), so the org-memory backend is published by now; thread it
     # in so an offboarding snapshot persists the departing agent's facts
     # instead of silently dropping them when the backend is ``None``.

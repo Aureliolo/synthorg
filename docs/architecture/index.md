@@ -67,7 +67,7 @@ Templates -> Config
 | **approval** | Approval workflow protocol, models, and decision routing |
 | **notifications** | Operator alert adapters and notification dispatch |
 | **settings** | Settings registry, runtime resolution (DB > env > default), and configuration precedence |
-| **a2a** | Optional JSON-RPC 2.0 A2A federation layer: inbound gateway, outbound client, peer registry, agent-card serving, HMAC webhook verification (disabled by default) |
+| **a2a** | Optional JSON-RPC 2.0 A2A federation domain: outbound client, peer registry, agent-card projection, HMAC webhook verification (disabled by default); the inbound gateway + well-known route handlers live under `api/a2a/` |
 | **knowledge** | Knowledge and provenance substrate: document/knowledge RAG over an ingested external corpus |
 | **ontology** | Semantic ontology subsystem: `OntologyService`, entity definitions and repository, drift detection |
 | **project_brain** | Long-horizon per-project state store: decisions and rationale, open questions, structured queryable history |

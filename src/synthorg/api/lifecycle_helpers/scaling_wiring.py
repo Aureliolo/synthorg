@@ -66,11 +66,14 @@ async def wire_scaling(app_state: AppState) -> None:
             note="disabled (opt-in hr.scaling_enabled); pipeline unwired",
         )
         return
+    # Past the enabled gate the operator explicitly opted in, so a missing
+    # prerequisite is a misconfiguration worth a WARNING rather than routine
+    # INFO startup noise (mirrors ``wire_promotion``).
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
+        logger.warning(
             API_APP_STARTUP,
             service="scaling",
-            note="persistence absent; scaling service unwired",
+            note="hr.scaling_enabled is set but persistence absent; unwired",
         )
         return
     approval_store = app_state.slice(ApprovalStateSlice).store
@@ -79,10 +82,13 @@ async def wire_scaling(app_state: AppState) -> None:
         or hr.performance_tracker is None
         or approval_store is None
     ):
-        logger.info(
+        logger.warning(
             API_APP_STARTUP,
             service="scaling",
-            note="registry / tracker / approval store absent; scaling unwired",
+            note="hr.scaling_enabled is set but a collaborator is absent; unwired",
+            registry_present=hr.agent_registry is not None,
+            tracker_present=hr.performance_tracker is not None,
+            approval_store_present=approval_store is not None,
         )
         return
     try:
@@ -117,14 +123,30 @@ async def _wire(
     from synthorg.memory.state import org_memory_backend_of  # noqa: PLC0415
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
-    # ``persistence_of(app_state).hiring_requests`` is the per-backend durable
-    # repo shipped in the durability PR; attach + hydrate the in-flight set so
-    # an approved request survives a restart between approval and instantiation.
+    # Attach the per-backend durable hiring-requests repo and hydrate the
+    # in-flight set so an approved request survives a restart between approval
+    # and instantiation. Hydration is isolated: a failure here leaves in-flight
+    # requests unrestored (orphaned), a distinct operational consequence from a
+    # later assembly failure, so it is logged and named on its own rather than
+    # collapsed into the generic outer "wiring failed".
     hiring = HiringService(registry=registry, approval_store=approval_store)
-    hiring.attach_persistence(request_repo=persistence_of(app_state).hiring_requests)
-    await hiring.hydrate()
+    try:
+        hiring.attach_persistence(
+            request_repo=persistence_of(app_state).hiring_requests
+        )
+        await hiring.hydrate()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="scaling",
+            note="hiring request hydration failed; in-flight requests may be orphaned",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
 
-    # ``_wire_org_memory_backend`` runs earlier in ``_wire_features``, so the
+    # ``wire_org_memory_backend`` runs earlier in ``_wire_features``, so the
     # org-memory backend is published by now; thread it in so an offboarding
     # snapshot persists the departing agent's facts instead of dropping them.
     offboarding = OffboardingService(
