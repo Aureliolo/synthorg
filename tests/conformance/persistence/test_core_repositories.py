@@ -309,7 +309,7 @@ class TestCostRecordRepository:
             CostRecordFilterSpec(agent_id="agent_pclass")
         )
         assert len(results) == 1
-        assert results[0].prompt_class_id == "system:memory:rerank"
+        assert results[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
 
     async def test_prompt_class_id_defaults_none(
         self, backend: PersistenceBackend

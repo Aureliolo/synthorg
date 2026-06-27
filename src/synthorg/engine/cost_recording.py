@@ -213,6 +213,7 @@ async def _submit_cost_record(
             cost=turn.cost,
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
+            reason="cost_tracker_record_failed",
         )
         return False
 
@@ -222,5 +223,6 @@ async def _submit_cost_record(
         task_id=task_id,
         cost=turn.cost,
         project_id=record.project_id,
+        prompt_class_id=record.prompt_class_id,
     )
     return True

@@ -17,6 +17,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.models import CompletionResponse, TokenUsage
@@ -87,6 +88,7 @@ class TestProbeCostRecording:
         assert record.agent_id == "system"
         assert record.task_id == "system:providers:test_connection:test-provider"
         assert record.call_category == LLMCallCategory.SYSTEM
+        assert record.prompt_class_id == PromptPurposeId.PROVIDERS_TEST_CONNECTION
         assert record.provider == "test-provider"
         assert record.model == "test-model-001"
         assert record.currency == "USD"

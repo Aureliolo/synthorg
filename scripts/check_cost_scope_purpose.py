@@ -24,11 +24,10 @@ non-empty.
 
 Baseline
 --------
-``scripts/cost_scope_purpose_baseline.txt`` freezes the call sites that pre-date
-this gate (the ``CompletionConfig`` prompt-class sites tagged in a later wave).
-Each line is ``path:lineno:col``. The baseline shrinks monotonically; a site
-removed from the list once it gains ``purpose=``. Regenerate (rare; requires
-explicit user approval) with ``--update``.
+``scripts/cost_scope_purpose_baseline.txt`` lists the ``cost_recording_scope``
+call sites that do not yet pass ``purpose=``. Each line is ``path:lineno:col``.
+The list shrinks monotonically: a site drops out once it gains ``purpose=``.
+Regenerate (rare; requires explicit user approval) with ``--update``.
 
 Usage::
 
@@ -38,8 +37,9 @@ Usage::
 Exit codes:
     0 -- no violations outside the baseline.
     1 -- a new untagged ``cost_recording_scope`` call was detected.
-    2 -- configuration error (bad ``--repo-root``, or a source file could not
-         be read or parsed -- fail-closed).
+    2 -- configuration error (bad ``--repo-root``, an unreadable or malformed
+         baseline, or a source file that could not be read, parsed, or
+         tokenised -- fail-closed).
 """
 
 import argparse
@@ -70,14 +70,14 @@ _SUPPRESSION_MARKER: Final[str] = "lint-allow: cost-scope-purpose"
 _BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^.+:\d+:\d+$")
 
 _BASELINE_HEADER: Final[str] = """\
-# Frozen baseline of cost_recording_scope() call sites that pre-date the
-# purpose gate. Each line is `path:lineno:col` (POSIX path, 1-indexed line,
-# 0-indexed column) sorted in deterministic order.
+# cost_recording_scope() call sites that do not yet pass purpose=. Each line
+# is `path:lineno:col` (POSIX path, 1-indexed line, 0-indexed column) sorted
+# in deterministic order.
 #
 # scripts/check_cost_scope_purpose.py reads this file to suppress violations
-# at these exact locations. A new call site NOT in this list fails the
-# pre-push hook. The baseline shrinks monotonically; a site is removed once
-# it passes purpose=.
+# at these exact locations. A call site NOT in this list fails the pre-push
+# hook. The list shrinks monotonically: a site drops out once it passes
+# purpose=.
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_cost_scope_purpose.py --update
@@ -95,6 +95,26 @@ class _Hit:
     rel: str
     lineno: int
     col: int
+
+    def __post_init__(self) -> None:
+        """Reject coordinates the AST can never legally produce.
+
+        Surfaces a scan-loop bug immediately rather than letting an invalid
+        ``path:lineno:col`` reach the baseline, where it would only fail much
+        later on round-trip.
+
+        Raises:
+            ValueError: If ``rel`` is empty, ``lineno`` < 1, or ``col`` < 0.
+        """
+        if not self.rel:
+            msg = "rel must not be empty"
+            raise ValueError(msg)
+        if self.lineno < 1:
+            msg = f"lineno must be >= 1, got {self.lineno}"
+            raise ValueError(msg)
+        if self.col < 0:
+            msg = f"col must be >= 0, got {self.col}"
+            raise ValueError(msg)
 
     def baseline_key(self) -> str:
         """Return the ``path:lineno:col`` baseline identity for this hit."""
@@ -115,7 +135,8 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
         The resolved project-root directory.
 
     Raises:
-        ProjectRootError: If *repo_root* is not an accessible directory.
+        ProjectRootError: If *repo_root* cannot be resolved to an existing
+            path, or resolves to something that is not a directory.
     """
     if repo_root is None:
         return _REPO_ROOT
@@ -151,13 +172,19 @@ def _git_tracked_python_files(
     """
     rel_root = abs_root.relative_to(project_root).as_posix() or "."
     try:
+        # Pass the directory itself (recursive) and filter ``.py`` in Python.
+        # A ``dir/*.py`` pathspec is brittle: its recursion depends on git
+        # glob settings, so a directory pathspec is the robust choice.
         result = subprocess.run(
-            ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
+            ["git", "ls-files", "-z", "--", rel_root],
             check=True,
             capture_output=True,
             cwd=project_root,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+    except (subprocess.CalledProcessError, OSError) as exc:
+        # ``OSError`` (not just ``FileNotFoundError``) so a non-executable or
+        # otherwise unspawnable git binary still degrades to the rglob scan
+        # instead of crashing with a misleading exit 1.
         print(
             f"check_cost_scope_purpose: git ls-files failed in "
             f"{project_root} ({type(exc).__name__}: {exc}); falling back "
@@ -169,7 +196,7 @@ def _git_tracked_python_files(
             (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
         ]
     out = result.stdout.decode("utf-8", errors="replace")
-    paths = [p for p in out.split("\0") if p]
+    paths = [p for p in out.split("\0") if p and p.endswith(".py")]
     return [((project_root / rel_path), rel_path) for rel_path in paths]
 
 
@@ -343,7 +370,8 @@ def cmd_update(project_root: Path) -> int:
     """Regenerate the baseline from the current tree.
 
     Returns:
-        ``0`` on success, ``2`` if a source file could not be read or parsed.
+        ``0`` on success, ``2`` if a source file could not be read or parsed,
+        or the baseline could not be written.
     """
     try:
         hits = _scan_all(project_root)
@@ -351,7 +379,15 @@ def cmd_update(project_root: Path) -> int:
         print(f"check_cost_scope_purpose: {exc}", file=sys.stderr)
         return 2
     baseline_path = _baseline_path(project_root)
-    _write_baseline(hits, baseline_path)
+    try:
+        _write_baseline(hits, baseline_path)
+    except OSError as exc:
+        print(
+            f"check_cost_scope_purpose: could not write baseline "
+            f"{baseline_path} ({type(exc).__name__}: {exc})",
+            file=sys.stderr,
+        )
+        return 2
     rel = baseline_path.relative_to(project_root).as_posix()
     print(
         f"Wrote {len({h.baseline_key() for h in hits})} entries to {rel}.",

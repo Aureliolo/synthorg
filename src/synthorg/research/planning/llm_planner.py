@@ -20,7 +20,10 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.observability.events.research import (
+    RESEARCH_LLM_OUTPUT_INVALID,
+    RESEARCH_PLANNER_FALLBACK,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text, extract_json_object
 from synthorg.research._args import PlannerOutput
@@ -146,6 +149,12 @@ class LlmQueryPlanner:
             )
         if kept:
             return tuple(kept)
+        logger.debug(
+            RESEARCH_PLANNER_FALLBACK,
+            brief_id=brief.brief_id,
+            enabled_source_count=len(brief.enabled_source_types),
+            reason="planner_produced_no_usable_queries",
+        )
         return tuple(
             SubQuery(
                 index=index,

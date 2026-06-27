@@ -133,7 +133,7 @@ class TestRecordExecutionCosts:
             tracker=tracker,
             prompt_class_id=PromptPurposeId.MEMORY_RERANK,
         )
-        assert tracker.records[0].prompt_class_id == "system:memory:rerank"
+        assert tracker.records[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
 
     async def test_prompt_class_id_defaults_none(self) -> None:
         turns = (_turn(turn_number=1, cost=0.01, input_tokens=100, output_tokens=50),)

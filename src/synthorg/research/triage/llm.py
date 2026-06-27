@@ -23,7 +23,10 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.observability.events.research import (
+    RESEARCH_LLM_OUTPUT_INVALID,
+    RESEARCH_TRIAGE_BATCH_SCORED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text, extract_json_object
 from synthorg.research._args import TriageOutput, TriageVerdictOut
@@ -83,6 +86,12 @@ class LlmCredibilityTriage:
             total_cost += cost
             for verdict in output.verdicts:
                 verdicts_by_ref[verdict.ref_id] = verdict
+            logger.debug(
+                RESEARCH_TRIAGE_BATCH_SCORED,
+                brief_id=brief.brief_id,
+                batch_size=len(batch),
+                verdicts_received=len(output.verdicts),
+            )
         results = tuple(
             _to_credibility(item, verdicts_by_ref.get(item.ref_id), brief=brief)
             for item in items

@@ -5,14 +5,27 @@ builders for completion responses and knowledge hits used to drive the
 LLM-backed and knowledge-backed strategies deterministically.
 """
 
+from typing import override
+
 from synthorg.core.completion_enums import FinishReason
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, KnowledgeHit, WebLocator
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.cost_recording import (
+    CostRecordingContext,
+    current_cost_context,
+)
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    TokenUsage,
+    ToolDefinition,
+)
 from synthorg.research.models import ResearchRun, ResearchRunFilter
 from synthorg.research.retrieval.providers import AcademicResult, CodeResult
 from synthorg.tools.web.web_search import SearchResult
+from tests._shared.scripted_provider import ScriptedProvider
 
 _HASH = "b" * 64
 
@@ -25,6 +38,34 @@ def scripted_response(content: str, *, cost: float = 0.01) -> CompletionResponse
         usage=TokenUsage(input_tokens=10, output_tokens=10, cost=cost),
         model="example-medium-001",
     )
+
+
+class CtxCapturingProvider(ScriptedProvider):
+    """ScriptedProvider that records the cost-recording context per call.
+
+    Subclasses the full protocol impl (so typeguard accepts it) and captures
+    ``current_cost_context()`` at call time, so a test can assert which
+    ``cost_recording_scope`` (and which ``prompt_class_id``) a research stage
+    opened around its provider call.
+    """
+
+    def __init__(self, payload: str) -> None:
+        super().__init__(response=scripted_response(payload))
+        self.captured: CostRecordingContext | None = None
+        self.was_called = False
+
+    @override
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        self.was_called = True
+        self.captured = current_cost_context()
+        return await super().complete(messages, model, tools=tools, config=config)
 
 
 def knowledge_hit(

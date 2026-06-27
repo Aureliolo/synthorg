@@ -188,6 +188,9 @@ PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"
 PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"
 PROVIDER_HEALTH_CLEARED: Final[str] = "provider.health.cleared"
 
+# ── Structured-text helper ───────────────────────────────────
+PROVIDER_STRUCTURED_TEXT_REQUESTED: Final[str] = "provider.structured_text.requested"
+
 # ── Provider cost recording chokepoint ───────────────────────
 PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
 PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"

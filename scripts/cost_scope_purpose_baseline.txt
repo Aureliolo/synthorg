@@ -1,11 +1,11 @@
-# Frozen baseline of cost_recording_scope() call sites that pre-date the
-# purpose gate. Each line is `path:lineno:col` (POSIX path, 1-indexed line,
-# 0-indexed column) sorted in deterministic order.
+# cost_recording_scope() call sites that do not yet pass purpose=. Each line
+# is `path:lineno:col` (POSIX path, 1-indexed line, 0-indexed column) sorted
+# in deterministic order.
 #
 # scripts/check_cost_scope_purpose.py reads this file to suppress violations
-# at these exact locations. A new call site NOT in this list fails the
-# pre-push hook. The baseline shrinks monotonically; a site is removed once
-# it passes purpose=.
+# at these exact locations. A call site NOT in this list fails the pre-push
+# hook. The list shrinks monotonically: a site drops out once it passes
+# purpose=.
 #
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_cost_scope_purpose.py --update

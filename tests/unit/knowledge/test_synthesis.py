@@ -2,9 +2,11 @@
 
 import json
 from datetime import UTC, datetime
+from typing import override
 
 import pytest
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_KNOWLEDGE
@@ -13,7 +15,18 @@ from synthorg.knowledge.errors import KnowledgeSynthesisError
 from synthorg.knowledge.models import Citation, KnowledgeHit, WebLocator
 from synthorg.knowledge.synthesis.citation_binder import KnowledgeCitationBinder
 from synthorg.knowledge.synthesis.llm_synthesizer import KnowledgeSynthesizer
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.providers.cost_recording import (
+    CostRecordingContext,
+    current_cost_context,
+)
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    TokenUsage,
+    ToolDefinition,
+)
 from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
 
@@ -58,6 +71,28 @@ def _synth(provider: ScriptedProvider) -> KnowledgeSynthesizer:
         binder=KnowledgeCitationBinder(),
         clock=FakeClock(start=_NOW),
     )
+
+
+class _CtxCapturingProvider(ScriptedProvider):
+    """ScriptedProvider that captures the cost-recording context per call."""
+
+    def __init__(self, payload: str) -> None:
+        super().__init__(response=scripted_response(payload))
+        self.captured: CostRecordingContext | None = None
+        self.was_called = False
+
+    @override
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        self.was_called = True
+        self.captured = current_cost_context()
+        return await super().complete(messages, model, tools=tools, config=config)
 
 
 # -- Citation binder ----------------------------------------------------------
@@ -111,6 +146,37 @@ async def test_synthesiser_builds_cited_answer() -> None:
     assert answer.synthesis_model == "example-medium-001"
     assert answer.claims[0].citations[0].chunk_id == "chunk-0"
     assert answer.created_at == _NOW
+
+
+async def test_synthesiser_opens_purpose_scope() -> None:
+    payload = json.dumps(
+        {
+            "answer": "An answer.",
+            "claims": [
+                {
+                    "text": "A claim.",
+                    "claim_type": "fact",
+                    "confidence": 0.9,
+                    "ref_ids": ["src-0"],
+                }
+            ],
+        }
+    )
+    provider = _CtxCapturingProvider(payload)
+    synth = KnowledgeSynthesizer(
+        provider=provider,
+        model="example-medium-001",
+        binder=KnowledgeCitationBinder(),
+        clock=FakeClock(start=_NOW),
+        cost_tracker=CostTracker(),
+    )
+
+    await synth.synthesize(query=NotBlankStr("q"), hits=(_hit(0),))
+
+    assert provider.was_called
+    ctx = provider.captured
+    assert ctx is not None
+    assert ctx.prompt_class_id is PromptPurposeId.KNOWLEDGE_SYNTHESIS
 
 
 async def test_synthesiser_wraps_chunks_as_untrusted() -> None:

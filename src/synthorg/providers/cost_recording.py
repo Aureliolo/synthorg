@@ -179,9 +179,9 @@ async def cost_recording_scope(  # noqa: PLR0913
         task_id: Task attribution for the emitted record.
         project_id: Optional project attribution.
         purpose: Optional prompt-purpose attribution stamped on the
-            emitted record's ``prompt_class_id`` so spend/latency can be
-            sliced by prompt purpose. ``None`` when the call carries no
-            system prompt purpose.
+            emitted record's ``prompt_class_id`` so spend can be sliced by
+            prompt purpose. ``None`` when the call carries no system prompt
+            purpose.
         call_category: Category to stamp on the emitted record.
         currency: ISO 4217 currency for the emitted record.  Required
             when ``cost_tracker`` is provided; when ``None`` the
@@ -206,6 +206,9 @@ async def cost_recording_scope(  # noqa: PLR0913
         agent_id=agent_id,
         task_id=task_id,
         project_id=project_id,
+        # The public ``purpose`` kwarg maps onto the context's
+        # ``prompt_class_id``: call sites read as ``purpose=...`` while the
+        # stored field name matches ``CostRecord.prompt_class_id`` / the DB column.
         prompt_class_id=purpose,
         call_category=call_category,
         currency=resolved_currency,
@@ -597,6 +600,7 @@ async def _record_cost_in_background(
         cost=record.cost,
         currency=ctx.currency,
         call_category=ctx.call_category.value,
+        prompt_class_id=record.prompt_class_id,
         success=record.success,
     )
 

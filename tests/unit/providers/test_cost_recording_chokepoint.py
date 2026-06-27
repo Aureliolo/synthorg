@@ -29,6 +29,7 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
     cost_recording_scope,
     current_cost_context,
+    emit_cost_record_from_usage,
     resolve_currency,
 )
 from synthorg.providers.enums import MessageRole
@@ -160,7 +161,7 @@ class TestCostRecordingChokepoint:
         await tracker.drain_pending_records()
         records = await tracker.get_records()
         assert len(records) == 1
-        assert records[0].prompt_class_id == "system:memory:rerank"
+        assert records[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
 
     async def test_purpose_defaults_none(self) -> None:
         provider = _StubProvider()
@@ -178,6 +179,31 @@ class TestCostRecordingChokepoint:
         records = await tracker.get_records()
         assert len(records) == 1
         assert records[0].prompt_class_id is None
+
+    async def test_purpose_threads_into_streaming_record(self) -> None:
+        # The streaming builder (_build_cost_record_from_usage) shares the
+        # ContextVar; assert purpose reaches a record emitted from a terminal
+        # USAGE chunk, independent of whether base.py wires it yet.
+        tracker = CostTracker()
+        usage = TokenUsage(input_tokens=10, output_tokens=5, cost=0.001)
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            purpose=PromptPurposeId.MEMORY_RERANK,
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            ctx = current_cost_context()
+            assert ctx is not None
+            await emit_cost_record_from_usage(
+                ctx, usage, model="test-model", provider="test-provider"
+            )
+
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
 
     async def test_no_record_when_scope_not_open(self) -> None:
         provider = _StubProvider()

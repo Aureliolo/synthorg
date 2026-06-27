@@ -81,7 +81,12 @@ class CostRecord(BaseModel):
     )
     prompt_class_id: NotBlankStr | None = Field(
         default=None,
-        description="Prompt-class identifier for purpose attribution",
+        description=(
+            "Prompt-class identifier for purpose attribution. When non-null "
+            "the value is a PromptPurposeId (e.g. 'system:memory:rerank'); "
+            "stored as a free-form string rather than the enum so reads stay "
+            "valid across registry additions"
+        ),
     )
     provider: NotBlankStr = Field(description="LLM provider name")
     model: NotBlankStr = Field(description="Model identifier")

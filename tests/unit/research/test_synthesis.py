@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.budget.tracker import CostTracker
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.research.enums import ResearchSourceType
 from synthorg.research.errors import ResearchSynthesisError
 from synthorg.research.models import (
@@ -19,7 +21,7 @@ from synthorg.research.synthesis.citation_binder import CitationBinder
 from synthorg.research.synthesis.llm_synthesizer import LlmSynthesizer
 from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
-from tests.unit.research._fakes import scripted_response
+from tests.unit.research._fakes import CtxCapturingProvider, scripted_response
 
 pytestmark = pytest.mark.unit
 
@@ -128,6 +130,38 @@ async def test_synthesiser_builds_cited_report() -> None:
     assert report.sources_retained == 2
     assert report.claims[0].citations[0].ref_id == "src-0-0"
     assert report.created_at == _NOW
+
+
+async def test_synthesiser_opens_purpose_scope() -> None:
+    payload = json.dumps(
+        {
+            "title": "T",
+            "summary": "s",
+            "claims": [
+                {
+                    "text": "c",
+                    "claim_type": "fact",
+                    "confidence": 0.9,
+                    "ref_ids": ["src-0-0"],
+                }
+            ],
+        }
+    )
+    provider = CtxCapturingProvider(payload)
+    synth = LlmSynthesizer(
+        provider=provider,
+        model="example-medium-001",
+        binder=CitationBinder(),
+        clock=FakeClock(start=_NOW),
+        cost_tracker=CostTracker(),
+    )
+
+    await synth.synthesize(_brief(), _plan(), (_item("src-0-0"),), sources_consulted=1)
+
+    assert provider.was_called
+    ctx = provider.captured
+    assert ctx is not None
+    assert ctx.prompt_class_id is PromptPurposeId.RESEARCH_SYNTHESIS
 
 
 async def test_synthesiser_rejects_no_sources() -> None:
