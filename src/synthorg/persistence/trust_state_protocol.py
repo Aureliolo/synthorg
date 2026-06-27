@@ -6,10 +6,8 @@ is promoted, demoted, evaluated, or decayed: it composes
 trail of every level transition and composes
 :class:`AppendOnlyRepository`, newest-first.
 
-Both back :class:`synthorg.security.trust.service.TrustService`, whose
-``_trust_states`` / ``_change_history`` dicts were process-local before
-this protocol existed and reset on every restart. Persisting them keeps
-elevated-trust decisions and their audit trail durable across restarts.
+Both durably back :class:`synthorg.security.trust.service.TrustService`
+so elevated-trust decisions and their audit trail survive a restart.
 """
 
 from datetime import datetime

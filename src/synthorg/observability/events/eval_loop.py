@@ -39,3 +39,7 @@ EVAL_LOOP_CYCLE_SCHEDULER_STARTED: Final[str] = "eval.loop.scheduler_started"
 EVAL_LOOP_CYCLE_SCHEDULER_STOPPED: Final[str] = "eval.loop.scheduler_stopped"
 EVAL_LOOP_CYCLE_SCHEDULER_FAILED: Final[str] = "eval.loop.scheduler_failed"
 EVAL_LOOP_CYCLE_RAN: Final[str] = "eval.loop.scheduler_cycle_ran"
+# A scheduler tick that ran no cycle because ``hr.eval_loop_cycle_paused``
+# is set. Distinct from CYCLE_RAN so an operator alerting on cycle
+# activity does not get false hits every tick while the loop is paused.
+EVAL_LOOP_CYCLE_PAUSED: Final[str] = "eval.loop.scheduler_cycle_paused"

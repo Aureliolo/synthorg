@@ -9,11 +9,11 @@ the peer. Card endpoints are unauthenticated by design (public per the A2A
 spec), so no connection-catalog credentials are pulled.
 """
 
-from typing import Final
+from typing import Final, NoReturn
 
 import httpx
 
-from synthorg.a2a.client import A2AClientError
+from synthorg.a2a.client import A2AClientError, A2ATransientError
 from synthorg.a2a.models import A2AAgentCard
 from synthorg.a2a.peer_registry import PeerRegistry
 from synthorg.core.critical_errors import reraise_critical
@@ -37,8 +37,9 @@ class PeerDiscoveryClient:
 
     The SSRF validation pins the connection to the validator-approved IP so a
     DNS rebind between the check and the connect cannot redirect the fetch to a
-    private address (TOCTOU); the payload is byte-bounded before parsing so a
-    hostile peer cannot exhaust memory with an unbounded card body.
+    private address (TOCTOU); the response is streamed and the running byte
+    count is enforced against ``max_card_bytes`` as it arrives, so a hostile
+    peer cannot exhaust memory by returning an oversized card body.
 
     Args:
         peer_registry: Registry to commit discovered cards into.
@@ -84,14 +85,16 @@ class PeerDiscoveryClient:
             The validated, registered :class:`A2AAgentCard`.
 
         Raises:
-            A2AClientError: When the URL is SSRF-blocked, the fetch fails or
-                returns non-200, the body exceeds ``max_card_bytes``, or the
-                payload is not a valid Agent Card.
+            A2ATransientError: When the fetch times out or the connection
+                resets (the caller may retry).
+            A2AClientError: When the URL is SSRF-blocked, the fetch returns
+                non-200, the body exceeds ``max_card_bytes``, or the payload
+                is not a valid Agent Card.
         """
         pinned_ip, pinned_hostname = await self._validate_and_pin(peer_name, base_url)
         card_url = f"{strip_trailing_slash(base_url)}{_WELL_KNOWN_CARD_PATH}"
-        response = await self._fetch(peer_name, card_url, pinned_ip, pinned_hostname)
-        card = self._parse(peer_name, response)
+        body = await self._fetch(peer_name, card_url, pinned_ip, pinned_hostname)
+        card = self._parse(peer_name, body)
         await self._registry.register(peer_name, card)
         logger.info(
             A2A_PEER_DISCOVERED,
@@ -122,18 +125,32 @@ class PeerDiscoveryClient:
         )
 
         if extract_hostname(base_url) is None:
-            logger.warning(
-                A2A_OUTBOUND_SSRF_BLOCKED,
-                peer_name=peer_name,
-                url=base_url,
-                reason="unparseable URL",
-            )
-            msg = f"SSRF: cannot parse discovery URL for peer '{peer_name}'"
-            raise A2AClientError(msg, peer_name=peer_name)
+            self._raise_ssrf_blocked(peer_name, base_url, reason="unparseable URL")
         try:
             validation = await validate_url_host(base_url, self._network_validator)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            self._raise_ssrf_blocked(peer_name, base_url, exc=exc)
+        if isinstance(validation, str):
+            self._raise_ssrf_blocked(peer_name, base_url, reason=validation)
+        if validation.resolved_ips:
+            return validation.resolved_ips[0], validation.hostname
+        return None, None
+
+    def _raise_ssrf_blocked(
+        self,
+        peer_name: str,
+        base_url: str,
+        *,
+        reason: str | None = None,
+        exc: Exception | None = None,
+    ) -> NoReturn:
+        """Log the SSRF block and raise, redacting any underlying error.
+
+        Raises:
+            A2AClientError: Always; this never returns.
+        """
+        if exc is not None:
             logger.warning(
                 A2A_OUTBOUND_SSRF_BLOCKED,
                 peer_name=peer_name,
@@ -141,20 +158,15 @@ class PeerDiscoveryClient:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"SSRF: blocked discovery URL for peer '{peer_name}'"
-            raise A2AClientError(msg, peer_name=peer_name) from exc
-        if isinstance(validation, str):
+        else:
             logger.warning(
                 A2A_OUTBOUND_SSRF_BLOCKED,
                 peer_name=peer_name,
                 url=base_url,
-                reason=validation,
+                reason=reason,
             )
-            msg = f"SSRF: blocked discovery URL for peer '{peer_name}'"
-            raise A2AClientError(msg, peer_name=peer_name)
-        if validation.resolved_ips:
-            return validation.resolved_ips[0], validation.hostname
-        return None, None
+        msg = f"SSRF: blocked discovery URL for peer '{peer_name}'"
+        raise A2AClientError(msg, peer_name=peer_name) from exc
 
     async def _fetch(
         self,
@@ -162,36 +174,45 @@ class PeerDiscoveryClient:
         card_url: str,
         pinned_ip: str | None,
         pinned_hostname: str | None,
-    ) -> httpx.Response:
-        """GET the card URL through the pinned transport.
+    ) -> bytes:
+        """Stream the card URL through the pinned transport, byte-bounded.
 
         Returns:
-            The HTTP response (status not yet checked).
+            The card response body, capped at ``max_card_bytes``.
 
         Raises:
-            A2AClientError: On any transport error or non-200 status.
+            A2ATransientError: On a connection/timeout error the caller may
+                retry (the peer was momentarily unreachable).
+            A2AClientError: On a non-transient transport error, a non-200
+                status, or a body exceeding the size cap.
         """
         try:
             if self._http_client is not None:
-                response = await self._http_client.get(card_url)
-            else:
-                transport: httpx.AsyncBaseTransport | None = None
-                if pinned_ip is not None and pinned_hostname is not None:
-                    from synthorg.tools._dns_pinning import (  # noqa: PLC0415
-                        PinnedDnsTransport,
-                    )
+                return await self._stream_bounded(
+                    self._http_client, card_url, peer_name
+                )
+            transport: httpx.AsyncBaseTransport | None = None
+            if pinned_ip is not None and pinned_hostname is not None:
+                from synthorg.tools._dns_pinning import (  # noqa: PLC0415
+                    PinnedDnsTransport,
+                )
 
-                    transport = PinnedDnsTransport(
-                        hostname=pinned_hostname, ip=pinned_ip
-                    )
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=self._timeout, transport=transport
-                    ) as http:
-                        response = await http.get(card_url)
-                finally:
-                    if transport is not None:
-                        await transport.aclose()
+                transport = PinnedDnsTransport(hostname=pinned_hostname, ip=pinned_ip)
+            # ``AsyncClient`` owns and closes the injected transport on exit;
+            # an explicit aclose() would double-close it.
+            async with httpx.AsyncClient(
+                timeout=self._timeout, transport=transport
+            ) as http:
+                return await self._stream_bounded(http, card_url, peer_name)
+        except (httpx.NetworkError, httpx.TimeoutException) as exc:
+            logger.warning(
+                A2A_PEER_DISCOVERY_FAILED,
+                peer_name=peer_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Agent-card fetch for peer '{peer_name}' timed out or reset"
+            raise A2ATransientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPError as exc:
             logger.warning(
                 A2A_PEER_DISCOVERY_FAILED,
@@ -201,37 +222,55 @@ class PeerDiscoveryClient:
             )
             msg = f"Agent-card fetch for peer '{peer_name}' failed"
             raise A2AClientError(msg, peer_name=peer_name) from exc
-        if response.status_code != _HTTP_OK:
-            logger.warning(
-                A2A_PEER_DISCOVERY_FAILED,
-                peer_name=peer_name,
-                status=response.status_code,
-            )
-            msg = f"Peer '{peer_name}' agent card returned {response.status_code}"
-            raise A2AClientError(msg, peer_name=peer_name)
-        return response
 
-    def _parse(self, peer_name: str, response: httpx.Response) -> A2AAgentCard:
-        """Byte-bound and validate the response body into an Agent Card.
+    async def _stream_bounded(
+        self,
+        http: httpx.AsyncClient,
+        card_url: str,
+        peer_name: str,
+    ) -> bytes:
+        """Stream a GET, enforcing the byte cap as chunks arrive.
+
+        Returns:
+            The body bytes, guaranteed <= ``max_card_bytes``.
+
+        Raises:
+            A2AClientError: On a non-200 status or a body over the cap.
+        """
+        async with http.stream("GET", card_url) as response:
+            if response.status_code != _HTTP_OK:
+                logger.warning(
+                    A2A_PEER_DISCOVERY_FAILED,
+                    peer_name=peer_name,
+                    status=response.status_code,
+                )
+                msg = f"Peer '{peer_name}' agent card returned {response.status_code}"
+                raise A2AClientError(msg, peer_name=peer_name)
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > self._max_card_bytes:
+                    logger.warning(
+                        A2A_PEER_DISCOVERY_FAILED,
+                        peer_name=peer_name,
+                        reason="card_too_large",
+                        byte_count=len(body),
+                    )
+                    msg = f"Peer '{peer_name}' agent card exceeds the size cap"
+                    raise A2AClientError(msg, peer_name=peer_name)
+            return bytes(body)
+
+    def _parse(self, peer_name: str, body: bytes) -> A2AAgentCard:
+        """Validate the (already byte-bounded) body into an Agent Card.
 
         Returns:
             The validated :class:`A2AAgentCard`.
 
         Raises:
-            A2AClientError: When the body exceeds ``max_card_bytes`` or is not
-                a valid Agent Card.
+            A2AClientError: When the payload is not a valid Agent Card.
         """
-        if len(response.content) > self._max_card_bytes:
-            logger.warning(
-                A2A_PEER_DISCOVERY_FAILED,
-                peer_name=peer_name,
-                reason="card_too_large",
-                byte_count=len(response.content),
-            )
-            msg = f"Peer '{peer_name}' agent card exceeds the size cap"
-            raise A2AClientError(msg, peer_name=peer_name)
         try:
-            return A2AAgentCard.model_validate_json(response.content)
+            return A2AAgentCard.model_validate_json(body)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

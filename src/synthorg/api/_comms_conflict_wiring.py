@@ -39,11 +39,9 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
 ) -> None:
     """Build + install the conflict-resolution service on the comms slice.
 
-    Previously dead at boot: the four-plus-evidence resolver set existed but
-    nothing constructed the orchestrating service, so the conflict-resolution
-    surface was unreachable. The hierarchy is built from the boot-time company
-    snapshot (same lifecycle as the escalation wiring), and the human resolver
-    reuses the escalation store/processor/registry already wired.
+    The hierarchy is built from the boot-time company snapshot (same
+    lifecycle as the escalation wiring), and the human resolver reuses the
+    escalation store/processor/registry already wired.
     """
     from synthorg.communication.conflict_resolution.factory import (  # noqa: PLC0415
         build_conflict_resolution_service,

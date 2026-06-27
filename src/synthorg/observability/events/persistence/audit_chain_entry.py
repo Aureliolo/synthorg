@@ -18,3 +18,6 @@ PERSISTENCE_AUDIT_CHAIN_ENTRY_QUERY_FAILED: Final[str] = (
 PERSISTENCE_AUDIT_CHAIN_ENTRY_DESERIALIZE_FAILED: Final[str] = (
     "persistence.audit_chain_entry.deserialize_failed"
 )
+PERSISTENCE_AUDIT_CHAIN_ENTRY_PURGE_FAILED: Final[str] = (
+    "persistence.audit_chain_entry.purge_failed"
+)

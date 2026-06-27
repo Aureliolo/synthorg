@@ -1,10 +1,9 @@
 """Persistence protocol for the append-only audit hash chain.
 
-Backs :class:`synthorg.observability.audit_chain.chain.HashChain` (via
-its :class:`AuditChainSink`), whose ``_entries`` list was process-local:
-the tamper-evident chain and its tail hash were lost on every restart,
-so post-restart verification was impossible. Persisting the entries
-keeps the chain durable and verifiable across restarts.
+Durably backs :class:`synthorg.observability.audit_chain.chain.HashChain`
+(via its :class:`AuditChainSink`) so the tamper-evident chain and its
+tail hash survive a restart and post-restart verification remains
+possible.
 
 Entries are immutable and ordered by their zero-based ``position``, so
 this composes :class:`AppendOnlyRepository` plus a bespoke
@@ -81,6 +80,12 @@ class AuditChainRepository(
     @override
     async def purge_before(self, threshold: datetime, /) -> int:
         """Delete entries with ``timestamp < threshold``.
+
+        WARNING: purging breaks chain verifiability. Removing rows leaves a
+        gap in the monotonic ``position`` sequence, so verification over any
+        window crossing the cut fails (the ``previous_hash`` link is broken
+        at the boundary). Archive and verify the affected range before
+        purging; this is a retention primitive, not a routine read.
 
         Args:
             threshold: UTC cutoff on the entry timestamp.

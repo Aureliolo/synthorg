@@ -6,6 +6,7 @@ and trust level changes for agents.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -42,7 +43,8 @@ from synthorg.security.trust.models import (
 )
 from synthorg.security.trust.protocol import TrustStrategy
 
-_PERSIST_TIMEOUT_SECONDS: float = 5.0
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+_HYDRATE_PAGE_SIZE: Final[int] = 100
 
 logger = get_logger(__name__)
 
@@ -115,27 +117,28 @@ class TrustService:
             return
         states: dict[str, TrustState] = {}
         offset = 0
-        page = 100
         # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
-            batch = await self._state_repo.list_items(limit=page, offset=offset)
+            batch = await self._state_repo.list_items(
+                limit=_HYDRATE_PAGE_SIZE, offset=offset
+            )
             for state in batch:
                 states[str(state.agent_id)] = state
-            if len(batch) < page:
+            if len(batch) < _HYDRATE_PAGE_SIZE:
                 break
-            offset += page
+            offset += _HYDRATE_PAGE_SIZE
         history: dict[str, list[TrustChangeRecord]] = {}
         offset = 0
         # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             records = await self._history_repo.query(
-                TrustChangeHistoryFilterSpec(), limit=page, offset=offset
+                TrustChangeHistoryFilterSpec(), limit=_HYDRATE_PAGE_SIZE, offset=offset
             )
             for record in records:
                 history.setdefault(str(record.agent_id), []).append(record)
-            if len(records) < page:
+            if len(records) < _HYDRATE_PAGE_SIZE:
                 break
-            offset += page
+            offset += _HYDRATE_PAGE_SIZE
         # The history query returns newest-first; reverse each agent's
         # list so the in-memory order matches append order (oldest-first).
         for records_list in history.values():

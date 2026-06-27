@@ -95,11 +95,11 @@ def _publish_red_team_runtime(
 def _try_wire_ssrf_violation_recorder(app_state: AppState) -> None:
     """Install the fail-safe SSRF-violation recorder when persistence is up.
 
-    Turns the outbound SSRF guard's previously write-never violation store
-    into a live audit trail: every blocked URL is recorded as a PENDING
-    ``SsrfViolation`` for operator review via ``/providers/ssrf-violations``.
-    A persistence-less boot (dev / test fixtures) clears the recorder so the
-    chokepoint no-ops. Recording is best-effort and never weakens a block.
+    Gives the outbound SSRF guard a live audit trail: every blocked URL is
+    recorded as a PENDING ``SsrfViolation`` for operator review via
+    ``/providers/ssrf-violations``. A persistence-less boot (dev / test
+    fixtures) clears the recorder so the chokepoint no-ops. Recording is
+    best-effort and never weakens a block.
     """
     from synthorg.api.services.ssrf_violation_service import (  # noqa: PLC0415
         SsrfViolationService,

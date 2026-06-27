@@ -86,7 +86,7 @@ class TestBuildSystemPrompt:
         self,
     ) -> None:
         """Two agents with different personality configs get different prompts."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
+        model_cfg = ModelConfig(provider="test-provider", model_id="test-small-001")
         hiring = date(2026, 1, 1)
 
         agent_a = AgentIdentity(
@@ -266,7 +266,7 @@ class TestBuildSystemPrompt:
 
     def test_new_personality_dimensions_with_custom_values(self) -> None:
         """Prompt reflects explicitly set personality dimensions."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
+        model_cfg = ModelConfig(provider="test-provider", model_id="test-small-001")
         agent = AgentIdentity(
             name="Custom Agent",
             role="Dev",

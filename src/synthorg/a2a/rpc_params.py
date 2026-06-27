@@ -162,9 +162,9 @@ def parse_rpc_params(rpc_request: JsonRpcRequest) -> A2ARpcParams:
         rpc_request: A validated :class:`JsonRpcRequest`.
 
     Returns:
-        One of :class:`A2AMessageSendParams`,
-        :class:`A2ATaskGetParams`, or :class:`A2ATaskCancelParams`,
-        chosen by the envelope's ``method`` field.
+        The :class:`A2ARpcParams` variant matching the envelope's
+        ``method`` field (message/send, tasks/get, tasks/cancel,
+        skills/query, or skills/negotiate).
 
     Raises:
         ValidationError: When the params shape does not match the

@@ -363,8 +363,10 @@ class ReviewFacadeService:
 class EvaluationVersionService:
     """Evaluation-config version history facade.
 
-    Wraps :class:`PersistenceBackend.evaluation_config_versions` when
-    available; returns ``()`` / ``None`` otherwise.
+    Wraps :class:`PersistenceBackend.evaluation_config_versions`. When the
+    backend does not expose that repository (or its methods), the accessors
+    raise :class:`CapabilityNotSupportedError` (HTTP 503) rather than
+    returning an empty result.
     """
 
     def __init__(self, *, persistence: object) -> None:

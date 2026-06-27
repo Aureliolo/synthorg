@@ -116,9 +116,9 @@ class PostgresConfig(BaseModel):
         database: Database name.
         username: Database username.
         password: Database password (redacted in logs).
-        ssl_mode: libpq SSL mode.  Default ``"require"`` refuses
-            plaintext connections; production deployments with
-            managed certificates should use ``"verify-full"``.
+        ssl_mode: libpq SSL mode.  Default ``"verify-full"`` encrypts the
+            connection and validates the server certificate and hostname;
+            weaker modes that skip certificate validation are opt-in.
         pool_min_size: Minimum pooled connections (warmed on connect).
         pool_max_size: Maximum pooled connections; must be
             ``>= pool_min_size``.

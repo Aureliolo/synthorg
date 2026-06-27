@@ -172,7 +172,7 @@ def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> _SslKwargs:
 
     Empty / ``None`` overrides return an empty dict so the caller's
     ``**ssl_kwargs`` spread leaves the :class:`PostgresConfig` default
-    (``"require"``) in place.
+    (``"verify-full"``) in place.
 
     Returns:
         Result of type ``_SslKwargs``.

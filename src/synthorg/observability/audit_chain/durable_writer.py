@@ -1,8 +1,9 @@
 # module-kind: service
 """Sync-to-async bridge that durably persists audit-chain entries.
 
-:class:`AuditChainSink.emit` is a synchronous structlog processor that
-runs on whichever thread logged the event, so it cannot ``await`` a
+:meth:`AuditChainSink.emit` is the stdlib :class:`logging.Handler` method
+that runs synchronously on whichever thread logged the event (after
+structlog's processor chain completes), so it cannot ``await`` a
 persistence repository directly. This writer bridges the gap: ``emit``
 calls :meth:`enqueue` (sync, thread-safe) after appending to the
 in-memory chain, and a background asyncio task drains the queue and
@@ -14,6 +15,7 @@ restarts.
 """
 
 import asyncio
+import contextlib
 import queue
 from typing import Final
 
@@ -24,6 +26,7 @@ from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_PERSIST_DRAIN_FAILED,
     AUDIT_CHAIN_PERSIST_ENQUEUE_DROPPED,
     AUDIT_CHAIN_PERSIST_HYDRATED,
+    AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED,
     AUDIT_CHAIN_PERSIST_STARTED,
     AUDIT_CHAIN_PERSIST_STOPPED,
 )
@@ -65,32 +68,44 @@ class DurableAuditChainWriter:
 
         Called from :meth:`AuditChainSink.emit` under the sink lock.
         Never blocks: on a full queue the entry is dropped from the
-        durable path (it remains in the live in-memory chain) and logged.
+        durable path (it remains in the live in-memory chain) and logged
+        at ERROR. The live chain then carries a position the durable store
+        lacks, so post-restart :meth:`hydrate` verification will flag the
+        gap (see :data:`AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED`).
         """
         try:
             self._queue.put_nowait(entry)
         except queue.Full:
-            logger.warning(
+            logger.error(
                 AUDIT_CHAIN_PERSIST_ENQUEUE_DROPPED,
                 position=entry.position,
+                note="durable path lost this entry; chain verification will gap",
             )
 
     async def hydrate(self, chain: HashChain) -> None:
-        """Rebuild ``chain`` from the durable store at startup."""
+        """Rebuild ``chain`` from the durable store at startup.
+
+        Pages with a ``min_position`` cursor (not OFFSET) so each page is an
+        indexed range scan on the ``position`` primary key; an unbounded
+        chain hydrates in O(N) total rather than O(N^2). After the rebuild
+        the chain is verified so a durable gap or tampered row surfaces
+        loudly instead of silently poisoning subsequent appends.
+        """
         entries: list[ChainEntry] = []
-        offset = 0
+        min_position: int | None = None
         # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
             page = await self._repo.query(
-                AuditChainFilterSpec(),
+                AuditChainFilterSpec(min_position=min_position),
                 limit=_HYDRATE_PAGE_SIZE,
-                offset=offset,
             )
             entries.extend(page)
             if len(page) < _HYDRATE_PAGE_SIZE:
                 break
-            offset += _HYDRATE_PAGE_SIZE
+            min_position = page[-1].position + 1
         chain.restore(tuple(entries))
+        if entries and not chain.verify_integrity():
+            logger.warning(AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED, entries=len(entries))
         logger.info(AUDIT_CHAIN_PERSIST_HYDRATED, entries=len(entries))
 
     async def start(self) -> None:
@@ -101,17 +116,42 @@ class DurableAuditChainWriter:
         logger.info(AUDIT_CHAIN_PERSIST_STARTED)
 
     async def stop(self) -> None:
-        """Stop the drain task, flushing queued entries first."""
+        """Stop the drain task, flushing queued entries first.
+
+        On a clean stop every queued entry is durably appended before the
+        ``None`` sentinel returns. On a drain timeout the task is cancelled
+        and any still-queued entries are lost; that outcome is logged at
+        WARNING with the dropped count so it is never mistaken for a clean
+        flush.
+        """
         if self._drain_task is None:
             return
-        self._queue.put(None)
+        drain_task = self._drain_task
+        self._drain_task = None
+        # Non-blocking: a blocking put on a saturated queue would stall the
+        # event loop while the drain is mid-append. If the sentinel is
+        # undelivered (queue full) the timeout below cancels the drain.
+        with contextlib.suppress(queue.Full):
+            self._queue.put_nowait(None)
+        timed_out = False
         try:
             async with asyncio.timeout(_STOP_DRAIN_TIMEOUT_SECONDS):
-                await self._drain_task
+                await drain_task
         except TimeoutError:
-            self._drain_task.cancel()
-        self._drain_task = None
-        logger.info(AUDIT_CHAIN_PERSIST_STOPPED)
+            timed_out = True
+            drain_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await drain_task
+        if timed_out:
+            logger.warning(
+                AUDIT_CHAIN_PERSIST_STOPPED,
+                clean=False,
+                reason="drain_timeout",
+                entries_dropped=self._queue.qsize(),
+                timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+            )
+        else:
+            logger.info(AUDIT_CHAIN_PERSIST_STOPPED, clean=True)
 
     async def _drain(self) -> None:
         """Pop entries off the queue and durably append them.

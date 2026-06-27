@@ -26,8 +26,10 @@ logger = get_logger(__name__)
 class PeerRegistry:
     """In-memory cache of discovered external A2A peers.
 
-    Thread-safe via asyncio.Lock.  Peer names are normalized
-    to lowercase for case-insensitive lookup.
+    Coroutine-safe: concurrent asyncio tasks in the same event loop are
+    serialised by an :class:`asyncio.Lock` (this does not guard against
+    OS-thread concurrency). Peer names are normalized to lowercase for
+    case-insensitive lookup.
     """
 
     __slots__ = ("_lock", "_peers")

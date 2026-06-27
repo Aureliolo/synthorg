@@ -403,7 +403,9 @@ class TestDebateResolverEvaluatorFailure:
         resolution = await resolver.resolve(conflict)
         # Authority picks sr_dev (higher seniority)
         assert resolution.winning_agent_id == "sr_dev"
-        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        # The evaluator failed, so the resolution is recorded as decided by
+        # authority, not debate (the audit trail must not misattribute it).
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
         assert "fallback" in resolution.reasoning.lower()
         # Evaluator was called once before failing
         assert len(judge.calls) == 1
@@ -497,6 +499,7 @@ class TestDebateResolverEvaluatorFailure:
             ),
         )
         resolution = await resolver.resolve(conflict)
-        # Should resolve via no-hierarchy seniority (incumbent wins)
-        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_DEBATE
+        # Should resolve via no-hierarchy seniority (incumbent wins); the
+        # evaluator failed so the outcome is authority, not debate.
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
         assert "no hierarchy" in resolution.reasoning.lower()

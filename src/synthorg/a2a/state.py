@@ -1,9 +1,10 @@
 """A2A feature state slice.
 
 Holds the agent-to-agent gateway collaborators: the Agent Card builder,
-the peer registry, and the outbound A2A client. All ``None`` until the
-A2A gateway is wired at boot (gated on the gateway being enabled); the
-``.well-known`` handlers and capabilities controller surface 503 when unset.
+the peer registry, the peer-discovery client, and the outbound A2A client.
+All ``None`` until the A2A gateway is wired at boot (gated on the gateway
+being enabled); the ``.well-known`` handlers and capabilities controller
+surface 503 when unset.
 """
 
 from pydantic import ConfigDict

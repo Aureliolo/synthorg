@@ -8,14 +8,14 @@
     },
     "src/synthorg/a2a/client.py": {
       "cap": 500,
-      "loc": 485,
-      "ratio": 0.97,
+      "loc": 481,
+      "ratio": 0.962,
       "tier": "code"
     },
     "src/synthorg/a2a/gateway.py": {
       "cap": 1100,
-      "loc": 1010,
-      "ratio": 0.918,
+      "loc": 1035,
+      "ratio": 0.941,
       "tier": "complex_service"
     },
     "src/synthorg/api/_app_wiring.py": {
@@ -200,8 +200,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 500,
-      "loc": 460,
-      "ratio": 0.92,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -656,8 +656,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 600,
-      "loc": 547,
-      "ratio": 0.912,
+      "loc": 550,
+      "ratio": 0.917,
       "tier": "service"
     },
     "src/synthorg/hr/performance/tracker.py": {
@@ -932,8 +932,8 @@
     },
     "src/synthorg/observability/audit_chain/sink.py": {
       "cap": 500,
-      "loc": 480,
-      "ratio": 0.96,
+      "loc": 490,
+      "ratio": 0.98,
       "tier": "code"
     },
     "src/synthorg/observability/audit_chain/tsa_client.py": {
@@ -968,8 +968,8 @@
     },
     "src/synthorg/observability/sinks.py": {
       "cap": 500,
-      "loc": 442,
-      "ratio": 0.884,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/organization/services.py": {
@@ -1196,8 +1196,8 @@
     },
     "src/synthorg/persistence/sqlite/trust_repo.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 431,
+      "ratio": 0.862,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/version_repo.py": {
@@ -1316,8 +1316,8 @@
     },
     "src/synthorg/security/trust/service.py": {
       "cap": 500,
-      "loc": 468,
-      "ratio": 0.936,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "code"
     },
     "src/synthorg/settings/bridge_configs.py": {
@@ -1490,7 +1490,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 61,
     "synthorg.core.clock": 207,
-    "synthorg.core.critical_errors": 578,
+    "synthorg.core.critical_errors": 579,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
@@ -1685,7 +1685,7 @@
     },
     "synthorg.hr.hiring_service:HiringService": {
       "lcom4": 1,
-      "loc": 498
+      "loc": 499
     },
     "synthorg.hr.performance.tracker:PerformanceTracker": {
       "lcom4": 6,

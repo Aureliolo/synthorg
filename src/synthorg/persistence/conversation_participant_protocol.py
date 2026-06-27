@@ -41,8 +41,14 @@ class ConversationParticipantFilterSpec(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    conversation_id: NotBlankStr | None = Field(default=None)
-    status: ConversationParticipantStatus | None = Field(default=None)
+    conversation_id: NotBlankStr | None = Field(
+        default=None,
+        description="Roster scope; None matches participants across all conversations",
+    )
+    status: ConversationParticipantStatus | None = Field(
+        default=None,
+        description="Restrict to active or removed members; None reads both",
+    )
 
 
 @runtime_checkable

@@ -7,6 +7,7 @@ generation, approval submission, and agent instantiation.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -51,7 +52,8 @@ from synthorg.persistence.hiring_request_protocol import (
 )
 from synthorg.security.autonomy.enums import ActionType
 
-_PERSIST_TIMEOUT_SECONDS: float = 5.0
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+_HYDRATE_PAGE_SIZE: Final[int] = 100
 
 logger = get_logger(__name__)
 
@@ -118,15 +120,16 @@ class HiringService:
             return
         loaded: dict[str, HiringRequest] = {}
         offset = 0
-        page = 100
         # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
         while True:
-            batch = await self._request_repo.list_items(limit=page, offset=offset)
+            batch = await self._request_repo.list_items(
+                limit=_HYDRATE_PAGE_SIZE, offset=offset
+            )
             for request in batch:
                 loaded[str(request.id)] = request
-            if len(batch) < page:
+            if len(batch) < _HYDRATE_PAGE_SIZE:
                 break
-            offset += page
+            offset += _HYDRATE_PAGE_SIZE
         self._requests = loaded
         logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 

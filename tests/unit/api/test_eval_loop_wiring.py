@@ -67,7 +67,7 @@ async def test_publishes_coordinator_with_scheduler_dormant_by_default() -> None
     app_state = _wired_app_state()
     await wire_eval_loop(app_state)
     published = app_state.slice(HrStateSlice)
-    # The coordinator is live at boot (closes the dead-at-boot gap) ...
+    # wire_eval_loop always publishes the coordinator when its deps exist ...
     assert published.eval_loop_coordinator is not None
     # ... but the unattended cycle driver is opt-in, so it stays dormant.
     assert published.eval_loop_cycle_scheduler is None

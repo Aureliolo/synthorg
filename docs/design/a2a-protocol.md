@@ -25,9 +25,11 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Optional JWS Agent Card signature verification | Shipped |
 | Webhook HMAC signature verification + replay protection | Shipped |
 | SSRF validation on outbound webhooks | Shipped |
+| DNS-rebind-hardened outbound SSRF (validated IP pinned via `PinnedDnsTransport`) | Shipped |
 | Delegation guard on inbound requests (loop prevention) | Shipped |
 | Quadratic communication enforcement strategies | Shipped (all four modes: `alert_only` default, `soft_throttle`, `hard_block`, `disabled`) |
-| Full A2A skill negotiation workflow | Planned |
+| Inbound `skills/query` + `skills/negotiate` JSON-RPC handlers | Shipped |
+| Governed peer discovery (`PeerDiscoveryClient`: SSRF-pinned card fetch + registry) | Shipped |
 | Inter-org federation patterns (delegation across organisations) | Planned |
 
 A2A is **disabled by default**. Enable via `a2a.enabled: true` in company YAML and configure auth + allowlist per deployment.

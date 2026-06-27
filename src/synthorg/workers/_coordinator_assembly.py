@@ -261,7 +261,7 @@ async def _build_runtime_coordinator(
 
     Resolves the operator-tuned decomposition model and routing-scorer
     weights, wires real git-worktree workspace isolation, then delegates
-    to the unit-tested :func:`build_coordinator` factory. The three
+    to the unit-tested :func:`build_coordinator` factory. The four
     resolution steps are independent, so they run concurrently under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The ``AgentTaskScorer``

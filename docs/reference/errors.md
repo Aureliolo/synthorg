@@ -240,6 +240,16 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8041 | `CONVERSATIONAL_PROPOSE_UNAVAILABLE` | Chief-of-Staff propose mode not wired (503) |
 | 8042 | `GROUP_CHAT_UNAVAILABLE` | Group-chat mode not wired (503) |
 | 8043 | `CHARTER_INTERVIEW_UNAVAILABLE` | Charter interview mode not wired (503) |
+| 8044 | `KNOWLEDGE_SYNTHESIS_ERROR` | Knowledge synthesis failed |
+| 8045 | `KNOWLEDGE_SYNTHESIS_UNAVAILABLE` | Knowledge synthesis not wired (503) |
+| 8046 | `RED_TEAM_REPORT_MISSING` | Red-team agent filed no report for the deliverable |
+| 8047 | `RED_TEAM_DISPATCH_FAILED` | Red-team agent dispatch failed before a report |
+| 8048 | `RED_TEAM_ROLE_MISSING` | Built-in red-team role absent from the catalog |
+| 8049 | `RED_TEAM_RUNTIME_SEED_INCOMPLETE` | Red-team runtime seed incomplete (wiring fault) |
+| 8050 | `BACKUP_COMPONENT_FAILED` | A per-component backup or restore step failed |
+| 8051 | `BACKUP_RETENTION_FAILED` | Backup retention pruning failed |
+| 8052 | `BACKUP_CONFIGURATION_INVALID` | Backup handler configuration is invalid |
+| 8053 | `CI_HOST_EXECUTION_REFUSED` | CI validator refused host execution (container required) |
 
 ## Content negotiation
 

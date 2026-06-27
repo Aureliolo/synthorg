@@ -9,10 +9,12 @@ from environment configuration and stashes it on ``AppState`` so
 :mod:`synthorg.observability.tracing.instrumentation` can look up
 the active tracer.
 
-All wiring is idempotent: repeated calls leave the first registered
-callback in place. Test-fixture startups re-run ``on_startup``, and
-overwriting live callbacks mid-request would double-count metrics
-or swap out the running trace handler.
+Sink installation and trace-handler wiring are idempotent: repeated
+calls leave the first registered handler in place, so a test-fixture
+startup that re-runs ``on_startup`` does not swap out the running trace
+handler mid-request. The Prometheus export callbacks are re-registered
+on each call (the closures are recreated), which is safe because they
+are pure forwarders to the process-wide collector.
 """
 
 import os

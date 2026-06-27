@@ -47,6 +47,26 @@ NotBlankStr = Annotated[
 """A string that must be non-empty and not consist solely of whitespace."""
 
 
+def require_not_blank(value: str, field: str) -> str:
+    """Validate a plain string arg is non-blank at runtime.
+
+    A ``NotBlankStr`` annotation only runs inside a Pydantic model, so a
+    domain-exception ``__init__`` typed ``execution_id: NotBlankStr`` would
+    still accept ``""``. Call this in such constructors to enforce the
+    contract and name the offending field.
+
+    Returns:
+        The unchanged *value* once confirmed non-blank.
+
+    Raises:
+        ValueError: If *value* is empty or whitespace-only.
+    """
+    if not value.strip():
+        msg = f"{field} must not be blank"
+        raise ValueError(msg)
+    return value
+
+
 def flatten_label(value: str) -> str:
     """Flatten a semi-trusted label for safe interpolation into a prompt.
 

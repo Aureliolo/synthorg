@@ -6,8 +6,8 @@ training service once those collaborators are wired (its other deps -- an
 :class:`EvaluationService`, :class:`TrajectoryScorer`,
 :class:`DogfoodingDatasetBuilder`, and an empty
 :class:`ExternalBenchmarkRegistry` -- are built here from the same tracker),
-then publishes it on :class:`HrStateSlice` so the coordinator is live at boot
-rather than dead.
+then publishes it on :class:`HrStateSlice` so the coordinator is available
+for operator-triggered cycles and the optional background driver.
 
 The periodic :class:`EvalLoopCycleScheduler` that drives ``run_cycle`` on a
 cadence is OPT-IN: a cycle can route corrective actions to the training

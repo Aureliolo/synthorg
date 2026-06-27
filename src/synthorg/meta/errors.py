@@ -70,6 +70,7 @@ class CIValidatorHostExecutionError(SelfImprovementError):
     host execution.
     """
 
+    error_code: ClassVar[ErrorCode] = ErrorCode.CI_HOST_EXECUTION_REFUSED
     default_message: ClassVar[str] = (
         "CI validator requires a container sandbox; refusing host execution"
     )

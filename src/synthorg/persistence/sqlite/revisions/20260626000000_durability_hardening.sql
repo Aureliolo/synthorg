@@ -1,18 +1,16 @@
--- Durability hardening (#2478): six tables that move previously
--- in-memory security/HR/audit runtime state into the durable store so
--- it survives process restarts.
+-- Durability hardening: six tables that hold security/HR/audit runtime
+-- state in the durable store so it survives process restarts.
 --
 -- * trust_states / trust_change_history -- progressive trust state and
---   its immutable audit trail (was TrustService._trust_states /
---   _change_history).
--- * audit_chain_entries -- the tamper-evident hash chain (was
---   HashChain._entries, lost on restart and unverifiable).
--- * promotion_history -- promotion/demotion records used to recompute
---   per-agent cooldown on load (was PromotionService._promotion_history).
+--   its immutable level-transition audit trail.
+-- * audit_chain_entries -- the tamper-evident hash chain, kept durable so
+--   post-restart verification stays possible.
+-- * promotion_history -- promotion/demotion records that recompute the
+--   per-agent cooldown on load (keeps a crashloop from re-promoting).
 -- * hiring_requests -- in-flight hiring requests and their lifecycle
---   status (was HiringService._requests; dangling approvals on restart).
--- * agent_contributions -- coordination contribution accumulator (was
---   PerformanceTracker._contributions, a write-only in-memory list).
+--   status, so an approved request is not orphaned by a restart.
+-- * agent_contributions -- the coordination-contribution trail for
+--   retrospective attribution analytics.
 --
 -- Complex nested models (PromotionRecord, HiringRequest,
 -- AgentContribution) round-trip through a JSON `payload` column with a

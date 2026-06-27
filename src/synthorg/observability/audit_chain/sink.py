@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import hashlib
+import inspect
 import json
 import logging
 import math
@@ -203,7 +204,8 @@ class AuditChainSink(logging.Handler):
     deadlock that occurs when called from within an existing event loop.
 
     Args:
-        signer: Signing backend (ML-DSA-65 or equivalent).
+        signer: Signing backend implementing :class:`AuditChainSigner`
+            (the shipped factory builds an Ed25519 signer).
         timestamp_provider: Trusted timestamp source.
         chain: Hash chain instance for append-only storage.
         config: Audit chain configuration.
@@ -271,7 +273,16 @@ class AuditChainSink(logging.Handler):
         chain (tail hash + entries) from durable storage so verification
         survives restarts; afterwards appended entries are handed to
         ``writer.enqueue`` inside the sink lock.
+
+        Raises:
+            TypeError: If ``writer.enqueue`` is a coroutine function. The
+                sink calls it synchronously under its lock, so an async
+                ``enqueue`` would return an un-awaited coroutine and
+                silently drop every entry; reject it at wiring time.
         """
+        if inspect.iscoroutinefunction(writer.enqueue):
+            msg = "AuditChainPersistenceWriter.enqueue must be synchronous"
+            raise TypeError(msg)
         await writer.hydrate(self._chain)
         await writer.start()
         self._persistence_writer = writer

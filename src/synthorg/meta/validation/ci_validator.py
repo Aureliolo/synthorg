@@ -12,6 +12,7 @@ from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.meta.errors import CIValidatorHostExecutionError
 from synthorg.meta.models import CIValidationResult
 from synthorg.meta.validation.scope_validator import ScopeValidator
@@ -311,9 +312,11 @@ def _check_sandbox_result(
         True if the step exited with code 0.
     """
     if result.returncode != 0:
-        output = (result.stdout + result.stderr).strip()
-        if len(output) > _MAX_ERROR_OUTPUT_LENGTH:
-            output = output[:_MAX_ERROR_OUTPUT_LENGTH] + "... (truncated)"
+        output = clip_with_ellipsis(
+            (result.stdout + result.stderr).strip(),
+            _MAX_ERROR_OUTPUT_LENGTH,
+            marker="... (truncated)",
+        )
         errors.append(f"{step_name}: {output}")
         return False
     return True

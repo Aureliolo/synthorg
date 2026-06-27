@@ -1,9 +1,9 @@
 """Persistence protocol for the append-only promotion/demotion history.
 
-Backs :class:`synthorg.hr.promotion.service.PromotionService`, whose
-``_promotion_history`` was process-local and reset on every restart,
-which re-enabled promotion after a crashloop (the cooldown is
-recomputed from the most recent record per agent). The records are
+Durably backs :class:`synthorg.hr.promotion.service.PromotionService`'s
+per-agent cooldown: the cooldown is recomputed from the most recent
+record per agent at load, so persisting the history keeps a crashloop
+from re-enabling a promotion the previous run had gated. The records are
 immutable once written, so this composes :class:`AppendOnlyRepository`.
 
 The ``PromotionRecord`` carries a deep nested ``PromotionEvaluation``;
@@ -15,7 +15,7 @@ their own columns for filtering and recency ordering.
 from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
@@ -47,9 +47,9 @@ class PromotionHistoryFilterSpec(BaseModel):
         default=None,
         description="Restrict to promotions or demotions; None reads both",
     )
-    since: datetime | None = Field(
+    since: AwareDatetime | None = Field(
         default=None,
-        description="Lower bound on effective_at (inclusive)",
+        description="Lower bound on effective_at (inclusive); must be tz-aware",
     )
 
 

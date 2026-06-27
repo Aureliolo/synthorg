@@ -1,9 +1,8 @@
--- Durability hardening (#2478): six tables that move previously
--- in-memory security/HR/audit runtime state into the durable store so
--- it survives process restarts. Postgres twin of the SQLite revision:
--- JSONB for JSON columns, TIMESTAMPTZ for timestamps, BYTEA for the
--- audit-chain binary payload/signature, BIGSERIAL for the contributions
--- surrogate key.
+-- Durability hardening: six tables that hold security/HR/audit runtime
+-- state in the durable store so it survives process restarts. Postgres
+-- twin of the SQLite revision: JSONB for JSON columns, TIMESTAMPTZ for
+-- timestamps, BYTEA for the audit-chain binary payload/signature,
+-- BIGSERIAL for the contributions surrogate key.
 
 CREATE TABLE trust_states (
     agent_id TEXT PRIMARY KEY CHECK (LENGTH(TRIM(agent_id)) > 0),

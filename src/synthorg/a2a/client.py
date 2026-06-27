@@ -500,18 +500,16 @@ class A2AClient:
             from synthorg.tools._dns_pinning import PinnedDnsTransport  # noqa: PLC0415
 
             transport = PinnedDnsTransport(hostname=pinned_hostname, ip=pinned_ip)
-        try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, transport=transport
-            ) as http:
-                return await http.post(
-                    url,
-                    json=rpc_req.model_dump(mode="json"),
-                    headers=headers,
-                )
-        finally:
-            if transport is not None:
-                await transport.aclose()
+        # ``AsyncClient`` takes ownership of an injected transport and closes
+        # it on context exit; a second explicit aclose() would double-close.
+        async with httpx.AsyncClient(
+            timeout=self._timeout, transport=transport
+        ) as http:
+            return await http.post(
+                url,
+                json=rpc_req.model_dump(mode="json"),
+                headers=headers,
+            )
 
 
 def _parse_rpc_response(

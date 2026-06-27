@@ -72,7 +72,20 @@ async def wire_promotion(
         service.attach_persistence(
             history_repo=persistence_of(app_state).promotion_history,
         )
-        await service.hydrate()
+        try:
+            await service.hydrate()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Fail safe: starting the scheduler on un-restored cooldown is
+            # the crashloop re-promotion bug durability exists to prevent.
+            logger.warning(
+                API_APP_STARTUP,
+                service="promotion",
+                note="cooldown hydrate failed; promotion disabled",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
     scheduler = PromotionCycleScheduler(
         service,
         interval_seconds=config.cycle_interval_seconds,

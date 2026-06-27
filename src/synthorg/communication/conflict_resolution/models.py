@@ -280,7 +280,15 @@ class DissentRecord(BaseModel):
                 f"not found in conflict positions"
             )
             raise ValueError(msg)
-        if self.resolution.conflict_id != str(self.conflict.id):
+        # Compare by parsed UUID value, not string form: conflict_id is a
+        # NotBlankStr on the wire so it may arrive hyphenated, hex, or urn;
+        # a raw string compare would reject equivalent encodings of the
+        # same id.
+        try:
+            resolution_conflict_uuid = UUID(self.resolution.conflict_id)
+        except ValueError:
+            resolution_conflict_uuid = None
+        if resolution_conflict_uuid != self.conflict.id:
             msg = (
                 f"resolution.conflict_id {self.resolution.conflict_id!r} "
                 f"does not match conflict.id {str(self.conflict.id)!r}"

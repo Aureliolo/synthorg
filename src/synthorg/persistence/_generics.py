@@ -1,6 +1,6 @@
 """Generic repository protocol categories for persistence layer composition.
 
-Entity repository protocols compose from six generic categories via
+Entity repository protocols compose from seven generic categories via
 Protocol inheritance::
 
     class TaskRepository(
@@ -8,7 +8,7 @@ Protocol inheritance::
         FilteredQueryRepository[Task, TaskFilterSpec],
     ): ...
 
-The six categories cover every persistence pattern in the codebase:
+The seven categories cover every persistence pattern in the codebase:
 
 * ``SingletonRepository[T]`` -- one-row global state.
 * ``IdKeyedRepository[T, ID]`` -- CRUD by primary key (composite keys
@@ -19,6 +19,8 @@ The six categories cover every persistence pattern in the codebase:
 * ``FilteredQueryRepository[T, FilterSpec]`` -- multi-row queries with
   a typed ``FilterSpec`` args model; always composed alongside
   ``IdKeyedRepository``.
+* ``BatchWriteRepository[T]`` -- atomic all-or-nothing multi-row upsert
+  (``save_many``) for bulk enrolment.
 * ``AppendOnlyRepository[Event, FilterSpec]`` -- immutable event logs
   with query + retention purge.
 * ``StatefulRepository[T, ID, State]`` -- ``IdKeyedRepository`` plus

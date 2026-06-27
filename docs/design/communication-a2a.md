@@ -42,15 +42,21 @@ SynthOrg: "SynthOrg Organization" {
 The gateway sits at the organisation boundary and handles two directions:
 
 Inbound (external -> internal)
-:   External A2A clients discover SynthOrg agents via Agent Cards, create tasks via
-    JSON-RPC, and receive updates via SSE. The gateway translates A2A requests into
-    internal MessageBus messages and applies [DelegationGuard](communication-coordination.md#loop-prevention) +
+:   External A2A clients discover SynthOrg agents via Agent Cards, then call one of the
+    gateway's five JSON-RPC methods: `message/send` (create a task), `tasks/get`,
+    `tasks/cancel`, `skills/query` (find learned peers advertising a skill), and
+    `skills/negotiate` (confirm a named peer still serves a skill). `tasks/get` /
+    `tasks/cancel` enforce per-peer ownership (a task is stamped with its originating
+    peer; a cross-peer access 404s). The gateway translates A2A requests into internal
+    MessageBus messages and applies [DelegationGuard](communication-coordination.md#loop-prevention) +
     [A2A-specific security checks](security.md#a2a-security) before admission.
 
 Outbound (internal -> external)
 :   SynthOrg agents can delegate tasks to external A2A agents. The A2A client discovers
-    external agents via their Agent Card URLs, creates tasks, and maps external task
-    states back to internal states.
+    external agents via their Agent Card URLs (pinning the SSRF-validated IP to close the
+    DNS-rebind window), creates tasks, and maps external task states back to internal
+    states. `PeerDiscoveryClient` fetches and registers remote Agent Cards (streamed and
+    byte-bounded) into the `PeerRegistry` that the inbound skill methods resolve against.
 
 ## Agent Card Projection
 

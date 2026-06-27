@@ -9,6 +9,7 @@ re-enable a promotion by discarding the cooldown the previous run set.
 
 import asyncio
 from datetime import timedelta
+from typing import Final
 
 from pydantic import AwareDatetime
 
@@ -27,8 +28,8 @@ from synthorg.persistence.promotion_history_protocol import (
 
 logger = get_logger(__name__)
 
-_PERSIST_TIMEOUT_SECONDS: float = 5.0
-_HYDRATE_PAGE_SIZE: int = 100
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+_HYDRATE_PAGE_SIZE: Final[int] = 100
 
 
 class PromotionPersistenceMixin:

@@ -20,6 +20,7 @@ from synthorg.core.scheduler import AsyncCycleScheduler
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_CYCLE_PAUSED,
     EVAL_LOOP_CYCLE_RAN,
     EVAL_LOOP_CYCLE_SCHEDULER_FAILED,
     EVAL_LOOP_CYCLE_SCHEDULER_STARTED,
@@ -106,11 +107,7 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
     @override
     def _log_cycle_paused(self) -> None:
         """Log a paused tick under the evaluation-loop vocabulary."""
-        logger.debug(
-            EVAL_LOOP_CYCLE_RAN,
-            agents_evaluated=0,
-            note="paused_by_setting",
-        )
+        logger.debug(EVAL_LOOP_CYCLE_PAUSED)
 
 
 __all__ = ["EvalLoopCycleScheduler"]

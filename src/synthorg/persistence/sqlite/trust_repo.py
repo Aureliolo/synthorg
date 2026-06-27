@@ -22,6 +22,7 @@ from synthorg.observability.events.persistence.trust_change_history import (
     PERSISTENCE_TRUST_CHANGE_HISTORY_QUERY_FAILED,
 )
 from synthorg.observability.events.persistence.trust_state import (
+    PERSISTENCE_TRUST_STATE_DELETE_FAILED,
     PERSISTENCE_TRUST_STATE_QUERY_FAILED,
     PERSISTENCE_TRUST_STATE_SAVE_FAILED,
 )
@@ -276,7 +277,7 @@ class SQLiteTrustStateRepository:
                 await self._safe_rollback()
                 msg = "Failed to delete trust state"
                 logger.warning(
-                    PERSISTENCE_TRUST_STATE_SAVE_FAILED,
+                    PERSISTENCE_TRUST_STATE_DELETE_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     agent_id=str(entity_id),

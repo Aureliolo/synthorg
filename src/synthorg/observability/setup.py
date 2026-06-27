@@ -14,6 +14,7 @@ from types import MappingProxyType
 import structlog
 from structlog.typing import Processor
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.log_trace_correlation import inject_trace_context
@@ -507,4 +508,16 @@ async def teardown_logging() -> None:
     )
     for handler in buffering:
         root_logger.removeHandler(handler)
-        await asyncio.to_thread(handler.close)
+        try:
+            await asyncio.to_thread(handler.close)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # A blocked flush on one remote handler must not skip closing
+            # the rest. The logger's own buffering handlers are being torn
+            # down here, so report to stderr rather than via logging.
+            print(  # noqa: T201 -- shutdown path, logger handlers detaching
+                f"WARNING: {type(handler).__name__}.close() failed: "
+                f"{type(exc).__name__}",
+                file=sys.stderr,
+                flush=True,
+            )

@@ -7,6 +7,7 @@ is handled by the evaluation service and strategies at scoring time.
 Shipped defaults: all pillars enabled with recommended weights.
 """
 
+import copy
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -337,6 +338,26 @@ class EvalLoopConfig(BaseModel):
             "action identifiers are rejected at config load."
         ),
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_mutable_mappings(self) -> Self:
+        """Detach the mutable mapping fields from any caller-held dict.
+
+        ``frozen=True`` blocks reassignment but not in-place mutation of a
+        ``dict`` the caller still holds a reference to; deep-copying at
+        construction makes the frozen contract real for these fields.
+
+        Returns:
+            ``self`` with the mapping fields replaced by deep copies.
+        """
+        object.__setattr__(
+            self, "pattern_thresholds", copy.deepcopy(self.pattern_thresholds)
+        )
+        if self.pattern_action_map is not None:
+            object.__setattr__(
+                self, "pattern_action_map", copy.deepcopy(self.pattern_action_map)
+            )
+        return self
 
 
 class EvaluationConfig(BaseModel):

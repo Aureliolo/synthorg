@@ -1,10 +1,8 @@
 """Persistence protocol for the append-only agent-contribution log.
 
-Backs :class:`synthorg.hr.performance.tracker.PerformanceTracker`,
-whose ``_contributions`` accumulator was a write-only in-memory list
-that nothing durable ever read and that reset on every restart.
-Persisting it makes the coordination contribution trail durable and
-queryable for retrospective attribution analytics.
+Durably backs :class:`synthorg.hr.performance.tracker.PerformanceTracker`'s
+coordination-contribution trail so it survives restarts and is queryable
+for retrospective attribution analytics.
 
 ``AgentContribution`` has no timestamp of its own, so the repository
 stamps a ``recorded_at`` at append time from an injected clock; the

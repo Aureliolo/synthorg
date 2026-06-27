@@ -1,10 +1,9 @@
 # module-kind: code
 """The on-shutdown runner: ordered teardown of the lifecycle-owned services.
 
-``_run_shutdown`` is the body of the historic ``on_shutdown`` closure lifted to
-a top-level function. Its former ``nonlocal`` janitor-task / dispatcher /
-health-prober / training-backend state now lives on the shared
-:class:`_LifecycleTasks` container threaded in by the builder.
+``_run_shutdown`` performs the ordered teardown. The janitor-task /
+dispatcher / health-prober / training-backend state it tears down lives on
+the shared :class:`_LifecycleTasks` container threaded in by the builder.
 """
 
 import asyncio
@@ -55,13 +54,12 @@ _WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 2.0
 
 # Outer backstop budgets for the two in-flight drains run at the top of
 # shutdown. Each drain is internally bounded (its own ``asyncio.wait``
-# deadline), but ``_try_stop`` previously awaited them with no outer
-# timeout: a drain that hangs BEFORE reaching its internal wait (e.g. a
-# stuck done-callback, a hung pre-drain await) would block the whole
-# shutdown window past the orchestrator SIGKILL deadline. The outer
-# budget exceeds the inner deadline by a small grace so the inner
-# mechanism (which logs ``pending_count``) fires first and the outer is
-# purely the backstop.
+# deadline), but a drain that hangs BEFORE reaching its internal wait
+# (e.g. a stuck done-callback, a hung pre-drain await) would, without an
+# outer timeout, block the whole shutdown window past the orchestrator
+# SIGKILL deadline. The outer budget exceeds the inner deadline by a small
+# grace so the inner mechanism (which logs ``pending_count``) fires first
+# and the outer is purely the backstop.
 _DRAIN_OUTER_GRACE_SECONDS: Final[float] = 2.0
 _RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
     _RESUME_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS

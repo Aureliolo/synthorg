@@ -24,6 +24,13 @@ The individual ``scripts/check_*.py`` files stay on disk (the
 convention-gate-inventory meta-gate verifies each gate path exists), and CI's
 ``pre-commit run --all-files`` runs this single hook from the same config, so
 local<->CI parity is preserved.
+
+Gate contract: because gates share one process, a gate registered in
+``_GATES`` MUST be stateless with respect to process globals beyond its own
+``runpy`` namespace -- no permanent mutation of ``sys.modules``, logging
+config, or signal handlers. Side-effect-free static analysis (reads only)
+is the required posture; a gate that monkey-patches a module would silently
+affect every later gate.
 """
 
 import os
@@ -119,8 +126,15 @@ def _run_one(stem: str) -> tuple[int, str]:
         return 0, ""
     finally:
         sys.argv = saved_argv
-        if Path.cwd() != saved_cwd:
-            os.chdir(saved_cwd)
+        # Best-effort cwd restore: if a gate chdir'd into a tempdir it then
+        # removed, ``Path.cwd()`` raises -- swallow it so the runner still
+        # advances to the next gate and reports the aggregate rather than
+        # dying here with a raw traceback.
+        try:
+            if Path.cwd() != saved_cwd:
+                os.chdir(saved_cwd)
+        except OSError:
+            pass
 
 
 def main() -> int:

@@ -281,16 +281,40 @@ class _LoggerNameFilter(logging.Filter):
         return True
 
 
+def _record_event_name(record: logging.LogRecord) -> str:
+    """Extract the structlog event name across all stdlib record shapes.
+
+    ``ProcessorFormatter.wrap_for_formatter`` (the main pipeline's final
+    processor) sets ``record.msg`` to the event_dict, or to a
+    ``(event_dict, foreign_pre_chain)`` tuple once a pre-chain is
+    attached; plain ``logger.info("x.y")`` emissions and third-party
+    loggers keep ``msg`` a string. Matching only the dict shape misses
+    every wrapped main-pipeline record, so the event name must be read
+    from the tuple's first element too.
+
+    Returns:
+        The event name, or the formatted message for a plain-string record.
+    """
+    msg = record.msg
+    if isinstance(msg, dict):
+        event = msg.get("event", "")
+    elif isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
+        event = msg[0].get("event", "")
+    elif isinstance(msg, str):
+        return record.getMessage()
+    else:
+        return str(msg)
+    return event if isinstance(event, str) else str(event)
+
+
 class _EventNameFilter(logging.Filter):
     """Filter records by structlog event name.
 
-    Records produced through ``structlog.stdlib.ProcessorFormatter.
-    wrap_for_formatter`` carry the processed event_dict as
-    ``record.msg`` (a ``dict`` with an ``event`` key plus all
-    structured kwargs).  Foreign records from third-party loggers
-    carry ``record.msg`` as a plain string -- in that case we
-    compare the string directly so the filter is robust across
-    both record shapes.
+    Records carry their event name in one of three ``record.msg`` shapes:
+    a ``dict`` event_dict (pre ``wrap_for_formatter``), a ``(event_dict,
+    ...)`` tuple (post ``wrap_for_formatter``, the main pipeline), or a
+    plain ``str`` (bare stdlib emissions). :func:`_record_event_name`
+    resolves all three so the exclude set applies uniformly.
 
     Args:
         exclude_events: Event names to drop (empty = drop nothing).
@@ -309,9 +333,7 @@ class _EventNameFilter(logging.Filter):
         """Return ``True`` if *record* is not in the exclude set."""
         if not self._exclude:
             return True
-        msg = record.msg
-        event = msg.get("event", "") if isinstance(msg, dict) else str(msg)
-        return event not in self._exclude
+        return _record_event_name(record) not in self._exclude
 
 
 class _ExactLevelFilter(logging.Filter):

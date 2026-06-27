@@ -1,3 +1,4 @@
+# module-kind: code
 """Best-effort post-startup wiring for durable security/HR subsystems.
 
 The trust service and the audit hash chain are built in the construction
@@ -12,7 +13,10 @@ and never poisons startup: the broad-except funnels through
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_AUDIT_CHAIN_PERSISTENCE_DEGRADED,
+    API_TRUST_PERSISTENCE_DEGRADED,
+)
 
 logger = get_logger(__name__)
 
@@ -42,8 +46,7 @@ async def _try_wire_trust_persistence(app_state: AppState) -> None:
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
-            service="trust_persistence",
+            API_TRUST_PERSISTENCE_DEGRADED,
             note="trust persistence wiring failed; in-memory only",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -85,8 +88,7 @@ async def _try_wire_audit_chain_persistence(app_state: AppState) -> None:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
-                API_APP_STARTUP,
-                service="audit_chain_persistence",
+                API_AUDIT_CHAIN_PERSISTENCE_DEGRADED,
                 note="audit-chain persistence wiring failed; in-memory only",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

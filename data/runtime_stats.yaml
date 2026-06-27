@@ -1,16 +1,16 @@
 schema_version: 1
-last_generated_utc: '2026-06-27T09:47:10Z'
-generator_revision: d0e749de8
+last_generated_utc: '2026-06-27T13:43:22Z'
+generator_revision: b7d8955b6
 stats:
   tests:
-    raw: 38046
+    raw: 38050
     rounded: 38000
     display: 38,000+
   providers_curated:
     raw: 20
     display: '20'
   providers_via_litellm:
-    raw: 93
+    raw: 94
     display: 90+
   subagents:
     raw: 26

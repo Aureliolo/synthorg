@@ -8,7 +8,7 @@ All red-team errors descend from :class:`RedTeamError`, which is an
 from typing import ClassVar
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.errors import EngineError
 
 
@@ -41,7 +41,7 @@ class RedTeamReportNotFoundError(RedTeamError):
 
     def __init__(self, *, execution_id: NotBlankStr) -> None:
         super().__init__(self.default_message)
-        self.execution_id: NotBlankStr = execution_id
+        self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
 class RedTeamReportValidationError(RedTeamError):
@@ -94,7 +94,7 @@ class RedTeamReportAlreadyExistsError(RedTeamError):
 
     def __init__(self, *, execution_id: NotBlankStr) -> None:
         super().__init__(self.default_message)
-        self.execution_id: NotBlankStr = execution_id
+        self.execution_id: NotBlankStr = require_not_blank(execution_id, "execution_id")
 
 
 class RedTeamRoleMissingError(RedTeamError):

@@ -93,3 +93,6 @@ class BackupConfigurationError(BackupError):
     build time so the misconfiguration fails fast rather than at the
     first scheduled backup.
     """
+
+    default_message: ClassVar[str] = "Backup handler configuration is invalid"
+    error_code: ClassVar[ErrorCode] = ErrorCode.BACKUP_CONFIGURATION_INVALID

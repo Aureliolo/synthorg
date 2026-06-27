@@ -17,6 +17,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.chain import ChainEntry
 from synthorg.observability.events.persistence.audit_chain_entry import (
     PERSISTENCE_AUDIT_CHAIN_ENTRY_APPEND_FAILED,
+    PERSISTENCE_AUDIT_CHAIN_ENTRY_PURGE_FAILED,
     PERSISTENCE_AUDIT_CHAIN_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_CHAIN_ENTRY_QUERY_FAILED,
 )
@@ -188,6 +189,12 @@ class PostgresAuditChainRepository:
     async def purge_before(self, threshold: datetime, /) -> int:
         """Delete entries with ``timestamp < threshold``.
 
+        WARNING: purging leaves a gap in the monotonic ``chain_position``
+        sequence, so hash-chain verification over any window crossing the
+        cut will fail (the ``previous_hash`` link is broken at the
+        boundary). Callers must archive and verify the affected range
+        before purging; this is a retention primitive, not a routine read.
+
         Returns:
             Number of rows removed.
 
@@ -203,13 +210,22 @@ class PostgresAuditChainRepository:
                 removed = cur.rowcount
                 await conn.commit()
         except psycopg.Error as exc:
-            raise self._read_error(exc) from exc
+            raise self._purge_error(exc) from exc
         return removed
 
     def _read_error(self, exc: Exception) -> QueryError:
         msg = "Failed to read audit chain entries"
         logger.warning(
             PERSISTENCE_AUDIT_CHAIN_ENTRY_QUERY_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return QueryError(msg)
+
+    def _purge_error(self, exc: Exception) -> QueryError:
+        msg = "Failed to purge audit chain entries before threshold"
+        logger.warning(
+            PERSISTENCE_AUDIT_CHAIN_ENTRY_PURGE_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

@@ -182,6 +182,8 @@ export const ErrorCode = {
     RED_TEAM_RUNTIME_SEED_INCOMPLETE: 8049,
     BACKUP_COMPONENT_FAILED: 8050,
     BACKUP_RETENTION_FAILED: 8051,
+    BACKUP_CONFIGURATION_INVALID: 8052,
+    CI_HOST_EXECUTION_REFUSED: 8053,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

@@ -36,6 +36,7 @@ from synthorg.a2a.models import (
     JSONRPC_INVALID_PARAMS,
     JSONRPC_METHOD_NOT_FOUND,
     JSONRPC_PARSE_ERROR,
+    A2AAgentCard,
     A2ATextPart,
     JsonRpcErrorData,
     JsonRpcRequest,
@@ -478,7 +479,7 @@ async def _dispatch_method(
     )
 
     try:
-        # ``A2ARpcParams`` is a closed discriminated union of three
+        # ``A2ARpcParams`` is a closed discriminated union of five
         # variants.  Each match arm returns directly so adding a new
         # variant without wiring it here is a hard fail (``AssertionError``
         # from the ``case _`` arm) rather than an unbound ``result`` that
@@ -497,7 +498,7 @@ async def _dispatch_method(
             case _:  # pragma: no cover -- enforced exhaustive over A2ARpcParams
                 # mypy proves this branch is unreachable via the
                 # closed ``A2ARpcParams`` union; we still keep it as a
-                # runtime guard for the day someone adds a fourth
+                # runtime guard for the day someone adds another
                 # variant without updating this dispatch.  The
                 # ``type: ignore`` is local and tied to that future
                 # change actually breaking the cover.
@@ -843,20 +844,35 @@ def _validate_task_ownership(
     task: Task,
     peer_name: str,
 ) -> None:
-    """Verify the peer created or is assigned this task.
+    """Reject access to a task the requesting peer did not originate.
 
-    Tasks created by the A2A gateway carry ``created_by =
-    "a2a-gateway"`` and are associated with the requesting peer
-    via the ``a2a-inbound`` project.  All A2A tasks are accessible
-    to any authenticated peer: the peer allowlist is the
-    authorisation boundary.
+    A2A tasks stamp their originating peer into ``created_by`` as
+    ``"a2a-gateway:<peer>"``. tasks/get and tasks/cancel are reachable by
+    every allowlisted peer, so without this check one peer could read or
+    cancel another peer's task. A mismatch raises 404 (not 403) so the
+    boundary does not leak the existence of another peer's task.
 
     Args:
         task: The task to check.
         peer_name: Authenticated peer name.
+
+    Raises:
+        _A2AMethodError: With a 404 status when the task was created by a
+            different peer.
     """
-    # All authenticated peers share the a2a task namespace; the peer
-    # allowlist is the authorisation boundary.
+    if task.created_by != f"a2a-gateway:{peer_name}":
+        logger.warning(
+            A2A_TASK_METHOD_REJECTED,
+            task_id=str(task.id),
+            peer_name=peer_name,
+            reason="task_ownership_mismatch",
+            error_type=_A2AMethodError.__name__,
+        )
+        raise _A2AMethodError(
+            A2A_TASK_NOT_FOUND,
+            "Task not found",
+            http_status=404,
+        )
 
 
 async def _handle_message_send(
@@ -915,7 +931,9 @@ async def _handle_message_send(
         type=TaskType.ADMIN,
         priority=Priority.MEDIUM,
         project="a2a-inbound",
-        created_by="a2a-gateway",
+        # Stamp the originating peer onto the task so tasks/get and
+        # tasks/cancel can enforce per-peer ownership later.
+        created_by=f"a2a-gateway:{peer_name}",
     )
 
     from synthorg.api.api_core_state import (  # noqa: PLC0415
@@ -995,8 +1013,9 @@ async def _handle_tasks_get(
         Task state dict.
 
     Raises:
-        _A2AMethodError: With a 404 status when no task matches ``id``,
-            or when the task engine is unavailable.
+        _A2AMethodError: With a 404 status when no task matches ``id`` or
+            the task belongs to another peer; with a 503 status when the
+            task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get_task(params.id)
@@ -1065,6 +1084,20 @@ async def _handle_skills_query(
     }
 
 
+def _match_card_skills(card: A2AAgentCard, skill: str) -> tuple[str, ...]:
+    """Return the card's skill ids matching ``skill`` by id or tag.
+
+    Match is case-insensitive on both the skill id and its tags so a
+    caller's free-form skill string lines up with the advertised card.
+    """
+    needle = normalize_ascii_lowercase(skill)
+    return tuple(
+        sk.id
+        for sk in card.skills
+        if sk.id.lower() == needle or any(tag.lower() == needle for tag in sk.tags)
+    )
+
+
 async def _handle_skills_negotiate(
     app_state: AppState,
     params: A2ASkillNegotiateParams,
@@ -1111,12 +1144,7 @@ async def _handle_skills_negotiate(
             f"Peer {params.peer_name!r} is not registered",
             http_status=404,
         )
-    needle = normalize_ascii_lowercase(params.skill)
-    matched = tuple(
-        sk.id
-        for sk in card.skills
-        if sk.id.lower() == needle or any(tag.lower() == needle for tag in sk.tags)
-    )
+    matched = _match_card_skills(card, params.skill)
     accepted = bool(matched)
     logger.info(
         A2A_SKILLS_NEGOTIATED,
@@ -1150,9 +1178,10 @@ async def _handle_tasks_cancel(
         Updated task state dict.
 
     Raises:
-        _A2AMethodError: With a 404 status when no task matches ``id``,
-            when the task is in a terminal (non-cancellable) state, or
-            when the task engine is unavailable.
+        _A2AMethodError: With a 404 status when no task matches ``id`` or
+            the task belongs to another peer; with a non-cancellable error
+            when the task is in a terminal state; with a 503 status when
+            the task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get_task(params.id)

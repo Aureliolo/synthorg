@@ -1,13 +1,13 @@
 """Persistence protocol for in-flight hiring requests.
 
-Backs :class:`synthorg.hr.hiring_service.HiringService`, whose
-``_requests`` dict was process-local: a restart dropped every in-flight
-request, leaving dangling approvals (an approved request with no
-durable record to instantiate against). The request moves through a
-status lifecycle (pending -> approved/rejected -> instantiated), so the
-repository composes :class:`IdKeyedRepository` (full upsert per step,
-serialised by the service's per-request lock) plus
-:class:`FilteredQueryRepository` for status enumeration.
+Durably backs :class:`synthorg.hr.hiring_service.HiringService` so an
+approved request survives a restart between approval and instantiation
+rather than leaving a dangling approval with no record to instantiate
+against. The request moves through a status lifecycle (pending ->
+approved/rejected -> instantiated), so the repository composes
+:class:`IdKeyedRepository` (full upsert per step, serialised by the
+service's per-request lock) plus :class:`FilteredQueryRepository` for
+status enumeration.
 
 The nested ``HiringRequest`` (candidate cards, skills) round-trips
 through a single JSON ``payload`` column; ``status`` / ``requested_by``

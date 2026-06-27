@@ -12,6 +12,7 @@ from synthorg.persistence.hiring_request_protocol import (
     HiringRequestFilterSpec,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -95,9 +96,8 @@ class TestHiringRequestRepository:
         assert result.status is HiringRequestStatus.APPROVED
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
-        from uuid import uuid4
-
-        assert await backend.hiring_requests.get(NotBlankStr(str(uuid4()))) is None
+        missing = NotBlankStr(str(as_uuid("missing-hiring-request")))
+        assert await backend.hiring_requests.get(missing) is None
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         request = _request()
