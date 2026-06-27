@@ -125,10 +125,11 @@ async def _wire(
 
     # Attach the per-backend durable hiring-requests repo and hydrate the
     # in-flight set so an approved request survives a restart between approval
-    # and instantiation. Hydration is isolated: a failure here leaves in-flight
-    # requests unrestored (orphaned), a distinct operational consequence from a
-    # later assembly failure, so it is logged and named on its own rather than
-    # collapsed into the generic outer "wiring failed".
+    # and instantiation. Hydration is isolated: a failure here only leaves
+    # in-flight requests unrestored (orphaned), a distinct operational
+    # consequence from a later assembly failure, so it is logged on its own and
+    # wiring still proceeds -- the pipeline comes up degraded (no recovered
+    # in-flight requests) rather than staying dormant.
     hiring = HiringService(registry=registry, approval_store=approval_store)
     try:
         hiring.attach_persistence(
@@ -144,7 +145,6 @@ async def _wire(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
 
     # ``wire_org_memory_backend`` runs earlier in ``_wire_features``, so the
     # org-memory backend is published by now; thread it in so an offboarding

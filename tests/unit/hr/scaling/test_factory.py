@@ -202,14 +202,21 @@ class TestBuildScalingService:
         assert service.strategies == ()
 
     def test_threads_execution_collaborators(self) -> None:
+        hiring = mock_of[HiringService]()
+        offboarding = mock_of[OffboardingService]()
+        registry = AgentRegistryService()
         service = build_scaling_service(
             ScalingConfig(),
-            hiring_service=mock_of[HiringService](),
-            offboarding_service=mock_of[OffboardingService](),
-            agent_registry=AgentRegistryService(),
+            hiring_service=hiring,
+            offboarding_service=offboarding,
+            agent_registry=registry,
         )
-        # Collaborators are private to the orchestrator; assert the build stayed
-        # coherent (config + the expected strategies survive injection).
+        # The named regression is build_scaling_service dropping a collaborator
+        # on the floor, so assert each is threaded onto the orchestrator verbatim
+        # rather than only re-checking default config/strategy wiring.
+        assert service._hiring_service is hiring
+        assert service._offboarding_service is offboarding
+        assert service._agent_registry is registry
         assert service.config.enabled is True
         assert ScalingStrategyName.WORKLOAD.value in self._names(service)
         assert ScalingStrategyName.BUDGET_CAP.value in self._names(service)
