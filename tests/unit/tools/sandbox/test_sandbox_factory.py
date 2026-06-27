@@ -409,11 +409,19 @@ class TestMergeSecureBackendDefaults:
         assert merged.backend_for_category("code_execution") == "subprocess"
         assert merged.backend_for_category("terminal") == "docker"
 
-    def test_no_change_when_already_routed(self) -> None:
-        """No copy when both untrusted categories already have overrides."""
+    def test_gvisor_defaults_applied_when_already_routed(self) -> None:
+        """Already-routed untrusted categories still gain gVisor runtimes.
+
+        ``merge_secure_backend_defaults`` always layers the hardened gVisor
+        runtime once docker is referenced, so code_execution/terminal never
+        run on plain docker even when an override already pinned the backend.
+        """
         config = SandboxingConfig(
             default_backend="subprocess",
             overrides={"code_execution": "docker", "terminal": "docker"},
         )
         merged = merge_secure_backend_defaults(config)
-        assert merged is config
+        assert merged.backend_for_category("code_execution") == "docker"
+        assert merged.backend_for_category("terminal") == "docker"
+        assert merged.docker.runtime_overrides["code_execution"] == "runsc"
+        assert merged.docker.runtime_overrides["terminal"] == "runsc"

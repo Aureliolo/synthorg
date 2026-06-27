@@ -544,8 +544,13 @@ class PerformanceTracker:
         # critical (MemoryError/RecursionError) propagates.
         if contributions:
             async with asyncio.TaskGroup() as tg:
-                for contrib in contributions:
+                # Fire-and-forget within the group: the TaskGroup awaits every
+                # task on exit. Bind the handles to ``_`` so the discarded
+                # tasks do not trip the unused-awaitable check.
+                _ = [
                     tg.create_task(self._persist_contribution(contrib))
+                    for contrib in contributions
+                ]
 
         if contributions:
             logger.info(

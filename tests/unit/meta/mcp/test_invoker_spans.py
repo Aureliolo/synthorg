@@ -51,9 +51,16 @@ class _RecordingTracer:
         name: str,
         *,
         attributes: dict[str, object] | None = None,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
     ) -> Iterator[_RecordingSpan]:
+        # ``record_exception`` / ``set_status_on_exception`` mirror the real
+        # OTel signature; the invoker passes ``False`` for both so an escaping
+        # exception never auto-records frame locals.
         span = _RecordingSpan()
         span.attributes["span.name"] = name
+        span.attributes["span.record_exception"] = record_exception
+        span.attributes["span.set_status_on_exception"] = set_status_on_exception
         if attributes:
             span.attributes.update(attributes)
         self.spans.append(span)
@@ -86,6 +93,8 @@ async def test_invoke_success_opens_span() -> None:
     assert span.attributes["mcp.tool"] == "synthorg_test_get"
     assert span.attributes["mcp.outcome"] == "success"
     assert span.recorded_exceptions == []
+    assert span.attributes["span.record_exception"] is False
+    assert span.attributes["span.set_status_on_exception"] is False
 
 
 async def test_invoke_error_marks_span_without_recording_exception() -> None:
@@ -113,5 +122,9 @@ async def test_invoke_error_marks_span_without_recording_exception() -> None:
     span = tracer.spans[0]
     assert span.attributes["mcp.outcome"] == "error"
     assert span.attributes["mcp.error_type"] == "ValueError"
-    # Redaction rule: the span must never carry the exception object.
+    # Redaction rule: the span must never carry the exception object, and
+    # OTel's auto-recording is disabled so an escaping critical cannot emit
+    # frame locals either.
     assert span.recorded_exceptions == []
+    assert span.attributes["span.record_exception"] is False
+    assert span.attributes["span.set_status_on_exception"] is False

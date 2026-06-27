@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.agent import AgentIdentity, ToolPermissions
+from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.engine._security_factory import (
     make_security_interceptor,
@@ -77,6 +78,7 @@ class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
 
     _approval_store: ApprovalStoreProtocol | None
+    _clock: Clock
     _external_api_runtime: ExternalApiRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
     _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
