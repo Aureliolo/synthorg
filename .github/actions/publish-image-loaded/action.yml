@@ -426,7 +426,7 @@ runs:
     - name: Attest build provenance (SLSA Level 3, attempt 1)
       id: attest_image_1
       continue-on-error: true
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -441,7 +441,7 @@ runs:
       if: steps.attest_image_1.outcome == 'failure'
       id: attest_image_2
       continue-on-error: true
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -454,7 +454,7 @@ runs:
 
     - name: Attest build provenance (SLSA Level 3, final attempt)
       if: steps.attest_image_2.outcome == 'failure'
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}
