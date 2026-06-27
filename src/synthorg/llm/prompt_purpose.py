@@ -199,16 +199,19 @@ class PromptPurposeRegistry:
         """
         return tuple(self._purposes[key] for key in self.list_ids())
 
-    def by_category(self, category: PromptPurposeCategory) -> tuple[PromptPurpose, ...]:
+    def by_category(
+        self, category: PromptPurposeCategory | str
+    ) -> tuple[PromptPurpose, ...]:
         """List registered purposes in *category*, ordered by id.
 
         Args:
-            category: Subsystem family to filter by.
+            category: Subsystem family to filter by (enum member or its
+                string value), mirroring :meth:`get`'s lenient input.
 
         Returns:
             Tuple of :class:`PromptPurpose`.
         """
-        return tuple(p for p in self.all_purposes() if p.category is category)
+        return tuple(p for p in self.all_purposes() if p.category == category)
 
     def __contains__(self, purpose_id: object) -> bool:
         """Return whether *purpose_id* is registered."""

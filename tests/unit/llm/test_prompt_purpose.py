@@ -84,6 +84,13 @@ class TestPromptPurposeRegistryRegistration:
         registry.register(_purpose())
         assert registry.by_category(PromptPurposeCategory.CLIENT) == ()
 
+    def test_by_category_matches_plain_string_value(self) -> None:
+        registry = default_prompt_purpose_registry()
+        by_enum = registry.by_category(PromptPurposeCategory.SECURITY)
+        by_str = registry.by_category(PromptPurposeCategory.SECURITY.value)
+        assert by_str == by_enum
+        assert len(by_str) > 0
+
 
 @pytest.mark.unit
 class TestDefaultPromptPurposeRegistry:
