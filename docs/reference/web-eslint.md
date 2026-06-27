@@ -28,6 +28,7 @@ The one case that still keeps a per-line `// eslint-disable-next-line @typescrip
 - `@eslint-react/globals`: restrict `window` / `document` / `localStorage` inside render. Hoist offenders into a `useCallback` handler, a `useEffect`, or a `useSyncExternalStore`-backed hook.
 - `@typescript-eslint/no-floating-promises`: forbids unawaited promises so async work cannot survive the test that scheduled it and trip the active-handle gate.
 - `@typescript-eslint/no-misused-promises` (with `checksVoidReturn: { attributes: false }`): forbids async functions where the callsite ignores the returned promise; React 19 `async` event handlers stay allowed via the exemption, paired with the global error handler.
+- `no-constant-binary-expression` (with `checkRelationalComparisons: true`): the `js.configs.recommended` base rule already flags constant `===` / `&&` / `||` expressions; the option extends it to always-constant relational comparisons between two literals (`1 < 2`, `"a" >= "b"`). Zero current violations: a forward-looking correctness ratchet.
 - Promoted from `warn` to `error` (codebase is clean): `@eslint-react/no-unstable-context-value`, `no-unstable-default-props`, `set-state-in-effect` (prop-to-local-state sync is the only exception, suppressed per-line with a reason), `jsx-no-useless-fragment` (options pinned), `dom-no-missing-button-type`, and `react-refresh/only-export-components` (`allowConstantExport`; still `off` for the `components/ui/**` shadcn variant co-exports).
 
 ## Deferred high-churn rules
