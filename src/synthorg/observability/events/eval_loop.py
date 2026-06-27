@@ -32,3 +32,10 @@ EVAL_LOOP_TRAINING_TRIGGERED: Final[str] = "eval.loop.training_triggered"
 # runtime evaluation-cycle failure; operators can alert on this event
 # separately to catch deploy-time drift.
 EVAL_LOOP_CONFIG_DRIFT: Final[str] = "eval.loop.config_drift"
+
+# Periodic cycle-scheduler lifecycle (the background driver that runs
+# ``run_cycle`` on a cadence; opt-in, off by default).
+EVAL_LOOP_CYCLE_SCHEDULER_STARTED: Final[str] = "eval.loop.scheduler_started"
+EVAL_LOOP_CYCLE_SCHEDULER_STOPPED: Final[str] = "eval.loop.scheduler_stopped"
+EVAL_LOOP_CYCLE_SCHEDULER_FAILED: Final[str] = "eval.loop.scheduler_failed"
+EVAL_LOOP_CYCLE_RAN: Final[str] = "eval.loop.scheduler_cycle_ran"
