@@ -1,6 +1,7 @@
 """Tests for the outbound A2A client."""
 
 import json
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -449,7 +450,7 @@ def _rpc_echo(
     *,
     result: dict[str, object] | None = None,
     error: dict[str, object] | None = None,
-):
+) -> Callable[[httpx.Request], httpx.Response]:
     """respx side_effect mimicking a compliant JSON-RPC peer.
 
     Echoes the request's ``id`` back into the response, as a real peer must,
