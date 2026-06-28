@@ -157,7 +157,6 @@ class TestReviewGateServiceApprove:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -179,7 +178,6 @@ class TestReviewGateServiceApprove:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=False,
             decided_by="bob",
             reason="needs rework on error handling",
@@ -202,7 +200,6 @@ class TestReviewGateServiceApprove:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=False,
             decided_by="bob",
         )
@@ -227,7 +224,6 @@ class TestReviewGateServiceSelfReview:
         with pytest.raises(SelfReviewError) as exc_info:
             await service.complete_review(
                 task_id="task-1",
-                requested_by="alice",
                 approved=True,
                 decided_by="alice",
             )
@@ -249,7 +245,6 @@ class TestReviewGateServiceSelfReview:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -269,7 +264,6 @@ class TestReviewGateServiceSelfReview:
         with pytest.raises(TaskNotFoundError):
             await service.complete_review(
                 task_id="task-nonexistent",
-                requested_by="bob",
                 approved=True,
                 decided_by="bob",
             )
@@ -300,7 +294,6 @@ class TestReviewGateServiceSelfReview:
         # Should not raise (no assignee to enforce self-review against)
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -334,7 +327,6 @@ class TestReviewGateServiceSelfReview:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -355,7 +347,6 @@ class TestReviewGateServiceDecisionRecording:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -378,7 +369,6 @@ class TestReviewGateServiceDecisionRecording:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=False,
             decided_by="bob",
             reason="needs rework",
@@ -433,7 +423,6 @@ class TestReviewGateServiceDecisionRecording:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -477,7 +466,6 @@ class TestReviewGateServiceDecisionRecording:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -513,7 +501,6 @@ class TestReviewGateServiceDecisionRecording:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -545,7 +532,6 @@ class TestReviewGateServiceDecisionRecording:
         # Should NOT raise
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -573,7 +559,6 @@ class TestReviewGateServiceDecisionRecording:
         with pytest.raises(TypeError, match="bogus"):
             await service.complete_review(
                 task_id="task-1",
-                requested_by="bob",
                 approved=True,
                 decided_by="bob",
             )
@@ -615,7 +600,6 @@ class TestReviewGateServiceReceiptSeam:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -637,7 +621,6 @@ class TestReviewGateServiceReceiptSeam:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=False,
             decided_by="bob",
             reason="needs rework",
@@ -667,7 +650,6 @@ class TestReviewGateServiceReceiptSeam:
         # Must NOT raise despite the seam raising.
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -694,7 +676,6 @@ class TestReviewGateServiceReceiptSeam:
 
         await service.complete_review(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -726,7 +707,6 @@ class TestDispatchCompletion:
 
         dispatched = await service.dispatch_completion(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )
@@ -757,7 +737,6 @@ class TestDispatchCompletion:
 
         dispatched = await service.dispatch_completion(
             task_id="task-1",
-            requested_by="bob",
             approved=False,
             decided_by="bob",
             reason="missing tests",
@@ -792,7 +771,6 @@ class TestDispatchCompletion:
 
         dispatched = await service.dispatch_completion(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
         )

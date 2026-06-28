@@ -172,16 +172,16 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
-| hr/archival_protocol.py | 39 | `MemoryArchivalStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer; verify before delete. |
-| hr/evaluation/pillar_protocol.py | 17 | `PillarScoringStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/performance/collaboration_protocol.py | 17 | `CollaborationScoringStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/performance/trend_protocol.py | 17 | `TrendDetectionStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/performance/window_protocol.py | 19 | `MetricsWindowStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/promotion/approval_protocol.py | 18 | `PromotionApprovalStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/promotion/criteria_protocol.py | 16 | `PromotionCriteriaStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/promotion/model_mapping_protocol.py | 15 | `ModelMappingStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/pruning/policy.py | 32 | `PruningPolicy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
-| hr/reassignment_protocol.py | 14 | `TaskReassignmentStrategy` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no consumer. |
+| hr/archival_protocol.py | 39 | `MemoryArchivalStrategy` | 1 | 0 | 0 | KEEP | #1864: `FullSnapshotStrategy` default + `OffboardingService` injection. |
+| hr/evaluation/pillar_protocol.py | 17 | `PillarScoringStrategy` | 1 | 0 | 0 | KEEP | #1864: `ConfigurablePillarScorer` impl injected into the evaluator. |
+| hr/performance/collaboration_protocol.py | 17 | `CollaborationScoringStrategy` | 1 | 0 | 0 | KEEP | #1864: `BehavioralTelemetryStrategy` impl injected into the tracker. |
+| hr/performance/trend_protocol.py | 17 | `TrendDetectionStrategy` | 1 | 0 | 0 | KEEP | #1864: `TheilSenTrendStrategy` impl injected into the tracker. |
+| hr/performance/window_protocol.py | 19 | `MetricsWindowStrategy` | 1 | 0 | 0 | KEEP | #1864: `MultiWindowStrategy` impl injected into the tracker. |
+| hr/promotion/approval_protocol.py | 18 | `PromotionApprovalStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityApprovalStrategy` impl injected into the promotion service. |
+| hr/promotion/criteria_protocol.py | 16 | `PromotionCriteriaStrategy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdEvaluator` impl injected into the promotion service. |
+| hr/promotion/model_mapping_protocol.py | 15 | `ModelMappingStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityModelMapping` impl injected into the promotion service. |
+| hr/pruning/policy.py | 32 | `PruningPolicy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdPruningPolicy` + `TrendPruningPolicy` impls; `PruningService` + scaling consumer. |
+| hr/reassignment_protocol.py | 14 | `TaskReassignmentStrategy` | 1 | 0 | 0 | KEEP | #1864: `QueueReturnStrategy` default + `OffboardingService` injection. |
 | hr/evaluation/external_benchmark_protocol.py | 19 | `ExternalBenchmark` | 1 | 0 | 1 | KEEP | Plug-in `Benchmark`. |
 | hr/evaluation/metric_extractor_protocol.py | 156 | `MetricExtractor` | 1 | 0 | 9 | KEEP | Plug-in `Extractor`. |
 | hr/performance/inflection_protocol.py | 55 | `InflectionSink` | 1 | 0 | 8 | KEEP | Plug-in `Sink`. |
@@ -339,7 +339,7 @@ All 45 persistence protocols are listed; every one is a plug-in `Repository` / `
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
 | providers/management/_capabilities_mixin.py | 55 | `_ServiceProtocol` | 0 | 0 | 0 | REVIEW | Private mixin seam. |
-| providers/management/local_models.py | 128 | `LocalModelManager` | 1 | 0 | 0 | REMOVE | No external usages. |
+| providers/management/local_models.py | 128 | `LocalModelManager` | 1 | 0 | 0 | KEEP | #1864: vendor-agnostic local-model surface; `OllamaModelManager` impl in same file, consumed via `get_local_model_manager`. |
 | providers/protocol.py | 21 | `CompletionProvider` | 1 | 0 | 87 | KEEP | Core pluggable subsystem. |
 | providers/routing/selector.py | 30 | `ModelCandidateSelector` | 1 | 0 | 3 | KEEP | Plug-in `Selector`. |
 | providers/routing/strategies.py | 56 | `RoutingStrategy` | 1 | 0 | 2 | KEEP | Plug-in `Strategy`. |

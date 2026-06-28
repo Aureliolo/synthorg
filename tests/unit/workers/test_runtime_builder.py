@@ -23,6 +23,7 @@ from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -269,6 +270,25 @@ class TestProviderPresentSwitch:
         # the boot build always wires the concrete ``ParallelExecutor``.
         parallel_executor = cast("ParallelExecutor", coordinator._parallel_executor)
         assert parallel_executor._engine is worker._engine
+
+    async def test_boot_engine_carries_step_classifier(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The boot engine is wired with a RuleBasedStepClassifier."""
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
+        )
+        app_state = _provider_app_state(registry, tmp_path)
+
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        worker = cast("AgentEngineExecutionService", result.worker_execution_service)
+        assert isinstance(worker._engine._step_classifier, RuleBasedStepClassifier)
 
     async def test_scorer_config_resolve_failure_is_fail_open(
         self,

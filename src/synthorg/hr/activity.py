@@ -7,12 +7,13 @@ filters career-relevant events.
 
 import copy
 import re
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -22,14 +23,6 @@ from synthorg.observability.events.hr import HR_ACTIVITY_REDACTION_MISMATCH
 from synthorg.tools.invocation_record import ToolInvocationRecord
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    # Cycle breaker: importing synthorg.communication.delegation.models pulls
-    # the eager communication package __init__, which loads engine and
-    # re-enters communication.delegation -> communication.config mid-init; a
-    # module-level import here closes that cold-import cycle, so DelegationRecord
-    # is named for the converter/merge signatures only.
-    from synthorg.communication.delegation.models import DelegationRecord
 
 
 class ActivityEvent(BaseModel):

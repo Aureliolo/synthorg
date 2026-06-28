@@ -199,6 +199,9 @@ _HAPPY_CASES: tuple[
             ("engine", "approval_interrupt_timeout_seconds"): "600.0",
             ("engine", "max_subworkflow_depth"): "32",
             ("engine", "health_quality_degradation_threshold"): "5",
+            ("engine", "classifier_rule_matched_confidence"): "0.65",
+            ("engine", "classifier_fallback_confidence"): "0.45",
+            ("engine", "classification_detector_timeout_seconds"): "20.0",
             ("engine", "routing_weight_primary_skill"): "0.4",
             ("engine", "routing_weight_secondary_skill"): "0.2",
             ("engine", "routing_weight_tag_match_bonus"): "0.1",
@@ -223,6 +226,9 @@ _HAPPY_CASES: tuple[
             "approval_interrupt_timeout_seconds": 600.0,
             "max_subworkflow_depth": 32,
             "health_quality_degradation_threshold": 5,
+            "classifier_rule_matched_confidence": 0.65,
+            "classifier_fallback_confidence": 0.45,
+            "classification_detector_timeout_seconds": 20.0,
             "routing_weight_primary_skill": 0.4,
             "matcher_base_score": 0.4,
             "matcher_tier_large_min_context": 200000,
@@ -393,6 +399,23 @@ async def test_bridge_config_happy_path(  # noqa: PLR0913
         assert actual == expected_value, (
             f"{method_name}: {attr} expected {expected_value!r}, got {actual!r}"
         )
+
+
+# ── Classifier-bridge defaults ──────────────────────────────────
+
+
+@pytest.mark.unit
+def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
+    """``EngineBridgeConfig`` classifier defaults mirror the classifier module.
+
+    Pins the bridge defaults to the ``RuleBasedStepClassifier`` defaults so
+    an unconfigured deployment constructs the classifier with the same
+    confidences whether or not the operator ever touched the settings.
+    """
+    cfg = EngineBridgeConfig()
+    assert cfg.classifier_rule_matched_confidence == pytest.approx(0.7)
+    assert cfg.classifier_fallback_confidence == pytest.approx(0.5)
+    assert cfg.classification_detector_timeout_seconds == pytest.approx(30.0)
 
 
 # ── Validation-failure cases ────────────────────────────────────

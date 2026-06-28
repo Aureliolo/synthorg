@@ -24,18 +24,14 @@ from synthorg.settings.mirrors import (
     resolve_init_int,
 )
 
-# Default approval-timeout interval mirrors the registry default for
-# ``security.timeout_check_interval_seconds`` defined in
-# ``src/synthorg/settings/definitions/security.py``. Held here as a
-# constant so the bootstrap and the registry definition cannot drift;
-# future reads from ConfigResolver still override at runtime via the
-# scheduler's ``reschedule()`` (called from a settings subscriber).
-# Update both sites together if the default ever changes; otherwise a
-# bootstrap value will silently disagree with operator-editable
-# overrides resolved through ``ConfigResolver``.
-_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
-
 logger = get_logger(__name__)
+
+# Boot-time fallback for the approval-timeout scan cadence, used before the
+# SettingsService is wired. Kept as a literal (not a registry lookup) so the
+# fast AST drift gate ``check_timeout_interval_default_drift`` can read it
+# without importing the project; the gate keeps it equal to the registered
+# ``security.timeout_check_interval_seconds`` default.
+_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
 
 
 def _resolve_timeout_policy(config: ApprovalTimeoutConfig | None) -> TimeoutPolicy:
@@ -162,5 +158,7 @@ def build_default_approval_timeout_scheduler(
     return ApprovalTimeoutScheduler(
         approval_store=approval_store,
         timeout_checker=timeout_checker,
+        # Mirrors the registry default; ConfigResolver overrides at runtime
+        # via the scheduler's ``reschedule()`` (settings subscriber).
         interval_seconds=_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS,
     )

@@ -8,10 +8,10 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
-from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent

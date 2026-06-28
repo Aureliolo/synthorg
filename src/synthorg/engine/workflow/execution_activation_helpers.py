@@ -15,25 +15,84 @@ from synthorg.engine.workflow.condition_eval import evaluate_condition
 from synthorg.engine.workflow.definition import WorkflowNode
 from synthorg.engine.workflow.enums import (
     WorkflowEdgeType,
+    WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
+from synthorg.engine.workflow.execution_models import (
+    WorkflowExecution,
+    WorkflowNodeExecution,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.verification import (
     VERIFICATION_VERDICT_ROUTED,
 )
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_ACTIVATED,
+    WORKFLOW_EXEC_COMPLETED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_CONDITION_EVALUATED,
+    WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+    WORKFLOW_EXEC_STATUS_TRANSITIONED,
     WORKFLOW_EXEC_TASK_CREATED,
 )
+from synthorg.observability.metrics_hub import record_workflow_execution
 
 logger = get_logger(__name__)
 
 _TASK_TYPE_MAP: dict[str, TaskType] = {t.value: t for t in TaskType}
 _PRIORITY_MAP: dict[str, Priority] = {p.value: p for p in Priority}
 _COMPLEXITY_MAP: dict[str, Complexity] = {c.value: c for c in Complexity}
+
+
+def emit_activation_events(
+    execution: WorkflowExecution,
+    *,
+    definition_id: str,
+    task_count: int,
+) -> None:
+    """Emit post-persistence activation observability events.
+
+    Fires after the activation write lands: the domain activation event,
+    the ``None`` -> status workflow transition, a ``None`` ->
+    ``TASK_CREATED`` node transition per created task node, and, for a
+    task-less workflow that completed instantly, the terminal completion
+    event plus duration metric (created_at == completed_at, so the
+    end-to-end duration is exactly zero).
+    """
+    execution_id = str(execution.id)
+    logger.info(
+        WORKFLOW_EXEC_ACTIVATED,
+        execution_id=execution_id,
+        definition_id=definition_id,
+        task_count=task_count,
+    )
+    logger.info(
+        WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        execution_id=execution_id,
+        workflow_definition_id=definition_id,
+        from_status=None,
+        to_status=execution.status.value,
+    )
+    for node_exec in execution.node_executions:
+        if node_exec.status != WorkflowNodeExecutionStatus.TASK_CREATED:
+            continue
+        logger.info(
+            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+            execution_id=execution_id,
+            workflow_definition_id=definition_id,
+            task_id=node_exec.task_id,
+            from_status=None,
+            to_status=WorkflowNodeExecutionStatus.TASK_CREATED.value,
+        )
+    if execution.status == WorkflowExecutionStatus.COMPLETED:
+        logger.info(WORKFLOW_EXEC_COMPLETED, execution_id=execution_id)
+        record_workflow_execution(
+            workflow_definition_id=definition_id,
+            status=WorkflowExecutionStatus.COMPLETED.value,
+            duration_seconds=0.0,
+        )
+
 
 # Node types that produce no concrete task (control flow and metadata)
 CONTROL_NODE_TYPES = frozenset(

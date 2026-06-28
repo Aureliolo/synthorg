@@ -43,9 +43,7 @@ from synthorg.observability.events.workers import (
     WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED,
 )
 from synthorg.persistence.config_factory import (
-    build_postgres_persistence_config_from_url,
-    build_sqlite_persistence_config,
-    normalize_ssl_mode_value,
+    select_persistence_config,
 )
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
@@ -190,18 +188,12 @@ def _build_seen_claims_backend(*, no_dedup: bool) -> PersistenceBackend | None:
     if no_dedup:
         logger.info(WORKERS_MAIN_SEEN_CLAIMS_SKIPPED, reason="no_dedup_flag")
         return None
-    db_url = (os.environ.get("SYNTHORG_DATABASE_URL") or "").strip()
-    db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
-    if db_url:
-        config = build_postgres_persistence_config_from_url(
-            db_url,
-            ssl_mode_override=normalize_ssl_mode_value(
-                os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
-            ),
-        )
-    elif db_path:
-        config = build_sqlite_persistence_config(path=db_path)
-    else:
+    config = select_persistence_config(
+        db_url=(os.environ.get("SYNTHORG_DATABASE_URL") or "").strip(),
+        db_path=(os.environ.get("SYNTHORG_DB_PATH") or "").strip(),
+        ssl_mode=os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
+    )
+    if config is None:
         logger.warning(WORKERS_MAIN_SEEN_CLAIMS_SKIPPED, reason="no_db_config")
         return None
     return create_backend(config)

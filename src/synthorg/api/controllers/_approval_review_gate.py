@@ -269,7 +269,6 @@ async def try_review_gate_transition(  # noqa: PLR0913
     try:
         await review_gate.dispatch_completion(
             task_id=task_id,
-            requested_by=decided_by,
             approved=approved,
             decided_by=decided_by,
             reason=decision_reason,

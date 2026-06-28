@@ -12,8 +12,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (

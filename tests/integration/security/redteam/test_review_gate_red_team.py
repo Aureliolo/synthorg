@@ -192,7 +192,6 @@ async def test_planted_defect_blocks_via_complete_review() -> None:
 
     await service.complete_review(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -217,7 +216,6 @@ async def test_planted_defect_blocks_via_run_pipeline() -> None:
         task_id="task-rt-1",
         pipeline=pipeline,
         decided_by="bob",
-        requested_by="bob",
     )
 
     assert result.final_verdict is ReviewVerdict.PASS
@@ -238,7 +236,6 @@ async def test_no_deliverable_blocks_when_policy_block() -> None:
 
     await service.complete_review(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -260,7 +257,6 @@ async def test_no_deliverable_skips_when_policy_skip() -> None:
 
     await service.complete_review(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -277,7 +273,6 @@ async def test_red_team_gate_absent_no_change() -> None:
 
     await service.complete_review(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -309,7 +304,6 @@ async def test_red_team_dispatch_failure_does_not_block_completion() -> None:
 
     await service.complete_review(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -331,7 +325,6 @@ async def test_dispatch_completion_backgrounds_gated_approval() -> None:
 
     dispatched = await service.dispatch_completion(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=True,
         decided_by="bob",
     )
@@ -359,7 +352,6 @@ async def test_dispatch_completion_runs_reject_inline() -> None:
 
     dispatched = await service.dispatch_completion(
         task_id="task-rt-1",
-        requested_by="bob",
         approved=False,
         decided_by="bob",
         reason="needs more tests",

@@ -13,6 +13,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.plan_models import PlanExecuteConfig
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -231,6 +232,42 @@ class TestPlanExecuteLoopBasic:
 
         assert result.termination_reason == TerminationReason.COMPLETED
         assert len(result.turns) == 4  # plan + 3 steps
+
+    async def test_no_classifier_yields_no_quality_signals(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_single_step_plan(), _stop_response("Done.")])
+        loop = PlanExecuteLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.quality_signals == ()
+
+    async def test_classifier_emits_one_signal_per_step(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _multi_step_plan(),
+                _stop_response("Research done."),
+                _stop_response("Implementation done."),
+                _stop_response("Verification done."),
+            ]
+        )
+        loop = PlanExecuteLoop(step_classifier=RuleBasedStepClassifier())
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # One quality signal produced per executed plan step.
+        assert len(result.quality_signals) == 3
+        assert [s.step_index for s in result.quality_signals] == [0, 1, 2]
 
 
 @pytest.mark.unit

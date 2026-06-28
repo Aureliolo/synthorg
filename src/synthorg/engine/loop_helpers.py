@@ -32,6 +32,8 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -388,25 +390,55 @@ def classify_turn(
     return classify_call(classification_ctx)
 
 
-def build_result(
+def build_result(  # noqa: PLR0913
     ctx: AgentContext,
     reason: TerminationReason,
     turns: list[TurnRecord],
     *,
     error_message: str | None = None,
     metadata: dict[str, object] | None = None,
+    quality_signals: tuple[StepQualitySignal, ...] = (),
 ) -> ExecutionResult:
     """Build an ``ExecutionResult`` from loop state.
 
     Returns:
         An :class:`ExecutionResult` carrying the current context,
-        termination reason, turn records, and optional error /
-        metadata payload.
+        termination reason, turn records, per-step quality signals, and
+        optional error / metadata payload.
     """
     return ExecutionResult(
         context=ctx,
         termination_reason=reason,
         turns=tuple(turns),
+        quality_signals=quality_signals,
         error_message=error_message,
         metadata=metadata or {},
+    )
+
+
+async def classify_step(
+    classifier: StepQualityClassifier | None,
+    *,
+    step_index: int,
+    step_turns: tuple[TurnRecord, ...],
+    termination_reason: TerminationReason,
+) -> StepQualitySignal | None:
+    """Classify a single step's quality when a classifier is wired.
+
+    The stagnation-terminated path escalates independently via the health
+    judge's STAGNATION check, so step classification passes
+    ``stagnation_result=None``; the rule-based classifier still scores
+    error / completed / exploratory steps from the turn metadata.
+
+    Returns:
+        The step's :class:`StepQualitySignal`, or ``None`` when no
+        classifier is injected (the feature is off).
+    """
+    if classifier is None:
+        return None
+    return await classifier.classify(
+        step_index=step_index,
+        turns=step_turns,
+        termination_reason=termination_reason,
+        stagnation_result=None,
     )

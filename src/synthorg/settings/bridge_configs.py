@@ -483,6 +483,11 @@ class EngineBridgeConfig(BaseModel):
     approval_interrupt_timeout_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
     max_subworkflow_depth: int = Field(default=16, ge=1, le=64)
     health_quality_degradation_threshold: int = Field(default=3, ge=1, le=10)
+    classifier_rule_matched_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    classifier_fallback_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    classification_detector_timeout_seconds: float = Field(
+        default=30.0, ge=1.0, le=600.0
+    )
     routing_weight_primary_skill: float = Field(default=0.4, ge=0.0, le=1.0)
     routing_weight_secondary_skill: float = Field(default=0.2, ge=0.0, le=1.0)
     routing_weight_tag_match_bonus: float = Field(default=0.1, ge=0.0, le=1.0)

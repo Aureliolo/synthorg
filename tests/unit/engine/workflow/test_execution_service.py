@@ -407,6 +407,83 @@ class TestActivateSimple:
         assert nmap["task-1"].task_id is not None
         assert nmap["end-1"].status is WorkflowNodeExecutionStatus.COMPLETED
 
+    @pytest.mark.unit
+    async def test_node_creation_emits_status_transition_event(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """Creating a task node logs the None -> TASK_CREATED node hop."""
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+        )
+
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+
+        with structlog.testing.capture_logs() as events:
+            exe = await service.activate(
+                str(wf.id),
+                project="proj",
+                activated_by="user",
+            )
+
+        node_transitions = [
+            e
+            for e in events
+            if e.get("event") == WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED
+        ]
+        assert len(node_transitions) == 1
+        entry = node_transitions[0]
+        assert entry["execution_id"] == str(exe.id)
+        assert entry["workflow_definition_id"] == str(wf.id)
+        assert entry["from_status"] is None
+        assert entry["to_status"] == WorkflowNodeExecutionStatus.TASK_CREATED.value
+
+    @pytest.mark.unit
+    async def test_task_less_workflow_completes_immediately(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """A START -> END workflow with no task nodes emits terminal events."""
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_COMPLETED,
+        )
+
+        wf = make_workflow(
+            nodes=(make_start_node(), make_end_node()),
+            edges=(make_edge("e1", "start-1", "end-1"),),
+        )
+        await def_repo.save(wf)
+
+        with structlog.testing.capture_logs() as events:
+            exe = await service.activate(
+                str(wf.id),
+                project="proj",
+                activated_by="user",
+            )
+
+        assert exe.status is WorkflowExecutionStatus.COMPLETED
+        assert exe.completed_at is not None
+        completed = [e for e in events if e.get("event") == WORKFLOW_EXEC_COMPLETED]
+        assert len(completed) == 1
+        assert completed[0]["execution_id"] == str(exe.id)
+
 
 class TestActivateSequential:
     """Sequential: START -> TASK_A -> TASK_B -> END."""

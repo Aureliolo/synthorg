@@ -18,6 +18,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.prompt_validation import format_task_instruction
+from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.execution.turn import TurnRecord
 from synthorg.hr.seniority import SeniorityLevel
@@ -43,6 +44,7 @@ def _make_run_result(  # noqa: PLR0913
     *,
     termination_reason: TerminationReason = TerminationReason.COMPLETED,
     turns: tuple[TurnRecord, ...] = (),
+    quality_signals: tuple[StepQualitySignal, ...] = (),
     cost: float = 0.05,
     error_message: str | None = None,
     agent_id: str = "agent-001",
@@ -66,6 +68,7 @@ def _make_run_result(  # noqa: PLR0913
         context=ctx,
         termination_reason=termination_reason,
         turns=turns,
+        quality_signals=quality_signals,
         error_message=error_message,
     )
     prompt = SystemPrompt(
@@ -119,6 +122,24 @@ class TestAgentRunResultComputedFields:
             error_message="something failed",
         )
         assert result.termination_reason == TerminationReason.ERROR
+
+    def test_quality_signals_default_empty(self) -> None:
+        result = _make_run_result()
+        assert result.quality_signals == ()
+
+    def test_quality_signals_passthrough(self) -> None:
+        signals = (
+            StepQualitySignal(
+                quality=StepQuality.INCORRECT,
+                confidence=0.7,
+                reason="step failed",
+                step_index=0,
+                turn_range=(1, 2),
+            ),
+        )
+        result = _make_run_result(quality_signals=signals)
+        assert result.quality_signals == signals
+        assert result.execution_result.quality_signals == signals
 
     def test_total_turns_zero(self) -> None:
         result = _make_run_result(turns=())

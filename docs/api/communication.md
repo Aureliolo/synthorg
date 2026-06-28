@@ -37,7 +37,7 @@ Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict re
 
 ## Delegation
 
-::: synthorg.communication.delegation.models
+::: synthorg.core.delegation_types
 
 ::: synthorg.communication.delegation.service
 

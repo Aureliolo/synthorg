@@ -236,6 +236,34 @@ def build_filesystem_artifact_storage(*, data_dir: Path) -> ArtifactStorageBacke
     return FileSystemArtifactStorage(data_dir=data_dir)
 
 
+def select_persistence_config(
+    *,
+    db_url: str,
+    db_path: str,
+    ssl_mode: str | None,
+) -> PersistenceConfig | None:
+    """Select a ``PersistenceConfig`` from resolved DB environment values.
+
+    Postgres (``db_url``) takes precedence over SQLite (``db_path``) so a
+    half-converted environment never silently falls back to SQLite. The
+    caller supplies the already-read env values (this helper stays
+    env-agnostic); ``ssl_mode`` is the raw ``SYNTHORG_POSTGRES_SSL_MODE``
+    string and is normalised here.
+
+    Returns:
+        The selected ``PersistenceConfig``, or ``None`` when neither
+        ``db_url`` nor ``db_path`` is set (a NATS-only / no-DB run).
+    """
+    if db_url:
+        return build_postgres_persistence_config_from_url(
+            db_url,
+            ssl_mode_override=normalize_ssl_mode_value(ssl_mode),
+        )
+    if db_path:
+        return build_sqlite_persistence_config(path=db_path)
+    return None
+
+
 def normalize_ssl_mode_value(raw: str | None) -> str | None:
     """Normalise a raw ``SYNTHORG_POSTGRES_SSL_MODE`` value.
 
@@ -260,4 +288,5 @@ __all__ = [
     "build_postgres_persistence_config_from_url",
     "build_sqlite_persistence_config",
     "normalize_ssl_mode_value",
+    "select_persistence_config",
 ]

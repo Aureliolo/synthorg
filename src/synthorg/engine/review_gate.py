@@ -105,7 +105,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self,
         *,
         task_id: str,
-        decided_by: str | None = None,
+        decided_by: str,
     ) -> Task:
         """Preflight check: task exists and decider is not the executor.
 
@@ -114,9 +114,9 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
 
         Args:
             task_id: The task identifier.
-            decided_by: Optional explicit decider override (system /
-                non-HTTP paths). When omitted the bound actor (ADR-0003)
-                supplies it via :func:`resolve_decided_by`.
+            decided_by: The resolved decider identity. Callers resolve
+                the bound actor (ADR-0003) via :func:`resolve_decided_by`
+                before invoking the gate.
 
         Returns:
             The validated ``Task`` fetched from the engine.  Returned
@@ -129,7 +129,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             SelfReviewError: If the decider is the task's original
                 executing agent.
         """
-        decided_by = resolve_decided_by(decided_by)
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
@@ -143,11 +142,10 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._check_self_review(task, decided_by=decided_by)
         return task
 
-    async def complete_review(  # noqa: PLR0913
+    async def complete_review(
         self,
         *,
         task_id: str,
-        requested_by: str,
         approved: bool,
         decided_by: str | None = None,
         reason: str | None = None,
@@ -225,17 +223,15 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             transition_reason=transition_reason,
             event=event,
             decided_by=decided_by,
-            requested_by=requested_by,
             approved=approved,
             approval_id=approval_id,
             normalized_reason=normalized_reason,
         )
 
-    async def dispatch_completion(  # noqa: PLR0913 -- mirrors complete_review
+    async def dispatch_completion(
         self,
         *,
         task_id: str,
-        requested_by: str,
         approved: bool,
         decided_by: str | None = None,
         reason: str | None = None,
@@ -256,7 +252,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             (the caller must not expect a synchronous transition or its
             engine-layer errors); ``False`` when it ran inline.
         """
-        decided_by = resolve_decided_by(decided_by)
         gated = (
             approved
             and self._red_team_gate is not None
@@ -285,7 +280,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             _ = self._background_tasks.spawn(
                 self.complete_review(
                     task_id=task_id,
-                    requested_by=requested_by,
                     approved=approved,
                     decided_by=decided_by,
                     reason=reason,
@@ -299,7 +293,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             return True
         await self.complete_review(
             task_id=task_id,
-            requested_by=requested_by,
             approved=approved,
             decided_by=decided_by,
             reason=reason,
@@ -307,13 +300,12 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         )
         return False
 
-    async def run_pipeline(  # noqa: PLR0913
+    async def run_pipeline(
         self,
         *,
         task_id: str,
         pipeline: ReviewPipeline,
         decided_by: str,
-        requested_by: str,
         approval_id: str | None = None,
         vision_input: VisionReviewInput | None = None,
     ) -> PipelineResult:
@@ -332,7 +324,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             pipeline: Review pipeline to execute.
             decided_by: Identity attributed to the decision (the
                 pipeline's operator or the invoking agent).
-            requested_by: Agent that requested the review.
             approval_id: Optional foreign key to an approval item.
             vision_input: Optional GUI-deliverable review payload
                 (screenshots + brief). When this and ``vision_gate`` are
@@ -383,7 +374,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             transition_reason=transition_reason,
             event=event,
             decided_by=decided_by,
-            requested_by=requested_by,
             approved=approved,
             approval_id=approval_id,
             normalized_reason=transition_reason,
@@ -398,7 +388,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         transition_reason: str,
         event: str,
         decided_by: str,
-        requested_by: str,
         approved: bool,
         approval_id: str | None,
         normalized_reason: str | None,
@@ -434,7 +423,6 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         logger.info(
             event,
             task_id=str(task.id),
-            requested_by=requested_by,
             decided_by=decided_by,
             target_status=target.value,
         )

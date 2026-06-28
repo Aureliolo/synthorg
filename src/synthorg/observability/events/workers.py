@@ -106,6 +106,7 @@ WORKERS_DISPATCHER_CLAIM_ENQUEUED: Final[str] = "workers.dispatcher.claim_enqueu
 
 # Task queue client
 WORKERS_TASK_QUEUE_CONNECT_FAILED: Final[str] = "workers.task_queue.connect_failed"
+WORKERS_TASK_QUEUE_STARTED: Final[str] = "workers.task_queue.started"
 WORKERS_QUEUE_START_REJECTED: Final[str] = "workers.task_queue.start_rejected"
 WORKERS_QUEUE_NOT_RUNNING: Final[str] = "workers.task_queue.not_running"
 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED: Final[str] = (

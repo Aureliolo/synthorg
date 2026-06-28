@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.evolution.service import EvolutionService
+    from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
@@ -525,6 +526,8 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     *,
     active_provider_name: str,
     flight_recorder_sink: FlightRecorderSink | None = None,
+    step_classifier: StepQualityClassifier | None = None,
+    classification_detector_timeout_seconds: float | None = None,
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
@@ -538,6 +541,18 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         and the coordinator.
     """
     error_taxonomy_config, classification_sinks = _build_classification(app_state)
+    if (
+        error_taxonomy_config is not None
+        and classification_detector_timeout_seconds is not None
+    ):
+        # Bridge the operator-tunable per-detector timeout
+        # (engine.classification_detector_timeout_seconds) onto the
+        # error-taxonomy config, which owns the detector isolation window.
+        error_taxonomy_config = error_taxonomy_config.model_copy(
+            update={
+                "detector_timeout_seconds": classification_detector_timeout_seconds,
+            },
+        )
     return AgentEngine(
         coordination_metrics_collector=coordination_metrics_collector,
         error_taxonomy_config=error_taxonomy_config,
@@ -579,6 +594,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
+        step_classifier=step_classifier,
         compaction_callback=_build_compaction_callback(app_state, provider),
         clock=app_state.clock,
     )

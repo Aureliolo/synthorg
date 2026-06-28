@@ -136,7 +136,6 @@ async def test_block_routes_to_in_progress() -> None:
         task_id="task-v-1",
         pipeline=_pipeline(),
         decided_by="bob",
-        requested_by="bob",
         vision_input=_vision_input(),
     )
     call = cast("AsyncMock", task_engine.submit).call_args[0][0]
@@ -154,9 +153,7 @@ async def test_missing_vision_input_skips() -> None:
     await service.run_pipeline(
         task_id="task-v-1",
         pipeline=_pipeline(),
-        decided_by="bob",
-        requested_by="bob",
-        # no vision_input -> non-GUI deliverable -> gate SKIPs
+        decided_by="bob",  # no vision_input -> non-GUI deliverable -> gate SKIPs
     )
     call = cast("AsyncMock", task_engine.submit).call_args[0][0]
     assert call.target_status is TaskStatus.COMPLETED
@@ -170,7 +167,6 @@ async def test_no_gate_passes_through() -> None:
         task_id="task-v-1",
         pipeline=_pipeline(),
         decided_by="bob",
-        requested_by="bob",
         vision_input=_vision_input(),
     )
     call = cast("AsyncMock", task_engine.submit).call_args[0][0]
@@ -186,7 +182,6 @@ async def test_set_vision_gate_seam() -> None:
         task_id="task-v-1",
         pipeline=_pipeline(),
         decided_by="bob",
-        requested_by="bob",
         vision_input=_vision_input(),
     )
     call = cast("AsyncMock", task_engine.submit).call_args[0][0]

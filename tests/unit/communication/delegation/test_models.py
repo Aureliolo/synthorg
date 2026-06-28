@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.communication.delegation.models import (
+from synthorg.core.delegation_types import (
     DelegationRecord,
     DelegationRequest,
     DelegationResult,

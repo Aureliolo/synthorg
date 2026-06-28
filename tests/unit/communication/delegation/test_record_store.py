@@ -8,10 +8,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import structlog
 
-from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.observability.events.delegation import DELEGATION_RECORD_EVICTED
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)

@@ -303,3 +303,45 @@ class TestClassifierDefaultsRegistryDrift:
         assert registered is not None
         assert registered.default is not None
         assert float(registered.default) == expected_default
+
+
+@pytest.mark.unit
+class TestClassifyStepHelper:
+    """The loop-level ``classify_step`` wrapper used by the execution loops."""
+
+    async def test_none_classifier_returns_none(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        result = await classify_step(
+            None,
+            step_index=0,
+            step_turns=(_turn(tools=("read",)),),
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        assert result is None
+
+    async def test_wired_classifier_scores_the_step(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        signal = await classify_step(
+            RuleBasedStepClassifier(),
+            step_index=2,
+            step_turns=(_turn(tools=("read",)),),
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        assert signal is not None
+        assert signal.step_index == 2
+        # Completed step with a tool call -> CORRECT (rule 3).
+        assert signal.quality == StepQuality.CORRECT
+
+    async def test_failed_step_with_error_turn_is_incorrect(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        signal = await classify_step(
+            RuleBasedStepClassifier(),
+            step_index=1,
+            step_turns=(_turn(finish=FinishReason.ERROR),),
+            termination_reason=TerminationReason.MAX_TURNS,
+        )
+        assert signal is not None
+        assert signal.quality == StepQuality.INCORRECT

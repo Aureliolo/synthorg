@@ -20,6 +20,7 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
     TASK_ROUTING_AGENT_SCORED,
     TASK_ROUTING_SCORER_INVALID_CONFIG,
 )
@@ -204,6 +205,12 @@ class AgentTaskScorer:
             A routing candidate with the computed score.
         """
         if agent.status != AgentStatus.ACTIVE:
+            logger.debug(
+                TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
+                agent_name=agent.name,
+                subtask_id=subtask.id,
+                status=agent.status.value,
+            )
             return RoutingCandidate(
                 agent_identity=agent,
                 score=0.0,

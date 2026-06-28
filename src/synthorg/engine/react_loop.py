@@ -13,6 +13,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -44,6 +46,7 @@ from .loop_helpers import (
     build_result,
     call_provider,
     check_response_errors,
+    classify_step,
     classify_turn,
     get_tool_definitions,
     make_turn_record,
@@ -93,9 +96,13 @@ class ReactLoop:
         compaction_callback: Optional async callback invoked at turn
             boundaries to compress older conversation turns when the
             context fill level is high.  ``None`` disables compaction.
+        step_classifier: Optional step-quality classifier. ReAct is
+            turn-based with no step boundary, so a single whole-run
+            signal is emitted at natural termination; ``None`` disables
+            quality classification.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         checkpoint_callback: CheckpointCallback | None = None,
         *,
@@ -103,12 +110,33 @@ class ReactLoop:
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
         steering_inbox: SteeringInbox | None = None,
+        step_classifier: StepQualityClassifier | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
         self._steering_inbox = steering_inbox
+        self._step_classifier = step_classifier
+
+    async def _whole_run_signals(
+        self,
+        turns: list[TurnRecord],
+        termination_reason: TerminationReason,
+    ) -> tuple[StepQualitySignal, ...]:
+        """Classify the whole run as a single step signal.
+
+        Returns:
+            A one-tuple with the run's :class:`StepQualitySignal`, or an
+            empty tuple when no classifier is wired.
+        """
+        signal = await classify_step(
+            self._step_classifier,
+            step_index=0,
+            step_turns=tuple(turns),
+            termination_reason=termination_reason,
+        )
+        return (signal,) if signal is not None else ()
 
     @property
     def approval_gate(self) -> ApprovalGate | None:
@@ -256,7 +284,14 @@ class ReactLoop:
             reason=TerminationReason.MAX_TURNS.value,
             turns=len(turns),
         )
-        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
+        return build_result(
+            ctx,
+            TerminationReason.MAX_TURNS,
+            turns,
+            quality_signals=await self._whole_run_signals(
+                turns, TerminationReason.MAX_TURNS
+            ),
+        )
 
     def _prepare_loop(
         self,
@@ -343,7 +378,7 @@ class ReactLoop:
                 )
 
         if not response.tool_calls:
-            return self._handle_completion(ctx, response, turns)
+            return await self._handle_completion(ctx, response, turns)
 
         # Check shutdown before tool invocations
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
@@ -363,7 +398,7 @@ class ReactLoop:
             approval_gate=self._approval_gate,
         )
 
-    def _handle_completion(
+    async def _handle_completion(
         self,
         ctx: AgentContext,
         response: CompletionResponse,
@@ -393,6 +428,9 @@ class ReactLoop:
                 TerminationReason.ERROR,
                 turns,
                 error_message=error_msg,
+                quality_signals=await self._whole_run_signals(
+                    turns, TerminationReason.ERROR
+                ),
             )
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(
@@ -413,4 +451,7 @@ class ReactLoop:
             ctx,
             TerminationReason.COMPLETED,
             turns,
+            quality_signals=await self._whole_run_signals(
+                turns, TerminationReason.COMPLETED
+            ),
         )

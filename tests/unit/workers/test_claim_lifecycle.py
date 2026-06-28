@@ -27,6 +27,7 @@ from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
     WORKERS_QUEUE_START_REJECTED,
     WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
+    WORKERS_TASK_QUEUE_STARTED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.claim import (
@@ -356,6 +357,53 @@ async def test_start_when_running_logs_rejection(
     ]
     assert len(matched) == 1
     assert matched[0].kwargs["reason"] == "already_running"
+
+
+@pytest.mark.unit
+async def test_start_success_logs_queue_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful ``start()`` logs the queue-started state transition."""
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+
+    from synthorg.workers._stream_setup import (
+        connect,
+        ensure_consumer,
+        ensure_stream,
+    )
+
+    client = AsyncMock(spec=_ClientStub)
+    js = AsyncMock(spec=_JetStreamStub)
+    monkeypatch.setattr(
+        claim_module,
+        "connect",
+        AsyncMock(spec=connect, return_value=(client, js)),
+    )
+    monkeypatch.setattr(
+        claim_module,
+        "ensure_stream",
+        AsyncMock(spec=ensure_stream),
+    )
+    monkeypatch.setattr(
+        claim_module,
+        "ensure_consumer",
+        AsyncMock(
+            spec=ensure_consumer,
+            return_value=AsyncMock(spec=_SubscriptionStub),
+        ),
+    )
+
+    await queue.start()
+
+    assert queue._running is True
+    matched = [
+        c
+        for c in spy.info.call_args_list
+        if c.args and c.args[0] == WORKERS_TASK_QUEUE_STARTED
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["durable_name"] == queue._durable_name
 
 
 @pytest.mark.unit

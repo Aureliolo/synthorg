@@ -14,6 +14,7 @@ from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.task_routing import (
+    TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
     TASK_ROUTING_SCORER_INVALID_CONFIG,
 )
 
@@ -83,6 +84,25 @@ class TestAgentTaskScorer:
 
         candidate = scorer.score(agent, subtask)
         assert candidate.score == 0.0
+
+    @pytest.mark.unit
+    def test_inactive_agent_emits_skip_event(self) -> None:
+        """Skipping a non-active agent records a decision-point event."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(status=AgentStatus.TERMINATED)
+        subtask = _make_subtask(required_skills=("python",))
+
+        with capture_logs() as logs:
+            scorer.score(agent, subtask)
+
+        skips = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_AGENT_INACTIVE_SKIPPED
+        ]
+        assert len(skips) == 1, f"expected one skip event, got {logs}"
+        assert skips[0]["status"] == AgentStatus.TERMINATED.value
+        assert skips[0]["agent_name"] == agent.name
 
     @pytest.mark.unit
     def test_primary_skill_match(self) -> None:

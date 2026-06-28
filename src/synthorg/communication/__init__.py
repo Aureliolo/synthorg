@@ -42,9 +42,6 @@ from synthorg.communication.conflict_resolution.hybrid_strategy import (
 from synthorg.communication.delegation import (
     AuthorityCheckResult,
     AuthorityValidator,
-    DelegationRecord,
-    DelegationRequest,
-    DelegationResult,
     DelegationService,
     HierarchyResolver,
 )
@@ -181,9 +178,6 @@ __all__ = [
     "DelegationGuard",
     "DelegationLoopError",
     "DelegationRateLimiter",
-    "DelegationRecord",
-    "DelegationRequest",
-    "DelegationResult",
     "DelegationService",
     "DeliveryEnvelope",
     "DispatchResult",

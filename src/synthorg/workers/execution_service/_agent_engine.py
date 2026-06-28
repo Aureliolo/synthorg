@@ -383,6 +383,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                 return
             await self._health_pipeline.process(
                 termination_reason=run_result.termination_reason,
+                quality_signals=run_result.execution_result.quality_signals,
                 agent_id=str(identity.id),
                 task_id=task_id,
                 execution_duration=run_result.duration_seconds,

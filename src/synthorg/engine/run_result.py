@@ -14,6 +14,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.providers.enums import MessageRole
 
 
@@ -84,6 +85,14 @@ class AgentRunResult(BaseModel):
     def total_turns(self) -> int:
         """Number of turns completed during execution."""
         return len(self.execution_result.turns)
+
+    @computed_field(
+        description="Per-step quality signals from the execution loop",
+    )
+    @property
+    def quality_signals(self) -> tuple[StepQualitySignal, ...]:
+        """Per-step quality signals produced during the loop."""
+        return self.execution_result.quality_signals
 
     @computed_field(
         description="Total cost in the configured currency",

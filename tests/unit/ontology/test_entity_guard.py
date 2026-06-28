@@ -8,7 +8,7 @@ from synthorg.communication.delegation.entity_guard import (
     EntityAlignmentGuard,
     EntityGuardOutcome,
 )
-from synthorg.communication.delegation.models import DelegationRequest
+from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.ontology.config import DelegationGuardConfig, GuardMode

@@ -47,6 +47,7 @@ from synthorg.engine.health import (
     TriageFilter,
 )
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
@@ -68,8 +69,10 @@ from synthorg.security.redteam.builder import (
     build_red_team_tool_seed,
 )
 from synthorg.security.visionverify.protocol import VisionVerifierGate
+from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
+from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
@@ -144,6 +147,8 @@ def _construct_coordination_collector(
 
 def _build_health_runtime(
     app_state: AppState,
+    *,
+    quality_degradation_threshold: int,
 ) -> tuple[HealthMonitoringPipeline | None, Callable[[], Awaitable[bool]] | None]:
     """Build the post-run agent-health pipeline + its live enabled check.
 
@@ -154,17 +159,23 @@ def _build_health_runtime(
     check re-reads ``engine.health_monitoring_enabled`` per run so the
     monitor can be toggled without a restart.
 
+    Args:
+        app_state: The live application state.
+        quality_degradation_threshold: Bridged
+            ``engine.health_quality_degradation_threshold`` (minimum
+            consecutive INCORRECT step signals before the judge escalates).
+
     Returns:
         A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when no
         notification dispatcher is wired.
     """
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
-
     dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
     if dispatcher is None:
         return None, None
     pipeline = HealthMonitoringPipeline(
-        judge=HealthJudge(),
+        judge=HealthJudge(
+            quality_degradation_threshold=quality_degradation_threshold,
+        ),
         triage=TriageFilter(),
         notification_dispatcher=dispatcher,
     )
@@ -312,6 +323,23 @@ async def build_runtime_services(
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
     flight_recorder_sink = await build_boot_flight_recorder_sink(app_state)
+    try:
+        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="runtime_services",
+            context="engine_bridge_resolve",
+            note="engine bridge config unavailable; using classifier/health defaults",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        engine_bridge = EngineBridgeConfig()
+    step_classifier = RuleBasedStepClassifier(
+        rule_matched_confidence=engine_bridge.classifier_rule_matched_confidence,
+        fallback_confidence=engine_bridge.classifier_fallback_confidence,
+    )
     engine = _construct_agent_engine(
         app_state,
         provider,
@@ -321,6 +349,10 @@ async def build_runtime_services(
         external_api_runtime,
         active_provider_name=names[0],
         flight_recorder_sink=flight_recorder_sink,
+        step_classifier=step_classifier,
+        classification_detector_timeout_seconds=(
+            engine_bridge.classification_detector_timeout_seconds
+        ),
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),
@@ -351,7 +383,12 @@ async def build_runtime_services(
         category=ToolCategory.CODE_EXECUTION,
     )
     workspace_slice = app_state.slice(WorkspaceStateSlice)
-    health_pipeline, health_enabled = _build_health_runtime(app_state)
+    health_pipeline, health_enabled = _build_health_runtime(
+        app_state,
+        quality_degradation_threshold=(
+            engine_bridge.health_quality_degradation_threshold
+        ),
+    )
     worker_execution_service = AgentEngineExecutionService(
         engine=engine,
         task_engine=task_engine_of(app_state),
