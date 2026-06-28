@@ -47,6 +47,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_COST_FAILED,
     PROVIDER_COST_RECORDED,
     PROVIDER_COST_SKIPPED,
+    PROVIDER_PROMPT_PURPOSE_INVOKED,
 )
 from synthorg.providers.models import (
     CompletionResponse,
@@ -60,10 +61,11 @@ class CostRecordingContext(BaseModel):
     """Per-call recording context bound to the current ``asyncio.Task``.
 
     Construction is via :func:`cost_recording_scope` rather than direct
-    instantiation.  ``cost_tracker`` is a :class:`CostTracker` (a
-    non-Pydantic class), permitted by ``arbitrary_types_allowed``; the
-    field validator raises ``ValueError`` on a bad instance so Pydantic
-    surfaces it as a ``ValidationError``.
+    instantiation.  ``cost_tracker`` is any object satisfying
+    :class:`CostTrackerProtocol` (a non-Pydantic type), permitted by
+    ``arbitrary_types_allowed``; the field validator enforces the structural
+    check at construction and raises ``ValueError`` on a bad instance so
+    Pydantic surfaces it as a ``ValidationError``.
     """
 
     model_config = ConfigDict(
@@ -188,6 +190,15 @@ async def cost_recording_scope(  # noqa: PLR0913
             tracker's ``budget_config.currency`` (or
             :data:`DEFAULT_CURRENCY`) is used.
     """
+    if purpose is not None:
+        # Coerce up front so the trackerless path shares the tracked path's
+        # contract: a mistyped raw string is rejected here instead of leaking
+        # into eval/analytics logs as a bogus prompt_class_id.
+        purpose = PromptPurposeId(str(purpose))
+        # Emit before the tracker check so a registered prompt purpose is
+        # observable even with no cost tracker wired (the evals harness runs
+        # trackerless; it counts these to attribute spend signal by purpose).
+        logger.debug(PROVIDER_PROMPT_PURPOSE_INVOKED, prompt_class_id=str(purpose))
     if cost_tracker is None:
         # Shadow the outer context with ``None`` so nested calls
         # don't silently inherit a wired outer tracker.  Reset on
@@ -416,12 +427,11 @@ async def _skip_build_and_submit(
     # never add user-visible latency to ``provider.complete()``.  The
     # background task is bounded by the same timeout so a hung
     # tracker doesn't accumulate forever-pending tasks; failures
-    # (timeout, exception) are logged in the task itself with the
-    # same ``PROVIDER_COST_RECORDED`` structured event.  The
-    # ``PROVIDER_COST_RECORDED`` INFO log fires from
-    # ``_record_cost_in_background`` only after the tracker actually
-    # accepts the record, so a hung/failing tracker no longer produces
-    # a misleading "recorded" log followed by a "failed" warning.
+    # (timeout, exception) are logged in the task itself with
+    # ``PROVIDER_COST_FAILED``.  The ``PROVIDER_COST_RECORDED`` INFO log
+    # fires from ``_record_cost_in_background`` only after the tracker
+    # actually accepts the record, so a hung/failing tracker no longer
+    # produces a misleading "recorded" log followed by a "failed" warning.
     task = asyncio.create_task(
         _record_cost_in_background(ctx, record, provider=provider, model=model),
         name=f"cost_record:{ctx.agent_id}:{ctx.task_id}",

@@ -29,6 +29,9 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.engine.sanitization import sanitize_message
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
@@ -42,20 +45,6 @@ from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOKENS: Final[int] = 1024
-
-# Stable per-purpose prompt-class identifiers, one per concrete detector.
-_PROMPT_CLASS_ID_CONTRADICTION: Final[NotBlankStr] = NotBlankStr(
-    "semantic_detector.logical_contradiction"
-)
-_PROMPT_CLASS_ID_NUMERICAL: Final[NotBlankStr] = NotBlankStr(
-    "semantic_detector.numerical_drift"
-)
-_PROMPT_CLASS_ID_MISSING_REFERENCE: Final[NotBlankStr] = NotBlankStr(
-    "semantic_detector.context_omission"
-)
-_PROMPT_CLASS_ID_COORDINATION: Final[NotBlankStr] = NotBlankStr(
-    "semantic_detector.coordination_failure"
-)
 
 _SANITIZE_MAX_LENGTH: Final[int] = 2000
 # Cost reserved per LLM semantic detector invocation.  Small enough
@@ -130,8 +119,13 @@ class _BaseSemanticDetector(ABC):
 
     @property
     @abstractmethod
-    def prompt_class_id(self) -> NotBlankStr:
-        """Stable per-purpose identifier for this detector's prompt class."""
+    def prompt_class_id(self) -> PromptPurposeId:
+        """Stable purpose identifier for this detector's prompt class."""
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this detector's prompt class."""
+        return pin_for(self.prompt_class_id)
 
     @property
     @abstractmethod
@@ -285,8 +279,7 @@ class _BaseSemanticDetector(ABC):
                 cost_tracker=self._cost_tracker,
                 agent_id=context.agent_id,
                 task_id=context.task_id,
-                # Per-task runtime classification, not a system prompt class.
-                purpose=None,
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(
@@ -308,6 +301,10 @@ class _BaseSemanticDetector(ABC):
             return parse_findings(response.content, self.category)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Fail open: provider exhaustion (RetryExhaustedError) or a parse
+            # error degrades to no findings (same as a clean transcript).
+            # Detection is a best-effort quality signal; the WARNING below is
+            # the operator signal that the analysis was skipped, not absent.
             logger.warning(
                 DETECTOR_ERROR,
                 detector=detector_name,
@@ -334,9 +331,9 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
 
     @property
     @override
-    def prompt_class_id(self) -> NotBlankStr:
-        """Stable per-purpose identifier for this detector's prompt class."""
-        return _PROMPT_CLASS_ID_CONTRADICTION
+    def prompt_class_id(self) -> PromptPurposeId:
+        """Stable purpose identifier for this detector's prompt class."""
+        return PromptPurposeId.CLASSIFICATION_LOGICAL_CONTRADICTION
 
     @property
     @override
@@ -371,9 +368,9 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
 
     @property
     @override
-    def prompt_class_id(self) -> NotBlankStr:
-        """Stable per-purpose identifier for this detector's prompt class."""
-        return _PROMPT_CLASS_ID_NUMERICAL
+    def prompt_class_id(self) -> PromptPurposeId:
+        """Stable purpose identifier for this detector's prompt class."""
+        return PromptPurposeId.CLASSIFICATION_NUMERICAL_DRIFT
 
     @property
     @override
@@ -410,9 +407,9 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 
     @property
     @override
-    def prompt_class_id(self) -> NotBlankStr:
-        """Stable per-purpose identifier for this detector's prompt class."""
-        return _PROMPT_CLASS_ID_MISSING_REFERENCE
+    def prompt_class_id(self) -> PromptPurposeId:
+        """Stable purpose identifier for this detector's prompt class."""
+        return PromptPurposeId.CLASSIFICATION_CONTEXT_OMISSION
 
     @property
     @override
@@ -449,9 +446,9 @@ class SemanticCoordinationDetector(_BaseSemanticDetector):
 
     @property
     @override
-    def prompt_class_id(self) -> NotBlankStr:
-        """Stable per-purpose identifier for this detector's prompt class."""
-        return _PROMPT_CLASS_ID_COORDINATION
+    def prompt_class_id(self) -> PromptPurposeId:
+        """Stable purpose identifier for this detector's prompt class."""
+        return PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE
 
     @property
     @override

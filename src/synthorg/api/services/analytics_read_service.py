@@ -11,7 +11,11 @@ services; this service owns the one remaining direct repository touch
 from typing import Final
 
 from synthorg.core.task import Task
+from synthorg.observability import get_logger
+from synthorg.observability.events.analytics import ANALYTICS_TASK_LIST_COLLECTED
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
+
+logger = get_logger(__name__)
 
 # Batch size for the fetch-all pagination loop. Any positive size yields the
 # complete set; this only bounds how many rows are read per round-trip.
@@ -58,6 +62,7 @@ class AnalyticsReadService:
             page = await self._task_repo.query(
                 spec, limit=_FETCH_PAGE_SIZE, offset=offset
             )
+        logger.debug(ANALYTICS_TASK_LIST_COLLECTED, task_count=len(tasks))
         return tuple(tasks)
 
 

@@ -8,7 +8,7 @@ zero-score verdict so it cannot silently pass triage.
 """
 
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -21,6 +21,8 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -54,6 +56,13 @@ class LlmCredibilityTriage:
     """Scores credibility with batched deterministic LLM calls."""
 
     __slots__ = ("_batch_size", "_cost_tracker", "_model", "_provider")
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RESEARCH_TRIAGE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -131,7 +140,7 @@ class LlmCredibilityTriage:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:triage:{brief.brief_id}"),
             project_id=brief.project_id,
-            purpose=PromptPurposeId.RESEARCH_TRIAGE,
+            purpose=self.metadata.prompt_class_id,
         )
         try:
             obj = json.loads(extract_json_object(content))

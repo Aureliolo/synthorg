@@ -8,10 +8,15 @@ import type {
   getCallAnalytics,
   getForecast,
   getParetoFrontier,
+  getPromptClassBreakdown,
   raiseCeiling,
   rejectForecast,
 } from '@/api/endpoints/budget'
-import type { AgentSpending, BudgetConfig } from '@/api/types/budget'
+import type {
+  AgentSpending,
+  BudgetConfig,
+  PromptClassBreakdown,
+} from '@/api/types/budget'
 import type { AnalyticsAggregation, Forecast, ParetoFrontier } from '@/api/types'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
@@ -206,6 +211,13 @@ export const budgetHandlers = [
   http.get('/api/v1/budget/call-analytics', () =>
     HttpResponse.json(
       successFor<typeof getCallAnalytics>(buildCallAnalytics()),
+    ),
+  ),
+  http.get('/api/v1/budget/prompt-class-breakdown', () =>
+    HttpResponse.json(
+      successFor<typeof getPromptClassBreakdown>({
+        rows: [],
+      } satisfies PromptClassBreakdown),
     ),
   ),
 ]

@@ -2,6 +2,7 @@
 
 import math
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Annotated, Final, Self
 
 from litestar import Controller, get
@@ -22,8 +23,12 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.budget.call_analytics_models import AnalyticsAggregation
+from synthorg.budget.call_analytics_models import (
+    AnalyticsAggregation,
+    PromptClassBreakdown,
+)
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
@@ -34,6 +39,8 @@ from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_BUDGET_CALL_ANALYTICS_QUERIED,
+    API_BUDGET_PROMPT_CLASS_BREAKDOWN_QUERIED,
     API_BUDGET_RECORDS_LISTED,
     API_VALIDATION_FAILED,
 )
@@ -41,6 +48,61 @@ from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+
+# Query-param aliases for the call-analytics filter surface. Module-level so
+# the handler signatures stay short and the four orthogonal filters read once.
+_AgentFilter = Annotated[
+    str | None,
+    QueryParameter(
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter to calls emitted by this agent.",
+    ),
+]
+_TaskFilter = Annotated[
+    str | None,
+    QueryParameter(
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter to calls emitted under this task.",
+    ),
+]
+_ProviderFilter = Annotated[
+    NotBlankStr | None,
+    QueryParameter(
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter to calls served by this provider.",
+    ),
+]
+_PromptClassFilter = Annotated[
+    NotBlankStr | None,
+    QueryParameter(
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter to calls emitted by this prompt purpose.",
+    ),
+]
+_StartFilter = Annotated[
+    datetime | None,
+    QueryParameter(description="Inclusive lower bound on record timestamp (ISO 8601)."),
+]
+_EndFilter = Annotated[
+    datetime | None,
+    QueryParameter(description="Exclusive upper bound on record timestamp (ISO 8601)."),
+]
+
+
+def _assume_utc(value: datetime | None) -> datetime | None:
+    """Coerce an offset-less ISO query datetime to UTC.
+
+    Stored record timestamps are UTC-aware; forwarding a naive value would
+    raise on the aware/naive comparison in the breakdown scan. A naive input
+    is assumed UTC (matching ``normalize_utc`` semantics) at this boundary.
+
+    Returns:
+        The value unchanged when aware or ``None``; otherwise the value with
+        UTC attached.
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class AgentSpending(BaseModel):
@@ -307,7 +369,7 @@ class BudgetController(Controller):
         return ApiResponse(data=budget)
 
     @get("/records")
-    async def list_cost_records(
+    async def list_cost_records(  # noqa: PLR0913 -- orthogonal filters + pagination
         self,
         state: State,
         agent_id: Annotated[
@@ -324,6 +386,7 @@ class BudgetController(Controller):
                 description="Filter to cost records emitted under this task.",
             ),
         ] = None,
+        prompt_class_id: _PromptClassFilter = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> CostRecordListResponse:
@@ -336,6 +399,7 @@ class BudgetController(Controller):
             state: Application state.
             agent_id: Filter by agent.
             task_id: Filter by task.
+            prompt_class_id: Filter by prompt purpose id.
             cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
@@ -350,12 +414,14 @@ class BudgetController(Controller):
             ),
             agent_id=agent_id,
             task_id=task_id,
+            prompt_class_id=prompt_class_id,
         )
         daily, period = _build_summaries(records, currency=currency)
         logger.info(
             API_BUDGET_RECORDS_LISTED,
             agent_id=agent_id,
             task_id=task_id,
+            prompt_class_id=prompt_class_id,
             record_count=len(records),
         )
         page, meta = paginate_cursor(
@@ -376,27 +442,10 @@ class BudgetController(Controller):
     async def get_call_analytics(
         self,
         state: State,
-        agent_id: Annotated[
-            str | None,
-            QueryParameter(
-                max_length=QUERY_MAX_LENGTH,
-                description="Filter to calls emitted by this agent.",
-            ),
-        ] = None,
-        task_id: Annotated[
-            str | None,
-            QueryParameter(
-                max_length=QUERY_MAX_LENGTH,
-                description="Filter to calls emitted under this task.",
-            ),
-        ] = None,
-        provider: Annotated[
-            NotBlankStr | None,
-            QueryParameter(
-                max_length=QUERY_MAX_LENGTH,
-                description="Filter to calls served by this provider.",
-            ),
-        ] = None,
+        agent_id: _AgentFilter = None,
+        task_id: _TaskFilter = None,
+        provider: _ProviderFilter = None,
+        prompt_class_id: _PromptClassFilter = None,
     ) -> ApiResponse[AnalyticsAggregation]:
         """Return aggregated per-call analytics over cost records.
 
@@ -405,6 +454,7 @@ class BudgetController(Controller):
             agent_id: Filter by agent.
             task_id: Filter by task.
             provider: Filter by provider name.
+            prompt_class_id: Filter by prompt purpose id.
 
         Returns:
             Aggregated per-call analytics envelope.
@@ -417,8 +467,55 @@ class BudgetController(Controller):
             agent_id=agent_id,
             task_id=task_id,
             provider=provider,
+            prompt_class_id=prompt_class_id,
+        )
+        logger.info(
+            API_BUDGET_CALL_ANALYTICS_QUERIED,
+            agent_id=agent_id,
+            task_id=task_id,
+            provider=provider,
+            prompt_class_id=prompt_class_id,
+            total_calls=aggregation.total_calls,
         )
         return ApiResponse(data=aggregation)
+
+    @get(
+        "/prompt-class-breakdown",
+        guards=[
+            per_op_rate_limit_from_policy("budget.prompt_class_breakdown", key="user")
+        ],
+    )
+    async def get_prompt_class_breakdown(
+        self,
+        state: State,
+        start: _StartFilter = None,
+        end: _EndFilter = None,
+    ) -> ApiResponse[PromptClassBreakdown]:
+        """Return per-prompt-class cost + latency + quality breakdown.
+
+        One row per prompt purpose with at least one matching cost record,
+        so the operator can slice spend, latency, cache-hit, retry, and
+        success by prompt purpose. ``start`` / ``end`` bound the scan so the
+        full-ledger aggregation can be time-windowed.
+
+        Args:
+            state: Application state.
+            start: Inclusive lower bound on record timestamp.
+            end: Exclusive upper bound on record timestamp.
+
+        Returns:
+            Per-prompt-class breakdown envelope.
+        """
+        app_state: AppState = state.app_state
+        breakdown = await require_service(
+            app_state.slice(BudgetStateSlice).call_analytics_service,
+            "Call Analytics Service",
+        ).get_prompt_class_breakdown(start=_assume_utc(start), end=_assume_utc(end))
+        logger.info(
+            API_BUDGET_PROMPT_CLASS_BREAKDOWN_QUERIED,
+            row_count=len(breakdown.rows),
+        )
+        return ApiResponse(data=breakdown)
 
     @get("/agents/{agent_id:str}")
     async def get_agent_spending(

@@ -30,7 +30,7 @@ from synthorg.core.types import NotBlankStr
 # Bumping this is a deliberate, breaking change for downstream readers.
 # Consumers MUST refuse to parse unknown versions; the schema is not
 # additive across major bumps.
-SCORECARD_SCHEMA_VERSION: Final[int] = 1
+SCORECARD_SCHEMA_VERSION: Final[int] = 2
 
 # Number of brief scores summed into the suite total. The default
 # expectation is that every brief reports out of GRADE_CEILING; the
@@ -146,8 +146,19 @@ class BriefResult(BaseModel):
     score: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
     score_floor: int = Field(default=GRADE_FLOOR, ge=GRADE_FLOOR, le=GRADE_CEILING)
     process_facts: ProcessFactReport
+    prompt_class_usage: dict[NotBlankStr, int] = Field(default_factory=dict)
     termination_reason: NotBlankStr
     judge_calibration: JudgeCalibrationReport | None = None
+
+    @field_validator("prompt_class_usage")
+    @classmethod
+    def _usage_counts_are_non_negative(cls, value: dict[str, int]) -> dict[str, int]:
+        """Reject negative per-purpose counts; an invocation count is ge=0."""
+        for purpose, count in value.items():
+            if count < 0:
+                msg = f"prompt_class_usage for {purpose!r} must be >= 0 (got {count})"
+                raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def _kind_matches_judge_calibration(self) -> Self:
@@ -191,6 +202,7 @@ class AggregatedProcessFacts(BaseModel):
 
     total_events: int = Field(default=0, ge=0)
     events_by_class: dict[str, int] = Field(default_factory=dict)
+    prompt_class_usage: dict[NotBlankStr, int] = Field(default_factory=dict)
 
     # ``@property`` (not ``@computed_field``) for the same round-trip
     # reason as ``ProcessFactReport.is_clean`` above.
@@ -199,13 +211,17 @@ class AggregatedProcessFacts(BaseModel):
         """Whether no brief in the suite emitted any tracked event."""
         return self.total_events == 0
 
-    @field_validator("events_by_class")
+    @field_validator("events_by_class", "prompt_class_usage")
     @classmethod
     def _counts_are_non_negative(cls, value: dict[str, int]) -> dict[str, int]:
-        """Reject negative per-class counts; aggregation invariants assume ge=0."""
-        for event, count in value.items():
+        """Reject negative per-key counts; aggregation invariants assume ge=0.
+
+        Applies to both ``events_by_class`` (keyed by event name) and
+        ``prompt_class_usage`` (keyed by ``prompt_class_id``).
+        """
+        for key, count in value.items():
             if count < 0:
-                msg = f"event count for {event!r} must be >= 0 (got {count})"
+                msg = f"count for {key!r} must be >= 0 (got {count})"
                 raise ValueError(msg)
         return value
 
@@ -305,6 +321,17 @@ class Scorecard(BaseModel):
             msg = (
                 f"aggregated total_events ({self.process_facts.total_events}) "
                 f"does not match the sum across briefs ({total_from_briefs})"
+            )
+            raise ValueError(msg)
+
+        usage_from_briefs: dict[str, int] = {}
+        for brief in self.briefs:
+            for purpose, count in brief.prompt_class_usage.items():
+                usage_from_briefs[purpose] = usage_from_briefs.get(purpose, 0) + count
+        if usage_from_briefs != self.process_facts.prompt_class_usage:
+            msg = (
+                "aggregated process_facts.prompt_class_usage disagrees with the "
+                "sum across briefs; the runner emitted an inconsistent rollup"
             )
             raise ValueError(msg)
 

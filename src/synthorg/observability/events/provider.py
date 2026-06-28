@@ -196,6 +196,10 @@ PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
 PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"
 PROVIDER_COST_FAILED: Final[str] = "provider.cost.failed"
 PROVIDER_COST_INVALID: Final[str] = "provider.cost.invalid"
+# Fires once per cost-recording scope opened with a registered prompt
+# purpose, before any tracker check, so prompt-purpose invocation is
+# observable even when no cost tracker is wired (e.g. the evals harness).
+PROVIDER_PROMPT_PURPOSE_INVOKED: Final[str] = "provider.prompt_purpose.invoked"
 
 # ── Provider cassette record / replay ────────────────────────
 PROVIDER_CASSETTE_DRIVER_WRAPPED: Final[str] = "provider.cassette.driver_wrapped"

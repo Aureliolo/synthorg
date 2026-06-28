@@ -12,6 +12,7 @@ parameters a prompt class pins.
 """
 
 from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import PinSpec, pin_for
 from synthorg.llm.prompt_purpose import (
     PROMPT_PURPOSE_REGISTRY,
     PromptPurpose,
@@ -24,9 +25,11 @@ from synthorg.llm.prompt_purpose import (
 __all__ = (
     "PROMPT_PURPOSE_REGISTRY",
     "ModelPinMetadata",
+    "PinSpec",
     "PromptPurpose",
     "PromptPurposeCategory",
     "PromptPurposeId",
     "PromptPurposeRegistry",
     "default_prompt_purpose_registry",
+    "pin_for",
 )

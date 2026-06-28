@@ -18,7 +18,7 @@ import asyncio
 import math
 from collections import Counter
 from itertools import combinations
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,6 +38,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_UNCERTAINTY_CHECK_COMPLETE,
@@ -226,6 +229,13 @@ class UncertaintyChecker:
         model_resolver: Resolver for multi-provider model lookup.
         config: Uncertainty check configuration.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.SECURITY_UNCERTAINTY
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -446,6 +456,7 @@ class UncertaintyChecker:
                     cost_tracker=self._cost_tracker,
                     agent_id=NotBlankStr("system"),
                     task_id=NotBlankStr("system:security:uncertainty"),
+                    purpose=self.metadata.prompt_class_id,
                     call_category=LLMCallCategory.SYSTEM,
                 ):
                     response = await asyncio.wait_for(

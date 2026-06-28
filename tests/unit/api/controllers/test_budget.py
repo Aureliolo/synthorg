@@ -100,6 +100,93 @@ class TestBudgetController:
 
 
 @pytest.mark.unit
+class TestPromptClassBreakdownEndpoint:
+    """The per-prompt-purpose breakdown + prompt_class_id filters."""
+
+    @staticmethod
+    def _record(*, prompt_class_id: str | None, cost: float) -> CostRecord:
+        return CostRecord(
+            agent_id="alice",
+            task_id="task-1",
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost=cost,
+            currency="USD",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+            prompt_class_id=prompt_class_id,
+        )
+
+    async def test_breakdown_groups_by_purpose(
+        self,
+        async_test_client: LoopAsyncClient,
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:cos:chat", cost=0.02)
+        )
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:memory:rerank", cost=0.01)
+        )
+        await cost_tracker.record(self._record(prompt_class_id=None, cost=0.99))
+        resp = await async_test_client.get(
+            "/api/v1/budget/prompt-class-breakdown", headers=_HEADERS
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        ids = [row["prompt_class_id"] for row in body["data"]["rows"]]
+        assert ids == ["system:cos:chat", "system:memory:rerank"]
+
+    async def test_breakdown_requires_read_access(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/budget/prompt-class-breakdown",
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+        assert resp.status_code == 401
+
+    async def test_records_filter_by_prompt_class_id(
+        self,
+        async_test_client: LoopAsyncClient,
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:cos:chat", cost=0.02)
+        )
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:memory:rerank", cost=0.01)
+        )
+        resp = await async_test_client.get(
+            "/api/v1/budget/records?prompt_class_id=system:cos:chat",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["prompt_class_id"] == "system:cos:chat"
+
+    async def test_call_analytics_filter_by_prompt_class_id(
+        self,
+        async_test_client: LoopAsyncClient,
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:cos:chat", cost=0.02)
+        )
+        await cost_tracker.record(
+            self._record(prompt_class_id="system:memory:rerank", cost=0.01)
+        )
+        resp = await async_test_client.get(
+            "/api/v1/budget/call-analytics?prompt_class_id=system:cos:chat",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["total_calls"] == 1
+
+
+@pytest.mark.unit
 class TestBudgetSummaries:
     """Tests for daily_summary and period_summary computed fields."""
 

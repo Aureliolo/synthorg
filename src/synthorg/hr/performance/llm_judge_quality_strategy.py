@@ -343,6 +343,9 @@ class LlmJudgeQualityStrategy:
             cost_tracker=self._cost_tracker,
             agent_id=agent_id,
             task_id=task_id,
+            # Per-task quality judging charged to the calling evaluator;
+            # not a registered system prompt class.
+            purpose=None,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

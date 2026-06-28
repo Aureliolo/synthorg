@@ -8,7 +8,7 @@ patterns and rule context.
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import ClassVar, Final
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -24,6 +24,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     CodeChange,
@@ -98,6 +101,13 @@ class CodeModificationStrategy:
         provider: Completion provider for LLM calls.
         scope_validator: Validates proposed file paths.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.META_CODE_MODIFICATION
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -317,6 +327,7 @@ class CodeModificationStrategy:
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
             task_id=NotBlankStr("system:meta:code_modification"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

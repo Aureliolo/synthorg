@@ -340,6 +340,41 @@ class TestCostRecordRepository:
         assert len(results) == 1
         assert results[0].prompt_class_id is None
 
+    async def test_query_filters_by_prompt_class_id(
+        self, backend: PersistenceBackend
+    ) -> None:
+        from synthorg.budget.cost_record import CostRecord
+        from synthorg.llm.prompt_purpose import PromptPurposeId
+        from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
+
+        task = make_task(task_id="t-pclass-filter")
+        await backend.tasks.save(task)
+
+        def _record(purpose: PromptPurposeId | None) -> CostRecord:
+            return CostRecord(
+                agent_id="agent_pclass_filter",
+                task_id=sid("t-pclass-filter"),
+                provider="test-provider",
+                model="test-small-001",
+                input_tokens=10,
+                output_tokens=5,
+                cost=0.01,
+                currency="USD",
+                timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+                call_category=LLMCallCategory.PRODUCTIVE,
+                prompt_class_id=purpose,
+            )
+
+        await backend.cost_records.append(_record(PromptPurposeId.MEMORY_RERANK))
+        await backend.cost_records.append(_record(PromptPurposeId.COS_CHAT))
+        await backend.cost_records.append(_record(None))
+
+        results = await backend.cost_records.query(
+            CostRecordFilterSpec(prompt_class_id=PromptPurposeId.MEMORY_RERANK)
+        )
+        assert len(results) == 1
+        assert results[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
+
 
 @pytest.mark.integration
 class TestMessageRepository:

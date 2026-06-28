@@ -217,12 +217,13 @@ def _judged_rubric_ids(briefs: tuple[Brief, ...]) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def _build_brief_result(
+def _build_brief_result(  # noqa: PLR0913 -- orthogonal per-brief scorecard inputs
     brief: Brief,
     *,
     grade: int,
     termination_reason: str,
     tracked_events: dict[str, int],
+    prompt_class_usage: dict[str, int],
     calibration: JudgeCalibrationReport | None,
 ) -> BriefResult:
     """Combine grade + process facts into a scorecard row for *brief*.
@@ -245,6 +246,7 @@ def _build_brief_result(
         score=aggregation.score,
         score_floor=BENCHMARK_PENALTY_TABLE.floor,
         process_facts=report,
+        prompt_class_usage=dict(prompt_class_usage),
         termination_reason=NotBlankStr(termination_reason),
         judge_calibration=calibration,
     )
@@ -427,6 +429,7 @@ async def _score_briefs(  # noqa: PLR0913
                 tracked_events=_tracked_with_synthetic(
                     outcome, run_hard_ceiling=run_hard_ceiling
                 ),
+                prompt_class_usage=outcome.prompt_class_usage,
                 calibration=calibration,
             )
         )
@@ -442,12 +445,16 @@ def _aggregate_process_facts(
         The suite-level :class:`AggregatedProcessFacts` rollup.
     """
     rollup: dict[str, int] = {}
+    usage_rollup: dict[str, int] = {}
     for result in results:
         for event, count in result.process_facts.events_by_class.items():
             rollup[event] = rollup.get(event, 0) + count
+        for purpose, count in result.prompt_class_usage.items():
+            usage_rollup[purpose] = usage_rollup.get(purpose, 0) + count
     return AggregatedProcessFacts(
         total_events=sum(rollup.values()),
         events_by_class=rollup,
+        prompt_class_usage=usage_rollup,
     )
 
 

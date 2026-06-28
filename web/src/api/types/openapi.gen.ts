@@ -1267,6 +1267,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/budget/prompt-class-breakdown": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetPromptClassBreakdown */
+        readonly get: operations["ApiV1BudgetPromptClassBreakdownGetPromptClassBreakdown"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/records": {
         readonly parameters: {
             readonly query?: never;
@@ -7163,6 +7180,19 @@ export type components = {
         /** ApiResponse[PromotionEvaluationDTO] */
         readonly ApiResponse_PromotionEvaluationDTO_: {
             readonly data: components["schemas"]["PromotionEvaluationDTO"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PromptClassBreakdown] */
+        readonly ApiResponse_PromptClassBreakdown_: {
+            readonly data: components["schemas"]["PromptClassBreakdown"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -14861,6 +14891,47 @@ export type components = {
             /** @description Target seniority level */
             readonly target_level: string;
         };
+        /** PromptClassBreakdown */
+        readonly PromptClassBreakdown: {
+            /**
+             * @description Per-prompt-class rows, sorted by prompt_class_id.
+             * @default []
+             */
+            readonly rows: readonly components["schemas"]["PromptClassBreakdownRow"][];
+        };
+        /** PromptClassBreakdownRow */
+        readonly PromptClassBreakdownRow: {
+            /** @description Mean latency in ms, or None. */
+            readonly avg_latency_ms: number | null;
+            /** @description Cache-hit fraction over cache-reporting calls, or None. */
+            readonly cache_hit_rate: number | null;
+            /** @description Records for this class (a row aggregates at least one). */
+            readonly call_count: number;
+            /**
+             * @description ISO 4217 currency code.
+             * @default USD
+             */
+            readonly currency: string;
+            /** @description Total input tokens. */
+            readonly input_tokens: number;
+            /** @description Total output tokens. */
+            readonly output_tokens: number;
+            /** @description 95th-percentile latency in ms, or None. */
+            readonly p95_latency_ms: number | null;
+            /** @description Registered prompt purpose id. */
+            readonly prompt_class_id: string;
+            /** @description Fraction of calls with at least one retry. */
+            readonly retry_rate: number;
+            /** @description Success fraction over success-reporting calls, or None. */
+            readonly success_rate: number | null;
+            /**
+             * @description Design tier the purpose is pinned to, or None.
+             * @enum {null|string}
+             */
+            readonly tier: "large" | "medium" | "small" | "local-small" | null;
+            /** @description Total cost for the class. */
+            readonly total_cost: number;
+        };
         /**
          * ProposalAltitude
          * @description Altitude of change a proposal targets.
@@ -21075,6 +21146,8 @@ export interface operations {
             readonly query?: {
                 /** @description Filter to calls emitted by this agent. */
                 readonly agent_id?: string | null;
+                /** @description Filter to calls emitted by this prompt purpose. */
+                readonly prompt_class_id?: string | null;
                 /** @description Filter to calls served by this provider. */
                 readonly provider?: string | null;
                 /** @description Filter to calls emitted under this task. */
@@ -21440,6 +21513,37 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1BudgetPromptClassBreakdownGetPromptClassBreakdown: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Exclusive upper bound on record timestamp (ISO 8601). */
+                readonly end?: string | null;
+                /** @description Inclusive lower bound on record timestamp (ISO 8601). */
+                readonly start?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PromptClassBreakdown_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1BudgetRecordsListCostRecords: {
         readonly parameters: {
             readonly query?: {
@@ -21449,6 +21553,8 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
+                /** @description Filter to calls emitted by this prompt purpose. */
+                readonly prompt_class_id?: string | null;
                 /** @description Filter to cost records emitted under this task. */
                 readonly task_id?: string | null;
             };

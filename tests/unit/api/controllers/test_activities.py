@@ -657,7 +657,7 @@ class TestDegradedSources:
             msg = "simulated failure"
             raise RuntimeError(msg)
 
-        cost_tracker.get_records = _raise  # type: ignore[assignment]
+        cost_tracker.collect_records = _raise  # type: ignore[assignment]
 
         resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200

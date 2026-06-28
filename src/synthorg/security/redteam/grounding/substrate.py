@@ -24,12 +24,15 @@ wrongly blocked:
 """
 
 import asyncio
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import KnowledgeHit
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CLAIM_UNSUPPORTED,
@@ -101,6 +104,25 @@ class KnowledgeSubstrateGroundingChecker:
             limit silently neutralises the checker, since every claim's
             corpus search returns no hits and is skipped).
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RED_TEAM_GROUNDING
+    _ENTAILMENT_PURPOSE_ID: ClassVar[PromptPurposeId] = (
+        PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT
+    )
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for the claim-extraction prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
+    @property
+    def entailment_metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for the claim-entailment prompt class.
+
+        Extraction and entailment send different tool contracts and sampling
+        configs, so they are attributed to distinct prompt classes.
+        """
+        return pin_for(self._ENTAILMENT_PURPOSE_ID)
 
     def __init__(
         self,
@@ -455,6 +477,7 @@ class KnowledgeSubstrateGroundingChecker:
             messages=messages,
             tools=[EXTRACT_CLAIMS_TOOL],
             config=EXTRACTION_CONFIG,
+            purpose=self.metadata.prompt_class_id,
         )
 
     async def _complete_entailment(
@@ -475,9 +498,10 @@ class KnowledgeSubstrateGroundingChecker:
             messages=messages,
             tools=[GROUNDING_VERDICT_TOOL],
             config=ENTAILMENT_CONFIG,
+            purpose=self.entailment_metadata.prompt_class_id,
         )
 
-    async def _run_completion(
+    async def _run_completion(  # noqa: PLR0913 -- orthogonal completion inputs + purpose
         self,
         context: GroundingSubstrateContext,
         execution_id: NotBlankStr,
@@ -485,8 +509,12 @@ class KnowledgeSubstrateGroundingChecker:
         messages: list[ChatMessage],
         tools: list[ToolDefinition],
         config: CompletionConfig,
+        purpose: PromptPurposeId,
     ) -> CompletionResponse:
         """Run one structured completion under a cost-recording scope.
+
+        ``purpose`` attributes the call to a prompt class (extraction vs
+        entailment) so spend and drift split per prompt.
 
         Returns:
             The provider's completion response.
@@ -495,6 +523,7 @@ class KnowledgeSubstrateGroundingChecker:
             cost_tracker=context.cost_tracker,
             agent_id=_GROUNDING_AGENT_ID,
             task_id=execution_id,
+            purpose=purpose,
             call_category=LLMCallCategory.SYSTEM,
         ):
             return await context.provider.complete(

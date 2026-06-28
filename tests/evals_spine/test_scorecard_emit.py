@@ -18,6 +18,8 @@ from evals.models.scorecard import (
 )
 from evals.scoring.aggregate import PenaltyEntry
 
+pytestmark = pytest.mark.unit
+
 
 def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs explicit
     *,
@@ -25,6 +27,7 @@ def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs e
     grade: int = 90,
     deduction: int = 0,
     events: dict[str, int] | None = None,
+    prompt_class_usage: dict[str, int] | None = None,
     entries: tuple[PenaltyEntry, ...] = (),
     kind: BriefKind = BriefKind.EXECUTABLE,
 ) -> BriefResult:
@@ -49,6 +52,7 @@ def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs e
             events_by_class=events or {},
             entries=entries,
         ),
+        prompt_class_usage=prompt_class_usage or {},
         termination_reason="COMPLETED",
         judge_calibration=judge_calibration,
     )
@@ -59,11 +63,14 @@ def _scorecard(
     judge_calibrations: tuple[JudgeCalibrationReport, ...] = (),
 ) -> Scorecard:
     aggregated_events: dict[str, int] = {}
+    aggregated_usage: dict[str, int] = {}
     total = 0
     for b in briefs:
         for k, v in b.process_facts.events_by_class.items():
             aggregated_events[k] = aggregated_events.get(k, 0) + v
             total += v
+        for purpose, count in b.prompt_class_usage.items():
+            aggregated_usage[purpose] = aggregated_usage.get(purpose, 0) + count
     return Scorecard(
         generated_at=datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC),
         company_config_path="evals/baselines/reference.yaml",
@@ -74,12 +81,12 @@ def _scorecard(
         process_facts=AggregatedProcessFacts(
             total_events=total,
             events_by_class=aggregated_events,
+            prompt_class_usage=aggregated_usage,
         ),
         judge_calibrations=judge_calibrations,
     )
 
 
-@pytest.mark.unit
 def test_clean_scorecard_round_trips_through_json(tmp_path: Path) -> None:
     sc = _scorecard((_brief_result(grade=100, deduction=0),))
     path = write_scorecard_json(sc, tmp_path)
@@ -90,7 +97,6 @@ def test_clean_scorecard_round_trips_through_json(tmp_path: Path) -> None:
     assert reparsed.is_passing is True
 
 
-@pytest.mark.unit
 def test_aggregated_process_facts_mismatch_rejected() -> None:
     # Brief says 2 hard_stops; aggregate claims 1 -- model_validator rejects.
     briefs = (_brief_result(events={"x.budget": 2}),)
@@ -109,7 +115,41 @@ def test_aggregated_process_facts_mismatch_rejected() -> None:
         )
 
 
-@pytest.mark.unit
+def test_prompt_class_usage_aggregates_across_briefs() -> None:
+    sc = _scorecard(
+        (
+            _brief_result(
+                brief_id="B1",
+                prompt_class_usage={"system:cos:chat": 2, "system:memory:rerank": 1},
+            ),
+            _brief_result(
+                brief_id="B2",
+                prompt_class_usage={"system:cos:chat": 3},
+            ),
+        )
+    )
+    assert sc.process_facts.prompt_class_usage == {
+        "system:cos:chat": 5,
+        "system:memory:rerank": 1,
+    }
+
+
+def test_prompt_class_usage_rollup_mismatch_rejected() -> None:
+    briefs = (_brief_result(prompt_class_usage={"system:cos:chat": 2}),)
+    with pytest.raises(ValueError, match="prompt_class_usage disagrees"):
+        Scorecard(
+            generated_at=datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC),
+            company_config_path="r.yaml",
+            cassette_path="c.json",
+            cassette_sha256="0" * 64,
+            suite_version="s",
+            briefs=briefs,
+            process_facts=AggregatedProcessFacts(
+                prompt_class_usage={"system:cos:chat": 1},  # wrong
+            ),
+        )
+
+
 def test_naive_generated_at_rejected() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         Scorecard(
@@ -123,7 +163,6 @@ def test_naive_generated_at_rejected() -> None:
         )
 
 
-@pytest.mark.unit
 def test_wrong_schema_version_rejected() -> None:
     with pytest.raises(ValueError, match="schema version mismatch"):
         Scorecard(
@@ -138,7 +177,6 @@ def test_wrong_schema_version_rejected() -> None:
         )
 
 
-@pytest.mark.unit
 def test_markdown_rendering_is_deterministic() -> None:
     sc = _scorecard((_brief_result(brief_id="BRIEF_001", grade=100, deduction=0),))
     rendered_a = render_scorecard_md(sc)
@@ -149,7 +187,6 @@ def test_markdown_rendering_is_deterministic() -> None:
     assert "PASS" in rendered_a
 
 
-@pytest.mark.unit
 def test_markdown_writes_to_disk(tmp_path: Path) -> None:
     sc = _scorecard((_brief_result(),))
     path = write_scorecard_md(sc, tmp_path)
@@ -158,7 +195,6 @@ def test_markdown_writes_to_disk(tmp_path: Path) -> None:
     assert text == render_scorecard_md(sc)
 
 
-@pytest.mark.unit
 def test_markdown_includes_every_brief_id() -> None:
     sc = _scorecard(
         (
@@ -173,14 +209,12 @@ def test_markdown_includes_every_brief_id() -> None:
     assert "BRIEF_003" in text
 
 
-@pytest.mark.unit
 def test_markdown_omits_judge_section_when_no_calibrations() -> None:
     sc = _scorecard((_brief_result(),))
     text = render_scorecard_md(sc)
     assert "Judge calibration" not in text
 
 
-@pytest.mark.unit
 def test_markdown_includes_judge_section_when_calibrations_present() -> None:
     judge = JudgeCalibrationReport(
         rubric_id="summarise",
@@ -195,7 +229,6 @@ def test_markdown_includes_judge_section_when_calibrations_present() -> None:
     assert "summarise" in text
 
 
-@pytest.mark.unit
 def test_brief_result_rejects_score_not_matching_deduction() -> None:
     """BriefResult refuses score != max(grade - deduction, GRADE_FLOOR)."""
     with pytest.raises(ValueError, match="does not match"):
@@ -210,7 +243,6 @@ def test_brief_result_rejects_score_not_matching_deduction() -> None:
         )
 
 
-@pytest.mark.unit
 def test_judge_calibration_report_rejects_inconsistent_passed_flag() -> None:
     """JudgeCalibrationReport refuses passed != (spearman_rho >= gate)."""
     with pytest.raises(ValueError, match="does not match"):
@@ -223,7 +255,6 @@ def test_judge_calibration_report_rejects_inconsistent_passed_flag() -> None:
         )
 
 
-@pytest.mark.unit
 def test_aggregated_process_facts_total_must_match_class_sum() -> None:
     """AggregatedProcessFacts refuses total_events != sum(events_by_class)."""
     with pytest.raises(ValueError, match="does not match"):
@@ -233,7 +264,6 @@ def test_aggregated_process_facts_total_must_match_class_sum() -> None:
         )
 
 
-@pytest.mark.unit
 def test_aggregated_process_facts_rejects_negative_count() -> None:
     """AggregatedProcessFacts refuses negative counts in events_by_class."""
     with pytest.raises(ValueError, match="must be >= 0"):
@@ -243,7 +273,30 @@ def test_aggregated_process_facts_rejects_negative_count() -> None:
         )
 
 
-@pytest.mark.unit
+def test_aggregated_process_facts_rejects_negative_usage() -> None:
+    """AggregatedProcessFacts refuses negative counts in prompt_class_usage."""
+    with pytest.raises(ValueError, match="must be >= 0"):
+        AggregatedProcessFacts(
+            total_events=0,
+            prompt_class_usage={"system:cos:chat": -1},
+        )
+
+
+def test_brief_result_rejects_negative_usage() -> None:
+    """BriefResult refuses negative counts in prompt_class_usage."""
+    with pytest.raises(ValueError, match="must be >= 0"):
+        BriefResult(
+            brief_id="BRIEF_U",
+            kind=BriefKind.EXECUTABLE,
+            grade=80,
+            deduction=0,
+            score=80,
+            process_facts=ProcessFactReport(),
+            prompt_class_usage={"system:cos:chat": -2},
+            termination_reason="COMPLETED",
+        )
+
+
 def test_brief_result_judged_requires_calibration() -> None:
     """BriefResult refuses kind=JUDGED with no judge_calibration."""
     with pytest.raises(ValueError, match="requires a judge_calibration"):
@@ -259,7 +312,6 @@ def test_brief_result_judged_requires_calibration() -> None:
         )
 
 
-@pytest.mark.unit
 def test_brief_result_honours_custom_score_floor() -> None:
     """BriefResult accepts a non-default score_floor so a PenaltyTable.floor
     can flow through aggregation into the serialised scorecard row without
@@ -279,7 +331,6 @@ def test_brief_result_honours_custom_score_floor() -> None:
     assert result.score_floor == custom_floor
 
 
-@pytest.mark.unit
 def test_brief_result_rejects_score_below_custom_floor() -> None:
     """BriefResult refuses score < score_floor; the floor must clamp."""
     with pytest.raises(ValueError, match="does not match"):
@@ -295,7 +346,6 @@ def test_brief_result_rejects_score_below_custom_floor() -> None:
         )
 
 
-@pytest.mark.unit
 def test_brief_result_executable_must_not_carry_calibration() -> None:
     """BriefResult refuses kind=EXECUTABLE carrying a judge_calibration."""
     calibration = JudgeCalibrationReport(
@@ -318,7 +368,6 @@ def test_brief_result_executable_must_not_carry_calibration() -> None:
         )
 
 
-@pytest.mark.unit
 def test_process_fact_report_rejects_entries_disagreeing_with_events() -> None:
     """ProcessFactReport refuses entries whose counts disagree with the
     tracked slice of events_by_class for the same event constants."""
@@ -337,7 +386,6 @@ def test_process_fact_report_rejects_entries_disagreeing_with_events() -> None:
         )
 
 
-@pytest.mark.unit
 def test_failing_total_reports_fail() -> None:
     # Three briefs scoring 30 each -> total 90 / 300 = 30% < 65%.
     sc = _scorecard(

@@ -38,7 +38,7 @@ def _lookup(
         list_active=AsyncMock(return_value=agents),
     )
     tracker = mock_of[CostTracker](
-        get_records=AsyncMock(return_value=records),
+        collect_records=AsyncMock(return_value=records),
     )
     return AgentRegistryAssignmentLookup(
         registry=registry,

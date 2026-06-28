@@ -19,7 +19,7 @@ provider and a non-blank model are supplied; otherwise it returns the
 extractive default.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import ClassVar, Final, Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
@@ -30,6 +30,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_QUERY_GENERATION_ERROR,
@@ -124,6 +127,13 @@ class LlmQueryGenerator:
         cost_tracker: Optional tracker for cost attribution.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.MEMORY_FINE_TUNE_QUERY
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -180,6 +190,7 @@ class LlmQueryGenerator:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:memory:fine_tune_query"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

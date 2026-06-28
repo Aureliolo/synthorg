@@ -24,7 +24,7 @@ its spend through the cost chokepoint.
 
 import asyncio
 import functools
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -40,6 +40,9 @@ from synthorg.core.types import NotBlankStr, flatten_label
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import compare_seniority
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import (
@@ -244,6 +247,13 @@ class LlmConcernRouter:
         cost_tracker: Optional cost tracker for the classification call.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_ROUTING
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired knobs
         self,
         *,
@@ -349,6 +359,7 @@ class LlmConcernRouter:
                 cost_tracker=self._cost_tracker,
                 agent_id=_ROUTING_AGENT_ID,
                 task_id=_ROUTING_TASK_ID,
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await asyncio.wait_for(

@@ -27,8 +27,11 @@ import type {
 export const AGGREGATION_PERIOD_VALUES = ['hourly', 'daily', 'weekly'] as const satisfies readonly string[]
 export type AggregationPeriod = typeof AGGREGATION_PERIOD_VALUES[number]
 
-export const BREAKDOWN_DIMENSION_VALUES = ['agent', 'department', 'provider'] as const satisfies readonly string[]
+export const BREAKDOWN_DIMENSION_VALUES = ['agent', 'department', 'provider', 'prompt_class'] as const satisfies readonly string[]
 export type BreakdownDimension = typeof BREAKDOWN_DIMENSION_VALUES[number]
+
+/** Bucket key for cost records carrying no prompt purpose. */
+const UNATTRIBUTED_PROMPT_CLASS = 'unattributed'
 
 /** Severity ordering: normal < amber < red < critical. */
 export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
@@ -72,14 +75,21 @@ export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
 
 const log = createLogger('budget-utils')
 
-/** Color palette for cost breakdown visualizations, using CSS custom properties. */
+/** Color for the aggregated "Other" slice (overflow beyond the legend cap). */
+export const DONUT_COLOR_OTHER = 'var(--so-text-muted)'
+
+/**
+ * Rotating palette for cost-breakdown slices, assigned by modulo index. The
+ * reserved "Other" colour is deliberately excluded: including it would paint
+ * every sixth normal category with the overflow colour. The aggregated "Other"
+ * slice sets DONUT_COLOR_OTHER explicitly where it is created.
+ */
 const DONUT_COLORS: readonly string[] = [
   'var(--so-accent)',
   'var(--so-success)',
   'var(--so-warning)',
   'var(--so-danger)',
   'var(--so-text-secondary)',
-  'var(--so-text-muted)',
 ]
 
 /** WsEventType values for budget-related events (record additions and alerts). Used by the CFO Activity Feed section to filter the full activity stream. */
@@ -143,6 +153,10 @@ const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
   },
   department: {
     key: (r, agentDeptMap) => agentDeptMap.get(r.agent_id) ?? 'Unknown',
+    label: (key) => key,
+  },
+  prompt_class: {
+    key: (r) => r.prompt_class_id ?? UNATTRIBUTED_PROMPT_CLASS,
     label: (key) => key,
   },
 }

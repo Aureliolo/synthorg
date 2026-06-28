@@ -120,6 +120,9 @@ Reassigning a tier is a deliberate act:
 
 1. Edit the entry in `synthorg.llm.model_tier_policy`.
 2. Run `uv run python scripts/refresh_model_pin_golden.py` to regenerate
-   the golden snapshot (the benchmark fails until you do).
+   the golden snapshot. Both the `pin-drift-regression` CI canary
+   (`scripts/check_pin_golden_fresh.py`) and the pin-validation benchmark
+   fail until you do, so a tier or pin change cannot land without a fresh
+   golden.
 3. Commit both changes together. The next eval cycle re-validates the pin
    and refreshes its `validated_at`.

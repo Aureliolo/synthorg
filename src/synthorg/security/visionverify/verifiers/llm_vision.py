@@ -8,7 +8,7 @@ text-only model never silently drops the images.
 
 import asyncio
 from pathlib import Path
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
@@ -16,6 +16,9 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.vision_verify import (
     VISION_LLM_CALL_COMPLETED,
@@ -123,6 +126,13 @@ class _VerdictArgs(BaseModel):
 
 class LLMVisionVerifier:
     """Vision verifier backed by a multimodal completion provider."""
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.VISION_VERIFY
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -257,6 +267,7 @@ class LLMVisionVerifier:
             cost_tracker=self._cost_tracker,
             agent_id=review_input.evaluator_agent_id,
             task_id=NotBlankStr(f"system:vision_verify:{review_input.task_id}"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

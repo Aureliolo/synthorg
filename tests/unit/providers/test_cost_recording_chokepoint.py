@@ -15,6 +15,7 @@ from typing import override
 
 import pytest
 from pydantic import ValidationError
+from structlog.testing import capture_logs
 from typeguard import suppress_type_checks
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -24,6 +25,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
@@ -179,6 +181,82 @@ class TestCostRecordingChokepoint:
         records = await tracker.get_records()
         assert len(records) == 1
         assert records[0].prompt_class_id is None
+
+    async def test_explicit_none_purpose_does_not_inherit_outer(self) -> None:
+        # The cost-scope-purpose gate allows an explicit ``purpose=None`` opt-out:
+        # a nested scope passing it must record WITHOUT attribution even when the
+        # enclosing scope carries a purpose; scopes never inherit a purpose.
+        provider = _StubProvider()
+        tracker_outer = CostTracker()
+        tracker_inner = CostTracker()
+        async with (
+            cost_recording_scope(
+                cost_tracker=tracker_outer,
+                agent_id=NotBlankStr("outer-agent"),
+                task_id=NotBlankStr("outer-task"),
+                purpose=PromptPurposeId.MEMORY_RERANK,
+                call_category=LLMCallCategory.SYSTEM,
+                currency=CurrencyCode(DEFAULT_CURRENCY),
+            ),
+            cost_recording_scope(
+                cost_tracker=tracker_inner,
+                agent_id=NotBlankStr("inner-agent"),
+                task_id=NotBlankStr("inner-task"),
+                purpose=None,
+                call_category=LLMCallCategory.SYSTEM,
+                currency=CurrencyCode(DEFAULT_CURRENCY),
+            ),
+        ):
+            await provider.complete([_msg()], "test-model")
+
+        await tracker_inner.drain_pending_records()
+        await tracker_outer.drain_pending_records()
+        outer_records = await tracker_outer.get_records()
+        inner_records = await tracker_inner.get_records()
+        # The inner scope fully shadows the outer: only the inner tracker
+        # records, and it records WITHOUT attribution.
+        assert outer_records == ()
+        assert len(inner_records) == 1
+        assert inner_records[0].prompt_class_id is None
+
+    async def test_purpose_logged_without_tracker(self) -> None:
+        # The evals harness runs trackerless; the prompt-purpose signal it
+        # scrapes must fire before the no-tracker early return, so a purpose
+        # is observable even when nothing records.
+        with capture_logs() as logs:
+            async with cost_recording_scope(
+                cost_tracker=None,
+                agent_id=NotBlankStr("agent-1"),
+                task_id=NotBlankStr("task-1"),
+                purpose=PromptPurposeId.MEMORY_RERANK,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                pass
+
+        invoked = [
+            entry
+            for entry in logs
+            if entry.get("event") == PROVIDER_PROMPT_PURPOSE_INVOKED
+        ]
+        assert len(invoked) == 1
+        assert invoked[0].get("prompt_class_id") == str(PromptPurposeId.MEMORY_RERANK)
+
+    async def test_no_purpose_log_when_purpose_none(self) -> None:
+        with capture_logs() as logs:
+            async with cost_recording_scope(
+                cost_tracker=None,
+                agent_id=NotBlankStr("agent-1"),
+                task_id=NotBlankStr("task-1"),
+                purpose=None,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                pass
+
+        assert not [
+            entry
+            for entry in logs
+            if entry.get("event") == PROVIDER_PROMPT_PURPOSE_INVOKED
+        ]
 
     async def test_purpose_threads_into_streaming_record(self) -> None:
         # The streaming builder (_build_cost_record_from_usage) shares the

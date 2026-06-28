@@ -5,6 +5,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency } from '@/utils/format'
+import { DONUT_COLOR_OTHER } from '@/utils/budget'
 import type { BreakdownDimension, BreakdownSlice } from '@/utils/budget'
 
 export interface CostBreakdownChartProps {
@@ -19,6 +20,7 @@ const DIMENSION_OPTIONS: readonly SegmentedControlOption<BreakdownDimension>[] =
   { value: 'agent', label: 'Agent' },
   { value: 'department', label: 'Dept' },
   { value: 'provider', label: 'Provider' },
+  { value: 'prompt_class', label: 'Purpose' },
 ]
 
 const MAX_LEGEND_SLICES = 6
@@ -110,7 +112,7 @@ export function CostBreakdownChart({
         label: 'Other',
         cost: overflow.reduce((sum, s) => sum + s.cost, 0),
         percent: overflow.reduce((sum, s) => sum + s.percent, 0),
-        color: 'var(--so-text-muted)',
+        color: DONUT_COLOR_OTHER,
       },
     ]
   }, [breakdown])

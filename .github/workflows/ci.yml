@@ -246,6 +246,69 @@ jobs:
       - name: Doc count drift gate (event modules)
         run: uv run python scripts/check_doc_drift_counts.py
 
+  # ── Prompt-pin drift regression + tier-change canary ──
+  # Recomputes every prompt class's pin fingerprint from the live pins and
+  # both (a) checks it equals the committed pin_golden.json (the tier-change
+  # canary) and (b) grades it through the deterministic probe benchmark (the
+  # prompt-drift regression eval), as a named signal independent of the unit
+  # suite.
+  pin-drift-regression:
+    name: Prompt-Drift Regression Gate
+    needs: changes
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # Arm faulthandler before conftest loads and flush unbuffered so a
+      # C-level crash or hang in the probe harness leaves forensic output
+      # rather than a bare job cancellation (zero runtime cost).
+      PYTHONFAULTHANDLER: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Pin-golden freshness canary (tier / pin change without regen)
+        run: uv run python scripts/check_pin_golden_fresh.py
+
+      # --session-timeout produces a named pytest error before GHA's
+      # timeout-minutes reaps the job as a confusing "cancelled"; junitxml +
+      # the sanity check below catch a 0-test run (pytest can exit 0 with no
+      # tests collected).
+      - name: Pin-validation drift regression eval
+        run: |
+          uv run python -m pytest \
+            tests/unit/hr/evaluation/test_pin_validation_benchmark.py \
+            -m unit \
+            --session-timeout 120 \
+            --junitxml=junit-pin-drift.xml
+
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-pin-drift.xml")
+          if not path.exists():
+              print("FAIL: junit-pin-drift.xml not found", file=sys.stderr)
+              sys.exit(1)
+          total = sum(
+              int(ts.get("tests", 0))
+              for ts in ET.parse(path).iter("testsuite")
+          )
+          print(f"junit total tests: {total}")
+          if total == 0:
+              print("FAIL: junit reports zero tests run", file=sys.stderr)
+              sys.exit(1)
+
   # ── Schema: Drift Validation ──
   schema-validate:
     name: Schema Validation
@@ -1719,7 +1782,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
+    needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -1732,6 +1795,7 @@ jobs:
             ${{ needs.changes.result }}
             ${{ needs.lint.result }}
             ${{ needs.doc-drift.result }}
+            ${{ needs.pin-drift-regression.result }}
             ${{ needs.runtime-stats-freshness.result }}
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}

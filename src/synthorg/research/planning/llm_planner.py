@@ -6,7 +6,7 @@ agent/operator input, so they are wrapped before reaching the prompt.
 """
 
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -18,6 +18,8 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -52,6 +54,13 @@ class LlmQueryPlanner:
 
     __slots__ = ("_cost_tracker", "_model", "_provider")
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RESEARCH_PLANNING
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -83,7 +92,7 @@ class LlmQueryPlanner:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:planning:{brief.brief_id}"),
             project_id=brief.project_id,
-            purpose=PromptPurposeId.RESEARCH_PLANNING,
+            purpose=self.metadata.prompt_class_id,
         )
         output = self._parse(content)
         sub_queries = self._build_sub_queries(brief, output)

@@ -70,6 +70,7 @@ class PromptPurposeId(StrEnum):
     SECURITY_LLM_EVALUATOR = "system:security:llm_evaluator"
     VISION_VERIFY = "system:vision_verify"
     RED_TEAM_GROUNDING = "system:red_team:grounding"
+    RED_TEAM_GROUNDING_ENTAILMENT = "system:red_team:grounding_entailment"
 
     MEMORY_RERANK = "system:memory:rerank"
     MEMORY_RETRIEVAL_ROUTE = "system:memory:retrieval_route"
@@ -100,6 +101,10 @@ class PromptPurposeId(StrEnum):
     WORKSPACE = "system:workspace"
     INTAKE = "system:intake"
     VERIFICATION = "system:verification"
+    CLASSIFICATION_LOGICAL_CONTRADICTION = "system:classification:logical_contradiction"
+    CLASSIFICATION_NUMERICAL_DRIFT = "system:classification:numerical_drift"
+    CLASSIFICATION_CONTEXT_OMISSION = "system:classification:context_omission"
+    CLASSIFICATION_COORDINATION_FAILURE = "system:classification:coordination_failure"
 
     HR_TRAINING_CURATION = "system:hr:training_curation"
     HR_CALIBRATION = "system:hr:calibration"
@@ -248,7 +253,12 @@ _PROMPT_PURPOSE_SPECS: Final[
     (
         PromptPurposeId.RED_TEAM_GROUNDING,
         PromptPurposeCategory.SECURITY,
-        "Ground red-team probes against the target substrate.",
+        "Extract grounding claims from a red-team deliverable.",
+    ),
+    (
+        PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT,
+        PromptPurposeCategory.SECURITY,
+        "Entail extracted claims against the corpus for a grounding verdict.",
     ),
     (
         PromptPurposeId.MEMORY_RERANK,
@@ -374,6 +384,26 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.VERIFICATION,
         PromptPurposeCategory.ENGINE,
         "Grade a deliverable against quality criteria.",
+    ),
+    (
+        PromptPurposeId.CLASSIFICATION_LOGICAL_CONTRADICTION,
+        PromptPurposeCategory.ENGINE,
+        "Detect logical contradictions in an execution transcript.",
+    ),
+    (
+        PromptPurposeId.CLASSIFICATION_NUMERICAL_DRIFT,
+        PromptPurposeCategory.ENGINE,
+        "Detect unverified numerical claims in a transcript.",
+    ),
+    (
+        PromptPurposeId.CLASSIFICATION_CONTEXT_OMISSION,
+        PromptPurposeCategory.ENGINE,
+        "Detect omitted references the task context required.",
+    ),
+    (
+        PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE,
+        PromptPurposeCategory.ENGINE,
+        "Detect multi-agent coordination failures in a transcript.",
     ),
     (
         PromptPurposeId.HR_TRAINING_CURATION,

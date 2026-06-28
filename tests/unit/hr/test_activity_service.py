@@ -207,6 +207,7 @@ def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
         agent_id: str | None = None,
         task_id: str | None = None,
         provider: str | None = None,
+        prompt_class_id: str | None = None,
         start: datetime,
         end: datetime,
         limit: int = 100,
@@ -217,12 +218,32 @@ def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
             r
             for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
+            and (prompt_class_id is None or r.prompt_class_id == prompt_class_id)
             and start <= r.timestamp <= end
         )
         return matched[offset : offset + limit]
 
+    async def _collect(  # noqa: PLR0913 -- mirrors CostTrackerProtocol.collect_records
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        provider: str | None = None,
+        prompt_class_id: str | None = None,
+        start: datetime,
+        end: datetime,
+    ) -> tuple[CostRecord, ...]:
+        _ = (task_id, provider)
+        return tuple(
+            r
+            for r in records
+            if (agent_id is None or str(r.agent_id) == agent_id)
+            and (prompt_class_id is None or r.prompt_class_id == prompt_class_id)
+            and start <= r.timestamp <= end
+        )
+
     tracker: CostTrackerProtocol = mock_of[CostTrackerProtocol](
-        get_records=AsyncMock(side_effect=_get)
+        get_records=AsyncMock(side_effect=_get),
+        collect_records=AsyncMock(side_effect=_collect),
     )
     return tracker
 

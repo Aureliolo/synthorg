@@ -33,6 +33,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -229,33 +230,18 @@ class TestSemanticDetectorProtocolCompliance:
 class TestSemanticDetectorCategories:
     """Each semantic detector reports the correct category."""
 
-    def test_contradiction_category(self) -> None:
-        d = SemanticContradictionDetector(
-            provider=_mock_provider(),
-            model_id="test-small-001",
-        )
-        assert d.category == ErrorCategory.LOGICAL_CONTRADICTION
-
-    def test_numerical_category(self) -> None:
-        d = SemanticNumericalVerificationDetector(
-            provider=_mock_provider(),
-            model_id="test-small-001",
-        )
-        assert d.category == ErrorCategory.NUMERICAL_DRIFT
-
-    def test_missing_ref_category(self) -> None:
-        d = SemanticMissingReferenceDetector(
-            provider=_mock_provider(),
-            model_id="test-small-001",
-        )
-        assert d.category == ErrorCategory.CONTEXT_OMISSION
-
-    def test_coordination_category(self) -> None:
-        d = SemanticCoordinationDetector(
-            provider=_mock_provider(),
-            model_id="test-small-001",
-        )
-        assert d.category == ErrorCategory.COORDINATION_FAILURE
+    @pytest.mark.parametrize(
+        ("cls", "expected"),
+        [
+            (SemanticContradictionDetector, ErrorCategory.LOGICAL_CONTRADICTION),
+            (SemanticNumericalVerificationDetector, ErrorCategory.NUMERICAL_DRIFT),
+            (SemanticMissingReferenceDetector, ErrorCategory.CONTEXT_OMISSION),
+            (SemanticCoordinationDetector, ErrorCategory.COORDINATION_FAILURE),
+        ],
+    )
+    def test_category(self, cls: type, expected: ErrorCategory) -> None:
+        detector = cls(provider=_mock_provider(), model_id="test-small-001")
+        assert detector.category == expected
 
 
 @pytest.mark.unit
@@ -267,25 +253,35 @@ class TestSemanticDetectorPromptClassId:
         [
             (
                 SemanticContradictionDetector,
-                "semantic_detector.logical_contradiction",
+                PromptPurposeId.CLASSIFICATION_LOGICAL_CONTRADICTION,
             ),
             (
                 SemanticNumericalVerificationDetector,
-                "semantic_detector.numerical_drift",
+                PromptPurposeId.CLASSIFICATION_NUMERICAL_DRIFT,
             ),
             (
                 SemanticMissingReferenceDetector,
-                "semantic_detector.context_omission",
+                PromptPurposeId.CLASSIFICATION_CONTEXT_OMISSION,
             ),
             (
                 SemanticCoordinationDetector,
-                "semantic_detector.coordination_failure",
+                PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE,
             ),
         ],
     )
-    def test_prompt_class_id(self, cls: type, expected: str) -> None:
+    def test_prompt_class_id(self, cls: type, expected: PromptPurposeId) -> None:
         detector = cls(provider=_mock_provider(), model_id="test-small-001")
         assert detector.prompt_class_id == expected
+        assert isinstance(detector.prompt_class_id, PromptPurposeId)
+
+    def test_metadata_matches_purpose(self) -> None:
+        detector = SemanticContradictionDetector(
+            provider=_mock_provider(), model_id="test-small-001"
+        )
+        assert (
+            detector.metadata.prompt_class_id
+            == PromptPurposeId.CLASSIFICATION_LOGICAL_CONTRADICTION
+        )
 
     def test_prompt_class_ids_are_distinct(self) -> None:
         classes = (

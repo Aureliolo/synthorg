@@ -7,7 +7,7 @@ to a retrieved chunk, so an emitted answer is always citation-backed.
 """
 
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -33,6 +33,8 @@ from synthorg.knowledge.models import (
 )
 from synthorg.knowledge.synthesis._args import KnowledgeSynthesisOutput
 from synthorg.knowledge.synthesis.citation_binder import KnowledgeCitationBinder
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
@@ -76,6 +78,13 @@ class KnowledgeSynthesizer:
         "_model",
         "_provider",
     )
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.KNOWLEDGE_SYNTHESIS
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(  # noqa: PLR0913 -- injected synthesis collaborators
         self,
@@ -137,7 +146,7 @@ class KnowledgeSynthesizer:
             cost_tracker=self._cost_tracker,
             task_id=_SYNTHESIS_TASK_ID,
             project_id=project_id,
-            purpose=PromptPurposeId.KNOWLEDGE_SYNTHESIS,
+            purpose=self.metadata.prompt_class_id,
         )
         answer = self._build_answer(
             query=query,

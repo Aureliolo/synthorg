@@ -57,7 +57,7 @@ def _lookup(
         list_active=AsyncMock(return_value=agents),
     )
     tracker = mock_of[CostTracker](
-        get_records=AsyncMock(return_value=records),
+        collect_records=AsyncMock(return_value=records),
     )
     return CostTrackerHistoryLookup(
         registry=registry,
@@ -70,7 +70,7 @@ def _lookup(
 def test_rejects_non_positive_window(window_days: int) -> None:
     """A zero or negative window would silently always cold-start."""
     registry = mock_of[AgentRegistryService](list_active=AsyncMock(return_value=()))
-    tracker = mock_of[CostTracker](get_records=AsyncMock(return_value=()))
+    tracker = mock_of[CostTracker](collect_records=AsyncMock(return_value=()))
     with pytest.raises(ValueError, match="window_days must be >= 1"):
         CostTrackerHistoryLookup(
             registry=registry,

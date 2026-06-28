@@ -88,6 +88,8 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_otlp_span_redaction.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |
+| `check_pin_golden_fresh.py` | CI (`ci.yml :: pin-drift-regression`) | live pins vs `pin_golden.json` | full | no | none | add |
+| `check_prompt_class_metadata.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
@@ -106,7 +108,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->84<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->86<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

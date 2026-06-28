@@ -9,7 +9,7 @@ import builtins
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -29,6 +29,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.config import (
     ExperienceCompressorConfig,
 )
@@ -145,6 +148,13 @@ class LLMExperienceCompressor:
         model: Model identifier (medium-tier recommended).
         config: Compressor configuration.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.MEMORY_COMPRESS
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -263,6 +273,7 @@ class LLMExperienceCompressor:
                 cost_tracker=self._cost_tracker,
                 agent_id=agent_id,
                 task_id=NotBlankStr(f"system:memory:compress:{source_artifact_ids[0]}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

@@ -25,10 +25,17 @@ const PROVIDER_SLICES: BreakdownSlice[] = [
   { key: 'provider-c', label: 'Provider C', cost: 40, percent: 9.4, color: 'var(--so-warning)' },
 ]
 
+const PROMPT_CLASS_SLICES: BreakdownSlice[] = [
+  { key: 'system:research:synthesis', label: 'system:research:synthesis', cost: 180, percent: 50.0, color: 'var(--so-accent)' },
+  { key: 'system:cos:chat', label: 'system:cos:chat', cost: 120, percent: 33.3, color: 'var(--so-success)' },
+  { key: 'system:memory:rerank', label: 'system:memory:rerank', cost: 60, percent: 16.7, color: 'var(--so-warning)' },
+]
+
 const DIMENSION_DATA: Record<BreakdownDimension, BreakdownSlice[]> = {
   agent: AGENT_SLICES,
   department: DEPT_SLICES,
   provider: PROVIDER_SLICES,
+  prompt_class: PROMPT_CLASS_SLICES,
 }
 
 function InteractiveBreakdown({
@@ -89,6 +96,11 @@ export const ByDepartment: Story = {
 export const ByProvider: Story = {
   args: interactiveArgs,
   render: () => <InteractiveBreakdown initialDimension="provider" />,
+}
+
+export const ByPromptClass: Story = {
+  args: interactiveArgs,
+  render: () => <InteractiveBreakdown initialDimension="prompt_class" />,
 }
 
 export const Empty: Story = {

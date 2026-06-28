@@ -28,7 +28,7 @@ import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
@@ -42,6 +42,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_COMPLETE,
@@ -153,6 +156,13 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
         config: LLM fallback configuration.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.SECURITY_LLM_EVALUATOR
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -257,6 +267,7 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
                 cost_tracker=self._cost_tracker,
                 agent_id=scope_agent_id,
                 task_id=scope_task_id,
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 return await asyncio.wait_for(

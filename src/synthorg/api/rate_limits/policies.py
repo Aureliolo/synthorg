@@ -105,6 +105,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # budget (CFO cost-optimizer controller)
     "budget.cfo_anomalies": (30, 60),
     "budget.cfo_efficiency": (30, 60),
+    # budget (prompt-class breakdown: unbounded full-scan aggregate)
+    "budget.prompt_class_breakdown": (30, 60),
     # clients
     "clients.create": (10, 60),
     # cockpit

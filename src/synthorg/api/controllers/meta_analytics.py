@@ -30,6 +30,9 @@ from synthorg.meta.telemetry.recommender import (
     DefaultThresholdRecommender,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.cross_deployment import (
+    XDEPLOY_COLLECTOR_UNAVAILABLE,
+)
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_DEPLOYMENTS_FLOOR: Final[int] = 3
@@ -87,7 +90,12 @@ def _require_collector() -> InMemoryAnalyticsCollector:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
     if _collector is None:
+        # ``collector=None`` is a supported disabled mode (see
+        # ``configure_analytics_controller``), so this routine 503 guard logs
+        # at debug; a per-request warning would be pure noise on an
+        # intentionally unwired deployment.
         msg = "Cross-deployment analytics collector is not enabled"
+        logger.debug(XDEPLOY_COLLECTOR_UNAVAILABLE)
         raise ServiceUnavailableError(msg)
     return _collector
 

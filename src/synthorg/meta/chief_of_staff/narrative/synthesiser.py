@@ -10,6 +10,7 @@ deterministic fallback so the structured facts still ship.
 """
 
 import asyncio
+from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -17,6 +18,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.constants import FALLBACK_SUMMARY
 from synthorg.meta.chief_of_staff.narrative.models import NarrativeProse, ReducedRun
@@ -46,6 +50,13 @@ class NarrativeSynthesiser:
     """Generates the connective prose for one run narrative."""
 
     __slots__ = ("_config", "_cost_tracker", "_provider")
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_NARRATIVE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -121,6 +132,7 @@ class NarrativeSynthesiser:
                 cost_tracker=self._cost_tracker,
                 agent_id=_NARRATOR_AGENT,
                 task_id=_NARRATOR_TASK_ID,
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 return await asyncio.wait_for(

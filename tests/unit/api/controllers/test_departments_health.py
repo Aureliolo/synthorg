@@ -526,8 +526,8 @@ class TestDepartmentHealthDegradation:
             agents=(AgentConfig(name="alice", role="dev", department="eng"),),
         )
         cost_tracker = CostTracker()
-        cost_tracker.get_records = AsyncMock(  # type: ignore[method-assign]
-            spec=CostTracker.get_records,
+        cost_tracker.collect_records = AsyncMock(  # type: ignore[method-assign]
+            spec=CostTracker.collect_records,
             side_effect=RuntimeError("simulated cost failure"),
         )
         async with _build_dept_client(

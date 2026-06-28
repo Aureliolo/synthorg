@@ -6,7 +6,7 @@ to RelevanceScoreCuration when no provider is available or when
 the provider call fails.
 """
 
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -26,6 +26,9 @@ from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
 from synthorg.hr.training.models import ContentType, TrainingItem
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_COMPLETE,
@@ -68,6 +71,13 @@ class LLMCurated:
         temperature: Sampling temperature.
         top_k: Maximum items to return.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.HR_TRAINING_CURATION
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -150,6 +160,7 @@ class LLMCurated:
                 task_id=NotBlankStr(
                     f"system:hr:training_curation:{content_type.value}"
                 ),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(
