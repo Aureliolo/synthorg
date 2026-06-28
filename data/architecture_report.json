@@ -824,8 +824,8 @@
     },
     "src/synthorg/memory/retrieval/hierarchical/supervisor.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 411,
+      "ratio": 0.822,
       "tier": "code"
     },
     "src/synthorg/memory/retrieval/hierarchical/workers.py": {
@@ -1588,7 +1588,7 @@
     "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1723,
+    "synthorg.observability": 1724,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 198,
     "synthorg.observability.events.approval_gate": 20,

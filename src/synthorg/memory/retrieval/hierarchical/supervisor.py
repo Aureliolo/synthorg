@@ -341,7 +341,7 @@ class SupervisorRouter:
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
             task_id=NotBlankStr("system:memory:retrieval_route"),
-            purpose=self._PURPOSE_ID,
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(
