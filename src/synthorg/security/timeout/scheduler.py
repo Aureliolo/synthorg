@@ -110,15 +110,18 @@ class ApprovalTimeoutScheduler:
         construction-time tiered policy with one whose classifier honours
         runtime SecOps risk-tier overrides. When the scheduler is running,
         holds ``_lifecycle_lock`` to order the swap against ``start``/``stop``
-        so the loop never sees a half-installed checker; when it has never
-        started on the current loop there is no concurrent reader, so the
-        policy is applied directly without acquiring the lock.
+        so the loop never sees a half-installed checker; when
+        ``_lifecycle_lock`` is ``None`` (never started on the current loop,
+        or since stopped cleanly, or with stale cross-loop state dropped)
+        there is no concurrent reader, so the policy is applied directly
+        without acquiring the lock.
 
         Args:
             policy: The replacement timeout policy.
         """
         if self._lifecycle_lock is None:
-            # Never started on this loop: no concurrent reader to order against.
+            # No lock: no concurrent reader to order against (never started,
+            # stopped cleanly, or stale cross-loop state dropped).
             self._checker.set_policy(policy)
             return
         async with self._lifecycle_lock:

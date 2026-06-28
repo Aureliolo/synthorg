@@ -12,3 +12,6 @@ PERSISTENCE_UPGRADE_RECOMMENDATION_LISTED: Final[str] = (
 PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED: Final[str] = (
     "persistence.upgrade_recommendation.failed"
 )
+PERSISTENCE_UPGRADE_RECOMMENDATION_UNKNOWN_BACKEND: Final[str] = (
+    "persistence.upgrade_recommendation.unknown_backend"
+)

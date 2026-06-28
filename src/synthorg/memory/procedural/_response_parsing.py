@@ -9,11 +9,16 @@ failure proposer additionally binds ``task_id`` to every guard log; the
 success proposer has no task context. This module is the single source of
 that sequence so the two proposers cannot drift.
 
-The JSON extraction never binds ``task_id``: a parse failure logs only the
-helper's fixed literal detail, never ``str(exc)``, because a
-``JSONDecodeError`` carries ``exc.doc`` (the raw LLM output), which could
-embed credentials from the executed task and leak them into the log sink.
+A JSON parse failure surfaces only the helper's fixed literal detail
+category (``json_decode_error`` / ``json_wrong_top_level_type``), never
+``str(exc)``: a ``JSONDecodeError`` carries ``exc.doc`` (the raw LLM
+output), which could embed credentials from the executed task and leak
+them into the log sink. That fixed category is safe to bind alongside
+``task_id`` in the single malformed-JSON warning, so the actionable
+warning carries both the task context and the failure kind.
 """
+
+from collections.abc import Callable
 
 from pydantic import ValidationError
 
@@ -32,22 +37,28 @@ from synthorg.observability.events.procedural_memory import (
 logger = get_logger(__name__)
 
 
-def _extract_json(text: str) -> dict[str, object] | None:
+def _extract_json(
+    text: str,
+    *,
+    on_detail: Callable[[str], None] | None = None,
+) -> dict[str, object] | None:
     """Extract a JSON object from LLM response text via the shared helper.
 
+    A parse failure reports a fixed literal detail category to
+    ``on_detail`` (never ``str(exc)``: a ``JSONDecodeError`` carries
+    ``exc.doc``, the raw LLM output, which could embed task credentials)
+    so the caller can surface it in one ``task_id``-bound line.
+
+    Args:
+        text: Raw LLM completion text.
+        on_detail: Optional sink for the parse-failure detail category.
+
     Returns:
-        The parsed object, or ``None`` when the text is not valid JSON.
+        The parsed object, or ``None`` when the text is not a valid JSON
+        object (invalid JSON, or valid JSON whose top level is not an
+        object).
     """
-
-    def _log_parse_failure(detail: str) -> None:
-        """Log parse failure with the helper's fixed literal detail."""
-        logger.debug(
-            PROCEDURAL_MEMORY_SKIPPED,
-            reason="json_parse_error",
-            detail=detail,
-        )
-
-    return extract_json_from_llm_response(text, logger_callback=_log_parse_failure)
+    return extract_json_from_llm_response(text, logger_callback=on_detail)
 
 
 def _task_binding(task_id: str | None) -> dict[str, str]:
@@ -79,9 +90,15 @@ def parse_proposal_response(
         logger.debug(PROCEDURAL_MEMORY_SKIPPED, reason="empty_response", **binding)
         return None
 
-    data = _extract_json(content)
+    parse_detail: list[str] = []
+    data = _extract_json(content, on_detail=parse_detail.append)
     if data is None:
-        logger.warning(PROCEDURAL_MEMORY_SKIPPED, reason="malformed_json", **binding)
+        logger.warning(
+            PROCEDURAL_MEMORY_SKIPPED,
+            reason="malformed_json",
+            detail=parse_detail[0] if parse_detail else None,
+            **binding,
+        )
         return None
 
     try:

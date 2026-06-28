@@ -193,3 +193,5 @@ ARTIFACT_DELETE_BACKEND_UNSUPPORTED: Final[str] = (
 """The storage backend exposes no ``delete``; the facade refuses to orphan."""
 ARTIFACT_DELETE_STORAGE_MISS: Final[str] = "integrations.artifact.delete_storage_miss"
 """The index held the artifact but the storage backend reported no blob."""
+ARTIFACT_DELETE_INDEX_MISS: Final[str] = "integrations.artifact.delete_index_miss"
+"""A delete named a valid-UUID artifact with no index entry (idempotent no-op)."""

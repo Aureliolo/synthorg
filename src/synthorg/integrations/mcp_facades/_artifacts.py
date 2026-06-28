@@ -15,6 +15,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     ARTIFACT_CREATED_VIA_MCP,
     ARTIFACT_DELETE_BACKEND_UNSUPPORTED,
+    ARTIFACT_DELETE_INDEX_MISS,
     ARTIFACT_DELETE_STORAGE_MISS,
     ARTIFACT_DELETED_VIA_MCP,
     ARTIFACT_ID_INVALID,
@@ -179,6 +180,11 @@ class ArtifactFacadeService:
         async with self._lock:
             record = self._index.get(key)
             if record is None:
+                logger.debug(
+                    ARTIFACT_DELETE_INDEX_MISS,
+                    artifact_id=artifact_id,
+                    actor_id=actor_id,
+                )
                 return False
             fn = getattr(self._storage, "delete", None)
             if not callable(fn):

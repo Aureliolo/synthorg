@@ -30,7 +30,10 @@ from synthorg.engine.workflow.service import WorkflowService
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.meta.rollout.mutators.architecture_mutator import ArchitectureAdapter
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_ROLLBACK_OPERATION_FAILED
+from synthorg.observability.events.meta import (
+    META_ROLLBACK_OPERATION_APPLIED,
+    META_ROLLBACK_OPERATION_FAILED,
+)
 from synthorg.organization.services import DepartmentService
 from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
 
@@ -73,8 +76,20 @@ def build_architecture_adapters(
         name = NotBlankStr(target_tail)
         if previous_value is None:
             await role_repo.delete(name)
+            logger.debug(
+                META_ROLLBACK_OPERATION_APPLIED,
+                adapter="role",
+                target_tail=target_tail,
+                operation="delete",
+            )
             return
         await role_repo.save(RoleRecord.model_validate(previous_value))
+        logger.debug(
+            META_ROLLBACK_OPERATION_APPLIED,
+            adapter="role",
+            target_tail=target_tail,
+            operation="restore",
+        )
 
     async def _department_adapter(target_tail: str, previous_value: object) -> None:
         if previous_value is None:

@@ -545,9 +545,6 @@ def _send_params(
     message_id: str = "11111111-1111-1111-1111-111111111111",
 ) -> A2AMessageSendParams:
     """Build a ``message/send`` params model with ``parts`` text parts."""
-
-    from synthorg.a2a.models import A2AMessage, A2AMessageRole, A2ATextPart
-
     return A2AMessageSendParams(
         message=A2AMessage(
             role=A2AMessageRole.USER,

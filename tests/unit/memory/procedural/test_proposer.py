@@ -122,14 +122,14 @@ class TestProceduralMemoryProposer:
         await proposer.propose(_make_payload())
 
         call_args = provider.complete.call_args
-        assert call_args[0][1] == "test-small-001"
+        assert call_args.args[1] == "test-small-001"
 
     async def test_passes_completion_config(self) -> None:
         """Provider receives the config derived from ProceduralMemoryConfig."""
         proposer, provider = _make_proposer()
         await proposer.propose(_make_payload())
 
-        call_kwargs = provider.complete.call_args[1]
+        call_kwargs = provider.complete.call_args.kwargs
         assert "config" in call_kwargs
         assert call_kwargs["config"].temperature == 0.3
         assert call_kwargs["config"].max_tokens == 1500

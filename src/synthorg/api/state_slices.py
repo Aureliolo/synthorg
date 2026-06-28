@@ -24,13 +24,15 @@ logger = get_logger(__name__)
 class AppStateSliceMixin:
     """Typed per-feature state-slice store mixed into ``AppState``.
 
-    Slices are keyed by their concrete class. Three write APIs install
-    them, all under the slice lock: ``set_slice`` is once-only (a second
-    install of the same slice type raises); ``wire`` is the field-level
-    hot-reload path (a frozen copy with selected fields updated, preserving
-    co-resident fields); ``swap_slice`` whole-replaces an already-composed
-    slice atomically, so a reader holding the old slice keeps its references
-    and the next ``slice`` call returns the new one.
+    Slices are keyed by their concrete class. Three write patterns install
+    or update them, all under the slice lock, each with a slice-level and a
+    field-level variant: once-only install (``set_slice`` / ``set_field_once``,
+    where a second install of the same target raises); field-level hot-reload
+    (``wire`` / ``wire_if_field_absent``, a frozen copy with selected fields
+    updated, preserving co-resident fields); and whole replacement
+    (``swap_slice`` / ``swap_field_returning_previous``, atomic, so a reader
+    holding the old slice keeps its references and the next ``slice`` call
+    returns the new one).
     """
 
     def _init_slice_store(self) -> None:

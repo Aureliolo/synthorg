@@ -415,7 +415,7 @@ class TestNodeChangeValidation:
 
     @pytest.mark.unit
     def test_added_with_old_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="added"):
+        with pytest.raises(ValueError, match=r"change_type 'added' requires old_value"):
             NodeChange(
                 node_id="n1",
                 change_type="added",
@@ -425,7 +425,9 @@ class TestNodeChangeValidation:
 
     @pytest.mark.unit
     def test_removed_with_new_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="removed"):
+        with pytest.raises(
+            ValueError, match=r"change_type 'removed' requires new_value"
+        ):
             NodeChange(
                 node_id="n1",
                 change_type="removed",
@@ -435,7 +437,7 @@ class TestNodeChangeValidation:
 
     @pytest.mark.unit
     def test_moved_missing_old_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="moved"):
+        with pytest.raises(ValueError, match=r"change_type 'moved' requires both"):
             NodeChange(
                 node_id="n1",
                 change_type="moved",
@@ -444,7 +446,7 @@ class TestNodeChangeValidation:
 
     @pytest.mark.unit
     def test_moved_missing_new_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="moved"):
+        with pytest.raises(ValueError, match=r"change_type 'moved' requires both"):
             NodeChange(
                 node_id="n1",
                 change_type="moved",
@@ -457,7 +459,7 @@ class TestEdgeChangeValidation:
 
     @pytest.mark.unit
     def test_added_with_old_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="added"):
+        with pytest.raises(ValueError, match=r"change_type 'added' requires old_value"):
             EdgeChange(
                 edge_id="e1",
                 change_type="added",
@@ -467,7 +469,9 @@ class TestEdgeChangeValidation:
 
     @pytest.mark.unit
     def test_removed_with_new_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="removed"):
+        with pytest.raises(
+            ValueError, match=r"change_type 'removed' requires new_value"
+        ):
             EdgeChange(
                 edge_id="e1",
                 change_type="removed",

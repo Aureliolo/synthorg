@@ -19,7 +19,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_CREATE_REJECTED,
+    SECURITY_RISK_OVERRIDE_CREATED,
     SECURITY_RISK_OVERRIDE_NOT_FOUND,
+    SECURITY_RISK_OVERRIDE_REVOKED,
 )
 from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
 from synthorg.security.rules.risk_override import (
@@ -107,6 +109,15 @@ class RiskOverrideService:
         )
         await self._repo.save(override)
         self._classifier.add_override(override)
+        logger.info(
+            SECURITY_RISK_OVERRIDE_CREATED,
+            override_id=override.id,
+            action_type=str(action_type),
+            override_tier=override_tier.value,
+            original_tier=original_tier.value,
+            created_by=created_by,
+            expires_at=expires_at.isoformat(),
+        )
         return override
 
     async def revoke(
@@ -146,6 +157,12 @@ class RiskOverrideService:
             revoked_at=revoked_at,
         )
         self._classifier.revoke_override(override_id, revoked_by=revoked_by)
+        logger.info(
+            SECURITY_RISK_OVERRIDE_REVOKED,
+            override_id=override_id,
+            revoked_by=revoked_by,
+            revoked_at=revoked_at.isoformat(),
+        )
         return target.model_copy(
             update={"revoked_at": revoked_at, "revoked_by": revoked_by},
         )

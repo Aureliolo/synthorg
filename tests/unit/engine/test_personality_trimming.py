@@ -60,7 +60,7 @@ def _make_agent(
         role="Developer",
         department="Engineering",
         level=SeniorityLevel.MID,
-        model=ModelConfig(provider="test-provider", model_id="test-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
         personality=PersonalityConfig(
             description=description,
@@ -675,7 +675,9 @@ class TestAdditionalEdgeCases:
 
 @pytest.mark.unit
 class TestPersonalitySectionParity:
-    """The rendered template and the estimator share one personality builder."""
+    """The context-store path and the render path derive the personality
+    section from the single ``build_personality_section`` builder, so they
+    cannot drift from each other."""
 
     @pytest.mark.parametrize("mode", ["full", "condensed", "minimal"])
     def test_context_carries_built_section(self, mode: str) -> None:

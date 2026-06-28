@@ -571,4 +571,6 @@ def _safe_response_text(response: httpx.Response) -> str:
             error=safe_error_description(exc),
         )
         return "(unable to read response body)"
+    if len(text) <= _LOG_BODY_MAX_LEN:
+        return text
     return clip_with_ellipsis(text, _LOG_BODY_MAX_LEN - len("..."))

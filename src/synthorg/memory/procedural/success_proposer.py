@@ -6,9 +6,14 @@ knowledge from the successful approach. Similar to ProceduralMemoryProposer
 but optimized for success outcomes with a lighter system prompt.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTrackerProtocol`` is part of ``SuccessMemoryProposer.__init__``'s
+# annotation, so it must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).  Importing at
+# module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
+# globals.
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
@@ -33,9 +38,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 logger = get_logger(__name__)
 

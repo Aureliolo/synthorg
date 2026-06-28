@@ -14,6 +14,7 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.upgrade_recommendation import (
     PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,
+    PERSISTENCE_UPGRADE_RECOMMENDATION_UNKNOWN_BACKEND,
 )
 from synthorg.persistence.backend_dispatch import build_for_backend
 from synthorg.persistence.protocol import PersistenceBackend
@@ -48,6 +49,10 @@ def build_upgrade_recommendation_repo(
         return None
     name = backend.backend_name
     if name not in (_SQLITE, _POSTGRES):
+        logger.warning(
+            PERSISTENCE_UPGRADE_RECOMMENDATION_UNKNOWN_BACKEND,
+            backend_name=name,
+        )
         return None
     try:
         handle = backend.get_db()

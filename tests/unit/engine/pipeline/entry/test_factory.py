@@ -5,6 +5,7 @@ a hard ``UnknownStrategyError`` (no silent default).
 """
 
 import pytest
+import structlog.testing
 
 from synthorg.client.factory import UnknownStrategyError
 from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
@@ -13,6 +14,7 @@ from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapt
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.observability.events.pipeline import PIPELINE_ENTRY_UNKNOWN_SOURCE
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -48,9 +50,16 @@ def test_wired_source_builds_concrete_adapter(
     ],
 )
 def test_unwired_source_is_hard_error(source: WorkSource) -> None:
-    with pytest.raises(UnknownStrategyError, match=source.value):
+    with (
+        structlog.testing.capture_logs() as logs,
+        pytest.raises(UnknownStrategyError, match=source.value),
+    ):
         build_work_entry_adapter(
             source,
             work_pipeline=mock_of[WorkPipeline](),
             default_project="client-intake",
         )
+    assert any(
+        e["event"] == PIPELINE_ENTRY_UNKNOWN_SOURCE and e.get("source") == source.value
+        for e in logs
+    )

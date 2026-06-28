@@ -10,7 +10,6 @@
 # Regenerate (rare; requires explicit user approval) with:
 #   uv run python scripts/check_cost_scope_purpose.py --update
 src/synthorg/client/generators/llm.py:116:19
-src/synthorg/engine/evolution/proposers/separate_analyzer.py:346:23
 src/synthorg/engine/intake/strategies/agent_intake.py:122:23
 src/synthorg/engine/intervention/proposer.py:127:23
 src/synthorg/engine/quality/decomposers/llm.py:367:19
