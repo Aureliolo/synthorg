@@ -124,3 +124,17 @@ def register_coordination_defaults() -> None:
     """
     for name, coord_factory in _COORDINATION_DEFAULTS:
         register_coordination_middleware(name, coord_factory)
+
+
+def register_agent_defaults() -> None:
+    """Register only the agent middleware factories (defaults + opt-in).
+
+    The engine assembly registers just the agent-side factories so the
+    agent chain can resolve its default names without also pulling the
+    coordination factories. Idempotent via the registry's register-once
+    semantics.
+    """
+    for name, factory in _AGENT_DEFAULTS:
+        register_agent_middleware(name, factory)
+    for name, factory in _AGENT_OPT_IN:
+        register_agent_middleware(name, factory)

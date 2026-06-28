@@ -57,6 +57,9 @@ from synthorg.workers._agent_engine_collaborators import (
     boot_steering_inbox,
     boot_structure_map_tool_factory_provider,
 )
+from synthorg.workers._agent_middleware_assembly import (
+    build_agent_middleware_chain_or_none,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -556,6 +559,10 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
             },
         )
     return AgentEngine(
+        agent_middleware_chain=build_agent_middleware_chain_or_none(
+            app_state,
+            error_taxonomy_config=error_taxonomy_config,
+        ),
         coordination_metrics_collector=coordination_metrics_collector,
         error_taxonomy_config=error_taxonomy_config,
         classification_sinks=classification_sinks,

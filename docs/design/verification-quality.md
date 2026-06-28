@@ -72,6 +72,8 @@ Protocol: `AgentMiddleware` (`engine/middleware/protocol.py`). Six async hooks i
 
 Composition: `before_*` left-to-right, `after_*` right-to-left, `wrap_*` onion-style (each wraps the next). Exceptions propagate to the classification pipeline.
 
+The chain is wired into the engine at boot (gated by `engine.enable_agent_middleware`, on by default): its `before_agent` / `after_agent` hooks fire at the `AgentEngine` execution boundary (`engine/_agent_middleware_run.py`). The live effect today is authority-deference defence: when `AuthorityDeferenceGuard.before_agent` detects authority cues in the conversation, the engine injects its justification header as a system message. The per-call slots (`security_interceptor`, `approval_gate`, `cost_recording`, `classification`) remain ordering placeholders whose real logic stays inline (`ToolInvoker`, the execution loop, `_post_execution_pipeline`) until the chain is also wired into the per-turn model / tool call sites.
+
 Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deference`, `sanitize_message`, `security_interceptor`, `policy_gate`, `approval_gate`, `assumption_violation`, `classification`, `cost_recording`.
 
 **Optional middleware** (registered in `_AGENT_OPT_IN`, must be enabled explicitly):

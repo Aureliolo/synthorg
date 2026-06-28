@@ -1,15 +1,30 @@
 """Builtin middleware wrappers for existing engine hooks.
 
-Named slots in the middleware chain for configuration and ordering.
-The actual hook logic remains inline in the execution pipeline
-(``AgentEngine.run()``, ``ToolInvoker``, ``_post_execution_pipeline``).
-These wrappers will delegate to the real implementations once the
-agent middleware chain is wired into the execution loop.
+The chain's ``before_agent`` / ``after_agent`` hooks fire at the
+:class:`AgentEngine` execution boundary (see
+``engine/_agent_middleware_run.py``), so before-agent middleware such as
+:class:`~synthorg.engine.middleware.s1_constraints.AuthorityDeferenceGuard`
+run live. The per-call slots below remain ordering placeholders whose
+real logic stays inline in the execution pipeline (``ToolInvoker`` for
+security interception, ``_post_execution_pipeline`` for cost recording
+and error classification, the execution loop for the approval gate);
+they will delegate to those implementations once the chain is also wired
+into the per-turn model / tool call sites.
 """
 
-from typing import TYPE_CHECKING, override
+from typing import override
 
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+
+# These three feed middleware ``__init__`` annotations. They must resolve at
+# runtime: ``build_agent_middleware_chain`` calls ``inspect.signature`` on each
+# factory (and typeguard's ``check_callable`` does the same), which evaluates
+# the annotations via PEP 649 ``__annotate__`` and would ``NameError`` if these
+# stayed ``TYPE_CHECKING``-only. ``CostTrackerProtocol`` /
+# ``SecurityInterceptionStrategy`` are structural protocols (test fakes pass
+# structurally); ``ApprovalGate`` is only ever passed as a real gate or ``None``.
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.middleware.models import (
     AgentMiddlewareContext,
     ModelCallResult,
@@ -25,15 +40,7 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
-
-if TYPE_CHECKING:
-    # ApprovalGate is a concrete service faked in tests; a runtime import would
-    # make typeguard enforce a nominal isinstance the fakes fail.
-    # security.protocol would cycle (security imports engine.prompt_safety).
-    # CostTrackerProtocol is structural, grouped here as an annotation-only name.
-    from synthorg.budget.tracker_protocol import CostTrackerProtocol
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.security.protocol import SecurityInterceptionStrategy
 
 logger = get_logger(__name__)
 
