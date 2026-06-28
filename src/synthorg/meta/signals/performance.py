@@ -94,11 +94,7 @@ class PerformanceSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Signal domain name."""
         return NotBlankStr("performance")
 
     async def aggregate(

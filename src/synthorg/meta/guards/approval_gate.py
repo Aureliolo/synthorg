@@ -75,11 +75,7 @@ class ApprovalGateGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Guard name."""
         return NotBlankStr("approval_gate")
 
     async def evaluate(

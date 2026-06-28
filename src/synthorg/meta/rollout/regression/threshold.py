@@ -26,11 +26,7 @@ class ThresholdDetector:
 
     @property
     def name(self) -> NotBlankStr:
-        """Detector name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Detector name."""
         return NotBlankStr("threshold")
 
     async def check(

@@ -47,11 +47,7 @@ class ExponentialMovingAverageAdjuster:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy identifier.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Strategy identifier."""
         return NotBlankStr("ema")
 
     async def adjust(
@@ -129,11 +125,7 @@ class BayesianConfidenceAdjuster:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy identifier.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Strategy identifier."""
         return NotBlankStr("bayesian")
 
     async def adjust(

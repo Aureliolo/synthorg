@@ -203,20 +203,12 @@ class RequestDrainMiddleware:
 
     @property
     def inflight(self) -> int:
-        """Current in-flight HTTP request count (test introspection).
-
-        Returns:
-            Resulting integer.
-        """
+        """Current in-flight HTTP request count (test introspection)."""
         return self._inflight
 
     @property
     def drain_started(self) -> bool:
-        """True once :meth:`begin_drain` has been invoked.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """True once :meth:`begin_drain` has been invoked."""
         return self._drain_started.is_set()
 
 

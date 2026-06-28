@@ -46,11 +46,7 @@ class ArchitectureProposalStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces architecture proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This strategy produces architecture proposals."""
         return ProposalAltitude.ARCHITECTURE
 
     async def propose(

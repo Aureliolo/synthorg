@@ -64,11 +64,7 @@ class ConfigTuningStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces config tuning proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This strategy produces config tuning proposals."""
         return ProposalAltitude.CONFIG_TUNING
 
     async def propose(

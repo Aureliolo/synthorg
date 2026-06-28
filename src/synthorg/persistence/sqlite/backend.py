@@ -64,11 +64,7 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
 
     @property
     def kind(self) -> PersistenceBackendKind:
-        """Return the backend discriminator (``SQLITE``).
-
-        Returns:
-            Result of type ``PersistenceBackendKind``.
-        """
+        """Return the backend discriminator (``SQLITE``)."""
         return PersistenceBackendKind.SQLITE
 
     @property
@@ -88,9 +84,6 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         backup-handler factory walks the path; tests assert against
         the resolved sqlite path) do not have to reach for the
         private ``_config`` attribute.
-
-        Returns:
-            Result of type ``SQLiteConfig``.
         """
         return self._config
 

@@ -34,11 +34,7 @@ class DiscoveryPolicyResponse(BaseModel):
     @computed_field
     @property
     def entry_count(self) -> int:
-        """Number of entries in the allowlist.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of entries in the allowlist."""
         return len(self.host_port_allowlist)
 
 

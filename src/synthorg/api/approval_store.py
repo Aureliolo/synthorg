@@ -123,9 +123,6 @@ class ApprovalStore(ApprovalExpirationMixin):
         conversational-intake approvals cannot be durably persisted.
         Callers should refuse proposer wiring for unsupported
         persistence modes.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
         """
         return self._repo is not None
 

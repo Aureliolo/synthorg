@@ -168,9 +168,6 @@ class HttpAnalyticsEmitter:
         Note: reads ``_buffer`` without the lock for simplicity.
         Only intended for testing and diagnostics -- not for
         production control flow decisions.
-
-        Returns:
-            Resulting integer.
         """
         return len(self._buffer)
 

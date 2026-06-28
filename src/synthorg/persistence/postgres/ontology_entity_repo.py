@@ -70,11 +70,7 @@ class PostgresOntologyEntityRepository:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-        """
+        """Human-readable backend identifier."""
         return NotBlankStr("postgres")
 
     def _row_to_entity(self, row: DictRow) -> EntityDefinition:

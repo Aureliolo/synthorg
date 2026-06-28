@@ -269,11 +269,7 @@ class SetupCompanyResponse(BaseModel):
     @computed_field
     @property
     def agent_count(self) -> int:
-        """Number of agents auto-created from template.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of agents auto-created from template."""
         return len(self.agents)
 
 

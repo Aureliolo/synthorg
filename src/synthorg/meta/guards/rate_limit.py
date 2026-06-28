@@ -50,11 +50,7 @@ class RateLimitGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Guard name."""
         return NotBlankStr("rate_limit")
 
     async def evaluate(

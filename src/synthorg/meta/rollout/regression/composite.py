@@ -50,11 +50,7 @@ class TieredRegressionDetector:
 
     @property
     def name(self) -> NotBlankStr:
-        """Detector name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Detector name."""
         return NotBlankStr("tiered")
 
     async def check(

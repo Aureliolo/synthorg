@@ -50,11 +50,7 @@ class PromptTuningStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces prompt tuning proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This strategy produces prompt tuning proposals."""
         return ProposalAltitude.PROMPT_TUNING
 
     async def propose(

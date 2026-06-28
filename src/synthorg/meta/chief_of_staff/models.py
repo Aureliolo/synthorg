@@ -111,11 +111,7 @@ class OutcomeStats(BaseModel):
     @computed_field
     @property
     def approval_rate(self) -> float:
-        """Fraction of proposals that were approved.
-
-        Returns:
-            Resulting numeric value.
-        """
+        """Fraction of proposals that were approved."""
         return self.approved_count / self.total_proposals
 
 
@@ -158,9 +154,6 @@ class OrgInflection(BaseModel):
 
         Uses symmetric relative change to handle zero baselines
         without producing infinity.
-
-        Returns:
-            Resulting numeric value.
         """
         if self.old_value == 0.0 and self.new_value == 0.0:
             return 0.0

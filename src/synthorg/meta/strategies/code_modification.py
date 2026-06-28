@@ -125,11 +125,7 @@ class CodeModificationStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces code modification proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This strategy produces code modification proposals."""
         return ProposalAltitude.CODE_MODIFICATION
 
     async def propose(

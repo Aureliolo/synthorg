@@ -125,11 +125,7 @@ class CursorSecret:
 
     @property
     def is_ephemeral(self) -> bool:
-        """Whether this secret was randomly generated (not configured).
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Whether this secret was randomly generated (not configured)."""
         return self._ephemeral
 
     def sign(self, payload: bytes) -> str:

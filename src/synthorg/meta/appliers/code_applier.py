@@ -103,11 +103,7 @@ class CodeApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles code modification proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This applier handles code modification proposals."""
         return ProposalAltitude.CODE_MODIFICATION
 
     async def verify_github_token(self) -> None:

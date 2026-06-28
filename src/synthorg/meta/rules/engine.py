@@ -39,20 +39,12 @@ class RuleEngine:
 
     @property
     def rule_count(self) -> int:
-        """Number of registered rules.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of registered rules."""
         return len(self._rules)
 
     @property
     def rule_names(self) -> tuple[str, ...]:
-        """Names of all registered rules.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Names of all registered rules."""
         return tuple(r.name for r in self._rules)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> tuple[RuleMatch, ...]:

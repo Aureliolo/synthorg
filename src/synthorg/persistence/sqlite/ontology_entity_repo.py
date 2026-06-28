@@ -62,11 +62,7 @@ class SQLiteOntologyEntityRepository:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-        """
+        """Human-readable backend identifier."""
         return NotBlankStr("sqlite")
 
     def _row_to_entity(self, row: aiosqlite.Row) -> EntityDefinition:

@@ -111,11 +111,7 @@ class CalibrationSummaryResponse(BaseModel):
     @computed_field(description="Number of calibration records")
     @property
     def record_count(self) -> int:
-        """Number of calibration records.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of calibration records."""
         return len(self.records)
 
 

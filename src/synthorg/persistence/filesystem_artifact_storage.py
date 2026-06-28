@@ -74,11 +74,7 @@ class FileSystemArtifactStorage:
 
     @property
     def backend_name(self) -> str:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``str``.
-        """
+        """Human-readable backend identifier."""
         return "filesystem"
 
     def _safe_path(self, artifact_id: str) -> Path:

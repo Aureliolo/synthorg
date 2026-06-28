@@ -146,20 +146,12 @@ class WsTicketStore:
 
     @property
     def ttl_seconds(self) -> float:
-        """Configured ticket lifetime.
-
-        Returns:
-            Resulting numeric value.
-        """
+        """Configured ticket lifetime."""
         return self._ttl
 
     @property
     def max_pending_per_user(self) -> int:
-        """Current per-user pending-ticket cap.
-
-        Returns:
-            Resulting integer.
-        """
+        """Current per-user pending-ticket cap."""
         return self._max_pending
 
     def set_max_pending_per_user(self, value: int) -> None:

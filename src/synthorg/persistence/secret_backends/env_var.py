@@ -38,11 +38,7 @@ class EnvVarSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-        """
+        """Human-readable backend identifier."""
         return "env_var"
 
     async def store(

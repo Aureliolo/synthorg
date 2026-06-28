@@ -57,11 +57,7 @@ class EncryptedSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-        """
+        """Human-readable backend identifier."""
         return self._store.backend_name
 
     @staticmethod

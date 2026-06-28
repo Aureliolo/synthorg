@@ -147,9 +147,6 @@ class WsAuthLimits:
         contract) -- tests and subsystems may stage a different value at
         runtime -- so the effective value is whichever validated
         ``set_auth_timeout_seconds`` call ran most recently.
-
-        Returns:
-            Resulting numeric value.
         """
         return self._auth_timeout_seconds
 
@@ -178,9 +175,6 @@ class WsAuthLimits:
         construction (read_only_post_init), so the value can be staged
         in tests via ``set_frame_timeout_seconds`` without spinning
         the lifecycle.
-
-        Returns:
-            Resulting integer.
         """
         return self._frame_timeout_seconds
 
@@ -211,11 +205,7 @@ class WsAuthLimits:
 
     @property
     def auth_revalidate_window_seconds(self) -> int:
-        """Sliding-window length for WS+SSE revalidation failures.
-
-        Returns:
-            Resulting integer.
-        """
+        """Sliding-window length for WS+SSE revalidation failures."""
         return self._auth_revalidate_window_seconds
 
     def set_auth_revalidate_window_seconds(self, value: int) -> None:
@@ -248,11 +238,7 @@ class WsAuthLimits:
 
     @property
     def auth_revalidate_max_failures(self) -> int:
-        """Max WS+SSE revalidation failures admitted in the window.
-
-        Returns:
-            Resulting integer.
-        """
+        """Max WS+SSE revalidation failures admitted in the window."""
         return self._auth_revalidate_max_failures
 
     def set_auth_revalidate_max_failures(self, value: int) -> None:
