@@ -3,8 +3,9 @@
 
 Houses the structural ``DeliverableReceiptSeam`` protocol and the
 best-effort ``emit_receipt`` helper the review gate calls after a
-COMPLETED transition.  Kept out of ``review_gate.py`` so the gate module
-stays within its size budget and does not import the feature package.
+COMPLETED transition.  Lives here so the gate module depends on this
+seam rather than importing the deliverable-receipt feature package
+directly.
 """
 
 from typing import Protocol, runtime_checkable

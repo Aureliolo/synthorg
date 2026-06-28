@@ -111,7 +111,12 @@ def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
         return "(no results)"
     parts: list[str] = []
     for e in entries[:_REFORMULATION_MAX_ENTRIES]:
-        text = clip_with_ellipsis(e.content, _REFORMULATION_ENTRY_MAX_CHARS)
+        # Reserve the marker width so a truncated entry stays within the
+        # documented cap; ``clip_with_ellipsis`` appends the marker after
+        # slicing, so the raw budget would overshoot by ``len("...")``.
+        text = clip_with_ellipsis(
+            e.content, _REFORMULATION_ENTRY_MAX_CHARS - len("...")
+        )
         parts.append(f"- [{e.category.value}] {_sanitize_for_xml_block(text)}")
     return "\n".join(parts)
 

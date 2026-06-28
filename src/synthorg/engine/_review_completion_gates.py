@@ -8,9 +8,9 @@ pipeline-driven ``run_pipeline`` and the human-driven ``complete_review``
 call :func:`run_completion_gates`, so a configured gate fires on every
 path to COMPLETED rather than only the pipeline one.
 
-Extracted from ``review_gate.py`` so that module stays within its size
-budget and the gate-application logic is unit-testable without the full
-service. Each gate returns the (possibly rerouted) transition tuple
+Separating the gate chain from the service lets the gate-application
+logic be unit-tested without constructing the full ``ReviewGateService``.
+Each gate returns the (possibly rerouted) transition tuple
 ``(target, reason, event, approved)``.
 """
 

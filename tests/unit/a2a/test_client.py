@@ -341,6 +341,25 @@ class TestA2AClient:
 
     @pytest.mark.unit
     @respx.mock
+    async def test_malformed_response_missing_state(self) -> None:
+        """Peer result with only 'id' is rejected, not defaulted to SUBMITTED."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "result": {"id": "t-1"},
+                },
+            ),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match="missing task fields: state"):
+            await client.get_task("peer-a", "t-1")
+
+    @pytest.mark.unit
+    @respx.mock
     async def test_null_result_raises(self) -> None:
         """Peer result that is null raises A2AClientError."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
@@ -482,3 +501,112 @@ class TestA2AClientTimeoutContract:
         # silent-default drift this contract is meant to prevent.
         with pytest.raises(TypeError):
             A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[misc]
+
+
+def _rpc_ok(result: dict[str, object]) -> httpx.Response:
+    """Build a 200 JSON-RPC success response carrying ``result``."""
+    return httpx.Response(
+        200,
+        json={"jsonrpc": "2.0", "id": "1", "result": result},
+    )
+
+
+class TestA2AClientSkillNegotiation:
+    """The ``skills/query`` + ``skills/negotiate`` client round-trip."""
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_query_skills_returns_matching_peers(self) -> None:
+        """query_skills parses the peer list from the asked node."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok({"skill": "translate", "peers": ["peer-b", "peer-c"]}),
+        )
+        client = _make_client()
+        result = await client.query_skills("peer-a", "translate")
+
+        assert result.skill == "translate"
+        assert result.peers == ("peer-b", "peer-c")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_accepted_returns_url(self) -> None:
+        """negotiate_skills surfaces the routing url when accepted."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok(
+                {
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": True,
+                    "url": "https://peer-b.example.com",
+                    "matched_skills": ["translate"],
+                },
+            ),
+        )
+        client = _make_client()
+        result = await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+        assert result.accepted is True
+        assert result.url == "https://peer-b.example.com"
+        assert result.matched_skills == ("translate",)
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_rejected_has_no_url(self) -> None:
+        """A dropped skill negotiates to accepted=False with no url."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok(
+                {
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": False,
+                    "url": None,
+                    "matched_skills": [],
+                },
+            ),
+        )
+        client = _make_client()
+        result = await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+        assert result.accepted is False
+        assert result.url is None
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_query_skills_invalid_payload_raises(self) -> None:
+        """A malformed skills result raises A2AClientError, not a crash."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok({"unexpected": "shape"}),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.query_skills("peer-a", "translate")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_invalid_payload_raises(self) -> None:
+        """A malformed negotiate result raises A2AClientError, not a crash."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok({"unexpected": "shape"}),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_accepted_without_url_raises(self) -> None:
+        """A peer claiming acceptance with no url fails validation, not routing."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=_rpc_ok(
+                {
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": True,
+                    "url": None,
+                    "matched_skills": ["translate"],
+                },
+            ),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.negotiate_skills("peer-a", "translate", "peer-b")

@@ -43,6 +43,14 @@ class TestPeerRegistry:
         assert await reg.get("PEER-A") is not None
 
     @pytest.mark.unit
+    async def test_whitespace_insensitive(self) -> None:
+        """Peer names are stripped before lookup (shared normaliser)."""
+        reg = PeerRegistry()
+        await reg.register("  Peer-A  ", _make_card())
+        assert await reg.get("peer-a") is not None
+        assert await reg.remove("\tPEER-A\n") is True
+
+    @pytest.mark.unit
     async def test_remove(self) -> None:
         """Remove a registered peer."""
         reg = PeerRegistry()

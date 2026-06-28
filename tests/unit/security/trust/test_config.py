@@ -307,6 +307,10 @@ class TestMilestoneCriteriaApprovalFlags:
 class TestReVerificationConfigConstraints:
     """Tests for ReVerificationConfig field constraints."""
 
+    def test_enabled_secure_default(self) -> None:
+        """Re-verification defaults on so elevated trust is re-evaluated."""
+        assert ReVerificationConfig().enabled is True
+
     def test_interval_days_zero_raises(self) -> None:
         """interval_days=0 violates ge=1 constraint."""
         with pytest.raises(ValidationError):

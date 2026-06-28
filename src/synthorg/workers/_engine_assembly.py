@@ -23,6 +23,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
+from synthorg.engine.recovery import RecoveryStrategy
+from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
@@ -596,7 +598,35 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
         step_classifier=step_classifier,
         compaction_callback=_build_compaction_callback(app_state, provider),
+        recovery_strategy=_build_recovery_strategy(app_state),
         clock=app_state.clock,
+    )
+
+
+def _build_recovery_strategy(app_state: AppState) -> RecoveryStrategy:
+    """Wire the configured crash-recovery strategy with its persistence deps.
+
+    The checkpoint strategy needs a ``CheckpointRepository`` +
+    ``HeartbeatRepository`` from the active backend; supply them, with the
+    operator-tunable ``CheckpointConfig`` from
+    ``config.recovery.checkpoint``, when persistence is connected so an
+    operator selecting ``recovery.strategy = checkpoint`` gets a working,
+    correctly-tuned strategy instead of a boot-time
+    ``RecoveryConfigError``. The fail-reassign default ignores these deps.
+
+    Returns:
+        The recovery strategy for the boot ``AgentEngine``.
+    """
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if backend is None or not getattr(backend, "is_connected", False):
+        return build_recovery_strategy(app_state.config.recovery)
+    return build_recovery_strategy(
+        app_state.config.recovery,
+        checkpoint_repo=backend.checkpoints,
+        heartbeat_repo=backend.heartbeats,
+        checkpoint_config=app_state.config.recovery.checkpoint,
     )
 
 

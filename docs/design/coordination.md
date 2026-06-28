@@ -64,7 +64,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     automatic via the task router).
 
     ```yaml
-    crash_recovery:
+    recovery:
       strategy: "fail_reassign"            # fail_reassign, checkpoint
     ```
 
@@ -96,13 +96,24 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     frozen state that serialises cleanly via `model_dump_json()`.
 
     ```yaml
-    crash_recovery:
+    recovery:
+      strategy: "checkpoint"
+    ```
+
+    The checkpoint tuning parameters (`persist_every_n_turns`,
+    `heartbeat_interval_seconds`, `max_resume_attempts`) live on the
+    `CheckpointConfig` under `recovery.checkpoint`, alongside the
+    `strategy` selector. The injected `CheckpointRepository` and
+    `HeartbeatRepository` come from the active persistence backend, so
+    selecting `strategy: "checkpoint"` without a connected persistence
+    backend fails fast at boot.
+
+    ```yaml
+    recovery:
       strategy: "checkpoint"
       checkpoint:
-        persist_every_n_turns: 1           # checkpoint frequency
-        # Storage backend determined by the injected CheckpointRepository
-        heartbeat_interval_seconds: 30     # detect unresponsive agents
-        max_resume_attempts: 2             # retry limit before falling back to fail_reassign
+        persist_every_n_turns: 5
+        max_resume_attempts: 3
     ```
 
     - Preserves progress; critical for long tasks (multi-step plans,

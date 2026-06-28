@@ -159,9 +159,14 @@ SynthOrg agents can delegate tasks to external A2A agents through the outbound c
 
 1. **Discovery**: Fetch the external agent's Agent Card from its well-known URL
 2. **Skill import**: Deserialise `AgentSkill[]` into internal `Skill` model (lossless)
-3. **Task creation**: Send `message/send` JSON-RPC request with auth credentials
-4. **Monitoring**: Subscribe to task updates via SSE or poll via `tasks/get`
-5. **State mapping**: Map external A2A task states back to internal states (see table above)
+3. **Peer skill discovery** (optional): `A2AClient.query_skills` issues `skills/query`
+   to find federation peers a node knows that advertise a skill, then
+   `negotiate_skills` issues `skills/negotiate` to confirm a chosen candidate still
+   serves it before routing. The negotiated routing URL must be SSRF-validated by
+   the caller before use.
+4. **Task creation**: Send `message/send` JSON-RPC request with auth credentials
+5. **Monitoring**: Subscribe to task updates via SSE or poll via `tasks/get`
+6. **State mapping**: Map external A2A task states back to internal states (see table above)
 
 The outbound client authenticates using the `a2a.auth.outbound` configuration (see
 [A2A Security](security.md#a2a-security)). Outbound delegations pass through the

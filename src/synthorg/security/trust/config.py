@@ -204,7 +204,13 @@ class ReVerificationConfig(BaseModel):
     """Configuration for periodic trust re-verification.
 
     Attributes:
-        enabled: Whether re-verification is enabled.
+        enabled: Whether re-verification is enabled. Defaults to ``True``
+            so an elevated-trust agent under the milestone strategy is
+            periodically re-evaluated (and decayed on idle / error) rather
+            than holding elevated access indefinitely. Only takes effect
+            when the milestone trust strategy is active (trust defaults to
+            ``DISABLED``), so the secure default is inert for deployments
+            that never opt into progressive trust.
         interval_days: Days between re-verifications.
         decay_on_idle_days: Demote one level after this many idle days.
         decay_on_error_rate: Demote if error rate exceeds this threshold.
@@ -213,7 +219,7 @@ class ReVerificationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
-        default=False,
+        default=True,
         description="Whether re-verification is enabled",
     )
     interval_days: int = Field(

@@ -8,8 +8,14 @@
     },
     "src/synthorg/a2a/client.py": {
       "cap": 500,
-      "loc": 481,
-      "ratio": 0.962,
+      "loc": 487,
+      "ratio": 0.974,
+      "tier": "code"
+    },
+    "src/synthorg/a2a/models.py": {
+      "cap": 500,
+      "loc": 420,
+      "ratio": 0.84,
       "tier": "code"
     },
     "src/synthorg/api/_app_wiring.py": {
@@ -338,8 +344,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 491,
-      "ratio": 0.982,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -476,8 +482,8 @@
     },
     "src/synthorg/engine/feature.py": {
       "cap": 100,
-      "loc": 89,
-      "ratio": 0.89,
+      "loc": 90,
+      "ratio": 0.9,
       "tier": "feature"
     },
     "src/synthorg/engine/hybrid/replan_helpers.py": {
@@ -542,8 +548,8 @@
     },
     "src/synthorg/engine/review_gate.py": {
       "cap": 500,
-      "loc": 402,
-      "ratio": 0.804,
+      "loc": 407,
+      "ratio": 0.814,
       "tier": "code"
     },
     "src/synthorg/engine/shutdown.py": {
@@ -986,8 +992,8 @@
     },
     "src/synthorg/observability/sink_config_builder.py": {
       "cap": 500,
-      "loc": 453,
-      "ratio": 0.906,
+      "loc": 469,
+      "ratio": 0.938,
       "tier": "code"
     },
     "src/synthorg/observability/sinks.py": {
@@ -1448,8 +1454,8 @@
     },
     "src/synthorg/workers/_engine_assembly.py": {
       "cap": 600,
-      "loc": 575,
-      "ratio": 0.958,
+      "loc": 600,
+      "ratio": 1.0,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/claim.py": {
@@ -1574,9 +1580,9 @@
     "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1722,
+    "synthorg.observability": 1723,
     "synthorg.observability.background_tasks": 27,
-    "synthorg.observability.events.api": 199,
+    "synthorg.observability.events.api": 198,
     "synthorg.observability.events.approval_gate": 20,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 33,

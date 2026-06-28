@@ -19,7 +19,9 @@ from urllib.parse import unquote, urlparse
 from pydantic import SecretStr
 
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.persistence.backend import (
+    PERSISTENCE_BACKEND_CONFIG_INVALID,
+)
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,
 )
@@ -62,7 +64,7 @@ def _fail_url(
     Raises:
         ValueError: If an argument fails validation.
     """
-    logger.warning(API_APP_STARTUP, error=msg, reason=reason)
+    logger.warning(PERSISTENCE_BACKEND_CONFIG_INVALID, error=msg, reason=reason)
     raise ValueError(msg) from cause
 
 

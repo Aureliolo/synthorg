@@ -70,6 +70,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "EvaluationVersionService",
         "SubworkflowService",
         "build_evolution_service",
+        "build_recovery_strategy",
         "InMemoryErrorTaxonomyStore",
         "PerformanceTrackerSink",
         "NotificationDispatcherSink",
