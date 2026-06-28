@@ -11,7 +11,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    SecretStr,
     field_validator,
     model_validator,
 )
@@ -24,99 +23,17 @@ from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management._provider_validators import (
     _MODEL_NAME_RE,
-    _reject_blank_secret,
-    _validate_base_url,
-    _validate_oauth_token_url,
-    _validate_provider_name,
+    ValidatedApiKey,
+    ValidatedBaseUrl,
+    ValidatedCustomHeaderValue,
+    ValidatedOAuthClientSecret,
+    ValidatedOAuthTokenUrl,
+    ValidatedProviderName,
+    ValidatedSubscriptionToken,
 )
 
 
-class _ProviderRequestValidatorMixin(BaseModel):
-    """Shared field validators for the provider-management request DTOs.
-
-    The create / update / from-preset payloads carry overlapping
-    credential and URL fields with identical validation; centralising the
-    validators here keeps them from drifting. ``check_fields=False`` lets
-    the mixin declare a validator for a field only some subclasses define
-    (e.g. ``name`` is absent on the partial update payload).
-
-    The mixin carries no ``model_config``: each concrete subclass declares
-    its own frozen config, which Pydantic merges over any inherited one, so a
-    config here would be dead. The mixin contributes validators only.
-    """
-
-    @field_validator("name", check_fields=False)
-    @classmethod
-    def _validate_name(cls, v: str) -> str:
-        """Validate the provider name field.
-
-        Returns:
-            The validated provider name.
-        """
-        return _validate_provider_name(v)
-
-    @field_validator("base_url", check_fields=False)
-    @classmethod
-    def _validate_base_url(cls, v: str | None) -> str | None:
-        """Validate the base URL field.
-
-        Returns:
-            The validated base URL, or ``None``.
-        """
-        return _validate_base_url(v)
-
-    @field_validator("oauth_token_url", check_fields=False)
-    @classmethod
-    def _validate_oauth_token_url(cls, v: str | None) -> str | None:
-        """Validate the OAuth token URL field.
-
-        Returns:
-            The validated OAuth token URL, or ``None``.
-        """
-        return _validate_oauth_token_url(v)
-
-    @field_validator("api_key", check_fields=False)
-    @classmethod
-    def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
-        """Reject a blank ``api_key``.
-
-        Returns:
-            The validated secret, or ``None``.
-        """
-        return _reject_blank_secret(v, field="api_key")
-
-    @field_validator("subscription_token", check_fields=False)
-    @classmethod
-    def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
-        """Reject a blank ``subscription_token``.
-
-        Returns:
-            The validated secret, or ``None``.
-        """
-        return _reject_blank_secret(v, field="subscription_token")
-
-    @field_validator("oauth_client_secret", check_fields=False)
-    @classmethod
-    def _check_oauth_client_secret(cls, v: SecretStr | None) -> SecretStr | None:
-        """Reject a blank ``oauth_client_secret``.
-
-        Returns:
-            The validated secret, or ``None``.
-        """
-        return _reject_blank_secret(v, field="oauth_client_secret")
-
-    @field_validator("custom_header_value", check_fields=False)
-    @classmethod
-    def _check_custom_header_value(cls, v: SecretStr | None) -> SecretStr | None:
-        """Reject a blank ``custom_header_value``.
-
-        Returns:
-            The validated secret, or ``None``.
-        """
-        return _reject_blank_secret(v, field="custom_header_value")
-
-
-class CreateProviderRequest(_ProviderRequestValidatorMixin):
+class CreateProviderRequest(BaseModel):
     """Payload for creating a new provider.
 
     Attributes:
@@ -137,7 +54,7 @@ class CreateProviderRequest(_ProviderRequestValidatorMixin):
         extra="forbid",
     )
 
-    name: NotBlankStr = Field(
+    name: ValidatedProviderName = Field(
         max_length=64,
         description="Unique provider name (2-64 chars, lowercase + hyphens).",
         examples=["example-provider"],
@@ -157,11 +74,11 @@ class CreateProviderRequest(_ProviderRequestValidatorMixin):
     )
     # Secret fields carry a description but never an example, so no
     # credential-shaped placeholder leaks into the rendered OpenAPI spec.
-    api_key: SecretStr | None = Field(
+    api_key: ValidatedApiKey = Field(
         default=None,
         description="API key credential (required for API_KEY auth).",
     )
-    subscription_token: SecretStr | None = Field(
+    subscription_token: ValidatedSubscriptionToken = Field(
         default=None,
         description="Bearer token for subscription-based auth.",
     )
@@ -169,23 +86,23 @@ class CreateProviderRequest(_ProviderRequestValidatorMixin):
         default=False,
         description="Whether the operator accepted the subscription terms.",
     )
-    base_url: NotBlankStr | None = Field(
+    base_url: ValidatedBaseUrl = Field(
         default=None,
         description="Provider API base URL.",
         examples=["https://api.example-provider.test/v1"],
     )
     keep_alive: NotBlankStr | None = None
-    oauth_token_url: NotBlankStr | None = None
+    oauth_token_url: ValidatedOAuthTokenUrl = None
     oauth_client_id: NotBlankStr | None = None
-    oauth_client_secret: SecretStr | None = None
+    oauth_client_secret: ValidatedOAuthClientSecret = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
-    custom_header_value: SecretStr | None = None
+    custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] = ()
     preset_name: NotBlankStr | None = None
 
 
-class UpdateProviderRequest(_ProviderRequestValidatorMixin):
+class UpdateProviderRequest(BaseModel):
     """Payload for updating a provider (partial update).
 
     All fields are optional -- only provided fields are updated.
@@ -202,19 +119,19 @@ class UpdateProviderRequest(_ProviderRequestValidatorMixin):
     driver: NotBlankStr | None = None
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType | None = None
-    api_key: SecretStr | None = None
+    api_key: ValidatedApiKey = None
     clear_api_key: bool = False
-    subscription_token: SecretStr | None = None
+    subscription_token: ValidatedSubscriptionToken = None
     clear_subscription_token: bool = False
     tos_accepted: bool | None = None
-    base_url: NotBlankStr | None = None
+    base_url: ValidatedBaseUrl = None
     keep_alive: NotBlankStr | None = None
-    oauth_token_url: NotBlankStr | None = None
+    oauth_token_url: ValidatedOAuthTokenUrl = None
     oauth_client_id: NotBlankStr | None = None
-    oauth_client_secret: SecretStr | None = None
+    oauth_client_secret: ValidatedOAuthClientSecret = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
-    custom_header_value: SecretStr | None = None
+    custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] | None = None
 
     @model_validator(mode="after")
@@ -256,7 +173,7 @@ class TestConnectionRequest(BaseModel):
     model: NotBlankStr | None = None
 
 
-class CreateFromPresetRequest(_ProviderRequestValidatorMixin):
+class CreateFromPresetRequest(BaseModel):
     """Payload for creating a provider from a preset.
 
     Attributes:
@@ -275,12 +192,12 @@ class CreateFromPresetRequest(_ProviderRequestValidatorMixin):
     )
 
     preset_name: NotBlankStr
-    name: NotBlankStr = Field(max_length=64)
+    name: ValidatedProviderName = Field(max_length=64)
     auth_type: AuthType | None = None
-    api_key: SecretStr | None = None
-    subscription_token: SecretStr | None = None
+    api_key: ValidatedApiKey = None
+    subscription_token: ValidatedSubscriptionToken = None
     tos_accepted: bool = False
-    base_url: NotBlankStr | None = None
+    base_url: ValidatedBaseUrl = None
     models: tuple[ProviderModelConfig, ...] | None = None
 
 

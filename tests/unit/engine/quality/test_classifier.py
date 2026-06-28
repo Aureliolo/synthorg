@@ -399,3 +399,33 @@ class TestClassifyStepHelper:
             and e.get("error_type") == "RuntimeError"
             for e in logs
         )
+
+    async def test_critical_classifier_error_propagates(self) -> None:
+        """A critical classifier failure is re-raised, never degraded.
+
+        ``classify_step`` swallows ordinary classifier failures, but a
+        ``MemoryError`` / ``RecursionError`` must escape the loop so the
+        process is not left limping; degrading it to ``None`` would mask a
+        fatal condition.
+        """
+        from synthorg.engine.loop_helpers import classify_step
+
+        class _CriticalClassifier:
+            async def classify(
+                self,
+                *,
+                step_index: int,
+                turns: tuple[TurnRecord, ...],
+                termination_reason: TerminationReason,
+                stagnation_result: StagnationResult | None = None,
+            ) -> StepQualitySignal:
+                msg = "classifier oom"
+                raise MemoryError(msg)
+
+        with pytest.raises(MemoryError):
+            await classify_step(
+                _CriticalClassifier(),
+                step_index=0,
+                step_turns=(_turn(tools=("read",)),),
+                termination_reason=TerminationReason.COMPLETED,
+            )

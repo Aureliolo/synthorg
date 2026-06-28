@@ -252,6 +252,12 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             (the caller must not expect a synchronous transition or its
             engine-layer errors); ``False`` when it ran inline.
         """
+        # Resolve the actor here, in the caller's context: a backgrounded
+        # complete_review runs outside the request's bound actor, so a late
+        # resolve would lose it, and the dispatch log / failure-event
+        # metadata would otherwise record ``decided_by=None``. The inner
+        # resolve in complete_review is idempotent on the concrete string.
+        decided_by = resolve_decided_by(decided_by)
         gated = (
             approved
             and self._red_team_gate is not None

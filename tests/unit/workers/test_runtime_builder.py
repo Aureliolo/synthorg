@@ -16,6 +16,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import CoordinationConfigError
@@ -310,7 +311,7 @@ class TestProviderPresentSwitch:
         app_state = _provider_app_state(
             registry,
             tmp_path,
-            bridge_config_error=RuntimeError("settings backend down"),
+            bridge_config_error=PersistenceConnectionError("settings backend down"),
         )
 
         result = await build_runtime_services(

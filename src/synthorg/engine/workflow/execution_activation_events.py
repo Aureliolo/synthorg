@@ -52,12 +52,19 @@ def emit_activation_events(
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            WORKFLOW_EXEC_ACTIVATION_EVENTS_FAILED,
-            execution_id=str(execution.id),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        # The warning rides the same logging/metrics path that just failed,
+        # so it can raise for the same reason. Guard it too: the activation
+        # write has already committed, and letting this escape would report
+        # ``activate()`` failure for an execution that actually persisted.
+        try:
+            logger.warning(
+                WORKFLOW_EXEC_ACTIVATION_EVENTS_FAILED,
+                execution_id=str(execution.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        except Exception as warning_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(warning_exc)
 
 
 def _emit_activation_events(

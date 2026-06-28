@@ -33,6 +33,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import NamedTuple
 
+from pydantic import ValidationError
+
 from synthorg.api.state import AppState
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
@@ -40,6 +42,7 @@ from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.health import (
     HealthJudge,
@@ -72,6 +75,7 @@ from synthorg.security.redteam.builder import (
 from synthorg.security.visionverify.protocol import VisionVerifierGate
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.errors import SettingsError
 from synthorg.settings.mirrors import resolve_init_int
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
@@ -326,8 +330,12 @@ async def build_runtime_services(
     flight_recorder_sink = await build_boot_flight_recorder_sink(app_state)
     try:
         engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
+    except (SettingsError, PersistenceError, ValidationError, ValueError) as exc:
+        # Tolerate only settings-resolution / backend-outage failures: a
+        # missing or unparseable key, an out-of-range bridged value, or the
+        # settings store being unreachable. Unexpected exceptions (wiring
+        # bugs) propagate so broken classifier/health config never boots
+        # silently on defaults.
         logger.warning(
             WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK,
             context="engine_bridge_resolve",
