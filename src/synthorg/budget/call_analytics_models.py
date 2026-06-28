@@ -132,7 +132,9 @@ class PromptClassBreakdownRow(BaseModel):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code.",
     )
-    call_count: int = Field(ge=0, description="Records for this class.")
+    call_count: int = Field(
+        gt=0, description="Records for this class (a row aggregates at least one)."
+    )
     input_tokens: int = Field(ge=0, description="Total input tokens.")
     output_tokens: int = Field(ge=0, description="Total output tokens.")
     avg_latency_ms: float | None = Field(
@@ -156,38 +158,6 @@ class PromptClassBreakdownRow(BaseModel):
         le=1.0,
         description="Success fraction over success-reporting calls, or None.",
     )
-
-    @model_validator(mode="after")
-    def _zero_calls_have_zero_rates(self) -> Self:
-        """Reject an internally inconsistent zero-call row.
-
-        A class with no calls cannot have a non-zero retry rate, any
-        cache/success fraction, any cost, any tokens, or any latency data;
-        such a row signals an aggregation bug.
-
-        Returns:
-            The validated row.
-
-        Raises:
-            ValueError: If ``call_count`` is 0 but cost, tokens, latency, or a
-                rate is populated.
-        """
-        if self.call_count == 0 and (
-            self.retry_rate != 0.0
-            or self.cache_hit_rate is not None
-            or self.success_rate is not None
-            or self.total_cost != 0.0
-            or self.input_tokens != 0
-            or self.output_tokens != 0
-            or self.avg_latency_ms is not None
-            or self.p95_latency_ms is not None
-        ):
-            msg = (
-                f"prompt class {self.prompt_class_id!r}: a zero-call row must "
-                "have zero cost, zero tokens, and no latency/rate data"
-            )
-            raise ValueError(msg)
-        return self
 
 
 class PromptClassBreakdown(BaseModel):

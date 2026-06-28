@@ -10,12 +10,15 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
+from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
@@ -511,11 +514,12 @@ class TestSubstrateCompletionRouting:
             _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
         )
 
-        await checker.check(
-            deliverable_content=_NUMERIC_DELIVERABLE,
-            execution_id=_EXEC,
-            project_id=_PROJECT,
-        )
+        with capture_logs() as logs:
+            await checker.check(
+                deliverable_content=_NUMERIC_DELIVERABLE,
+                execution_id=_EXEC,
+                project_id=_PROJECT,
+            )
 
         extraction_call, entailment_call = provider.complete.call_args_list
         extraction_config = extraction_call.kwargs.get("config")
@@ -526,3 +530,15 @@ class TestSubstrateCompletionRouting:
         assert entailment_config is ENTAILMENT_CONFIG
         assert entailment_config.max_tokens == ENTAILMENT_MAX_TOKENS
         assert entailment_call.kwargs["tools"][0].name == GROUNDING_VERDICT_TOOL_NAME
+
+        # Extraction and entailment attribute spend to distinct prompt classes
+        # so the breakdown / drift pipeline can separate them.
+        attributed = [
+            entry["prompt_class_id"]
+            for entry in logs
+            if entry.get("event") == PROVIDER_PROMPT_PURPOSE_INVOKED
+        ]
+        assert attributed == [
+            str(PromptPurposeId.RED_TEAM_GROUNDING),
+            str(PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT),
+        ]

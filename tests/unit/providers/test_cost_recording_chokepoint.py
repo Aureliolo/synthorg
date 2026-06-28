@@ -247,6 +247,7 @@ class TestCostRecordingChokepoint:
                 cost_tracker=None,
                 agent_id=NotBlankStr("agent-1"),
                 task_id=NotBlankStr("task-1"),
+                purpose=None,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 pass

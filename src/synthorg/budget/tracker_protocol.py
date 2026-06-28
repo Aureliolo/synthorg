@@ -106,6 +106,9 @@ class CostTrackerProtocol(Protocol):
         Aggregators that need the complete filtered set use this rather than a
         paginated :meth:`get_records` walk: a single snapshot cannot have its
         offsets shifted by a concurrent prune, so no record is dropped mid-drain.
+        Results preserve insertion order (oldest-first), matching
+        :meth:`get_records` and :func:`collect_all_records`, so every
+        full-snapshot caller sees the same cross-backend ordering.
         """
         ...
 

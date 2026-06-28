@@ -110,8 +110,8 @@
     },
     "src/synthorg/api/controllers/budget.py": {
       "cap": 500,
-      "loc": 462,
-      "ratio": 0.924,
+      "loc": 474,
+      "ratio": 0.948,
       "tier": "code"
     },
     "src/synthorg/api/controllers/clients.py": {
@@ -760,6 +760,12 @@
       "cap": 500,
       "loc": 476,
       "ratio": 0.952,
+      "tier": "code"
+    },
+    "src/synthorg/llm/prompt_purpose.py": {
+      "cap": 500,
+      "loc": 401,
+      "ratio": 0.802,
       "tier": "code"
     },
     "src/synthorg/memory/backends/composite/adapter.py": {

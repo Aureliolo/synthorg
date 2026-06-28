@@ -2,7 +2,7 @@
 
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Final, Self
 
 from litestar import Controller, get
@@ -87,6 +87,22 @@ _EndFilter = Annotated[
     datetime | None,
     QueryParameter(description="Exclusive upper bound on record timestamp (ISO 8601)."),
 ]
+
+
+def _assume_utc(value: datetime | None) -> datetime | None:
+    """Coerce an offset-less ISO query datetime to UTC.
+
+    Stored record timestamps are UTC-aware; forwarding a naive value would
+    raise on the aware/naive comparison in the breakdown scan. A naive input
+    is assumed UTC (matching ``normalize_utc`` semantics) at this boundary.
+
+    Returns:
+        The value unchanged when aware or ``None``; otherwise the value with
+        UTC attached.
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class AgentSpending(BaseModel):
@@ -494,7 +510,7 @@ class BudgetController(Controller):
         breakdown = await require_service(
             app_state.slice(BudgetStateSlice).call_analytics_service,
             "Call Analytics Service",
-        ).get_prompt_class_breakdown(start=start, end=end)
+        ).get_prompt_class_breakdown(start=_assume_utc(start), end=_assume_utc(end))
         logger.info(
             API_BUDGET_PROMPT_CLASS_BREAKDOWN_QUERIED,
             row_count=len(breakdown.rows),

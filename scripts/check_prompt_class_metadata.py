@@ -261,14 +261,15 @@ def _annotation_is_pin(annotation: ast.expr | None) -> bool:
 def _is_metadata_property(node: ast.stmt) -> bool:
     """Return True iff *node* is a ``metadata`` property returning the pin type.
 
-    Accepts a concrete or ``@abstractmethod`` property, sync or async, as long
-    as a ``property`` decorator is present and the return annotation is
-    :class:`ModelPinMetadata`.
+    Accepts a concrete or ``@abstractmethod`` property as long as a
+    ``property`` decorator is present and the return annotation is
+    :class:`ModelPinMetadata`. An ``async`` property is rejected: it returns a
+    coroutine, so ``self.metadata.prompt_class_id`` would fail at first access.
 
     Returns:
         ``True`` when *node* is the required ``metadata`` property.
     """
-    if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+    if not isinstance(node, ast.FunctionDef):
         return False
     if node.name != _METADATA_PROPERTY:
         return False

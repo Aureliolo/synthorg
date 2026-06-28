@@ -106,11 +106,23 @@ class KnowledgeSubstrateGroundingChecker:
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RED_TEAM_GROUNDING
+    _ENTAILMENT_PURPOSE_ID: ClassVar[PromptPurposeId] = (
+        PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT
+    )
 
     @property
     def metadata(self) -> ModelPinMetadata:
-        """Pinned model + sampling for this prompt class."""
+        """Pinned model + sampling for the claim-extraction prompt class."""
         return pin_for(self._PURPOSE_ID)
+
+    @property
+    def entailment_metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for the claim-entailment prompt class.
+
+        Extraction and entailment send different tool contracts and sampling
+        configs, so they are attributed to distinct prompt classes.
+        """
+        return pin_for(self._ENTAILMENT_PURPOSE_ID)
 
     def __init__(
         self,
@@ -465,6 +477,7 @@ class KnowledgeSubstrateGroundingChecker:
             messages=messages,
             tools=[EXTRACT_CLAIMS_TOOL],
             config=EXTRACTION_CONFIG,
+            purpose=self.metadata.prompt_class_id,
         )
 
     async def _complete_entailment(
@@ -485,9 +498,10 @@ class KnowledgeSubstrateGroundingChecker:
             messages=messages,
             tools=[GROUNDING_VERDICT_TOOL],
             config=ENTAILMENT_CONFIG,
+            purpose=self.entailment_metadata.prompt_class_id,
         )
 
-    async def _run_completion(
+    async def _run_completion(  # noqa: PLR0913 -- orthogonal completion inputs + purpose
         self,
         context: GroundingSubstrateContext,
         execution_id: NotBlankStr,
@@ -495,8 +509,12 @@ class KnowledgeSubstrateGroundingChecker:
         messages: list[ChatMessage],
         tools: list[ToolDefinition],
         config: CompletionConfig,
+        purpose: PromptPurposeId,
     ) -> CompletionResponse:
         """Run one structured completion under a cost-recording scope.
+
+        ``purpose`` attributes the call to a prompt class (extraction vs
+        entailment) so spend and drift split per prompt.
 
         Returns:
             The provider's completion response.
@@ -505,7 +523,7 @@ class KnowledgeSubstrateGroundingChecker:
             cost_tracker=context.cost_tracker,
             agent_id=_GROUNDING_AGENT_ID,
             task_id=execution_id,
-            purpose=self.metadata.prompt_class_id,
+            purpose=purpose,
             call_category=LLMCallCategory.SYSTEM,
         ):
             return await context.provider.complete(

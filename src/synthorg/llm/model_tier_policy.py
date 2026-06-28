@@ -97,6 +97,7 @@ _TIER_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptTierKind], ...]] = 
     (PromptPurposeId.SECURITY_LLM_EVALUATOR, _M),
     (PromptPurposeId.VISION_VERIFY, _M),
     (PromptPurposeId.RED_TEAM_GROUNDING, _M),
+    (PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT, _M),
     (PromptPurposeId.MEMORY_RERANK, _S),
     (PromptPurposeId.MEMORY_RETRIEVAL_ROUTE, _S),
     (PromptPurposeId.MEMORY_RETRIEVAL_RETRY, _S),

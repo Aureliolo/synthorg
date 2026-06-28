@@ -70,6 +70,7 @@ class PromptPurposeId(StrEnum):
     SECURITY_LLM_EVALUATOR = "system:security:llm_evaluator"
     VISION_VERIFY = "system:vision_verify"
     RED_TEAM_GROUNDING = "system:red_team:grounding"
+    RED_TEAM_GROUNDING_ENTAILMENT = "system:red_team:grounding_entailment"
 
     MEMORY_RERANK = "system:memory:rerank"
     MEMORY_RETRIEVAL_ROUTE = "system:memory:retrieval_route"
@@ -252,7 +253,12 @@ _PROMPT_PURPOSE_SPECS: Final[
     (
         PromptPurposeId.RED_TEAM_GROUNDING,
         PromptPurposeCategory.SECURITY,
-        "Ground red-team probes against the target substrate.",
+        "Extract grounding claims from a red-team deliverable.",
+    ),
+    (
+        PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT,
+        PromptPurposeCategory.SECURITY,
+        "Entail extracted claims against the corpus for a grounding verdict.",
     ),
     (
         PromptPurposeId.MEMORY_RERANK,

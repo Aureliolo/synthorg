@@ -73,7 +73,7 @@ describe('PromptClassSection', () => {
     await screen.findByText(/no prompt-purpose data yet/i)
   })
 
-  it('renders an em-dash placeholder for null latency and rate cells', async () => {
+  it('renders a "--" placeholder for null latency and rate cells', async () => {
     serveRows([
       row({
         avg_latency_ms: null,

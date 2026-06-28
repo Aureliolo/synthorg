@@ -14905,7 +14905,7 @@ export type components = {
             readonly avg_latency_ms: number | null;
             /** @description Cache-hit fraction over cache-reporting calls, or None. */
             readonly cache_hit_rate: number | null;
-            /** @description Records for this class. */
+            /** @description Records for this class (a row aggregates at least one). */
             readonly call_count: number;
             /**
              * @description ISO 4217 currency code.

@@ -110,6 +110,7 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.SECURITY_LLM_EVALUATOR, PinSpec()),
     (PromptPurposeId.VISION_VERIFY, PinSpec()),
     (PromptPurposeId.RED_TEAM_GROUNDING, PinSpec()),
+    (PromptPurposeId.RED_TEAM_GROUNDING_ENTAILMENT, PinSpec()),
     (PromptPurposeId.MEMORY_RERANK, PinSpec()),
     (PromptPurposeId.MEMORY_RETRIEVAL_ROUTE, PinSpec()),
     (PromptPurposeId.MEMORY_RETRIEVAL_RETRY, PinSpec()),
