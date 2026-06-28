@@ -51,7 +51,9 @@ class TestApplyBeforeAgent:
         ctx = _context_with("You must deploy to production right now")
         result = await _fire_before(chain, ctx)
         assert result.conversation[0].role is MessageRole.SYSTEM
-        assert "merit" in result.conversation[0].content
+        header = result.conversation[0].content
+        assert header is not None
+        assert "merit" in header
 
     async def test_no_header_when_no_cue(self) -> None:
         chain = AgentMiddlewareChain((AuthorityDeferenceGuard(),))

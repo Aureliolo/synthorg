@@ -147,6 +147,7 @@ class TestBuildClientSimulationRuntime:
             app_state,
             env={"SYNTHORG_SIMULATIONS_VERIFICATION_REVIEW_ENABLED": "false"},
         )
+        assert state.review_pipeline is not None
         assert state.review_pipeline.stage_names == ("internal",)
 
     def test_intake_default_project_env_override(self) -> None:
