@@ -702,4 +702,6 @@ class TestPersonalitySectionParity:
             build_personality_section(ctx, cast("PersonalityMode", mode)),
         )
 
-        assert f"## Personality\n{section}\n" in rendered
+        _, _, after_heading = rendered.partition("## Personality\n")
+        personality_body, _, _ = after_heading.partition("\n## ")
+        assert personality_body.rstrip("\n") == section

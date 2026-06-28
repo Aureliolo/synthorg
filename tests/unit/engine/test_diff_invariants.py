@@ -39,6 +39,7 @@ def test_valid_combinations_pass(
         ("modified", None, "new", r"requires both old_value and new_value"),
         ("modified", "old", None, r"requires both old_value and new_value"),
         ("moved", None, "new", r"change_type 'moved' requires both"),
+        ("moved", "old", None, r"change_type 'moved' requires both"),
     ],
 )
 def test_invalid_combinations_raise(
