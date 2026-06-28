@@ -134,10 +134,6 @@ _CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
         "level",
     },
 )
-# Union for initial parsing (field validation deferred to type-specific check)
-_CUSTOM_SINK_FIELDS: frozenset[str] = (
-    _CUSTOM_FILE_SINK_FIELDS | _CUSTOM_SYSLOG_SINK_FIELDS | _CUSTOM_HTTP_SINK_FIELDS
-)
 _VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
     {"file", "syslog", "http"},
 )
@@ -276,7 +272,10 @@ def _apply_override(
 
     if not updates:
         return sink
-    return sink.model_copy(update=updates)
+    # Re-validate the merged config: model_copy(update=...) skips SinkConfig's
+    # model validators, so an override could otherwise produce an invalid shape
+    # (e.g. json_format=False on an always-JSON sink type).
+    return SinkConfig.model_validate({**sink.model_dump(), **updates})
 
 
 # -- Custom sink construction --------------------------------------

@@ -260,8 +260,9 @@ class A2AClient(SkillNegotiationMixin):
                 pinned_hostname = validation.hostname
 
         # Build JSON-RPC request
+        request_id = str(uuid4())
         rpc_req = JsonRpcRequest(
-            id=str(uuid4()),
+            id=request_id,
             method=method,
             params=params,
         )
@@ -296,6 +297,18 @@ class A2AClient(SkillNegotiationMixin):
             pinned_hostname=pinned_hostname,
         )
         rpc_resp = _parse_rpc_response(response, peer_name)
+
+        # Fail closed on a JSON-RPC id mismatch: a stale or mis-correlated
+        # peer response must never be parsed as the current call's result.
+        if rpc_resp.id != request_id:
+            logger.warning(
+                A2A_OUTBOUND_RESPONSE_INVALID,
+                peer_name=peer_name,
+                reason="rpc_id_mismatch",
+                method=method,
+            )
+            msg = f"Peer '{peer_name}' returned a mismatched JSON-RPC id"
+            raise A2AClientError(msg, peer_name=peer_name)
 
         if rpc_resp.error is not None:
             msg = (

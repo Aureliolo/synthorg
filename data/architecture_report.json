@@ -8,8 +8,8 @@
     },
     "src/synthorg/a2a/client.py": {
       "cap": 500,
-      "loc": 487,
-      "ratio": 0.974,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
     },
     "src/synthorg/a2a/models.py": {
@@ -968,8 +968,8 @@
     },
     "src/synthorg/observability/sink_config_builder.py": {
       "cap": 500,
-      "loc": 469,
-      "ratio": 0.938,
+      "loc": 466,
+      "ratio": 0.932,
       "tier": "code"
     },
     "src/synthorg/observability/sinks.py": {
