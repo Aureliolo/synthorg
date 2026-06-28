@@ -1109,7 +1109,8 @@ def _match_card_skills(card: A2AAgentCard, skill: str) -> tuple[str, ...]:
     return tuple(
         sk.id
         for sk in card.skills
-        if sk.id.lower() == needle or any(tag.lower() == needle for tag in sk.tags)
+        if normalize_ascii_lowercase(sk.id) == needle
+        or any(normalize_ascii_lowercase(tag) == needle for tag in sk.tags)
     )
 
 

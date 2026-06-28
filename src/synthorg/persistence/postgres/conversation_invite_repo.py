@@ -24,6 +24,9 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     validate_pagination_args,
 )
+from synthorg.persistence._shared._filter_clauses import (
+    build_conversation_invite_filter_clauses,
+)
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
 )
@@ -50,33 +53,6 @@ _UPSERT_SQL = f"""
         status = EXCLUDED.status,
         created_at = EXCLUDED.created_at
 """  # noqa: S608  -- column list is a compile-time constant
-
-
-def _build_where(
-    filter_spec: ConversationInviteFilterSpec,
-) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec.
-
-    Returns:
-        ``(where_clause, params)`` where ``where_clause`` is the SQL fragment (without
-        the leading ``WHERE``) and ``params`` is the matching positional parameter list.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if filter_spec.conversation_id is not None:
-        clauses.append("conversation_id = %s")
-        params.append(filter_spec.conversation_id)
-    if filter_spec.approval_id is not None:
-        clauses.append("approval_id = %s")
-        params.append(filter_spec.approval_id)
-    if filter_spec.target_agent_id is not None:
-        clauses.append("target_agent_id = %s")
-        params.append(filter_spec.target_agent_id)
-    if filter_spec.status is not None:
-        clauses.append("status = %s")
-        params.append(filter_spec.status.value)
-    where = " AND ".join(clauses) if clauses else "TRUE"
-    return where, params
 
 
 class PostgresConversationInviteRepository:
@@ -240,7 +216,9 @@ class PostgresConversationInviteRepository:
             limit, offset, event=COS_GROUP_INVITE_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        where, params = _build_where(filter_spec)
+        where, params = build_conversation_invite_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         params.extend([effective_limit, offset])
         try:
             async with (
@@ -278,7 +256,9 @@ class PostgresConversationInviteRepository:
         Returns:
             Number of matching rows.
         """
-        where, params = _build_where(filter_spec)
+        where, params = build_conversation_invite_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         try:
             async with (
                 self._pool.connection() as conn,

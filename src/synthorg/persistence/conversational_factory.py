@@ -16,6 +16,7 @@ from synthorg.observability.events.persistence.conversational import (
     PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
     PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND,
 )
+from synthorg.persistence.backend_dispatch import build_for_backend
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -110,7 +111,8 @@ def build_conversational_repositories(
             error=safe_error_description(exc),
         )
         return None
-    if name == _SQLITE:
+
+    def _sqlite() -> ConversationalRepositories:
         from synthorg.persistence.sqlite.conversation_invite_repo import (  # noqa: PLC0415
             SQLiteConversationInviteRepository,
         )
@@ -143,28 +145,32 @@ def build_conversational_repositories(
                 sqlite_handle, write_context=write_context
             ),
         )
-    from synthorg.persistence.postgres.conversation_invite_repo import (  # noqa: PLC0415
-        PostgresConversationInviteRepository,
-    )
-    from synthorg.persistence.postgres.conversation_participant_repo import (  # noqa: PLC0415
-        PostgresConversationParticipantRepository,
-    )
-    from synthorg.persistence.postgres.conversation_repo import (  # noqa: PLC0415
-        PostgresConversationRepository,
-        PostgresConversationTurnRepository,
-    )
-    from synthorg.persistence.postgres.conversational_proposal_repo import (  # noqa: PLC0415
-        PostgresConversationalProposalRepository,
-    )
 
-    pg_handle = cast("AsyncConnectionPool", handle)
-    return ConversationalRepositories(
-        conversation_repo=PostgresConversationRepository(pg_handle),
-        turn_repo=PostgresConversationTurnRepository(pg_handle),
-        proposal_repo=PostgresConversationalProposalRepository(pg_handle),
-        participant_repo=PostgresConversationParticipantRepository(pg_handle),
-        invite_repo=PostgresConversationInviteRepository(pg_handle),
-    )
+    def _postgres() -> ConversationalRepositories:
+        from synthorg.persistence.postgres.conversation_invite_repo import (  # noqa: PLC0415
+            PostgresConversationInviteRepository,
+        )
+        from synthorg.persistence.postgres.conversation_participant_repo import (  # noqa: PLC0415
+            PostgresConversationParticipantRepository,
+        )
+        from synthorg.persistence.postgres.conversation_repo import (  # noqa: PLC0415
+            PostgresConversationRepository,
+            PostgresConversationTurnRepository,
+        )
+        from synthorg.persistence.postgres.conversational_proposal_repo import (  # noqa: PLC0415
+            PostgresConversationalProposalRepository,
+        )
+
+        pg_handle = cast("AsyncConnectionPool", handle)
+        return ConversationalRepositories(
+            conversation_repo=PostgresConversationRepository(pg_handle),
+            turn_repo=PostgresConversationTurnRepository(pg_handle),
+            proposal_repo=PostgresConversationalProposalRepository(pg_handle),
+            participant_repo=PostgresConversationParticipantRepository(pg_handle),
+            invite_repo=PostgresConversationInviteRepository(pg_handle),
+        )
+
+    return build_for_backend(backend, sqlite=_sqlite, postgres=_postgres)
 
 
 __all__ = [

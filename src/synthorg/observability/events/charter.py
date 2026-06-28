@@ -44,6 +44,11 @@ CHARTER_STATE_INCONSISTENT: Final[str] = "charter.state_inconsistent"
 
 CHARTER_SUBSTRATE_UNAVAILABLE: Final[str] = "charter.substrate.unavailable"
 
+# -- Factory ------------------------------------------------------------
+
+CHARTER_STRATEGY_UNKNOWN: Final[str] = "charter.strategy.unknown"
+"""The charter-interview factory got an unrecognised strategy discriminator."""
+
 __all__ = [
     "CHARTER_ALREADY_DECIDED",
     "CHARTER_APPROVED",
@@ -65,5 +70,6 @@ __all__ = [
     "CHARTER_PROJECT_ALREADY_EXISTS",
     "CHARTER_STATE_INCONSISTENT",
     "CHARTER_STATUS_TRANSITIONED",
+    "CHARTER_STRATEGY_UNKNOWN",
     "CHARTER_SUBSTRATE_UNAVAILABLE",
 ]

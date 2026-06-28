@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import compare_ci
+from synthorg.core.normalization import compare_ci, normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
@@ -121,7 +121,7 @@ class NetworkPolicy(BaseModel):
         raw = data["hostname_allowlist"]
         if not isinstance(raw, tuple | list):
             return data
-        normalized = dedupe_preserving_order(h.lower() for h in raw)
+        normalized = dedupe_preserving_order(normalize_ascii_lowercase(h) for h in raw)
         return {**data, "hostname_allowlist": normalized}
 
 
@@ -429,7 +429,7 @@ async def validate_url_host(
         )
         return f"Could not extract hostname from URL: {url!r}"
 
-    normalized = hostname.lower()
+    normalized = normalize_ascii_lowercase(hostname)
     is_https = compare_ci(urlparse(url).scheme, "https")
 
     port: int | None = None

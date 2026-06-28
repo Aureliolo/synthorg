@@ -15,7 +15,11 @@ from synthorg.knowledge.errors import KnowledgeSynthesisError
 from synthorg.knowledge.synthesis.citation_binder import KnowledgeCitationBinder
 from synthorg.knowledge.synthesis.llm_synthesizer import KnowledgeSynthesizer
 from synthorg.knowledge.synthesis.protocol import Synthesizer
+from synthorg.observability import get_logger
+from synthorg.observability.events.knowledge import KNOWLEDGE_SYNTHESIZER_KIND_UNKNOWN
 from synthorg.providers.protocol import CompletionProvider
+
+logger = get_logger(__name__)
 
 KnowledgeSynthesizerKind = Literal["llm"]
 """Discriminator for the knowledge synthesis strategy. ``llm`` is the only
@@ -49,5 +53,6 @@ def build_knowledge_synthesizer(  # noqa: PLR0913 -- injected synthesis collabor
             clock=clock,
             cost_tracker=cost_tracker,
         )
+    logger.warning(KNOWLEDGE_SYNTHESIZER_KIND_UNKNOWN, kind=kind)
     msg = f"unknown knowledge synthesizer kind: {kind!r}"
     raise KnowledgeSynthesisError(msg)

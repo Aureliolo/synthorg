@@ -13,7 +13,11 @@ from synthorg.meta.charter.strategy import (
     LLMCharterInterviewer,
 )
 from synthorg.meta.errors import UnknownCharterStrategyError
+from synthorg.observability import get_logger
+from synthorg.observability.events.charter import CHARTER_STRATEGY_UNKNOWN
 from synthorg.providers.protocol import CompletionProvider
+
+logger = get_logger(__name__)
 
 _LLM: str = "llm"
 
@@ -45,6 +49,10 @@ def build_charter_interview_strategy(
             config=config,
             cost_tracker=cost_tracker,
         )
+    logger.warning(
+        CHARTER_STRATEGY_UNKNOWN,
+        interview_strategy=config.interview_strategy,
+    )
     raise UnknownCharterStrategyError(strategy=config.interview_strategy)
 
 

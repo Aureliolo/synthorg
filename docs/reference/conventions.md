@@ -447,8 +447,10 @@ domain-scoped module under `src/synthorg/observability/events/`.
 Import by name from the domain module; never use a string literal in
 a `logger.*(...)` call.
 
-Domains currently exposing constants (non-exhaustive; each `.py`
-file in `src/synthorg/observability/events/` is one domain module):
+Domains currently exposing constants (the
+`src/synthorg/observability/events/` package tree is the authoritative
+inventory; the names below are an illustrative subset, not the full
+set of top-level and nested domain modules):
 `api`, `tool`, `workflow_execution`, `approval_gate`, `hr`,
 `workers`, `meeting`, `engine`, `escalation`, `settings`,
 `memory`, `persistence`, `mcp`, `metrics`, `tracing`, `telemetry`,

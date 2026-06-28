@@ -148,8 +148,6 @@ class BridgeConfigState:
         the startup snapshot path and :meth:`mutate_api` from the
         ``ApiBridgeSettingsSubscriber`` hot-reload path.
 
-        Returns:
-            ``ApiBridgeConfig`` instance.
         """
         return self._api
 
@@ -196,8 +194,6 @@ class BridgeConfigState:
         ``_apply_bridge_config`` or under a resolver outage still
         observes the documented retry budget.
 
-        Returns:
-            ``WorkersBridgeConfig`` instance.
         """
         return self._workers
 
@@ -240,8 +236,6 @@ class BridgeConfigState:
         observes the documented consolidation / fine-tune preflight
         defaults.
 
-        Returns:
-            ``MemoryBridgeConfig`` instance.
         """
         return self._memory
 
@@ -283,8 +277,6 @@ class BridgeConfigState:
         ``_apply_bridge_config`` or under a resolver outage still sees the
         documented HTTP-handler / TSA-endpoint defaults.
 
-        Returns:
-            ``ObservabilityBridgeConfig`` instance.
         """
         return self._observability
 

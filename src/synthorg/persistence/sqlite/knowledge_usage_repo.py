@@ -19,6 +19,9 @@ from synthorg.observability.events.deliverable_receipts import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared._filter_clauses import (
+    build_knowledge_usage_filter_clauses,
+)
 from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.knowledge_usage_protocol import (
@@ -149,7 +152,9 @@ class SQLiteKnowledgeUsageRecordRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_USAGE_QUERY_FAILED
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_knowledge_usage_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         sql = (
             f"SELECT {_COLUMNS} FROM knowledge_usage_record WHERE {where} "
             "ORDER BY recorded_at DESC, record_id DESC LIMIT ? OFFSET ?"
@@ -205,31 +210,6 @@ class SQLiteKnowledgeUsageRecordRepository:
                 )
                 raise QueryError(msg) from exc
         return count
-
-    def _build_where(
-        self, filter_spec: KnowledgeUsageFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``.
-
-        Returns:
-            ``(where_clause, params)`` without the leading ``WHERE``.
-        """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.execution_id is not None:
-            conditions.append("execution_id = ?")
-            params.append(filter_spec.execution_id)
-        if filter_spec.task_id is not None:
-            conditions.append("task_id = ?")
-            params.append(filter_spec.task_id)
-        if filter_spec.project_id is not None:
-            conditions.append("project_id = ?")
-            params.append(filter_spec.project_id)
-        if filter_spec.source_id is not None:
-            conditions.append("source_id = ?")
-            params.append(filter_spec.source_id)
-        where = " AND ".join(conditions) if conditions else "1=1"
-        return where, params
 
     def _to_row(self, record: KnowledgeUsageRecord) -> dict[str, object]:
         """Flatten a record into a row dict.

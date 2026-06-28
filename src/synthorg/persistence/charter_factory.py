@@ -15,6 +15,7 @@ from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
     PERSISTENCE_CHARTER_UNKNOWN_BACKEND,
 )
+from synthorg.persistence.backend_dispatch import build_for_backend
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -62,7 +63,8 @@ def build_charter_repository(
             error=safe_error_description(exc),
         )
         return None
-    if name == _SQLITE:
+
+    def _sqlite() -> CharterRepository:
         from synthorg.persistence.sqlite.charter_repo import (  # noqa: PLC0415
             SQLiteCharterRepository,
         )
@@ -70,11 +72,15 @@ def build_charter_repository(
         return SQLiteCharterRepository(
             cast("aiosqlite.Connection", handle), write_context=write_context
         )
-    from synthorg.persistence.postgres.charter_repo import (  # noqa: PLC0415
-        PostgresCharterRepository,
-    )
 
-    return PostgresCharterRepository(cast("AsyncConnectionPool", handle))
+    def _postgres() -> CharterRepository:
+        from synthorg.persistence.postgres.charter_repo import (  # noqa: PLC0415
+            PostgresCharterRepository,
+        )
+
+        return PostgresCharterRepository(cast("AsyncConnectionPool", handle))
+
+    return build_for_backend(backend, sqlite=_sqlite, postgres=_postgres)
 
 
 __all__ = ["build_charter_repository"]

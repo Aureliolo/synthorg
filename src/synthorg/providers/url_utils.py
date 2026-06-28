@@ -4,6 +4,7 @@ import ipaddress
 from typing import Final
 from urllib.parse import urlparse
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.url_redaction import redact_url as _redact_url
 
 LOCALHOST_ALIASES: Final[frozenset[str]] = frozenset(
@@ -42,7 +43,7 @@ def is_self_url(url: str, *, backend_port: int) -> bool:
         return False
     if port != backend_port:
         return False
-    normalized_host = hostname.rstrip(".").lower()
+    normalized_host = normalize_ascii_lowercase(hostname.rstrip("."))
     if normalized_host in LOCALHOST_ALIASES:
         return True
     try:

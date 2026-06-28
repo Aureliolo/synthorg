@@ -30,6 +30,9 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared._filter_clauses import (
+    build_evolution_outcome_filter_clauses,
+)
 from synthorg.persistence._shared.evolution_outcome_marshalling import (
     outcome_to_payload,
     row_to_outcome_record,
@@ -107,7 +110,12 @@ class SQLiteEvolutionOutcomeRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED
         )
-        clauses, params = _build_where(filter_spec)
+        clauses, params = build_evolution_outcome_filter_clauses(
+            filter_spec,
+            placeholder="?",
+            serialize_applied=int,
+            serialize_timestamp=lambda ts: format_iso_utc(normalize_utc(ts)),
+        )
         sql = f"SELECT {_SELECT_COLS} FROM evolution_outcomes"  # noqa: S608
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
@@ -189,34 +197,6 @@ class SQLiteEvolutionOutcomeRepository:
         )
         msg = f"Failed to {operation}: {type(exc).__name__}"
         raise QueryError(msg) from exc
-
-
-def _build_where(
-    filter_spec: EvolutionOutcomeFilterSpec,
-) -> tuple[list[str], list[object]]:
-    """Build the WHERE clause fragments and bound params (SQLite ``?``).
-
-    Returns:
-        A ``(clauses, params)`` pair.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if filter_spec.agent_id is not None:
-        clauses.append("agent_id = ?")
-        params.append(filter_spec.agent_id)
-    if filter_spec.axis is not None:
-        clauses.append("axis = ?")
-        params.append(filter_spec.axis)
-    if filter_spec.applied is not None:
-        clauses.append("applied = ?")
-        params.append(int(filter_spec.applied))
-    if filter_spec.since is not None:
-        clauses.append("recorded_at >= ?")
-        params.append(format_iso_utc(normalize_utc(filter_spec.since)))
-    if filter_spec.until is not None:
-        clauses.append("recorded_at < ?")
-        params.append(format_iso_utc(normalize_utc(filter_spec.until)))
-    return clauses, params
 
 
 __all__ = ["SQLiteEvolutionOutcomeRepository"]

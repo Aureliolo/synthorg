@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -77,7 +78,11 @@ class ProviderDiscoveryPolicy(BaseModel):
             The validated instance with ``host_port_allowlist``
             lowercased and deduplicated.
         """
-        normalized = tuple(dict.fromkeys(h.lower() for h in self.host_port_allowlist))
+        normalized = tuple(
+            dict.fromkeys(
+                normalize_ascii_lowercase(h) for h in self.host_port_allowlist
+            )
+        )
         if normalized != self.host_port_allowlist:
             object.__setattr__(self, "host_port_allowlist", normalized)
         return self
@@ -105,7 +110,7 @@ def extract_host_port(url: str) -> str | None:
     if not hostname:
         return None
 
-    hostname = hostname.lower()
+    hostname = normalize_ascii_lowercase(hostname)
     try:
         raw_port = parsed.port
     except ValueError:
@@ -250,7 +255,7 @@ async def resolve_discovery_target(
     host = parsed.hostname
     if not host:
         return f"Could not extract hostname from discovery URL: {url!r}"
-    normalized = host.lower()
+    normalized = normalize_ascii_lowercase(host)
     is_https = parsed.scheme == "https"
     try:
         raw_port = parsed.port

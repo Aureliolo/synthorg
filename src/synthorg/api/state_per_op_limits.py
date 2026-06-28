@@ -49,20 +49,12 @@ class PerOpLimitsState:
 
     @property
     def has_rate_limit_config(self) -> bool:
-        """Check whether the per-op sliding-window config is set.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Check whether the per-op sliding-window config is set."""
         return self._rate_limit_config is not None
 
     @property
     def rate_limit_config(self) -> PerOpRateLimitConfig:
-        """Return the current per-op sliding-window config or raise 503.
-
-        Returns:
-            ``PerOpRateLimitConfig`` instance.
-        """
+        """Return the current per-op sliding-window config or raise 503."""
         return self._require(self._rate_limit_config, "per_op_rate_limit_config")
 
     def set_rate_limit_config(self, config: PerOpRateLimitConfig) -> None:
@@ -100,20 +92,12 @@ class PerOpLimitsState:
 
     @property
     def has_concurrency_config(self) -> bool:
-        """Check whether the per-op inflight config is set.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Check whether the per-op inflight config is set."""
         return self._concurrency_config is not None
 
     @property
     def concurrency_config(self) -> PerOpConcurrencyConfig:
-        """Return the current per-op inflight config or raise 503.
-
-        Returns:
-            ``PerOpConcurrencyConfig`` instance.
-        """
+        """Return the current per-op inflight config or raise 503."""
         return self._require(self._concurrency_config, "per_op_concurrency_config")
 
     def set_concurrency_config(self, config: PerOpConcurrencyConfig) -> None:

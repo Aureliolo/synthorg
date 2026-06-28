@@ -39,6 +39,9 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared._filter_clauses import (
+    build_tool_blueprint_filter_clauses,
+)
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.tool_blueprint_protocol import (
     ToolBlueprintFilterSpec,
@@ -303,30 +306,6 @@ class SQLiteDynamicToolRepository:
         logger.debug(PERSISTENCE_DYNAMIC_TOOL_LISTED, count=len(items))
         return items
 
-    def _build_where(
-        self, filter_spec: ToolBlueprintFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause and bound params from a filter spec.
-
-        Returns:
-            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
-            (without the leading ``WHERE``) and ``params`` is the matching positional
-            parameter list.
-        """
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.state is not None:
-            clauses.append("state = ?")
-            params.append(filter_spec.state.value)
-        if filter_spec.capability is not None:
-            clauses.append("capability = ?")
-            params.append(filter_spec.capability)
-        if filter_spec.sandbox_backend is not None:
-            clauses.append("sandbox_backend = ?")
-            params.append(filter_spec.sandbox_backend.value)
-        where = " AND ".join(clauses) if clauses else "1=1"
-        return where, params
-
     async def query(
         self,
         filter_spec: ToolBlueprintFilterSpec,
@@ -348,7 +327,9 @@ class SQLiteDynamicToolRepository:
             ),
             _MAX_PAGE_LIMIT,
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_tool_blueprint_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         params.extend([effective_limit, offset])
         sql = (
             f"SELECT {_SELECT_COLS} FROM dynamic_tools WHERE {where} "  # noqa: S608
@@ -379,7 +360,9 @@ class SQLiteDynamicToolRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = self._build_where(filter_spec)
+        where, params = build_tool_blueprint_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         sql = f"SELECT COUNT(*) FROM dynamic_tools WHERE {where}"  # noqa: S608
         try:
             async with self._db.execute(sql, params) as cursor:

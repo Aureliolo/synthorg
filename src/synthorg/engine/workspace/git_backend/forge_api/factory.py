@@ -19,6 +19,10 @@ from synthorg.engine.workspace.git_backend.forge_api.github import GitHubForgeCl
 from synthorg.engine.workspace.git_backend.forge_api.gitlab import GitLabForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeApiClient
 from synthorg.integrations.connections.models import ConnectionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.git import GIT_BACKEND_CONFIG_INVALID
+
+logger = get_logger(__name__)
 
 _GITHUB_COM_HOST: Final[str] = "github.com"
 _GITHUB_PUBLIC_API: Final[str] = "https://api.github.com"
@@ -36,6 +40,13 @@ def _host_origin(base_url: str) -> tuple[str, str]:
     """
     split = urlsplit(base_url)
     if split.scheme != "https" or not split.hostname:
+        # Never log the full base_url: a forge URL can carry credentials
+        # in its userinfo. The scheme alone is enough to triage.
+        logger.warning(
+            GIT_BACKEND_CONFIG_INVALID,
+            reason="non_https_or_no_host",
+            base_url_scheme=split.scheme,
+        )
         msg = "forge connection base_url must be an https URL with a host"
         raise GitBackendConfigError(msg)
     host = split.hostname

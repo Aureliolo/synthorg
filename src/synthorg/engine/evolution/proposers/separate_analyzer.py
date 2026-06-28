@@ -31,6 +31,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import (
     get_logger,
@@ -348,6 +349,7 @@ class SeparateAnalyzerProposer:
                 agent_id=agent_id,
                 task_id=NotBlankStr("system:evolution:propose"),
                 call_category=LLMCallCategory.SYSTEM,
+                purpose=PromptPurposeId.EVOLUTION_PROPOSE,
             ):
                 response = await self._provider.complete(
                     messages,

@@ -23,7 +23,10 @@ from urllib.parse import urlsplit
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import strip_trailing_slash
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase,
+    strip_trailing_slash,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
@@ -53,7 +56,7 @@ def _is_ollama_cloud_host(base_url: str) -> bool:
         True when the URL authority is ``ollama.com`` or a subdomain of it.
     """
     candidate = base_url if "://" in base_url else f"//{base_url}"
-    host = (urlsplit(candidate).hostname or "").lower()
+    host = normalize_ascii_lowercase(urlsplit(candidate).hostname or "")
     return host == _OLLAMA_CLOUD_HOST or host.endswith(f".{_OLLAMA_CLOUD_HOST}")
 
 

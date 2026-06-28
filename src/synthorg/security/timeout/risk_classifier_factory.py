@@ -9,7 +9,11 @@ kinds whose required dependency is absent raise
 """
 
 from synthorg.core.registry import StrategyRegistry
-from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.observability import get_logger
+from synthorg.observability.events.timeout import (
+    TIMEOUT_FACTORY_CONFIG_INVALID,
+    TIMEOUT_UNKNOWN_ACTION_TYPE,
+)
 from synthorg.security.risk_map import (
     MapBackedRiskClassifier,
     default_risk_classifier,
@@ -27,6 +31,8 @@ from synthorg.security.timeout.time_based_elevation import (
 from synthorg.security.timeout.workload_adaptive import (
     WorkloadAdaptiveRiskClassifier,
 )
+
+logger = get_logger(__name__)
 
 
 def _build_default(
@@ -68,6 +74,11 @@ def _build_workload_adaptive(
         RiskClassifierConfigError: If no ``inflight_probe`` was provided.
     """
     if deps.inflight_probe is None:
+        logger.warning(
+            TIMEOUT_FACTORY_CONFIG_INVALID,
+            kind="WORKLOAD_ADAPTIVE",
+            missing="inflight_probe",
+        )
         msg = (
             "WORKLOAD_ADAPTIVE risk classifier requires an "
             "'inflight_probe' dependency but none was provided"

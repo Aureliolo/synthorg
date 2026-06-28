@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
@@ -108,12 +109,9 @@ def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
     """
     if not entries:
         return "(no results)"
-    max_len = _REFORMULATION_ENTRY_MAX_CHARS
     parts: list[str] = []
     for e in entries[:_REFORMULATION_MAX_ENTRIES]:
-        text = e.content[:max_len]
-        if len(e.content) > max_len:
-            text += "..."
+        text = clip_with_ellipsis(e.content, _REFORMULATION_ENTRY_MAX_CHARS)
         parts.append(f"- [{e.category.value}] {_sanitize_for_xml_block(text)}")
     return "\n".join(parts)
 

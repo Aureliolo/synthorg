@@ -22,6 +22,10 @@ from synthorg.engine.workspace.git_backend.local_path import (
     LocalPathGitBackend,
 )
 from synthorg.engine.workspace.git_backend.protocol import GitBackend
+from synthorg.observability import get_logger
+from synthorg.observability.events.git import GIT_BACKEND_CONFIG_INVALID
+
+logger = get_logger(__name__)
 
 
 def _build_embedded(
@@ -32,6 +36,11 @@ def _build_embedded(
         msg = (
             "EMBEDDED git backend requires a 'workspace_base_root' "
             "dependency but none was provided"
+        )
+        logger.warning(
+            GIT_BACKEND_CONFIG_INVALID,
+            backend="embedded",
+            reason="missing_workspace_base_root",
         )
         raise GitBackendConfigError(msg)
     return EmbeddedGitBackend(
@@ -48,6 +57,11 @@ def _build_local_path(
 ) -> GitBackend:
     if not config.local_repo_path:
         msg = "LOCAL_PATH git backend requires 'local_repo_path' in config"
+        logger.warning(
+            GIT_BACKEND_CONFIG_INVALID,
+            backend="local_path",
+            reason="missing_local_repo_path",
+        )
         raise GitBackendConfigError(msg)
     return LocalPathGitBackend(
         local_repo_path=config.local_repo_path,
@@ -62,11 +76,21 @@ def _build_external_remote(
 ) -> GitBackend:
     if not config.remote_connection_name:
         msg = "EXTERNAL_REMOTE git backend requires 'remote_connection_name' in config"
+        logger.warning(
+            GIT_BACKEND_CONFIG_INVALID,
+            backend="external_remote",
+            reason="missing_remote_connection_name",
+        )
         raise GitBackendConfigError(msg)
     if deps.connection_catalog is None:
         msg = (
             "EXTERNAL_REMOTE git backend requires a 'connection_catalog' "
             "dependency but none was provided"
+        )
+        logger.warning(
+            GIT_BACKEND_CONFIG_INVALID,
+            backend="external_remote",
+            reason="missing_connection_catalog",
         )
         raise GitBackendConfigError(msg)
     return ExternalRemoteGitBackend(

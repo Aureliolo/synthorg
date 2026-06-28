@@ -29,8 +29,15 @@ from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.meta.rollout.mutators.architecture_mutator import ArchitectureAdapter
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_ROLLBACK_OPERATION_APPLIED,
+    META_ROLLBACK_OPERATION_FAILED,
+)
 from synthorg.organization.services import DepartmentService
 from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
+
+logger = get_logger(__name__)
 
 _ACTOR = NotBlankStr("meta-loop")
 
@@ -69,8 +76,20 @@ def build_architecture_adapters(
         name = NotBlankStr(target_tail)
         if previous_value is None:
             await role_repo.delete(name)
+            logger.debug(
+                META_ROLLBACK_OPERATION_APPLIED,
+                adapter="role",
+                target_tail=target_tail,
+                operation="delete",
+            )
             return
         await role_repo.save(RoleRecord.model_validate(previous_value))
+        logger.debug(
+            META_ROLLBACK_OPERATION_APPLIED,
+            adapter="role",
+            target_tail=target_tail,
+            operation="restore",
+        )
 
     async def _department_adapter(target_tail: str, previous_value: object) -> None:
         if previous_value is None:
@@ -81,10 +100,22 @@ def build_architecture_adapters(
             )
             return
         if not isinstance(previous_value, Mapping):
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                adapter="department",
+                target_tail=target_tail,
+                reason="invalid_previous_value_type",
+            )
             msg = "department restore requires a mapping previous_value"
             raise RollbackMutationDeniedError(msg)
         payload = _DepartmentRestorePayload.model_validate(previous_value)
         if str(payload.id) != target_tail:
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                adapter="department",
+                target_tail=target_tail,
+                reason="id_mismatch",
+            )
             msg = "department restore previous_value id must match the operation target"
             raise RollbackMutationDeniedError(msg)
         await department_service.create_department(
@@ -96,6 +127,12 @@ def build_architecture_adapters(
 
     async def _workflow_adapter(target_tail: str, previous_value: object) -> None:
         if previous_value is None:
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                adapter="workflow",
+                target_tail=target_tail,
+                reason="no_delete_rollback_path",
+            )
             msg = (
                 "workflow restore requires a previous definition; "
                 "there is no workflow-delete rollback path"

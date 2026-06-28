@@ -118,6 +118,12 @@ SECURITY_RISK_OVERRIDE_CREATED: Final[str] = "security.risk_override.created"
 SECURITY_RISK_OVERRIDE_REVOKED: Final[str] = "security.risk_override.revoked"
 SECURITY_RISK_OVERRIDE_APPLIED: Final[str] = "security.risk_override.applied"
 SECURITY_RISK_OVERRIDE_EXPIRED: Final[str] = "security.risk_override.expired"
+SECURITY_RISK_OVERRIDE_CREATE_REJECTED: Final[str] = (
+    "security.risk_override.create_rejected"
+)
+"""A risk-override create was rejected as a no-op (tier already in effect)."""
+SECURITY_RISK_OVERRIDE_NOT_FOUND: Final[str] = "security.risk_override.not_found"
+"""A revoke targeted an override id with no matching active override."""
 
 # SSRF violation events.
 SECURITY_SSRF_VIOLATION_RECORDED: Final[str] = "security.ssrf_violation.recorded"

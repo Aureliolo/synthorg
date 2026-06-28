@@ -211,7 +211,14 @@ class Worker:
                 logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
 
     async def stop(self) -> None:
-        """Signal the claim loop to exit after the current claim."""
+        """Signal the claim loop to exit after the current claim.
+
+        Holds ``_lifecycle_lock`` so the stop signal is ordered against
+        :meth:`run`'s lifecycle transition. If ``run`` is active, the loop
+        observes ``_stop_event`` on its next iteration; if ``run`` has not
+        yet entered the lock, it clears ``_stop_event`` on entry, so a stop
+        only takes effect on an actively running loop, never a future one.
+        """
         async with self._lifecycle_lock:
             self._stop_event.set()
 

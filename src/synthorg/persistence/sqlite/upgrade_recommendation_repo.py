@@ -26,6 +26,9 @@ from synthorg.observability.events.persistence.upgrade_recommendation import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence._shared._filter_clauses import (
+    build_upgrade_recommendation_filter_clauses,
+)
 from synthorg.persistence._upgrade_recommendation_marshalling import (
     row_to_recommendation,
 )
@@ -236,7 +239,9 @@ class SQLiteUpgradeRecommendationRepository:
             ),
             _MAX_PAGE_LIMIT,
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_upgrade_recommendation_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         params.extend([effective_limit, offset])
         sql = f"""
             SELECT {_SELECT_COLS} FROM upgrade_recommendations
@@ -271,7 +276,9 @@ class SQLiteUpgradeRecommendationRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = self._build_where(filter_spec)
+        where, params = build_upgrade_recommendation_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         sql = (
             "SELECT COUNT(*) FROM upgrade_recommendations "  # noqa: S608
             f"WHERE {where}"
@@ -384,23 +391,6 @@ class SQLiteUpgradeRecommendationRepository:
                 )
                 raise QueryError(msg) from exc
         return rowcount > 0
-
-    @staticmethod
-    def _build_where(
-        filter_spec: UpgradeRecommendationFilterSpec,
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + bound params from a filter spec.
-
-        Returns:
-            ``(where_clause, params)`` (clause excludes the leading WHERE).
-        """
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.status is not None:
-            clauses.append("status = ?")
-            params.append(filter_spec.status.value)
-        where = " AND ".join(clauses) if clauses else "1=1"
-        return where, params
 
 
 __all__ = ["SQLiteUpgradeRecommendationRepository"]

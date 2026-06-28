@@ -4,6 +4,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.composite import (
@@ -19,6 +20,7 @@ from synthorg.memory.consolidation.factory import (
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.observability.events.consolidation import CONSOLIDATION_CONFIG_INVALID
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
 
@@ -79,11 +81,19 @@ class TestBuildConsolidationStrategy:
         assert isinstance(strategy, CompositeConsolidationStrategy)
 
     def test_llm_missing_provider_raises(self) -> None:
-        with pytest.raises(MemoryConfigError, match="provider"):
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(MemoryConfigError, match="provider"),
+        ):
             build_consolidation_strategy(
                 ConsolidationStrategyType.LLM,
                 ConsolidationDeps(backend=_backend(), model="m"),
             )
+        assert any(
+            e["event"] == CONSOLIDATION_CONFIG_INVALID
+            and e.get("missing") == "provider"
+            for e in logs
+        )
 
     def test_llm_missing_model_raises(self) -> None:
         with pytest.raises(MemoryConfigError, match="model"):

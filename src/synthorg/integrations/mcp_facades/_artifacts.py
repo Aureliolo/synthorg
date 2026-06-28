@@ -14,7 +14,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     ARTIFACT_CREATED_VIA_MCP,
+    ARTIFACT_DELETE_BACKEND_UNSUPPORTED,
+    ARTIFACT_DELETE_INDEX_MISS,
+    ARTIFACT_DELETE_STORAGE_MISS,
     ARTIFACT_DELETED_VIA_MCP,
+    ARTIFACT_ID_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -106,6 +110,7 @@ class ArtifactFacadeService:
         try:
             key = UUID(artifact_id)
         except ValueError:
+            logger.warning(ARTIFACT_ID_INVALID, artifact_id=artifact_id)
             return None
         async with self._lock:
             record = self._index.get(key)
@@ -164,6 +169,7 @@ class ArtifactFacadeService:
         try:
             key = UUID(artifact_id)
         except ValueError:
+            logger.warning(ARTIFACT_ID_INVALID, artifact_id=artifact_id)
             return False
         # Serialise the index read + storage delete + index pop so two
         # concurrent deletes of the same artifact cannot race: without
@@ -174,9 +180,19 @@ class ArtifactFacadeService:
         async with self._lock:
             record = self._index.get(key)
             if record is None:
+                logger.debug(
+                    ARTIFACT_DELETE_INDEX_MISS,
+                    artifact_id=artifact_id,
+                    actor_id=actor_id,
+                )
                 return False
             fn = getattr(self._storage, "delete", None)
             if not callable(fn):
+                logger.error(
+                    ARTIFACT_DELETE_BACKEND_UNSUPPORTED,
+                    artifact_id=artifact_id,
+                    actor_id=actor_id,
+                )
                 raise CapabilityNotSupportedError(
                     "artifact_delete",
                     "ArtifactStorageBackend does not expose delete; refusing "
@@ -196,6 +212,11 @@ class ArtifactFacadeService:
             # as a miss so the index entry stays put and no audit
             # event fires; only a truthy confirmation drops the row.
             if not storage_removed:
+                logger.warning(
+                    ARTIFACT_DELETE_STORAGE_MISS,
+                    artifact_id=artifact_id,
+                    storage_ref=record.storage_ref,
+                )
                 return False
             self._index.pop(key, None)
         logger.info(
