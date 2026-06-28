@@ -98,6 +98,21 @@ class TestBuildRecoveryStrategyFromAppState:
             FailAndReassignStrategy,
         )
 
+    def test_checkpoint_strategy_without_backend_fails_fast(self) -> None:
+        # Selecting CHECKPOINT without a connected persistence backend must
+        # raise at boot, not silently fall back to fail-reassign.
+        app_state = make_app_state(
+            config=RootConfig(
+                company_name="X",
+                recovery=EngineRecoveryConfig(
+                    strategy=RecoveryStrategyType.CHECKPOINT,
+                ),
+            ),
+            persistence=None,
+        )
+        with pytest.raises(RecoveryConfigError):
+            _build_recovery_strategy(app_state)
+
     def test_connected_backend_threads_config_checkpoint_tuning(self) -> None:
         backend = mock_of[PersistenceBackend](
             is_connected=True,

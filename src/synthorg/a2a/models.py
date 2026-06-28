@@ -436,7 +436,7 @@ class A2ASkillNegotiateResult(BaseModel):
         if not self.accepted and self.url:
             msg = "url must be None when a negotiation is not accepted"
             raise ValueError(msg)
-        if self.url and not self.url.startswith("https://"):
+        if self.url and not self.url.lower().startswith("https://"):
             msg = "routing url must be an https URL"
             raise ValueError(msg)
         return self

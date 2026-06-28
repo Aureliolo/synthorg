@@ -406,6 +406,11 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         record, and deliverable receipt are emitted only after that commit
         so an observability or persistence failure in those steps never
         rolls back a completed transition.
+
+        Raises:
+            CancelledError: Re-raised after the shielded decision-record +
+                receipt work has run to completion, so a shutdown-drain
+                cancellation propagates without losing those side effects.
         """
         try:
             await sync_to_task_engine(
@@ -434,13 +439,15 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             target_status=target.value,
         )
 
-        # The transition has committed. Shield the audit write and receipt
-        # as ONE unit so a shutdown-drain cancellation of the (possibly
-        # backgrounded) completion task cannot abort them mid-flight and
-        # leave a COMPLETED task with no decision record. Two sequential
-        # shields would not suffice: cancelling the outer task during the
-        # first shield re-raises CancelledError the moment it resolves, so
-        # the receipt write would be skipped.
+        # The transition has committed. The audit write and receipt must run
+        # to completion as ONE unit even if a shutdown-drain cancels the
+        # (possibly backgrounded) completion task, so a COMPLETED task is
+        # never left without a decision record. A bare
+        # ``await asyncio.shield(coro)`` is not enough: cancelling the outer
+        # task re-raises CancelledError here while the shielded work is still
+        # running detached, so the loop can close before it lands. Drive an
+        # explicit task and, if cancelled mid-await, await it to completion
+        # before propagating the cancellation.
         async def _record_and_emit() -> None:
             await self._record_decision(
                 task=task,
@@ -451,7 +458,12 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             )
             await emit_receipt(self._receipt_service, task, target)
 
-        await asyncio.shield(_record_and_emit())
+        record_and_emit_task = asyncio.create_task(_record_and_emit())
+        try:
+            await asyncio.shield(record_and_emit_task)
+        except asyncio.CancelledError:
+            await record_and_emit_task
+            raise
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:
         """Raise ``SelfReviewError`` when the decider is the executor.
