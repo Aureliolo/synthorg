@@ -60,11 +60,10 @@ from synthorg.workers._agent_engine_collaborators import (
 from synthorg.workers._agent_middleware_assembly import (
     build_agent_middleware_chain_or_none,
 )
+from synthorg.workers._classification_assembly import build_classification
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.budget.coordination_config import ErrorTaxonomyConfig
-    from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.quality.classifier import StepQualityClassifier
@@ -369,51 +368,6 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
     return tools
 
 
-def _build_classification(
-    app_state: AppState,
-) -> tuple[ErrorTaxonomyConfig | None, tuple[ClassificationSink, ...]]:
-    """Build the post-execution error-taxonomy config + classification sinks.
-
-    Off by default: when ``coordination.error_taxonomy.enabled`` is False the
-    config is ``None`` and the sink tuple empty, so the post-execution pipeline
-    skips classification entirely (no behaviour change). When enabled the shared
-    taxonomy store (the signals aggregator's reader) plus the performance and
-    notification sinks are fed by every classified execution.
-
-    Returns:
-        A ``(error_taxonomy_config_or_none, sinks)`` pair.
-    """
-    from synthorg.engine.classification.sinks import (  # noqa: PLC0415
-        NotificationDispatcherSink,
-        PerformanceTrackerSink,
-    )
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.notifications.state import (  # noqa: PLC0415
-        NotificationsStateSlice,
-    )
-
-    config = app_state.config.coordination.error_taxonomy
-    if not config.enabled:
-        return None, ()
-    sinks: list[ClassificationSink] = []
-    # The taxonomy store plays a dual role: it is both a classification sink
-    # (write side, appended here) and the signals aggregator's reader. The
-    # reference is captured once at engine construction; the slice field is set
-    # once in engine/_construction.py and never replaced, so this shared object
-    # stays valid for the engine's lifetime (no dangling-reference window).
-    store = app_state.slice(EngineStateSlice).error_taxonomy_store
-    if store is not None:
-        sinks.append(store)
-    tracker = app_state.slice(HrStateSlice).performance_tracker
-    if tracker is not None:
-        sinks.append(PerformanceTrackerSink(tracker))
-    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
-    if dispatcher is not None:
-        sinks.append(NotificationDispatcherSink(dispatcher))
-    return config, tuple(sinks)
-
-
 def _build_evolution_service_or_none(
     app_state: AppState,
     provider: CompletionProvider,
@@ -545,19 +499,10 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         The boot ``AgentEngine`` shared by the worker execution service
         and the coordinator.
     """
-    error_taxonomy_config, classification_sinks = _build_classification(app_state)
-    if (
-        error_taxonomy_config is not None
-        and classification_detector_timeout_seconds is not None
-    ):
-        # Bridge the operator-tunable per-detector timeout
-        # (engine.classification_detector_timeout_seconds) onto the
-        # error-taxonomy config, which owns the detector isolation window.
-        error_taxonomy_config = error_taxonomy_config.model_copy(
-            update={
-                "detector_timeout_seconds": classification_detector_timeout_seconds,
-            },
-        )
+    error_taxonomy_config, classification_sinks = build_classification(
+        app_state,
+        detector_timeout_seconds=classification_detector_timeout_seconds,
+    )
     return AgentEngine(
         agent_middleware_chain=build_agent_middleware_chain_or_none(
             app_state,

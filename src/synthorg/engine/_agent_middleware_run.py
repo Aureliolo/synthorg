@@ -85,7 +85,7 @@ def _inject_authority_header(
 
 
 async def apply_before_agent(  # noqa: PLR0913 -- keyword-only DI
-    chain: AgentMiddlewareChain,
+    chain: AgentMiddlewareChain | None,
     *,
     ctx: AgentContext,
     identity: AgentIdentity,
@@ -96,10 +96,15 @@ async def apply_before_agent(  # noqa: PLR0913 -- keyword-only DI
 ) -> AgentContext:
     """Fire ``before_agent`` hooks and apply their effects to *ctx*.
 
+    A ``None`` chain (middleware disabled) returns *ctx* unchanged, so the
+    engine calls this unconditionally without its own guard.
+
     Returns:
         The agent context after every ``before_agent`` hook has run,
         with the authority justification header injected when raised.
     """
+    if chain is None:
+        return ctx
     mw_ctx = _build_context(
         ctx=ctx,
         identity=identity,
@@ -113,7 +118,7 @@ async def apply_before_agent(  # noqa: PLR0913 -- keyword-only DI
 
 
 async def apply_after_agent(  # noqa: PLR0913 -- keyword-only DI
-    chain: AgentMiddlewareChain,
+    chain: AgentMiddlewareChain | None,
     *,
     ctx: AgentContext,
     identity: AgentIdentity,
@@ -124,11 +129,16 @@ async def apply_after_agent(  # noqa: PLR0913 -- keyword-only DI
 ) -> None:
     """Fire ``after_agent`` hooks for end-of-run cleanup slots.
 
+    A ``None`` chain (middleware disabled) is a no-op, so the engine calls
+    this unconditionally without its own guard.
+
     The default ``after_agent`` middleware are ordering slots whose real
     behaviour runs inline in the post-execution pipeline, so this pass
     has no return value; it preserves the chain's ordering contract and
     is the seam through which future ``after_agent`` middleware activate.
     """
+    if chain is None:
+        return
     mw_ctx = _build_context(
         ctx=ctx,
         identity=identity,

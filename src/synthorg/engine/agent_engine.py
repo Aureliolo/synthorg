@@ -700,22 +700,18 @@ class AgentEngine(
             )
 
             loop = await self._resolve_loop(task, agent_id, task_id)
+            # before/after_agent fire around the loop run (no-op when unwired).
+            from synthorg.engine import _agent_middleware_run as _amr  # noqa: PLC0415
 
-            if self._agent_middleware_chain is not None:
-                from synthorg.engine._agent_middleware_run import (  # noqa: PLC0415
-                    apply_before_agent,
-                )
-
-                ctx = await apply_before_agent(
-                    self._agent_middleware_chain,
-                    ctx=ctx,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    effective_autonomy=effective_autonomy,
-                )
-
+            ctx = await _amr.apply_before_agent(
+                self._agent_middleware_chain,
+                ctx=ctx,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
             execution_result = await self._run_loop_with_timeout(
                 loop=loop,
                 ctx=ctx,
@@ -728,21 +724,15 @@ class AgentEngine(
                 timeout_seconds=timeout_seconds,
                 provider=provider or self._provider,
             )
-
-            if self._agent_middleware_chain is not None:
-                from synthorg.engine._agent_middleware_run import (  # noqa: PLC0415
-                    apply_after_agent,
-                )
-
-                await apply_after_agent(
-                    self._agent_middleware_chain,
-                    ctx=execution_result.context,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    effective_autonomy=effective_autonomy,
-                )
+            await _amr.apply_after_agent(
+                self._agent_middleware_chain,
+                ctx=execution_result.context,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
 
             execution_result = await self._post_execution_pipeline(
                 execution_result,
