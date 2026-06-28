@@ -45,7 +45,8 @@ def build_recovery_strategy(
             fallback.
         checkpoint_config: Required when ``config.strategy`` is
             :attr:`RecoveryStrategyType.CHECKPOINT`. Controls
-            ``max_resume_attempts`` and related checkpoint behaviour.
+            ``max_resume_attempts`` and related checkpoint behaviour;
+            sourced from ``config.checkpoint`` by the boot assembly.
 
     Returns:
         The recovery strategy matching the discriminator.
@@ -63,8 +64,10 @@ def build_recovery_strategy(
                 msg = (
                     "RecoveryStrategyType.CHECKPOINT requires both "
                     "checkpoint_repo and checkpoint_config to be wired "
-                    "through build_recovery_strategy (typically via the "
-                    "lifecycle helpers from the active PersistenceBackend)."
+                    "through build_recovery_strategy (the boot assembly "
+                    "supplies checkpoint_repo from the active "
+                    "PersistenceBackend and checkpoint_config from "
+                    "config.recovery.checkpoint)."
                 )
                 logger.error(
                     EXECUTION_RECOVERY_FAILED,

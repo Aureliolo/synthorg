@@ -1,5 +1,7 @@
 """Tests for the outbound A2A client."""
 
+import json
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -82,14 +84,7 @@ class TestA2AClient:
     async def test_send_message_success(self) -> None:
         """send_message returns a task on success."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "task-99", "state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "task-99", "state": "submitted"}),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
@@ -104,14 +99,7 @@ class TestA2AClient:
     async def test_get_task_success(self) -> None:
         """get_task returns the remote task state."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "working"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "working"}),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
@@ -125,14 +113,7 @@ class TestA2AClient:
     async def test_cancel_task_success(self) -> None:
         """cancel_task returns the cancelled task."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "canceled"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "canceled"}),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
@@ -144,14 +125,7 @@ class TestA2AClient:
     async def test_remote_error_raises(self) -> None:
         """Remote JSON-RPC error raises A2AClientError."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "error": {"code": -32001, "message": "Not found"},
-                },
-            ),
+            side_effect=_rpc_echo(error={"code": -32001, "message": "Not found"}),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
@@ -203,14 +177,7 @@ class TestA2AClient:
         route = respx.post(
             "https://peer.example.com/api/v1/a2a",
         ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "submitted"}),
         )
         catalog = _mock_catalog(
             credentials={"api_key": "secret-abc", "auth_scheme": "api_key"},
@@ -245,14 +212,7 @@ class TestA2AClient:
         route = respx.post(
             "https://peer.example.com/api/v1/a2a",
         ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "submitted"}),
         )
         catalog = _mock_catalog(
             credentials={
@@ -273,14 +233,7 @@ class TestA2AClient:
         route = respx.post(
             "https://peer.example.com/api/v1/a2a",
         ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "submitted"}),
         )
         catalog = _mock_catalog(
             credentials={
@@ -301,14 +254,7 @@ class TestA2AClient:
         route = respx.post(
             "https://peer.example.com/api/v1/a2a",
         ).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"id": "t-1", "state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"id": "t-1", "state": "submitted"}),
         )
         catalog = _mock_catalog(
             credentials={"auth_scheme": "mtls"},
@@ -325,14 +271,7 @@ class TestA2AClient:
     async def test_malformed_response_missing_id(self) -> None:
         """Peer result without 'id' raises A2AClientError."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {"state": "submitted"},
-                },
-            ),
+            side_effect=_rpc_echo(result={"state": "submitted"}),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
@@ -341,21 +280,47 @@ class TestA2AClient:
 
     @pytest.mark.unit
     @respx.mock
-    async def test_null_result_raises(self) -> None:
-        """Peer result that is null raises A2AClientError."""
+    async def test_malformed_response_missing_state(self) -> None:
+        """Peer result with only 'id' is rejected, not defaulted to SUBMITTED."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(result={"id": "t-1"}),
+        )
+        catalog = _mock_catalog()
+        client = _make_client(catalog)
+        with pytest.raises(A2AClientError, match="missing task fields: state"):
+            await client.get_task("peer-a", "t-1")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_rpc_id_mismatch_raises(self) -> None:
+        """A response whose JSON-RPC id != the request id is rejected (fail closed)."""
         respx.post("https://peer.example.com/api/v1/a2a").mock(
             return_value=httpx.Response(
                 200,
                 json={
                     "jsonrpc": "2.0",
-                    "id": "1",
-                    "result": {},
+                    "id": "not-the-request-id",
+                    "result": {"id": "t-1", "state": "submitted"},
                 },
             ),
         )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="mismatched JSON-RPC id"):
+            await client.send_message("peer-a", _make_message())
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_null_result_raises(self) -> None:
+        """Peer envelope with a JSON-null result (no error) raises A2AClientError."""
+        # ``result: null`` with no ``error`` violates the JSON-RPC
+        # "exactly one of result/error" envelope invariant, so it is
+        # rejected at parse time rather than reaching task validation.
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(result=None),
+        )
         catalog = _mock_catalog()
         client = _make_client(catalog)
-        with pytest.raises(A2AClientError, match="malformed response"):
+        with pytest.raises(A2AClientError, match="invalid JSON-RPC"):
             await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
@@ -482,3 +447,131 @@ class TestA2AClientTimeoutContract:
         # silent-default drift this contract is meant to prevent.
         with pytest.raises(TypeError):
             A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[misc]
+
+
+def _rpc_echo(
+    *,
+    result: dict[str, object] | None = None,
+    error: dict[str, object] | None = None,
+) -> Callable[[httpx.Request], httpx.Response]:
+    """respx side_effect mimicking a compliant JSON-RPC peer.
+
+    Echoes the request's ``id`` back into the response, as a real peer must,
+    so the client's request/response id-correlation check passes.
+    """
+
+    def _responder(request: httpx.Request) -> httpx.Response:
+        body: dict[str, object] = {
+            "jsonrpc": "2.0",
+            "id": json.loads(request.content)["id"],
+        }
+        if error is not None:
+            body["error"] = error
+        else:
+            body["result"] = result
+        return httpx.Response(200, json=body)
+
+    return _responder
+
+
+class TestA2AClientSkillNegotiation:
+    """The ``skills/query`` + ``skills/negotiate`` client round-trip."""
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_query_skills_returns_matching_peers(self) -> None:
+        """query_skills parses the peer list from the asked node."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(
+                result={"skill": "translate", "peers": ["peer-b", "peer-c"]}
+            ),
+        )
+        client = _make_client()
+        result = await client.query_skills("peer-a", "translate")
+
+        assert result.skill == "translate"
+        assert result.peers == ("peer-b", "peer-c")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_accepted_returns_url(self) -> None:
+        """negotiate_skills surfaces the routing url when accepted."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(
+                result={
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": True,
+                    "url": "https://peer-b.example.com",
+                    "matched_skills": ["translate"],
+                },
+            ),
+        )
+        client = _make_client()
+        result = await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+        assert result.accepted is True
+        assert result.url == "https://peer-b.example.com"
+        assert result.matched_skills == ("translate",)
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_rejected_has_no_url(self) -> None:
+        """A dropped skill negotiates to accepted=False with no url."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(
+                result={
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": False,
+                    "url": None,
+                    "matched_skills": [],
+                },
+            ),
+        )
+        client = _make_client()
+        result = await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+        assert result.accepted is False
+        assert result.url is None
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_query_skills_invalid_payload_raises(self) -> None:
+        """A malformed skills result raises A2AClientError, not a crash."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(result={"unexpected": "shape"}),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.query_skills("peer-a", "translate")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_invalid_payload_raises(self) -> None:
+        """A malformed negotiate result raises A2AClientError, not a crash."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(result={"unexpected": "shape"}),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.negotiate_skills("peer-a", "translate", "peer-b")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_negotiate_skills_accepted_without_url_raises(self) -> None:
+        """A peer claiming acceptance with no url fails validation, not routing."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            side_effect=_rpc_echo(
+                result={
+                    "skill": "translate",
+                    "peer_name": "peer-b",
+                    "accepted": True,
+                    "url": None,
+                    "matched_skills": ["translate"],
+                },
+            ),
+        )
+        client = _make_client()
+        with pytest.raises(A2AClientError, match="invalid"):
+            await client.negotiate_skills("peer-a", "translate", "peer-b")

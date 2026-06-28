@@ -14,6 +14,7 @@ decision, so a self-review attempt never leaves a decided approval row
 or a broadcast WebSocket event behind.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
@@ -147,7 +148,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         *,
         task_id: str,
         approved: bool,
-        decided_by: str | None = None,
+        decided_by: str,
         reason: str | None = None,
         approval_id: str | None = None,
     ) -> None:
@@ -157,28 +158,29 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         On reject: IN_REVIEW -> IN_PROGRESS (rework).
         Self-review check runs again as defense in depth.
 
-        ``decided_by`` is an optional explicit override (system /
-        non-HTTP paths); when omitted the bound actor supplies it via
-        :func:`resolve_decided_by` (ADR-0003).
+        ``decided_by`` is the already-resolved deciding actor; the sole
+        caller (:meth:`dispatch_completion`) resolves it via
+        :func:`resolve_decided_by` before the work is optionally
+        backgrounded, so the actor is captured while the request context
+        is still live (ADR-0003).
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
             SelfReviewError: If the decider is the task executor.
         """
-        decided_by = resolve_decided_by(decided_by)
         task = await self.check_can_decide(task_id=task_id, decided_by=decided_by)
 
         # Normalize the reason once at the service boundary: empty or
-        # whitespace-only strings collapse to None so the task
-        # transition history and DecisionRecord.reason both carry the
-        # same canonical value.  ``_record_decision`` previously
-        # re-normalized, which allowed the transition reason and the
-        # audit record to drift (e.g. "Review rejected by bob:   ").
+        # whitespace-only strings collapse to None so the task transition
+        # history and DecisionRecord.reason carry the identical canonical
+        # value (a single normalisation site keeps them from diverging).
         normalized_reason = reason.strip() if reason and reason.strip() else None
 
         if approved:
             target = TaskStatus.COMPLETED
             transition_reason = f"Review approved by {decided_by}"
+            if normalized_reason is not None:
+                transition_reason += f": {normalized_reason}"
             event = APPROVAL_GATE_REVIEW_COMPLETED
             # The configured adversarial gate(s) get the last word before
             # COMPLETED: a BLOCK reroutes the human-approved task back to
@@ -401,10 +403,16 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         """Run the transition + log + decision-record side effects.
 
         Shared by :meth:`complete_review` (human-driven) and
-        :meth:`run_pipeline` (pipeline-driven). Behavior is
-        preserved byte-for-byte: ``sync_to_task_engine`` runs
-        first, then the audit log entry, then the drop-box
-        append.
+        :meth:`run_pipeline` (pipeline-driven). ``sync_to_task_engine``
+        commits the task-state change first; the audit log, decision
+        record, and deliverable receipt are emitted only after that commit
+        so an observability or persistence failure in those steps never
+        rolls back a completed transition.
+
+        Raises:
+            CancelledError: Re-raised after the shielded decision-record +
+                receipt work has run to completion, so a shutdown-drain
+                cancellation propagates without losing those side effects.
         """
         try:
             await sync_to_task_engine(
@@ -433,15 +441,31 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             target_status=target.value,
         )
 
-        await self._record_decision(
-            task=task,
-            decided_by=decided_by,
-            approved=approved,
-            reason=normalized_reason,
-            approval_id=approval_id,
-        )
+        # The transition has committed. The audit write and receipt must run
+        # to completion as ONE unit even if a shutdown-drain cancels the
+        # (possibly backgrounded) completion task, so a COMPLETED task is
+        # never left without a decision record. A bare
+        # ``await asyncio.shield(coro)`` is not enough: cancelling the outer
+        # task re-raises CancelledError here while the shielded work is still
+        # running detached, so the loop can close before it lands. Drive an
+        # explicit task and, if cancelled mid-await, await it to completion
+        # before propagating the cancellation.
+        async def _record_and_emit() -> None:
+            await self._record_decision(
+                task=task,
+                decided_by=decided_by,
+                approved=approved,
+                reason=normalized_reason,
+                approval_id=approval_id,
+            )
+            await emit_receipt(self._receipt_service, task, target)
 
-        await emit_receipt(self._receipt_service, task, target)
+        record_and_emit_task = asyncio.create_task(_record_and_emit())
+        try:
+            await asyncio.shield(record_and_emit_task)
+        except asyncio.CancelledError:
+            await record_and_emit_task
+            raise
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:
         """Raise ``SelfReviewError`` when the decider is the executor.

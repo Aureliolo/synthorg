@@ -446,6 +446,7 @@
         "EvaluationVersionService",
         "SubworkflowService",
         "build_evolution_service",
+        "build_recovery_strategy",
         "InMemoryErrorTaxonomyStore",
         "PerformanceTrackerSink",
         "NotificationDispatcherSink",
@@ -1329,6 +1330,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-28T13:34:12.076006Z",
+  "generated_at": "2026-06-28T15:59:25.659114Z",
   "schema_version": 1
 }

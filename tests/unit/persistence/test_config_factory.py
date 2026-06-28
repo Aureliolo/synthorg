@@ -50,6 +50,16 @@ class TestSelectPersistenceConfig:
         assert cfg.postgres is not None
         assert cfg.postgres.ssl_mode == "disable"
 
+    def test_invalid_postgres_url_still_blocks_sqlite_fallback(self) -> None:
+        # Any non-empty db_url selects Postgres; a malformed one fails fast
+        # rather than silently falling back to the db_path SQLite backend.
+        with pytest.raises(ValueError):  # noqa: PT011 -- factory raises bare ValueError
+            select_persistence_config(
+                db_url="not-a-valid-postgres-url",
+                db_path="/data/synthorg.db",
+                ssl_mode=None,
+            )
+
 
 class TestBuildSqlitePersistenceConfig:
     def test_returns_persistence_config_envelope(self, tmp_path: Path) -> None:

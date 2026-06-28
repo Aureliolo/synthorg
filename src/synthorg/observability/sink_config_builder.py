@@ -79,6 +79,32 @@ DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
 # Valid sink identifiers for overrides.
 _VALID_OVERRIDE_KEYS: frozenset[str] = DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
 
+
+def sink_override_key(sink: SinkConfig) -> str:
+    """Return the override-map key for a default ``SinkConfig``.
+
+    Console sinks key on the fixed ``CONSOLE_SINK_ID`` sentinel; every
+    other default sink keys on its ``file_path``. This is the
+    operator-facing override key (raw and stable), deliberately distinct
+    from the credential-safe hashed public identifier the settings
+    controller derives for the REST envelope.
+
+    Returns:
+        ``CONSOLE_SINK_ID`` for console sinks; the sink's ``file_path``
+        otherwise.
+
+    Raises:
+        ValueError: For a non-console sink with no ``file_path`` (syslog /
+            HTTP sinks have none and cannot supply an override key).
+    """
+    if sink.sink_type == SinkType.CONSOLE:
+        return CONSOLE_SINK_ID
+    if sink.file_path is None:
+        msg = f"non-console sink {sink.sink_type!r} has no file_path override key"
+        raise ValueError(msg)
+    return sink.file_path
+
+
 # Allowed field names for strict validation.
 _OVERRIDE_FIELDS: frozenset[str] = frozenset(
     {"enabled", "level", "json_format", "rotation"},
@@ -107,10 +133,6 @@ _CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
         "http_max_retries",
         "level",
     },
-)
-# Union for initial parsing (field validation deferred to type-specific check)
-_CUSTOM_SINK_FIELDS: frozenset[str] = (
-    _CUSTOM_FILE_SINK_FIELDS | _CUSTOM_SYSLOG_SINK_FIELDS | _CUSTOM_HTTP_SINK_FIELDS
 )
 _VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
     {"file", "syslog", "http"},
@@ -250,8 +272,10 @@ def _apply_override(
 
     if not updates:
         return sink
-    merged = {**sink.model_dump(), **updates}
-    return SinkConfig.model_validate(merged)
+    # Re-validate the merged config: model_copy(update=...) skips SinkConfig's
+    # model validators, so an override could otherwise produce an invalid shape
+    # (e.g. json_format=False on an always-JSON sink type).
+    return SinkConfig.model_validate({**sink.model_dump(), **updates})
 
 
 # -- Custom sink construction --------------------------------------
@@ -454,10 +478,7 @@ def _merge_default_sinks(
     """
     merged: list[SinkConfig] = []
     for sink in DEFAULT_SINKS:
-        identifier = cast(
-            "str",
-            CONSOLE_SINK_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
-        )
+        identifier = sink_override_key(sink)
         override = overrides.get(identifier)
         if override is not None:
             result = _apply_override(sink, override, identifier)

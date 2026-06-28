@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import (
@@ -20,6 +21,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     ConflictError,
@@ -36,6 +38,10 @@ from synthorg.engine.errors import (
     TaskVersionConflictError,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_APPROVED,
+    SECURITY_APPROVAL_REJECTED,
+)
 from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import as_uuid, make_app_state, mock_of
 
@@ -97,6 +103,8 @@ def _app_state(
 
 
 def _make_request(*, user: object = None) -> MagicMock:
+    # MagicMock (not SimpleNamespace) because the helpers under test take a
+    # typed ``Request`` parameter that an attribute-bag cannot satisfy.
     request = MagicMock()
     request.scope = {"user": user}
     request.app.plugins = []
@@ -104,8 +112,9 @@ def _make_request(*, user: object = None) -> MagicMock:
 
 
 def _make_auth_user(username: str = "admin") -> MagicMock:
-    from synthorg.core.auth.models import AuthenticatedUser
-
+    # MagicMock(spec=) not mock_of[...]: AuthenticatedUser is a Pydantic
+    # model whose ``username`` field is not a settable attribute under the
+    # autospec ``spec_set``, so only the looser spec= form can stamp it.
     user = MagicMock(spec=AuthenticatedUser)
     user.username = username
     return user
@@ -146,19 +155,26 @@ class TestLogApprovalDecision:
     """_log_approval_decision() logs correctly."""
 
     def test_logs_approved(self) -> None:
-        # Should not raise
-        _log_approval_decision(
-            "approval-1",
-            approved=True,
-            decided_by="admin",
-        )
+        with capture_logs() as logs:
+            _log_approval_decision(
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+            )
+        entry = next(e for e in logs if e["event"] == SECURITY_APPROVAL_APPROVED)
+        assert entry["approval_id"] == "approval-1"
+        assert entry["decided_by"] == "admin"
 
     def test_logs_rejected(self) -> None:
-        _log_approval_decision(
-            "approval-1",
-            approved=False,
-            decided_by="reviewer",
-        )
+        with capture_logs() as logs:
+            _log_approval_decision(
+                "approval-1",
+                approved=False,
+                decided_by="reviewer",
+            )
+        events = [e["event"] for e in logs]
+        assert SECURITY_APPROVAL_REJECTED in events
+        assert SECURITY_APPROVAL_APPROVED not in events
 
 
 class TestSignalResumeIntent:

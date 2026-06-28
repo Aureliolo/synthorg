@@ -29,6 +29,7 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Delegation guard on inbound requests (loop prevention) | Shipped |
 | Quadratic communication enforcement strategies | Shipped (all four modes: `alert_only` default, `soft_throttle`, `hard_block`, `disabled`) |
 | Inbound `skills/query` + `skills/negotiate` JSON-RPC handlers | Shipped |
+| Outbound `query_skills` + `negotiate_skills` client methods (`A2AClient`) | Shipped |
 | Governed peer discovery (`PeerDiscoveryClient`: SSRF-pinned card fetch + registry) | Shipped |
 | Inter-org federation patterns (delegation across organisations) | Planned |
 

@@ -361,6 +361,87 @@ class A2ATask(BaseModel):
         return self
 
 
+# ── A2A skill negotiation results ───────────────────────────────
+
+
+class A2ASkillQueryResult(BaseModel):
+    """Result of a ``skills/query`` RPC: peers advertising a skill.
+
+    Attributes:
+        skill: The queried skill id or tag (echoed by the peer).
+        peers: Registered peer names whose card advertises the skill.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    skill: NotBlankStr = Field(description="Queried skill id or tag")
+    peers: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Peer names advertising the skill",
+    )
+
+
+class A2ASkillNegotiateResult(BaseModel):
+    """Result of a ``skills/negotiate`` RPC: confirmation a peer serves a skill.
+
+    ``url`` is supplied by the remote peer. It is scheme-checked here but
+    NOT host-validated: a caller that routes a task to ``url`` MUST first
+    pass it through ``synthorg.tools.network_validator.validate_url_host``
+    (the same SSRF / IP-pinning gate the outbound transport applies to
+    catalog connections), because a hostile peer can return a private or
+    link-local address.
+
+    Attributes:
+        skill: The negotiated skill id or tag (echoed by the peer).
+        peer_name: The peer the negotiation targeted.
+        accepted: Whether the peer's card still advertises the skill.
+        url: The peer's routing URL when accepted, else ``None``.
+        matched_skills: The peer's skill ids that matched the request.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    skill: NotBlankStr = Field(description="Negotiated skill id or tag")
+    peer_name: NotBlankStr = Field(description="Peer the negotiation targeted")
+    accepted: bool = Field(description="Whether the peer still serves the skill")
+    url: NotBlankStr | None = Field(
+        default=None,
+        description="Peer routing URL when accepted, else None",
+    )
+    matched_skills: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Peer skill ids that matched the request",
+    )
+
+    @model_validator(mode="after")
+    def _validate_url_presence_and_scheme(self) -> Self:
+        """Couple ``url`` to ``accepted`` and require a TLS routing scheme.
+
+        ``url`` is ``NotBlankStr | None``, so a set value is guaranteed
+        non-blank by upstream validation; truthiness checks preserve that
+        invariant. Cleartext ``http://`` is rejected: a hostile or
+        misconfigured peer must not be able to downgrade the subsequent
+        outbound task route to plaintext.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If acceptance and ``url`` presence disagree, or the
+                routing URL is not an ``https`` URL.
+        """
+        if self.accepted and not self.url:
+            msg = "url must be set when a negotiation is accepted"
+            raise ValueError(msg)
+        if not self.accepted and self.url:
+            msg = "url must be None when a negotiation is not accepted"
+            raise ValueError(msg)
+        if self.url and not self.url.lower().startswith("https://"):
+            msg = "routing url must be an https URL"
+            raise ValueError(msg)
+        return self
+
+
 # ── A2A Agent Skill ─────────────────────────────────────────────
 
 

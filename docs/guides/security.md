@@ -172,7 +172,7 @@ For the **milestone** strategy, re-verification periodically re-evaluates trust:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether re-verification is active |
+| `enabled` | bool | `true` | Whether re-verification is active (secure default; inert unless the milestone strategy is active) |
 | `interval_days` | int | `90` | Days between re-verifications |
 | `decay_on_idle_days` | int | `30` | Demote one level after this many idle days |
 | `decay_on_error_rate` | float | `0.15` | Demote if error rate exceeds this threshold |

@@ -5,12 +5,14 @@ pulling credentials from the connection catalog and validating
 outbound URLs against SSRF rules.
 """
 
-from typing import ClassVar, Final
+from typing import Final, override
 from uuid import uuid4
 
 import httpx
 from pydantic import JsonValue
 
+from synthorg.a2a._client_errors import A2AClientError, A2ATransientError
+from synthorg.a2a._client_skills import SkillNegotiationMixin
 from synthorg.a2a.models import (
     A2AMessage,
     A2ATask,
@@ -18,8 +20,6 @@ from synthorg.a2a.models import (
     JsonRpcResponse,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import DomainError
-from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience.retry_after import (
     coerce_finite_nonneg_seconds,
@@ -40,45 +40,7 @@ logger = get_logger(__name__)
 _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
-class A2AClientError(DomainError):
-    """Error raised by the outbound A2A client.
-
-    Non-retryable by default. Transient peer failures (HTTP 429,
-    connection resets, timeouts) raise :class:`A2ATransientError`, which
-    the project-standard ``is_retryable`` class attribute marks for retry.
-    """
-
-    default_message: ClassVar[str] = "A2A client request failed"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_ERROR
-    status_code: ClassVar[int] = 502
-    is_retryable: ClassVar[bool] = False
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        peer_name: str = "",
-        retry_after_seconds: float | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.peer_name = peer_name
-        # ``retry_after_seconds`` carries the peer's advertised cool-off
-        # when it sent one (populated on the transient subclass).
-        self.retry_after_seconds = retry_after_seconds
-
-
-class A2ATransientError(A2AClientError):
-    """Retryable A2A failure: 429 back-pressure or a connect / timeout error.
-
-    Keeps the parent's ``PROVIDER_ERROR`` code (inheritance alias) and
-    only flips ``is_retryable`` so a wrapping retry layer reacts to it.
-    """
-
-    is_retryable: ClassVar[bool] = True
-
-
-class A2AClient:
+class A2AClient(SkillNegotiationMixin):
     """Outbound JSON-RPC 2.0 client for A2A federation.
 
     Sends requests to external A2A agents, pulling credentials
@@ -194,13 +156,21 @@ class A2AClient:
             {"id": task_id},
         )
 
-    async def _call_method(
+    @override
+    async def _call_method_raw(
         self,
         peer_name: str,
         method: str,
         params: dict[str, JsonValue],
-    ) -> A2ATask:
-        """Execute a JSON-RPC call to a peer.
+    ) -> dict[str, JsonValue]:
+        """Execute a JSON-RPC call to a peer and return its raw result.
+
+        Shared transport for every outbound method: connection lookup,
+        SSRF validation + IP pinning, auth-header injection, send, and
+        JSON-RPC error mapping. The result payload is returned untyped so
+        task methods (:meth:`_call_method`) and skill-negotiation methods
+        (:meth:`query_skills` / :meth:`negotiate_skills`) can each parse it
+        into their own response model.
 
         Args:
             peer_name: Connection name.
@@ -208,7 +178,8 @@ class A2AClient:
             params: Method parameters.
 
         Returns:
-            Parsed A2A task from the response.
+            The JSON-RPC ``result`` object (empty dict when the peer
+            returned no result).
 
         Raises:
             A2AClientError: On any failure.
@@ -289,8 +260,9 @@ class A2AClient:
                 pinned_hostname = validation.hostname
 
         # Build JSON-RPC request
+        request_id = str(uuid4())
         rpc_req = JsonRpcRequest(
-            id=str(uuid4()),
+            id=request_id,
             method=method,
             params=params,
         )
@@ -326,6 +298,18 @@ class A2AClient:
         )
         rpc_resp = _parse_rpc_response(response, peer_name)
 
+        # Fail closed on a JSON-RPC id mismatch: a stale or mis-correlated
+        # peer response must never be parsed as the current call's result.
+        if rpc_resp.id != request_id:
+            logger.warning(
+                A2A_OUTBOUND_RESPONSE_INVALID,
+                peer_name=peer_name,
+                reason="rpc_id_mismatch",
+                method=method,
+            )
+            msg = f"Peer '{peer_name}' returned a mismatched JSON-RPC id"
+            raise A2AClientError(msg, peer_name=peer_name)
+
         if rpc_resp.error is not None:
             msg = (
                 f"A2A peer '{peer_name}' returned error: "
@@ -339,13 +323,46 @@ class A2AClient:
             )
             raise A2AClientError(msg, peer_name=peer_name)
 
-        result = rpc_resp.result
-        if not result or "id" not in result:
-            msg = f"Peer '{peer_name}' returned malformed response (missing task id)"
+        return rpc_resp.result or {}
+
+    async def _call_method(
+        self,
+        peer_name: str,
+        method: str,
+        params: dict[str, JsonValue],
+    ) -> A2ATask:
+        """Execute a task-returning JSON-RPC call and parse the response.
+
+        Args:
+            peer_name: Connection name.
+            method: JSON-RPC method name.
+            params: Method parameters.
+
+        Returns:
+            Parsed A2A task from the response.
+
+        Raises:
+            A2AClientError: On any failure or a malformed task payload.
+        """
+        result = await self._call_method_raw(peer_name, method, params)
+        # ``A2ATask`` supplies defaults for every field but ``id``, so a
+        # truncated payload like ``{"id": "t-1"}`` would otherwise validate
+        # into a synthetic SUBMITTED task. Require the lifecycle-bearing
+        # fields explicitly; ``messages``/``metadata`` legitimately default
+        # to empty for a freshly-submitted task, so they are not required.
+        missing_fields = tuple(
+            field for field in ("id", "state") if field not in result
+        )
+        if missing_fields:
+            msg = (
+                f"Peer '{peer_name}' returned malformed response "
+                f"(missing task fields: {', '.join(missing_fields)})"
+            )
             logger.warning(
                 A2A_OUTBOUND_RESPONSE_INVALID,
                 peer_name=peer_name,
-                reason="missing_task_id",
+                reason="missing_task_fields",
+                missing_fields=missing_fields,
             )
             raise A2AClientError(msg, peer_name=peer_name)
         try:
@@ -555,3 +572,6 @@ def _parse_rpc_response(
         )
         msg = f"Peer '{peer_name}' returned invalid JSON-RPC"
         raise A2AClientError(msg, peer_name=peer_name) from exc
+
+
+__all__ = ["A2AClient", "A2AClientError", "A2ATransientError"]

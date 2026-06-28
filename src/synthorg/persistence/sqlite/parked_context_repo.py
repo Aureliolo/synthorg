@@ -190,7 +190,7 @@ INSERT OR REPLACE INTO parked_contexts (
 
     async def get_by_agent(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

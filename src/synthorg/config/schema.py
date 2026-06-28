@@ -35,6 +35,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
+from synthorg.engine.recovery_config import EngineRecoveryConfig
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
@@ -121,6 +122,9 @@ class RootConfig(BaseModel):
             CI/LLM weights, trend thresholds).
         training: Training pipeline configuration.
         task_engine: Task engine configuration.
+        recovery: Crash recovery strategy selection (fail-reassign by
+            default; checkpoint requires a wired CheckpointRepository from
+            the persistence backend, with tuning from recovery.checkpoint).
         queue: Distributed task queue configuration (opt-in, requires
             a distributed bus backend such as NATS).
         coordination: Multi-agent coordination configuration.
@@ -270,6 +274,10 @@ class RootConfig(BaseModel):
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,
         description="Task engine configuration",
+    )
+    recovery: EngineRecoveryConfig = Field(
+        default_factory=EngineRecoveryConfig,
+        description="Crash recovery strategy selection (fail-reassign default)",
     )
     queue: QueueConfig = Field(
         default_factory=QueueConfig,

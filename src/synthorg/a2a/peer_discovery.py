@@ -18,6 +18,10 @@ from synthorg.a2a.models import A2AAgentCard
 from synthorg.a2a.peer_registry import PeerRegistry
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_SSRF_BLOCKED,
@@ -30,6 +34,7 @@ logger = get_logger(__name__)
 
 _WELL_KNOWN_CARD_PATH: Final[str] = "/.well-known/agent-card.json"
 _HTTP_OK: Final[int] = 200
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 class PeerDiscoveryClient:
@@ -235,9 +240,29 @@ class PeerDiscoveryClient:
             The body bytes, guaranteed <= ``max_card_bytes``.
 
         Raises:
-            A2AClientError: On a non-200 status or a body over the cap.
+            A2ATransientError: On a 429 (retryable by the caller).
+            A2AClientError: On any other non-200 status or a body over the cap.
         """
         async with http.stream("GET", card_url) as response:
+            if response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                # Rate-limited card fetch is transient: surface it as
+                # retryable so a caller re-discovers once the peer recovers,
+                # mirroring the outbound transport's 429 handling.
+                retry_after = coerce_finite_nonneg_seconds(
+                    parse_retry_after_seconds(response.headers.get("Retry-After")),
+                )
+                logger.warning(
+                    A2A_PEER_DISCOVERY_FAILED,
+                    peer_name=peer_name,
+                    status=response.status_code,
+                    reason="rate_limited",
+                )
+                msg = f"Peer '{peer_name}' agent card fetch rate-limited (429)"
+                raise A2ATransientError(
+                    msg,
+                    peer_name=peer_name,
+                    retry_after_seconds=retry_after,
+                )
             if response.status_code != _HTTP_OK:
                 logger.warning(
                     A2A_PEER_DISCOVERY_FAILED,
