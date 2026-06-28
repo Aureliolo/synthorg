@@ -289,7 +289,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
             wire_eval_loop,
         )
 
-        await wire_eval_loop(app_state)
+        await wire_eval_loop(app_state, provider_registry=provider_registry)
 
     startup = [*startup, _wire_eval_loop]
 

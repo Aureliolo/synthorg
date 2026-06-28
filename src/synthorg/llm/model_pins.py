@@ -142,6 +142,8 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE, PinSpec()),
     (PromptPurposeId.HR_TRAINING_CURATION, PinSpec(temperature=0.3)),
     (PromptPurposeId.HR_CALIBRATION, PinSpec(temperature=0.3)),
+    (PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS, PinSpec()),
+    (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, PinSpec(temperature=0.3)),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, PinSpec(temperature=0.7)),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, PinSpec()),
 )
