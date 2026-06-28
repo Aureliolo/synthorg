@@ -13,13 +13,14 @@ The closed-loop evaluation framework continuously measures agent performance and
 flowchart LR
     T[Trace Capture] --> BT[Behavior Tagging]
     BT --> EE[Eval Enrichment<br/>5 Pillars]
-    EE --> PI[Pattern Identification<br/>stub]
-    PI --> FP[Fix Proposal<br/>stub]
-    FP --> V[Validation<br/>next run]
+    EE --> PI[Pattern Identification<br/>pluggable]
+    PI --> FP[Fix Proposal<br/>pluggable]
+    FP --> D[Action Dispatch]
+    D --> V[Validation<br/>next run]
     V -->|feedback| T
 ```
 
-The ``EvalLoopCoordinator`` orchestrates existing services into cycles: collect metrics, enrich with five-pillar evaluation, identify failure patterns (stub), propose targeted fixes (stub), and validate via next-run trajectory scores.
+The ``EvalLoopCoordinator`` orchestrates existing services into cycles: collect metrics, enrich with five-pillar evaluation, identify failure patterns, propose targeted fixes, dispatch the proposed actions, and validate via next-run trajectory scores. The IDENTIFY and PROPOSE steps are pluggable strategies (`PatternIdentifier` / `FixProposer` in `hr/evaluation/pattern_protocols.py`): the shipped defaults are deterministic (threshold-counting identification + a static per-pillar action table), and a deployment can swap in richer provider-backed strategies without touching the orchestrator. Proposed actions are routed to operators by a `RemediationActionDispatcher` (a notification alert per recommended action) when a notification dispatcher is wired.
 
 ## Behaviour Tagging
 

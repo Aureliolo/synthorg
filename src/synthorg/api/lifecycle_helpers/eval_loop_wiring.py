@@ -33,7 +33,11 @@ from synthorg.hr.evaluation.cycle_scheduler import EvalLoopCycleScheduler
 from synthorg.hr.evaluation.dogfooding_dataset_builder import DogfoodingDatasetBuilder
 from synthorg.hr.evaluation.evaluator import EvaluationService
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
+from synthorg.hr.evaluation.pattern_action_dispatcher_impl import (
+    RemediationActionDispatcher,
+)
 from synthorg.hr.state import HrStateSlice
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.settings.bootstrap_resolver import resolve_init_value
@@ -67,6 +71,14 @@ async def wire_eval_loop(app_state: AppState) -> None:
         return
 
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    # Route proposed remediation actions to operators when a notification
+    # dispatcher is wired; absent one, the coordinator proposes + logs only.
+    notification_dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+    action_dispatcher = (
+        RemediationActionDispatcher(notification_dispatcher=notification_dispatcher)
+        if notification_dispatcher is not None
+        else None
+    )
     coordinator = EvalLoopCoordinator(
         performance_tracker=hr.performance_tracker,
         evaluation_service=EvaluationService(
@@ -79,6 +91,7 @@ async def wire_eval_loop(app_state: AppState) -> None:
             performance_tracker=hr.performance_tracker,
         ),
         benchmark_registry=build_pin_validation_registry(app_state),
+        action_dispatcher=action_dispatcher,
         clock=app_state.clock,
     )
 
