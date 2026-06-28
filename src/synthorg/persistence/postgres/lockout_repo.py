@@ -15,6 +15,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -95,7 +96,7 @@ class PostgresLockoutRepository:
         Returns:
             ``True`` when ``username`` is currently locked out, ``False`` otherwise.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         with self._locked_lock:
             locked_until = self._locked.get(username)
             if locked_until is None:
@@ -167,7 +168,7 @@ class PostgresLockoutRepository:
         restored = 0
         with self._locked_lock:
             for row in rows:
-                uname = row["username"].lower()
+                uname = normalize_identifier(row["username"])
                 if uname not in self._locked:
                     max_at = row["max_attempted_at"]
                     locked_until = max_at + self._duration
@@ -197,7 +198,7 @@ class PostgresLockoutRepository:
             ``True`` when this failure pushed the username past the lockout threshold,
             ``False`` otherwise.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         now = self._clock.now()
         window_start = now - self._window
 
@@ -259,7 +260,7 @@ class PostgresLockoutRepository:
             ``True`` when the in-memory lockout cache entry was popped, ``False`` when
             none was cached.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         # Same write-lock serialisation as ``record_failure``: cache
         # mutation must follow the DB commit AND no concurrent
         # ``record_failure`` can interleave between our commit and

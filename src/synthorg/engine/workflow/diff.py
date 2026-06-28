@@ -11,6 +11,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._diff_invariants import validate_change_invariants
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -26,32 +27,6 @@ logger = get_logger(__name__)
 
 #: Position changes below this threshold (pixels) are ignored.
 POSITION_CHANGE_THRESHOLD: float = 1.0
-
-
-def _validate_change_values(
-    change_type: str,
-    old_value: dict[str, object] | None,
-    new_value: dict[str, object] | None,
-) -> None:
-    """Validate old_value/new_value presence rules per change_type.
-
-    Raises:
-        ValueError: When the presence of ``old_value`` / ``new_value``
-            does not match the rules for ``change_type`` (added needs
-            only ``new_value``; removed needs only ``old_value``; all
-            other change types need both).
-    """
-    if change_type == "added":
-        if old_value is not None or new_value is None:
-            msg = "added change must have new_value only"
-            raise ValueError(msg)
-    elif change_type == "removed":
-        if old_value is None or new_value is not None:
-            msg = "removed change must have old_value only"
-            raise ValueError(msg)
-    elif old_value is None or new_value is None:
-        msg = f"{change_type} change must have both old_value and new_value"
-        raise ValueError(msg)
 
 
 class NodeChange(BaseModel):
@@ -86,10 +61,10 @@ class NodeChange(BaseModel):
             ``self`` unchanged when the change values are consistent.
 
         Raises:
-            ValueError: Propagated from :func:`_validate_change_values`
+            ValueError: Propagated from :func:`validate_change_invariants`
                 when the value presence rules are violated.
         """
-        _validate_change_values(
+        validate_change_invariants(
             self.change_type,
             self.old_value,
             self.new_value,
@@ -128,10 +103,10 @@ class EdgeChange(BaseModel):
             ``self`` unchanged when the change values are consistent.
 
         Raises:
-            ValueError: Propagated from :func:`_validate_change_values`
+            ValueError: Propagated from :func:`validate_change_invariants`
                 when the value presence rules are violated.
         """
-        _validate_change_values(
+        validate_change_invariants(
             self.change_type,
             self.old_value,
             self.new_value,

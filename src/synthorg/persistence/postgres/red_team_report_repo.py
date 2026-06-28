@@ -25,6 +25,9 @@ from synthorg.observability.events.red_team import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared._filter_clauses import (
+    build_red_team_report_filter_clauses,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.security.redteam.models import (
@@ -110,7 +113,9 @@ class PostgresRedTeamReportArchiveRepository:
         limit = validate_pagination_args(
             limit, offset, event=RED_TEAM_REPORT_QUERY_FAILED
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_red_team_report_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         sql = (
             f"SELECT {_COLUMNS} FROM red_team_reports WHERE {where} "
             "ORDER BY recorded_at DESC, execution_id DESC LIMIT %s OFFSET %s"
@@ -168,30 +173,6 @@ class PostgresRedTeamReportArchiveRepository:
             )
             raise QueryError(msg) from exc
         return count
-
-    def _build_where(
-        self, filter_spec: RedTeamReportFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``.
-
-        Returns:
-            ``(where_clause, params)`` where ``where_clause`` is the SQL
-            fragment (without the leading ``WHERE``) and ``params`` is the
-            matching positional parameter list.
-        """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.execution_id is not None:
-            conditions.append("execution_id = %s")
-            params.append(filter_spec.execution_id)
-        if filter_spec.task_id is not None:
-            conditions.append("task_id = %s")
-            params.append(filter_spec.task_id)
-        if filter_spec.verdict is not None:
-            conditions.append("verdict = %s")
-            params.append(filter_spec.verdict.value)
-        where = " AND ".join(conditions) if conditions else "TRUE"
-        return where, params
 
     def _to_row(self, record: RedTeamReportRecord) -> dict[str, object]:
         """Flatten a record into a row dict (report JSON-encoded).

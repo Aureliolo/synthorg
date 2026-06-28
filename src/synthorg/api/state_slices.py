@@ -24,11 +24,13 @@ logger = get_logger(__name__)
 class AppStateSliceMixin:
     """Typed per-feature state-slice store mixed into ``AppState``.
 
-    Slices are keyed by their concrete class. ``set_slice`` is once-only
-    (a second install of the same slice type raises); ``swap_slice`` hot-
-    replaces an already-composed slice atomically under the slice lock, so a
-    reader holding the old slice keeps its references and the next ``slice``
-    call returns the new one.
+    Slices are keyed by their concrete class. Three write APIs install
+    them, all under the slice lock: ``set_slice`` is once-only (a second
+    install of the same slice type raises); ``wire`` is the field-level
+    hot-reload path (a frozen copy with selected fields updated, preserving
+    co-resident fields); ``swap_slice`` whole-replaces an already-composed
+    slice atomically, so a reader holding the old slice keeps its references
+    and the next ``slice`` call returns the new one.
     """
 
     def _init_slice_store(self) -> None:
@@ -83,7 +85,8 @@ class AppStateSliceMixin:
 
         Raises:
             RuntimeError: If a slice of the same type is already composed.
-                Hot-reload replacement goes through :meth:`swap_slice`.
+                Field-level hot-reload goes through :meth:`wire`;
+                whole-slice replacement goes through :meth:`swap_slice`.
         """
         with self._slice_lock:
             key = type(state_slice)

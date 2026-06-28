@@ -8,6 +8,7 @@ import httpx
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     Connection,
@@ -72,7 +73,7 @@ def _is_allowed_github_host(
         return False
     if parsed.scheme != "https":
         return False
-    host = (parsed.hostname or "").lower()
+    host = normalize_ascii_lowercase(parsed.hostname or "")
     if not host:
         return False
     if any(
@@ -128,7 +129,7 @@ class GitHubHealthCheck:
             parsed = urlparse(default_api_url)
         except ValueError:
             return ()
-        host = (parsed.hostname or "").lower()
+        host = normalize_ascii_lowercase(parsed.hostname or "")
         if not host:
             return ()
         return (host,)

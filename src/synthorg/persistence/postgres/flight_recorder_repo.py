@@ -24,6 +24,9 @@ from synthorg.observability.events.persistence.flight_recorder import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared._filter_clauses import (
+    build_flight_recorder_filter_clauses,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
@@ -149,7 +152,9 @@ class PostgresFlightRecorderFrameRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_FLIGHT_RECORDER_QUERY_FAILED
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_flight_recorder_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         sql = (
             f"SELECT {_COLUMNS} FROM flight_recorder_frames WHERE {where} "
             "ORDER BY turn_index DESC, timestamp DESC LIMIT %s OFFSET %s"
@@ -185,7 +190,9 @@ class PostgresFlightRecorderFrameRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = self._build_where(filter_spec)
+        where, params = build_flight_recorder_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         sql = (
             "SELECT "
             "COALESCE(SUM(cost), 0)::float8 AS total_cost, "
@@ -260,36 +267,6 @@ class PostgresFlightRecorderFrameRepository:
             )
             raise QueryError(msg) from exc
         return count
-
-    def _build_where(
-        self, filter_spec: FlightRecorderFrameFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``.
-
-        Returns:
-            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
-            (without the leading ``WHERE``) and ``params`` is the matching positional
-            parameter list.
-        """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.execution_id is not None:
-            conditions.append("execution_id = %s")
-            params.append(filter_spec.execution_id)
-        if filter_spec.task_id is not None:
-            conditions.append("task_id = %s")
-            params.append(filter_spec.task_id)
-        if filter_spec.agent_id is not None:
-            conditions.append("agent_id = %s")
-            params.append(filter_spec.agent_id)
-        if filter_spec.turn_index_min is not None:
-            conditions.append("turn_index >= %s")
-            params.append(filter_spec.turn_index_min)
-        if filter_spec.turn_index_max is not None:
-            conditions.append("turn_index <= %s")
-            params.append(filter_spec.turn_index_max)
-        where = " AND ".join(conditions) if conditions else "TRUE"
-        return where, params
 
     def _to_row(self, frame: FlightRecorderFrame) -> dict[str, object]:
         """Flatten a frame into a row dict (tool_calls wrapped as JSONB).

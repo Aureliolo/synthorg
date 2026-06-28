@@ -19,6 +19,9 @@ from synthorg.observability.events.deliverable_receipts import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared._filter_clauses import (
+    build_code_execution_filter_clauses,
+)
 from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.code_execution_protocol import (
@@ -112,7 +115,9 @@ class SQLiteCodeExecutionRecordRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CODE_EXECUTION_QUERY_FAILED
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_code_execution_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         sql = (
             f"SELECT {_COLUMNS} FROM code_execution_record WHERE {where} "
             "ORDER BY executed_at DESC, record_id DESC LIMIT ? OFFSET ?"
@@ -168,31 +173,6 @@ class SQLiteCodeExecutionRecordRepository:
                 )
                 raise QueryError(msg) from exc
         return count
-
-    def _build_where(
-        self, filter_spec: CodeExecutionFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``.
-
-        Returns:
-            ``(where_clause, params)`` without the leading ``WHERE``.
-        """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.execution_id is not None:
-            conditions.append("execution_id = ?")
-            params.append(filter_spec.execution_id)
-        if filter_spec.task_id is not None:
-            conditions.append("task_id = ?")
-            params.append(filter_spec.task_id)
-        if filter_spec.project_id is not None:
-            conditions.append("project_id = ?")
-            params.append(filter_spec.project_id)
-        if filter_spec.purpose is not None:
-            conditions.append("purpose = ?")
-            params.append(filter_spec.purpose.value)
-        where = " AND ".join(conditions) if conditions else "1=1"
-        return where, params
 
     def _to_row(self, record: CodeExecutionRecord) -> dict[str, object]:
         """Flatten a record into a row dict.

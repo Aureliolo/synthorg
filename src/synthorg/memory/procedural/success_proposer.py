@@ -8,11 +8,8 @@ but optimized for success outcomes with a lighter system prompt.
 
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
-
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.prompt_safety import (
@@ -20,14 +17,14 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.memory.procedural._response_parsing import parse_proposal_response
 from synthorg.memory.procedural.models import (
     ProceduralMemoryConfig,
     ProceduralMemoryProposal,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
-    PROCEDURAL_MEMORY_LOW_CONFIDENCE,
-    PROCEDURAL_MEMORY_PROPOSED,
     PROCEDURAL_MEMORY_PROPOSER_INIT,
     PROCEDURAL_MEMORY_SKIPPED,
 )
@@ -58,29 +55,6 @@ _SYSTEM_PROMPT = (
     "Respond ONLY with the JSON object, no markdown fences or explanation.\n\n"
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
-
-
-def _extract_json(text: str) -> dict[str, object] | None:
-    """Extract a JSON object from LLM response text via the shared helper.
-
-    Delegates to ``extract_json_from_llm_response`` so a parse failure
-    logs a fixed literal detail, never ``str(exc)``: a ``JSONDecodeError``
-    carries ``exc.doc`` (the raw LLM output), which could embed
-    credentials from the executed task and leak them into the log sink.
-
-    Returns:
-        The resulting ``dict[str, object]``, or ``None`` when unavailable.
-    """
-
-    def _log_parse_failure(detail: str) -> None:
-        """Log parse failure with the helper's fixed literal detail."""
-        logger.debug(
-            PROCEDURAL_MEMORY_SKIPPED,
-            reason="json_parse_error",
-            detail=detail,
-        )
-
-    return extract_json_from_llm_response(text, logger_callback=_log_parse_failure)
 
 
 def _build_user_message(execution_result: ExecutionResult) -> str:
@@ -177,6 +151,7 @@ class SuccessMemoryProposer:
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:procedural:success_proposer"),
                 call_category=LLMCallCategory.SYSTEM,
+                purpose=PromptPurposeId.PROCEDURAL_SUCCESS_PROPOSER,
             ):
                 response = await self._provider.complete(
                     messages,
@@ -206,54 +181,4 @@ class SuccessMemoryProposer:
             )
             return None
 
-        return self._parse_response(response.content)
-
-    def _parse_response(
-        self,
-        content: str | None,
-    ) -> ProceduralMemoryProposal | None:
-        """Parse and validate the LLM response into a proposal.
-
-        Returns:
-            The resulting ``ProceduralMemoryProposal``, or ``None`` when unavailable.
-        """
-        if not content or not content.strip():
-            logger.debug(
-                PROCEDURAL_MEMORY_SKIPPED,
-                reason="empty_response",
-            )
-            return None
-
-        data = _extract_json(content)
-        if data is None:
-            logger.warning(
-                PROCEDURAL_MEMORY_SKIPPED,
-                reason="malformed_json",
-            )
-            return None
-
-        try:
-            proposal = ProceduralMemoryProposal.model_validate(data)
-        except ValidationError as exc:
-            logger.warning(
-                PROCEDURAL_MEMORY_SKIPPED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="validation_failed",
-            )
-            return None
-
-        if proposal.confidence < self._config.min_confidence:
-            logger.info(
-                PROCEDURAL_MEMORY_LOW_CONFIDENCE,
-                confidence=proposal.confidence,
-                min_confidence=self._config.min_confidence,
-            )
-            return None
-
-        logger.info(
-            PROCEDURAL_MEMORY_PROPOSED,
-            confidence=proposal.confidence,
-            tags=proposal.tags,
-        )
-        return proposal
+        return parse_proposal_response(response.content, self._config)

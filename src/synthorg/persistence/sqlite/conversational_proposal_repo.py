@@ -30,6 +30,9 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared._filter_clauses import (
+    build_conversational_proposal_filter_clauses,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
@@ -71,30 +74,6 @@ async def _safe_rollback(
             operation=operation,
             **log_context,
         )
-
-
-def _build_where(
-    filter_spec: ConversationalProposalFilterSpec,
-) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec.
-
-    Returns:
-        ``(where_clause, params)`` where ``where_clause`` is the SQL fragment (without
-        the leading ``WHERE``) and ``params`` is the matching positional parameter list.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if filter_spec.conversation_id is not None:
-        clauses.append("conversation_id = ?")
-        params.append(filter_spec.conversation_id)
-    if filter_spec.approval_id is not None:
-        clauses.append("approval_id = ?")
-        params.append(filter_spec.approval_id)
-    if filter_spec.status is not None:
-        clauses.append("status = ?")
-        params.append(filter_spec.status.value)
-    where = " AND ".join(clauses) if clauses else "1=1"
-    return where, params
 
 
 class SQLiteConversationalProposalRepository:
@@ -256,7 +235,9 @@ class SQLiteConversationalProposalRepository:
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        where, params = _build_where(filter_spec)
+        where, params = build_conversational_proposal_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         params.extend([effective_limit, offset])
         sql = f"""
             SELECT {_SELECT_COLS} FROM conversational_proposals
@@ -291,7 +272,9 @@ class SQLiteConversationalProposalRepository:
         Returns:
             Number of matching rows.
         """
-        where, params = _build_where(filter_spec)
+        where, params = build_conversational_proposal_filter_clauses(
+            filter_spec, placeholder="?", empty="1=1"
+        )
         sql = (
             "SELECT COUNT(*) FROM conversational_proposals "  # noqa: S608
             f"WHERE {where}"

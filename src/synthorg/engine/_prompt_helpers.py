@@ -14,6 +14,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.role import Role
 from synthorg.core.task import Task
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
+from synthorg.engine._personality_section import build_personality_section
 from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
@@ -172,36 +173,7 @@ def _estimate_personality_tokens(
     Returns:
         Estimated token count.
     """
-    parts: list[str] = ["## Personality"]
-    desc = cast("str", ctx.get("personality_description", ""))
-    style = ctx.get("communication_style", "")
-
-    if personality_mode == "full":
-        if desc:
-            parts.append(desc)
-        parts.append(f"- **Communication style**: {style}")
-        parts.append(f"- **Verbosity**: {ctx.get('verbosity', '')}")
-        parts.append(f"- **Risk tolerance**: {ctx.get('risk_tolerance', '')}")
-        parts.append(f"- **Creativity**: {ctx.get('creativity', '')}")
-        parts.append(f"- **Decision-making**: {ctx.get('decision_making', '')}")
-        parts.append(
-            f"- **Collaboration preference**: {ctx.get('collaboration', '')}",
-        )
-        parts.append(f"- **Conflict approach**: {ctx.get('conflict_approach', '')}")
-        traits = cast("tuple[str, ...]", ctx.get("personality_traits", ()))
-        if traits:
-            parts.append(f"- **Traits**: {', '.join(traits)}")
-    elif personality_mode == "condensed":
-        if desc:
-            parts.append(desc)
-        parts.append(f"- **Style**: {style}")
-        traits = cast("tuple[str, ...]", ctx.get("personality_traits", ()))
-        if traits:
-            parts.append(f"- **Traits**: {', '.join(traits)}")
-    else:
-        # minimal
-        parts.append(f"- **Style**: {style}")
-
+    parts = ["## Personality", *build_personality_section(ctx, personality_mode)]
     text = "\n".join(parts)
     return estimator.estimate_tokens(text)
 
@@ -456,6 +428,15 @@ def build_core_context(  # noqa: PLR0913
     trim_info: PersonalityTrimInfo | None = None
     if trimming_enabled and profile is not None:
         trim_info = _trim_personality(ctx, profile, estimator=estimator)
+
+    # Render the personality body from the (possibly trimmed) fields so the
+    # template injects exactly what the estimator measured above.
+    ctx["personality_section"] = "\n".join(
+        build_personality_section(
+            ctx,
+            cast("PersonalityMode", ctx["personality_mode"]),
+        ),
+    )
 
     return ctx, trim_info
 

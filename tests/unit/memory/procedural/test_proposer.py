@@ -8,6 +8,7 @@ import structlog.testing
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskType
+from synthorg.memory.procedural._response_parsing import _extract_json
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,
@@ -16,7 +17,6 @@ from synthorg.memory.procedural.models import (
 from synthorg.memory.procedural.proposer import (
     ProceduralMemoryProposer,
     _build_user_message,
-    _extract_json,
 )
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_LOW_CONFIDENCE,

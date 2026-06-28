@@ -66,6 +66,9 @@ KNOWLEDGE_SYNTHESIS_OUTPUT_INVALID: Final[str] = "knowledge.synthesis.output_inv
 """Emitted at WARNING when the synthesiser LLM returns unparseable or
 schema-invalid structured output."""
 
+KNOWLEDGE_SYNTHESIZER_KIND_UNKNOWN: Final[str] = "knowledge.synthesis.kind_unknown"
+"""Emitted at WARNING when the synthesiser factory gets an unknown kind."""
+
 # -- Loaders ------------------------------------------------------------------
 
 KNOWLEDGE_SOURCE_LOADED: Final[str] = "knowledge.source.loaded"

@@ -29,6 +29,7 @@ from synthorg.core.domain_errors import (
     TrainingPlanNotModifiableError,
     ValidationError,
 )
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice
 from synthorg.hr.training.models import (
@@ -78,10 +79,10 @@ async def _resolve_agent(
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    # str(identity.id) is canonical lowercase; lowercase the path segment so
+    # str(identity.id) is canonical lowercase; normalise the path segment so
     # the registry lookup resolves case variants, matching the config-backed
     # agent routes.
-    canonical_agent_id = agent_id.lower()
+    canonical_agent_id = normalize_identifier(agent_id)
     identity = await require_service(
         app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
     ).get(canonical_agent_id)

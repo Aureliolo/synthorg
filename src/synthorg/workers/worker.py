@@ -211,7 +211,12 @@ class Worker:
                 logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
 
     async def stop(self) -> None:
-        """Signal the claim loop to exit after the current claim."""
+        """Signal the claim loop to exit after the current claim.
+
+        Holds ``_lifecycle_lock`` so a concurrent ``start()`` cannot race
+        the shutdown signal: the loop is either started then stopped, or
+        the stop is observed before the next start composes a new task.
+        """
         async with self._lifecycle_lock:
             self._stop_event.set()
 

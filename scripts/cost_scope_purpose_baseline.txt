@@ -23,8 +23,6 @@ src/synthorg/memory/consolidation/abstractive.py:139:23
 src/synthorg/memory/consolidation/compressor.py:262:23
 src/synthorg/memory/consolidation/llm_op.py:390:23
 src/synthorg/memory/embedding/fine_tune_query.py:179:23
-src/synthorg/memory/procedural/proposer.py:186:23
-src/synthorg/memory/procedural/success_proposer.py:175:23
 src/synthorg/memory/retrieval/hierarchical/supervisor.py:318:19
 src/synthorg/memory/retrieval/hierarchical/supervisor.py:400:19
 src/synthorg/memory/retrieval/reranking/llm_reranker.py:333:19

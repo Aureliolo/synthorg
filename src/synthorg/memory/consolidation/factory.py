@@ -36,10 +36,14 @@ from synthorg.memory.consolidation.ops import (
 from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.observability import get_logger
+from synthorg.observability.events.consolidation import CONSOLIDATION_CONFIG_INVALID
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker_protocol import CostTrackerProtocol
+
+logger = get_logger(__name__)
 
 _DEFAULT_GROUP_THRESHOLD: Final[int] = 3
 
@@ -74,6 +78,11 @@ def _require[T](value: T | None, name: str, strategy: str) -> T:
         MemoryConfigError: If the related operation fails.
     """
     if value is None:
+        logger.warning(
+            CONSOLIDATION_CONFIG_INVALID,
+            strategy=strategy,
+            missing=name,
+        )
         msg = (
             f"consolidation strategy {strategy!r} requires "
             f"{name!r} but it was not provided"

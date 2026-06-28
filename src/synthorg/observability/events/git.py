@@ -15,3 +15,6 @@ GIT_CLONE_DNS_PINNED: Final[str] = "git.clone.dns_pinned"
 GIT_CLONE_DNS_REBINDING_DETECTED: Final[str] = "git.clone.dns_rebinding_detected"
 GIT_CLONE_TOCTOU_SKIPPED: Final[str] = "git.clone.toctou_skipped"
 GIT_REF_INJECTION_BLOCKED: Final[str] = "git.ref.injection_blocked"
+
+GIT_BACKEND_CONFIG_INVALID: Final[str] = "git.backend.config_invalid"
+"""A git-backend factory rejected its config or a missing dependency."""

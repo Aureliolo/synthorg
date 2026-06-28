@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
@@ -139,7 +140,9 @@ class GitCloneNetworkPolicy(BaseModel):
         Returns:
             Result of type ``Self``.
         """
-        normalized = dedupe_preserving_order(h.lower() for h in self.hostname_allowlist)
+        normalized = dedupe_preserving_order(
+            normalize_ascii_lowercase(h) for h in self.hostname_allowlist
+        )
         if normalized != self.hostname_allowlist:
             object.__setattr__(self, "hostname_allowlist", normalized)
         return self
@@ -550,7 +553,7 @@ async def validate_clone_url_host(
         )
         return f"Could not extract hostname from clone URL: {redacted!r}"
 
-    normalized = hostname.lower()
+    normalized = normalize_ascii_lowercase(hostname)
 
     # Reject hostnames with control characters (defense-in-depth
     # against injection in curloptResolve values).

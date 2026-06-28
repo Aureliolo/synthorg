@@ -52,7 +52,7 @@ class PeerRegistry:
             peer_name: Peer identifier (case-insensitive).
             card: The peer's Agent Card.
         """
-        key = peer_name.lower()
+        key = normalize_ascii_lowercase(peer_name)
         async with self._lock:
             new_peers = dict(self._peers)
             new_peers[key] = copy.deepcopy(card)
@@ -72,7 +72,7 @@ class PeerRegistry:
         Returns:
             The peer's Agent Card, or ``None`` if not found.
         """
-        key = peer_name.lower()
+        key = normalize_ascii_lowercase(peer_name)
         async with self._lock:
             return self._peers.get(key)
 
@@ -98,8 +98,8 @@ class PeerRegistry:
         async with self._lock:
             for name, card in self._peers.items():
                 if any(
-                    sk.id.lower() == needle
-                    or any(tag.lower() == needle for tag in sk.tags)
+                    normalize_ascii_lowercase(sk.id) == needle
+                    or any(normalize_ascii_lowercase(tag) == needle for tag in sk.tags)
                     for sk in card.skills
                 ):
                     matches.append(name)
@@ -114,7 +114,7 @@ class PeerRegistry:
         Returns:
             ``True`` if the peer was removed, ``False`` if not found.
         """
-        key = peer_name.lower()
+        key = normalize_ascii_lowercase(peer_name)
         async with self._lock:
             new_peers = dict(self._peers)
             removed = new_peers.pop(key, None)

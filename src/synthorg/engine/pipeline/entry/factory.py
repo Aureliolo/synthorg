@@ -29,6 +29,10 @@ from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdap
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.observability import get_logger
+from synthorg.observability.events.pipeline import PIPELINE_ENTRY_UNKNOWN_SOURCE
+
+logger = get_logger(__name__)
 
 
 @overload
@@ -114,6 +118,11 @@ def build_work_entry_adapter(
         )
     if source is WorkSource.TASK_BOARD:
         return TaskBoardEntryAdapter(work_pipeline=spine)
+    logger.warning(
+        PIPELINE_ENTRY_UNKNOWN_SOURCE,
+        source=source.value,
+        expected=[ws.value for ws in WorkSource],
+    )
     msg = f"no work-entry adapter wired for source {source.value!r}"
     raise UnknownStrategyError(msg)
 

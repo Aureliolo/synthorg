@@ -18,6 +18,7 @@ import aiosqlite
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -85,7 +86,7 @@ class SQLiteLockoutRepository:
         Returns:
             ``True`` when ``username`` is currently locked out, ``False`` otherwise.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         with self._locked_lock:
             locked_until = self._locked.get(username)
             if locked_until is None:
@@ -122,7 +123,7 @@ class SQLiteLockoutRepository:
             rows = await cursor.fetchall()
         per_user: dict[str, list[datetime]] = {}
         for row in rows:
-            uname = row["username"].lower()
+            uname = normalize_identifier(row["username"])
             per_user.setdefault(uname, []).append(
                 parse_iso_utc(row["attempted_at"]),
             )
@@ -173,7 +174,7 @@ class SQLiteLockoutRepository:
             configured lockout threshold (account is now locked), ``False``
             otherwise.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         now = self._clock.now()
         window_start = format_iso_utc(now - self._window)
         async with self._write_context():
@@ -229,7 +230,7 @@ class SQLiteLockoutRepository:
             ``True`` when an existing failure record was cleared, ``False`` when there
             was nothing to clear.
         """
-        username = username.lower()
+        username = normalize_identifier(username)
         async with self._write_context():
             await self._db.execute("BEGIN IMMEDIATE")
             try:

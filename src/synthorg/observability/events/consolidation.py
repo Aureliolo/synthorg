@@ -90,3 +90,8 @@ EXPERIENCE_COMPRESSION_FAILED: Final[str] = "consolidation.two_tier.compression_
 WIKI_EXPORT_START: Final[str] = "consolidation.wiki.export_start"
 WIKI_EXPORT_COMPLETE: Final[str] = "consolidation.wiki.export_complete"
 WIKI_EXPORT_FAILED: Final[str] = "consolidation.wiki.export_failed"
+
+# ── Factory ────────────────────────────────────────────────────
+
+CONSOLIDATION_CONFIG_INVALID: Final[str] = "consolidation.config.invalid"
+"""A consolidation strategy was built without a dependency it requires."""

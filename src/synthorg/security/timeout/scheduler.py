@@ -104,13 +104,15 @@ class ApprovalTimeoutScheduler:
         return self._task is not None and not self._task.done()
 
     async def set_timeout_policy(self, policy: TimeoutPolicy) -> None:
-        """Hot-swap the timeout policy under the lifecycle lock.
+        """Hot-swap the timeout policy.
 
         Used by the post-persistence risk-override wiring to replace the
         construction-time tiered policy with one whose classifier honours
-        runtime SecOps risk-tier overrides. Holding ``_lifecycle_lock``
-        orders the swap against ``start``/``stop`` so the loop never sees
-        a half-installed checker.
+        runtime SecOps risk-tier overrides. When the scheduler is running,
+        holds ``_lifecycle_lock`` to order the swap against ``start``/``stop``
+        so the loop never sees a half-installed checker; when it has never
+        started on the current loop there is no concurrent reader, so the
+        policy is applied directly without acquiring the lock.
 
         Args:
             policy: The replacement timeout policy.

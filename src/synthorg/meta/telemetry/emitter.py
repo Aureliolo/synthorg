@@ -23,6 +23,7 @@ from synthorg.core.resilience import (
     coerce_finite_nonneg_seconds,
     parse_retry_after_seconds,
 )
+from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, RolloutResult
@@ -570,6 +571,4 @@ def _safe_response_text(response: httpx.Response) -> str:
             error=safe_error_description(exc),
         )
         return "(unable to read response body)"
-    if len(text) > _LOG_BODY_MAX_LEN:
-        return text[: _LOG_BODY_MAX_LEN - 3] + "..."
-    return text
+    return clip_with_ellipsis(text, _LOG_BODY_MAX_LEN - len("..."))

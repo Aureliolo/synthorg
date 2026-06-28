@@ -21,6 +21,8 @@ from typing import cast, override
 import httpcore
 import httpx
 
+from synthorg.core.normalization import normalize_ascii_lowercase
+
 # Structural mirror of httpcore's ``SOCKET_OPTION`` (defined in the private
 # ``_backends.base`` module). Re-declaring the socket-option tuple union here
 # keeps the override signatures runtime-resolvable for typeguard without
@@ -50,7 +52,7 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         ip: str,
     ) -> None:
         self._inner = inner
-        self._hostname = hostname.lower()
+        self._hostname = normalize_ascii_lowercase(hostname)
         self._ip = ip
 
     @override
@@ -67,7 +69,7 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         Returns:
             Result of type ``httpcore.AsyncNetworkStream``.
         """
-        target = self._ip if host.lower() == self._hostname else host
+        target = self._ip if normalize_ascii_lowercase(host) == self._hostname else host
         return await self._inner.connect_tcp(
             target,
             port,

@@ -16,12 +16,19 @@ from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.clock import Clock
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.security import (
+    SECURITY_RISK_OVERRIDE_CREATE_REJECTED,
+    SECURITY_RISK_OVERRIDE_NOT_FOUND,
+)
 from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
 from synthorg.security.rules.risk_override import (
     RiskTierOverride,
     SecOpsRiskClassifier,
 )
 from synthorg.security.timeout.protocol import RiskTierClassifier
+
+logger = get_logger(__name__)
 
 
 class RiskOverrideService:
@@ -76,6 +83,13 @@ class RiskOverrideService:
         """
         original_tier = self._base.classify(str(action_type))
         if original_tier == override_tier:
+            logger.warning(
+                SECURITY_RISK_OVERRIDE_CREATE_REJECTED,
+                action_type=str(action_type),
+                override_tier=override_tier.value,
+                original_tier=original_tier.value,
+                reason="no_op",
+            )
             msg = (
                 f"override_tier {override_tier.value!r} equals the current "
                 f"base tier for {action_type!r}; the override is a no-op"
@@ -120,6 +134,10 @@ class RiskOverrideService:
             None,
         )
         if target is None:
+            logger.warning(
+                SECURITY_RISK_OVERRIDE_NOT_FOUND,
+                override_id=override_id,
+            )
             return None
         revoked_at = self._clock.now()
         await self._repo.revoke(

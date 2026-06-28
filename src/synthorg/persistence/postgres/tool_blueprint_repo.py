@@ -41,6 +41,9 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared._filter_clauses import (
+    build_tool_blueprint_filter_clauses,
+)
 from synthorg.persistence.tool_blueprint_protocol import (
     ToolBlueprintFilterSpec,
 )
@@ -290,30 +293,6 @@ class PostgresDynamicToolRepository:
         logger.debug(PERSISTENCE_DYNAMIC_TOOL_LISTED, count=len(items))
         return items
 
-    def _build_where(
-        self, filter_spec: ToolBlueprintFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause and bound params from a filter spec.
-
-        Returns:
-            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
-            (without the leading ``WHERE``) and ``params`` is the matching positional
-            parameter list.
-        """
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.state is not None:
-            clauses.append("state = %s")
-            params.append(filter_spec.state.value)
-        if filter_spec.capability is not None:
-            clauses.append("capability = %s")
-            params.append(filter_spec.capability)
-        if filter_spec.sandbox_backend is not None:
-            clauses.append("sandbox_backend = %s")
-            params.append(filter_spec.sandbox_backend.value)
-        where = " AND ".join(clauses) if clauses else "TRUE"
-        return where, params
-
     async def query(
         self,
         filter_spec: ToolBlueprintFilterSpec,
@@ -335,7 +314,9 @@ class PostgresDynamicToolRepository:
             ),
             _MAX_PAGE_LIMIT,
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_tool_blueprint_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         params.extend([effective_limit, offset])
         try:
             async with (
@@ -369,7 +350,9 @@ class PostgresDynamicToolRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = self._build_where(filter_spec)
+        where, params = build_tool_blueprint_filter_clauses(
+            filter_spec, placeholder="%s", empty="TRUE"
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

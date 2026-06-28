@@ -149,31 +149,7 @@ in the {{ agent_department }} department.
 {% endif %}
 
 ## Personality
-{% if personality_mode == "full" %}
-{% if personality_description %}
-{{ personality_description }}
-{% endif %}
-- **Communication style**: {{ communication_style }}
-- **Verbosity**: {{ verbosity }}
-- **Risk tolerance**: {{ risk_tolerance }}
-- **Creativity**: {{ creativity }}
-- **Decision-making**: {{ decision_making }}
-- **Collaboration preference**: {{ collaboration }}
-- **Conflict approach**: {{ conflict_approach }}
-{% if personality_traits %}
-- **Traits**: {{ personality_traits | join(', ') }}
-{% endif %}
-{% elif personality_mode == "condensed" %}
-{% if personality_description %}
-{{ personality_description }}
-{% endif %}
-- **Style**: {{ communication_style }}
-{% if personality_traits %}
-- **Traits**: {{ personality_traits | join(', ') }}
-{% endif %}
-{% else %}
-- **Style**: {{ communication_style }}
-{% endif %}
+{{ personality_section }}
 
 ## Skills
 {% if primary_skills %}

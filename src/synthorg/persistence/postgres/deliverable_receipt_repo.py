@@ -24,6 +24,9 @@ from synthorg.observability.events.deliverable_receipts import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared._filter_clauses import (
+    build_deliverable_receipt_filter_clauses,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
@@ -202,7 +205,9 @@ class PostgresDeliverableReceiptRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RECEIPT_QUERY_FAILED
         )
-        where, params = self._build_where(filter_spec)
+        where, params = build_deliverable_receipt_filter_clauses(
+            filter_spec, placeholder="%s"
+        )
         sql = (
             f"SELECT payload_json FROM deliverable_receipt WHERE {where} "
             "ORDER BY issued_at DESC, receipt_id DESC LIMIT %s OFFSET %s"
@@ -234,7 +239,9 @@ class PostgresDeliverableReceiptRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = self._build_where(filter_spec)
+        where, params = build_deliverable_receipt_filter_clauses(
+            filter_spec, placeholder="%s"
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -254,24 +261,6 @@ class PostgresDeliverableReceiptRepository:
             )
             raise QueryError(msg) from exc
         return int(row["n"]) if row is not None else 0
-
-    def _build_where(
-        self, filter_spec: DeliverableReceiptFilterSpec
-    ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``.
-
-        Returns:
-            ``(where_clause, params)`` without the leading ``WHERE``.
-        """
-        conditions: list[str] = ["project_id = %s"]
-        params: list[object] = [filter_spec.project_id]
-        if filter_spec.task_id is not None:
-            conditions.append("task_id = %s")
-            params.append(filter_spec.task_id)
-        if filter_spec.deliverable_doc_slug is not None:
-            conditions.append("deliverable_doc_slug = %s")
-            params.append(filter_spec.deliverable_doc_slug)
-        return " AND ".join(conditions), params
 
     def _to_row(self, receipt: DeliverableReceipt) -> dict[str, object]:
         """Flatten a receipt into a row dict (full model in payload_json).

@@ -15,6 +15,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.upgrade_recommendation import (
     PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,
 )
+from synthorg.persistence.backend_dispatch import build_for_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
@@ -60,7 +61,8 @@ def build_upgrade_recommendation_repo(
             error=safe_error_description(exc),
         )
         return None
-    if name == _SQLITE:
+
+    def _sqlite() -> UpgradeRecommendationRepository:
         from synthorg.persistence.sqlite.upgrade_recommendation_repo import (  # noqa: PLC0415
             SQLiteUpgradeRecommendationRepository,
         )
@@ -69,13 +71,17 @@ def build_upgrade_recommendation_repo(
             cast("aiosqlite.Connection", handle),
             write_context=write_context,
         )
-    from synthorg.persistence.postgres.upgrade_recommendation_repo import (  # noqa: PLC0415
-        PostgresUpgradeRecommendationRepository,
-    )
 
-    return PostgresUpgradeRecommendationRepository(
-        cast("AsyncConnectionPool", handle),
-    )
+    def _postgres() -> UpgradeRecommendationRepository:
+        from synthorg.persistence.postgres.upgrade_recommendation_repo import (  # noqa: PLC0415
+            PostgresUpgradeRecommendationRepository,
+        )
+
+        return PostgresUpgradeRecommendationRepository(
+            cast("AsyncConnectionPool", handle),
+        )
+
+    return build_for_backend(backend, sqlite=_sqlite, postgres=_postgres)
 
 
 __all__ = ["build_upgrade_recommendation_repo"]

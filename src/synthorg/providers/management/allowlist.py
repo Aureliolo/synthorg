@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
@@ -259,7 +260,7 @@ class DiscoveryAllowlistManager:
             Updated policy.
         """
         policy = await self.load()
-        normalized = host_port.lower()
+        normalized = normalize_ascii_lowercase(host_port)
         if normalized in policy.host_port_allowlist:
             return policy
         new_entries = (*policy.host_port_allowlist, normalized)
@@ -289,7 +290,7 @@ class DiscoveryAllowlistManager:
             Updated policy.
         """
         policy = await self.load()
-        normalized = host_port.lower()
+        normalized = normalize_ascii_lowercase(host_port)
         if normalized not in policy.host_port_allowlist:
             return policy
         new_entries = tuple(e for e in policy.host_port_allowlist if e != normalized)

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.types import PersonalityMode
+from synthorg.engine._personality_section import build_personality_section
 from synthorg.engine._prompt_helpers import (
     PersonalityTrimInfo,
     _estimate_personality_tokens,
@@ -18,6 +19,8 @@ from synthorg.engine._prompt_helpers import (
 )
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
+from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
+from synthorg.engine.prompt_validation import render_template
 from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.hr.enums import (
     CollaborationPreference,
@@ -665,3 +668,36 @@ class TestAdditionalEdgeCases:
         )
         with pytest.raises(ValidationError):
             info.before_tokens = 999  # type: ignore[misc]
+
+
+# ── TestPersonalitySectionParity ───────────────────────────────
+
+
+@pytest.mark.unit
+class TestPersonalitySectionParity:
+    """The rendered template and the estimator share one personality builder."""
+
+    @pytest.mark.parametrize("mode", ["full", "condensed", "minimal"])
+    def test_context_carries_built_section(self, mode: str) -> None:
+        """build_core_context stores the joined builder output verbatim."""
+        agent = _make_agent()
+        ctx = _build_ctx(agent, _make_profile(personality_mode=mode))
+
+        expected = "\n".join(
+            build_personality_section(ctx, cast("PersonalityMode", mode)),
+        )
+
+        assert ctx["personality_section"] == expected
+
+    @pytest.mark.parametrize("mode", ["full", "condensed", "minimal"])
+    def test_rendered_template_matches_builder(self, mode: str) -> None:
+        """The DEFAULT_TEMPLATE personality block is exactly the builder body."""
+        agent = _make_agent()
+        ctx = _build_ctx(agent, _make_profile(personality_mode=mode))
+
+        rendered = render_template(DEFAULT_TEMPLATE, ctx)
+        section = "\n".join(
+            build_personality_section(ctx, cast("PersonalityMode", mode)),
+        )
+
+        assert f"## Personality\n{section}\n" in rendered
