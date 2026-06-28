@@ -47,6 +47,10 @@ Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via
 
 The `RubricGrader` protocol follows the standard protocol + strategy + factory + config discriminator pattern (mirroring `engine/classification/`). Variants: `LLM` (production) and `HEURISTIC` (testing/fallback). Configuration via `VerificationConfig`.
 
+### Rubric Grading on the Review Pipeline
+
+The decomposer + grader factories are wired onto the live post-completion path as a `VerificationReviewStage` (`engine/review/stages/verification.py`), which runs first in the review pipeline. It decomposes a task's acceptance criteria into probes, grades the work against a rubric with a *separate* evaluator identity, and maps the verdict onto the pipeline: `PASS`/`REFER` let the task proceed (REFER is surfaced in stage metadata for human review, never a hard fail), `FAIL` bounces the task to `IN_PROGRESS` for rework. A grader fault fails OPEN (the stage `SKIP`s) so a verifier defect never blocks completion. The deterministic default (identity decomposer + heuristic grader) grades the proportion of acceptance criteria marked met, so the stage works without a provider; `simulations.verification_grader` / `verification_decomposer` switch to the LLM variants and `simulations.verification_review_enabled` gates the stage (on by default, baked in at startup).
+
 ---
 
 ## Harness Middleware Layer

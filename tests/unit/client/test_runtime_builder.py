@@ -131,8 +131,23 @@ class TestBuildClientSimulationRuntime:
         assert isinstance(state, ClientSimulationState)
         assert state.intake_engine is not None
         assert state.review_pipeline is not None
-        assert state.review_pipeline.stage_names == ("internal",)
+        # Verification grading is on by default, gating before the
+        # internal stage.
+        assert state.review_pipeline.stage_names == ("verification", "internal")
         assert state.intake_default_project == "client-intake"
+
+    def test_verification_stage_disabled_by_setting(self) -> None:
+        from synthorg.client.runtime_builder import (
+            build_client_simulation_runtime,
+        )
+
+        task_engine = mock_of[TaskEngine]()
+        app_state = make_app_state(task_engine=task_engine)
+        state = build_client_simulation_runtime(
+            app_state,
+            env={"SYNTHORG_SIMULATIONS_VERIFICATION_REVIEW_ENABLED": "false"},
+        )
+        assert state.review_pipeline.stage_names == ("internal",)
 
     def test_intake_default_project_env_override(self) -> None:
         from synthorg.client.runtime_builder import (

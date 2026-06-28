@@ -30,6 +30,7 @@ def build_review_pipeline(
     strategy: ReviewPipelineStrategy = "internal_only",
     client_pool: tuple[ClientInterface, ...] = (),
     pool_strategy: ClientPoolStrategy | None = None,
+    verification_stage: ReviewStage | None = None,
 ) -> ReviewPipeline:
     """Build the review pipeline selected by *strategy*.
 
@@ -41,12 +42,17 @@ def build_review_pipeline(
             pool forces internal-only regardless of *strategy*.
         pool_strategy: Selection strategy for the client stage. Required
             for the client stage; its absence forces internal-only.
+        verification_stage: Optional rubric-grading stage. When supplied
+            it runs first, gating the work against a verification rubric
+            before the client / internal stages.
 
     Returns:
         A :class:`ReviewPipeline` whose stages match the resolved
         strategy.
     """
     stages: list[ReviewStage] = []
+    if verification_stage is not None:
+        stages.append(verification_stage)
     if strategy == "internal_only":
         client_stage_active = False
     elif strategy == "client_then_internal":
@@ -70,6 +76,7 @@ def build_review_pipeline(
         REVIEW_PIPELINE_BUILT,
         strategy=strategy,
         client_stage_active=client_stage_active,
+        verification_stage_active=verification_stage is not None,
         stages=list(pipeline.stage_names),
     )
     return pipeline

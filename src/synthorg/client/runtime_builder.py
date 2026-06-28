@@ -24,11 +24,22 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.quality.verification_config import (
+    DecomposerVariant,
+    GraderVariant,
+    VerificationConfig,
+)
+from synthorg.engine.quality.verification_factory import (
+    build_decomposer,
+    build_grader,
+)
 from synthorg.engine.review.factory import (
     ReviewPipelineStrategy,
     build_review_pipeline,
 )
+from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
 from synthorg.observability import (
     get_logger,
@@ -39,6 +50,7 @@ from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_bool
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -53,7 +65,14 @@ _INTAKE_STRATEGY_KEY = "intake_strategy"
 _INTAKE_MODEL_KEY = "intake_model"
 _INTAKE_DEFAULT_PROJECT_KEY = "intake_default_project"
 _REVIEW_PIPELINE_STRATEGY_KEY = "review_pipeline_strategy"
+_VERIFICATION_ENABLED_KEY = "verification_review_enabled"
+_VERIFICATION_GRADER_KEY = "verification_grader"
+_VERIFICATION_DECOMPOSER_KEY = "verification_decomposer"
 _DEFAULT_STRATEGY = "direct"
+# Vendor-agnostic placeholder model id for the opt-in LLM verification
+# variants; operators override via the provider post-init swap path,
+# mirroring the vision-verifier gate's tier resolver.
+_PLACEHOLDER_MODEL_ID = "example-medium-001"
 
 
 def _select_provider(app_state: AppState) -> CompletionProvider | None:
@@ -123,6 +142,90 @@ def _resolve_review_pipeline_strategy(
         ).value
     )
     return cast("ReviewPipelineStrategy", value)
+
+
+def _resolve_verification_config(
+    *,
+    env: Mapping[str, str],
+    has_provider: bool,
+) -> VerificationConfig:
+    """Resolve the verification grader/decomposer variants from settings.
+
+    The ``llm`` variants degrade to the deterministic ``heuristic`` /
+    ``identity`` variants when no provider is registered (empty company),
+    so the stage always comes online without a provider.
+
+    Returns:
+        The resolved :class:`VerificationConfig`.
+    """
+    grader = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _VERIFICATION_GRADER_KEY, env=env
+        ).value
+    )
+    decomposer = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _VERIFICATION_DECOMPOSER_KEY, env=env
+        ).value
+    )
+    if not has_provider and (grader == "llm" or decomposer == "llm"):
+        logger.warning(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            note="verification llm variant requested without a provider; "
+            "degrading to deterministic heuristic/identity",
+            grader=grader,
+            decomposer=decomposer,
+        )
+        grader = "heuristic"
+        decomposer = "identity"
+    return VerificationConfig(
+        grader=GraderVariant(grader),
+        decomposer=DecomposerVariant(decomposer),
+    )
+
+
+def _build_verification_stage(
+    *,
+    env: Mapping[str, str],
+    provider: CompletionProvider | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> VerificationReviewStage | None:
+    """Build the rubric-grading review stage when enabled.
+
+    Returns:
+        A :class:`VerificationReviewStage` when
+        ``simulations.verification_review_enabled`` is set, otherwise
+        ``None`` (the stage is omitted from the pipeline).
+    """
+    enabled = bool(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS,
+            _VERIFICATION_ENABLED_KEY,
+            env=env,
+            parse=parse_bool,
+        ).value
+    )
+    if not enabled:
+        return None
+    config = _resolve_verification_config(env=env, has_provider=provider is not None)
+    tier_resolver = (
+        (lambda _tier: NotBlankStr(_PLACEHOLDER_MODEL_ID))
+        if provider is not None
+        else None
+    )
+    decomposer = build_decomposer(
+        config,
+        provider=provider,
+        tier_resolver=tier_resolver,
+        cost_tracker=cost_tracker,
+    )
+    grader = build_grader(
+        config,
+        provider=provider,
+        tier_resolver=tier_resolver,
+        cost_tracker=cost_tracker,
+    )
+    return VerificationReviewStage(decomposer=decomposer, grader=grader)
 
 
 def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
@@ -218,13 +321,22 @@ def build_client_simulation_runtime(
         cost_tracker=cost_tracker,
     )
     review_strategy = _resolve_review_pipeline_strategy(env)
-    review_pipeline = build_review_pipeline(strategy=review_strategy)
+    verification_stage = _build_verification_stage(
+        env=env,
+        provider=provider,
+        cost_tracker=cost_tracker,
+    )
+    review_pipeline = build_review_pipeline(
+        strategy=review_strategy,
+        verification_stage=verification_stage,
+    )
     logger.info(
         CLIENT_SIMULATION_RUNTIME_WIRED,
         requested_strategy=requested_strategy,
         effective_strategy=effective_strategy,
         has_provider=provider is not None,
         review_stages=list(review_pipeline.stage_names),
+        verification_stage_active=verification_stage is not None,
         intake_default_project=default_project,
     )
     return ClientSimulationState(
