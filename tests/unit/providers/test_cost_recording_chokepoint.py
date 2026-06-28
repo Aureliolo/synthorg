@@ -210,7 +210,12 @@ class TestCostRecordingChokepoint:
             await provider.complete([_msg()], "test-model")
 
         await tracker_inner.drain_pending_records()
+        await tracker_outer.drain_pending_records()
+        outer_records = await tracker_outer.get_records()
         inner_records = await tracker_inner.get_records()
+        # The inner scope fully shadows the outer: only the inner tracker
+        # records, and it records WITHOUT attribution.
+        assert outer_records == ()
         assert len(inner_records) == 1
         assert inner_records[0].prompt_class_id is None
 

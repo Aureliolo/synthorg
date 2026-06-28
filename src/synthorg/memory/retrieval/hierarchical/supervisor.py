@@ -190,6 +190,11 @@ class SupervisorRouter:
         """
         return pin_for(self._PURPOSE_ID)
 
+    @property
+    def retry_metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for the reflective-retry prompt class."""
+        return pin_for(self._RETRY_PURPOSE_ID)
+
     def __init__(  # noqa: PLR0913
         self,
         *,
@@ -419,7 +424,7 @@ class SupervisorRouter:
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
             task_id=NotBlankStr("system:memory:retrieval_retry"),
-            purpose=self._RETRY_PURPOSE_ID,
+            purpose=self.retry_metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

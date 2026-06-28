@@ -330,9 +330,14 @@ def cmd_scan_all(project_root: Path | None = None) -> int:
     """Scan the whole src tree and report violations.
 
     Returns:
-        ``0`` when clean, ``1`` on a violation, ``2`` on a read/parse error.
+        ``0`` when clean, ``1`` on a violation, ``2`` on a configuration or
+        read/parse error.
     """
-    root = project_root if project_root is not None else _REPO_ROOT
+    try:
+        root = _resolve_project_root(project_root)
+    except ProjectRootError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     try:
         hits = _scan_all(root)
     except GateSourceError as exc:
@@ -373,12 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Scan the full src tree (accepted for symmetry; the default).",
     )
     args = parser.parse_args(argv)
-    try:
-        project_root = _resolve_project_root(args.repo_root)
-    except ProjectRootError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    return cmd_scan_all(project_root)
+    return cmd_scan_all(args.repo_root)
 
 
 if __name__ == "__main__":

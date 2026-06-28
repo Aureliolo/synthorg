@@ -146,7 +146,7 @@ class BriefResult(BaseModel):
     score: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
     score_floor: int = Field(default=GRADE_FLOOR, ge=GRADE_FLOOR, le=GRADE_CEILING)
     process_facts: ProcessFactReport
-    prompt_class_usage: dict[str, int] = Field(default_factory=dict)
+    prompt_class_usage: dict[NotBlankStr, int] = Field(default_factory=dict)
     termination_reason: NotBlankStr
     judge_calibration: JudgeCalibrationReport | None = None
 
@@ -202,7 +202,7 @@ class AggregatedProcessFacts(BaseModel):
 
     total_events: int = Field(default=0, ge=0)
     events_by_class: dict[str, int] = Field(default_factory=dict)
-    prompt_class_usage: dict[str, int] = Field(default_factory=dict)
+    prompt_class_usage: dict[NotBlankStr, int] = Field(default_factory=dict)
 
     # ``@property`` (not ``@computed_field``) for the same round-trip
     # reason as ``ProcessFactReport.is_clean`` above.

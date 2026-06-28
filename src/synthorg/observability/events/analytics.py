@@ -11,6 +11,7 @@ ANALYTICS_TASK_LIST_COLLECTED: Final[str] = "analytics.task_list.collected"
 ANALYTICS_CALL_METADATA_RECORDED: Final[str] = "analytics.call_metadata_recorded"
 ANALYTICS_AGGREGATION_COMPUTED: Final[str] = "analytics.aggregation_computed"
 ANALYTICS_BREAKDOWN_COMPUTED: Final[str] = "analytics.breakdown_computed"
+ANALYTICS_BREAKDOWN_MIXED_CURRENCY: Final[str] = "analytics.breakdown.mixed_currency"
 ANALYTICS_RETRY_RATE_ALERT: Final[str] = "analytics.retry_rate_alert"
 ANALYTICS_RETRY_ALERT_DISPATCH_FAILED: Final[str] = (
     "analytics.retry_alert.dispatch_failed"

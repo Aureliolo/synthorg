@@ -34,6 +34,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
     ANALYTICS_BREAKDOWN_COMPUTED,
+    ANALYTICS_BREAKDOWN_MIXED_CURRENCY,
     ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
     ANALYTICS_RETRY_RATE_ALERT,
     ANALYTICS_SERVICE_CREATED,
@@ -291,8 +292,7 @@ def _build_breakdown_row(
         # assert_currencies_match logs the conflicting codes but not which
         # prompt class triggered them; add that so the 409 is greppable.
         logger.warning(
-            ANALYTICS_AGGREGATION_COMPUTED,
-            note="mixed_currency_in_prompt_class_breakdown",
+            ANALYTICS_BREAKDOWN_MIXED_CURRENCY,
             prompt_class_id=prompt_class_id,
         )
         raise

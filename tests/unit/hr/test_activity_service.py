@@ -213,11 +213,12 @@ def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        _ = (task_id, provider, prompt_class_id)
+        _ = (task_id, provider)
         matched = tuple(
             r
             for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
+            and (prompt_class_id is None or r.prompt_class_id == prompt_class_id)
             and start <= r.timestamp <= end
         )
         return matched[offset : offset + limit]
@@ -231,11 +232,12 @@ def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
         start: datetime,
         end: datetime,
     ) -> tuple[CostRecord, ...]:
-        _ = (task_id, provider, prompt_class_id)
+        _ = (task_id, provider)
         return tuple(
             r
             for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
+            and (prompt_class_id is None or r.prompt_class_id == prompt_class_id)
             and start <= r.timestamp <= end
         )
 

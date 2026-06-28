@@ -28,7 +28,7 @@ class CostRecordFilterSpec(BaseModel):
     )
     prompt_class_id: NotBlankStr | None = Field(
         default=None,
-        description="Filter by prompt purpose id",
+        description="Filter by prompt class identifier",
     )
 
 
