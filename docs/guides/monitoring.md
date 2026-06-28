@@ -414,6 +414,17 @@ groups:
 
 Logfire's Prometheus integration can scrape the same `/metrics` endpoint directly; no additional wiring is required on the SynthOrg side. Follow the [Logfire documentation](https://pydantic.dev/docs/logfire/) for the Prometheus setup and point it at `http://synthorg:8000/metrics`. All metrics documented above will appear under the same names in Logfire dashboards.
 
+### Per-prompt-purpose alerts (operational)
+
+These are operator-side **operational** alerts over your own structured-log / observability backend, in the same vein as the suggested PromQL rules above. They are NOT part of SynthOrg's opt-in product telemetry (which carries only anonymous aggregate signal and never per-entity cost), and they are NOT Prometheus rules: cost and latency sliced by prompt purpose (`prompt_class_id`, a `PromptPurposeId`) are deliberately not Prometheus labels, since a per-purpose metric label is the same cardinality hazard as a per-agent one.
+
+The per-purpose data instead lives in the structured cost-recording log/span stream (each `CostRecord` carries `prompt_class_id`, `latency_ms`, `cache_hit`, `retry_count`) and the read-role `GET /budget/prompt-class-breakdown` REST endpoint that backs the dashboard's "Cost by prompt purpose" panel. Configure the two regression alerts as SQL queries (one row per `prompt_class_id`) in whatever log/observability backend you ship those structured logs to; run them on a rolling window and alert when a purpose's recent window diverges from its trailing baseline:
+
+- **Cost regression**: a purpose's spend in the last hour exceeds its trailing 7-day hourly mean by the deployment's factor (start at 3x). Group by `prompt_class_id`; the alert payload names the drifting purpose so operators open the breakdown panel filtered to it.
+- **p95-latency regression**: a purpose's p95 `latency_ms` in the last hour exceeds its trailing 7-day p95 by the deployment's factor (start at 2x). Group by `prompt_class_id`.
+
+Thresholds are deployment-specific (low-traffic purposes are noisy on ratio alerts), so pin a minimum call-count floor per window before the ratio fires. Point both alerts at the same notification channel as the Prometheus rules above.
+
 ## Further reading
 
 - [Observability design](../design/observability.md): sink layout, correlation IDs, per-domain routing

@@ -165,12 +165,13 @@ Use `uv run python -m pytest`, never bare `pytest` (Windows path issue).
 ## Review Output Format
 
 ```text
-[SEVERITY] file:line -- Category
-  Problem: What the code does
-  Fix: What to change (do not write the change; describe it)
+[SEVERITY] Issue title
+File: path/to/file.py:42
+Issue: Description
+Fix: What to change (do not write the change; describe it)
 ```
 
-End with summary count per severity.
+End with a summary count per severity.
 
 ## Approval Criteria
 

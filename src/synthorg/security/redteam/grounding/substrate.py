@@ -24,12 +24,15 @@ wrongly blocked:
 """
 
 import asyncio
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import KnowledgeHit
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CLAIM_UNSUPPORTED,
@@ -101,6 +104,13 @@ class KnowledgeSubstrateGroundingChecker:
             limit silently neutralises the checker, since every claim's
             corpus search returns no hits and is skipped).
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RED_TEAM_GROUNDING
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -495,6 +505,7 @@ class KnowledgeSubstrateGroundingChecker:
             cost_tracker=context.cost_tracker,
             agent_id=_GROUNDING_AGENT_ID,
             task_id=execution_id,
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             return await context.provider.complete(

@@ -108,6 +108,12 @@
       "ratio": 0.975,
       "tier": "controller"
     },
+    "src/synthorg/api/controllers/budget.py": {
+      "cap": 500,
+      "loc": 462,
+      "ratio": 0.924,
+      "tier": "code"
+    },
     "src/synthorg/api/controllers/clients.py": {
       "cap": 500,
       "loc": 430,
@@ -426,12 +432,6 @@
       "ratio": 0.932,
       "tier": "service"
     },
-    "src/synthorg/engine/classification/semantic_detectors.py": {
-      "cap": 500,
-      "loc": 404,
-      "ratio": 0.808,
-      "tier": "code"
-    },
     "src/synthorg/engine/compaction/summarizer.py": {
       "cap": 500,
       "loc": 400,
@@ -470,8 +470,8 @@
     },
     "src/synthorg/engine/evolution/proposers/separate_analyzer.py": {
       "cap": 500,
-      "loc": 418,
-      "ratio": 0.836,
+      "loc": 425,
+      "ratio": 0.85,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/service.py": {
@@ -530,14 +530,14 @@
     },
     "src/synthorg/engine/quality/decomposers/llm.py": {
       "cap": 700,
-      "loc": 628,
-      "ratio": 0.897,
+      "loc": 629,
+      "ratio": 0.899,
       "tier": "adapter"
     },
     "src/synthorg/engine/quality/graders/llm.py": {
       "cap": 700,
-      "loc": 587,
-      "ratio": 0.839,
+      "loc": 596,
+      "ratio": 0.851,
       "tier": "adapter"
     },
     "src/synthorg/engine/react_loop.py": {
@@ -794,8 +794,8 @@
     },
     "src/synthorg/memory/consolidation/llm_op.py": {
       "cap": 500,
-      "loc": 472,
-      "ratio": 0.944,
+      "loc": 482,
+      "ratio": 0.964,
       "tier": "code"
     },
     "src/synthorg/memory/consolidation/service.py": {
@@ -821,6 +821,12 @@
       "loc": 512,
       "ratio": 0.853,
       "tier": "orchestrator"
+    },
+    "src/synthorg/memory/retrieval/hierarchical/supervisor.py": {
+      "cap": 500,
+      "loc": 407,
+      "ratio": 0.814,
+      "tier": "code"
     },
     "src/synthorg/memory/retrieval/hierarchical/workers.py": {
       "cap": 500,
@@ -896,8 +902,8 @@
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
       "cap": 500,
-      "loc": 447,
-      "ratio": 0.894,
+      "loc": 457,
+      "ratio": 0.914,
       "tier": "code"
     },
     "src/synthorg/meta/feature.py": {
@@ -944,8 +950,8 @@
     },
     "src/synthorg/meta/strategies/code_modification.py": {
       "cap": 500,
-      "loc": 464,
-      "ratio": 0.928,
+      "loc": 473,
+      "ratio": 0.946,
       "tier": "code"
     },
     "src/synthorg/meta/telemetry/emitter.py": {
@@ -1274,8 +1280,8 @@
     },
     "src/synthorg/providers/cost_recording.py": {
       "cap": 500,
-      "loc": 488,
-      "ratio": 0.976,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
@@ -1304,8 +1310,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1092,
-      "ratio": 0.993,
+      "loc": 1100,
+      "ratio": 1.0,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1328,14 +1334,14 @@
     },
     "src/synthorg/security/llm_evaluator.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/security/safety_classifier.py": {
       "cap": 500,
-      "loc": 479,
-      "ratio": 0.958,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/security/service.py": {
@@ -1488,7 +1494,7 @@
     "synthorg.api.guards": 117,
     "synthorg.api.pagination": 61,
     "synthorg.api.path_params": 80,
-    "synthorg.api.rate_limits": 91,
+    "synthorg.api.rate_limits": 92,
     "synthorg.api.state": 264,
     "synthorg.api.state_slices": 31,
     "synthorg.api.ws_models": 20,
@@ -1499,8 +1505,8 @@
     "synthorg.budget.config": 29,
     "synthorg.budget.coordination_config": 23,
     "synthorg.budget.cost_record": 27,
-    "synthorg.budget.currency": 69,
-    "synthorg.budget.errors": 25,
+    "synthorg.budget.currency": 71,
+    "synthorg.budget.errors": 26,
     "synthorg.budget.state": 34,
     "synthorg.budget.tracker_protocol": 91,
     "synthorg.client.models": 39,
@@ -1534,7 +1540,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 101,
     "synthorg.core.task_enums": 90,
-    "synthorg.core.types": 1195,
+    "synthorg.core.types": 1196,
     "synthorg.engine.context": 40,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 86,
@@ -1561,7 +1567,9 @@
     "synthorg.integrations.errors": 41,
     "synthorg.integrations.state": 31,
     "synthorg.knowledge.models": 29,
-    "synthorg.llm.prompt_purpose": 20,
+    "synthorg.llm.metadata": 38,
+    "synthorg.llm.model_pins": 36,
+    "synthorg.llm.prompt_purpose": 48,
     "synthorg.memory.errors": 25,
     "synthorg.memory.models": 73,
     "synthorg.memory.protocol": 67,
@@ -1657,7 +1665,7 @@
     },
     "synthorg.budget.tracker:CostTracker": {
       "lcom4": 3,
-      "loc": 739
+      "loc": 785
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,
@@ -1797,7 +1805,7 @@
     },
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 2,
-      "loc": 860
+      "loc": 865
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

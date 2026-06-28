@@ -8,6 +8,8 @@ export type {
   CostRecord,
   DailySummary,
   PeriodSummary,
+  PromptClassBreakdown,
+  PromptClassBreakdownRow,
 } from './dtos.gen'
 
 export type { FinishReason, LLMCallCategory } from './enum-values.gen'

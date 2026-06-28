@@ -113,6 +113,9 @@ class PostgresCostRecordRepository:
         if filter_spec.task_id is not None:
             clauses.append("task_id = %s")
             params.append(filter_spec.task_id)
+        if filter_spec.prompt_class_id is not None:
+            clauses.append("prompt_class_id = %s")
+            params.append(filter_spec.prompt_class_id)
 
         sql = (
             "SELECT agent_id, task_id, provider, model, input_tokens, "

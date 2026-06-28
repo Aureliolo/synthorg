@@ -1,25 +1,43 @@
+# module-kind: service
 """Per-call analytics aggregation and alerting service."""
 
-from collections import Counter
+import math
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Final
 
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
-from synthorg.budget.call_analytics_models import AnalyticsAggregation
-from synthorg.budget.category_analytics import OrchestrationRatio
+from synthorg.budget.call_analytics_models import (
+    AnalyticsAggregation,
+    PromptClassBreakdown,
+    PromptClassBreakdownRow,
+)
+from synthorg.budget.category_analytics import (
+    OrchestrationRatio,
+    build_category_breakdown,
+    compute_orchestration_ratio,
+)
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
+from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.model_tier import TierName
 from synthorg.budget.tracker_protocol import (
     CostTrackerProtocol,
     collect_all_records,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
+    ANALYTICS_BREAKDOWN_COMPUTED,
+    ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
     ANALYTICS_RETRY_RATE_ALERT,
     ANALYTICS_SERVICE_CREATED,
+    ANALYTICS_TIER_LOOKUP_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -59,12 +77,13 @@ class CallAnalyticsService:
         self._dispatcher = notification_dispatcher
         logger.debug(ANALYTICS_SERVICE_CREATED, enabled=config.enabled)
 
-    async def get_aggregation(
+    async def get_aggregation(  # noqa: PLR0913 -- orthogonal record filters
         self,
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
         provider: NotBlankStr | None = None,
+        prompt_class_id: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> AnalyticsAggregation:
@@ -74,6 +93,7 @@ class CallAnalyticsService:
             agent_id: Filter by agent.
             task_id: Filter by task.
             provider: Filter by provider name.
+            prompt_class_id: Filter by prompt purpose id.
             start: Inclusive lower bound on timestamp.
             end: Exclusive upper bound on timestamp.
 
@@ -85,14 +105,17 @@ class CallAnalyticsService:
             agent_id=agent_id,
             task_id=task_id,
             provider=provider,
+            prompt_class_id=prompt_class_id,
             start=start,
             end=end,
         )
-        orchestration_ratio = await self._tracker.get_orchestration_ratio(
-            agent_id=agent_id,
-            task_id=task_id,
-            start=start,
-            end=end,
+        # Derive the orchestration ratio from the same filtered snapshot the
+        # counts come from, so every filter (provider, prompt_class_id, time
+        # window) scopes both consistently. A separate tracker query would
+        # ignore provider/prompt_class_id and read its own snapshot, yielding
+        # an internally inconsistent aggregation.
+        orchestration_ratio = compute_orchestration_ratio(
+            build_category_breakdown(records),
             thresholds=self._config.orchestration_alerts,
         )
         agg = _build_aggregation(records, orchestration_ratio)
@@ -102,6 +125,30 @@ class CallAnalyticsService:
             retry_rate=agg.retry_rate,
         )
         return agg
+
+    async def get_prompt_class_breakdown(
+        self,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> PromptClassBreakdown:
+        """Aggregate cost + latency + quality per prompt class.
+
+        Records with no ``prompt_class_id`` (per-task / agent-execution calls
+        that carry no registered system prompt purpose) are excluded; the
+        breakdown is the by-purpose view.
+
+        Args:
+            start: Inclusive lower bound on timestamp.
+            end: Exclusive upper bound on timestamp.
+
+        Returns:
+            One row per prompt class, sorted by ``prompt_class_id``.
+        """
+        records = await collect_all_records(self._tracker, start=start, end=end)
+        breakdown = _build_prompt_class_breakdown(records)
+        logger.debug(ANALYTICS_BREAKDOWN_COMPUTED, row_count=len(breakdown.rows))
+        return breakdown
 
     async def check_alerts(
         self,
@@ -173,11 +220,6 @@ def _build_aggregation(
     avg_latency_ms = sum(latencies) / len(latencies) if latencies else None
     p95_latency_ms = _p95(latencies) if latencies else None
 
-    reason_counts: Counter[str] = Counter(
-        r.finish_reason.value for r in records if r.finish_reason is not None
-    )
-    by_finish_reason = tuple(sorted(reason_counts.items()))
-
     return AnalyticsAggregation(
         total_calls=total,
         success_count=success_count,
@@ -189,8 +231,126 @@ def _build_aggregation(
         avg_latency_ms=avg_latency_ms,
         p95_latency_ms=p95_latency_ms,
         orchestration_ratio=orchestration_ratio,
-        by_finish_reason=by_finish_reason,
+        by_finish_reason=_finish_reason_counts(records),
     )
+
+
+def _finish_reason_counts(
+    records: tuple[CostRecord, ...],
+) -> tuple[tuple[str, int], ...]:
+    """Count records by finish reason, sorted by reason for stable output.
+
+    Returns:
+        Sorted ``(finish_reason, count)`` pairs over records that carry one.
+    """
+    reason_counts: Counter[str] = Counter(
+        r.finish_reason.value for r in records if r.finish_reason is not None
+    )
+    return tuple(sorted(reason_counts.items()))
+
+
+def _tier_for(prompt_class_id: str) -> TierName | None:
+    """Return the design tier for a purpose id, or None when unmapped.
+
+    Returns:
+        The tier label, or ``None`` when ``prompt_class_id`` is not a registered
+        ``PromptPurposeId`` (a historical id left by a renamed/removed purpose).
+    """
+    try:
+        purpose = PromptPurposeId(prompt_class_id)
+    except ValueError:
+        logger.warning(
+            ANALYTICS_TIER_LOOKUP_FAILED,
+            prompt_class_id=prompt_class_id,
+            reason="unrecognised_purpose_id",
+        )
+        return None
+    # A registered purpose is guaranteed a tier-policy entry by the import-time
+    # guard in model_tier_policy, so a KeyError here is a policy-map integrity
+    # failure: let it surface rather than masking it as a null tier.
+    return tier_for_purpose(purpose)
+
+
+def _build_breakdown_row(
+    prompt_class_id: str,
+    records: list[CostRecord],
+) -> PromptClassBreakdownRow:
+    """Aggregate one prompt class's records into a breakdown row.
+
+    Returns:
+        The populated :class:`PromptClassBreakdownRow`.
+
+    Raises:
+        MixedCurrencyAggregationError: If the class's records span more than
+            one currency (cost summation across currencies is rejected).
+    """
+    total = len(records)
+    try:
+        currency = assert_currencies_match(r.currency for r in records)
+    except MixedCurrencyAggregationError:
+        # assert_currencies_match logs the conflicting codes but not which
+        # prompt class triggered them; add that so the 409 is greppable.
+        logger.warning(
+            ANALYTICS_AGGREGATION_COMPUTED,
+            note="mixed_currency_in_prompt_class_breakdown",
+            prompt_class_id=prompt_class_id,
+        )
+        raise
+
+    retried = sum(
+        1
+        for r in records
+        if r.retry_count is not None and r.retry_count >= _MIN_RETRY_COUNT
+    )
+    cache_reporting = [r for r in records if r.cache_hit is not None]
+    cache_hit_rate = (
+        sum(1 for r in cache_reporting if r.cache_hit is True) / len(cache_reporting)
+        if cache_reporting
+        else None
+    )
+    success_reporting = [r for r in records if r.success is not None]
+    success_rate = (
+        sum(1 for r in success_reporting if r.success is True) / len(success_reporting)
+        if success_reporting
+        else None
+    )
+    latencies = [r.latency_ms for r in records if r.latency_ms is not None]
+
+    return PromptClassBreakdownRow(
+        prompt_class_id=NotBlankStr(prompt_class_id),
+        tier=_tier_for(prompt_class_id),
+        total_cost=math.fsum(r.cost for r in records),
+        currency=currency if currency is not None else DEFAULT_CURRENCY,
+        call_count=total,
+        input_tokens=sum(r.input_tokens for r in records),
+        output_tokens=sum(r.output_tokens for r in records),
+        avg_latency_ms=(sum(latencies) / len(latencies) if latencies else None),
+        p95_latency_ms=_p95(latencies) if latencies else None,
+        cache_hit_rate=cache_hit_rate,
+        retry_rate=retried / total if total > 0 else 0.0,
+        success_rate=success_rate,
+    )
+
+
+def _build_prompt_class_breakdown(
+    records: tuple[CostRecord, ...],
+) -> PromptClassBreakdown:
+    """Group records by prompt class and build one row per class.
+
+    Records with no ``prompt_class_id`` are skipped (they carry no purpose).
+
+    Returns:
+        A :class:`PromptClassBreakdown` with rows sorted by id.
+    """
+    by_class: dict[str, list[CostRecord]] = defaultdict(list)
+    for record in records:
+        if record.prompt_class_id is not None:
+            by_class[record.prompt_class_id].append(record)
+    rows = tuple(
+        _build_breakdown_row(prompt_class_id, group)
+        for prompt_class_id, group in sorted(by_class.items())
+    )
+    return PromptClassBreakdown(rows=rows)
 
 
 def _p95(values: list[float]) -> float:
@@ -202,17 +362,17 @@ def _p95(values: list[float]) -> float:
     Returns:
         95th-percentile value.
     """
-    values = sorted(values)
-    n = len(values)
+    sorted_values = sorted(values)
+    n = len(sorted_values)
     if n == 1:
-        return values[0]
+        return sorted_values[0]
     index = _PERCENTILE_INTERPOLATION_FACTOR * (n - 1)
     lo = int(index)
     hi = lo + 1
     frac = index - lo
     if hi >= n:
-        return values[-1]
-    return values[lo] + frac * (values[hi] - values[lo])
+        return sorted_values[-1]
+    return sorted_values[lo] + frac * (sorted_values[hi] - sorted_values[lo])
 
 
 async def _dispatch_retry_rate_alert(
@@ -248,8 +408,7 @@ async def _dispatch_retry_rate_alert(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
-            ANALYTICS_RETRY_RATE_ALERT,
-            note="retry_rate_alert_dispatch_failed",
+            ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

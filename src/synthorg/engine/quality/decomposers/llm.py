@@ -368,6 +368,9 @@ class LLMCriteriaDecomposer:
             cost_tracker=self._cost_tracker,
             agent_id=agent_id,
             task_id=task_id,
+            # Per-task criteria decomposition charged to the calling
+            # evaluator; not a registered system prompt class.
+            purpose=None,
             call_category=LLMCallCategory.SYSTEM,
         ):
             return await self._provider.complete(

@@ -1,7 +1,7 @@
 """LLM-backed requirement generator."""
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from pydantic import JsonValue, ValidationError
 
@@ -15,6 +15,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -48,6 +51,15 @@ class LLMGenerator:
     limit, etc.) propagate so the base retry/rate-limit logic can
     handle them uniformly.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = (
+        PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR
+    )
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(  # noqa: PLR0913
         self,
@@ -119,6 +131,7 @@ class LLMGenerator:
             task_id=NotBlankStr(
                 f"system:client:requirement_generator:{context.project_id}"
             ),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
             project_id=context.project_id,
         ):

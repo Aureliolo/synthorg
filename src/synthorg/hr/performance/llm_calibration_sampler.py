@@ -9,7 +9,7 @@ import asyncio
 import json
 import random
 from datetime import datetime, timedelta
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
@@ -26,6 +26,9 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     LlmCalibrationRecord,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_COMPLETED,
@@ -83,6 +86,13 @@ class LlmCalibrationSampler:
     Raises:
         ValueError: If sampling_rate or retention_days are out of bounds.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.HR_CALIBRATION
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(  # noqa: PLR0913
         self,
@@ -378,6 +388,7 @@ class LlmCalibrationSampler:
             cost_tracker=self._cost_tracker,
             agent_id=record.agent_id,
             task_id=NotBlankStr(f"system:hr:calibration:{record.id}"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
             # Pin the scope to the same currency the
             # ``LlmCalibrationRecord`` is stamped with so the chokepoint's

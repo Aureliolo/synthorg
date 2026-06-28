@@ -76,6 +76,7 @@ _GATES: tuple[str, ...] = (
     "check_boundary_typed",
     "check_provider_complete_chokepoint",
     "check_cost_scope_purpose",
+    "check_prompt_class_metadata",
     "check_schema_drift",
     "check_convention_gate_inventory",
     "check_no_review_origin_in_code",

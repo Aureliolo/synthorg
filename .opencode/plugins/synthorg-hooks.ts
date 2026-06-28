@@ -5,6 +5,8 @@
  * .claude/settings.local.json by calling the same shell scripts.
  *
  * Committed Claude Code hooks (from .claude/settings.json):
+ *   PreToolUse (Bash): scripts/check_no_repush_after_failure.sh
+ *   PreToolUse (Bash): scripts/check_no_cmd_pager_pipe.sh
  *   PreToolUse (Bash): scripts/check_push_rebased.sh
  *   PreToolUse (Bash): scripts/check_push_throttle.sh
  *   PreToolUse (Bash): scripts/check_ci_before_push.sh
@@ -392,6 +394,8 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // `pytest -m unit` even though pyproject addopts already pins
             // -n=8 --dist=loadfile).
             for (const script of [
+              "scripts/check_no_repush_after_failure.sh",
+              "scripts/check_no_cmd_pager_pipe.sh",
               "scripts/check_no_pr_create.sh",
               "scripts/check_no_git_no_verify.sh",
               "scripts/check_no_cd_prefix.sh",

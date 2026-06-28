@@ -12,6 +12,7 @@ fan-out + ``except*`` unwrap is owned by
 import asyncio
 import builtins
 from enum import StrEnum
+from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -22,6 +23,9 @@ from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.axis import (
     ConsolidationContext,
     OpResult,
@@ -88,6 +92,13 @@ class LLMSynthesisOp:
         config: LLM consolidation configuration.
         cost_tracker: Optional cost tracker for synthesis attribution.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.MEMORY_CONSOLIDATE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -391,6 +402,7 @@ class LLMSynthesisOp:
                 cost_tracker=self._cost_tracker,
                 agent_id=agent_id,
                 task_id=NotBlankStr(f"system:memory:consolidate:{category.value}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

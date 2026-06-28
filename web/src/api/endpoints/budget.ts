@@ -5,6 +5,7 @@ import type {
   CostRecord,
   DailySummary,
   PeriodSummary,
+  PromptClassBreakdown,
 } from '../types/budget'
 import type {
   AnalyticsAggregation,
@@ -122,12 +123,27 @@ export async function getParetoFrontier(signal?: AbortSignal): Promise<ParetoFro
 }
 
 export async function getCallAnalytics(
-  filters?: { agent_id?: string; task_id?: string; provider?: string },
+  filters?: {
+    agent_id?: string
+    task_id?: string
+    provider?: string
+    prompt_class_id?: string
+  },
   signal?: AbortSignal,
 ): Promise<AnalyticsAggregation> {
   const response = await apiClient.get<ApiResponse<AnalyticsAggregation>>(
     '/budget/call-analytics',
     withSignal(signal, { params: filters }),
+  )
+  return unwrap(response)
+}
+
+export async function getPromptClassBreakdown(
+  signal?: AbortSignal,
+): Promise<PromptClassBreakdown> {
+  const response = await apiClient.get<ApiResponse<PromptClassBreakdown>>(
+    '/budget/prompt-class-breakdown',
+    withSignal(signal),
   )
   return unwrap(response)
 }

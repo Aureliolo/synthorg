@@ -17,7 +17,7 @@ never silently passes on a broken model response.
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
@@ -52,6 +52,9 @@ from synthorg.engine.quality.verification import (
     VerificationVerdict,
 )
 from synthorg.engine.workflow.handoff import HandoffArtifact
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_CONFIG_INVALID,
@@ -88,6 +91,13 @@ class LLMRubricGrader:
             (and greater than the rubric's ``min_confidence``), any
             response with lower confidence is downgraded to REFER.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.VERIFICATION
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -337,6 +347,7 @@ class LLMRubricGrader:
                 # for cross-reference.
                 agent_id=evaluator_agent_id,
                 task_id=NotBlankStr(f"system:verification:{evaluator_agent_id}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 return await self._provider.complete(

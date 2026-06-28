@@ -22,7 +22,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import OrchestrationAlertThresholds
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.spending_summary import SpendingSummary
-from synthorg.core.pagination import DEFAULT_LIST_LIMIT, collect_all
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.types import NotBlankStr
 
 
@@ -74,6 +74,7 @@ class CostTrackerProtocol(Protocol):
         agent_id: str | None = None,
         task_id: str | None = None,
         provider: NotBlankStr | None = None,
+        prompt_class_id: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
@@ -84,8 +85,27 @@ class CostTrackerProtocol(Protocol):
         Returns one ``limit``-sized page in insertion order
         (oldest-first), matching the concrete implementation, so a
         cursor walk is repeatable. Callers needing every matching record
-        drain successive pages via :func:`collect_all_records`. Unbounded
-        materialisation over a long-lived cost log is a memory hazard.
+        use :meth:`collect_records` (or :func:`collect_all_records`) to read
+        one atomic snapshot rather than walking successive pages, whose
+        offsets a concurrent prune could shift (a TOCTOU drop hazard).
+        """
+        ...
+
+    async def collect_records(  # noqa: PLR0913 -- orthogonal filters
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        provider: NotBlankStr | None = None,
+        prompt_class_id: NotBlankStr | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[CostRecord, ...]:
+        """Return every matching record from ONE atomic snapshot.
+
+        Aggregators that need the complete filtered set use this rather than a
+        paginated :meth:`get_records` walk: a single snapshot cannot have its
+        offsets shifted by a concurrent prune, so no record is dropped mid-drain.
         """
         ...
 
@@ -135,28 +155,26 @@ async def collect_all_records(  # noqa: PLR0913 -- orthogonal record filters
     agent_id: str | None = None,
     task_id: str | None = None,
     provider: NotBlankStr | None = None,
+    prompt_class_id: NotBlankStr | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:
-    """Drain every matching record from a now-paginated cost tracker.
+    """Return every matching record from the tracker in one atomic snapshot.
 
-    Aggregators that genuinely need the complete filtered set use this
-    instead of a single :meth:`CostTrackerProtocol.get_records` call,
-    which returns only one bounded page. Each underlying page stays
-    capped so no single call materialises the whole log, while the
-    caller still sees every row.
+    Delegates to :meth:`CostTrackerProtocol.collect_records`, which filters a
+    single snapshot. This replaced an offset-paginated ``get_records`` walk
+    whose successive snapshots could be re-pruned between pages, silently
+    dropping records (a TOCTOU). The materialised result is identical; only the
+    drop hazard is removed.
 
     Returns:
-        Every matching record across all pages, oldest-first.
+        Every matching record, oldest-first.
     """
-    return await collect_all(
-        lambda limit, offset: tracker.get_records(
-            agent_id=agent_id,
-            task_id=task_id,
-            provider=provider,
-            start=start,
-            end=end,
-            limit=limit,
-            offset=offset,
-        )
+    return await tracker.collect_records(
+        agent_id=agent_id,
+        task_id=task_id,
+        provider=provider,
+        prompt_class_id=prompt_class_id,
+        start=start,
+        end=end,
     )

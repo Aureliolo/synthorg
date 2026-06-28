@@ -8,7 +8,7 @@ logic resides in the workspace strategy layer.
 
 import asyncio
 from collections.abc import Mapping
-from typing import Final
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -30,6 +30,9 @@ from synthorg.engine.workspace.semantic_llm_prompt import (
     build_system_message,
     parse_tool_call_response,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
@@ -62,6 +65,13 @@ class LlmSemanticAnalyzer:
     """
 
     __slots__ = ("_config", "_cost_tracker", "_model", "_provider")
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.WORKSPACE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -192,6 +202,9 @@ class LlmSemanticAnalyzer:
         Returns:
             Parsed conflicts, or empty tuple on exhaustion/error.
         """
+        # See docs/reference/retry-patterns.md: Pattern B -- semantic
+        # self-correction. Each attempt re-prompts with prior-attempt context;
+        # no sleep, distinct from the GeneralRetryHandler transient-I/O loop.
         for attempt in range(1 + max_retries):
             result = await self._attempt_once(
                 workspace=workspace,
@@ -231,6 +244,7 @@ class LlmSemanticAnalyzer:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr(f"system:workspace:{workspace.workspace_id}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(
@@ -243,6 +257,10 @@ class LlmSemanticAnalyzer:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Fail open: provider exhaustion (RetryExhaustedError) and parse
+            # errors degrade to an empty-conflict result. Semantic merge
+            # analysis is an optional quality signal, so a provider outage must
+            # not block the merge; the WARNING below is the operator signal.
             # Drop exc_info + scrub the message -- provider
             # HTTPStatusError can carry the API key in str(exc), and
             # the traceback would re-emit it from frame-locals.

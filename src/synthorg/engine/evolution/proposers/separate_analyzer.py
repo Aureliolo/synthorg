@@ -6,7 +6,7 @@ the agent being evolved does NOT propose its own changes.
 """
 
 from collections.abc import Mapping
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -31,6 +31,8 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import (
@@ -269,6 +271,13 @@ class SeparateAnalyzerProposer:
         max_tokens: Maximum tokens to generate (default: 2000).
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.EVOLUTION_PROPOSE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(  # noqa: PLR0913
         self,
         provider: CompletionProvider,
@@ -348,8 +357,8 @@ class SeparateAnalyzerProposer:
                 cost_tracker=self._cost_tracker,
                 agent_id=agent_id,
                 task_id=NotBlankStr("system:evolution:propose"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
-                purpose=PromptPurposeId.EVOLUTION_PROPOSE,
             ):
                 response = await self._provider.complete(
                     messages,

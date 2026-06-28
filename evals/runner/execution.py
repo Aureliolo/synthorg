@@ -12,7 +12,7 @@ pipeline. Only the LLM is a deterministic stand-in.
 
 from uuid import NAMESPACE_URL, uuid5
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from structlog.testing import capture_logs
 
 from evals.models.brief import Brief
@@ -24,7 +24,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_BRIEF_RUN_COMPLETE
+from synthorg.observability.events.evals import (
+    EVALS_BRIEF_RUN_COMPLETE,
+    EVALS_PURPOSE_INVOKED_FIELD_MISSING,
+)
+from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
 
 logger = get_logger(__name__)
 
@@ -42,7 +46,25 @@ class BriefRunOutcome(BaseModel):
     termination_reason: NotBlankStr
     deliverable_text: str | None
     tracked_events: dict[str, int]
+    prompt_class_usage: dict[str, int]
     total_cost: float
+
+    @field_validator("tracked_events", "prompt_class_usage")
+    @classmethod
+    def _counts_are_non_negative(cls, value: dict[str, int]) -> dict[str, int]:
+        """Reject negative per-key counts so this DTO is a real boundary.
+
+        Returns:
+            The validated mapping.
+
+        Raises:
+            ValueError: If any count is negative.
+        """
+        for key, count in value.items():
+            if count < 0:
+                msg = f"count for {key!r} must be >= 0 (got {count})"
+                raise ValueError(msg)
+        return value
 
 
 def _brief_task(brief: Brief, *, agent_id: str) -> Task:
@@ -96,22 +118,46 @@ async def run_brief(
         )
 
     tracked: dict[str, int] = {}
+    prompt_class_usage: dict[str, int] = {}
+    malformed_purpose_events = 0
     for entry in logs:
         event = entry.get("event")
-        if isinstance(event, str) and DEFAULT_PENALTY_TABLE.is_tracked(event):
+        if not isinstance(event, str):
+            continue
+        if DEFAULT_PENALTY_TABLE.is_tracked(event):
             tracked[event] = tracked.get(event, 0) + 1
+        elif event == PROVIDER_PROMPT_PURPOSE_INVOKED:
+            prompt_class_id = entry.get("prompt_class_id")
+            if isinstance(prompt_class_id, str):
+                prompt_class_usage[prompt_class_id] = (
+                    prompt_class_usage.get(prompt_class_id, 0) + 1
+                )
+            else:
+                # The emit/read field name drifted or structlog reshaped the
+                # entry: surface it rather than silently under-counting usage.
+                malformed_purpose_events += 1
+
+    if malformed_purpose_events:
+        logger.warning(
+            EVALS_PURPOSE_INVOKED_FIELD_MISSING,
+            brief_id=brief.brief_id,
+            dropped_count=malformed_purpose_events,
+            reason="prompt_class_id_absent_or_wrong_type",
+        )
 
     logger.info(
         EVALS_BRIEF_RUN_COMPLETE,
         brief_id=brief.brief_id,
         termination_reason=result.termination_reason.value,
         tracked_event_count=sum(tracked.values()),
+        prompt_class_invocations=sum(prompt_class_usage.values()),
     )
     return BriefRunOutcome(
         brief_id=brief.brief_id,
         termination_reason=NotBlankStr(result.termination_reason.value),
         deliverable_text=result.completion_summary,
         tracked_events=tracked,
+        prompt_class_usage=prompt_class_usage,
         total_cost=result.total_cost,
     )
 

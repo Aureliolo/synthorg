@@ -30,6 +30,7 @@ XDEPLOY_RESPONSE_BODY_UNREADABLE: Final[str] = (
 
 XDEPLOY_COLLECTOR_INGESTED: Final[str] = "cross_deployment.collector.ingested"
 XDEPLOY_COLLECTOR_INGEST_FAILED: Final[str] = "cross_deployment.collector.ingest_failed"
+XDEPLOY_COLLECTOR_UNAVAILABLE: Final[str] = "cross_deployment.collector.unavailable"
 
 # -- Pattern aggregation ---------------------------------------------------
 

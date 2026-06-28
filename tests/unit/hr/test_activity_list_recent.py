@@ -187,7 +187,7 @@ class TestListRecentActivity:
             cost=2.0,
         )
         cost_tracker = mock_of[CostTracker](
-            get_records=AsyncMock(return_value=(cost_in_scope, cost_out_of_scope)),
+            collect_records=AsyncMock(return_value=(cost_in_scope, cost_out_of_scope)),
         )
         service = ActivityFeedService(
             performance_tracker=performance_tracker,
@@ -261,7 +261,7 @@ class TestListRecentActivity:
             raise RuntimeError(msg)
 
         boom_cost_tracker = mock_of[CostTracker](
-            get_records=AsyncMock(side_effect=_boom_get_records),
+            collect_records=AsyncMock(side_effect=_boom_get_records),
         )
         completed_at = _now() - timedelta(minutes=5)
         cast(MagicMock, performance_tracker.get_task_metrics).return_value = (

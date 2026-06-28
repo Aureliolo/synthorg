@@ -1,7 +1,7 @@
 """Agent-driven intake strategy using a completion provider."""
 
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -21,6 +21,9 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.review_pipeline import (
     INTAKE_AGENT_EMPTY_RESPONSE,
@@ -53,6 +56,13 @@ class AgentIntake:
     request is rejected with an explanatory reason so downstream
     state transitions remain deterministic.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.INTAKE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(  # noqa: PLR0913
         self,
@@ -123,6 +133,7 @@ class AgentIntake:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr(f"system:intake:{request.request_id}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

@@ -20,6 +20,7 @@ core.
 import asyncio
 import re
 from collections.abc import AsyncIterator, Mapping
+from typing import ClassVar
 
 from pydantic import JsonValue
 
@@ -36,6 +37,8 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.state import provider_credential_catalog_of
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import (
     get_logger,
@@ -306,6 +309,13 @@ class ProviderManagementService(
             chokepoint reads ``None`` from the context and skips
             recording).
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.PROVIDERS_TEST_CONNECTION
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only and optional after the 4th arg
         self,
@@ -726,7 +736,7 @@ class ProviderManagementService(
             task_id=NotBlankStr(
                 f"system:providers:test_connection:{_safe_task_id_segment(name)}",
             ),
-            purpose=PromptPurposeId.PROVIDERS_TEST_CONNECTION,
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             await driver.complete(messages, model_id)

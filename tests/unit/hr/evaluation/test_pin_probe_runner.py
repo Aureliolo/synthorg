@@ -14,11 +14,11 @@ from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import EvalTestCase
 from synthorg.hr.evaluation.pin_probe import (
     PIN_META_KEY,
-    canonical_pin_for,
     pin_metadata_payload,
     probe_input_data,
 )
 from synthorg.hr.evaluation.pin_probe_runner import PinProbeRunner
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.model_tier_policy import model_id_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.drivers.scripted import ScriptedDriver
@@ -37,7 +37,7 @@ _PURPOSE = PromptPurposeId.MEMORY_RERANK
 
 
 def _case(purpose_id: PromptPurposeId = _PURPOSE) -> EvalTestCase:
-    pin = canonical_pin_for(purpose_id)
+    pin = pin_for(purpose_id)
     return EvalTestCase(
         id=str(purpose_id),
         behavior_tags=(BehaviorTag.VERIFICATION,),
@@ -85,7 +85,7 @@ async def test_runner_drives_pinned_model_and_config() -> None:
     assert strategy.config is not None
     assert strategy.config.temperature == pytest.approx(0.0)
     assert strategy.config.top_p == pytest.approx(1.0)
-    assert strategy.config.max_tokens == canonical_pin_for(_PURPOSE).max_tokens
+    assert strategy.config.max_tokens == pin_for(_PURPOSE).max_tokens
     assert strategy.messages[0].content == probe_input_data(_PURPOSE)
 
 

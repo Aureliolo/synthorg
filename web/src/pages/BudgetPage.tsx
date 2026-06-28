@@ -39,6 +39,7 @@ import { AgentSpendingTable } from './budget/AgentSpendingTable'
 import { BudgetForecastDialog } from './budget/BudgetForecastDialog'
 import { CfoActivityFeed } from './budget/CfoActivityFeed'
 import { CallAnalyticsSection } from './budget/CallAnalyticsSection'
+import { PromptClassSection } from './budget/PromptClassSection'
 import { ParetoSection } from './budget/ParetoSection'
 import { PeriodSelector } from './budget/PeriodSelector'
 import { ThresholdAlerts } from './budget/ThresholdAlerts'
@@ -253,6 +254,10 @@ function BudgetCharts({
 
       <ErrorBoundary level="section">
         <CallAnalyticsSection />
+      </ErrorBoundary>
+
+      <ErrorBoundary level="section">
+        <PromptClassSection />
       </ErrorBoundary>
 
       <ErrorBoundary level="section">

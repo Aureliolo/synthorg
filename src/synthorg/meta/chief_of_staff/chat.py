@@ -5,6 +5,8 @@ free-form signal questions. Uses ``CompletionProvider`` for
 LLM calls (retry + rate limiting handled by the provider).
 """
 
+from typing import ClassVar
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import format_cost
 
@@ -20,6 +22,9 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Alert,
@@ -65,6 +70,13 @@ class ChiefOfStaffChat:
         config: Chief of Staff configuration.
         outcome_store: Outcome store for historical context (optional).
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_CHAT
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -267,6 +279,7 @@ class ChiefOfStaffChat:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:cos:chat"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

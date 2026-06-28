@@ -6,6 +6,8 @@ proposal.  Follows the ``AbstractiveSummarizer`` error-handling
 pattern from ``memory.consolidation.abstractive``.
 """
 
+from typing import ClassVar
+
 from synthorg.budget.call_category import LLMCallCategory
 
 # ``CostTrackerProtocol`` is part of ``ProceduralMemoryProposer.__init__``'s
@@ -22,6 +24,8 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.procedural._response_parsing import parse_proposal_response
 from synthorg.memory.procedural.models import (
@@ -111,6 +115,13 @@ class ProceduralMemoryProposer:
             silent no-op (used by tests and probes).
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.PROCEDURAL_PROPOSE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -166,8 +177,8 @@ class ProceduralMemoryProposer:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr(f"system:procedural:propose:{payload.task_id}"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
-                purpose=PromptPurposeId.PROCEDURAL_PROPOSE,
             ):
                 response = await self._provider.complete(
                     messages,

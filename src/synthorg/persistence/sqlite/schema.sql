@@ -125,6 +125,8 @@ CREATE INDEX idx_cost_records_agent_timestamp
 ON cost_records (agent_id, timestamp DESC);
 CREATE INDEX idx_cost_records_task_timestamp
 ON cost_records (task_id, timestamp DESC);
+CREATE INDEX idx_cost_records_prompt_class_timestamp
+ON cost_records (prompt_class_id, timestamp DESC);
 
 -- ── Messages ──────────────────────────────────────────────────
 CREATE TABLE messages (

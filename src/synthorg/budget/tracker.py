@@ -337,8 +337,15 @@ class CostTracker(CostTrackerSummaryMixin):
         try:
             was_new = await self._durable_increment_if_unseen(cost_record)
         except BaseException:
-            async with self._get_lock():
-                self._inflight_claims.discard(cost_record.claim_id)
+            # Release the reservation WITHOUT awaiting the lock. Acquiring it
+            # here opens a cancellation window (a timeout cancel racing a
+            # shutdown cancel) in which the ``await`` is interrupted before the
+            # discard runs, permanently leaking the claim into
+            # ``_inflight_claims`` so every JetStream redelivery of it is
+            # deduped away. ``set.discard`` is atomic on the single-threaded
+            # event loop and no locked region iterates ``_inflight_claims``, so
+            # a lockless discard of this call's own claim is race-free.
+            self._inflight_claims.discard(cost_record.claim_id)
             raise
         if not was_new:
             async with self._get_lock():
@@ -644,6 +651,7 @@ class CostTracker(CostTrackerSummaryMixin):
         agent_id: str | None = None,
         task_id: str | None = None,
         provider: NotBlankStr | None = None,
+        prompt_class_id: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
@@ -661,6 +669,7 @@ class CostTracker(CostTrackerSummaryMixin):
             agent_id: Filter by agent.
             task_id: Filter by task.
             provider: Filter by provider name.
+            prompt_class_id: Filter by prompt purpose id.
             start: Inclusive lower bound on ``timestamp``.
             end: Exclusive upper bound on ``timestamp``.
             limit: Maximum records to return.
@@ -686,6 +695,7 @@ class CostTracker(CostTrackerSummaryMixin):
             agent_id=agent_id,
             task_id=task_id,
             provider=provider,
+            prompt_class_id=prompt_class_id,
             start=start,
             end=end,
         )
@@ -695,10 +705,55 @@ class CostTracker(CostTrackerSummaryMixin):
             agent_id=agent_id,
             task_id=task_id,
             provider=provider,
+            prompt_class_id=prompt_class_id,
             start=start,
             end=end,
         )
         return matched[offset : offset + limit]
+
+    async def collect_records(  # noqa: PLR0913 -- orthogonal filters
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        provider: NotBlankStr | None = None,
+        prompt_class_id: NotBlankStr | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[CostRecord, ...]:
+        """Return every matching record from ONE atomic snapshot.
+
+        Unlike a paginated :meth:`get_records` walk, this filters a single
+        ``_snapshot()`` so a concurrent prune cannot shift offsets and drop
+        records mid-drain. The result is the full matching set (the same
+        materialisation a page-walk accumulates), so it carries no extra
+        memory cost over the prior drain.
+
+        Args:
+            agent_id: Filter by agent.
+            task_id: Filter by task.
+            provider: Filter by provider name.
+            prompt_class_id: Filter by prompt purpose id.
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            Immutable tuple of every matching record, oldest-first.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        snapshot = await self._snapshot()
+        return _filter_records(
+            snapshot,
+            agent_id=agent_id,
+            task_id=task_id,
+            provider=provider,
+            prompt_class_id=prompt_class_id,
+            start=start,
+            end=end,
+        )
 
     async def get_provider_usage(
         self,
@@ -764,6 +819,10 @@ class CostTracker(CostTrackerSummaryMixin):
         self._records.clear()
         self._seen_claims.clear()
         self._inflight_claims.clear()
+        # Drop the lock so ``_get_lock`` re-creates it bound to the next test's
+        # event loop. A session-scoped tracker reused across loop restarts would
+        # otherwise hand back a lock bound to the closed loop and deadlock.
+        self._lock = None
         logger.info(BUDGET_TRACKER_CLEARED, cleared_count=cleared_count)
 
     def track_pending_record(self, task: asyncio.Task[None]) -> None:
@@ -813,11 +872,16 @@ class CostTracker(CostTrackerSummaryMixin):
         """
         if not self._pending_record_tasks:
             return
-        # Snapshot before awaiting: ``_pending_record_tasks`` is mutated
-        # by the ``add_done_callback`` registered above, and iterating
-        # the live set while it shrinks would risk skipping tasks.
-        pending = tuple(self._pending_record_tasks)
-        results = await asyncio.gather(*pending, return_exceptions=True)
+        # Re-drain until the set is empty: a new record task can be added (via
+        # ``track_pending_record``) WHILE we await ``gather`` below, so a single
+        # snapshot would miss it. ``difference_update`` removes the just-drained
+        # tasks immediately (rather than waiting on the add_done_callback to
+        # fire), so the loop converges once no new task arrives.
+        results: list[BaseException | None] = []
+        while self._pending_record_tasks:
+            pending = tuple(self._pending_record_tasks)
+            results.extend(await asyncio.gather(*pending, return_exceptions=True))
+            self._pending_record_tasks.difference_update(pending)
         cancelled_count = 0
         for outcome in results:
             if isinstance(outcome, (MemoryError, RecursionError)):

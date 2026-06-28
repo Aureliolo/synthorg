@@ -96,6 +96,11 @@ mandatory_rules:
     header: Cost Attribution Purpose
     gate: scripts/check_cost_scope_purpose.py
 
+  - id: claude-md::prompt-class-metadata
+    file: CLAUDE.md
+    header: Prompt-Class Metadata
+    gate: scripts/check_prompt_class_metadata.py
+
   - id: claude-md::doc-numeric-claims
     file: CLAUDE.md
     header: Doc Numeric Claims

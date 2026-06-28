@@ -44,6 +44,7 @@ def _record(
 def _make_service(records: tuple[CostRecord, ...]) -> CallAnalyticsService:
     tracker = AsyncMock()
     tracker.get_records = AsyncMock(return_value=records)
+    tracker.collect_records = AsyncMock(return_value=records)
     tracker.get_orchestration_ratio = AsyncMock(
         return_value=OrchestrationRatio(
             ratio=0.0,

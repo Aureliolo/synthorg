@@ -6,7 +6,7 @@ plumbing; the strategy owns one structured model turn. The default
 strict ``InterviewDecision`` JSON contract.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
@@ -16,6 +16,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.models import InterviewDecision
 from synthorg.meta.charter.prompts import (
@@ -105,6 +108,13 @@ class LLMCharterInterviewer:
         cost_tracker: Optional cost tracker for LLM accounting.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.CHARTER_INTERVIEW
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -157,6 +167,7 @@ class LLMCharterInterviewer:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:charter:interview"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

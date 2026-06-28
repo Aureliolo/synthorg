@@ -21,7 +21,6 @@ from synthorg.hr.evaluation.external_benchmark_models import (
 from synthorg.hr.evaluation.pin_fingerprint import load_pin_golden
 from synthorg.hr.evaluation.pin_probe import (
     PIN_META_KEY,
-    canonical_pin_for,
     pin_metadata_payload,
     probe_input_data,
 )
@@ -29,6 +28,7 @@ from synthorg.hr.evaluation.pin_probe_runner import PinProbeRunner
 from synthorg.hr.evaluation.pin_validation_benchmark import ModelPinValidationBenchmark
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
 from synthorg.llm.model_pin_validation import ModelPinValidationRow
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY, PromptPurposeId
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
@@ -134,7 +134,7 @@ async def test_clean_grade_stamps_validated_at_from_clock() -> None:
 async def test_mutated_pin_is_drift() -> None:
     benchmark = ModelPinValidationBenchmark(golden=dict(load_pin_golden()))
     purpose_id = PromptPurposeId.MEMORY_RERANK
-    pin = canonical_pin_for(purpose_id)
+    pin = pin_for(purpose_id)
     mutated = pin.model_copy(update={"max_tokens": pin.max_tokens * 2})
     case = EvalTestCase(
         id=str(purpose_id),
@@ -158,7 +158,7 @@ async def test_case_id_pin_mismatch_fails_without_stamping() -> None:
         golden=dict(load_pin_golden()), ledger=ledger
     )
     labelled = PromptPurposeId.MEMORY_RERANK
-    other_pin = canonical_pin_for(PromptPurposeId.RESEARCH_SYNTHESIS)
+    other_pin = pin_for(PromptPurposeId.RESEARCH_SYNTHESIS)
     case = EvalTestCase(
         id=str(labelled),
         behavior_tags=(BehaviorTag.VERIFICATION,),

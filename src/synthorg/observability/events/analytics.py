@@ -5,12 +5,18 @@ from typing import Final
 ANALYTICS_TRENDS_QUERIED: Final[str] = "analytics.trends.queried"
 ANALYTICS_FORECAST_QUERIED: Final[str] = "analytics.forecast.queried"
 ANALYTICS_OVERVIEW_QUERIED: Final[str] = "analytics.overview.queried"
+ANALYTICS_TASK_LIST_COLLECTED: Final[str] = "analytics.task_list.collected"
 
 # Per-call analytics layer
 ANALYTICS_CALL_METADATA_RECORDED: Final[str] = "analytics.call_metadata_recorded"
 ANALYTICS_AGGREGATION_COMPUTED: Final[str] = "analytics.aggregation_computed"
+ANALYTICS_BREAKDOWN_COMPUTED: Final[str] = "analytics.breakdown_computed"
 ANALYTICS_RETRY_RATE_ALERT: Final[str] = "analytics.retry_rate_alert"
+ANALYTICS_RETRY_ALERT_DISPATCH_FAILED: Final[str] = (
+    "analytics.retry_alert.dispatch_failed"
+)
 ANALYTICS_ORCHESTRATION_ALERT: Final[str] = "analytics.orchestration_alert"
+ANALYTICS_TIER_LOOKUP_FAILED: Final[str] = "analytics.tier_lookup_failed"
 ANALYTICS_SERVICE_CREATED: Final[str] = "analytics.service_created"
 
 # Tool: data aggregation queries

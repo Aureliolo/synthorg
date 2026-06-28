@@ -140,6 +140,10 @@ API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
 API_ACTIVITY_FEED_QUERIED: Final[str] = "api.activity.feed_queried"
 API_MEETING_TRIGGERED: Final[str] = "api.meeting.triggered"
 API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"
+API_BUDGET_CALL_ANALYTICS_QUERIED: Final[str] = "api.budget.call_analytics_queried"
+API_BUDGET_PROMPT_CLASS_BREAKDOWN_QUERIED: Final[str] = (
+    "api.budget.prompt_class_breakdown_queried"
+)
 # api.user.created / updated / deleted moved to events.security as
 # SECURITY_USER_* (audit-chained); listing + save-failure stay here.
 API_USER_SAVE_FAILED: Final[str] = "api.user.save_failed"

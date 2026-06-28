@@ -1,10 +1,9 @@
-"""New operator-tunable settings registered by the convention rollout.
+"""Operator-tunable settings: type, default, and bounds registration.
 
-Each previously-hardcoded numeric became a ``SettingDefinition`` so an
-operator can tune it without a code change. These tests pin that every
-new definition is registered with the agreed type / default / bounds,
-and that the definition model enforces its declared range (a default
-outside ``[min_value, max_value]`` is rejected at construction).
+Pins that every ``SettingDefinition`` in this set is registered with the
+agreed type, default, and bounds, and that the definition model enforces its
+declared range (a default outside ``[min_value, max_value]`` is rejected at
+construction).
 """
 
 import pytest

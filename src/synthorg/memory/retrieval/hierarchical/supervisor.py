@@ -6,7 +6,7 @@ and whether to retry with corrected queries when results are poor.
 
 import builtins
 import json
-from typing import Final, Literal
+from typing import ClassVar, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,6 +26,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.retrieval.hierarchical.models import (
     RetrievalRetryCorrection,
     WorkerRoutingDecision,
@@ -173,6 +176,20 @@ class SupervisorRouter:
             (derived from ``MemoryRetrievalConfig.min_relevance``).
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.MEMORY_RETRIEVAL_ROUTE
+    _RETRY_PURPOSE_ID: ClassVar[PromptPurposeId] = (
+        PromptPurposeId.MEMORY_RETRIEVAL_RETRY
+    )
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for the routing prompt class.
+
+        The retry path is a sibling prompt class pinned under
+        :attr:`_RETRY_PURPOSE_ID`; both share this router's tier.
+        """
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(  # noqa: PLR0913
         self,
         *,
@@ -319,6 +336,7 @@ class SupervisorRouter:
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
             task_id=NotBlankStr("system:memory:retrieval_route"),
+            purpose=self._PURPOSE_ID,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(
@@ -401,6 +419,7 @@ class SupervisorRouter:
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
             task_id=NotBlankStr("system:memory:retrieval_retry"),
+            purpose=self._RETRY_PURPOSE_ID,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

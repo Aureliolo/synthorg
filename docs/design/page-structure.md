@@ -53,9 +53,9 @@ Project filter dropdown available. Dedicated Projects page shipped (#946).
 
 #### Budget (`/budget`)
 
-P&L management dashboard, not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
+P&L management dashboard, not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, per-prompt-purpose cost and latency breakdown, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
 
-**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`, `POST /budget/forecast`, `GET /budget/forecasts/{id}`, `POST /budget/forecasts/{id}/approve`, `POST /budget/forecasts/{id}/reject`, `POST /budget/forecasts/{id}/raise_ceiling`, `GET /budget/pareto`
+**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /budget/call-analytics`, `GET /budget/prompt-class-breakdown`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`, `POST /budget/forecast`, `GET /budget/forecasts/{id}`, `POST /budget/forecasts/{id}/approve`, `POST /budget/forecasts/{id}/reject`, `POST /budget/forecasts/{id}/raise_ceiling`, `GET /budget/pareto`
 **WS channels**: `budget`
 
 #### Approvals (`/approvals`)

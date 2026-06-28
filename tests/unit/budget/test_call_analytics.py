@@ -10,8 +10,11 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig, RetryAler
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from tests._shared import mock_of
 
 
 def _record(  # noqa: PLR0913
@@ -30,6 +33,8 @@ def _record(  # noqa: PLR0913
     finish_reason: FinishReason = FinishReason.STOP,
     success: bool | None = True,
     call_category: LLMCallCategory | None = None,
+    prompt_class_id: str | None = None,
+    currency: str = "EUR",
 ) -> CostRecord:
     return CostRecord(
         agent_id=agent_id,
@@ -39,7 +44,7 @@ def _record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
-        currency="EUR",
+        currency=currency,
         timestamp=datetime(2026, 4, 1, tzinfo=UTC),
         latency_ms=latency_ms,
         cache_hit=cache_hit,
@@ -48,6 +53,7 @@ def _record(  # noqa: PLR0913
         finish_reason=finish_reason,
         success=success,
         call_category=call_category,
+        prompt_class_id=prompt_class_id,
     )
 
 
@@ -57,10 +63,22 @@ def _make_service(
     config: CallAnalyticsConfig | None = None,
     notification_dispatcher: NotificationDispatcher | None = None,
 ) -> CallAnalyticsService:
-    tracker = AsyncMock()
-    tracker.get_records = AsyncMock(return_value=records)
-    tracker.get_orchestration_ratio = AsyncMock(
-        side_effect=lambda **_kw: _dummy_orchestration_ratio()
+    def _collect_records(
+        *, prompt_class_id: str | None = None, **_kw: object
+    ) -> tuple[CostRecord, ...]:
+        # Filter like the real tracker so a prompt_class_id passed by the
+        # service genuinely excludes non-matching records, rather than the
+        # stub returning every record regardless of the filter.
+        if prompt_class_id is None:
+            return records
+        return tuple(r for r in records if r.prompt_class_id == prompt_class_id)
+
+    tracker = mock_of[CostTrackerProtocol](
+        collect_records=AsyncMock(side_effect=_collect_records),
+        get_records=AsyncMock(return_value=records),
+        get_orchestration_ratio=AsyncMock(
+            side_effect=lambda **_kw: _dummy_orchestration_ratio()
+        ),
     )
 
     return CallAnalyticsService(
@@ -217,8 +235,7 @@ class TestCheckAlerts:
     """check_alerts dispatches when thresholds are crossed."""
 
     async def test_no_alerts_when_disabled(self) -> None:
-        dispatcher = AsyncMock()
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
         service = _make_service(
             config=CallAnalyticsConfig(enabled=False),
             notification_dispatcher=dispatcher,
@@ -229,8 +246,7 @@ class TestCheckAlerts:
 
     async def test_retry_rate_alert_dispatched(self) -> None:
         """Alert fires when retry_rate exceeds warn_rate."""
-        dispatcher = AsyncMock()
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
         config = CallAnalyticsConfig(retry_alerts=RetryAlertConfig(warn_rate=0.10))
         service = _make_service(config=config, notification_dispatcher=dispatcher)
 
@@ -244,8 +260,7 @@ class TestCheckAlerts:
 
     async def test_no_retry_alert_below_threshold(self) -> None:
         """No alert when retry_rate is below warn_rate."""
-        dispatcher = AsyncMock()
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
         config = CallAnalyticsConfig(retry_alerts=RetryAlertConfig(warn_rate=0.50))
         service = _make_service(config=config, notification_dispatcher=dispatcher)
 
@@ -264,8 +279,100 @@ class TestCheckAlerts:
         await service.check_alerts(records)
 
     async def test_empty_records_no_alert(self) -> None:
-        dispatcher = AsyncMock()
-        dispatcher.dispatch = AsyncMock()
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
         service = _make_service(notification_dispatcher=dispatcher)
         await service.check_alerts(())
         dispatcher.dispatch.assert_not_called()
+
+
+@pytest.mark.unit
+class TestPromptClassBreakdown:
+    """Per-prompt-class cost/latency/quality breakdown."""
+
+    async def test_groups_by_prompt_class_and_skips_unattributed(self) -> None:
+        records = (
+            _record(
+                prompt_class_id="system:cos:chat",
+                cost=0.02,
+                latency_ms=100.0,
+                cache_hit=True,
+                retry_count=1,
+                success=True,
+            ),
+            _record(
+                prompt_class_id="system:cos:chat",
+                cost=0.03,
+                latency_ms=300.0,
+                cache_hit=False,
+                retry_count=0,
+                success=False,
+            ),
+            _record(prompt_class_id="system:memory:rerank", cost=0.01),
+            _record(prompt_class_id=None, cost=0.99),
+        )
+        service = _make_service(records)
+        breakdown = await service.get_prompt_class_breakdown()
+
+        ids = [row.prompt_class_id for row in breakdown.rows]
+        assert ids == ["system:cos:chat", "system:memory:rerank"]
+
+        chat = breakdown.rows[0]
+        assert chat.call_count == 2
+        assert chat.total_cost == pytest.approx(0.05)
+        assert chat.currency == "EUR"
+        assert chat.tier == "medium"
+        assert chat.retry_rate == pytest.approx(0.5)
+        assert chat.cache_hit_rate == pytest.approx(0.5)
+        assert chat.success_rate == pytest.approx(0.5)
+        assert chat.avg_latency_ms == pytest.approx(200.0)
+
+    async def test_empty_records_yields_no_rows(self) -> None:
+        service = _make_service(())
+        breakdown = await service.get_prompt_class_breakdown()
+        assert breakdown.rows == ()
+
+    async def test_aggregation_accepts_prompt_class_filter(self) -> None:
+        # A non-matching record proves the filter is actually applied: without
+        # it the assertion would pass even if prompt_class_id were ignored.
+        service = _make_service(
+            (
+                _record(prompt_class_id="system:cos:chat"),
+                _record(prompt_class_id="system:memory:rerank"),
+            )
+        )
+        agg = await service.get_aggregation(prompt_class_id="system:cos:chat")
+        assert agg.total_calls == 1
+
+    async def test_unregistered_prompt_class_id_has_none_tier(self) -> None:
+        service = _make_service(
+            (_record(prompt_class_id="system:legacy:removed", cost=0.01),)
+        )
+        breakdown = await service.get_prompt_class_breakdown()
+        assert breakdown.rows[0].tier is None
+
+    async def test_mixed_currency_within_class_rejected(self) -> None:
+        records = (
+            _record(prompt_class_id="system:cos:chat", cost=0.01, currency="USD"),
+            _record(prompt_class_id="system:cos:chat", cost=0.02, currency="EUR"),
+        )
+        service = _make_service(records)
+        with pytest.raises(MixedCurrencyAggregationError):
+            await service.get_prompt_class_breakdown()
+
+    async def test_breakdown_forwards_time_window(self) -> None:
+        collect = AsyncMock(return_value=())
+        tracker = mock_of[CostTrackerProtocol](
+            collect_records=collect,
+            get_orchestration_ratio=AsyncMock(
+                side_effect=lambda **_kw: _dummy_orchestration_ratio()
+            ),
+        )
+        service = CallAnalyticsService(
+            cost_tracker=tracker, config=CallAnalyticsConfig()
+        )
+        start = datetime(2026, 4, 1, tzinfo=UTC)
+        end = datetime(2026, 4, 2, tzinfo=UTC)
+        await service.get_prompt_class_breakdown(start=start, end=end)
+        assert collect.await_args is not None
+        assert collect.await_args.kwargs["start"] == start
+        assert collect.await_args.kwargs["end"] == end

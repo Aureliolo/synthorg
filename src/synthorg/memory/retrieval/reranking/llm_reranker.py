@@ -7,7 +7,7 @@ small-tier model and re-orders by LLM-assigned ranking.
 import builtins
 import hashlib
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -19,6 +19,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_HIT,
@@ -120,6 +123,13 @@ class LLMQuerySpecificReranker:
         model: Model identifier (small-tier recommended).
         cache: Optional re-ranker cache for amortising cost.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.MEMORY_RERANK
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -334,6 +344,7 @@ class LLMQuerySpecificReranker:
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
             task_id=NotBlankStr("system:memory:rerank"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

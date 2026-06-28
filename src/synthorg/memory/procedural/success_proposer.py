@@ -6,6 +6,8 @@ knowledge from the successful approach. Similar to ProceduralMemoryProposer
 but optimized for success outcomes with a lighter system prompt.
 """
 
+from typing import ClassVar
+
 from synthorg.budget.call_category import LLMCallCategory
 
 # ``CostTrackerProtocol`` is part of ``SuccessMemoryProposer.__init__``'s
@@ -22,6 +24,8 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.procedural._response_parsing import parse_proposal_response
 from synthorg.memory.procedural.models import (
@@ -97,6 +101,13 @@ class SuccessMemoryProposer:
         config: Procedural memory configuration.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.PROCEDURAL_SUCCESS_PROPOSER
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -152,8 +163,8 @@ class SuccessMemoryProposer:
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:procedural:success_proposer"),
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
-                purpose=PromptPurposeId.PROCEDURAL_SUCCESS_PROPOSER,
             ):
                 response = await self._provider.complete(
                     messages,

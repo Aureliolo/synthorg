@@ -23,7 +23,7 @@ import html
 import secrets
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +33,9 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 
 # ``prompt_safety`` is imported lazily inside this module's helpers
 # to avoid a circular boot path: ``synthorg.engine.__init__`` imports
@@ -258,6 +261,13 @@ class SafetyClassifier:
         config: Safety classifier configuration.
     """
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.SECURITY_SAFETY_CLASSIFIER
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -400,6 +410,7 @@ class SafetyClassifier:
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
             task_id=NotBlankStr("system:security:safety_classifier"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await asyncio.wait_for(

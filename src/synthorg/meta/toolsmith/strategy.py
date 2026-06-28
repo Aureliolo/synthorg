@@ -11,7 +11,7 @@ an authored tool cannot widen its own isolation.
 
 import json
 from collections.abc import Sequence
-from typing import Final
+from typing import ClassVar, Final
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
@@ -27,6 +27,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.meta.toolsmith.errors import (
     ToolAuthoringError,
@@ -85,6 +88,13 @@ class LLMToolBlueprintGenerator:
         cost_tracker: Optional cost tracker for the LLM call.
         clock: Time source for the blueprint's ``created_at``.
     """
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.TOOLSMITH_AUTHOR
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -186,6 +196,7 @@ class LLMToolBlueprintGenerator:
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
             task_id=NotBlankStr("system:toolsmith:author"),
+            purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(

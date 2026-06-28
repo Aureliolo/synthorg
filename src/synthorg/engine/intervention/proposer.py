@@ -10,7 +10,7 @@ obsolete.
 
 import json
 import re
-from typing import Final, Protocol, runtime_checkable
+from typing import ClassVar, Final, Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -23,6 +23,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import STEERING_PROPOSE_FAILED
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -89,6 +92,13 @@ class NoOpSupersessionProposer:
 class LLMSupersessionProposer:
     """Provider-backed proposer: asks an LLM which tasks are obsolete."""
 
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.STEERING_PROPOSE
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         provider: CompletionProvider,
@@ -128,6 +138,7 @@ class LLMSupersessionProposer:
                 cost_tracker=self._cost_tracker,
                 agent_id=_SYSTEM_AGENT_ID,
                 task_id=_PROPOSE_TASK_ID,
+                purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(

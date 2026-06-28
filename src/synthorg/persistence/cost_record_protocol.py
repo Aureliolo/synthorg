@@ -26,6 +26,10 @@ class CostRecordFilterSpec(BaseModel):
         default=None,
         description="Filter by task identifier",
     )
+    prompt_class_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by prompt purpose id",
+    )
 
 
 @runtime_checkable
@@ -64,7 +68,8 @@ class CostRecordRepository(
         """Query cost records with optional filters and pagination.
 
         Args:
-            filter_spec: Carries optional agent_id and task_id filters.
+            filter_spec: Carries optional agent_id, task_id, and
+                prompt_class_id filters.
             limit: Maximum rows to return.
             offset: Rows to skip before applying limit.
 

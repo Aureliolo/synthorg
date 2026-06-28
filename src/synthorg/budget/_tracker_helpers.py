@@ -61,10 +61,11 @@ def _filter_records(  # noqa: PLR0913
     task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
     provider: NotBlankStr | None = None,
+    prompt_class_id: NotBlankStr | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:
-    """Filter records by agent, task, project, provider, and/or time range.
+    """Filter records by agent, task, project, provider, purpose, and/or time.
 
     Time semantics: ``start <= timestamp < end``.
 
@@ -78,6 +79,7 @@ def _filter_records(  # noqa: PLR0913
         and (task_id is None or r.task_id == task_id)
         and (project_id is None or r.project_id == project_id)
         and (provider is None or r.provider == provider)
+        and (prompt_class_id is None or r.prompt_class_id == prompt_class_id)
         and (start is None or r.timestamp >= start)
         and (end is None or r.timestamp < end)
     )

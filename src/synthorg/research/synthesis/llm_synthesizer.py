@@ -7,7 +7,7 @@ to a retained item, so an emitted report is always citation-backed.
 """
 
 import json
-from typing import Final
+from typing import ClassVar, Final
 
 from pydantic import ValidationError
 
@@ -21,6 +21,8 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -62,6 +64,13 @@ class LlmSynthesizer:
     """Produces a citation-backed report with one deterministic LLM call."""
 
     __slots__ = ("_binder", "_clock", "_cost_tracker", "_model", "_provider")
+
+    _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.RESEARCH_SYNTHESIS
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Pinned model + sampling for this prompt class."""
+        return pin_for(self._PURPOSE_ID)
 
     def __init__(
         self,
@@ -113,7 +122,7 @@ class LlmSynthesizer:
             cost_tracker=self._cost_tracker,
             task_id=NotBlankStr(f"system:research:synthesis:{brief.brief_id}"),
             project_id=brief.project_id,
-            purpose=PromptPurposeId.RESEARCH_SYNTHESIS,
+            purpose=self.metadata.prompt_class_id,
         )
         output = self._parse(content)
         claims = tuple(

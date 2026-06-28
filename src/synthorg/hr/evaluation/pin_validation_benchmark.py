@@ -30,7 +30,6 @@ from synthorg.hr.evaluation.external_benchmark_models import (
 )
 from synthorg.hr.evaluation.pin_probe import (
     PIN_META_KEY,
-    canonical_pin_for,
     fingerprint_for,
     pin_from_case_metadata,
     pin_metadata_payload,
@@ -38,6 +37,7 @@ from synthorg.hr.evaluation.pin_probe import (
 )
 from synthorg.hr.evaluation.pin_validation_ledger import ModelPinValidationLedger
 from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PROMPT_PURPOSE_REGISTRY
 from synthorg.observability import get_logger, safe_error_description
@@ -113,7 +113,7 @@ class ModelPinValidationBenchmark:
             return
         for purpose in PROMPT_PURPOSE_REGISTRY.all_purposes():
             pid = purpose.id
-            pin = canonical_pin_for(pid)
+            pin = pin_for(pid)
             yield EvalTestCase(
                 id=NotBlankStr(str(pid)),
                 behavior_tags=_CASE_TAGS,
