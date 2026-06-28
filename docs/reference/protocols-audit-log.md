@@ -130,7 +130,7 @@ No protocol was deleted. The only defect was the audit.md table never being upda
 While reconciling, #2503 also brought the `engine/` table section into line with #1864 and #1865, which the original reconciliation pass had missed:
 
 - Flipped to `KEEP` (per #1864 re-flag, verified against source): `ShadowTaskProvider`, `ShadowAgentRunner`, `ReviewStage`, `ConfidenceFormatter`, `StrategicContextProvider`, `ImpactScorer`, and `StepQualityClassifier` (the last now wired at boot + injected into every execution loop by #2503 itself).
-- Removed rows for protocols #1865 deleted (no longer in source): `_HeuristicGraderBridge`, `_RoutingScorerBridge`, `CostTierResolver`, `_ExecutionResultLike`, `_AgentRunResultLike`.
+- Removed rows for protocols #1865 deleted (no longer in source): `_HeuristicGraderBridge`, `_RoutingScorerBridge`, `_ModelMatcherBridge`, `_ExecutionResultLike`, `_AgentRunResultLike`.
 
 ## Out of scope
 

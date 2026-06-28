@@ -488,14 +488,14 @@
     },
     "src/synthorg/engine/hybrid_loop.py": {
       "cap": 1100,
-      "loc": 896,
-      "ratio": 0.815,
+      "loc": 906,
+      "ratio": 0.824,
       "tier": "complex_service"
     },
     "src/synthorg/engine/loop_helpers.py": {
       "cap": 500,
-      "loc": 405,
-      "ratio": 0.81,
+      "loc": 408,
+      "ratio": 0.816,
       "tier": "code"
     },
     "src/synthorg/engine/middleware/protocol.py": {
@@ -518,8 +518,8 @@
     },
     "src/synthorg/engine/plan_execute_loop.py": {
       "cap": 500,
-      "loc": 428,
-      "ratio": 0.856,
+      "loc": 437,
+      "ratio": 0.874,
       "tier": "code"
     },
     "src/synthorg/engine/quality/decomposers/llm.py": {
@@ -533,6 +533,12 @@
       "loc": 587,
       "ratio": 0.839,
       "tier": "adapter"
+    },
+    "src/synthorg/engine/react_loop.py": {
+      "cap": 500,
+      "loc": 411,
+      "ratio": 0.822,
+      "tier": "code"
     },
     "src/synthorg/engine/review_gate.py": {
       "cap": 500,
@@ -1681,7 +1687,7 @@
     },
     "synthorg.engine.hybrid_loop:HybridLoop": {
       "lcom4": 1,
-      "loc": 807
+      "loc": 817
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,

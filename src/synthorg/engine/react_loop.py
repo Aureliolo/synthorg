@@ -138,6 +138,34 @@ class ReactLoop:
         )
         return (signal,) if signal is not None else ()
 
+    async def _attach_whole_run_signals(
+        self,
+        result: ExecutionResult,
+        turns: list[TurnRecord],
+    ) -> ExecutionResult:
+        """Attach the whole-run quality signal to a terminating result.
+
+        ReAct has no per-step boundary, so every visible ``execute()`` exit
+        (shutdown / budget / cancel / provider-error / stagnation / tool
+        outcome / completion) routes its result through here so the health
+        pipeline never receives an empty ``quality_signals`` for a run that
+        actually produced turns.
+
+        Returns:
+            The result with ``quality_signals`` populated, or unchanged
+            when the run produced no turns to classify.
+        """
+        if not turns:
+            return result
+        return result.model_copy(
+            update={
+                "quality_signals": await self._whole_run_signals(
+                    turns,
+                    result.termination_reason,
+                )
+            }
+        )
+
     @property
     def approval_gate(self) -> ApprovalGate | None:
         """Return the approval gate, or ``None``."""
@@ -202,17 +230,17 @@ class ReactLoop:
         while ctx.has_turns_remaining:
             shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
             if shutdown_result is not None:
-                return shutdown_result
+                return await self._attach_whole_run_signals(shutdown_result, turns)
 
             budget_result = check_budget(ctx, budget_checker, turns)
             if budget_result is not None:
-                return budget_result
+                return await self._attach_whole_run_signals(budget_result, turns)
 
             cancel_result = await check_task_cancelled(
                 ctx, task_cancellation_checker, turns
             )
             if cancel_result is not None:
-                return cancel_result
+                return await self._attach_whole_run_signals(cancel_result, turns)
 
             # Adopt any pending steering directives before the LLM call so
             # the operator's constraint is in context for this turn.
@@ -234,7 +262,7 @@ class ReactLoop:
                 turns,
             )
             if isinstance(response, ExecutionResult):
-                return response
+                return await self._attach_whole_run_signals(response, turns)
 
             turns.append(
                 make_turn_record(
@@ -254,7 +282,7 @@ class ReactLoop:
                 shutdown_checker,
             )
             if isinstance(result, ExecutionResult):
-                return result
+                return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
             # Stagnation detection after successful turn processing
@@ -265,7 +293,7 @@ class ReactLoop:
                 corrections_injected,
             )
             if isinstance(stag_outcome, ExecutionResult):
-                return stag_outcome
+                return await self._attach_whole_run_signals(stag_outcome, turns)
             if isinstance(stag_outcome, tuple):
                 ctx, corrections_injected = stag_outcome
 
@@ -284,13 +312,9 @@ class ReactLoop:
             reason=TerminationReason.MAX_TURNS.value,
             turns=len(turns),
         )
-        return build_result(
-            ctx,
-            TerminationReason.MAX_TURNS,
+        return await self._attach_whole_run_signals(
+            build_result(ctx, TerminationReason.MAX_TURNS, turns),
             turns,
-            quality_signals=await self._whole_run_signals(
-                turns, TerminationReason.MAX_TURNS
-            ),
         )
 
     def _prepare_loop(
@@ -428,9 +452,6 @@ class ReactLoop:
                 TerminationReason.ERROR,
                 turns,
                 error_message=error_msg,
-                quality_signals=await self._whole_run_signals(
-                    turns, TerminationReason.ERROR
-                ),
             )
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(
@@ -451,7 +472,4 @@ class ReactLoop:
             ctx,
             TerminationReason.COMPLETED,
             turns,
-            quality_signals=await self._whole_run_signals(
-                turns, TerminationReason.COMPLETED
-            ),
         )

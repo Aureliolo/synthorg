@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.settings.bridge_configs import (
     A2ABridgeConfig,
     ApiBridgeConfig,
@@ -414,8 +415,16 @@ def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
     confidences whether or not the operator ever touched the settings.
     """
     cfg = EngineBridgeConfig()
-    assert cfg.classifier_rule_matched_confidence == pytest.approx(0.7)
-    assert cfg.classifier_fallback_confidence == pytest.approx(0.5)
+    # Compare against the default classifier's effective confidences rather
+    # than duplicated literals, so a drift in RuleBasedStepClassifier's
+    # defaults fails here unless the bridge default is updated in lockstep.
+    classifier = RuleBasedStepClassifier()
+    assert cfg.classifier_rule_matched_confidence == pytest.approx(
+        classifier._rule_matched_confidence
+    )
+    assert cfg.classifier_fallback_confidence == pytest.approx(
+        classifier._fallback_confidence
+    )
     assert cfg.classification_detector_timeout_seconds == pytest.approx(30.0)
 
 

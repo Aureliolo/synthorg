@@ -339,6 +339,20 @@ class HybridLoop:
             )
 
             if isinstance(step_result, ExecutionResult):
+                # The in-flight step ends here (cancel / shutdown / budget /
+                # stagnation / error). Classify it too so its signal is not
+                # dropped from quality_signals, which the worker health
+                # pipeline consumes downstream.
+                step_turns = tuple(turns[step_start:])
+                if step_turns:
+                    step_signal = await classify_step(
+                        self._step_classifier,
+                        step_index=step_idx,
+                        step_turns=step_turns,
+                        termination_reason=step_result.termination_reason,
+                    )
+                    if step_signal is not None:
+                        signals.append(step_signal)
                 return self._attach_signals(
                     self._finalize(
                         step_result,

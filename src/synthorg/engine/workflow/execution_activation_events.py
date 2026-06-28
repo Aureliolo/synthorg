@@ -99,6 +99,7 @@ def _emit_activation_events(
             WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
             execution_id=execution_id,
             workflow_definition_id=definition_id,
+            node_id=node_exec.node_id,
             task_id=node_exec.task_id,
             from_status=None,
             to_status=WorkflowNodeExecutionStatus.TASK_CREATED.value,

@@ -459,10 +459,17 @@ async def classify_step(
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            QUALITY_STEP_CLASSIFICATION_FAILED,
-            step_index=step_index,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        # Best-effort: the warning rides the same path that just failed and
+        # could raise for the same reason. classify_step is post-work
+        # observability, so a logging failure must not break the loop after
+        # the step already completed.
+        try:
+            logger.warning(
+                QUALITY_STEP_CLASSIFICATION_FAILED,
+                step_index=step_index,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        except Exception as warning_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(warning_exc)
         return None

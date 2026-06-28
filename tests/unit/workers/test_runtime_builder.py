@@ -74,6 +74,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     registry: ProviderRegistry,
     workspace: Path,
     *,
+    bridge_config: EngineBridgeConfig | None = None,
     bridge_config_error: Exception | None = None,
     decomposition_error: Exception | None = None,
     blank_decomposition_model: bool = False,
@@ -84,8 +85,10 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
 ) -> AppState:
     """Build a mocked AppState for the provider-present path.
 
-    ``bridge_config_error`` makes ``get_engine_bridge_config`` raise, to
-    exercise the fail-open routing-scorer-config resolve branch.
+    ``bridge_config`` overrides the resolved ``EngineBridgeConfig`` so a
+    caller can seed non-default classifier confidences and assert they reach
+    the boot engine. ``bridge_config_error`` makes ``get_engine_bridge_config``
+    raise, to exercise the fail-open routing-scorer-config resolve branch.
     ``decomposition_error`` makes ``get_str`` raise on the
     ``decomposition_model`` key, to exercise the
     ``_build_runtime_coordinator`` redacted-log + re-raise branch.
@@ -94,7 +97,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     collector is not constructed (mirrors the empty/degraded path).
     """
     if bridge_config_error is None:
-        bridge_mock = AsyncMock(return_value=EngineBridgeConfig())
+        bridge_mock = AsyncMock(return_value=bridge_config or EngineBridgeConfig())
     else:
         bridge_mock = AsyncMock(side_effect=bridge_config_error)
     if blank_decomposition_model:
@@ -276,7 +279,12 @@ class TestProviderPresentSwitch:
         self,
         tmp_path: Path,
     ) -> None:
-        """The boot engine is wired with a RuleBasedStepClassifier."""
+        """The boot engine's classifier carries the bridged confidences.
+
+        Seeds non-default ``EngineBridgeConfig`` confidences so the test
+        fails if ``build_runtime_services`` ignores them and instantiates
+        ``RuleBasedStepClassifier()`` with its own defaults.
+        """
         registry = ProviderRegistry.from_config(
             {
                 "test-provider": ProviderConfig(
@@ -284,12 +292,19 @@ class TestProviderPresentSwitch:
                 )
             }
         )
-        app_state = _provider_app_state(registry, tmp_path)
+        bridge_config = EngineBridgeConfig(
+            classifier_rule_matched_confidence=0.83,
+            classifier_fallback_confidence=0.21,
+        )
+        app_state = _provider_app_state(registry, tmp_path, bridge_config=bridge_config)
 
         result = await build_runtime_services(app_state, workspace_root=tmp_path)
 
         worker = cast("AgentEngineExecutionService", result.worker_execution_service)
-        assert isinstance(worker._engine._step_classifier, RuleBasedStepClassifier)
+        classifier = worker._engine._step_classifier
+        assert isinstance(classifier, RuleBasedStepClassifier)
+        assert classifier._rule_matched_confidence == pytest.approx(0.83)
+        assert classifier._fallback_confidence == pytest.approx(0.21)
 
     async def test_scorer_config_resolve_failure_is_fail_open(
         self,

@@ -570,6 +570,35 @@ class TestAutoLoopConfigWiring:
         assert isinstance(engine._loop, ReactLoop)
         assert engine._loop._step_classifier is classifier
 
+    async def test_step_classifier_wired_to_hybrid_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """COMPLEX task + OK budget -> HybridLoop receives the classifier."""
+        provider = mock_provider_factory([])
+        classifier = RuleBasedStepClassifier()
+        enforcer = _make_budget_enforcer()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            budget_enforcer=enforcer,
+            step_classifier=classifier,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.COMPLEX,
+            agent_id="agent-clf-hybrid",
+            task_id="task-clf-hybrid",
+        )
+        with patch.object(
+            enforcer,
+            "get_budget_utilization_pct",
+            new_callable=AsyncMock,
+            return_value=30.0,
+        ):
+            loop = await engine._resolve_loop(task, "agent-clf-hybrid", str(task.id))
+        assert isinstance(loop, HybridLoop)
+        assert loop._step_classifier is classifier
+
     def test_compaction_callback_wired_to_default_loop(
         self,
         mock_provider_factory: type[MockCompletionProvider],
