@@ -140,6 +140,10 @@ class TestBuildRecoveryStrategyFromAppState:
         # not a fresh default, so operator tuning is honoured.
         assert strategy._config.persist_every_n_turns == 7
         assert strategy._config.max_resume_attempts == 5
+        # ...and thread the active backend's repositories, so a repo-wiring
+        # regression (e.g. constructing fresh repos) is caught.
+        assert strategy._checkpoint_repo is backend.checkpoints
+        assert strategy._heartbeat_repo is backend.heartbeats
 
 
 @pytest.mark.unit

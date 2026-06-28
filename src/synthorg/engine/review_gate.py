@@ -179,6 +179,8 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         if approved:
             target = TaskStatus.COMPLETED
             transition_reason = f"Review approved by {decided_by}"
+            if normalized_reason is not None:
+                transition_reason += f": {normalized_reason}"
             event = APPROVAL_GATE_REVIEW_COMPLETED
             # The configured adversarial gate(s) get the last word before
             # COMPLETED: a BLOCK reroutes the human-approved task back to

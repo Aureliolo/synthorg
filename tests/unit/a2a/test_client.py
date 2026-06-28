@@ -311,13 +311,16 @@ class TestA2AClient:
     @pytest.mark.unit
     @respx.mock
     async def test_null_result_raises(self) -> None:
-        """Peer result that is null raises A2AClientError."""
+        """Peer envelope with a JSON-null result (no error) raises A2AClientError."""
+        # ``result: null`` with no ``error`` violates the JSON-RPC
+        # "exactly one of result/error" envelope invariant, so it is
+        # rejected at parse time rather than reaching task validation.
         respx.post("https://peer.example.com/api/v1/a2a").mock(
-            side_effect=_rpc_echo(result={}),
+            side_effect=_rpc_echo(result=None),
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
-        with pytest.raises(A2AClientError, match="malformed response"):
+        with pytest.raises(A2AClientError, match="invalid JSON-RPC"):
             await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
