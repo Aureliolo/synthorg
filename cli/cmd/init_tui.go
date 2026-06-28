@@ -318,7 +318,7 @@ func (m setupTUI) handleSetupEnter() (tea.Model, bool) {
 		return m, true
 	case fContinue:
 		m.phase = phaseTelemetry
-		m.focus = fTelYes // default: opt in when pressing Enter
+		m.focus = fTelNo // default: not opted in
 		return m, true
 	}
 	return m, false
