@@ -163,8 +163,8 @@ class MilestoneCriteria(BaseModel):
         description="Minimum days active",
     )
     auto_promote: bool = Field(
-        default=True,
-        description="Whether to auto-promote",
+        default=False,
+        description="Whether to promote without human approval (opt-in)",
     )
     clean_history_days: int = Field(
         default=0,
@@ -194,6 +194,40 @@ class MilestoneCriteria(BaseModel):
                 model="MilestoneCriteria",
                 auto_promote=self.auto_promote,
                 requires_human_approval=self.requires_human_approval,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_auto_promote_gates(self) -> Self:
+        """Require tenure and clean-history gates for automatic promotion.
+
+        Automatic promotion (no human in the loop) is only safe when the
+        milestone also gates on tenure and a clean error history; without
+        both, an agent would be elevated the instant it clears the
+        task/quality bar. The unsafe combination is rejected at config time
+        rather than silently coerced during evaluation.
+
+        Returns:
+            The validated criteria.
+
+        Raises:
+            ValueError: If ``auto_promote`` is set without positive
+                ``time_active_days`` and ``clean_history_days`` gates.
+        """
+        if self.auto_promote and (
+            self.time_active_days <= 0 or self.clean_history_days <= 0
+        ):
+            msg = (
+                "auto_promote requires positive time_active_days and "
+                "clean_history_days gates"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MilestoneCriteria",
+                time_active_days=self.time_active_days,
+                clean_history_days=self.clean_history_days,
                 reason=msg,
             )
             raise ValueError(msg)

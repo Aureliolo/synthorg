@@ -76,8 +76,8 @@ class TestMilestoneTrustStrategy:
         assert result.should_change is True
         assert result.strategy_name == "milestone"
 
-    async def test_auto_promote_without_tenure_gate_requires_human(self) -> None:
-        """auto_promote on task-count alone must fall back to human approval."""
+    async def test_non_auto_promote_milestone_requires_human(self) -> None:
+        """A milestone that does not opt into auto_promote routes to a human."""
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
@@ -85,7 +85,8 @@ class TestMilestoneTrustStrategy:
                 "sandboxed_to_restricted": MilestoneCriteria(
                     tasks_completed=5,
                     quality_score_min=6.0,
-                    # auto_promote defaults True; no time/clean-history gate.
+                    # auto_promote defaults False (opt-in), so promotion
+                    # requires a human even without explicit gates.
                 ),
             },
         )
@@ -109,6 +110,43 @@ class TestMilestoneTrustStrategy:
 
         assert result.recommended_level == ToolAccessLevel.RESTRICTED
         assert result.requires_human_approval is True
+
+    async def test_gated_auto_promote_skips_human(self) -> None:
+        """auto_promote with tenure + clean-history gates promotes without a human."""
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    time_active_days=7,
+                    clean_history_days=7,
+                    auto_promote=True,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            created_at=_NOW - timedelta(days=60),
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=8.0,
+            success_rate=1.0,
+            tasks_completed=10,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.RESTRICTED
+        assert result.requires_human_approval is False
 
     async def test_evaluate_no_change_when_criteria_not_met(
         self,
