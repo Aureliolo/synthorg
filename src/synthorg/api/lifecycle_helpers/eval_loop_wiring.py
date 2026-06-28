@@ -23,13 +23,15 @@ stays absent and its consumers honestly 503.
 from datetime import timedelta
 from typing import Final
 
+from synthorg.api.lifecycle_helpers._model_pin_wiring import (
+    build_pin_validation_registry,
+)
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
 from synthorg.hr.evaluation.cycle_scheduler import EvalLoopCycleScheduler
 from synthorg.hr.evaluation.dogfooding_dataset_builder import DogfoodingDatasetBuilder
 from synthorg.hr.evaluation.evaluator import EvaluationService
-from synthorg.hr.evaluation.external_benchmark_registry import ExternalBenchmarkRegistry
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -76,7 +78,7 @@ async def wire_eval_loop(app_state: AppState) -> None:
         dataset_builder=DogfoodingDatasetBuilder(
             performance_tracker=hr.performance_tracker,
         ),
-        benchmark_registry=ExternalBenchmarkRegistry(),
+        benchmark_registry=build_pin_validation_registry(app_state),
         clock=app_state.clock,
     )
 

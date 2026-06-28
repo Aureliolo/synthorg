@@ -7,9 +7,8 @@ chokepoint itself, the engine call path, infra probes) or open a
 chokepoint inside ``BaseCompletionProvider.complete`` emits a
 :class:`CostRecord` for the call.
 
-Issue #1598 flagged 23 of 24 LLM completion paths bypassing cost
-recording.  This gate locks the closed-form invariant in place so
-future LLM call sites do not silently regress.
+This gate locks the closed-form invariant in place so future LLM call
+sites do not silently regress past the cost-recording chokepoint.
 
 Usage:
     python scripts/check_provider_complete_chokepoint.py
@@ -35,6 +34,12 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # Infrastructure probes -- not user-attributable cost.
         "src/synthorg/providers/management/service.py",
         "src/synthorg/providers/health_prober.py",
+        # Pin-validation probe: a deterministic, zero-spend completion run
+        # against the pinned tier to grade drift. Opening a cost scope here
+        # would emit a phantom CostRecord (non-zero tokens, zero cost) every
+        # eval cycle, polluting the cost-by-purpose telemetry it has no part
+        # in -- the probe is infrastructure validation, not agent work.
+        "src/synthorg/hr/evaluation/pin_probe_runner.py",
         # Docstring examples / non-runtime references.
         "src/synthorg/providers/registry.py",
     }
