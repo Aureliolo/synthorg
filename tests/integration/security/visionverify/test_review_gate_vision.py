@@ -139,7 +139,6 @@ async def test_deliberate_mismatch_blocks_before_done(tmp_path: Path) -> None:
         task_id="task-gui-1",
         pipeline=ReviewPipeline(stages=(_PassingStage(),)),
         decided_by="bob",
-        requested_by="bob",
         vision_input=_vision_input(),
     )
 
@@ -158,7 +157,6 @@ async def test_matching_app_completes(tmp_path: Path) -> None:
         task_id="task-gui-1",
         pipeline=ReviewPipeline(stages=(_PassingStage(),)),
         decided_by="bob",
-        requested_by="bob",
         vision_input=_vision_input(),
     )
 

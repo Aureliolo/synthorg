@@ -253,7 +253,6 @@ class TestSignalResumeIntent:
         mock_worker.dispatch_resume.assert_not_awaited()
         mock_review.dispatch_completion.assert_awaited_once_with(
             task_id="task-1",
-            requested_by="admin",
             approved=True,
             decided_by="admin",
             reason=None,
@@ -388,7 +387,6 @@ class TestSignalResumeIntent:
 
         mock_review.dispatch_completion.assert_awaited_once_with(
             task_id="task-42",
-            requested_by="reviewer",
             approved=False,
             decided_by="reviewer",
             reason="Needs rework",
@@ -613,7 +611,6 @@ class TestTryReviewGateTransition:
         )
         review_gate.dispatch_completion.assert_awaited_once_with(
             task_id="task-1",
-            requested_by="bob",
             approved=True,
             decided_by="bob",
             reason=None,

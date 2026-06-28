@@ -18,7 +18,9 @@ from synthorg.engine.workflow.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
+from synthorg.engine.workflow.execution_models import (
+    WorkflowNodeExecution,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.verification import (
     VERIFICATION_VERDICT_ROUTED,
@@ -34,6 +36,7 @@ logger = get_logger(__name__)
 _TASK_TYPE_MAP: dict[str, TaskType] = {t.value: t for t in TaskType}
 _PRIORITY_MAP: dict[str, Priority] = {p.value: p for p in Priority}
 _COMPLEXITY_MAP: dict[str, Complexity] = {c.value: c for c in Complexity}
+
 
 # Node types that produce no concrete task (control flow and metadata)
 CONTROL_NODE_TYPES = frozenset(

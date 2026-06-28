@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
@@ -59,6 +60,10 @@ class ExecutionResult(BaseModel):
     turns: tuple[TurnRecord, ...] = Field(
         default=(),
         description="Per-turn metadata",
+    )
+    quality_signals: tuple[StepQualitySignal, ...] = Field(
+        default=(),
+        description="Per-step quality signals produced during the loop",
     )
     error_message: str | None = Field(
         default=None,

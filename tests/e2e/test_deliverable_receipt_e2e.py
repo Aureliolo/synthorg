@@ -393,7 +393,6 @@ class TestDeliverableReceiptAcceptance:
         )
         await review_gate.complete_review(
             task_id=str(task.id),
-            requested_by="reviewer-agent",
             approved=True,
             decided_by="reviewer-agent",
         )

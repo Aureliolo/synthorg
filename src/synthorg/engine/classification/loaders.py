@@ -8,8 +8,8 @@ to enrich the detection context with delegation chain data).
 from typing import Final
 
 from synthorg.budget.coordination_config import DetectionScope
-from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE, paginate
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr

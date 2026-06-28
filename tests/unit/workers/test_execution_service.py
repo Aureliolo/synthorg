@@ -13,8 +13,11 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.context import AgentContext
 from synthorg.engine.health.pipeline import HealthMonitoringPipeline
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -246,6 +249,64 @@ class TestAgentEngineExecutionService:
             and entry.get("error_type") == "RuntimeError"
             for entry in logs
         )
+
+    async def test_quality_signals_forwarded_to_health_pipeline(self) -> None:
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        post = task.model_copy(update={"status": TaskStatus.IN_REVIEW})
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        signal = StepQualitySignal(
+            quality=StepQuality.CORRECT,
+            confidence=0.7,
+            reason="step ok",
+            step_index=0,
+            turn_range=(1, 1),
+        )
+        run_result = AgentRunResult(
+            execution_result=ExecutionResult(
+                context=AgentContext.from_identity(identity),
+                termination_reason=TerminationReason.COMPLETED,
+                quality_signals=(signal,),
+            ),
+            system_prompt=SystemPrompt(
+                content="Test prompt",
+                template_version="1.0",
+                estimated_tokens=10,
+                sections=("identity",),
+                metadata={},
+            ),
+            duration_seconds=0.0,
+            agent_id=str(identity.id),
+            task_id=str(task.id),
+            currency="USD",
+        )
+        process_mock = AsyncMock()
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](run=AsyncMock(return_value=run_result)),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=[task, post]),
+            ),
+            agent_registry=registry,
+            autonomy_resolver=AutonomyResolver(
+                registry=ActionTypeRegistry(),
+                config=AutonomyConfig(),
+            ),
+            health_pipeline=mock_of[HealthMonitoringPipeline](process=process_mock),
+        )
+
+        await service.execute_once(
+            task_id=str(task.id),
+            previous_status="assigned",
+            new_status="in_progress",
+            idempotency_key="k",
+            requested_by="user",
+        )
+
+        process_mock.assert_awaited_once()
+        await_args = process_mock.await_args
+        assert await_args is not None
+        assert await_args.kwargs["quality_signals"] == (signal,)
 
     async def test_autonomy_resolution_failure_degrades_to_none(self) -> None:
         identity = make_e2e_identity()

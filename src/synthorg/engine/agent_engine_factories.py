@@ -20,6 +20,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
+    EXECUTION_LOOP_STATIC_SELECTED,
 )
 from synthorg.observability.events.trust import (
     TRUST_AGENT_AUTO_INITIALIZED,
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from synthorg.engine.loop_selector import AutoLoopConfig
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
     from synthorg.engine.plan_models import PlanExecuteConfig
+    from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
@@ -96,6 +98,7 @@ class AgentEngineFactoriesMixin:
     _mcp_self_consumer: MCPSelfConsumerProvider | None
     _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: StagnationDetector | None
+    _step_classifier: StepQualityClassifier | None
     _compaction_callback: CompactionCallback | None
     _steering_inbox: SteeringInbox | None
     _auto_loop_config: AutoLoopConfig | None
@@ -177,6 +180,7 @@ class AgentEngineFactoriesMixin:
             stagnation_detector=self._stagnation_detector,
             compaction_callback=self._compaction_callback,
             steering_inbox=self._steering_inbox,
+            step_classifier=self._step_classifier,
         )
 
     async def _resolve_loop(
@@ -194,6 +198,12 @@ class AgentEngineFactoriesMixin:
             utilisation.
         """
         if self._auto_loop_config is None:
+            logger.debug(
+                EXECUTION_LOOP_STATIC_SELECTED,
+                agent_id=agent_id,
+                task_id=task_id,
+                loop_type=self._loop.get_loop_type(),
+            )
             return self._loop
 
         cfg = self._auto_loop_config
@@ -243,6 +253,7 @@ class AgentEngineFactoriesMixin:
             plan_execute_config=self._plan_execute_config,
             hybrid_loop_config=self._hybrid_loop_config,
             steering_inbox=self._steering_inbox,
+            step_classifier=self._step_classifier,
         )
 
     def _make_security_interceptor(

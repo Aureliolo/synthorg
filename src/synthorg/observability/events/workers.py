@@ -106,6 +106,7 @@ WORKERS_DISPATCHER_CLAIM_ENQUEUED: Final[str] = "workers.dispatcher.claim_enqueu
 
 # Task queue client
 WORKERS_TASK_QUEUE_CONNECT_FAILED: Final[str] = "workers.task_queue.connect_failed"
+WORKERS_TASK_QUEUE_STARTED: Final[str] = "workers.task_queue.started"
 WORKERS_QUEUE_START_REJECTED: Final[str] = "workers.task_queue.start_rejected"
 WORKERS_QUEUE_NOT_RUNNING: Final[str] = "workers.task_queue.not_running"
 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED: Final[str] = (
@@ -184,6 +185,9 @@ WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED: Final[str] = (
     "workers.execution_service.health_pipeline_failed"
 )
 
-# Runtime hot-reload (rebuild + swap of the live agent runtime)
+# Runtime build + hot-reload (rebuild + swap of the live agent runtime)
 WORKERS_RUNTIME_RELOADED: Final[str] = "workers.runtime.reloaded"
 WORKERS_RUNTIME_HOT_SWAP_FAILED: Final[str] = "workers.runtime.hot_swap_failed"
+WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK: Final[str] = (
+    "workers.runtime.engine_bridge_config_fallback"
+)

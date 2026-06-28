@@ -101,6 +101,7 @@ if TYPE_CHECKING:
     from synthorg.engine.middleware.protocol import AgentMiddlewareChain
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.prompt import SystemPrompt
+    from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.recovery import RecoveryStrategy
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.engine.session import EventReader
@@ -198,6 +199,7 @@ class AgentEngine(
         checkpoint_config: CheckpointConfig | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        step_classifier: StepQualityClassifier | None = None,
         steering_inbox: SteeringInbox | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
         hybrid_loop_config: HybridLoopConfig | None = None,
@@ -279,6 +281,7 @@ class AgentEngine(
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
         self._stakes_router = stakes_router
         self._stagnation_detector = stagnation_detector
+        self._step_classifier = step_classifier
         self._steering_inbox = steering_inbox
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config

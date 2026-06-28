@@ -6,10 +6,12 @@ own sibling module; these validators are shared across the request DTOs.
 """
 
 import re
+from typing import Annotated
 from urllib.parse import urlparse
 
-from pydantic import SecretStr
+from pydantic import AfterValidator, SecretStr
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
 
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
@@ -135,3 +137,44 @@ def _reject_blank_secret(v: SecretStr | None, *, field: str) -> SecretStr | None
         msg = f"{field} must be a non-empty value if provided"
         raise ValueError(msg)
     return v
+
+
+def _non_blank_secret(field: str) -> AfterValidator:
+    """Build an ``AfterValidator`` rejecting a blank secret for *field*.
+
+    Args:
+        field: Field name embedded in the rejection message.
+
+    Returns:
+        An ``AfterValidator`` wrapping :func:`_reject_blank_secret`.
+    """
+
+    def _check(v: SecretStr | None) -> SecretStr | None:
+        return _reject_blank_secret(v, field=field)
+
+    return AfterValidator(_check)
+
+
+#: Reusable validated field types shared across the provider-management
+#: request DTOs. Carrying the validators on the annotation (rather than a
+#: fieldless ``field_validator`` mixin) keeps validation DRY while letting
+#: each concrete request declare only the fields it actually has.
+ValidatedProviderName = Annotated[NotBlankStr, AfterValidator(_validate_provider_name)]
+ValidatedBaseUrl = Annotated[NotBlankStr | None, AfterValidator(_validate_base_url)]
+ValidatedOAuthTokenUrl = Annotated[
+    NotBlankStr | None,
+    AfterValidator(_validate_oauth_token_url),
+]
+ValidatedApiKey = Annotated[SecretStr | None, _non_blank_secret("api_key")]
+ValidatedSubscriptionToken = Annotated[
+    SecretStr | None,
+    _non_blank_secret("subscription_token"),
+]
+ValidatedOAuthClientSecret = Annotated[
+    SecretStr | None,
+    _non_blank_secret("oauth_client_secret"),
+]
+ValidatedCustomHeaderValue = Annotated[
+    SecretStr | None,
+    _non_blank_secret("custom_header_value"),
+]

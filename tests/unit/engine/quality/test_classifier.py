@@ -10,7 +10,7 @@ from synthorg.engine.quality.classifier import (
     _DEFAULT_CONFIDENCE_RULE_MATCHED,
     RuleBasedStepClassifier,
 )
-from synthorg.engine.quality.models import StepQuality
+from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.stagnation.models import (
     StagnationReason,
     StagnationResult,
@@ -236,6 +236,12 @@ class TestClassifierConfidenceValidation:
             {"fallback_confidence": -0.01},
             {"fallback_confidence": 2.0},
         ],
+        ids=[
+            "rule_matched_negative",
+            "rule_matched_over_one",
+            "fallback_negative",
+            "fallback_over_one",
+        ],
     )
     def test_out_of_range_confidence_raises(
         self,
@@ -252,6 +258,13 @@ class TestClassifierConfidenceValidation:
             {"fallback_confidence": 0.0},
             {"fallback_confidence": 1.0},
             {"rule_matched_confidence": 0.95, "fallback_confidence": 0.6},
+        ],
+        ids=[
+            "rule_matched_zero",
+            "rule_matched_one",
+            "fallback_zero",
+            "fallback_one",
+            "both_custom",
         ],
     )
     def test_in_range_confidence_accepted(
@@ -303,3 +316,116 @@ class TestClassifierDefaultsRegistryDrift:
         assert registered is not None
         assert registered.default is not None
         assert float(registered.default) == expected_default
+
+
+@pytest.mark.unit
+class TestClassifyStepHelper:
+    """The loop-level ``classify_step`` wrapper used by the execution loops."""
+
+    async def test_none_classifier_returns_none(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        result = await classify_step(
+            None,
+            step_index=0,
+            step_turns=(_turn(tools=("read",)),),
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        assert result is None
+
+    async def test_wired_classifier_scores_the_step(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        signal = await classify_step(
+            RuleBasedStepClassifier(),
+            step_index=2,
+            step_turns=(_turn(tools=("read",)),),
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        assert signal is not None
+        assert signal.step_index == 2
+        # Completed step with a tool call -> CORRECT (rule 3).
+        assert signal.quality == StepQuality.CORRECT
+
+    async def test_failed_step_with_error_turn_is_incorrect(self) -> None:
+        from synthorg.engine.loop_helpers import classify_step
+
+        signal = await classify_step(
+            RuleBasedStepClassifier(),
+            step_index=1,
+            step_turns=(_turn(finish=FinishReason.ERROR),),
+            termination_reason=TerminationReason.MAX_TURNS,
+        )
+        assert signal is not None
+        assert signal.quality == StepQuality.INCORRECT
+
+    async def test_raising_classifier_degrades_to_none(self) -> None:
+        """A classifier failure (e.g. a future LLM impl) yields no signal.
+
+        Classification is post-work observability, so the failure must not
+        propagate out of the loop; it degrades to ``None`` and a warning.
+        """
+        import structlog.testing
+
+        from synthorg.engine.loop_helpers import classify_step
+        from synthorg.observability.events.quality import (
+            QUALITY_STEP_CLASSIFICATION_FAILED,
+        )
+
+        class _BoomClassifier:
+            async def classify(
+                self,
+                *,
+                step_index: int,
+                turns: tuple[TurnRecord, ...],
+                termination_reason: TerminationReason,
+                stagnation_result: StagnationResult | None = None,
+            ) -> StepQualitySignal:
+                msg = "classifier boom"
+                raise RuntimeError(msg)
+
+        with structlog.testing.capture_logs() as logs:
+            result = await classify_step(
+                _BoomClassifier(),
+                step_index=3,
+                step_turns=(_turn(tools=("read",)),),
+                termination_reason=TerminationReason.COMPLETED,
+            )
+
+        assert result is None
+        assert any(
+            e.get("event") == QUALITY_STEP_CLASSIFICATION_FAILED
+            and e.get("step_index") == 3
+            and e.get("error_type") == "RuntimeError"
+            for e in logs
+        )
+
+    async def test_critical_classifier_error_propagates(self) -> None:
+        """A critical classifier failure is re-raised, never degraded.
+
+        ``classify_step`` swallows ordinary classifier failures, but a
+        ``MemoryError`` / ``RecursionError`` must escape the loop so the
+        process is not left limping; degrading it to ``None`` would mask a
+        fatal condition.
+        """
+        from synthorg.engine.loop_helpers import classify_step
+
+        class _CriticalClassifier:
+            async def classify(
+                self,
+                *,
+                step_index: int,
+                turns: tuple[TurnRecord, ...],
+                termination_reason: TerminationReason,
+                stagnation_result: StagnationResult | None = None,
+            ) -> StepQualitySignal:
+                msg = "classifier oom"
+                raise MemoryError(msg)
+
+        with pytest.raises(MemoryError):
+            await classify_step(
+                _CriticalClassifier(),
+                step_index=0,
+                step_turns=(_turn(tools=("read",)),),
+                termination_reason=TerminationReason.COMPLETED,
+            )

@@ -15,7 +15,7 @@ slots so the suite does not need a live NATS container -- the
 public ``start()`` path is unaffected.
 """
 
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -27,6 +27,7 @@ from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
     WORKERS_QUEUE_START_REJECTED,
     WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
+    WORKERS_TASK_QUEUE_STARTED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.claim import (
@@ -359,6 +360,53 @@ async def test_start_when_running_logs_rejection(
 
 
 @pytest.mark.unit
+async def test_start_success_logs_queue_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful ``start()`` logs the queue-started state transition."""
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+
+    from synthorg.workers._stream_setup import (
+        connect,
+        ensure_consumer,
+        ensure_stream,
+    )
+
+    client = AsyncMock(spec=_ClientStub)
+    js = AsyncMock(spec=_JetStreamStub)
+    monkeypatch.setattr(
+        claim_module,
+        "connect",
+        AsyncMock(spec=connect, return_value=(client, js)),
+    )
+    monkeypatch.setattr(
+        claim_module,
+        "ensure_stream",
+        AsyncMock(spec=ensure_stream),
+    )
+    monkeypatch.setattr(
+        claim_module,
+        "ensure_consumer",
+        AsyncMock(
+            spec=ensure_consumer,
+            return_value=AsyncMock(spec=_SubscriptionStub),
+        ),
+    )
+
+    await queue.start()
+
+    assert queue._running is True
+    matched = [
+        c
+        for c in spy.info.call_args_list
+        if c.args and c.args[0] == WORKERS_TASK_QUEUE_STARTED
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["durable_name"] == queue._durable_name
+
+
+@pytest.mark.unit
 async def test_publish_claim_before_start_logs_not_running(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -398,12 +446,10 @@ async def test_publish_claim_bounded_by_timeout(
     monkeypatch.setattr(claim_module, "_PUBLISH_TIMEOUT_SECONDS", 0.05)
     queue = _make_queue()
 
-    # Far longer than the 0.05s publish deadline above, so the stubbed publish
-    # is guaranteed still pending when the bound trips.
-    slow_publish_seconds: Final[float] = 10.0
-
     async def _slow_publish(subject: str, payload: bytes) -> None:
-        await asyncio.sleep(slow_publish_seconds)
+        # Block indefinitely until the publish deadline cancels us; no
+        # wall-clock dependency, so the timeout bound is what is exercised.
+        await asyncio.Event().wait()
 
     js = AsyncMock(spec=_JetStreamStub)
     js.publish.side_effect = _slow_publish
@@ -481,12 +527,9 @@ async def test_stop_drain_timeout_marks_unrestartable(
     queue = _make_queue()
     queue._stop_drain_timeout_seconds = 0.05
 
-    # Far longer than the 0.05s drain deadline above, so the stubbed drain is
-    # guaranteed still running when stop()'s wait_for trips its timeout.
-    slow_drain_seconds: Final[float] = 10.0
-
     async def _slow_drain() -> None:
-        await asyncio.sleep(slow_drain_seconds)
+        # Block until stop()'s wait_for cancels us; the timeout is exercised.
+        await asyncio.Event().wait()
 
     queue._client = AsyncMock(spec=_ClientStub)
     queue._client.drain.side_effect = _slow_drain
@@ -514,12 +557,9 @@ async def test_stop_unsubscribe_timeout_logs_and_continues(
     queue = _make_queue()
     queue._stop_drain_timeout_seconds = 0.05
 
-    # Far longer than the 0.05s unsubscribe deadline, so the stubbed
-    # unsubscribe is guaranteed still running when the bound trips.
-    slow_unsubscribe_seconds: Final[float] = 10.0
-
     async def _slow_unsubscribe() -> None:
-        await asyncio.sleep(slow_unsubscribe_seconds)
+        # Block until the unsubscribe deadline cancels us.
+        await asyncio.Event().wait()
 
     sub = AsyncMock(spec=_SubscriptionStub)
     sub.unsubscribe.side_effect = _slow_unsubscribe

@@ -11,9 +11,44 @@ from synthorg.persistence.config_factory import (
     build_postgres_persistence_config_from_url,
     build_sqlite_persistence_config,
     normalize_ssl_mode_value,
+    select_persistence_config,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class TestSelectPersistenceConfig:
+    def test_db_url_takes_precedence_over_db_path(self) -> None:
+        cfg = select_persistence_config(
+            db_url="postgresql://user:pw@db.example:5432/synthorg",
+            db_path="/data/synthorg.db",
+            ssl_mode=None,
+        )
+        assert cfg is not None
+        assert cfg.backend == "postgres"
+
+    def test_db_path_selects_sqlite(self) -> None:
+        cfg = select_persistence_config(
+            db_url="",
+            db_path="/data/synthorg.db",
+            ssl_mode=None,
+        )
+        assert cfg is not None
+        assert cfg.backend == "sqlite"
+        assert cfg.sqlite.path == "/data/synthorg.db"
+
+    def test_neither_set_returns_none(self) -> None:
+        assert select_persistence_config(db_url="", db_path="", ssl_mode=None) is None
+
+    def test_ssl_mode_override_is_applied(self) -> None:
+        cfg = select_persistence_config(
+            db_url="postgresql://user:pw@db.example:5432/synthorg",
+            db_path="",
+            ssl_mode="  disable  ",
+        )
+        assert cfg is not None
+        assert cfg.postgres is not None
+        assert cfg.postgres.ssl_mode == "disable"
 
 
 class TestBuildSqlitePersistenceConfig:
@@ -107,6 +142,14 @@ class TestBuildPostgresPersistenceConfigFromUrl:
             ("postgresql://u:p@h", "database name"),
             ("postgresql://u:p@/db", "host"),
             ("postgresql://u:p@h:0/db", "port 0"),
+        ],
+        ids=[
+            "query_params",
+            "wrong_scheme",
+            "missing_credentials",
+            "missing_database",
+            "missing_host",
+            "port_zero",
         ],
     )
     def test_invalid_url_raises_value_error(

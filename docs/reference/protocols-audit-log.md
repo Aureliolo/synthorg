@@ -121,6 +121,17 @@ The api forward-ref hoist added three `@runtime_checkable` structural handles in
 | workers/distributed_protocols.py | `DistributedDispatcherHandle` | 1 | KEEP | `on_task_state_changed` observer + `set_workers_bridge_provider` late-bind seam over `DistributedDispatcher`. |
 | workers/distributed_protocols.py | `DistributedBackendServicesHandle` | 1 | KEEP | `start` / `stop` seam over `DistributedBackendServices`. |
 
+## Audit-table reconciliation by #2503
+
+Issue #2503 was scoped (via #2478) to "collapse 9 single-implementation hr/ protocols + `LocalModelManager`", reading the stale `REMOVE` rows in [protocols-audit.md](protocols-audit.md). Those ten rows had already been hand-reviewed and re-flagged to KEEP by #1864 (see the "Audit re-flagged to KEEP" section above): the nine hr/ strategy protocols are default-impl injection seams (e.g. `OffboardingService` injects `FullSnapshotStrategy`/`QueueReturnStrategy`; the promotion / performance / evaluation services inject their `*Strategy` impls), `PruningPolicy` has two impls, and `LocalModelManager` is the vendor-agnostic local-model surface with `OllamaModelManager` in the same file. Each carries an in-code `# <reason>` rationale comment.
+
+No protocol was deleted. The only defect was the audit.md table never being updated after #1864, so #2503 flipped those ten `REMOVE` rows to `KEEP` to match this log. The `LocalModelManager.pull_model` "sync-vs-async mismatch" #2503 also listed is a non-issue: a `def … -> AsyncIterator` member implemented by an `async def … yield` async generator type-checks correctly (calling an async generator returns an `AsyncIterator` without `await`); the in-code comment documents the intentional `def`-not-`async def` declaration.
+
+While reconciling, #2503 also brought the `engine/` table section into line with #1864 and #1865, which the original reconciliation pass had missed:
+
+- Flipped to `KEEP` (per #1864 re-flag, verified against source): `ShadowTaskProvider`, `ShadowAgentRunner`, `ReviewStage`, `ConfidenceFormatter`, `StrategicContextProvider`, `ImpactScorer`, and `StepQualityClassifier` (the last now wired at boot + injected into every execution loop by #2503 itself).
+- Removed rows for protocols #1865 deleted (no longer in source): `_HeuristicGraderBridge`, `_RoutingScorerBridge`, `_ModelMatcherBridge`, `_ExecutionResultLike`, `_AgentRunResultLike`.
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

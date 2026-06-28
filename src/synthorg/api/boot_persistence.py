@@ -19,9 +19,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 from synthorg.persistence.config_factory import (
     build_filesystem_artifact_storage,
-    build_postgres_persistence_config_from_url,
-    build_sqlite_persistence_config,
-    normalize_ssl_mode_value,
+    select_persistence_config,
 )
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
@@ -79,15 +77,29 @@ def resolve_boot_persistence(
     db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
 
     if persistence is None:
-        if db_url:
+        # Single-source the Postgres-over-SQLite precedence rule; the
+        # per-backend artifact wiring + logging below stays divergent. The
+        # config build (URL parse + validation) stays inside the redacted-log
+        # guard so a malformed env value fails closed with context.
+        try:
+            boot_config = select_persistence_config(
+                db_url=db_url,
+                db_path=db_path,
+                ssl_mode=os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                API_APP_STARTUP,
+                exc,
+                note="Persistence config selection failed",
+            )
+            raise
+        if boot_config is not None and boot_config.backend == "postgres":
+            assert boot_config.postgres is not None  # noqa: S101
             try:
-                pg_persistence_config = build_postgres_persistence_config_from_url(
-                    db_url,
-                    ssl_mode_override=normalize_ssl_mode_value(
-                        os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
-                    ),
-                )
-                persistence = create_backend(pg_persistence_config)
+                persistence = create_backend(boot_config)
             except Exception as exc:
                 reraise_critical(exc)
                 log_exception_redacted(
@@ -97,12 +109,11 @@ def resolve_boot_persistence(
                     note="Postgres persistence creation failed",
                 )
                 raise
-            assert pg_persistence_config.postgres is not None  # noqa: S101
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired Postgres persistence from SYNTHORG_DATABASE_URL",
-                host=pg_persistence_config.postgres.host,
-                database=pg_persistence_config.postgres.database,
+                host=boot_config.postgres.host,
+                database=boot_config.postgres.database,
             )
             # Postgres has no on-disk artifact directory tied to the DB path, so
             # default artifact storage to /data (the CLI compose data volume).
@@ -116,12 +127,11 @@ def resolve_boot_persistence(
                     note="Auto-wired filesystem artifact storage (postgres mode)",
                     data_dir=artifact_dir_str,
                 )
-        elif db_path:
-            resolved_db_path = Path(db_path)
+        elif boot_config is not None and boot_config.backend == "sqlite":
+            assert boot_config.sqlite is not None  # noqa: S101
+            resolved_db_path = Path(boot_config.sqlite.path)
             try:
-                persistence = create_backend(
-                    build_sqlite_persistence_config(path=db_path),
-                )
+                persistence = create_backend(boot_config)
             except Exception as exc:
                 reraise_critical(exc)
                 log_exception_redacted(
@@ -134,7 +144,7 @@ def resolve_boot_persistence(
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
-                db_name=Path(db_path).name,
+                db_name=resolved_db_path.name,
             )
             if artifact_storage is None:
                 artifact_storage = build_filesystem_artifact_storage(

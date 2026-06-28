@@ -83,6 +83,13 @@ _NVIDIA_RUNTIME_NAME: Final[str] = "nvidia"
 """Runtime key the NVIDIA Container Toolkit registers with Docker."""
 
 
+DockerInfoUnavailableReason = Literal[
+    "socket_not_mounted",
+    "aiodocker_not_installed",
+    "daemon_unreachable",
+]
+
+
 class DockerHostInfo(TypedDict):
     """Typed shape of the payload returned by :func:`fetch_docker_info`.
 
@@ -97,13 +104,7 @@ class DockerHostInfo(TypedDict):
     """
 
     docker_info_available: bool
-    docker_info_unavailable_reason: NotRequired[
-        Literal[
-            "socket_not_mounted",
-            "aiodocker_not_installed",
-            "daemon_unreachable",
-        ]
-    ]
+    docker_info_unavailable_reason: NotRequired[DockerInfoUnavailableReason]
     docker_server_version: NotRequired[str]
     docker_operating_system: NotRequired[str]
     docker_os_type: NotRequired[str]
@@ -126,13 +127,6 @@ def _truncate(value: object) -> str:
     """
     text = str(value)
     return text[:MAX_STRING_LENGTH]
-
-
-DockerInfoUnavailableReason = Literal[
-    "socket_not_mounted",
-    "aiodocker_not_installed",
-    "daemon_unreachable",
-]
 
 
 def _unavailable(reason: DockerInfoUnavailableReason) -> DockerHostInfo:

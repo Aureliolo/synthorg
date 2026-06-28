@@ -15,11 +15,6 @@ from synthorg.communication.delegation.entity_guard import (
 from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from synthorg.communication.delegation.models import (
-    DelegationRecord,
-    DelegationRequest,
-    DelegationResult,
-)
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
@@ -30,6 +25,11 @@ from synthorg.communication.loop_prevention.guard import (
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.delegation_types import (
+    DelegationRecord,
+    DelegationRequest,
+    DelegationResult,
+)
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger, safe_error_description

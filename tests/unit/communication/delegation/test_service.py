@@ -16,9 +16,6 @@ from synthorg.communication.delegation.authority import (
 from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from synthorg.communication.delegation.models import (
-    DelegationRequest,
-)
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
@@ -31,6 +28,7 @@ from synthorg.communication.loop_prevention.guard import (
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department, Team
+from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType

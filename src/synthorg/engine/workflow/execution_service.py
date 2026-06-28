@@ -36,6 +36,9 @@ from synthorg.engine.workflow.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.engine.workflow.execution_activation_events import (
+    emit_activation_events,
+)
 from synthorg.engine.workflow.execution_activation_helpers import (
     process_task_node,
 )
@@ -67,12 +70,10 @@ from synthorg.engine.workflow.subworkflow_registry import (
 from synthorg.engine.workflow.validation import validate_workflow
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
-    WORKFLOW_EXEC_ACTIVATED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
     WORKFLOW_EXEC_NOT_FOUND,
-    WORKFLOW_EXEC_STATUS_TRANSITIONED,
     WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
     WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
@@ -230,21 +231,14 @@ class WorkflowExecutionService:
             completed_at=completed_at,
         )
         await self._execution_repo.save(execution)
-
-        logger.info(
-            WORKFLOW_EXEC_ACTIVATED,
-            execution_id=str(execution_id),
+        # The save is authoritative; ``emit_activation_events`` is best-effort
+        # (self-guarding) so post-save observability cannot abort a committed
+        # activation.
+        emit_activation_events(
+            execution,
             definition_id=str(definition.id),
             task_count=len(state.node_task_ids),
         )
-        logger.info(
-            WORKFLOW_EXEC_STATUS_TRANSITIONED,
-            execution_id=str(execution_id),
-            definition_id=str(definition.id),
-            from_status=None,
-            to_status=status.value,
-        )
-
         return execution
 
     async def _load_and_validate(

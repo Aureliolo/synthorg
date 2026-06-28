@@ -13,7 +13,7 @@ from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
 )
-from synthorg.communication.delegation.models import (
+from synthorg.core.delegation_types import (
     DelegationRequest,
 )
 from synthorg.core.types import NotBlankStr

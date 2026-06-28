@@ -13,6 +13,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -44,6 +46,7 @@ from .loop_helpers import (
     build_result,
     call_provider,
     check_response_errors,
+    classify_step,
     classify_turn,
     get_tool_definitions,
     make_turn_record,
@@ -93,9 +96,13 @@ class ReactLoop:
         compaction_callback: Optional async callback invoked at turn
             boundaries to compress older conversation turns when the
             context fill level is high.  ``None`` disables compaction.
+        step_classifier: Optional step-quality classifier. ReAct is
+            turn-based with no step boundary, so a single whole-run
+            signal is emitted at natural termination; ``None`` disables
+            quality classification.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         checkpoint_callback: CheckpointCallback | None = None,
         *,
@@ -103,12 +110,61 @@ class ReactLoop:
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
         steering_inbox: SteeringInbox | None = None,
+        step_classifier: StepQualityClassifier | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
         self._steering_inbox = steering_inbox
+        self._step_classifier = step_classifier
+
+    async def _whole_run_signals(
+        self,
+        turns: list[TurnRecord],
+        termination_reason: TerminationReason,
+    ) -> tuple[StepQualitySignal, ...]:
+        """Classify the whole run as a single step signal.
+
+        Returns:
+            A one-tuple with the run's :class:`StepQualitySignal`, or an
+            empty tuple when no classifier is wired.
+        """
+        signal = await classify_step(
+            self._step_classifier,
+            step_index=0,
+            step_turns=tuple(turns),
+            termination_reason=termination_reason,
+        )
+        return (signal,) if signal is not None else ()
+
+    async def _attach_whole_run_signals(
+        self,
+        result: ExecutionResult,
+        turns: list[TurnRecord],
+    ) -> ExecutionResult:
+        """Attach the whole-run quality signal to a terminating result.
+
+        ReAct has no per-step boundary, so every visible ``execute()`` exit
+        (shutdown / budget / cancel / provider-error / stagnation / tool
+        outcome / completion) routes its result through here so the health
+        pipeline never receives an empty ``quality_signals`` for a run that
+        actually produced turns.
+
+        Returns:
+            The result with ``quality_signals`` populated, or unchanged
+            when the run produced no turns to classify.
+        """
+        if not turns:
+            return result
+        return result.model_copy(
+            update={
+                "quality_signals": await self._whole_run_signals(
+                    turns,
+                    result.termination_reason,
+                )
+            }
+        )
 
     @property
     def approval_gate(self) -> ApprovalGate | None:
@@ -174,17 +230,17 @@ class ReactLoop:
         while ctx.has_turns_remaining:
             shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
             if shutdown_result is not None:
-                return shutdown_result
+                return await self._attach_whole_run_signals(shutdown_result, turns)
 
             budget_result = check_budget(ctx, budget_checker, turns)
             if budget_result is not None:
-                return budget_result
+                return await self._attach_whole_run_signals(budget_result, turns)
 
             cancel_result = await check_task_cancelled(
                 ctx, task_cancellation_checker, turns
             )
             if cancel_result is not None:
-                return cancel_result
+                return await self._attach_whole_run_signals(cancel_result, turns)
 
             # Adopt any pending steering directives before the LLM call so
             # the operator's constraint is in context for this turn.
@@ -206,7 +262,7 @@ class ReactLoop:
                 turns,
             )
             if isinstance(response, ExecutionResult):
-                return response
+                return await self._attach_whole_run_signals(response, turns)
 
             turns.append(
                 make_turn_record(
@@ -226,7 +282,7 @@ class ReactLoop:
                 shutdown_checker,
             )
             if isinstance(result, ExecutionResult):
-                return result
+                return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
             # Stagnation detection after successful turn processing
@@ -237,7 +293,7 @@ class ReactLoop:
                 corrections_injected,
             )
             if isinstance(stag_outcome, ExecutionResult):
-                return stag_outcome
+                return await self._attach_whole_run_signals(stag_outcome, turns)
             if isinstance(stag_outcome, tuple):
                 ctx, corrections_injected = stag_outcome
 
@@ -256,7 +312,10 @@ class ReactLoop:
             reason=TerminationReason.MAX_TURNS.value,
             turns=len(turns),
         )
-        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
+        return await self._attach_whole_run_signals(
+            build_result(ctx, TerminationReason.MAX_TURNS, turns),
+            turns,
+        )
 
     def _prepare_loop(
         self,
@@ -343,7 +402,7 @@ class ReactLoop:
                 )
 
         if not response.tool_calls:
-            return self._handle_completion(ctx, response, turns)
+            return await self._handle_completion(ctx, response, turns)
 
         # Check shutdown before tool invocations
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
@@ -363,7 +422,7 @@ class ReactLoop:
             approval_gate=self._approval_gate,
         )
 
-    def _handle_completion(
+    async def _handle_completion(
         self,
         ctx: AgentContext,
         response: CompletionResponse,

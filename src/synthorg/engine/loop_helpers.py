@@ -32,11 +32,16 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TURN_START,
+)
+from synthorg.observability.events.quality import (
+    QUALITY_STEP_CLASSIFICATION_FAILED,
 )
 from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
 from synthorg.observability.tracing import llm_span
@@ -388,25 +393,83 @@ def classify_turn(
     return classify_call(classification_ctx)
 
 
-def build_result(
+def build_result(  # noqa: PLR0913
     ctx: AgentContext,
     reason: TerminationReason,
     turns: list[TurnRecord],
     *,
     error_message: str | None = None,
     metadata: dict[str, object] | None = None,
+    quality_signals: tuple[StepQualitySignal, ...] = (),
 ) -> ExecutionResult:
     """Build an ``ExecutionResult`` from loop state.
 
     Returns:
         An :class:`ExecutionResult` carrying the current context,
-        termination reason, turn records, and optional error /
-        metadata payload.
+        termination reason, turn records, per-step quality signals, and
+        optional error / metadata payload.
     """
     return ExecutionResult(
         context=ctx,
         termination_reason=reason,
         turns=tuple(turns),
+        quality_signals=quality_signals,
         error_message=error_message,
         metadata=metadata or {},
     )
+
+
+async def classify_step(
+    classifier: StepQualityClassifier | None,
+    *,
+    step_index: int,
+    step_turns: tuple[TurnRecord, ...],
+    termination_reason: TerminationReason,
+) -> StepQualitySignal | None:
+    """Classify a single step's quality when a classifier is wired.
+
+    The stagnation-terminated path escalates independently via the health
+    judge's STAGNATION check, so step classification passes
+    ``stagnation_result=None``; the rule-based classifier scores
+    error / completed-with-tool-calls / exploratory (NEUTRAL fallback)
+    steps from the turn metadata.
+
+    Classification is post-work observability: the step's turns are already
+    captured. A classifier failure (a future LLM-backed implementation may
+    raise provider / timeout errors) must therefore degrade to "no signal"
+    rather than fail the agent run, so the call is guarded here at the single
+    injection point. Callers treat ``None`` as "no signal for this step".
+
+    Returns:
+        The step's :class:`StepQualitySignal`, or ``None`` when no
+        classifier is injected (the feature is off) or classification failed.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
+    """
+    if classifier is None:
+        return None
+    try:
+        return await classifier.classify(
+            step_index=step_index,
+            turns=step_turns,
+            termination_reason=termination_reason,
+            stagnation_result=None,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # Best-effort: the warning rides the same path that just failed and
+        # could raise for the same reason. classify_step is post-work
+        # observability, so a logging failure must not break the loop after
+        # the step already completed.
+        try:
+            logger.warning(
+                QUALITY_STEP_CLASSIFICATION_FAILED,
+                step_index=step_index,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        except Exception as warning_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(warning_exc)
+        return None

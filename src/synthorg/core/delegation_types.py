@@ -1,4 +1,12 @@
-"""Delegation request, result, and audit trail models."""
+"""Delegation request, result, and audit-trail models.
+
+These are core domain types (they depend only on :mod:`core.task` and
+:mod:`core.types`), so they live in ``core`` rather than
+``communication``. Keeping them here lets the engine classification
+loaders reference a delegation request without importing the
+``communication`` package hub, which would otherwise close an
+``engine`` <-> ``communication`` cold-import cycle.
+"""
 
 from collections.abc import Mapping
 from typing import Self

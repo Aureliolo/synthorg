@@ -15,6 +15,8 @@ from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
@@ -39,6 +41,7 @@ from .loop_control_helpers import (
     invoke_compaction,
 )
 from .loop_helpers import (
+    classify_step,
     get_tool_definitions,
 )
 from .loop_protocol import (
@@ -46,6 +49,7 @@ from .loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TaskCancellationChecker,
+    TerminationReason,
 )
 from .plan_helpers import (
     update_step_status,
@@ -79,6 +83,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         compaction_callback: Optional async callback invoked at turn
             boundaries to compress older conversation turns when the
             context fill level is high.  ``None`` disables compaction.
+        step_classifier: Optional step-quality classifier scored once per
+            plan step from that step's turns; ``None`` disables quality
+            classification.
     """
 
     def __init__(  # noqa: PLR0913
@@ -90,6 +97,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
         steering_inbox: SteeringInbox | None = None,
+        step_classifier: StepQualityClassifier | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
@@ -97,6 +105,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
         self._steering_inbox = steering_inbox
+        self._step_classifier = step_classifier
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -239,6 +248,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             cancellation).
         """
         step_idx = 0
+        signals: list[StepQualitySignal] = []
         while step_idx < len(plan.steps):
             if not ctx.has_turns_remaining:
                 break
@@ -256,6 +266,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 description=step.description,
             )
 
+            step_start = len(turns)
             step_result = await self._execute_step(
                 ctx,
                 provider,
@@ -271,9 +282,37 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             )
 
             if isinstance(step_result, ExecutionResult):
-                return self._finalize(step_result, all_plans, replans_used)
+                # The in-flight step ends here (cancel / shutdown / budget /
+                # stagnation / error). Classify it too so its signal is not
+                # dropped from quality_signals, which the worker health
+                # pipeline consumes downstream.
+                if step_start < len(turns):
+                    step_signal = await classify_step(
+                        self._step_classifier,
+                        step_index=step_idx,
+                        step_turns=tuple(turns[step_start:]),
+                        termination_reason=step_result.termination_reason,
+                    )
+                    if step_signal is not None:
+                        signals.append(step_signal)
+                return self._attach_signals(
+                    self._finalize(step_result, all_plans, replans_used),
+                    signals,
+                )
 
             ctx, step_ok = step_result
+            step_signal = await classify_step(
+                self._step_classifier,
+                step_index=step_idx,
+                step_turns=tuple(turns[step_start:]),
+                termination_reason=(
+                    TerminationReason.COMPLETED
+                    if step_ok
+                    else TerminationReason.MAX_TURNS
+                ),
+            )
+            if step_signal is not None:
+                signals.append(step_signal)
 
             if step_ok:
                 plan = update_step_status(
@@ -303,7 +342,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                         finalize=self._finalize,
                     )
                     if isinstance(steer_out, ExecutionResult):
-                        return steer_out
+                        return self._attach_signals(steer_out, signals)
                     ctx, plan, replans_used = steer_out
                     step_idx = 0
                 continue
@@ -324,7 +363,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 shutdown_checker,
             )
             if isinstance(replan_out, ExecutionResult):
-                return replan_out
+                return self._attach_signals(replan_out, signals)
             ctx, plan, replans_used = replan_out
             # The failure replan already incorporates any adopted directive
             # (it is in the conversation), so clear the pending steering
@@ -332,14 +371,32 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             ctx = ctx.cleared_pending_replan()
             step_idx = 0
 
-        return self._build_final_result(
-            ctx,
-            plan,
-            step_idx,
-            turns,
-            all_plans,
-            replans_used,
+        return self._attach_signals(
+            self._build_final_result(
+                ctx,
+                plan,
+                step_idx,
+                turns,
+                all_plans,
+                replans_used,
+            ),
+            signals,
         )
+
+    @staticmethod
+    def _attach_signals(
+        result: ExecutionResult,
+        signals: list[StepQualitySignal],
+    ) -> ExecutionResult:
+        """Attach accumulated per-step quality signals to a terminal result.
+
+        Returns:
+            ``result`` unchanged when no signals were produced, else a
+            copy carrying the per-step ``quality_signals`` tuple.
+        """
+        if not signals:
+            return result
+        return result.model_copy(update={"quality_signals": tuple(signals)})
 
     # ── Step execution ──────────────────────────────────────────────
 

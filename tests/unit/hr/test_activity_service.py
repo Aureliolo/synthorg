@@ -8,8 +8,8 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.delegation.record_store import DelegationRecordStore
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr import activity_service as activity_service_module

@@ -25,6 +25,7 @@ from synthorg.budget.tracker_protocol import (
     collect_all_records,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.hr._activity_validation import (
     validate_pagination,
@@ -57,7 +58,6 @@ if TYPE_CHECKING:
     #   cold-import cycle (communication/__init__ pulls meeting -> engine ->
     #   classification -> delegation back through communication.config).
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.communication.delegation.models import DelegationRecord
     from synthorg.communication.delegation.record_store import (
         DelegationRecordStore,
     )

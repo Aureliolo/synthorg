@@ -3,6 +3,7 @@
 from typing import Final
 
 TASK_ROUTING_AGENT_SCORED: Final[str] = "task_routing.agent.scored"
+TASK_ROUTING_AGENT_INACTIVE_SKIPPED: Final[str] = "task_routing.agent.inactive_skipped"
 TASK_ROUTING_SUBTASK_ROUTED: Final[str] = "task_routing.subtask.routed"
 TASK_ROUTING_SUBTASK_UNROUTABLE: Final[str] = "task_routing.subtask.unroutable"
 TASK_ROUTING_TOPOLOGY_SELECTED: Final[str] = "task_routing.topology.selected"

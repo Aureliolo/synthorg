@@ -81,7 +81,6 @@ class TestRunPipelinePass:
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
-            requested_by="bob",
         )
         assert result.final_verdict is ReviewVerdict.PASS
         engine.submit.assert_called_once()
@@ -99,7 +98,6 @@ class TestRunPipelinePass:
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
-            requested_by="bob",
         )
         assert result.final_verdict is ReviewVerdict.PASS
         call = engine.submit.call_args[0][0]
@@ -124,7 +122,6 @@ class TestRunPipelineFail:
             task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
-            requested_by="bob",
         )
         assert result.final_verdict is ReviewVerdict.FAIL
         engine.submit.assert_called_once()
@@ -146,7 +143,6 @@ class TestRunPipelineGuards:
                 task_id=sid("task-1"),
                 pipeline=pipeline,
                 decided_by="alice",  # same as assigned_to
-                requested_by="bob",
             )
         engine.submit.assert_not_called()
 
@@ -160,5 +156,4 @@ class TestRunPipelineGuards:
                 task_id="missing",
                 pipeline=pipeline,
                 decided_by="bob",
-                requested_by="bob",
             )

@@ -670,7 +670,7 @@ class TestDelegationProtocolViolationIntegration:
         ``Task`` model constraints that forbid
         ``assigned_to in delegation_chain``.
         """
-        from synthorg.communication.delegation.models import DelegationRequest
+        from synthorg.core.delegation_types import DelegationRequest
         from synthorg.engine.classification.protocol import DetectionContext
         from synthorg.engine.classification.protocol_detectors import (
             DelegationProtocolDetector,

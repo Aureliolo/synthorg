@@ -18,9 +18,9 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
-from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.activity import (
     ActivityEvent,

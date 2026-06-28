@@ -37,14 +37,22 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # structural cut so any regression at the leaf boundary is caught:
 # ``core.tool_constraints`` (sub-constraint types out of the ``tools`` hub),
 # ``config.schema`` (no longer reached through the config-to-communication
-# eager chain), and the ``execution.*`` leaves plus
+# eager chain), ``engine.quality.models`` (pins the lazy ``quality/__init__``
+# so ``loop_protocol`` -> ``quality.models`` cannot regress into eagerly
+# pulling ``quality.classifier`` -> ``loop_protocol`` mid-init), and the
+# ``execution.*`` leaves plus
 # ``budget.coordination_collector`` (turn/efficiency shapes out of
 # ``engine.loop_protocol``), with ``persistence._shared`` as a representative
 # persistence leaf. ``communication.config`` is intentionally absent: a
-# remaining ``communication`` <-> ``engine`` cycle (``meeting._prompts`` ->
-# ``engine.prompt_safety`` -> ``engine/__init__`` -> ``engine.classification``
-# -> ``communication.delegation`` -> ``communication.config``) blocks it from
-# importing cold on its own; ``config.schema`` importing cold already proves
+# remaining ``communication`` <-> ``engine`` cycle (``communication/__init__``
+# -> ``meeting._prompts`` -> ``engine.prompt_safety`` -> ``engine/__init__`` ->
+# ``agent_engine`` -> ``engine.context`` -> ``communication.async_tasks`` ->
+# ``communication.config``) blocks it from importing cold on its own. The
+# former ``engine.classification`` -> ``communication.delegation`` ->
+# ``communication.config`` edge no longer contributes: the delegation request /
+# result / record value objects moved to the ``core.delegation_types`` leaf, so
+# the classification loaders reference them without importing the
+# ``communication`` hub. ``config.schema`` importing cold already proves
 # the ``config.schema`` <-> ``communication.config`` edge is broken. Add a new
 # leaf here whenever a new dependency-free ``core.*`` / ``execution.*`` module
 # is introduced, so its cold-import safety is pinned from the start. The same
@@ -89,6 +97,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.execution.efficiency",
     "synthorg.execution.view",
     "synthorg.execution.parked_context",
+    "synthorg.engine.quality.models",
     "synthorg.budget.coordination_collector",
     "synthorg.budget.cost_record",
     "synthorg.approval.enums",

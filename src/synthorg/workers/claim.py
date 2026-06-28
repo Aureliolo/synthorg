@@ -35,6 +35,7 @@ from synthorg.observability.events.workers import (
     WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED,
     WORKERS_TASK_QUEUE_DRAIN_FAILED,
     WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
+    WORKERS_TASK_QUEUE_STARTED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers._stream_setup import connect, ensure_consumer, ensure_stream
@@ -252,6 +253,10 @@ class JetStreamTaskQueue:
                 await self._drain_partial()
                 raise
             self._running = True
+            logger.info(
+                WORKERS_TASK_QUEUE_STARTED,
+                durable_name=self._durable_name,
+            )
 
     async def stop(self) -> None:
         """Close the NATS connection. Idempotent.

@@ -11,8 +11,8 @@ from collections import deque
 from datetime import datetime
 from typing import Final
 
-from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.core.datetime_guards import validate_time_range
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_RECORD_EVICTED,

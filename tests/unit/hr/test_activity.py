@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
-from synthorg.communication.delegation.models import DelegationRecord
+from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.activity import (
     ActivityEvent,
