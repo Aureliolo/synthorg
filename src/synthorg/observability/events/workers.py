@@ -185,6 +185,9 @@ WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED: Final[str] = (
     "workers.execution_service.health_pipeline_failed"
 )
 
-# Runtime hot-reload (rebuild + swap of the live agent runtime)
+# Runtime build + hot-reload (rebuild + swap of the live agent runtime)
 WORKERS_RUNTIME_RELOADED: Final[str] = "workers.runtime.reloaded"
 WORKERS_RUNTIME_HOT_SWAP_FAILED: Final[str] = "workers.runtime.hot_swap_failed"
+WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK: Final[str] = (
+    "workers.runtime.engine_bridge_config_fallback"
+)

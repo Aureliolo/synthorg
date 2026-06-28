@@ -39,13 +39,11 @@ class _ProviderRequestValidatorMixin(BaseModel):
     validators here keeps them from drifting. ``check_fields=False`` lets
     the mixin declare a validator for a field only some subclasses define
     (e.g. ``name`` is absent on the partial update payload).
-    """
 
-    model_config = ConfigDict(
-        frozen=True,
-        allow_inf_nan=False,
-        extra="forbid",
-    )
+    The mixin carries no ``model_config``: each concrete subclass declares
+    its own frozen config, which Pydantic merges over any inherited one, so a
+    config here would be dead. The mixin contributes validators only.
+    """
 
     @field_validator("name", check_fields=False)
     @classmethod

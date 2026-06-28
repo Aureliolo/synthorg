@@ -122,18 +122,14 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
-| engine/evolution/guards/shadow_protocol.py | 69 | `ShadowTaskProvider` | 0 | 0 | 0 | REMOVE | One-consumer seam. |
-| engine/evolution/guards/shadow_protocol.py | 100 | `ShadowAgentRunner` | 0 | 0 | 0 | REMOVE | One-consumer seam. |
-| engine/quality/classifier.py | 44 | `StepQualityClassifier` | 1 | 0 | 0 | REMOVE | No usages outside the module. |
-| engine/quality/graders/heuristic.py | 27 | `_HeuristicGraderBridge` | 0 | 0 | 0 | REVIEW | Private bridge typing seam. |
-| engine/review/protocol.py | 14 | `ReviewStage` | 1 | 0 | 0 | REMOVE | No usages. |
-| engine/routing/scorer.py | 40 | `_RoutingScorerBridge` | 0 | 0 | 0 | REVIEW | Private bridge typing seam. |
-| engine/strategy/confidence.py | 21 | `ConfidenceFormatter` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no test/inheritance signal. |
-| engine/strategy/context.py | 60 | `StrategicContextProvider` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no test/inheritance signal. |
-| engine/strategy/impact.py | 57 | `ImpactScorer` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no test/inheritance signal. |
-| engine/strategy/tiers.py | 21 | `CostTierResolver` | 1 | 0 | 0 | REMOVE | Plug-in suffix but no test/inheritance signal. |
+| engine/evolution/guards/shadow_protocol.py | 75 | `ShadowTaskProvider` | 0 | 2 | 0 | KEEP | #1864: 2 impls in `shadow_providers.py` (Configured/Recent). |
+| engine/evolution/guards/shadow_protocol.py | 108 | `ShadowAgentRunner` | 0 | 0 | 0 | KEEP | #1864: vendor-agnostic surface; production wires to `AgentEngine.run` via a caller-supplied adapter. |
+| engine/quality/classifier.py | 44 | `StepQualityClassifier` | 1 | 1 | 1 | KEEP | #1864/#2503: `RuleBasedStepClassifier` default-impl, wired at boot + injected into every execution loop. |
+| engine/review/protocol.py | 15 | `ReviewStage` | 1 | 2 | 0 | KEEP | #1864: `ClientReviewStage` + `InternalReviewStage` walked by `ReviewPipeline`. |
+| engine/strategy/confidence.py | 23 | `ConfidenceFormatter` | 1 | 4 | 0 | KEEP | #1864: 4 impls + `_FORMATTERS` factory in the same file. |
+| engine/strategy/context.py | 74 | `StrategicContextProvider` | 1 | 2 | 0 | KEEP | #1864: 2 impls (Config/Memory) composed via fallback. |
+| engine/strategy/impact.py | 57 | `ImpactScorer` | 1 | 3 | 0 | KEEP | #1864: 3 impls (Composite/Explicit/Hybrid). |
 | engine/coordination/dispatcher_types.py | 60 | `TopologyDispatcher` | 1 | 0 | 3 | KEEP | Plug-in `Dispatcher`. |
-| engine/coordination/dispatcher_types.py | (extras) | `_ExecutionResultLike`, `_AgentRunResultLike` | 0 | 0 | 0 | REVIEW | Private structural seams; verify intent. |
 | engine/assignment/pool_filter_protocol.py | 78 | `CandidatePoolFilter` | 1 | 0 | 4 | KEEP | Plug-in `Filter`. |
 | engine/assignment/protocol.py | 16 | `TaskAssignmentStrategy` | 1 | 0 | 7 | KEEP | Plug-in `Strategy`. |
 | engine/assignment/ranker_protocol.py | 56 | `CandidateRanker` | 1 | 0 | 6 | KEEP | Plug-in `Ranker`. |

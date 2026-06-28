@@ -11,6 +11,11 @@ from typing import Final
 WORKFLOW_EXEC_ACTIVATED: Final[str] = "workflow.execution.activated"
 """Workflow definition activated -- execution instance created."""
 
+WORKFLOW_EXEC_ACTIVATION_EVENTS_FAILED: Final[str] = (
+    "workflow.execution.activation_events_failed"
+)
+"""Post-save activation observability failed; the activation itself committed."""
+
 WORKFLOW_EXEC_INVALID_DEFINITION: Final[str] = "workflow.execution.invalid_definition"
 """Activation rejected -- workflow definition failed validation."""
 

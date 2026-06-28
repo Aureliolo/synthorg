@@ -36,8 +36,10 @@ from synthorg.engine.workflow.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.engine.workflow.execution_activation_helpers import (
+from synthorg.engine.workflow.execution_activation_events import (
     emit_activation_events,
+)
+from synthorg.engine.workflow.execution_activation_helpers import (
     process_task_node,
 )
 from synthorg.engine.workflow.execution_models import (
@@ -229,6 +231,9 @@ class WorkflowExecutionService:
             completed_at=completed_at,
         )
         await self._execution_repo.save(execution)
+        # The save is authoritative; ``emit_activation_events`` is best-effort
+        # (self-guarding) so post-save observability cannot abort a committed
+        # activation.
         emit_activation_events(
             execution,
             definition_id=str(definition.id),

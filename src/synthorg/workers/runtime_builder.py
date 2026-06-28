@@ -56,6 +56,7 @@ from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.workers import (
+    WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK,
     WORKERS_RUNTIME_HOT_SWAP_FAILED,
     WORKERS_RUNTIME_RELOADED,
 )
@@ -328,8 +329,7 @@ async def build_runtime_services(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
-            service="runtime_services",
+            WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK,
             context="engine_bridge_resolve",
             note="engine bridge config unavailable; using classifier/health defaults",
             error_type=type(exc).__name__,

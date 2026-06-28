@@ -37,6 +37,7 @@ from synthorg.settings.bridge_configs import (
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 
 class _FakeRootConfig(BaseModel):
@@ -45,7 +46,7 @@ class _FakeRootConfig(BaseModel):
 
 @pytest.fixture
 def mock_settings() -> AsyncMock:
-    return AsyncMock()
+    return AsyncMock(spec=SettingsServiceProtocol)
 
 
 @pytest.fixture

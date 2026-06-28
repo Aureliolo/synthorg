@@ -3,6 +3,9 @@
 from typing import Final
 
 QUALITY_STEP_CLASSIFIED: Final[str] = "execution.quality.step_classified"
+QUALITY_STEP_CLASSIFICATION_FAILED: Final[str] = (
+    "execution.quality.step_classification_failed"
+)
 QUALITY_CLASSIFIER_CONFIG_INVALID: Final[str] = (
     "execution.quality.classifier_config_invalid"
 )

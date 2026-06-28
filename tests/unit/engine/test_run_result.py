@@ -1,7 +1,6 @@
 """Unit tests for AgentRunResult model and format_task_instruction helper."""
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -30,7 +29,7 @@ from tests._shared import as_uuid
 def _test_identity() -> AgentIdentity:
     """Create a minimal AgentIdentity for standalone result tests."""
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("run-result-agent"),
         name="Test Agent",
         role="Developer",
         department="Engineering",

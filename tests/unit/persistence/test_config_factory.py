@@ -143,6 +143,14 @@ class TestBuildPostgresPersistenceConfigFromUrl:
             ("postgresql://u:p@/db", "host"),
             ("postgresql://u:p@h:0/db", "port 0"),
         ],
+        ids=[
+            "query_params",
+            "wrong_scheme",
+            "missing_credentials",
+            "missing_database",
+            "missing_host",
+            "port_zero",
+        ],
     )
     def test_invalid_url_raises_value_error(
         self,

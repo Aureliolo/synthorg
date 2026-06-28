@@ -78,12 +78,24 @@ def resolve_boot_persistence(
 
     if persistence is None:
         # Single-source the Postgres-over-SQLite precedence rule; the
-        # per-backend artifact wiring + logging below stays divergent.
-        boot_config = select_persistence_config(
-            db_url=db_url,
-            db_path=db_path,
-            ssl_mode=os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
-        )
+        # per-backend artifact wiring + logging below stays divergent. The
+        # config build (URL parse + validation) stays inside the redacted-log
+        # guard so a malformed env value fails closed with context.
+        try:
+            boot_config = select_persistence_config(
+                db_url=db_url,
+                db_path=db_path,
+                ssl_mode=os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                API_APP_STARTUP,
+                exc,
+                note="Persistence config selection failed",
+            )
+            raise
         if boot_config is not None and boot_config.backend == "postgres":
             assert boot_config.postgres is not None  # noqa: S101
             try:
@@ -116,7 +128,8 @@ def resolve_boot_persistence(
                     data_dir=artifact_dir_str,
                 )
         elif boot_config is not None and boot_config.backend == "sqlite":
-            resolved_db_path = Path(db_path)
+            assert boot_config.sqlite is not None  # noqa: S101
+            resolved_db_path = Path(boot_config.sqlite.path)
             try:
                 persistence = create_backend(boot_config)
             except Exception as exc:
@@ -131,7 +144,7 @@ def resolve_boot_persistence(
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
-                db_name=Path(db_path).name,
+                db_name=resolved_db_path.name,
             )
             if artifact_storage is None:
                 artifact_storage = build_filesystem_artifact_storage(

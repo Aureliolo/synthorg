@@ -10,6 +10,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
@@ -152,6 +153,35 @@ class TestReactLoopBasicCompletion:
         assert result.turns[0].turn_number == 1
         assert result.turns[0].finish_reason == FinishReason.STOP
         assert result.turns[0].tool_calls_made == ()
+
+    async def test_no_classifier_yields_no_signals(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("All done.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.quality_signals == ()
+
+    async def test_classifier_emits_whole_run_signal(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("All done.")])
+        loop = ReactLoop(step_classifier=RuleBasedStepClassifier())
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # ReactLoop has no plan steps, so it emits a single whole-run signal.
+        assert len(result.quality_signals) == 1
+        assert result.quality_signals[0].step_index == 0
 
     async def test_context_has_assistant_message(
         self,

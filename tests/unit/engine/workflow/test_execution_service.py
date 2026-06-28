@@ -452,6 +452,48 @@ class TestActivateSimple:
         assert entry["from_status"] is None
         assert entry["to_status"] == WorkflowNodeExecutionStatus.TASK_CREATED.value
 
+    async def test_activation_emits_execution_status_transition(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """Activation logs the execution-level None -> RUNNING transition."""
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        )
+
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+
+        with structlog.testing.capture_logs() as events:
+            exe = await service.activate(
+                str(wf.id),
+                project="proj",
+                activated_by="user",
+            )
+
+        transitions = [
+            e for e in events if e.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
+        ]
+        assert len(transitions) == 1
+        entry = transitions[0]
+        assert entry["execution_id"] == str(exe.id)
+        assert entry["workflow_definition_id"] == str(wf.id)
+        assert entry["from_status"] is None
+        assert entry["to_status"] == WorkflowExecutionStatus.RUNNING.value
+
     @pytest.mark.unit
     async def test_task_less_workflow_completes_immediately(
         self,

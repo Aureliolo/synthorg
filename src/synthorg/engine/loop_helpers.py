@@ -40,6 +40,9 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TURN_START,
 )
+from synthorg.observability.events.quality import (
+    QUALITY_STEP_CLASSIFICATION_FAILED,
+)
 from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
 from synthorg.observability.tracing import llm_span
 from synthorg.providers.enums import MessageRole
@@ -427,18 +430,39 @@ async def classify_step(
 
     The stagnation-terminated path escalates independently via the health
     judge's STAGNATION check, so step classification passes
-    ``stagnation_result=None``; the rule-based classifier still scores
-    error / completed / exploratory steps from the turn metadata.
+    ``stagnation_result=None``; the rule-based classifier scores
+    error / completed-with-tool-calls / exploratory (NEUTRAL fallback)
+    steps from the turn metadata.
+
+    Classification is post-work observability: the step's turns are already
+    captured. A classifier failure (a future LLM-backed implementation may
+    raise provider / timeout errors) must therefore degrade to "no signal"
+    rather than fail the agent run, so the call is guarded here at the single
+    injection point. Callers treat ``None`` as "no signal for this step".
 
     Returns:
         The step's :class:`StepQualitySignal`, or ``None`` when no
-        classifier is injected (the feature is off).
+        classifier is injected (the feature is off) or classification failed.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
     """
     if classifier is None:
         return None
-    return await classifier.classify(
-        step_index=step_index,
-        turns=step_turns,
-        termination_reason=termination_reason,
-        stagnation_result=None,
-    )
+    try:
+        return await classifier.classify(
+            step_index=step_index,
+            turns=step_turns,
+            termination_reason=termination_reason,
+            stagnation_result=None,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            QUALITY_STEP_CLASSIFICATION_FAILED,
+            step_index=step_index,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None

@@ -1,7 +1,6 @@
 """Tests for agent-task scorer."""
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 from structlog.testing import capture_logs
@@ -17,6 +16,7 @@ from synthorg.observability.events.task_routing import (
     TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
     TASK_ROUTING_SCORER_INVALID_CONFIG,
 )
+from tests._shared import as_uuid
 
 
 def _as_skills(
@@ -38,7 +38,7 @@ def _make_agent(
 ) -> AgentIdentity:
     """Helper to create an agent with specific skills."""
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(f"scorer-agent-{role}"),
         name="Test Agent",
         role=role,
         department="Engineering",

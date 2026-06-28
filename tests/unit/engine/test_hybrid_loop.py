@@ -19,6 +19,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.providers.models import CompletionResponse
 
 from ._hybrid_loop_helpers import (
@@ -121,6 +122,46 @@ class TestHybridLoopBasic:
         assert result.termination_reason == TerminationReason.COMPLETED
         # 7 turns: plan + 3*(step + summary)
         assert len(result.turns) == 7
+
+    async def test_no_classifier_yields_no_signals(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [_single_step_plan(), _stop_response("Done."), _summary_response()]
+        )
+        loop = HybridLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.quality_signals == ()
+
+    async def test_classifier_emits_one_signal_per_step(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _multi_step_plan(),  # planning
+                _stop_response("Research done."),
+                _summary_response(),
+                _stop_response("Implementation done."),
+                _summary_response(),
+                _stop_response("Verification done."),
+                _summary_response(),
+            ]
+        )
+        loop = HybridLoop(step_classifier=RuleBasedStepClassifier())
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert len(result.quality_signals) == 3
+        assert [s.step_index for s in result.quality_signals] == [0, 1, 2]
 
     async def test_no_summary_when_disabled(
         self,

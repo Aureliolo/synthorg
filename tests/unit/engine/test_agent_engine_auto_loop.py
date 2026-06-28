@@ -19,6 +19,7 @@ from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.plan_models import PlanExecuteConfig
+from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
@@ -515,6 +516,59 @@ class TestAutoLoopConfigWiring:
         loop = await engine._resolve_loop(task, "agent-wire-004", str(task.id))
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.config.max_replans == 7
+
+    async def test_step_classifier_wired_to_react_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """SIMPLE task -> ReactLoop receives the engine's step_classifier."""
+        provider = mock_provider_factory([])
+        classifier = RuleBasedStepClassifier()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            step_classifier=classifier,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.SIMPLE,
+            agent_id="agent-clf-react",
+            task_id="task-clf-react",
+        )
+        loop = await engine._resolve_loop(task, "agent-clf-react", str(task.id))
+        assert isinstance(loop, ReactLoop)
+        assert loop._step_classifier is classifier
+
+    async def test_step_classifier_wired_to_plan_execute_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MEDIUM task -> PlanExecuteLoop receives the engine's step_classifier."""
+        provider = mock_provider_factory([])
+        classifier = RuleBasedStepClassifier()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            step_classifier=classifier,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-clf-plan",
+            task_id="task-clf-plan",
+        )
+        loop = await engine._resolve_loop(task, "agent-clf-plan", str(task.id))
+        assert isinstance(loop, PlanExecuteLoop)
+        assert loop._step_classifier is classifier
+
+    def test_step_classifier_wired_to_default_loop(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Without auto_loop_config, the default ReactLoop receives it."""
+        provider = mock_provider_factory([])
+        classifier = RuleBasedStepClassifier()
+        engine = AgentEngine(provider=provider, step_classifier=classifier)
+        assert isinstance(engine._loop, ReactLoop)
+        assert engine._loop._step_classifier is classifier
 
     def test_compaction_callback_wired_to_default_loop(
         self,
