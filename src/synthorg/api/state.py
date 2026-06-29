@@ -337,6 +337,17 @@ class AppState(AppStateSliceMixin):
 
         self.wire(EngineStateSlice, objective_entry_adapter=adapter)
 
+    def clear_objective_entry_adapter(self) -> None:
+        """Unwire the objective entry adapter (hot disable on blank project).
+
+        Clearing ``objectives.default_project`` must actually stop objective
+        intake, so the previously-installed adapter is removed rather than
+        left filing against the old project.
+        """
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+        self.wire(EngineStateSlice, objective_entry_adapter=None)
+
     def set_brownfield_entry_adapter_if_absent(
         self,
         adapter: WorkEntryAdapter[CodebaseImportSubmission],

@@ -40,9 +40,20 @@ def set_resolved_sidecar_limits(config: ToolsBridgeConfig | None) -> None:
     _resolved = config
 
 
+def get_resolved_sidecar_limits() -> ToolsBridgeConfig:
+    """Return the whole cached sidecar/stop-grace snapshot (or bridge defaults).
+
+    Per-launch read sites should call this ONCE and read every field off the
+    returned object, so a concurrent ``set_resolved_sidecar_limits`` cannot
+    interleave a hot update between two field reads of the same launch/health
+    cycle (the per-field getters below are kept for single-value callers).
+    """
+    return _resolved if _resolved is not None else _FALLBACK
+
+
 def _current() -> ToolsBridgeConfig:
     """Return the cached snapshot, falling back to bridge defaults."""
-    return _resolved if _resolved is not None else _FALLBACK
+    return get_resolved_sidecar_limits()
 
 
 def get_resolved_sidecar_memory_limit() -> str:

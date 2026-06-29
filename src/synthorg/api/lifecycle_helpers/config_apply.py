@@ -518,6 +518,10 @@ async def _apply_http_log_handler_config(app_state: AppState) -> None:
     Resolves the observability bridge snapshot and pushes the four
     ``http_*`` fields onto every live ``HttpBatchHandler`` so a DB override
     applies without a restart (mirrors ``_apply_audit_chain_signing_timeout``).
+    By the time this runs ``_apply_bridge_config`` has already swapped the
+    observability snapshot onto ``app_state``, so a failed second resolve
+    falls back to that already-applied snapshot rather than leaving the live
+    handlers on stale boot-time knobs.
 
     Raises:
         CancelledError: Raised on the corresponding failure path.
@@ -534,7 +538,7 @@ async def _apply_http_log_handler_config(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        snapshot = app_state.bridge_config.observability
     apply_http_log_handler_settings(snapshot)
 
 

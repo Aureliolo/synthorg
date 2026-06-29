@@ -64,10 +64,24 @@ class TestRebuild:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         rebuild, reload = _patch_calls(monkeypatch)
+        calls: list[str] = []
+
+        async def _record_rebuild(*_args: object, **_kwargs: object) -> None:
+            calls.append("rebuild")
+
+        async def _record_reload(*_args: object, **_kwargs: object) -> None:
+            calls.append("reload")
+
+        rebuild.side_effect = _record_rebuild
+        reload.side_effect = _record_reload
         sub, app_state = _make_subscriber()
         await sub.on_settings_changed("budget", "benchmark_provider")
         rebuild.assert_awaited_once_with(app_state)
         reload.assert_awaited_once_with(app_state)
+        # The reload rebuilds the engine routing strategy against the slice
+        # provider, so the rebuild MUST land first; assert the sequence, not
+        # just that both fired.
+        assert calls == ["rebuild", "reload"]
 
     async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rebuild, reload = _patch_calls(monkeypatch)

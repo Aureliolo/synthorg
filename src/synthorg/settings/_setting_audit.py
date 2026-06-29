@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 # Namespaces whose changes always represent a security decision and must
 # be appended to the cryptographic audit chain. Settings in these
-# namespaces affect authentication, authorization, autonomy gating, or
+# namespaces affect authentication, authorisation, autonomy gating, or
 # encryption -- a forensic investigator needs to be able to prove the
 # change order is intact.
 _AUDITED_SETTING_NAMESPACES: frozenset[str] = frozenset(

@@ -34,7 +34,7 @@ _r.register(
             " to the live per-request interceptor via a settings subscriber"
             " without a restart. Disabling (true->false) is a"
             " security-weakening transition and requires the deliberate"
-            " confirm+reason guardrail at the write path."
+            " confirm+reason+actor guardrail at the write path."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
@@ -51,7 +51,7 @@ _r.register(
             "Whether to record security audit entries. Applied to the live"
             " interceptor via a settings subscriber without a restart."
             " Disabling (true->false) is a security-weakening transition and"
-            " requires the deliberate confirm+reason guardrail."
+            " requires the deliberate confirm+reason+actor guardrail."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
@@ -68,7 +68,7 @@ _r.register(
             "Scan tool output for secrets and sensitive data. Applied to"
             " the live interceptor via a settings subscriber without a"
             " restart. Disabling (true->false) is a security-weakening"
-            " transition and requires the deliberate confirm+reason guardrail."
+            " transition and requires the deliberate confirm+reason+actor guardrail."
         ),
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
@@ -86,7 +86,7 @@ _r.register(
             " Applied to the live interceptor via a settings subscriber"
             " without a restart. Switching to ``log_only`` is a"
             " security-weakening transition and requires the deliberate"
-            " confirm+reason guardrail."
+            " confirm+reason+actor guardrail."
         ),
         group="Output Scanning",
         level=SettingLevel.ADVANCED,

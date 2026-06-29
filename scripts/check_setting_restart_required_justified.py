@@ -75,19 +75,23 @@ def _line_has_marker(line: str) -> bool:
     text (canonical form ``# lint-allow: restart-required -- <reason>``),
     mirroring the project-wide ``# lint-allow:`` convention.
     """
+    # Iterate (not ``list(...)``) and swallow a trailing TokenError: an
+    # opening ``_r.register(`` line has an unbalanced paren, so tokenize emits
+    # the COMMENT and only then raises "EOF in multi-line statement". Building
+    # the list eagerly would discard the already-yielded comment and miss a
+    # marker sitting on the register opening line.
     try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
+        for tok in tokenize.generate_tokens(io.StringIO(line).readline):
+            if tok.type != tokenize.COMMENT:
+                continue
+            comment = tok.string.lstrip("#").strip()
+            if not comment.startswith(_MARKER):
+                continue
+            suffix = comment[len(_MARKER) :].strip()
+            if suffix.startswith("--") and suffix[2:].strip():
+                return True
     except tokenize.TokenError, IndentationError, SyntaxError:
         return False
-    for tok in tokens:
-        if tok.type != tokenize.COMMENT:
-            continue
-        comment = tok.string.lstrip("#").strip()
-        if not comment.startswith(_MARKER):
-            continue
-        suffix = comment[len(_MARKER) :].strip()
-        if suffix.startswith("--") and suffix[2:].strip():
-            return True
     return False
 
 
@@ -105,17 +109,45 @@ def _extract_bool(node: ast.expr | None) -> bool:
     return isinstance(node, ast.Constant) and node.value is True
 
 
-def _block_has_marker(call: ast.Call, file_lines: list[str]) -> bool:
-    """True iff the register(...) block around *call* carries the marker.
+def _enclosing_register(
+    call: ast.Call, parents: dict[ast.AST, ast.AST]
+) -> ast.Call | None:
+    """Return the ``register(...)`` Call enclosing *call*, if any.
 
-    The ``SettingDefinition(...)`` call spans multiple lines; scan from its
-    first line through three lines past its end (to land on the closing ``)``
-    of the surrounding ``register(...)``), matching the sibling gate's window.
+    Definitions are declared as ``_r.register(SettingDefinition(...))``; the
+    marker sits on that outer call's block, so the window must be the
+    enclosing ``register(...)`` span, not the inner ``SettingDefinition(...)``.
     """
-    end_line = getattr(call, "end_lineno", call.lineno) or call.lineno
-    last = min(len(file_lines), end_line + 3)
+    node: ast.AST | None = parents.get(call)
+    while node is not None:
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register"
+        ):
+            return node
+        node = parents.get(node)
+    return None
+
+
+def _block_has_marker(
+    call: ast.Call, register: ast.Call | None, file_lines: list[str]
+) -> bool:
+    """True iff the enclosing ``register(...)`` block carries the marker.
+
+    Scans exactly the enclosing ``register(...)`` call span -- from its opening
+    ``_r.register(`` line through its closing ``)`` -- so a marker on the
+    opening line is seen and a marker on the next adjacent block cannot leak in
+    (both failure modes of a fixed line-window keyed off the inner call). Falls
+    back to the ``SettingDefinition(...)`` span when no enclosing register is
+    found (a definition declared outside the registration helper).
+    """
+    block: ast.Call = register if register is not None else call
+    start = block.lineno - 1
+    end = getattr(block, "end_lineno", block.lineno) or block.lineno
     return any(
-        _line_has_marker(file_lines[idx]) for idx in range(call.lineno - 1, last)
+        _line_has_marker(file_lines[idx])
+        for idx in range(start, min(len(file_lines), end))
     )
 
 
@@ -148,6 +180,11 @@ def _scan_file(path: Path, rel: str) -> list[RestartBoundSetting]:
         msg = f"{rel}:{exc.lineno or 0}: syntax error: {exc.msg}"
         raise ValueError(msg) from exc
     file_lines = text.splitlines()
+    parents: dict[ast.AST, ast.AST] = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
     records: list[RestartBoundSetting] = []
     for call in _find_definition_calls(tree):
         kwargs = {kw.arg: kw.value for kw in call.keywords}
@@ -170,7 +207,9 @@ def _scan_file(path: Path, rel: str) -> list[RestartBoundSetting]:
                 setting_key=f"{namespace}.{key}",
                 source_file=rel,
                 source_line=call.lineno,
-                has_marker=_block_has_marker(call, file_lines),
+                has_marker=_block_has_marker(
+                    call, _enclosing_register(call, parents), file_lines
+                ),
             )
         )
     return records

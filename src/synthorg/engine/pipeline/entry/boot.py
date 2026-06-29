@@ -199,13 +199,17 @@ async def _resolve_objectives_default_project(
     """Resolve ``objectives.default_project`` through the live chain.
 
     Post-init (settings service wired) this reads the full DB > env >
-    default chain so an operator override applies on the next re-wire.
-    Pre-init -- or on a resolver outage -- it falls back to the bootstrap
-    resolver (env > default), the same value the boot path used before
-    persistence connected.
+    default chain so an operator override applies on the next re-wire; a
+    transient resolver outage propagates (the caller preserves the current
+    wiring). Pre-init it falls back to the bootstrap resolver (env > default),
+    the same value the boot path used before persistence connected.
 
     Returns:
         The resolved project slug (un-stripped; caller strips).
+
+    Raises:
+        Exception: Propagated when the live resolver read fails post-init, so
+            a transient outage does not silently repoint to the bootstrap slug.
     """
     from synthorg.settings.state import (  # noqa: PLC0415
         SettingsStateSlice,
@@ -225,7 +229,7 @@ async def _resolve_objectives_default_project(
             SettingNamespace.OBJECTIVES.value,
             _OBJECTIVES_DEFAULT_PROJECT_KEY,
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             OBJECTIVE_ENTRY_WIRED,
@@ -233,15 +237,14 @@ async def _resolve_objectives_default_project(
             setting="objectives.default_project",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            note="resolver outage; using bootstrap default",
+            note="resolver outage; preserving current objective-entry wiring",
         )
-        return str(
-            resolve_init_value(
-                SettingNamespace.OBJECTIVES,
-                _OBJECTIVES_DEFAULT_PROJECT_KEY,
-                env=env,
-            ).value
-        )
+        # Post-init (resolver wired) a transient outage must NOT silently
+        # repoint the adapter to the bootstrap (env>default) slug or re-enable
+        # intake when the DB value was deliberately blank. Propagate so the
+        # subscriber's error path keeps the current adapter; the env>default
+        # fallback above is reserved for the genuine pre-init boot case.
+        raise
 
 
 async def wire_real_objective_entry(
@@ -257,7 +260,9 @@ async def wire_real_objective_entry(
     ``has_work_pipeline``) is sufficient. The objectives default
     project is resolved through the live settings chain (DB > env >
     default) when the settings service is wired, falling back to the
-    bootstrap resolver (env > default) pre-init or on a resolver outage.
+    bootstrap resolver (env > default) pre-init only; a post-init resolver
+    outage propagates so the current adapter is preserved. On the hot path a
+    blank resolved project unwires the adapter (intake stops).
 
     Args:
         app_state: Live application state (work pipeline,
@@ -283,6 +288,11 @@ async def wire_real_objective_entry(
             mode="disabled",
             note="objectives.default_project resolved blank",
         )
+        # An operator clearing the setting must actually stop intake: unwire
+        # the previously-installed adapter on the hot path rather than leave
+        # it filing against the old project. (Pre-init/boot has nothing wired.)
+        if hot_swap:
+            app_state.clear_objective_entry_adapter()
         return
     await _ensure_project(
         app_state,

@@ -108,7 +108,7 @@ class BackupService(BackupServiceArchiveMixin):
         """Return the backup scheduler instance."""
         return self._scheduler
 
-    def set_backup_path(self, path: str) -> None:
+    async def set_backup_path(self, path: str) -> None:
         """Update the backup output directory in place (hot).
 
         Updates both this service's write path and the retention manager's
@@ -116,10 +116,16 @@ class BackupService(BackupServiceArchiveMixin):
         ``BackupSettingsSubscriber`` applies to subsequent backups + prunes
         without a restart. Subsequent writes/scans use the new directory;
         backups already written to the old path are not migrated.
+
+        Serialised under ``_backup_lock`` (the same critical section as
+        ``_execute_backup`` / restore) so the swap cannot interleave with an
+        in-flight backup that computes ``backup_dir`` from the old root and
+        then writes the archive or runs retention against the new one.
         """
         new_path = Path(path)
-        self._backup_path = new_path
-        self._retention.set_backup_path(new_path)
+        async with self._backup_lock:
+            self._backup_path = new_path
+            self._retention.set_backup_path(new_path)
 
     @property
     def is_unrestartable(self) -> bool:

@@ -188,7 +188,7 @@ _r.register(
             " committed recording artifact, falling back to the stub for"
             " any unmeasured model. Resolved through the live settings"
             " chain (DB > env > default); a change rebuilds the"
-            " benchmark provider + Pareto analyzer and reloads runtime"
+            " benchmark provider + Pareto analyser and reloads runtime"
             " services without a restart."
         ),
         group="Cost Dial",
@@ -214,7 +214,7 @@ _r.register(
             " running arbitrary model ids map them onto a tier so their"
             " measured scores are queried. Resolved through the live"
             " settings chain (DB > env > default); a change rebuilds the"
-            " benchmark provider + Pareto analyzer and reloads runtime"
+            " benchmark provider + Pareto analyser and reloads runtime"
             " services without a restart."
         ),
         group="Cost Dial",

@@ -169,6 +169,12 @@ async def _apply_tools_bridge_config_snapshot(app_state: AppState) -> None:
         set_resolved_sidecar_limits,
     )
 
+    # Seed the process-singleton cache with THIS app state's defaults before
+    # resolving, so a resolver failure falls back to the current bridge
+    # defaults rather than a stale snapshot left behind by a previous app /
+    # test run in the same process.
+    set_resolved_sidecar_limits(app_state.bridge_config.tools)
+
     def _apply(snapshot: ToolsBridgeConfig) -> None:
         app_state.bridge_config.swap_tools(snapshot)
         set_resolved_sidecar_limits(snapshot)

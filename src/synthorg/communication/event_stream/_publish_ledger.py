@@ -82,8 +82,10 @@ class PublishLedger:
     def set_history_max_sessions(self, value: int) -> None:
         """Update the LRU session cap (hot).
 
-        The next ``record_history`` of a new session evicts down to the new
-        cap; the change applies without a restart.
+        Trims the live session store down to the new cap immediately (oldest
+        first), so a shrink tightens the memory bound at once rather than
+        waiting for the next new session to trigger eviction; the change
+        applies without a restart.
 
         Raises:
             ValueError: If *value* is below 1 (an empty-cap ``popitem``
@@ -93,6 +95,8 @@ class PublishLedger:
             msg = f"history_max_sessions must be >= 1, got {value}"
             raise ValueError(msg)
         self._history_max_sessions = value
+        while len(self._history) > value:
+            self._history.popitem(last=False)
 
     def set_history_per_session(self, value: int) -> None:
         """Update the per-session replay ring-buffer depth (hot).

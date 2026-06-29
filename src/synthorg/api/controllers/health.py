@@ -254,9 +254,10 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
 
     Reads ``api.readiness_probe_timeout_seconds`` through the live settings
     chain (DB > env > default) so an operator change applies without a
-    restart. Falls back to the boot-config value on a missing resolver or a
-    resolver outage -- a settings-backend hiccup must not perturb the probe
-    budget.
+    restart. This setting is resolver-read-only (no bridge snapshot or
+    subscriber), so the boot-config value is the only stable non-resolver
+    source and is the correct fallback on a missing resolver or a resolver
+    outage -- a settings-backend hiccup must not perturb the probe budget.
 
     Returns:
         The probe-timeout ceiling in seconds.

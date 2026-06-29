@@ -67,15 +67,29 @@ class BudgetBenchmarkProviderSettingsSubscriber:
         from synthorg.api._benchmark_wiring import (  # noqa: PLC0415
             rebuild_cost_dial_benchmark_provider,
         )
+        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
+        # Capture the pre-rebuild slice so the two-step hot-reload is atomic:
+        # rebuild rewires the slice provider/analyser, but the engine runtime
+        # only adopts it on the reload below. If the reload fails the slice is
+        # restored, so no component observes a different budget-routing config
+        # than the engine still running the old strategy.
+        budget_slice = self._app_state.slice(BudgetStateSlice)
+        prior_provider = budget_slice.benchmark_provider
+        prior_analyzer = budget_slice.pareto_analyzer
         try:
             await rebuild_cost_dial_benchmark_provider(self._app_state)
             await reload_runtime_services(self._app_state)
         except Exception as exc:
             reraise_critical(exc)
+            self._app_state.wire(
+                BudgetStateSlice,
+                benchmark_provider=prior_provider,
+                pareto_analyzer=prior_analyzer,
+            )
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="budget_benchmark_provider",

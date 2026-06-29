@@ -14,6 +14,7 @@ import structlog.contextvars
 from typeguard import suppress_type_checks
 
 from synthorg import __version__
+from synthorg.settings.bridge_configs import ToolsBridgeConfig
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
     DockerSandbox,
@@ -992,8 +993,10 @@ class TestSidecarLifecycle:
                 _patch_aiodocker(mock_docker),
                 patch(
                     "synthorg.tools.sandbox.docker_sandbox_sidecar"
-                    ".get_resolved_sidecar_health_timeout_seconds",
-                    return_value=15.0,
+                    ".get_resolved_sidecar_limits",
+                    return_value=ToolsBridgeConfig(
+                        docker_sidecar_health_timeout_seconds=15.0
+                    ),
                 ),
                 patch(
                     "synthorg.tools.sandbox.docker_sandbox.asyncio.sleep",

@@ -176,7 +176,7 @@ class BackupSettingsSubscriber:
                 note="blank path ignored",
             )
             return
-        self._backup_service.set_backup_path(path)
+        await self._backup_service.set_backup_path(path)
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,

@@ -89,6 +89,39 @@ _r.register(
 )
 """
 
+# Marker on the OPENING ``_r.register(`` line -- above the inner
+# ``SettingDefinition(`` call, so a window keyed off the inner call would miss
+# it.
+_MARKED_OPENING_LINE = """\
+_r.register(  # lint-allow: restart-required -- bound OS resource
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="example_knob",
+        restart_required=True,
+    )
+)
+"""
+
+# Two adjacent register blocks: only the SECOND carries a marker. The first
+# (unjustified) block must not absorb the second's marker via an over-running
+# line window.
+_ADJACENT_BLOCKS = """\
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="first_knob",
+        restart_required=True,
+    )
+)
+_r.register(  # lint-allow: restart-required -- second only
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="second_knob",
+        restart_required=True,
+    )
+)
+"""
+
 
 def test_misflagged_definition_is_unjustified(tmp_path: Path) -> None:
     """A new restart_required setting with no marker / baseline fails."""
@@ -106,6 +139,25 @@ def test_marker_justifies_restart_required(tmp_path: Path) -> None:
     assert records[0].has_marker is True
     unjustified, _stale = _GATE.evaluate(records, baseline=set())
     assert unjustified == []
+
+
+def test_marker_on_opening_register_line_justifies(tmp_path: Path) -> None:
+    """A marker on the ``_r.register(`` line (above the inner call) is seen."""
+    repo = _make_definitions(tmp_path, _MARKED_OPENING_LINE)
+    records = _GATE.scan_definitions(repo)
+    assert records[0].has_marker is True
+    unjustified, _stale = _GATE.evaluate(records, baseline=set())
+    assert unjustified == []
+
+
+def test_adjacent_block_marker_does_not_leak(tmp_path: Path) -> None:
+    """An unmarked block must not absorb the next block's marker."""
+    repo = _make_definitions(tmp_path, _ADJACENT_BLOCKS)
+    records = {r.setting_key: r for r in _GATE.scan_definitions(repo)}
+    assert records["api.first_knob"].has_marker is False
+    assert records["api.second_knob"].has_marker is True
+    unjustified, _stale = _GATE.evaluate(list(records.values()), baseline=set())
+    assert [r.setting_key for r in unjustified] == ["api.first_knob"]
 
 
 def test_reason_less_marker_does_not_justify(tmp_path: Path) -> None:

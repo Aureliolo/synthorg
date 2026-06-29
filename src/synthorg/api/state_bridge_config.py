@@ -288,9 +288,11 @@ class BridgeConfigState:
     def swap_observability(self, config: ObservabilityBridgeConfig) -> None:
         """Replace the ``ObservabilityBridgeConfig`` snapshot wholesale.
 
-        Used by ``_apply_bridge_config`` at startup with the value
-        resolved through ``ConfigResolver.get_observability_bridge_config``.
-        Hot-reload paths must use :meth:`mutate_observability`.
+        Used both by ``_apply_bridge_config`` at startup and by
+        ``ObservabilityBridgeSettingsSubscriber`` on a hot change (which
+        re-resolves the whole snapshot through
+        ``ConfigResolver.get_observability_bridge_config``). Single-field hot
+        paths use :meth:`mutate_observability` instead.
         """
         self._swap(
             lock=self._observability_lock,
@@ -326,11 +328,14 @@ class BridgeConfigState:
         return self._tools
 
     def swap_tools(self, config: ToolsBridgeConfig) -> None:
-        """Replace the ``ToolsBridgeConfig`` snapshot wholesale.
+        """Replace the ``ToolsBridgeConfig`` snapshot wholesale under the lock.
 
-        Used by ``_apply_tools_bridge_config_snapshot`` at startup with the
-        value resolved through ``ConfigResolver.get_tools_bridge_config``.
-        Hot-reload paths must use :meth:`mutate_tools`.
+        Used both by ``_apply_tools_bridge_config_snapshot`` at startup and by
+        ``ToolsBridgeSettingsSubscriber`` on a hot change (which re-resolves
+        every ``tools.*`` field through ``ConfigResolver.get_tools_bridge_config``
+        and replaces the whole snapshot, mirroring
+        :meth:`swap_observability`). Single-field hot paths use
+        :meth:`mutate_tools` instead, which re-validates the field updates.
         """
         self._swap(
             lock=self._tools_lock,
