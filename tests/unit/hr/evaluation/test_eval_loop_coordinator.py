@@ -17,7 +17,7 @@ from synthorg.hr.evaluation.evaluator import EvaluationService
 from synthorg.hr.evaluation.external_benchmark_registry import ExternalBenchmarkRegistry
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.evaluation.models import EvaluationReport
-from synthorg.hr.evaluation.pattern_protocols import PatternIdentifier
+from synthorg.hr.evaluation.pattern_protocols import PatternIdentifier, ProposedAction
 from synthorg.hr.evaluation.table_fix_proposer import (
     DEFAULT_PATTERN_ACTIONS as _DEFAULT_PATTERN_ACTIONS,
 )
@@ -184,7 +184,12 @@ class TestEvalLoopCoordinatorRunCycle:
 class TestEvalLoopCoordinatorTrainingDecision:
     """EvalLoopCoordinator._should_trigger_training() gating."""
 
-    _ACTIONS: tuple[NotBlankStr, ...] = (NotBlankStr("increase_review_depth"),)
+    _ACTIONS: tuple[ProposedAction, ...] = (
+        ProposedAction(
+            action_id=NotBlankStr("increase_review_depth"),
+            patterns=(NotBlankStr("weakness:governance"),),
+        ),
+    )
 
     def test_fires_when_actions_and_opt_in(self) -> None:
         coordinator = _make_coordinator(
