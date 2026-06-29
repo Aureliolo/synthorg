@@ -59,7 +59,7 @@ async def test_builder_wires_intake_engine_to_real_task_engine(
     assert isinstance(state, ClientSimulationState)
     assert state.intake_engine is not None
     assert state.review_pipeline is not None
-    assert state.review_pipeline.stage_names == ("internal",)
+    assert state.review_pipeline.stage_names == ("verification", "internal")
     # Default strategy is the no-LLM DirectIntake.
     assert isinstance(state.intake_engine.strategy, DirectIntake)
 
