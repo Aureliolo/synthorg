@@ -350,8 +350,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 499,
-      "ratio": 0.998,
+      "loc": 489,
+      "ratio": 0.978,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -1346,8 +1346,8 @@
     },
     "src/synthorg/security/trust/config.py": {
       "cap": 500,
-      "loc": 439,
-      "ratio": 0.878,
+      "loc": 406,
+      "ratio": 0.812,
       "tier": "code"
     },
     "src/synthorg/security/trust/service.py": {

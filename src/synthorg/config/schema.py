@@ -1,7 +1,6 @@
 # module-kind: code
 """Root configuration schema and config-level Pydantic models."""
 
-from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,7 +12,12 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
-from synthorg.config._schema_validators import collect_model_refs
+from synthorg.config._schema_validators import (
+    collect_model_refs,
+    validate_milestone_clean_history_windows,
+    validate_unique_agent_names,
+    validate_unique_department_names,
+)
 from synthorg.config.agent_schema import (
     AgentConfig,
     GracefulShutdownConfig,
@@ -372,20 +376,8 @@ class RootConfig(BaseModel):
 
         Returns:
             The validated model instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When two or more agents share a name.
         """
-        names = [a.name for a in self.agents]
-        if len(names) != len(set(names)):
-            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
-            msg = f"Duplicate agent names: {dupes}"
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                model="RootConfig",
-                error=msg,
-            )
-            raise ValueError(msg)
+        validate_unique_agent_names(self)
         return self
 
     @model_validator(mode="after")
@@ -394,20 +386,18 @@ class RootConfig(BaseModel):
 
         Returns:
             The validated model instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When two or more departments share a name.
         """
-        names = [d.name for d in self.departments]
-        if len(names) != len(set(names)):
-            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
-            msg = f"Duplicate department names: {dupes}"
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                model="RootConfig",
-                error=msg,
-            )
-            raise ValueError(msg)
+        validate_unique_department_names(self)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_milestone_clean_history_windows(self) -> Self:
+        """Reject a milestone clean-history span no perf window covers.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+        """
+        validate_milestone_clean_history_windows(self)
         return self
 
     @model_validator(mode="after")
