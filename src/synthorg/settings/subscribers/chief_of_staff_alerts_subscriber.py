@@ -59,15 +59,22 @@ class ChiefOfStaffAlertsSettingsSubscriber:
         from synthorg.meta.chief_of_staff._capability_gate import (  # noqa: PLC0415
             resolve_cos_autonomous_cap,
         )
+        from synthorg.meta.config import (  # noqa: PLC0415
+            load_self_improvement_config,
+        )
         from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
         try:
             resolver = self._app_state.slice(SettingsStateSlice).config_resolver
+            # The configured master + cap are the resolver-outage fallbacks, so
+            # a transient resolver failure cannot suppress an enabled alerts
+            # daemon (nor resume a disabled persona's).
+            cfg = await load_self_improvement_config(self._settings_service)
             effective = await resolve_cos_autonomous_cap(
                 resolver=resolver,
                 key="alerts_enabled",
-                master_fallback=False,
-                cap_fallback=False,
+                master_fallback=cfg.chief_of_staff_enabled,
+                cap_fallback=cfg.chief_of_staff.alerts_enabled,
             )
             if effective:
                 await self._ensure_running()

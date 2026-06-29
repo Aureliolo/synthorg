@@ -137,22 +137,23 @@ async def test_learning_lazily_activates_on_runtime_enable(
     """Learning builds its adjuster lazily on the first cycle after enable."""
     backend = InMemoryBackend()
     await backend.connect()
-    svc = _svc(settings, memory_backend=backend)
-    await _enable_loop(settings)
+    try:
+        svc = _svc(settings, memory_backend=backend)
+        await _enable_loop(settings)
 
-    # Off by default: no adjuster, and a cycle leaves it unbuilt. Read into
-    # locals so attribute narrowing does not leak across the assertions.
-    assert _adjuster(svc) is None
-    await svc.run_cycle(_snap(quality=4.0))
-    assert _adjuster(svc) is None
+        # Off by default: no adjuster, and a cycle leaves it unbuilt. Read into
+        # locals so attribute narrowing does not leak across the assertions.
+        assert _adjuster(svc) is None
+        await svc.run_cycle(_snap(quality=4.0))
+        assert _adjuster(svc) is None
 
-    # Enable learning + the persona master; the next cycle builds it lazily.
-    await settings.set("self_improvement", "chief_of_staff_enabled", "true")
-    await settings.set("chief_of_staff", "learning_enabled", "true")
-    await svc.run_cycle(_snap(quality=4.0))
-    assert _adjuster(svc) is not None
-
-    await backend.disconnect()
+        # Enable learning + the persona master; the next cycle builds it lazily.
+        await settings.set("self_improvement", "chief_of_staff_enabled", "true")
+        await settings.set("chief_of_staff", "learning_enabled", "true")
+        await svc.run_cycle(_snap(quality=4.0))
+        assert _adjuster(svc) is not None
+    finally:
+        await backend.disconnect()
 
 
 async def test_learning_without_backend_warns_once(
@@ -178,15 +179,16 @@ async def test_learning_master_gate_blocks_without_persona(
     """``learning_enabled`` alone does not activate learning without master."""
     backend = InMemoryBackend()
     await backend.connect()
-    svc = _svc(settings, memory_backend=backend)
-    await _enable_loop(settings)
-    await settings.set("chief_of_staff", "learning_enabled", "true")
-    # Master (chief_of_staff_enabled) stays off.
+    try:
+        svc = _svc(settings, memory_backend=backend)
+        await _enable_loop(settings)
+        await settings.set("chief_of_staff", "learning_enabled", "true")
+        # Master (chief_of_staff_enabled) stays off.
 
-    await svc.run_cycle(_snap(quality=4.0))
-    assert _adjuster(svc) is None
-
-    await backend.disconnect()
+        await svc.run_cycle(_snap(quality=4.0))
+        assert _adjuster(svc) is None
+    finally:
+        await backend.disconnect()
 
 
 async def test_code_modification_stays_restart_bound(

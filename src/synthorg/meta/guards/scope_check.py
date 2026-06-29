@@ -30,13 +30,13 @@ logger = get_logger(__name__)
 class ScopeCheckGuard:
     """Rejects proposals outside the declared altitude scope.
 
-    The altitude-enable flags are read live (with the baked config as the
-    fallback) so a strategy toggle flipped at runtime is honoured by the
-    guard on the next proposal, matching the per-cycle strategy filter. The
-    restart-bound ``code_modification`` capability is not loosened by this:
-    its strategy and applier are only built when baked-enabled, so a live
-    guard pass has no strategy to generate a proposal nor an applier to apply
-    one.
+    The toggleable altitude-enable flags are read live (with the baked config
+    as the fallback) so a strategy toggle flipped at runtime is honoured by
+    the guard on the next proposal, matching the per-cycle strategy filter.
+    The restart-bound ``code_modification`` capability is read from the baked
+    config only, never live: it must stay fully restart-bound, and its
+    strategy / applier are built only when baked-enabled anyway, so the guard
+    never participates in a live decision for it.
 
     Args:
         config: Self-improvement configuration (the baked fallback).
@@ -98,21 +98,26 @@ class ScopeCheckGuard:
         )
 
     async def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
-        """Check if an altitude is enabled, reading the flag live.
+        """Check if an altitude is enabled.
 
         Reads the gating flag named by the altitude's descriptor (exhaustive
         over :class:`ProposalAltitude` by an import-time completeness guard)
-        from the ``self_improvement`` namespace, falling back to the baked
-        config when no resolver is wired or the lookup fails. The attribute
+        from the ``self_improvement`` namespace. The toggleable altitudes are
+        read live (baked config as the fallback); the restart-bound
+        ``code_modification`` altitude is read from the baked config only, so
+        a live settings read can never flip its guard verdict. The attribute
         name matches the setting key, so the same descriptor drives both.
 
         Returns:
             ``True`` or ``False`` reflecting the condition.
         """
         attr = PROPOSAL_ALTITUDE_DESCRIPTORS[altitude].enable_config_attr
+        baked = bool(getattr(self._config, attr))
+        if altitude is ProposalAltitude.CODE_MODIFICATION:
+            return baked
         return await resolve_bool_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.SELF_IMPROVEMENT,
             key=attr,
-            fallback=bool(getattr(self._config, attr)),
+            fallback=baked,
         )

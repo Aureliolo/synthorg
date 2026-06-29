@@ -170,8 +170,15 @@ async def test_model_blank_resolves_to_fallback() -> None:
 
 @pytest.mark.parametrize(
     "malformed",
-    ["live\nmodel", "model\twith\ttabs", " surrounded ", "x" * 257],
-    ids=["newline", "tabs", "whitespace", "too_long"],
+    [
+        "live\nmodel",
+        "model\twith\ttabs",
+        " surrounded ",
+        "provider/ model",
+        "gpt 4.1",
+        "x" * 257,
+    ],
+    ids=["newline", "tabs", "surrounding_ws", "embedded_space", "spaced", "too_long"],
 )
 async def test_model_malformed_falls_back(malformed: str) -> None:
     """A control-laden / oversized / untrimmed model id falls back, not passes.

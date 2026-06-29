@@ -25,13 +25,15 @@ async def wire_run_narrator(
     cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
-    """Attach the post-run narrator to the pipeline behind narrative_enabled.
+    """Attach the post-run narrator to the pipeline; gating is live per run.
 
-    Best-effort and idempotent: it runs after the docs engine and project
-    brain are wired (the narrator reads both) and attaches to the
-    already-built work pipeline. A disabled flag, an absent provider, or a
-    missing collaborator leaves the pipeline narrator-less so completed
-    briefs simply produce no narrative.
+    The narrator is attached unconditionally of ``narrative_enabled``; the
+    capability is gated live per run inside the narrator, so the flag flips
+    on without a restart. Best-effort and idempotent: it runs after the docs
+    engine and project brain are wired (the narrator reads both) and attaches
+    to the already-built work pipeline. An absent provider or a missing
+    collaborator leaves the pipeline narrator-less so completed briefs simply
+    produce no narrative.
 
     Raises:
         MemoryError: Propagated from narrator construction; interpreter-level

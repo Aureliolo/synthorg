@@ -255,13 +255,15 @@ def _wire_role_router(
 ) -> RoleRouter | None:
     """Build + wire the concern role router when an agent registry is present.
 
-    ``build_role_router`` returns ``None`` when routing is off or its
-    strategy's deps are absent, leaving the proposer in v1 generic mode.
-    A built router is stored on the slice so the manifest treats it as
+    ``build_role_router`` builds the router unconditionally of
+    ``routing_enabled`` so the live per-turn routing gate (applied in the
+    proposer) can flip without a restart; it returns ``None`` only when the
+    chosen strategy's deps are absent, leaving the proposer in v1 generic
+    mode. A built router is stored on the slice so the manifest treats it as
     wired.
 
     Returns:
-        The role router, or ``None`` when routing is unavailable.
+        The role router, or ``None`` when its strategy's deps are absent.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415

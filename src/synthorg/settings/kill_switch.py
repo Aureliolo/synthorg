@@ -135,19 +135,21 @@ _MAX_MODEL_ID_LEN: Final[int] = 256
 def _is_clean_model_id(value: str) -> bool:
     """Whether *value* is a structurally plausible model identifier.
 
-    A model id is a single-line printable token without surrounding
-    whitespace and within a sane length bound. ``str.isprintable`` rejects
-    every control character (newlines, tabs, NUL), so an injected multi-line
-    or control-laden value fails here. This is a sanity guard against a
-    corrupted settings store, NOT a provider allowlist: operators legitimately
-    set arbitrary custom model strings, so any clean token passes.
+    A model id is a single printable token with no whitespace at all
+    (surrounding or embedded) and within a sane length bound.
+    ``str.isprintable`` rejects every control character (newlines, tabs,
+    NUL); the explicit whitespace check additionally rejects an embedded
+    space (e.g. ``"provider/ model"``) that ``isprintable`` would let
+    through. This is a sanity guard against a corrupted settings store, NOT
+    a provider allowlist: operators legitimately set arbitrary custom model
+    strings, so any clean single token passes.
 
     Returns:
         ``True`` when *value* is a clean model identifier.
     """
     return (
         bool(value)
-        and value == value.strip()
+        and not any(ch.isspace() for ch in value)
         and len(value) <= _MAX_MODEL_ID_LEN
         and value.isprintable()
     )

@@ -83,15 +83,16 @@ async def test_cycle_authors_when_enabled_and_allowed(
     settings: SettingsService,
 ) -> None:
     """Enabled + capability in the live allowlist reaches authoring."""
+    # Authoring raises so we need no real blueprint; the await proves the
+    # master gate + allowlist let the gap through. Build the service before
+    # flipping the settings so the test exercises live reads at run time.
+    generator = AsyncMock(spec=ToolBlueprintGenerator)
+    generator.author.side_effect = ToolAuthoringError("stop after gate")
+    svc = _service(settings, generator=generator)
     await settings.set("self_improvement", "tool_creation_enabled", "true")
     await settings.set(
         "self_improvement", "tool_creation_allowed_capabilities", '["text:slugify"]'
     )
-    # Authoring raises so we need no real blueprint; the await proves the
-    # master gate + allowlist let the gap through.
-    generator = AsyncMock(spec=ToolBlueprintGenerator)
-    generator.author.side_effect = ToolAuthoringError("stop after gate")
-    svc = _service(settings, generator=generator)
     await _record_recurring_gap(svc)
 
     proposals = await svc.run_cycle(now=_NOW + timedelta(minutes=2))
@@ -107,12 +108,14 @@ async def test_cycle_skips_capability_dropped_from_live_allowlist(
     The baked config allows the capability, but the live allowlist does not,
     so the gap never reaches authoring.
     """
+    # Build the service before flipping settings so the test exercises live
+    # reads at run time, not values snapshotted at construction.
+    generator = AsyncMock(spec=ToolBlueprintGenerator)
+    svc = _service(settings, generator=generator)
     await settings.set("self_improvement", "tool_creation_enabled", "true")
     await settings.set(
         "self_improvement", "tool_creation_allowed_capabilities", '["other:thing"]'
     )
-    generator = AsyncMock(spec=ToolBlueprintGenerator)
-    svc = _service(settings, generator=generator)
     await _record_recurring_gap(svc)
 
     proposals = await svc.run_cycle(now=_NOW + timedelta(minutes=2))

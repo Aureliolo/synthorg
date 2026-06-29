@@ -178,9 +178,13 @@ class ToolsmithService:
                 error=safe_error_description(exc),
             )
             return baked
-        if not isinstance(raw, list):
+        if not isinstance(raw, list) or not all(
+            isinstance(tag, str) and tag.strip() for tag in raw
+        ):
+            # Fail closed: a malformed entry must not authorise a synthetic
+            # capability name; fall back to the baked allowlist instead.
             return baked
-        return frozenset(str(tag) for tag in raw if str(tag).strip())
+        return frozenset(tag.strip() for tag in raw)
 
     async def run_cycle(
         self, *, now: datetime | None = None
