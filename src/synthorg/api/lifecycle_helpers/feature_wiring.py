@@ -505,11 +505,13 @@ async def _wire_chief_of_staff_chat(
         return
     if provider_registry is None:
         return
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     chat_backend = build_chief_of_staff_chat(
         si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
     if chat_backend is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_chat=chat_backend)

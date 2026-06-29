@@ -74,3 +74,52 @@ async def resolve_bool_with_fallback(
             fallback=fallback,
         )
         return fallback
+
+
+async def resolve_str_with_fallback(
+    *,
+    resolver: ConfigResolverProtocol | None,
+    namespace: str,
+    key: str,
+    fallback: str,
+) -> str:
+    """Resolve a string setting through ``ConfigResolver`` with a fallback.
+
+    The string analogue of :func:`resolve_bool_with_fallback`, used for
+    per-LLM-call model identifiers that should track a live ``/settings``
+    override without a restart.  Returns *fallback* when the resolver is
+    ``None`` (caller not yet wired / test harness), when the lookup fails,
+    or when the resolved value is **blank** -- a blank model setting means
+    "keep the built-in default", matching the overlay's skip-if-blank rule
+    in :func:`synthorg.meta._config_overlay.overlay_feature_settings` so the
+    live path and the boot overlay agree.
+
+    Args:
+        resolver: The application's config resolver, or ``None`` when the
+            caller is not yet wired.
+        namespace: Setting namespace (e.g. ``"chief_of_staff"``).
+        key: Setting key within the namespace.
+        fallback: Value to return when no resolver is wired, the lookup
+            fails, or the resolved string is blank.  Callers pass the
+            baked-config model so a settings outage cannot silently swap
+            the active model.
+
+    Returns:
+        The resolved non-blank string, or *fallback* otherwise.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        resolved = await resolver.get_str(namespace, key)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=namespace,
+            key=key,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=fallback,
+        )
+        return fallback
+    return resolved if resolved.strip() else fallback

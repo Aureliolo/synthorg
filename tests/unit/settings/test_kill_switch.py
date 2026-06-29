@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.kill_switch import (
+    resolve_bool_with_fallback,
+    resolve_str_with_fallback,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -66,4 +69,75 @@ async def test_system_errors_propagate(exc_type: type[BaseException]) -> None:
             namespace="engine",
             key="evolution_enabled",
             fallback=True,
+        )
+
+
+async def test_str_returns_fallback_when_resolver_missing() -> None:
+    result = await resolve_str_with_fallback(
+        resolver=None,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "baked-model"
+
+
+async def test_str_returns_resolver_value_when_wired() -> None:
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value="live-model")
+    result = await resolve_str_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "live-model"
+    resolver.get_str.assert_awaited_once_with("chief_of_staff", "chat_model")
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"], ids=["empty", "spaces", "ws"])
+async def test_str_blank_resolves_to_fallback(blank: str) -> None:
+    """A blank setting means "keep the built-in default".
+
+    The overlay skips a blank model override, so the live read must agree:
+    a blank value falls back to the baked model rather than blanking the
+    active model identifier.
+    """
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value=blank)
+    result = await resolve_str_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "baked-model"
+
+
+async def test_str_resolver_outage_falls_back() -> None:
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(side_effect=RuntimeError("transient"))
+    result = await resolve_str_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "baked-model"
+
+
+@pytest.mark.parametrize(
+    "exc_type",
+    [MemoryError, RecursionError],
+    ids=["memory_error", "recursion_error"],
+)
+async def test_str_system_errors_propagate(exc_type: type[BaseException]) -> None:
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(side_effect=exc_type())
+    with pytest.raises(exc_type):
+        await resolve_str_with_fallback(
+            resolver=resolver,
+            namespace="chief_of_staff",
+            key="chat_model",
+            fallback="baked-model",
         )

@@ -15,6 +15,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocBlock, DocMetadata
 from synthorg.docs_engine.service import DocsService
+from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.assembler import assemble_blocks
 from synthorg.meta.chief_of_staff.narrative.constants import (
     EXECUTION_TAG_PREFIX,
@@ -35,8 +37,10 @@ from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATED,
     COS_NARRATIVE_GENERATION_FAILED,
     COS_NARRATIVE_GENERATION_STARTED,
+    COS_NARRATIVE_SKIPPED,
     COS_NARRATIVE_SOURCE_UNAVAILABLE,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -47,7 +51,7 @@ _TITLE_MAX: int = 512
 class ChiefOfStaffNarrator:
     """Generates and persists a run narrative for a completed brief."""
 
-    __slots__ = ("_docs", "_reader", "_synthesiser")
+    __slots__ = ("_config", "_config_resolver", "_docs", "_reader", "_synthesiser")
 
     def __init__(
         self,
@@ -55,10 +59,31 @@ class ChiefOfStaffNarrator:
         reader: NarrativeReader,
         synthesiser: NarrativeSynthesiser,
         docs: DocsService,
+        config: ChiefOfStaffConfig,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._reader = reader
         self._synthesiser = synthesiser
         self._docs = docs
+        self._config = config
+        self._config_resolver = config_resolver
+
+    async def _narrative_active(self) -> bool:
+        """Resolve the per-run documentary-mode gate live.
+
+        Requires both the persona master switch and
+        ``chief_of_staff.narrative_enabled``; falls back to the baked flag
+        (master assumed on) with no resolver wired.
+
+        Returns:
+            ``True`` when this run should generate a narrative.
+        """
+        return await resolve_cos_autonomous_cap(
+            resolver=self._config_resolver,
+            key="narrative_enabled",
+            master_fallback=True,
+            cap_fallback=self._config.narrative_enabled,
+        )
 
     async def generate(
         self,
@@ -81,6 +106,14 @@ class ChiefOfStaffNarrator:
                 assembling or persisting the narrative failed (the
                 best-effort pipeline trigger logs and degrades on this).
         """
+        if not await self._narrative_active():
+            logger.debug(
+                COS_NARRATIVE_SKIPPED,
+                task_id=task_id,
+                project_id=project_id,
+                reason="narrative_disabled",
+            )
+            return None
         logger.info(
             COS_NARRATIVE_GENERATION_STARTED,
             task_id=task_id,

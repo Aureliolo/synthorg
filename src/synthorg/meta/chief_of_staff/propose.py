@@ -31,6 +31,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
 from synthorg.meta.chief_of_staff._propose_parking import ProposeParkingMixin
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
@@ -87,6 +88,9 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -125,6 +129,9 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         provider_registry: Optional provider registry used to resolve a
             routed responder's own provider; falls back to ``provider``
             when absent. Required only when ``role_router`` is wired.
+        config_resolver: Optional resolver for the live ``routing_enabled``
+            per-turn gate and the per-call ``propose_model`` read. When
+            ``None`` routing falls back to the baked flag and the baked model.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_PROPOSE
@@ -147,6 +154,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         cost_tracker: CostTrackerProtocol | None = None,
         role_router: RoleRouter | None = None,
         provider_registry: ProviderRegistry | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
@@ -158,6 +166,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._cost_tracker = cost_tracker
         self._role_router = role_router
         self._provider_registry = provider_registry
+        self._config_resolver = config_resolver
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
         # append assistant + proposals -> update conversation) so two
@@ -167,6 +176,37 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         # (``args.conversation_id is None``) skip the lock because no
         # other caller can address the id before it's assigned.
         self._locks = ConversationLockRegistry()
+
+    async def _routing_enabled(self) -> bool:
+        """Resolve the per-turn concern-routing gate live.
+
+        Requires both the persona master switch and
+        ``chief_of_staff.routing_enabled``. Falls back to the baked flag
+        (master assumed on) when no resolver is wired.
+
+        Returns:
+            ``True`` when this turn should classify to a role agent.
+        """
+        return await resolve_cos_autonomous_cap(
+            resolver=self._config_resolver,
+            key="routing_enabled",
+            master_fallback=True,
+            cap_fallback=self._config.routing_enabled,
+        )
+
+    async def _resolve_propose_model(self) -> NotBlankStr:
+        """Resolve the clarify-and-propose model live, baked fallback.
+
+        Returns:
+            The model identifier for this turn's structured call.
+        """
+        model = await resolve_str_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="propose_model",
+            fallback=self._config.propose_model,
+        )
+        return NotBlankStr(model)
 
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
@@ -267,10 +307,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         history = (*prior_turns, user_turn)
         routing = (
             await self._role_router.route(history)
-            if self._role_router is not None
+            if self._role_router is not None and await self._routing_enabled()
             else None
         )
-        responder = select_responder(routing, propose_model=self._config.propose_model)
+        responder = select_responder(
+            routing, propose_model=await self._resolve_propose_model()
+        )
         # Advance a still-direct conversation to ``routed`` on its first
         # routed turn so the kind discriminator reflects the surface.
         routed_conversation = mark_conversation_routed(conversation, routing)

@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
     from synthorg.security.trust.config import TrustConfig
     from synthorg.security.trust.service import TrustService
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -164,6 +165,7 @@ def build_chief_of_staff_chat(
     *,
     provider_registry: ProviderRegistry,
     cost_tracker: CostTrackerProtocol | None,
+    config_resolver: ConfigResolver | None = None,
 ) -> ChiefOfStaffChat | None:
     """Resolve a ChiefOfStaffChat from the meta config + provider registry.
 
@@ -205,6 +207,7 @@ def build_chief_of_staff_chat(
         provider=provider,
         config=chief_of_staff_config,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
 
 
@@ -217,6 +220,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     cost_tracker: CostTrackerProtocol | None,
     clock: Clock | None = None,
     role_router: RoleRouter | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> ChiefOfStaffProposer | None:
     """Resolve a ChiefOfStaffProposer from config + wiring.
 
@@ -279,6 +283,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         cost_tracker=cost_tracker,
         role_router=role_router,
         provider_registry=provider_registry,
+        config_resolver=config_resolver,
     )
 
 

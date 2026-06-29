@@ -259,9 +259,14 @@ def build_proposer(
     turn_repo = FakeTurnRepo()
     proposal_repo = FakeProposalRepo()
     approval_store = ApprovalStore()
+    # Routing is gated per turn on ``routing_enabled``; a test that injects a
+    # router wants it to fire, so default that flag on when a router is given.
     proposer = ChiefOfStaffProposer(
         provider=provider,
-        config=config or ChiefOfStaffConfig(propose_enabled=True),
+        config=config
+        or ChiefOfStaffConfig(
+            propose_enabled=True, routing_enabled=role_router is not None
+        ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,
         proposal_repo=proposal_repo,

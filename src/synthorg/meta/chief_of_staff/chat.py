@@ -54,6 +54,9 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -85,11 +88,13 @@ class ChiefOfStaffChat:
         config: ChiefOfStaffConfig,
         outcome_store: OutcomeStore | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
         self._outcome_store = outcome_store
         self._cost_tracker = cost_tracker
+        self._config_resolver = config_resolver
 
     async def explain_proposal(
         self,
@@ -274,6 +279,12 @@ class ChiefOfStaffChat:
             temperature=self._config.chat_temperature,
             max_tokens=self._config.chat_max_tokens,
         )
+        model = await resolve_str_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="chat_model",
+            fallback=self._config.chat_model,
+        )
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -284,7 +295,7 @@ class ChiefOfStaffChat:
             ):
                 response = await self._provider.complete(
                     messages,
-                    self._config.chat_model,
+                    model,
                     config=config,
                 )
         except Exception as exc:

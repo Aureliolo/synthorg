@@ -6,6 +6,9 @@ from synthorg.settings.subscribers.api_bridge_subscriber import (
 from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
+from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
+    ChiefOfStaffAlertsSettingsSubscriber,
+)
 from synthorg.settings.subscribers.memory_bridge_subscriber import (
     MemoryBridgeSettingsSubscriber,
 )
@@ -37,6 +40,7 @@ from synthorg.settings.subscribers.workers_bridge_subscriber import (
 __all__ = [
     "ApiBridgeSettingsSubscriber",
     "BackupSettingsSubscriber",
+    "ChiefOfStaffAlertsSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
     "MemorySettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",

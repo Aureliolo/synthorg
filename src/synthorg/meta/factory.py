@@ -75,6 +75,7 @@ from synthorg.observability.events.meta import (
     META_STRATEGY_REGISTERED,
 )
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -108,36 +109,42 @@ def build_strategies(
     config: SelfImprovementConfig,
     *,
     provider: BaseCompletionProvider | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> tuple[ImprovementStrategy, ...]:
-    """Build enabled improvement strategies.
+    """Build the improvement strategy set for the meta-loop.
+
+    The three template strategies (config-tuning, architecture, prompt-tuning)
+    are always instantiated regardless of their flags: the meta-loop selects
+    which ones run per cycle from a live ``config_resolver`` read
+    (``SelfImprovementService.run_cycle``), so the instance must exist for the
+    flag to flip on at runtime without a restart. They are cheap, template-only
+    objects with no provider dependency, so building them unconditionally costs
+    nothing.
+
+    Code modification is the exception: it is restart-required (it validates
+    GitHub credentials at startup), so it is gated here on the baked
+    ``code_modification_enabled`` flag and is never live-promoted.
 
     Args:
         config: Self-improvement configuration.
         provider: Completion provider for LLM-based strategies
             (required when code_modification_enabled is True).
+        config_resolver: Optional resolver threaded into
+            ``CodeModificationStrategy`` for the live
+            ``code_modification_model`` read.
 
     Returns:
-        Tuple of enabled strategies.
+        Tuple of strategies (the three template altitudes always, plus code
+        modification when baked-enabled with a provider).
     """
-    strategies: list[ImprovementStrategy] = []
-    if config.config_tuning_enabled:
-        strategies.append(ConfigTuningStrategy(config=config))
-        logger.debug(
-            META_STRATEGY_REGISTERED,
-            altitude="config_tuning",
-        )
-    if config.architecture_proposals_enabled:
-        strategies.append(ArchitectureProposalStrategy(config=config))
-        logger.debug(
-            META_STRATEGY_REGISTERED,
-            altitude="architecture",
-        )
-    if config.prompt_tuning_enabled:
-        strategies.append(PromptTuningStrategy(config=config))
-        logger.debug(
-            META_STRATEGY_REGISTERED,
-            altitude="prompt_tuning",
-        )
+    strategies: list[ImprovementStrategy] = [
+        ConfigTuningStrategy(config=config),
+        ArchitectureProposalStrategy(config=config),
+        PromptTuningStrategy(config=config),
+    ]
+    logger.debug(META_STRATEGY_REGISTERED, altitude="config_tuning")
+    logger.debug(META_STRATEGY_REGISTERED, altitude="architecture")
+    logger.debug(META_STRATEGY_REGISTERED, altitude="prompt_tuning")
     if config.code_modification_enabled:
         if provider is None:
             logger.warning(
@@ -163,6 +170,7 @@ def build_strategies(
                     config=config,
                     provider=provider,
                     scope_validator=scope_validator,
+                    config_resolver=config_resolver,
                 ),
             )
             logger.debug(
@@ -176,6 +184,7 @@ def build_guards(
     config: SelfImprovementConfig,
     *,
     approval_store: ApprovalStoreProtocol | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> tuple[ProposalGuard, ...]:
     """Build the proposal guard chain.
 
@@ -190,12 +199,15 @@ def build_guards(
             approval gate fails closed -- every proposal is
             rejected because the mandatory-review invariant
             cannot be enforced.
+        config_resolver: Optional resolver routed into
+            :class:`ScopeCheckGuard` so the altitude-enable scope check
+            tracks the live strategy toggles.
 
     Returns:
         Tuple of guards in evaluation order.
     """
     return (
-        ScopeCheckGuard(config=config),
+        ScopeCheckGuard(config=config, config_resolver=config_resolver),
         RollbackPlanGuard(),
         RateLimitGuard(
             max_proposals=config.guards.proposal_rate_limit,

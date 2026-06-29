@@ -1,10 +1,17 @@
 """Meta self-improvement settings subscriber.
 
 Invalidates the cached :class:`~synthorg.meta.config.SelfImprovementConfig`
-on the meta slice when an operator edits ``meta.self_improvement``. The
-meta slice caches the parsed config so the read endpoints do not re-parse
-the JSON per request; this subscriber wires the cache field back to
-``None`` so the next read reloads the fresh value, preserving hot-reload.
+on the meta slice when an operator edits the structural ``meta.self_improvement``
+blob OR any of the hot ``self_improvement.*`` / ``chief_of_staff.*`` overlay
+settings. The meta slice caches the parsed config so the read endpoints do not
+re-parse per request; this subscriber wires the cache field back to ``None`` so
+the next read reloads the fresh value, keeping the effective-config view in step
+with the live overlay (the running services already read each value live).
+
+The two restart-bound security switches (``self_improvement.code_modification_enabled``
+and ``chief_of_staff.direct_mcp_enabled``) are deliberately NOT watched: they
+require a redeploy, the dispatcher skips restart-required changes, and excluding
+them keeps the no-live-enable invariant explicit.
 """
 
 from synthorg.api.state import AppState
@@ -18,7 +25,40 @@ from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
-_WATCHED: frozenset[tuple[str, str]] = frozenset({("meta", "self_improvement")})
+# The structural blob plus every hot overlay flag/model, so the cached
+# effective config is invalidated whenever a live value changes. The KEEP
+# settings are excluded by design (see module docstring).
+_SELF_IMPROVEMENT_HOT_KEYS: frozenset[str] = frozenset(
+    {
+        "enabled",
+        "chief_of_staff_enabled",
+        "config_tuning_enabled",
+        "architecture_proposals_enabled",
+        "prompt_tuning_enabled",
+        "tool_creation_enabled",
+        "tool_creation_allowed_capabilities",
+        "analysis_model",
+        "code_modification_model",
+    }
+)
+_CHIEF_OF_STAFF_HOT_KEYS: frozenset[str] = frozenset(
+    {
+        "routing_enabled",
+        "learning_enabled",
+        "alerts_enabled",
+        "narrative_enabled",
+        "invite_enabled",
+        "chat_model",
+        "propose_model",
+        "routing_model",
+        "narrative_model",
+    }
+)
+_WATCHED: frozenset[tuple[str, str]] = frozenset(
+    {("meta", "self_improvement")}
+    | {("self_improvement", key) for key in _SELF_IMPROVEMENT_HOT_KEYS}
+    | {("chief_of_staff", key) for key in _CHIEF_OF_STAFF_HOT_KEYS}
+)
 
 
 class MetaSelfImprovementSettingsSubscriber:

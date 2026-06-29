@@ -310,7 +310,14 @@ class TestKeywordRoleRouter:
 
 
 class TestBuildRoleRouter:
-    async def test_disabled_returns_none(self) -> None:
+    async def test_builds_even_when_disabled(self) -> None:
+        """The router is built regardless of ``routing_enabled``.
+
+        The proposer gates routing per turn on the live flag, so the router
+        instance must exist for the flag to flip on without a restart;
+        ``build_role_router`` returns ``None`` only when the classifier
+        provider is absent.
+        """
         registry = await _registry(_identity(name="Casey", role="CFO"))
         router = build_role_router(
             config=ChiefOfStaffConfig(routing_enabled=False),
@@ -319,7 +326,7 @@ class TestBuildRoleRouter:
             ),
             agent_registry=registry,
         )
-        assert router is None
+        assert isinstance(router, LlmConcernRouter)
 
     async def test_keyword_strategy_builds_keyword_router(self) -> None:
         registry = await _registry(_identity(name="Casey", role="CFO"))

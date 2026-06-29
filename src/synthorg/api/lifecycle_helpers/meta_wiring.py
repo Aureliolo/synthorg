@@ -255,52 +255,38 @@ async def _wire_org_inflection_monitor(
     """Start the org-inflection monitor daemon behind ``alerts_enabled``.
 
     Best-effort + idempotent. Gated on the wired signals facade (shares its
-    snapshot builder) and ``chief_of_staff.alerts_enabled``; the daemon emits
-    detected inflections to the proactive alert sink. Stopped by the shutdown
-    runner. A missing signals facade or a disabled flag leaves it unstarted.
+    snapshot builder) and the effective alerts capability (the persona master
+    switch ``self_improvement.chief_of_staff_enabled`` AND
+    ``chief_of_staff.alerts_enabled``); the daemon emits detected inflections
+    to the proactive alert sink. The :class:`ChiefOfStaffAlertsSettingsSubscriber`
+    starts/stops it live on a settings change. Stopped by the shutdown runner.
+    A missing signals facade or a disabled flag leaves it unstarted.
     """
+    from synthorg.meta.chief_of_staff.monitor_builder import (  # noqa: PLC0415
+        build_org_inflection_monitor,
+    )
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).org_inflection_monitor is not None:
         return
-    signals_service = app_state.slice(MetaStateSlice).signals_service
-    if signals_service is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="org_inflection_monitor",
-            note="signals service absent; monitor not started",
-        )
-        return
-    from synthorg.meta.chief_of_staff.alerts import (  # noqa: PLC0415
-        LoggingAlertSink,
-        ProactiveAlertService,
-    )
-    from synthorg.meta.chief_of_staff.inflection import (  # noqa: PLC0415
-        OrgInflectionDetector,
-    )
-    from synthorg.meta.chief_of_staff.monitor import (  # noqa: PLC0415
-        OrgInflectionMonitor,
-    )
 
     try:
         cos_config = si_config.chief_of_staff
-        if not cos_config.alerts_enabled:
+        if not (si_config.chief_of_staff_enabled and cos_config.alerts_enabled):
             logger.info(
                 API_APP_STARTUP,
                 service="org_inflection_monitor",
                 note="alerts disabled; monitor not started",
             )
             return
-        alert_service = ProactiveAlertService(
-            alert_sinks=(LoggingAlertSink(),),
-            severity_threshold=cos_config.inflection_severity_threshold,
-        )
-        monitor = OrgInflectionMonitor(
-            detector=OrgInflectionDetector(),
-            snapshot_builder=signals_service.snapshot_builder,
-            sinks=(alert_service,),
-            check_interval_minutes=cos_config.inflection_check_interval_minutes,
-        )
+        monitor = build_org_inflection_monitor(app_state, cos_config=cos_config)
+        if monitor is None:
+            logger.info(
+                API_APP_STARTUP,
+                service="org_inflection_monitor",
+                note="signals service absent; monitor not started",
+            )
+            return
         # Wire BEFORE start so a running daemon is always tracked for
         # shutdown; if start() then fails, it stays tracked and the
         # shutdown runner still stops it (no untracked-daemon leak).

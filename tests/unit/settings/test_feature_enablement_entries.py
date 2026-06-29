@@ -44,33 +44,39 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
     ("chief_of_staff", "explain_chat_enabled", SettingType.BOOLEAN, "true", False),
     ("chief_of_staff", "propose_enabled", SettingType.BOOLEAN, "true", False),
     ("chief_of_staff", "group_chat_enabled", SettingType.BOOLEAN, "true", False),
-    # Routing is baked into the proposer at startup -> restart-required.
-    ("chief_of_staff", "routing_enabled", SettingType.BOOLEAN, "true", True),
-    # Autonomous-spend capabilities: off, restart-required (boot loops).
-    ("chief_of_staff", "learning_enabled", SettingType.BOOLEAN, "false", True),
-    ("chief_of_staff", "alerts_enabled", SettingType.BOOLEAN, "false", True),
-    ("chief_of_staff", "narrative_enabled", SettingType.BOOLEAN, "false", True),
-    # Acts-on-your-behalf: off, restart-required to enable (built at boot).
-    ("chief_of_staff", "invite_enabled", SettingType.BOOLEAN, "false", True),
+    # Routing is gated live per turn in the proposer -> no restart.
+    ("chief_of_staff", "routing_enabled", SettingType.BOOLEAN, "true", False),
+    # Autonomous capabilities: off, now gated live (per cycle / per turn, or
+    # started/stopped by a settings subscriber) -> no restart.
+    ("chief_of_staff", "learning_enabled", SettingType.BOOLEAN, "false", False),
+    ("chief_of_staff", "alerts_enabled", SettingType.BOOLEAN, "false", False),
+    ("chief_of_staff", "narrative_enabled", SettingType.BOOLEAN, "false", False),
+    # Agent invite: off, gated live per group-chat turn -> no restart.
+    ("chief_of_staff", "invite_enabled", SettingType.BOOLEAN, "false", False),
+    # Direct MCP acting: off, fail-closed at boot (needs security governance
+    # wired at startup), so enabling it stays restart-required (KEEP).
     ("chief_of_staff", "direct_mcp_enabled", SettingType.BOOLEAN, "false", True),
-    # Per-feature models: blank by default (setup auto-selects).
-    ("chief_of_staff", "chat_model", SettingType.STRING, "", True),
-    ("chief_of_staff", "propose_model", SettingType.STRING, "", True),
-    ("chief_of_staff", "routing_model", SettingType.STRING, "", True),
-    ("chief_of_staff", "narrative_model", SettingType.STRING, "", True),
+    # Per-feature models: blank by default (setup auto-selects); read live
+    # per LLM call -> no restart.
+    ("chief_of_staff", "chat_model", SettingType.STRING, "", False),
+    ("chief_of_staff", "propose_model", SettingType.STRING, "", False),
+    ("chief_of_staff", "routing_model", SettingType.STRING, "", False),
+    ("chief_of_staff", "narrative_model", SettingType.STRING, "", False),
     # Self-modification: every switch off (config_tuning only matters when
-    # the master is on), restart-required.
-    ("self_improvement", "enabled", SettingType.BOOLEAN, "false", True),
-    ("self_improvement", "chief_of_staff_enabled", SettingType.BOOLEAN, "false", True),
-    ("self_improvement", "config_tuning_enabled", SettingType.BOOLEAN, "true", True),
+    # the master is on). The meta-loop re-reads them live -> no restart.
+    ("self_improvement", "enabled", SettingType.BOOLEAN, "false", False),
+    ("self_improvement", "chief_of_staff_enabled", SettingType.BOOLEAN, "false", False),
+    ("self_improvement", "config_tuning_enabled", SettingType.BOOLEAN, "true", False),
     (
         "self_improvement",
         "architecture_proposals_enabled",
         SettingType.BOOLEAN,
         "false",
-        True,
+        False,
     ),
-    ("self_improvement", "prompt_tuning_enabled", SettingType.BOOLEAN, "false", True),
+    ("self_improvement", "prompt_tuning_enabled", SettingType.BOOLEAN, "false", False),
+    # Code modification validates GitHub credentials at startup, so enabling
+    # self-modifying code stays restart-required (KEEP).
     (
         "self_improvement",
         "code_modification_enabled",
@@ -78,9 +84,9 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
         "false",
         True,
     ),
-    ("self_improvement", "tool_creation_enabled", SettingType.BOOLEAN, "false", True),
-    ("self_improvement", "analysis_model", SettingType.STRING, "", True),
-    ("self_improvement", "code_modification_model", SettingType.STRING, "", True),
+    ("self_improvement", "tool_creation_enabled", SettingType.BOOLEAN, "false", False),
+    ("self_improvement", "analysis_model", SettingType.STRING, "", False),
+    ("self_improvement", "code_modification_model", SettingType.STRING, "", False),
     # Knowledge: on by default, no model of its own; wired into the boot
     # engine, so a change is restart-required.
     ("knowledge", "enabled", SettingType.BOOLEAN, "true", True),

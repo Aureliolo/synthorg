@@ -38,6 +38,9 @@ from synthorg.providers.models import (
     CompletionResponse,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -49,7 +52,7 @@ _NARRATOR_AGENT: NotBlankStr = NotBlankStr("system")
 class NarrativeSynthesiser:
     """Generates the connective prose for one run narrative."""
 
-    __slots__ = ("_config", "_cost_tracker", "_provider")
+    __slots__ = ("_config", "_config_resolver", "_cost_tracker", "_provider")
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_NARRATIVE
 
@@ -64,10 +67,12 @@ class NarrativeSynthesiser:
         provider: CompletionProvider,
         config: ChiefOfStaffConfig,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
         self._cost_tracker = cost_tracker
+        self._config_resolver = config_resolver
 
     async def write_prose(self, reduced: ReducedRun) -> NarrativeProse:
         """Return the connective prose for the run, or a fallback.
@@ -127,6 +132,12 @@ class NarrativeSynthesiser:
             temperature=self._config.narrative_temperature,
             max_tokens=self._config.narrative_max_tokens,
         )
+        model = await resolve_str_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="narrative_model",
+            fallback=self._config.narrative_model,
+        )
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -138,7 +149,7 @@ class NarrativeSynthesiser:
                 return await asyncio.wait_for(
                     self._provider.complete(
                         messages,
-                        self._config.narrative_model,
+                        model,
                         config=config,
                     ),
                     timeout=self._config.agent_call_timeout_seconds,

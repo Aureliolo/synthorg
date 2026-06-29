@@ -20,7 +20,13 @@ pytestmark = pytest.mark.unit
 
 
 class TestBuildNarrator:
-    def test_disabled_returns_none(self) -> None:
+    def test_builds_even_when_disabled(self) -> None:
+        """The narrator is built regardless of the flag (gate moved per-run).
+
+        Documentary mode is gated live in ``generate``; the factory builds the
+        instance whenever its collaborators are present so the flag can flip on
+        without a restart.
+        """
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(),
             provider=mock_of[CompletionProvider](),
@@ -29,7 +35,7 @@ class TestBuildNarrator:
             frames=mock_of[FlightRecorderFrameRepository](),
             task_repo=mock_of[TaskRepository](),
         )
-        assert narrator is None
+        assert isinstance(narrator, ChiefOfStaffNarrator)
 
     def test_missing_provider_returns_none(self) -> None:
         narrator = build_chief_of_staff_narrator(
