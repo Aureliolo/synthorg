@@ -7,6 +7,14 @@ research wiring factory and atomically swaps the new service onto the research
 state slice. In-flight research runs hold the previously-captured service, so a
 swap never disrupts a running brief.
 
+The strategies also bake in the provider registry's drivers (and their retry
+handlers), so a ``providers.retry_max_attempts`` change is watched too: that key
+makes ``ProviderSettingsSubscriber`` rebuild the registry, after which the wired
+service would otherwise keep using the old retry handlers until some research
+key changed. ``ProviderSettingsSubscriber`` is registered ahead of this one, so
+by the time this subscriber fires the swapped-in registry is live and the
+rebuild picks it up.
+
 The master switch ``research.enabled`` is NOT watched here: it is enforced live
 per request at the research MCP handlers, so it needs no rebuild.
 """
@@ -34,6 +42,9 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("research", "hybrid_prefilter_factor"),
         ("research", "dedup_similarity_threshold"),
         ("research", "per_query_limit"),
+        # A registry rebuild (driven by ProviderSettingsSubscriber, registered
+        # ahead of this one) re-bakes the strategies' retry handlers.
+        ("providers", "retry_max_attempts"),
     }
 )
 

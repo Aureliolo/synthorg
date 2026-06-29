@@ -107,6 +107,9 @@ async def test_ghost_wires_and_starts_scheduler_by_default() -> None:
     try:
         assert published.eval_loop_coordinator is not None
         assert scheduler is not None
+        # Not just published: the loop must actually be spinning, so a no-op
+        # ``start()`` regression (returns without scheduling the task) fails.
+        assert scheduler.is_running
     finally:
         # The scheduler is a live background task; stop it so the test loop
         # does not leak it even if an assertion above fails.

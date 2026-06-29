@@ -200,6 +200,10 @@ async def test_resolve_wait_interval_re_read_each_tick() -> None:
     scheduler = _IntervalSpyScheduler()
     await scheduler.start()
     await asyncio.wait_for(scheduler.interval_read.wait(), timeout=5.0)
+    # The first interval read fired; prove the loop is still alive (now sleeping
+    # until the next tick) rather than having resolved the interval exactly once
+    # and exited.
+    assert scheduler.is_running
     await scheduler.stop()
 
 
@@ -227,6 +231,11 @@ async def test_interval_resolution_failure_falls_back_and_continues() -> None:
     scheduler = _RaisingIntervalScheduler()
     await scheduler.start()
     await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+    # The raising interval read must not kill the loop: after the cycle ran and
+    # the read raised, the task is still alive (fell back to the construction
+    # interval and is now sleeping), so a regression that let the raise unwind
+    # the task fails here.
+    assert scheduler.is_running
     await scheduler.stop()
 
     assert scheduler.cycles >= 1

@@ -134,8 +134,7 @@ async def test_run_503_when_disabled_in_settings() -> None:
         app_state=app_state,
         arguments={"question": "what are widgets?", "include_knowledge": False},
     )
-    body = json.loads(result)
-    assert body["status"] == "error"
+    _assert_feature_gate_503(result)
 
 
 async def test_get_missing_returns_error() -> None:
@@ -170,8 +169,7 @@ async def test_get_503_when_disabled_in_settings() -> None:
     result = await _research_get(
         app_state=app_state, arguments={"run_id": "does-not-exist"}
     )
-    body = json.loads(result)
-    assert body["status"] == "error"
+    _assert_feature_gate_503(result)
 
 
 async def test_list_503_when_disabled_in_settings() -> None:
@@ -181,5 +179,18 @@ async def test_list_503_when_disabled_in_settings() -> None:
         slices={ResearchStateSlice: {"service": _service()}},
     )
     result = await _research_list(app_state=app_state, arguments={})
+    _assert_feature_gate_503(result)
+
+
+def _assert_feature_gate_503(result: str) -> None:
+    """Assert the envelope is the live-gate service-unavailable (503) rejection.
+
+    The service is wired in these tests, so the only ``ServiceUnavailableError``
+    path is the feature gate; its message says the capability is *disabled*
+    (distinct from the unwired-service message), which pins the 503 live-gate
+    contract rather than accepting any generic handler error.
+    """
     body = json.loads(result)
     assert body["status"] == "error"
+    assert body["error_type"] == "ServiceUnavailableError"
+    assert "disabled" in body["message"]

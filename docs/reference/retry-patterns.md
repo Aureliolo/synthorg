@@ -1,6 +1,6 @@
 # Retry Patterns
 
-Three retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all three would either obscure the semantics or expose so many knobs that the abstraction is worse than three small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
+Four retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all four would either obscure the semantics or expose so many knobs that the abstraction is worse than four small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
 
 The canonical helper for transient-I/O backoff is `synthorg.core.resilience.GeneralRetryHandler`; its module docstring carries the same carve-out list mirrored here, so a developer reading the helper sees the same boundaries.
 

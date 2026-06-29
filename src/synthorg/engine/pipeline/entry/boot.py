@@ -148,19 +148,26 @@ async def _resolve_intake_default_project(app_state: AppState) -> str:
     Reads ``simulations.intake_default_project`` from the wired
     ``ConfigResolver`` so a hot change is honoured; falls back to the value
     baked into the cached simulation state when the resolver is not yet wired
-    (a pre-resolver boot path).
+    (a pre-resolver boot path) OR when the resolver returns a blank value. The
+    blank fallback mirrors ``reload_client_simulation_runtime()``, which rejects
+    a blank value and retains the cached runtime: without it, cold-boot wiring
+    would leave the intake adapter offline on the same blank value that a hot
+    reload keeps alive.
 
     Returns:
-        The default project id (may be blank; the caller guards on that).
+        The default project id (may be blank when no cached value exists; the
+        caller guards on that).
     """
+    cached = client_simulation_state_of(app_state).intake_default_project or ""
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        return client_simulation_state_of(app_state).intake_default_project or ""
-    return (
+        return cached
+    value = (
         await resolver.get_str(
             SettingNamespace.SIMULATIONS.value, "intake_default_project"
         )
     ).strip()
+    return value or cached
 
 
 async def wire_real_intake_entry(

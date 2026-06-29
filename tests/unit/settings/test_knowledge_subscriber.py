@@ -44,7 +44,7 @@ class TestProtocol:
     def test_subscriber_name(self) -> None:
         assert _make_subscriber(_make_state()).subscriber_name == "knowledge-settings"
 
-    def test_watches_synthesis_config_only(self) -> None:
+    def test_watches_synthesis_config_and_provider_registry(self) -> None:
         watched = _make_subscriber(_make_state()).watched_keys
         for key in (
             "synthesis_model",
@@ -53,6 +53,9 @@ class TestProtocol:
             "synthesis_max_chunks",
         ):
             assert ("knowledge", key) in watched
+        # A provider-registry rebuild re-bakes the synthesiser's retry handlers,
+        # so the registry-swap key is watched too.
+        assert ("providers", "retry_max_attempts") in watched
         # The enabled + /ask switches are live request gates, never a rebuild.
         assert ("knowledge", "enabled") not in watched
         assert ("knowledge", "synthesis_enabled") not in watched

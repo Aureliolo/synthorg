@@ -492,7 +492,10 @@ async def reload_runtime_services(app_state: AppState) -> None:
     from synthorg.client.runtime_builder import (  # noqa: PLC0415
         reload_client_simulation_runtime,
     )
-    from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
+    from synthorg.client.state import (  # noqa: PLC0415
+        ClientStateSlice,
+        has_simulation_runtime,
+    )
     from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
         wire_real_intake_entry,
         wire_real_objective_entry,
@@ -506,19 +509,29 @@ async def reload_runtime_services(app_state: AppState) -> None:
         # Rebuild the client-simulation state from the live settings DB BEFORE
         # the coordinator: the coordinator captures the intake engine at
         # assembly, so the state must reflect the latest intake_strategy /
-        # model / review pipeline first. Only when a simulation runtime was
-        # composed at boot (a TaskEngine was present); otherwise there is
-        # nothing to refresh.
-        if has_simulation_runtime(app_state):
-            await reload_client_simulation_runtime(app_state)
-        services = await build_runtime_services(
-            app_state,
-            workspace_root=agent_workspace_root_of(app_state),
+        # model / review pipeline first. ``reload_client_simulation_runtime``
+        # commits the new state into AppState eagerly, so capture the live state
+        # first to roll it back if the coordinator rebuild then fails: otherwise
+        # the new simulation state would stay live against the still-wired old
+        # coordinator, diverging on which intake engine each uses. Only when a
+        # simulation runtime was composed at boot (a TaskEngine was present);
+        # otherwise there is nothing to refresh.
+        sim_present = has_simulation_runtime(app_state)
+        previous_sim_state = (
+            app_state.slice(ClientStateSlice).simulation_state if sim_present else None
         )
+        coordinator_swapped = False
         try:
+            if sim_present:
+                await reload_client_simulation_runtime(app_state)
+            services = await build_runtime_services(
+                app_state,
+                workspace_root=agent_workspace_root_of(app_state),
+            )
             app_state.swap_worker_execution_service(services.worker_execution_service)
             if services.coordinator is not None:
                 app_state.swap_coordinator(services.coordinator)
+                coordinator_swapped = True
             if services.work_pipeline is not None:
                 app_state.swap_work_pipeline(services.work_pipeline)
             await wire_real_intake_entry(app_state, hot_swap=True)
@@ -526,6 +539,17 @@ async def reload_runtime_services(app_state: AppState) -> None:
             await wire_real_task_board_entry(app_state, hot_swap=True)
         except Exception as exc:
             reraise_critical(exc)
+            # Roll back the eagerly-committed simulation state only while the
+            # coordinator still reflects the previous intake engine. Once the
+            # new coordinator is swapped in it has already captured the new
+            # intake engine, so the new simulation state is then the consistent
+            # pairing and must stay.
+            if (
+                sim_present
+                and previous_sim_state is not None
+                and not coordinator_swapped
+            ):
+                app_state.wire(ClientStateSlice, simulation_state=previous_sim_state)
             logger.error(
                 WORKERS_RUNTIME_HOT_SWAP_FAILED,
                 error_type=type(exc).__name__,

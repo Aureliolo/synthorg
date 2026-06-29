@@ -58,6 +58,9 @@ class TestProtocol:
             "per_query_limit",
         ):
             assert ("research", key) in watched
+        # A provider-registry rebuild re-bakes the strategies' retry handlers,
+        # so the registry-swap key is watched too.
+        assert ("providers", "retry_max_attempts") in watched
         # The master switch is the live per-request gate, never a rebuild.
         assert ("research", "enabled") not in watched
 

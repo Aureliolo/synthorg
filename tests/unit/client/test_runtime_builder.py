@@ -25,6 +25,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import as_uuid, make_app_state, mock_of
 
@@ -241,7 +242,10 @@ def _str_resolver(values: dict[str, str]) -> ConfigResolver:
     """A resolver whose ``get_str`` returns *values* for simulations keys."""
 
     async def _get_str(namespace: str, key: str) -> str:
-        del namespace
+        # Lock the namespace contract: the reload must read the simulations
+        # scope, so a regression that read the right keys from the wrong
+        # namespace fails here instead of silently returning these values.
+        assert namespace == SettingNamespace.SIMULATIONS.value
         return values[key]
 
     return cast("ConfigResolver", mock_of[ConfigResolver](get_str=_get_str))
@@ -275,10 +279,23 @@ class TestReloadClientSimulationRuntime:
         # The DB-resolved project flows through, not the env/default.
         assert state.intake_default_project == "db-project"
 
-    async def test_falls_back_to_bootstrap_without_resolver(self) -> None:
+    async def test_falls_back_to_bootstrap_without_resolver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from synthorg.client.runtime_builder import (
             reload_client_simulation_runtime,
         )
+
+        # The no-resolver path is env > default; clear the simulations override
+        # vars so an ambient ``SYNTHORG_SIMULATIONS_*`` in the process env cannot
+        # change the asserted default and make this test flaky.
+        for key in (
+            "INTAKE_STRATEGY",
+            "INTAKE_MODEL",
+            "INTAKE_DEFAULT_PROJECT",
+            "REVIEW_PIPELINE_STRATEGY",
+        ):
+            monkeypatch.delenv(f"SYNTHORG_SIMULATIONS_{key}", raising=False)
 
         app_state = make_app_state(task_engine=mock_of[TaskEngine]())
 

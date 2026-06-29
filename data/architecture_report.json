@@ -522,6 +522,12 @@
       "ratio": 0.946,
       "tier": "code"
     },
+    "src/synthorg/engine/pipeline/entry/boot.py": {
+      "cap": 500,
+      "loc": 405,
+      "ratio": 0.81,
+      "tier": "code"
+    },
     "src/synthorg/engine/pipeline/service.py": {
       "cap": 600,
       "loc": 589,
@@ -1495,8 +1501,8 @@
     "synthorg.api.pagination": 61,
     "synthorg.api.path_params": 80,
     "synthorg.api.rate_limits": 92,
-    "synthorg.api.state": 269,
-    "synthorg.api.state_slices": 31,
+    "synthorg.api.state": 268,
+    "synthorg.api.state_slices": 32,
     "synthorg.api.ws_models": 20,
     "synthorg.approval.enums": 78,
     "synthorg.approval.protocol": 49,

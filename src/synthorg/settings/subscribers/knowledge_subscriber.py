@@ -8,6 +8,14 @@ atomically swaps the new service onto the knowledge state slice. In-flight
 ``ask`` / ``search`` calls hold the previously-captured service, so a swap never
 disrupts a running query.
 
+The synthesiser also bakes in the provider registry's drivers (and their retry
+handlers), so a ``providers.retry_max_attempts`` change is watched too: that key
+makes ``ProviderSettingsSubscriber`` rebuild the registry, after which the wired
+synthesiser would otherwise keep using the old retry handlers until some
+knowledge key changed. ``ProviderSettingsSubscriber`` is registered ahead of
+this one, so by the time this subscriber fires the swapped-in registry is live
+and the rebuild picks it up.
+
 The master switch ``knowledge.enabled`` and the ``/ask`` gate
 ``knowledge.synthesis_enabled`` are NOT watched here: both are enforced live per
 request at the knowledge MCP handlers, so they need no rebuild.
@@ -29,6 +37,9 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("knowledge", "synthesis_provider"),
         ("knowledge", "synthesis_synthesizer"),
         ("knowledge", "synthesis_max_chunks"),
+        # A registry rebuild (driven by ProviderSettingsSubscriber, registered
+        # ahead of this one) re-bakes the synthesiser's retry handlers.
+        ("providers", "retry_max_attempts"),
     }
 )
 

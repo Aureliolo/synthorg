@@ -112,6 +112,17 @@ class AsyncCycleScheduler(ABC):
         self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._stop_failed: bool = False
 
+    @property
+    def is_running(self) -> bool:
+        """True while the background cycle task is live (started, not drained).
+
+        Reflects an actually-scheduled, not-yet-finished loop task, so a caller
+        can distinguish "started and spinning" from "constructed but never
+        started" or "stopped". Returns ``False`` once ``stop()`` has drained the
+        task or the loop has exited.
+        """
+        return self._task is not None and not self._task.done()
+
     def _lifecycle_primitives_for_current_loop(
         self,
     ) -> tuple[asyncio.Lock, asyncio.Event]:

@@ -40,7 +40,12 @@ logger = get_logger(__name__)
 
 
 async def wire_scaling(app_state: AppState) -> None:
-    """Construct the scaling + hiring pipeline at boot when opted in.
+    """Construct the scaling + hiring pipeline at boot when collaborators exist.
+
+    Ghost-wired: the pipeline is built whenever its collaborators are present,
+    regardless of ``hr.scaling_enabled``. The switch is enforced live at the
+    ``/scaling/evaluate`` entrypoint, so toggling it takes effect on the next
+    request with no restart.
 
     Args:
         app_state: The application state holding the collaborator slices.

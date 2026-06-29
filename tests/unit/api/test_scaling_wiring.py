@@ -8,6 +8,7 @@ the durable hiring requests, and the best-effort failure handling.
 """
 
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,14 +23,20 @@ from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.state import HrStateSlice
 from synthorg.persistence.hiring_request_protocol import HiringRequestRepository
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _ready_app_state(*, backend: object | None = object()) -> AppState:
+def _ready_app_state(
+    *,
+    backend: object | None = object(),
+    config_resolver: ConfigResolver | None = None,
+) -> AppState:
     """App state with registry + tracker + approval store + persistence."""
     return make_app_state(
+        config_resolver=config_resolver,
         slices={
             HrStateSlice: {
                 "agent_registry": AgentRegistryService(),
@@ -60,9 +67,18 @@ async def test_constructs_regardless_of_switch(
         "synthorg.memory.state.org_memory_backend_of",
         lambda _state: None,
     )
-    app_state = _ready_app_state()
+    # Make the disabled case explicit: stub hr.scaling_enabled=False and prove
+    # wiring never consults it, so a regression that re-introduces a boot-time
+    # gate read fails here rather than silently passing on the default harness.
+    get_bool = AsyncMock(return_value=False)
+    app_state = _ready_app_state(
+        config_resolver=cast(
+            "ConfigResolver", mock_of[ConfigResolver](get_bool=get_bool)
+        ),
+    )
     await wire_scaling(app_state)
     assert isinstance(app_state.slice(HrStateSlice).scaling_service, ScalingService)
+    get_bool.assert_not_awaited()
 
 
 async def test_already_wired_is_idempotent() -> None:
@@ -86,12 +102,26 @@ async def test_skips_when_persistence_absent() -> None:
     assert app_state.slice(HrStateSlice).scaling_service is None
 
 
-async def test_skips_when_registry_or_tracker_absent() -> None:
+@pytest.mark.parametrize(
+    ("registry", "tracker"),
+    [
+        (None, PerformanceTracker()),
+        (AgentRegistryService(), None),
+        (None, None),
+    ],
+)
+async def test_skips_when_registry_or_tracker_absent(
+    registry: AgentRegistryService | None,
+    tracker: PerformanceTracker | None,
+) -> None:
+    # Cover each missing collaborator independently: with both absent at once a
+    # guard that flipped from ``or`` to ``and`` (wire only when BOTH are absent)
+    # would still pass. The single-absent cases catch that regression.
     app_state = make_app_state(
         slices={
             HrStateSlice: {
-                "agent_registry": None,
-                "performance_tracker": None,
+                "agent_registry": registry,
+                "performance_tracker": tracker,
                 "scaling_service": None,
             },
             ApprovalStateSlice: {"store": ApprovalStore()},

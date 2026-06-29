@@ -121,7 +121,7 @@ async def test_ask_503_when_knowledge_disabled() -> None:
     result = await _knowledge_ask(
         app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
     )
-    assert json.loads(result)["status"] == "error"
+    _assert_feature_gate_503(result)
 
 
 async def test_ask_503_when_synthesis_disabled() -> None:
@@ -133,7 +133,7 @@ async def test_ask_503_when_synthesis_disabled() -> None:
     result = await _knowledge_ask(
         app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
     )
-    assert json.loads(result)["status"] == "error"
+    _assert_feature_gate_503(result)
 
 
 async def test_search_503_when_knowledge_disabled() -> None:
@@ -149,4 +149,18 @@ async def test_search_503_when_knowledge_disabled() -> None:
     result = await _knowledge_search(
         app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
     )
-    assert json.loads(result)["status"] == "error"
+    _assert_feature_gate_503(result)
+
+
+def _assert_feature_gate_503(result: str) -> None:
+    """Assert the envelope is the live-gate service-unavailable (503) rejection.
+
+    The service is wired in these tests, so the only ``ServiceUnavailableError``
+    path is the feature gate; its message says the capability is *disabled*
+    (distinct from the unwired-service message), which pins the 503 live-gate
+    contract rather than accepting any generic handler error.
+    """
+    body = json.loads(result)
+    assert body["status"] == "error"
+    assert body["error_type"] == "ServiceUnavailableError"
+    assert "disabled" in body["message"]

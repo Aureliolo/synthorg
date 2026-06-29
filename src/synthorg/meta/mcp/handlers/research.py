@@ -78,7 +78,7 @@ async def _require_enabled_service(app_state: AppState) -> ResearchService:
         ServiceUnavailableError: When ``research.enabled`` resolves to ``False``
             or the service is not wired.
     """
-    from synthorg.api._feature_gate import ensure_feature_enabled  # noqa: PLC0415
+    from synthorg.settings.feature_gate import ensure_feature_enabled  # noqa: PLC0415
 
     await ensure_feature_enabled(
         app_state, "research", "enabled", feature_label="Research"
