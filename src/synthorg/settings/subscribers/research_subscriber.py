@@ -109,7 +109,7 @@ class ResearchSettingsSubscriber:
             )
         except Exception as exc:
             reraise_critical(exc)
-            logger.error(
+            logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="research_service",
                 trigger_namespace=namespace,
@@ -118,3 +118,10 @@ class ResearchSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace=namespace,
+            key=key,
+            note="research service rebuilt and swapped",
+        )

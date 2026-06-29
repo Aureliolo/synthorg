@@ -159,3 +159,27 @@ async def test_list_returns_empty_initially() -> None:
     body = json.loads(result)
     assert body["status"] == "ok"
     assert body["data"] == []
+
+
+async def test_get_503_when_disabled_in_settings() -> None:
+    """The read handler 503s a wired service when research.enabled=false."""
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
+    result = await _research_get(
+        app_state=app_state, arguments={"run_id": "does-not-exist"}
+    )
+    body = json.loads(result)
+    assert body["status"] == "error"
+
+
+async def test_list_503_when_disabled_in_settings() -> None:
+    """The list handler 503s a wired service when research.enabled=false."""
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
+    result = await _research_list(app_state=app_state, arguments={})
+    body = json.loads(result)
+    assert body["status"] == "error"

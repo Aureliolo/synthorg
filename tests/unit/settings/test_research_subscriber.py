@@ -65,22 +65,30 @@ class TestProtocol:
 class TestRebuild:
     """on_settings_changed delegates to the research wiring factory."""
 
-    async def test_change_rebuilds_via_factory(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_change_rebuilds_via_factory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=True)
         registry = state.slice(ProvidersStateSlice).registry
+        settings = mock_of[SettingsService]()
         build = AsyncMock()
         monkeypatch.setattr(
             "synthorg.api.lifecycle_helpers.feature_wiring._build_and_wire_research",
             build,
         )
-        sub = _make_subscriber(state)
+        sub = ResearchSettingsSubscriber(app_state=state, settings_service=settings)
         await sub.on_settings_changed("research", "model")
         build.assert_awaited_once()
         call = build.await_args
         assert call is not None
         assert call.kwargs["provider_registry"] is registry
+        # The rebuilt config must read DB overrides through the live settings
+        # service, not a stale boot snapshot.
+        assert call.kwargs["runtime_settings"] is settings
 
-    async def test_no_registry_skips_rebuild(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_no_registry_skips_rebuild(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=False)
         build = AsyncMock()
         monkeypatch.setattr(
@@ -91,7 +99,9 @@ class TestRebuild:
         await sub.on_settings_changed("research", "synthesizer")
         build.assert_not_awaited()
 
-    async def test_rebuild_failure_propagates(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_rebuild_failure_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=True)
         build = AsyncMock(side_effect=RuntimeError("db down"))
         monkeypatch.setattr(
@@ -101,3 +111,16 @@ class TestRebuild:
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed("research", "provider")
+
+    async def test_memory_error_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state = _make_state(with_registry=True)
+        build = AsyncMock(side_effect=MemoryError())
+        monkeypatch.setattr(
+            "synthorg.api.lifecycle_helpers.feature_wiring._build_and_wire_research",
+            build,
+        )
+        sub = _make_subscriber(state)
+        with pytest.raises(MemoryError):
+            await sub.on_settings_changed("research", "model")

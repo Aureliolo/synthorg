@@ -30,14 +30,14 @@ def _settings(values: dict[str, str]) -> SettingsService:
     return service
 
 
-async def test_boot_config_disabled_no_longer_gates_wiring(
+async def test_boot_config_disabled_does_not_gate_wiring(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Defect fix: boot config knowledge.enabled=False does NOT skip wiring.
+    """Boot config knowledge.enabled=False does not skip substrate wiring.
 
     The substrate is ghost-wired regardless of the boot Pydantic config; the
-    settings-DB ``knowledge.enabled`` is enforced live at the handlers. Before
-    the fix this early-returned and never reached the build.
+    settings-DB ``knowledge.enabled`` is the authority, enforced live at the
+    handlers.
     """
     build = AsyncMock()
     monkeypatch.setattr(

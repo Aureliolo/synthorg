@@ -11,11 +11,16 @@ the startup + shutdown runners and the builder import them without a cycle.
 import asyncio
 from dataclasses import dataclass
 
-from synthorg.api.state import AppState
+from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_SHUTDOWN_TIMEOUT,
@@ -28,6 +33,48 @@ from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
+
+
+async def drain_simulation_background_tasks(app_state: AppState) -> None:
+    """Drain in-flight client-simulation pipeline tasks, bounded by grace.
+
+    The intake-approval, simulation-runner, and task-board pipeline tasks are
+    spawned fire-and-forget and tracked only on
+    ``ClientSimulationState.background_tasks``. Give the live tasks a bounded
+    grace to finish at a turn boundary, then cancel and await any straggler so
+    it unwinds cleanly instead of being abandoned mid-write when the loop tears
+    down. Snapshots the set up front because a completing task's done-callback
+    discards itself from the live set. No-op when no simulation runtime is wired.
+    """
+    if not has_simulation_runtime(app_state):
+        return
+    sim_state = client_simulation_state_of(app_state)
+    pending = {task for task in sim_state.background_tasks if not task.done()}
+    if not pending:
+        return
+    done, still_running = await asyncio.wait(
+        pending, timeout=_ENTRY_TASK_DRAIN_GRACE_SECONDS
+    )
+    for task in done:
+        # ``task.exception()`` raises ``CancelledError`` on a cancelled task,
+        # so guard with ``cancelled()`` first (a clean skip, not a raise).
+        if task.cancelled():
+            continue
+        exc = task.exception()
+        if exc is not None:
+            logger.warning(
+                API_APP_SHUTDOWN,
+                service="simulation_task_drain",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="simulation task raised before shutdown drain deadline",
+            )
+    for task in still_running:
+        task.cancel()
+    if still_running:
+        # ``shield`` so a cancel of this drain (the outer budget) does not
+        # re-orphan the very stragglers it is awaiting.
+        await asyncio.shield(asyncio.gather(*still_running, return_exceptions=True))
 
 
 @dataclass

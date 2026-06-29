@@ -694,6 +694,7 @@ class MessageBusBridge:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                # See docs/reference/retry-patterns.md: Pattern D
                 await asyncio.sleep(poll_timeout)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)

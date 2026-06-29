@@ -1,9 +1,8 @@
-"""Conformance: #2515 hot-reconfigurable subsystem keys are not restart-bound.
+"""Conformance: hot-reconfigurable subsystem keys are not restart-bound.
 
-The research / knowledge / HR-loop / client-simulation keys made hot in #2515
-must carry ``restart_required=False`` (and, for the previously read-only
-simulations keys, ``read_only_post_init=False``) so the dispatcher delivers
-their changes to the live subscribers / gates instead of logging a
+The research / knowledge / HR-loop / client-simulation hot keys must carry
+``restart_required=False`` and ``read_only_post_init=False`` so the dispatcher
+delivers their changes to the live subscribers / gates instead of logging a
 restart-required warning and dropping them.
 """
 
@@ -14,10 +13,10 @@ from synthorg.settings.registry import get_registry
 
 pytestmark = pytest.mark.unit
 
-# Keys flipped to hot in #2515. Grouped by phase for readability; the test
+# Hot-reconfigurable keys, grouped by subsystem for readability; the test
 # treats them uniformly.
 _HOT_KEYS: tuple[tuple[str, str], ...] = (
-    # Phase A: research (enabled + 10 tuning/strategy keys).
+    # Research (enabled + 10 tuning/strategy keys).
     ("research", "enabled"),
     ("research", "provider"),
     ("research", "model"),
@@ -29,19 +28,19 @@ _HOT_KEYS: tuple[tuple[str, str], ...] = (
     ("research", "hybrid_prefilter_factor"),
     ("research", "dedup_similarity_threshold"),
     ("research", "per_query_limit"),
-    # Phase B: knowledge (enabled + synthesis arm).
+    # Knowledge (enabled + synthesis arm).
     ("knowledge", "enabled"),
     ("knowledge", "synthesis_enabled"),
     ("knowledge", "synthesis_model"),
     ("knowledge", "synthesis_provider"),
     ("knowledge", "synthesis_synthesizer"),
     ("knowledge", "synthesis_max_chunks"),
-    # Phase C: HR ops loops (eval-loop master/cadence/window + scaling switch).
+    # HR ops loops (eval-loop master/cadence/window + scaling switch).
     ("hr", "eval_loop_cycle_enabled"),
     ("hr", "eval_loop_cycle_interval_seconds"),
     ("hr", "eval_loop_cycle_window_hours"),
     ("hr", "scaling_enabled"),
-    # Phase D: client simulations (intake + review pipeline choices).
+    # Client simulations (intake + review pipeline choices).
     ("simulations", "intake_strategy"),
     ("simulations", "intake_model"),
     ("simulations", "intake_default_project"),
@@ -53,7 +52,7 @@ _HOT_KEY_IDS = [f"{ns}/{key}" for ns, key in _HOT_KEYS]
 
 @pytest.mark.parametrize(("namespace", "key"), _HOT_KEYS, ids=_HOT_KEY_IDS)
 def test_hot_key_not_restart_required(namespace: str, key: str) -> None:
-    """Every #2515 hot key resolves and is not restart-required."""
+    """Every key in _HOT_KEYS resolves and is not restart-required."""
     defn = get_registry().get(namespace, key)
     assert defn is not None, f"{namespace}/{key} not registered"
     assert defn.restart_required is False, (

@@ -18,6 +18,7 @@ no LLM calls, so the runtime comes online for an empty company.
 
 import os
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from synthorg.budget.state import BudgetStateSlice
@@ -40,6 +41,7 @@ from synthorg.engine.review.factory import (
     ReviewPipelineStrategy,
     build_review_pipeline,
 )
+from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
 from synthorg.llm.model_tier_policy import tier_model_id
@@ -297,7 +299,7 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
         return strategy, requested_strategy
 
 
-def _assemble_simulation_state(  # noqa: PLR0913 -- keyword-only resolved choices
+def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choices
     app_state: AppState,
     *,
     env: Mapping[str, str],
@@ -305,17 +307,20 @@ def _assemble_simulation_state(  # noqa: PLR0913 -- keyword-only resolved choice
     model: str | None,
     default_project: str,
     review_strategy: ReviewPipelineStrategy,
-) -> ClientSimulationState:
-    """Assemble a ``ClientSimulationState`` from already-resolved choices.
+) -> tuple[IntakeEngine, ReviewPipeline]:
+    """Build the config-driven simulation components from resolved choices.
 
-    Shared by the boot builder (bootstrap-resolved choices) and the runtime
-    reload (DB-resolved choices). The intake strategy degrades to ``direct``
-    when unsatisfiable; the verification stage + review pipeline are built from
-    the same provider/cost-tracker seam. The strategy/review objects are
-    stateless, so a freshly assembled state is safe to hot-swap.
+    Returns the stateless intake engine + review pipeline that the boot builder
+    and the runtime reload both compose; the intake strategy degrades to
+    ``direct`` when unsatisfiable. Only these two config-driven objects are
+    rebuilt, so the reload path can swap them onto the existing state and keep
+    the mutable stores intact. The verification-stage settings
+    (``verification_review_enabled`` / ``verification_grader`` /
+    ``verification_decomposer``) are read from ``env`` in both paths and are not
+    live-reloadable (they retain ``restart_required`` in the registry).
 
     Returns:
-        The assembled ``ClientSimulationState``.
+        The ``(intake_engine, review_pipeline)`` pair.
     """
     task_engine = task_engine_of(app_state)
     provider = _select_provider(app_state)
@@ -346,11 +351,7 @@ def _assemble_simulation_state(  # noqa: PLR0913 -- keyword-only resolved choice
         verification_stage_active=verification_stage is not None,
         intake_default_project=default_project,
     )
-    return ClientSimulationState(
-        intake_engine=IntakeEngine(strategy=strategy),
-        review_pipeline=review_pipeline,
-        intake_default_project=default_project,
-    )
+    return IntakeEngine(strategy=strategy), review_pipeline
 
 
 def build_client_simulation_runtime(
@@ -381,7 +382,7 @@ def build_client_simulation_runtime(
     """
     requested_strategy, model, default_project = _resolve_intake_settings(env)
     review_strategy = _resolve_review_pipeline_strategy(env)
-    return _assemble_simulation_state(
+    intake_engine, review_pipeline = _build_simulation_components(
         app_state,
         env=env,
         requested_strategy=requested_strategy,
@@ -389,25 +390,38 @@ def build_client_simulation_runtime(
         default_project=default_project,
         review_strategy=review_strategy,
     )
+    return ClientSimulationState(
+        intake_engine=intake_engine,
+        review_pipeline=review_pipeline,
+        intake_default_project=default_project,
+    )
 
 
 async def reload_client_simulation_runtime(app_state: AppState) -> None:
-    """Rebuild ``ClientSimulationState`` from the live settings DB and swap it.
+    """Rebuild the simulation components from the live settings and swap them in.
 
     Re-reads the four hot intake / review keys (``intake_strategy``,
     ``intake_model``, ``intake_default_project``, ``review_pipeline_strategy``)
-    through the DB-backed ``ConfigResolver`` (DB > env > default) and atomically
-    wires the rebuilt state onto ``ClientStateSlice``. Called on-startup (so a
-    DB override is honoured on every boot, since construction reads only
-    env/default) and on every ``reload_runtime_services`` / simulations settings
-    change, so a strategy / model / project change applies with no restart.
+    through the DB-backed ``ConfigResolver`` (DB > env > default), rebuilds the
+    intake engine + review pipeline, and atomically swaps them onto the existing
+    ``ClientSimulationState`` via ``dataclasses.replace``. Replacing only the
+    config-driven fields preserves the live mutable stores (client pool, request
+    / simulation / feedback stores, in-flight background tasks), so a hot-reload
+    never discards in-flight work. Called on-startup (so a DB override is
+    honoured on every boot, since construction reads only env/default) and on
+    every ``reload_runtime_services`` / simulations settings change.
 
-    When the resolver is not yet wired (a pre-startup context) it falls back to
-    the bootstrap-resolved build so the runtime still comes online.
+    When the resolver is not yet wired (a pre-startup context) the four keys
+    fall back to the bootstrap resolver (env > registered default). A blank
+    ``intake_default_project`` is rejected (the previous runtime is retained
+    unchanged) so an operator clearing the override cannot wire an empty project.
     """
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        new_state = build_client_simulation_runtime(app_state)
+        requested_strategy, model, default_project = _resolve_intake_settings(
+            os.environ
+        )
+        review_strategy = _resolve_review_pipeline_strategy(os.environ)
     else:
         namespace = SettingNamespace.SIMULATIONS.value
         requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
@@ -420,12 +434,33 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
             "ReviewPipelineStrategy",
             await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
         )
-        new_state = _assemble_simulation_state(
-            app_state,
-            env=os.environ,
-            requested_strategy=requested_strategy,
-            model=model,
-            default_project=default_project,
-            review_strategy=review_strategy,
+    if not default_project:
+        logger.warning(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            service="client_simulation_runtime",
+            note="intake_default_project resolved blank; retaining previous runtime",
+        )
+        return
+    intake_engine, review_pipeline = _build_simulation_components(
+        app_state,
+        env=os.environ,
+        requested_strategy=requested_strategy,
+        model=model,
+        default_project=default_project,
+        review_strategy=review_strategy,
+    )
+    existing = app_state.slice(ClientStateSlice).simulation_state
+    if existing is None:
+        new_state = ClientSimulationState(
+            intake_engine=intake_engine,
+            review_pipeline=review_pipeline,
+            intake_default_project=default_project,
+        )
+    else:
+        new_state = replace(
+            existing,
+            intake_engine=intake_engine,
+            review_pipeline=review_pipeline,
+            intake_default_project=default_project,
         )
     app_state.wire(ClientStateSlice, simulation_state=new_state)

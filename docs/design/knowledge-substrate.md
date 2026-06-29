@@ -343,17 +343,25 @@ MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
 ## Configuration
 
-`KnowledgeConfig` (frozen) defaults to `enabled=False` until setup wires it.
-It carries the `pdf_loader` and `code_chunker` discriminators (defaults
-`pdfplumber` / `tree_sitter`).
+The substrate is on by default. It is ghost-wired at boot whenever persistence
+and a memory backend exist, and the `knowledge.enabled` master switch (Cat-1,
+default `true`) is enforced live per request at the knowledge MCP handlers, so
+toggling it over the settings API takes effect with no restart. `KnowledgeConfig`
+(frozen) carries the `pdf_loader` and `code_chunker` discriminators (defaults
+`pdfplumber` / `tree_sitter`); its `enabled` field is retained for schema
+back-compatibility but is not the runtime gate.
 
 The generative-RAG `ask` surface is governed by the `knowledge` settings
 namespace (Cat-1, runtime-readable over the settings API so the wizard and
-dashboard can toggle it): `synthesis_enabled` (bool, default true),
-`synthesis_model` (str, default blank; must be set for `ask` to wire),
-`synthesis_provider` (str, blank selects the first registered provider),
-`synthesis_synthesizer` (strategy discriminator, default `llm`), and
-`synthesis_max_chunks` (int, top hits fed to the synthesiser). Chunk budgets and
+dashboard can toggle it), all hot (`restart_required=False`): `synthesis_enabled`
+(bool, default true; live-gated at the `ask` entrypoint), `synthesis_model` (str,
+default blank; must be set for `ask` to answer), `synthesis_provider` (str, blank
+selects the first registered provider), `synthesis_synthesizer` (strategy
+discriminator, default `llm`), and `synthesis_max_chunks` (int, top hits fed to
+the synthesiser). The synthesiser is ghost-wired whenever a model + provider
+exist, and a `KnowledgeSettingsSubscriber` rebuilds and swaps it on any
+`synthesis_model` / `synthesis_provider` / `synthesis_synthesizer` /
+`synthesis_max_chunks` change with no restart. Chunk budgets and
 namespace/tag constants live in `knowledge/constants.py` as module-level
 `Final` values because they are part of the on-disk plus RAG-index contract: a
 runtime change would silently invalidate previously indexed chunks (the same

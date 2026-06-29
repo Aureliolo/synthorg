@@ -1,16 +1,21 @@
 """Periodic driver for the closed-loop evaluation cycle.
 
-Runs :meth:`EvalLoopCoordinator.run_cycle` on a fixed cadence so the org
-re-evaluates every agent's five-pillar performance automatically rather than
-only when an operator triggers a cycle by hand. Opt-in (off by default): a
-cycle can route corrective actions to the training pipeline, so the background
-driver only starts when ``hr.eval_loop_cycle_enabled`` is set.
+Runs :meth:`EvalLoopCoordinator.run_cycle` on a cadence so the org re-evaluates
+every agent's five-pillar performance automatically rather than only when an
+operator triggers a cycle by hand. Ghost-wired and opt-in (off by default): the
+scheduler is always constructed and started, but every tick short-circuits
+until ``hr.eval_loop_cycle_enabled`` is set (a cycle can route corrective
+actions to the training pipeline). The master switch, the
+``hr.eval_loop_cycle_paused`` flag, the cadence, and the look-back window are
+all re-read live per tick, so an operator can enable, pause, retune, or disable
+the cycle with no restart.
 
 The delicate loop-bound lifecycle (primitives rebound to the running loop,
-bounded stop-drain, per-tick kill-switch read) lives once in
+bounded stop-drain, per-tick enabled + interval reads) lives once in
 :class:`~synthorg.core.scheduler.AsyncCycleScheduler`; this subclass supplies
-only the evaluation cadence work and the ``hr.eval_loop_cycle_paused``
-kill-switch read.
+the evaluation cadence work, the two-flag enabled check
+(``hr.eval_loop_cycle_enabled`` and ``hr.eval_loop_cycle_paused``), and the
+per-tick cadence / window re-reads.
 """
 
 from datetime import timedelta
@@ -59,11 +64,14 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
             coordinator: The coordinator whose ``run_cycle`` is driven.
             interval_seconds: Cadence between cycles; must be >= 60 seconds.
             window: Look-back window each cycle collects metrics over.
-            config_resolver: Optional resolver for the
-                ``hr.eval_loop_cycle_paused`` kill-switch. When wired, every
-                tick re-reads the flag so an operator can pause the cycle at
-                runtime; without a resolver the loop runs unconditionally
-                (matching the registered default of ``False`` / not-paused).
+            config_resolver: Optional resolver for the per-tick master-switch
+                (``hr.eval_loop_cycle_enabled``), pause flag
+                (``hr.eval_loop_cycle_paused``), and cadence
+                (``hr.eval_loop_cycle_interval_seconds``) reads. Without a
+                resolver the master switch fail-safes to ``False`` (disabled),
+                so the loop never runs until a resolver is wired; this ensures a
+                resolver outage cannot silently start a cycle that routes
+                corrective actions to training.
 
         Raises:
             ValueError: If ``interval_seconds`` is below the minimum.

@@ -12,7 +12,6 @@ boot-time value.
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
@@ -23,10 +22,6 @@ from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
 
 pytestmark = pytest.mark.unit
-
-
-class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 def _read_only_definition() -> SettingDefinition:

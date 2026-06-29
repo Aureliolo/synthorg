@@ -103,3 +103,15 @@ class TestLiveCadenceAndWindow:
         )
         await scheduler._run_cycle_once()
         coordinator.run_cycle.assert_awaited_once_with(window=timedelta(hours=2))
+
+    async def test_window_falls_back_to_construction_without_resolver(self) -> None:
+        # Without a resolver the cycle uses the construction-time window, so a
+        # resolver outage cannot widen or narrow the look-back unexpectedly.
+        coordinator = _coordinator()
+        scheduler = _scheduler(
+            resolver=None,
+            coordinator=coordinator,
+            window=timedelta(hours=72),
+        )
+        await scheduler._run_cycle_once()
+        coordinator.run_cycle.assert_awaited_once_with(window=timedelta(hours=72))

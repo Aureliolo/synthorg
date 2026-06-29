@@ -2,10 +2,10 @@
 
 ``simulations.intake_strategy`` / ``simulations.intake_model`` /
 ``intake_default_project`` seed the client-simulation runtime at construction
-via the bootstrap resolver (env > default), but are now hot
-(``restart_required=False``, not ``read_only_post_init``): a change rebuilds
-and swaps the runtime live via the simulations settings subscriber, and the
-DB value is re-resolved on-startup and on every reload.
+via the bootstrap resolver (env > default). They are hot
+(``restart_required=False``, ``read_only_post_init=False``): a change rebuilds
+and swaps the runtime live via the simulations settings subscriber, and the DB
+value is re-resolved on-startup and on every reload.
 """
 
 from unittest.mock import AsyncMock

@@ -103,9 +103,12 @@ async def test_ghost_wires_and_starts_scheduler_by_default() -> None:
     app_state = _wired_app_state()
     await wire_eval_loop(app_state)
     published = app_state.slice(HrStateSlice)
-    assert published.eval_loop_coordinator is not None
     scheduler = published.eval_loop_cycle_scheduler
-    assert scheduler is not None
-    # The scheduler is a live background task; stop it so the test loop
-    # does not leak it.
-    await scheduler.stop()
+    try:
+        assert published.eval_loop_coordinator is not None
+        assert scheduler is not None
+    finally:
+        # The scheduler is a live background task; stop it so the test loop
+        # does not leak it even if an assertion above fails.
+        if scheduler is not None:
+            await scheduler.stop()

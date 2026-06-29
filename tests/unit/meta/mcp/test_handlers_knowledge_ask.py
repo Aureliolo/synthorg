@@ -17,7 +17,7 @@ from synthorg.knowledge.models import (
 )
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
-from synthorg.meta.mcp.handlers.knowledge import _knowledge_ask
+from synthorg.meta.mcp.handlers.knowledge import _knowledge_ask, _knowledge_search
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
@@ -131,6 +131,22 @@ async def test_ask_503_when_synthesis_disabled() -> None:
         slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
     )
     result = await _knowledge_ask(
+        app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
+    )
+    assert json.loads(result)["status"] == "error"
+
+
+async def test_search_503_when_knowledge_disabled() -> None:
+    """A non-ask read handler also 503s when knowledge.enabled=false.
+
+    The master switch gates every knowledge handler, not just ``ask``; search
+    must refuse with the service wired but the feature toggled off.
+    """
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
+    )
+    result = await _knowledge_search(
         app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
     )
     assert json.loads(result)["status"] == "error"

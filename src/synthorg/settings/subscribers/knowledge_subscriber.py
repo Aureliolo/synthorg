@@ -20,7 +20,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
-from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -40,25 +39,21 @@ class KnowledgeSettingsSubscriber:
     On any watched key change, resolves the live provider registry and re-runs
     the knowledge wiring factory, which rebuilds the synthesiser and the
     ``KnowledgeService`` around it and swaps the fresh service onto
-    ``KnowledgeStateSlice``.
+    ``KnowledgeStateSlice``. The factory reads the synthesis settings off
+    ``app_state`` itself, so no settings service is held here.
 
-    Errors during rebuild propagate to the dispatcher, which logs them with full
-    subscriber context and continues; the previously wired service stays in
-    place.
+    A synthesis-build failure during the rebuild is surfaced under
+    ``SETTINGS_SERVICE_SWAP_FAILED`` (not the startup event) so an operator who
+    sets an invalid synthesis model/provider sees the breakage. Other rebuild
+    errors propagate to the dispatcher, which logs them and continues; the
+    previously wired service stays in place.
 
     Args:
         app_state: Application state holding the slices + service swap surface.
-        settings_service: Settings service held for parity with peer
-            subscribers (the wiring factory reads settings off ``app_state``).
     """
 
-    def __init__(
-        self,
-        app_state: AppState,
-        settings_service: SettingsService,
-    ) -> None:
+    def __init__(self, app_state: AppState) -> None:
         self._app_state = app_state
-        self._settings_service = settings_service
 
     @property
     def watched_keys(self) -> frozenset[tuple[str, str]]:
@@ -100,10 +95,11 @@ class KnowledgeSettingsSubscriber:
             await _build_and_wire_knowledge(
                 self._app_state,
                 provider_registry=registry,
+                synthesis_failure_event=SETTINGS_SERVICE_SWAP_FAILED,
             )
         except Exception as exc:
             reraise_critical(exc)
-            logger.error(
+            logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="knowledge_service",
                 trigger_namespace=namespace,
@@ -112,3 +108,10 @@ class KnowledgeSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace=namespace,
+            key=key,
+            note="knowledge service rebuilt and swapped",
+        )

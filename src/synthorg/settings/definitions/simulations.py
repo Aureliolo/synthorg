@@ -77,8 +77,9 @@ _r.register(
             " into. The same value is wired into the intake strategy"
             " (DirectIntake / AgentIntake) and the WorkItem the intake"
             " entry adapter feeds the pipeline, and the project is"
-            " created if absent. Re-read live when the intake entry adapter is"
-            " (re)wired, so a change applies with no restart."
+            " created if absent. A change rebuilds and re-wires the simulation"
+            " runtime live with no restart, re-resolving the project from the"
+            " settings DB when the intake entry adapter is swapped."
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,

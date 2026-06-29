@@ -1,18 +1,19 @@
 # module-kind: code
-"""Live capability gate for on-by-default conversational endpoints.
+"""Live capability gate for ghost-wired, on-by-default features.
 
-The on-by-default Chief-of-Staff chat capabilities are built at startup
-(their flags default on) and live-gated here: each request reads the
-capability flag fresh from the settings resolver, so toggling it in
-dashboard Settings takes effect with no restart. When the flag is off the
-endpoint 503s with a clear, settings-pointing message rather than serving
-a capability the operator has turned off.
+A feature whose service is built at startup (ghost-wired) is gated here per
+request: each call reads the feature's ``<namespace>.<key>`` flag fresh from the
+settings resolver, so toggling it in dashboard Settings takes effect with no
+restart. When the flag is off the entrypoint 503s with a clear, settings-pointing
+message rather than serving a capability the operator has turned off. Used by the
+Chief-of-Staff chat capabilities, the research and knowledge MCP tools, and the
+auto-scaling evaluate endpoint.
 """
 
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_CHAT_DEPENDENCY_UNAVAILABLE
+from synthorg.observability.events.api import API_FEATURE_GATE_BLOCKED
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -42,8 +43,10 @@ async def ensure_feature_enabled(
     if await config_resolver_of(app_state).get_bool(namespace, key):
         return
     logger.warning(
-        META_CHAT_DEPENDENCY_UNAVAILABLE,
-        dependency=f"{namespace}.{key}",
+        API_FEATURE_GATE_BLOCKED,
+        namespace=namespace,
+        key=key,
+        feature_label=feature_label,
         hint=f"{feature_label} is disabled; enable {namespace}.{key} in settings.",
     )
     msg = (

@@ -74,6 +74,7 @@ async def test_noop_without_simulation_runtime() -> None:
 async def test_creates_project_when_absent_and_attaches_adapter() -> None:
     app_state, projects = _app_state(has_work_pipeline=True, project=None)
     await wire_real_intake_entry(app_state)
+    projects.create.assert_called_once()
     created = projects.create.call_args.args[0]
     assert isinstance(created, Project)
     assert created.id == _project_uuid("client-intake")
@@ -115,6 +116,7 @@ async def test_intake_default_project_read_live_from_db_resolver() -> None:
 
     await wire_real_intake_entry(app_state)
 
+    projects.create.assert_called_once()
     created = projects.create.call_args.args[0]
     assert created.id == _project_uuid("db-project")
 

@@ -16,6 +16,7 @@ from synthorg.api.lifecycle import _safe_shutdown, _try_stop
 from synthorg.api.lifecycle_runner_support import (
     _cancel_with_timeout,
     _LifecycleTasks,
+    drain_simulation_background_tasks,
 )
 from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.backup.service import BackupService
@@ -75,6 +76,15 @@ _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECOND
 # ``CancelledError`` cannot block the shutdown window. Reference the source
 # constant so the two values can never drift apart.
 _ENTRY_TASK_DRAIN_OUTER_SECONDS: Final[float] = (
+    _ENTRY_TASK_DRAIN_GRACE_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
+
+# Outer backstop for the client-simulation pipeline-task drain. The tasks are
+# tracked on ``ClientSimulationState.background_tasks`` (a plain set, no
+# registry), so the drain gives them the same grace as the entry-task set plus
+# the shared backstop, then cancels stragglers so a SIGTERM mid-pipeline does
+# not abandon a task writing to the simulation stores.
+_SIMULATION_TASK_DRAIN_OUTER_SECONDS: Final[float] = (
     _ENTRY_TASK_DRAIN_GRACE_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
 )
 
@@ -199,6 +209,18 @@ async def _run_shutdown(  # noqa: PLR0913
         "Failed to drain in-flight objective/brownfield entry tasks",
         timeout=_ENTRY_TASK_DRAIN_OUTER_SECONDS,
         service="entry_task_drain",
+    )
+    # Drain in-flight client-simulation pipeline tasks (intake approval,
+    # simulation runner, task-board filing) tracked only on the simulation
+    # state's in-memory set, so a task mid-pipeline at SIGTERM unwinds cleanly
+    # instead of being cancelled mid-write against its stores. The helper
+    # no-ops when no simulation runtime is wired.
+    await _try_stop(
+        drain_simulation_background_tasks(app_state),
+        API_APP_SHUTDOWN,
+        "Failed to drain in-flight client-simulation tasks",
+        timeout=_SIMULATION_TASK_DRAIN_OUTER_SECONDS,
+        service="simulation_task_drain",
     )
     # Disconnect training memory backend if auto-wired.
     if tasks.training_memory_backend is not None:

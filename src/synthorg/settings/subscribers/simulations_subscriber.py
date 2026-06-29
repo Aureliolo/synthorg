@@ -12,7 +12,10 @@ atomic per service, so an in-flight task keeps its captured engine.
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAP_FAILED
+from synthorg.observability.events.settings import (
+    SETTINGS_SERVICE_SWAP_FAILED,
+    SETTINGS_SUBSCRIBER_NOTIFIED,
+)
 
 logger = get_logger(__name__)
 
@@ -63,15 +66,25 @@ class SimulationsSettingsSubscriber:
             namespace: Changed setting namespace.
             key: Changed setting key.
         """
+        from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
+        if not has_simulation_runtime(self._app_state):
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="no simulation runtime wired; nothing to rebuild",
+            )
+            return
         try:
             await reload_runtime_services(self._app_state)
         except Exception as exc:
             reraise_critical(exc)
-            logger.error(
+            logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="client_simulation_runtime",
                 trigger_namespace=namespace,
@@ -80,3 +93,10 @@ class SimulationsSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace=namespace,
+            key=key,
+            note="client simulation runtime rebuilt",
+        )

@@ -1,6 +1,6 @@
 """Conformance for the feature-enablement flags + per-feature models.
 
-Each dissolved Chief-of-Staff / self-improvement / knowledge flag (and
+Each Chief-of-Staff / self-improvement / knowledge feature-enablement flag (and
 each per-feature model) is asserted on three axes:
 
 1. Registry presence with the documented default + type.

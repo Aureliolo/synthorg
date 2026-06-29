@@ -9,6 +9,11 @@ API_STATE_SERVICE_ATTACHED: Final[str] = "api.state.service_attached"
 API_REQUEST_COMPLETED: Final[str] = "api.request.completed"
 API_REQUEST_ERROR: Final[str] = "api.request.error"
 API_HEALTH_CHECK: Final[str] = "api.health.check"
+# A live capability gate (``ensure_feature_enabled``) blocked a request because
+# an operator has the feature's ``<namespace>.<key>`` switch off. Carries
+# ``namespace`` / ``key`` / ``feature_label`` so a single event covers every
+# gated feature (research, knowledge, scaling, chief-of-staff chat, ...).
+API_FEATURE_GATE_BLOCKED: Final[str] = "api.feature.gate_blocked"
 API_APP_STARTUP: Final[str] = "api.app.startup"
 API_APP_SHUTDOWN: Final[str] = "api.app.shutdown"
 # A security-critical durable subsystem silently degraded to in-memory-only

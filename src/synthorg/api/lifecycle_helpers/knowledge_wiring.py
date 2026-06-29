@@ -59,14 +59,26 @@ async def _build_and_wire_knowledge(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
+    synthesis_failure_event: str = API_APP_STARTUP,
 ) -> None:
     """Build the knowledge substrate + synthesis arm and swap it onto the slice.
 
     Unconditionally rebuilds and swaps, so a settings subscriber can re-run it
     to pick up a new synthesis model / provider / strategy. No-op (logs +
-    returns) only when the memory backend is absent. The ``knowledge.enabled``
-    and ``knowledge.synthesis_enabled`` switches are NOT consulted here: they
-    are enforced live at the handlers / ``/ask`` gate.
+    returns) when the memory backend is absent; RAISES ``ServiceUnavailableError``
+    when persistence is absent (the boot caller pre-gates on persistence; the
+    settings subscriber surfaces that as a logged rebuild failure). The
+    ``knowledge.enabled`` and ``knowledge.synthesis_enabled`` switches are NOT
+    consulted here: they are enforced live at the handlers / ``/ask`` gate.
+
+    Args:
+        app_state: The application state holding the slices + swap surface.
+        provider_registry: Provider registry for the synthesis arm.
+        synthesis_failure_event: Event the synthesis-build failure logs under.
+            Defaults to ``API_APP_STARTUP`` (boot); the settings subscriber
+            passes ``SETTINGS_SERVICE_SWAP_FAILED`` so an operator-triggered
+            synthesis-config change that breaks the build surfaces as a settings
+            failure rather than a misleading startup log.
     """
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
     from synthorg.memory.state import (  # noqa: PLC0415
@@ -97,7 +109,7 @@ async def _build_and_wire_knowledge(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; synthesis is optional
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
+            synthesis_failure_event,
             service="knowledge_engine",
             note="synthesis build failed; retrieval-only",
             error_type=type(exc).__name__,

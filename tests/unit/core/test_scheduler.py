@@ -201,3 +201,33 @@ async def test_resolve_wait_interval_re_read_each_tick() -> None:
     await scheduler.start()
     await asyncio.wait_for(scheduler.interval_read.wait(), timeout=5.0)
     await scheduler.stop()
+
+
+class _RaisingIntervalScheduler(_CountingScheduler):
+    """Raises from the interval re-read to exercise the loop's fallback."""
+
+    def __init__(self) -> None:
+        super().__init__(interval_seconds=60.0)
+        self.interval_calls = 0
+
+    @override
+    async def _resolve_interval_seconds(self) -> float:
+        self.interval_calls += 1
+        msg = "resolver outage"
+        raise RuntimeError(msg)
+
+
+async def test_interval_resolution_failure_falls_back_and_continues() -> None:
+    """A raising interval re-read does not kill the loop.
+
+    The base ``_run`` logs and falls back to the construction interval, so a
+    transient resolver outage cannot stop the scheduler mid-flight; the cycle
+    (which runs before the interval read) still completes.
+    """
+    scheduler = _RaisingIntervalScheduler()
+    await scheduler.start()
+    await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+    await scheduler.stop()
+
+    assert scheduler.cycles >= 1
+    assert scheduler.interval_calls >= 1

@@ -108,10 +108,7 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
-    knowledge_sub = KnowledgeSettingsSubscriber(
-        app_state=app_state,
-        settings_service=settings_service,
-    )
+    knowledge_sub = KnowledgeSettingsSubscriber(app_state=app_state)
     simulations_sub = SimulationsSettingsSubscriber(app_state=app_state)
     subs: list[SettingsSubscriber] = [
         provider_sub,

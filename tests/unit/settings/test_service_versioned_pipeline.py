@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.fernet import Fernet
-from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
@@ -19,10 +18,6 @@ from synthorg.settings.errors import SettingsEncryptionError
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
-
-
-class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 def _row(
@@ -60,7 +55,7 @@ def _plain_def() -> SettingDefinition:
 def _sensitive_def() -> SettingDefinition:
     return SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="openai_api_key",
+        key="example_api_key",
         type=SettingType.STRING,
         default=None,
         description="test",
@@ -147,9 +142,9 @@ class TestGetVersionedSharedPipeline:
             ciphertext,
             "2026-04-11T10:00:00Z",
             namespace="providers",
-            key="openai_api_key",
+            key="example_api_key",
         )
-        value, updated_at = await service.get_versioned("providers", "openai_api_key")
+        value, updated_at = await service.get_versioned("providers", "example_api_key")
         assert value == "sk-secret-plaintext"
         assert updated_at == "2026-04-11T10:00:00Z"
 
@@ -208,10 +203,10 @@ class TestResolveDbErrorPaths:
             "ciphertext",
             "2026-04-11T10:00:00Z",
             namespace="providers",
-            key="openai_api_key",
+            key="example_api_key",
         )
         with pytest.raises(SettingsEncryptionError, match="no encryptor"):
-            await service_no_encryptor.get_versioned("providers", "openai_api_key")
+            await service_no_encryptor.get_versioned("providers", "example_api_key")
 
     async def test_decrypt_failure_raises(
         self,
@@ -224,7 +219,7 @@ class TestResolveDbErrorPaths:
             "not-valid-fernet",
             "2026-04-11T10:00:00Z",
             namespace="providers",
-            key="openai_api_key",
+            key="example_api_key",
         )
         with pytest.raises(SettingsEncryptionError):
-            await service.get_versioned("providers", "openai_api_key")
+            await service.get_versioned("providers", "example_api_key")

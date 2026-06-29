@@ -7,14 +7,14 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAP_FAILED
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
-from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.knowledge_subscriber import (
     KnowledgeSettingsSubscriber,
 )
-from tests._shared import make_app_state, mock_of
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -32,10 +32,7 @@ def _make_state(*, with_registry: bool = True) -> AppState:
 
 
 def _make_subscriber(state: AppState) -> KnowledgeSettingsSubscriber:
-    return KnowledgeSettingsSubscriber(
-        app_state=state,
-        settings_service=mock_of[SettingsService](),
-    )
+    return KnowledgeSettingsSubscriber(app_state=state)
 
 
 class TestProtocol:
@@ -64,7 +61,9 @@ class TestProtocol:
 class TestRebuild:
     """on_settings_changed delegates to the knowledge wiring factory."""
 
-    async def test_change_rebuilds_via_factory(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_change_rebuilds_via_factory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=True)
         registry = state.slice(ProvidersStateSlice).registry
         build = AsyncMock()
@@ -75,8 +74,13 @@ class TestRebuild:
         call = build.await_args
         assert call is not None
         assert call.kwargs["provider_registry"] is registry
+        # A live synthesis-build failure must surface under the settings-swap
+        # event, not the startup event, so an operator sees the breakage.
+        assert call.kwargs["synthesis_failure_event"] == SETTINGS_SERVICE_SWAP_FAILED
 
-    async def test_no_registry_skips_rebuild(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_no_registry_skips_rebuild(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=False)
         build = AsyncMock()
         monkeypatch.setattr(_WIRE_TARGET, build)
@@ -84,10 +88,22 @@ class TestRebuild:
         await sub.on_settings_changed("knowledge", "synthesis_provider")
         build.assert_not_awaited()
 
-    async def test_rebuild_failure_propagates(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async def test_rebuild_failure_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = _make_state(with_registry=True)
         build = AsyncMock(side_effect=RuntimeError("db down"))
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed("knowledge", "synthesis_max_chunks")
+
+    async def test_memory_error_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state = _make_state(with_registry=True)
+        build = AsyncMock(side_effect=MemoryError())
+        monkeypatch.setattr(_WIRE_TARGET, build)
+        sub = _make_subscriber(state)
+        with pytest.raises(MemoryError):
+            await sub.on_settings_changed("knowledge", "synthesis_model")

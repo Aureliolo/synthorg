@@ -1,4 +1,4 @@
-"""HR namespace setting definitions (CFG-1 audit).
+"""HR namespace setting definitions.
 
 Covers kill switches and tuning knobs for the HR subsystems:
 training pipeline, evaluation metrics, personality composite weights.
@@ -124,9 +124,9 @@ _r.register(
         default="86400.0",
         description=(
             "Cadence between automatic evaluation-loop cycles. Default 24h"
-            " keeps the closed loop low-overhead; the scheduler floors this"
-            " at 60 seconds. Re-read live per tick, so a change applies on the"
-            " next sleep with no restart."
+            " keeps the closed loop low-overhead; values below 60 seconds are"
+            " rejected at write time (registry minimum). Re-read live per tick,"
+            " so a change applies on the next sleep with no restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
