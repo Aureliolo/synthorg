@@ -123,6 +123,11 @@ class SettingsChangeDispatcher:
         # strong ref the task could be garbage-collected mid-flight.
         self._post_done_tasks: set[asyncio.Task[None]] = set()
 
+    @property
+    def subscribers(self) -> tuple[SettingsSubscriber, ...]:
+        """The registered settings subscribers, in registration order."""
+        return self._subscribers
+
     def _task_is_on_current_loop(self) -> bool:
         """True iff a cross-loop drop of lifecycle primitives is NOT warranted.
 

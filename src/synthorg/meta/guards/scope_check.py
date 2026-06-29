@@ -20,6 +20,9 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GUARD_PASSED,
     META_PROPOSAL_GUARD_REJECTED,
 )
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -27,12 +30,27 @@ logger = get_logger(__name__)
 class ScopeCheckGuard:
     """Rejects proposals outside the declared altitude scope.
 
+    The toggleable altitude-enable flags are read live (with the baked config
+    as the fallback) so a strategy toggle flipped at runtime is honoured by
+    the guard on the next proposal, matching the per-cycle strategy filter.
+    The restart-bound ``code_modification`` capability is read from the baked
+    config only, never live: it must stay fully restart-bound, and its
+    strategy / applier are built only when baked-enabled anyway, so the guard
+    never participates in a live decision for it.
+
     Args:
-        config: Self-improvement configuration.
+        config: Self-improvement configuration (the baked fallback).
+        config_resolver: Optional resolver for the live altitude-enable read.
     """
 
-    def __init__(self, *, config: SelfImprovementConfig) -> None:
+    def __init__(
+        self,
+        *,
+        config: SelfImprovementConfig,
+        config_resolver: ConfigResolver | None = None,
+    ) -> None:
         self._config = config
+        self._config_resolver = config_resolver
 
     @property
     def name(self) -> NotBlankStr:
@@ -51,7 +69,7 @@ class ScopeCheckGuard:
         Returns:
             Guard result with PASSED or REJECTED verdict.
         """
-        allowed = self._is_altitude_enabled(proposal.altitude)
+        allowed = await self._is_altitude_enabled(proposal.altitude)
         if allowed:
             logger.debug(
                 META_PROPOSAL_GUARD_PASSED,
@@ -79,15 +97,27 @@ class ScopeCheckGuard:
             reason=reason,
         )
 
-    def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
-        """Check if an altitude is enabled in config.
+    async def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
+        """Check if an altitude is enabled.
 
-        Reads the gating flag named by the altitude's descriptor, which
-        is exhaustive over :class:`ProposalAltitude` by an import-time
-        completeness guard.
+        Reads the gating flag named by the altitude's descriptor (exhaustive
+        over :class:`ProposalAltitude` by an import-time completeness guard)
+        from the ``self_improvement`` namespace. The toggleable altitudes are
+        read live (baked config as the fallback); the restart-bound
+        ``code_modification`` altitude is read from the baked config only, so
+        a live settings read can never flip its guard verdict. The attribute
+        name matches the setting key, so the same descriptor drives both.
 
         Returns:
             ``True`` or ``False`` reflecting the condition.
         """
         attr = PROPOSAL_ALTITUDE_DESCRIPTORS[altitude].enable_config_attr
-        return bool(getattr(self._config, attr))
+        baked = bool(getattr(self._config, attr))
+        if altitude is ProposalAltitude.CODE_MODIFICATION:
+            return baked
+        return await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.SELF_IMPROVEMENT,
+            key=attr,
+            fallback=baked,
+        )

@@ -41,6 +41,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import (
@@ -91,6 +92,7 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -129,6 +131,8 @@ class GroupChatService:
         authority_guard: AuthorityDeferenceGuard | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         invite_coordinator: GroupInviteCoordinator | None = None,
+        config_resolver: ConfigResolver | None = None,
+        master_enabled: bool = True,
     ) -> None:
         self._agent_caller = agent_caller
         self._agent_registry = agent_registry
@@ -139,11 +143,35 @@ class GroupChatService:
         self._clock: Clock = clock or SystemClock()
         self._authority_guard = authority_guard or AuthorityDeferenceGuard()
         self._cost_tracker = cost_tracker
-        # Present only when the invite feature is on (built into the
-        # service by ``build_group_chat_service``); ``None`` keeps the
-        # round on the literal plain-text contribution path.
+        # Built unconditionally by ``build_group_chat_service``; the round
+        # gates it per turn on the live ``invite_enabled`` flag, so ``None``
+        # here (no approval store) or a disabled flag both keep the round on
+        # the literal plain-text contribution path.
         self._invite_coordinator = invite_coordinator
+        self._config_resolver = config_resolver
+        self._master_enabled = master_enabled
         self._locks = ConversationLockRegistry()
+
+    async def _live_invite_coordinator(self) -> GroupInviteCoordinator | None:
+        """Resolve the invite coordinator for this round, gated live.
+
+        Returns the built coordinator only when both the persona master
+        switch and ``chief_of_staff.invite_enabled`` are live-on; otherwise
+        ``None``, which keeps the round on the plain contribution path. Read
+        once per round so the gate is stable across the round's turns.
+
+        Returns:
+            The coordinator when invites are live, else ``None``.
+        """
+        if self._invite_coordinator is None:
+            return None
+        active = await resolve_cos_autonomous_cap(
+            resolver=self._config_resolver,
+            key="invite_enabled",
+            master_fallback=self._master_enabled,
+            cap_fallback=self._config.invite_enabled,
+        )
+        return self._invite_coordinator if active else None
 
     async def converse(self, args: GroupConverseArgs) -> GroupConverseResult:
         """Run one round-robin round for a group conversation.
@@ -336,6 +364,9 @@ class GroupChatService:
         Returns:
             ``GroupConverseResult`` instance.
         """
+        # Resolve the invite gate once per round so the structured-envelope
+        # path stays consistent across every participant's turn.
+        invite_coordinator = await self._live_invite_coordinator()
         budget = self._config.group_chat_round_token_budget
         tracker = TokenTracker(budget=budget)
         reserve = int(budget * self._config.group_chat_token_reserve_ratio)
@@ -374,13 +405,19 @@ class GroupChatService:
                 call_max_tokens,
                 tracker,
                 now,
+                invite_coordinator,
             )
             if contribution is None:
                 skipped.append(participant.agent_id)
                 continue
             contributions.append(contribution)
             await self._maybe_park_invite(
-                conversation, participant, invite_req, pending_invites, now
+                conversation,
+                participant,
+                invite_req,
+                pending_invites,
+                now,
+                invite_coordinator,
             )
             sequence += 1
             total_turns += 1
@@ -397,28 +434,29 @@ class GroupChatService:
             pending_invites=tuple(pending_invites),
         )
 
-    async def _maybe_park_invite(
+    async def _maybe_park_invite(  # noqa: PLR0913 -- one invite's full context
         self,
         conversation: Conversation,
         participant: ConversationParticipant,
         invite_req: InviteRequest | None,
         pending_invites: list[PendingInviteSummary],
         now: datetime,
+        invite_coordinator: GroupInviteCoordinator | None,
     ) -> None:
         """Park an agent-initiated invite if one was requested and uncapped.
 
-        No-op unless the invite feature is on, an invite was parsed this
-        turn, and the per-round park cap (``invite_max_per_round``) is
-        not yet reached. A parked invite is appended to *pending_invites*
+        No-op unless the invite feature is live this round, an invite was
+        parsed this turn, and the per-round park cap (``invite_max_per_round``)
+        is not yet reached. A parked invite is appended to *pending_invites*
         so the round result can surface it for the inline consent prompt.
         """
         if (
             invite_req is None
-            or self._invite_coordinator is None
+            or invite_coordinator is None
             or len(pending_invites) >= self._config.invite_max_per_round
         ):
             return
-        summary = await self._invite_coordinator.request_invite(
+        summary = await invite_coordinator.request_invite(
             conversation_id=str(conversation.id),
             requested_by_agent_id=participant.agent_id,
             requested_by_name=participant.agent_name,
@@ -452,6 +490,7 @@ class GroupChatService:
         max_tokens: int,
         tracker: TokenTracker,
         now: datetime,
+        invite_coordinator: GroupInviteCoordinator | None,
     ) -> tuple[AttributedContribution | None, InviteRequest | None]:
         """Dispatch one participant's turn and persist its attributed turn.
 
@@ -476,13 +515,13 @@ class GroupChatService:
         # unchanged. The structured-output ask lives with the invite
         # coordinator, never the shared persona renderer.
         template = (
-            self._invite_coordinator.contribution_prompt()
-            if self._invite_coordinator is not None
+            invite_coordinator.contribution_prompt()
+            if invite_coordinator is not None
             else GROUP_CONTRIBUTION_PROMPT
         )
         preamble: str | None = None
-        if self._invite_coordinator is not None:
-            preamble = await self._invite_coordinator.invited_preamble(
+        if invite_coordinator is not None:
+            preamble = await invite_coordinator.invited_preamble(
                 str(conversation.id),
                 participant.agent_id,
                 already_spoke=any(
@@ -517,7 +556,10 @@ class GroupChatService:
             return None, None
         tracker.record(response.input_tokens, response.output_tokens)
         content, invite_req = self._extract_contribution(
-            response.content, str(conversation.id), participant.agent_id
+            response.content,
+            str(conversation.id),
+            participant.agent_id,
+            invite_coordinator,
         )
         if not content:
             logger.warning(
@@ -562,20 +604,21 @@ class GroupChatService:
         raw_content: str | None,
         conversation_id: NotBlankStr,
         agent_id: NotBlankStr,
+        invite_coordinator: GroupInviteCoordinator | None,
     ) -> tuple[str, InviteRequest | None]:
         """Resolve one reply into its message text + optional invite.
 
-        With the invite feature on, the reply is a structured envelope:
-        the parsed ``message`` text and any invite are returned. When
-        off, this is the literal plain-text path -- the raw reply,
+        With the invite feature live this round, the reply is a structured
+        envelope: the parsed ``message`` text and any invite are returned.
+        When off, this is the literal plain-text path -- the raw reply,
         stripped, with no invite.
 
         Returns:
             ``(message_text, invite_request)``.
         """
-        if self._invite_coordinator is None:
+        if invite_coordinator is None:
             return (raw_content or "").strip(), None
-        parsed = self._invite_coordinator.parse_contribution(
+        parsed = invite_coordinator.parse_contribution(
             raw_content or "",
             conversation_id=conversation_id,
             agent_id=agent_id,

@@ -26,6 +26,7 @@ from synthorg.meta.toolsmith.validation_gate import (
     SandboxBriefRunner,
     SandboxResolver,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -70,6 +71,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     existing_capabilities: tuple[NotBlankStr, ...] = (),
     cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> ToolsmithRuntime:
     """Wire the toolsmith pipeline from config and runtime dependencies.
 
@@ -92,6 +94,9 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         existing_capabilities: Current capability surface (dedup hint).
         cost_tracker: Optional cost tracker for the authoring call.
         clock: Time source.
+        config_resolver: Optional resolver threaded into the service for the
+            live ``tool_creation_enabled`` gate and per-gap allowlist re-read,
+            and into the overflow strategy for the live model read.
 
     Returns:
         A :class:`ToolsmithRuntime` with the service and dynamic registry.
@@ -126,12 +131,15 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         gate=gate,
         clock=resolved_clock,
     )
-    guards = build_guards(si_config, approval_store=approval_store)
+    guards = build_guards(
+        si_config, approval_store=approval_store, config_resolver=config_resolver
+    )
     resolved_overflow = overflow_handler or _build_overflow_handler(
         si_config=si_config,
         provider=provider,
         cost_tracker=cost_tracker,
         snapshot_provider=snapshot_provider,
+        config_resolver=config_resolver,
     )
     service = ToolsmithService(
         config=tsc,
@@ -143,6 +151,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         existing_capabilities=existing_capabilities,
         dynamic_registry=dynamic_registry,
         clock=resolved_clock,
+        config_resolver=config_resolver,
     )
     return ToolsmithRuntime(service=service, dynamic_registry=dynamic_registry)
 
@@ -153,6 +162,7 @@ def _build_overflow_handler(
     provider: BaseCompletionProvider,
     cost_tracker: CostTrackerProtocol | None,
     snapshot_provider: SnapshotProvider | None,
+    config_resolver: ConfigResolver | None = None,
 ) -> ToolCreationOverflowHandler | None:
     """Build the code-modification overflow handler when that altitude is on.
 
@@ -181,6 +191,7 @@ def _build_overflow_handler(
         provider=provider,
         scope_validator=scope_validator,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
     return CodeModificationOverflowHandler(
         strategy, snapshot_provider=snapshot_provider

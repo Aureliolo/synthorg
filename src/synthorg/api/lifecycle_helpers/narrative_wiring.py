@@ -13,7 +13,6 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -26,13 +25,15 @@ async def wire_run_narrator(
     cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
-    """Attach the post-run narrator to the pipeline behind narrative_enabled.
+    """Attach the post-run narrator to the pipeline; gating is live per run.
 
-    Best-effort and idempotent: it runs after the docs engine and project
-    brain are wired (the narrator reads both) and attaches to the
-    already-built work pipeline. A disabled flag, an absent provider, or a
-    missing collaborator leaves the pipeline narrator-less so completed
-    briefs simply produce no narrative.
+    The narrator is attached unconditionally of ``narrative_enabled``; the
+    capability is gated live per run inside the narrator, so the flag flips
+    on without a restart. Best-effort and idempotent: it runs after the docs
+    engine and project brain are wired (the narrator reads both) and attaches
+    to the already-built work pipeline. An absent provider or a missing
+    collaborator leaves the pipeline narrator-less so completed briefs simply
+    produce no narrative.
 
     Raises:
         MemoryError: Propagated from narrator construction; interpreter-level
@@ -50,14 +51,9 @@ async def wire_run_narrator(
     ):
         return
     config = si_config.chief_of_staff
-    if not config.narrative_enabled:
-        logger.debug(
-            COS_NARRATIVE_SKIPPED,
-            service="chief_of_staff_narrator",
-            reason="narrative_disabled",
-        )
-        return
-    # Narrator construction is best-effort: a misconfigured collaborator
+    # The narrator is attached unconditionally of ``narrative_enabled``: it
+    # gates documentary mode live per run, so the flag flips on without a
+    # restart. Construction is best-effort: a misconfigured collaborator
     # must not abort app startup, so a failure leaves the pipeline
     # narrator-less (completed briefs simply produce no narrative) rather
     # than propagating. Mirrors the charter / research wiring helpers.
@@ -67,6 +63,7 @@ async def wire_run_narrator(
             config=config,
             provider_registry=provider_registry,
             cost_tracker=cost_tracker,
+            master_enabled=si_config.chief_of_staff_enabled,
         )
     except MemoryError, RecursionError:
         # Interpreter-level criticals are never best-effort; let them abort.
@@ -87,6 +84,7 @@ def _attach_narrator(
     config: ChiefOfStaffConfig,
     provider_registry: ProviderRegistry,
     cost_tracker: CostTrackerProtocol | None,
+    master_enabled: bool,
 ) -> None:
     """Build the narrator and attach it to the work pipeline.
 
@@ -102,6 +100,7 @@ def _attach_narrator(
     )
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     available = provider_registry.list_providers()
     provider = provider_registry.get(available[0]) if available else None
@@ -116,6 +115,8 @@ def _attach_narrator(
         task_repo=persistence_of(app_state).tasks,
         cost_tracker=cost_tracker,
         currency=currency,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=master_enabled,
     )
     if narrator is None:
         logger.info(

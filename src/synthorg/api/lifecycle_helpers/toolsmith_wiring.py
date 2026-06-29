@@ -21,6 +21,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -72,6 +73,7 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
     approval_store: ApprovalStoreProtocol | None,
     cost_tracker: CostTrackerProtocol | None,
     workspace_root: Path,
+    config_resolver: ConfigResolver | None = None,
 ) -> ToolsmithRuntime | None:
     """Resolve dependencies and build the toolsmith runtime, or None.
 
@@ -127,6 +129,7 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
         scorecard_provider=scorecard_provider,
         approval_store=approval_store,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
 
 
@@ -244,12 +247,15 @@ async def wire_toolsmith(
     approval_store: ApprovalStoreProtocol | None,
     cost_tracker: CostTrackerProtocol | None,
 ) -> None:
-    """Wire the self-extending toolkit at startup when enabled.
+    """Wire the self-extending toolkit at startup.
 
-    Wired only when ``tool_creation_enabled`` is set AND a provider is
-    registered AND persistence is connected (authored blueprints are
-    durable). Disabled by default, so a normal boot skips this entirely.
-    Idempotent for re-entered lifespans (shared-app fixtures).
+    Wired unconditionally whenever a provider is registered AND persistence
+    is connected (authored blueprints are durable), so the
+    ``tool_creation_enabled`` gate can flip on at runtime without a restart.
+    The service is fail-safe when the gate is off: ``run_cycle`` no-ops and
+    ``apply`` rejects on the live read, the allowlist is re-read per gap, and
+    the existing ``meta.toolsmith_cycle_paused`` switch still pauses the
+    scheduler. Idempotent for re-entered lifespans (shared-app fixtures).
     """
     from synthorg.engine.workspace.state import (  # noqa: PLC0415
         agent_workspace_root_of,
@@ -274,8 +280,6 @@ async def wire_toolsmith(
     si_config = await load_self_improvement_config(
         app_state.slice(SettingsStateSlice).settings_service,
     )
-    if not si_config.tool_creation_enabled:
-        return
     try:
         runtime = _build_toolsmith_runtime(
             si_config=si_config,
@@ -284,6 +288,7 @@ async def wire_toolsmith(
             approval_store=approval_store,
             cost_tracker=cost_tracker,
             workspace_root=agent_workspace_root_of(app_state),
+            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

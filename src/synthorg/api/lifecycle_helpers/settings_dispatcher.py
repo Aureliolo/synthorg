@@ -23,6 +23,7 @@ from synthorg.settings.subscribers import (
     ApiSecurityHeadersSettingsSubscriber,
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
+    ChiefOfStaffAlertsSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
@@ -96,6 +97,10 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
+    cos_alerts_sub = ChiefOfStaffAlertsSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
     subs: list[SettingsSubscriber] = [
         provider_sub,
         memory_sub,
@@ -106,6 +111,7 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         memory_bridge_sub,
         observability_bridge_sub,
         meta_self_improvement_sub,
+        cos_alerts_sub,
         ApiSecurityHeadersSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,

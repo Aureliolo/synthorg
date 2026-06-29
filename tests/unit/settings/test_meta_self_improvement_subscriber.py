@@ -44,9 +44,21 @@ class TestSubscriberProtocol:
         sub, _ = _make_subscriber()
         assert isinstance(sub, SettingsSubscriber)
 
-    def test_watched_keys(self) -> None:
+    def test_watches_blob_and_hot_overlay_keys(self) -> None:
         sub, _ = _make_subscriber()
-        assert sub.watched_keys == frozenset({("meta", "self_improvement")})
+        watched = sub.watched_keys
+        # The structural blob plus representative hot overlay keys.
+        assert ("meta", "self_improvement") in watched
+        assert ("self_improvement", "enabled") in watched
+        assert ("chief_of_staff", "alerts_enabled") in watched
+        assert ("chief_of_staff", "chat_model") in watched
+
+    def test_excludes_restart_bound_keep_settings(self) -> None:
+        """The two restart-bound security switches are not watched."""
+        sub, _ = _make_subscriber()
+        watched = sub.watched_keys
+        assert ("self_improvement", "code_modification_enabled") not in watched
+        assert ("chief_of_staff", "direct_mcp_enabled") not in watched
 
     def test_subscriber_name(self) -> None:
         sub, _ = _make_subscriber()

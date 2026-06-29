@@ -68,6 +68,9 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_model_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -266,6 +269,7 @@ class LlmConcernRouter:
         max_tokens: int,
         timeout_seconds: float,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -276,6 +280,7 @@ class LlmConcernRouter:
         self._max_tokens = max_tokens
         self._timeout_seconds = timeout_seconds
         self._cost_tracker = cost_tracker
+        self._config_resolver = config_resolver
 
     async def route(
         self, history: tuple[ConversationTurn, ...]
@@ -354,6 +359,12 @@ class LlmConcernRouter:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
+        model = await resolve_model_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="routing_model",
+            fallback=self._model,
+        )
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -365,7 +376,7 @@ class LlmConcernRouter:
                 response = await asyncio.wait_for(
                     self._provider.complete(
                         messages,
-                        self._model,
+                        model,
                         config=completion_config,
                     ),
                     timeout=self._timeout_seconds,
@@ -487,12 +498,14 @@ def build_role_router(
     provider_registry: ProviderRegistry,
     agent_registry: AgentRegistryService,
     cost_tracker: CostTrackerProtocol | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> RoleRouter | None:
-    """Build the configured :class:`RoleRouter`, or ``None`` when off.
+    """Build the configured :class:`RoleRouter`, or ``None`` when unbuildable.
 
-    Mirrors ``build_chief_of_staff_proposer``: returns ``None`` when the
-    feature is disabled or its dependencies are absent, so the proposer's
-    routing seam stays inert and the surface keeps v1 behaviour.
+    The router is built unconditionally of ``routing_enabled`` (the proposer
+    gates routing per turn on the live flag, so the instance must exist for
+    the flag to flip on without a restart). Returns ``None`` only when the
+    classifier provider is absent for the LLM strategy.
 
     Args:
         config: Chief of Staff configuration.
@@ -500,12 +513,12 @@ def build_role_router(
             strategy only).
         agent_registry: Source of the candidate roster and resolution.
         cost_tracker: Optional cost tracker for classification calls.
+        config_resolver: Optional resolver for the live ``routing_model``
+            read in the LLM classifier.
 
     Returns:
-        A router, or ``None`` when routing is disabled or unbuildable.
+        A router, or ``None`` when the classifier provider is absent.
     """
-    if not config.routing_enabled:
-        return None
     if config.routing_strategy == "keyword":
         keyword_map = (
             tuple((rule.keywords, rule.role) for rule in config.routing_keyword_rules)
@@ -531,6 +544,7 @@ def build_role_router(
         max_tokens=config.routing_max_tokens,
         timeout_seconds=config.agent_call_timeout_seconds,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
 
 

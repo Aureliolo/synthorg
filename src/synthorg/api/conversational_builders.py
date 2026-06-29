@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     )
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.autonomy.resolver import AutonomyResolver
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -43,6 +44,8 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     cost_tracker: CostTrackerProtocol | None,
     approval_store: ApprovalStoreProtocol | None = None,
     clock: Clock | None = None,
+    config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> GroupChatService | None:
     """Resolve a GroupChatService from config + wiring.
 
@@ -113,6 +116,8 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
         clock=clock,
         cost_tracker=cost_tracker,
         invite_coordinator=invite_coordinator,
+        config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
 
 
@@ -124,17 +129,18 @@ def _build_invite_coordinator(
     approval_store: ApprovalStoreProtocol | None,
     clock: Clock | None,
 ) -> GroupInviteCoordinator | None:
-    """Construct the agent-invite coordinator when the feature is on.
+    """Construct the agent-invite coordinator when an approval store is wired.
 
-    Returns ``None`` -- leaving group chat on the plain contribution
-    path -- when ``invite_enabled`` is off or no approval store is wired
-    (consent cannot be parked without the queue).
+    Built unconditionally of ``invite_enabled`` (the group-chat round gates
+    invites live per turn, so the coordinator must exist for the flag to flip
+    on without a restart). Returns ``None`` only when no approval store is
+    wired, since consent cannot be parked without the queue.
 
     Returns:
         The ``GroupInviteCoordinator`` value when present, ``None``
         otherwise.
     """
-    if not chief_of_staff_config.invite_enabled or approval_store is None:
+    if approval_store is None:
         return None
     from synthorg.meta.chief_of_staff.group_invite import (  # noqa: PLC0415
         GroupInviteCoordinator,

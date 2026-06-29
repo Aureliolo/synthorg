@@ -10,10 +10,10 @@ import asyncio
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.meta._service_config import _SECRET_PATHS, _redact_secrets
 from synthorg.meta._service_lifecycle import SelfImprovementLifecycleMixin
+from synthorg.meta._service_live_config import SelfImprovementLiveConfigMixin
 from synthorg.meta._service_rollout import SelfImprovementRolloutMixin
 from synthorg.meta.appliers.architecture_applier import ArchitectureApplierContext
 from synthorg.meta.appliers.config_applier import (
@@ -27,7 +27,6 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.factory import (
     build_appliers,
-    build_confidence_adjuster,
     build_guards,
     build_regression_detector,
     build_rollout_strategies,
@@ -53,8 +52,6 @@ from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTMENT_FAILED,
-    COS_LEARNING_ENABLED,
-    COS_OUTCOME_RECORD_FAILED,
 )
 from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
@@ -65,7 +62,10 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GUARD_REJECTED,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import (
+    resolve_bool_with_fallback,
+)
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -74,6 +74,7 @@ logger = get_logger(__name__)
 class SelfImprovementService(
     SelfImprovementRolloutMixin,
     SelfImprovementLifecycleMixin,
+    SelfImprovementLiveConfigMixin,
 ):
     """Orchestrates the self-improvement meta-loop cycle.
 
@@ -174,8 +175,12 @@ class SelfImprovementService(
         # FakeClock here.
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._rule_engine = build_rule_engine(config)
-        self._strategies = build_strategies(config, provider=provider)
-        self._guards = build_guards(config, approval_store=approval_store)
+        self._strategies = build_strategies(
+            config, provider=provider, config_resolver=config_resolver
+        )
+        self._guards = build_guards(
+            config, approval_store=approval_store, config_resolver=config_resolver
+        )
         self._appliers = build_appliers(
             config,
             config_provider=config_provider,
@@ -200,26 +205,16 @@ class SelfImprovementService(
             config, builtin_rule_names=builtin_names
         )
 
-        # Chief of Staff learning.
+        # Chief of Staff learning. The backend is held regardless of the
+        # boot flag so a runtime enable can build the components lazily; the
+        # components are built eagerly here only when learning is baked-on,
+        # which preserves the construction-time misconfiguration warning.
+        self._memory_backend = memory_backend
         self._outcome_store: MemoryBackendOutcomeStore | None = None
         self._confidence_adjuster: ConfidenceAdjuster | None = None
+        self._learning_no_backend_warned = False
         if config.chief_of_staff.learning_enabled:
-            if memory_backend is None:
-                logger.warning(
-                    COS_OUTCOME_RECORD_FAILED,
-                    reason="learning_enabled_but_no_memory_backend",
-                )
-            else:
-                self._outcome_store = MemoryBackendOutcomeStore(
-                    backend=memory_backend,
-                    agent_id=NotBlankStr("chief-of-staff"),
-                    min_outcomes=config.chief_of_staff.min_outcomes,
-                )
-                self._confidence_adjuster = build_confidence_adjuster(config)
-                logger.info(
-                    COS_LEARNING_ENABLED,
-                    strategy=config.chief_of_staff.adjuster_strategy,
-                )
+            self._ensure_learning_components()
 
     async def run_cycle(
         self,
@@ -230,12 +225,15 @@ class SelfImprovementService(
         Evaluates rules, generates proposals, filters through
         guards, and returns proposals ready for human approval.
 
-        Gated by ``engine.evolution_enabled``: when False the cycle
-        short-circuits before rule evaluation so an operator can
-        suspend the self-improvement loop without restarting the
-        process.  Without a resolver wired we fall back to
-        ``config.enabled`` (the YAML-baked switch) so standalone /
-        test paths still honour the documented default.
+        Gated live each cycle by both ``engine.evolution_enabled`` and
+        ``self_improvement.enabled``: when either is False the cycle
+        short-circuits before rule evaluation so an operator can suspend
+        the self-improvement loop without restarting the process. Without
+        a resolver wired both reads fall back to ``config.enabled`` (the
+        YAML-baked switch) so standalone / test paths still honour the
+        documented default. The enabled-altitude set and learning gate are
+        likewise snapshotted once here, so a concurrent settings swap never
+        corrupts an in-flight cycle.
 
         Args:
             snapshot: Current org-wide signal snapshot.
@@ -249,7 +247,13 @@ class SelfImprovementService(
             key="evolution_enabled",
             fallback=self._config.enabled,
         )
-        if not evolution_enabled:
+        self_improvement_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.SELF_IMPROVEMENT,
+            key="enabled",
+            fallback=self._config.enabled,
+        )
+        if not (evolution_enabled and self_improvement_enabled):
             logger.info(
                 META_CYCLE_NO_TRIGGERS,
                 reason="evolution_disabled_by_setting",
@@ -264,13 +268,25 @@ class SelfImprovementService(
             logger.info(META_CYCLE_NO_TRIGGERS)
             return ()
 
-        # Step 2: Generate proposals from strategies (parallel).
-        all_proposals = await self._dispatch_strategies(snapshot, matches)
+        # Step 2: Generate proposals from the strategies whose altitude is
+        # live-enabled this cycle (captured once for captured-reference safety).
+        enabled_altitudes = await self._resolve_enabled_altitudes()
+        active_strategies = tuple(
+            s for s in self._strategies if self._strategy_active(s, enabled_altitudes)
+        )
+        all_proposals = await self._dispatch_strategies(
+            snapshot, matches, active_strategies
+        )
 
         # Step 2.5: Adjust confidence via historical learning.
         # Uses return_exceptions=True so a single failed adjustment
         # does not discard results from successful adjustments.
-        if self._confidence_adjuster is not None and self._outcome_store is not None:
+        learning_active = await self._learning_active()
+        if (
+            learning_active
+            and self._confidence_adjuster is not None
+            and self._outcome_store is not None
+        ):
             results = await asyncio.gather(
                 *(
                     self._confidence_adjuster.adjust(
@@ -336,8 +352,15 @@ class SelfImprovementService(
         self,
         snapshot: OrgSignalSnapshot,
         matches: tuple[RuleMatch, ...],
+        strategies: tuple[ImprovementStrategy, ...],
     ) -> list[ImprovementProposal]:
-        """Run strategies in parallel via TaskGroup.
+        """Run the given strategies in parallel via TaskGroup.
+
+        Args:
+            snapshot: Current org-wide signal snapshot.
+            matches: Triggered rule matches for this cycle.
+            strategies: The strategies live-enabled for this cycle (already
+                filtered against the per-cycle altitude snapshot).
 
         Returns:
             List of the declared element type.
@@ -355,7 +378,7 @@ class SelfImprovementService(
             )
 
         pairs: list[tuple[ImprovementStrategy, tuple[RuleMatch, ...]]] = []
-        for strategy in self._strategies:
+        for strategy in strategies:
             relevant = tuple(
                 m for m in matches if strategy.altitude in m.suggested_altitudes
             )

@@ -39,6 +39,7 @@ from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
 
@@ -242,6 +243,7 @@ def build_proposer(
     config: ChiefOfStaffConfig | None = None,
     role_router: RoleRouter | None = None,
     provider_registry: ProviderRegistry | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> tuple[
     ChiefOfStaffProposer,
     FakeConversationRepo,
@@ -259,9 +261,14 @@ def build_proposer(
     turn_repo = FakeTurnRepo()
     proposal_repo = FakeProposalRepo()
     approval_store = ApprovalStore()
+    # Routing is gated per turn on ``routing_enabled``; a test that injects a
+    # router wants it to fire, so default that flag on when a router is given.
     proposer = ChiefOfStaffProposer(
         provider=provider,
-        config=config or ChiefOfStaffConfig(propose_enabled=True),
+        config=config
+        or ChiefOfStaffConfig(
+            propose_enabled=True, routing_enabled=role_router is not None
+        ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,
         proposal_repo=proposal_repo,
@@ -269,5 +276,6 @@ def build_proposer(
         clock=FakeClock(start=START),
         role_router=role_router,
         provider_registry=provider_registry,
+        config_resolver=config_resolver,
     )
     return proposer, conv_repo, turn_repo, proposal_repo, approval_store

@@ -70,7 +70,13 @@ class TestBuildRuleEngine:
 class TestBuildStrategies:
     """Strategy factory tests."""
 
-    def test_config_tuning_only(self) -> None:
+    def test_template_strategies_always_built(self) -> None:
+        """The three template altitudes are built regardless of their flags.
+
+        The flags no longer gate construction: the meta-loop selects which
+        strategies run per cycle from a live read, so the instances must
+        exist even when the flags are off at boot.
+        """
         cfg = SelfImprovementConfig(
             enabled=True,
             config_tuning_enabled=True,
@@ -78,8 +84,12 @@ class TestBuildStrategies:
             prompt_tuning_enabled=False,
         )
         strategies = build_strategies(cfg)
-        assert len(strategies) == 1
-        assert strategies[0].altitude == ProposalAltitude.CONFIG_TUNING
+        altitudes = {s.altitude for s in strategies}
+        assert altitudes == {
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.ARCHITECTURE,
+            ProposalAltitude.PROMPT_TUNING,
+        }
 
     def test_all_deployment_strategies_enabled(self) -> None:
         cfg = SelfImprovementConfig(
@@ -130,7 +140,13 @@ class TestBuildStrategies:
         altitudes = {s.altitude for s in strategies}
         assert ProposalAltitude.CODE_MODIFICATION in altitudes
 
-    def test_none_enabled(self) -> None:
+    def test_templates_built_even_when_flags_off(self) -> None:
+        """All flags off still builds the three template strategies.
+
+        Boot-time gating moved to the per-cycle live filter, so the builder
+        always provides the template instances; the run-cycle filter decides
+        which of them actually run.
+        """
         cfg = SelfImprovementConfig(
             enabled=True,
             config_tuning_enabled=False,
@@ -138,7 +154,12 @@ class TestBuildStrategies:
             prompt_tuning_enabled=False,
         )
         strategies = build_strategies(cfg)
-        assert len(strategies) == 0
+        altitudes = {s.altitude for s in strategies}
+        assert altitudes == {
+            ProposalAltitude.CONFIG_TUNING,
+            ProposalAltitude.ARCHITECTURE,
+            ProposalAltitude.PROMPT_TUNING,
+        }
 
 
 class TestBuildGuards:

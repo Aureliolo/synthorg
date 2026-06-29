@@ -15,6 +15,9 @@ from synthorg.settings.subscribers.backup_subscriber import (
 from synthorg.settings.subscribers.budget_benchmark_subscriber import (
     BudgetBenchmarkProviderSettingsSubscriber,
 )
+from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
+    ChiefOfStaffAlertsSettingsSubscriber,
+)
 from synthorg.settings.subscribers.escalation_reconnect_subscriber import (
     EscalationReconnectSettingsSubscriber,
 )
@@ -76,6 +79,7 @@ __all__ = [
     "ApiSecurityHeadersSettingsSubscriber",
     "BackupSettingsSubscriber",
     "BudgetBenchmarkProviderSettingsSubscriber",
+    "ChiefOfStaffAlertsSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",
     "EscalationReconnectSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",

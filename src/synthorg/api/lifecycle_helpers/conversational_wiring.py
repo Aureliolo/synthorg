@@ -54,6 +54,7 @@ async def wire_group_chat_service(
     from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
         build_conversational_repositories,
     )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).group_chat_service is not None:
         return
@@ -68,6 +69,8 @@ async def wire_group_chat_service(
         repositories=repositories,
         cost_tracker=cost_tracker,
         approval_store=app_state.slice(ApprovalStateSlice).store,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=si_config.chief_of_staff_enabled,
     )
     if service is not None:
         app_state.wire(MetaStateSlice, group_chat_service=service)
@@ -252,16 +255,19 @@ def _wire_role_router(
 ) -> RoleRouter | None:
     """Build + wire the concern role router when an agent registry is present.
 
-    ``build_role_router`` returns ``None`` when routing is off or its
-    strategy's deps are absent, leaving the proposer in v1 generic mode.
-    A built router is stored on the slice so the manifest treats it as
+    ``build_role_router`` builds the router unconditionally of
+    ``routing_enabled`` so the live per-turn routing gate (applied in the
+    proposer) can flip without a restart; it returns ``None`` only when the
+    chosen strategy's deps are absent, leaving the proposer in v1 generic
+    mode. A built router is stored on the slice so the manifest treats it as
     wired.
 
     Returns:
-        The role router, or ``None`` when routing is unavailable.
+        The role router, or ``None`` when its strategy's deps are absent.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     agent_registry = app_state.slice(HrStateSlice).agent_registry
     if agent_registry is None:
@@ -273,6 +279,7 @@ def _wire_role_router(
         provider_registry=provider_registry,
         agent_registry=agent_registry,
         cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
     if role_router is not None:
         app_state.wire(MetaStateSlice, role_router=role_router)
@@ -322,6 +329,8 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
     )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
     proposer = build_chief_of_staff_proposer(
         si_config.chief_of_staff,
         provider_registry=provider_registry,
@@ -329,6 +338,8 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         repositories=repositories,
         cost_tracker=cost_tracker,
         role_router=role_router,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=si_config.chief_of_staff_enabled,
     )
     if proposer is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_proposer=proposer)

@@ -51,6 +51,9 @@ from synthorg.observability.events.meta import (
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.errors import ProviderError
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_model_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -100,6 +103,11 @@ class CodeModificationStrategy:
         config: Self-improvement configuration.
         provider: Completion provider for LLM calls.
         scope_validator: Validates proposed file paths.
+        config_resolver: Optional resolver for the live
+            ``self_improvement.code_modification_model`` read. When ``None``
+            (test harness, anonymous boot) the model falls back to the baked
+            ``code_modification.llm_model``. The capability itself stays
+            restart-bound; only the model identifier is hot.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.META_CODE_MODIFICATION
@@ -116,12 +124,14 @@ class CodeModificationStrategy:
         provider: BaseCompletionProvider,
         scope_validator: ScopeValidator,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker
         self._provider = provider
         self._scope_validator = scope_validator
         self._code_config = config.code_modification
+        self._config_resolver = config_resolver
 
     @property
     def altitude(self) -> ProposalAltitude:
@@ -319,6 +329,12 @@ class CodeModificationStrategy:
             temperature=self._code_config.temperature,
             max_tokens=self._code_config.max_tokens,
         )
+        model = await resolve_model_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.SELF_IMPROVEMENT,
+            key="code_modification_model",
+            fallback=str(self._code_config.llm_model),
+        )
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
@@ -328,7 +344,7 @@ class CodeModificationStrategy:
         ):
             response = await self._provider.complete(
                 messages=messages,
-                model=str(self._code_config.llm_model),
+                model=model,
                 config=config,
             )
         return response.content

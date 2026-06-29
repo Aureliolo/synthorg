@@ -10,6 +10,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata, DocSummary
 from synthorg.docs_engine.service import DocsService
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.errors import (
     NarrativeGenerationError,
     NarrativeSourceUnavailableError,
@@ -74,7 +75,12 @@ def _narrator(
         write_prose=AsyncMock(return_value=NarrativeProse(summary="A clean run."))
     )
     docs = mock_of[DocsService](list_docs=list_docs, write_doc=write_doc)
-    return ChiefOfStaffNarrator(reader=reader, synthesiser=synthesiser, docs=docs)
+    return ChiefOfStaffNarrator(
+        reader=reader,
+        synthesiser=synthesiser,
+        docs=docs,
+        config=ChiefOfStaffConfig(narrative_enabled=True),
+    )
 
 
 class TestGenerate:

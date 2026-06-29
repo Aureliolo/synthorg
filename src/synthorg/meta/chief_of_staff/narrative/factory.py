@@ -23,6 +23,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -37,11 +38,18 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
     task_repo: TaskRepository | None,
     cost_tracker: CostTrackerProtocol | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
+    config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> ChiefOfStaffNarrator | None:
-    """Construct the run narrator, or ``None`` when it cannot be wired.
+    """Construct the run narrator, or ``None`` when a collaborator is absent.
+
+    The narrator is built unconditionally of ``narrative_enabled``: it gates
+    documentary mode live per run, so the instance must exist for the flag to
+    flip on without a restart. Returns ``None`` only when a required
+    collaborator is missing.
 
     Args:
-        config: Chief-of-Staff configuration (gates on ``narrative_enabled``).
+        config: Chief-of-Staff configuration (baked fallback for the gate).
         provider: Completion provider for the connective-prose call.
         docs_service: Living-docs engine the narrative is persisted through.
         brain_service: Project-brain read seam (decisions, open items).
@@ -49,18 +57,15 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         task_repo: Task read seam (brief title, final status).
         cost_tracker: Optional cost tracker for the prose call.
         currency: ISO 4217 code the run's costs are denominated in.
+        config_resolver: Optional resolver for the live ``narrative_enabled``
+            per-run gate and the per-call ``narrative_model`` read.
+        master_enabled: Baked ``self_improvement.chief_of_staff_enabled``
+            persona switch, the gate's master fallback on resolver outage.
 
     Returns:
-        A ready :class:`ChiefOfStaffNarrator`, or ``None`` when
-        documentary mode is disabled or any collaborator is missing.
+        A ready :class:`ChiefOfStaffNarrator`, or ``None`` when any
+        collaborator is missing.
     """
-    if not config.narrative_enabled:
-        logger.debug(
-            COS_NARRATIVE_SKIPPED,
-            service="chief_of_staff_narrator",
-            reason="narrative_disabled",
-        )
-        return None
     if (
         provider is None
         or docs_service is None
@@ -68,15 +73,28 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         or frames is None
         or task_repo is None
     ):
+        logger.debug(
+            COS_NARRATIVE_SKIPPED,
+            service="chief_of_staff_narrator",
+            reason="collaborator_absent",
+        )
         return None
     reader = NarrativeReader(
         frames=frames, brain=brain_service, task_repo=task_repo, currency=currency
     )
     synthesiser = NarrativeSynthesiser(
-        provider=provider, config=config, cost_tracker=cost_tracker
+        provider=provider,
+        config=config,
+        cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
     narrator = ChiefOfStaffNarrator(
-        reader=reader, synthesiser=synthesiser, docs=docs_service
+        reader=reader,
+        synthesiser=synthesiser,
+        docs=docs_service,
+        config=config,
+        config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
     logger.info(API_APP_STARTUP, service="chief_of_staff_narrator", note="built")
     return narrator
