@@ -170,7 +170,7 @@ class TestEvalLoopCoordinatorRunCycle:
         flag is honoured no matter which strategy is wired.
         """
         identify_mock = AsyncMock(return_value=(NotBlankStr("weakness:governance"),))
-        injected = cast(PatternIdentifier, SimpleNamespace(identify=identify_mock))
+        injected = cast("PatternIdentifier", SimpleNamespace(identify=identify_mock))
         config = EvalLoopConfig(pattern_identifier_enabled=False)
         coordinator = _make_coordinator(config=config, pattern_identifier=injected)
         report = await coordinator.run_cycle(
@@ -283,7 +283,7 @@ def _make_report(
         agent_id=agent_id,
         pillar_scores=tuple(_make_pillar_score(p, s) for p, s in pillar_scores),
     )
-    return cast(EvaluationReport, stub)
+    return cast("EvaluationReport", stub)
 
 
 class TestEvalLoopCoordinatorIdentifyPatterns:

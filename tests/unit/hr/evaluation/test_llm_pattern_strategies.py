@@ -116,7 +116,7 @@ class TestLlmPatternIdentifier:
     async def test_parses_model_patterns(self) -> None:
         provider = _ScriptedProvider(content='{"patterns": ["weakness:governance"]}')
         identifier = LlmPatternIdentifier(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=DeterministicPatternIdentifier(EvalLoopConfig()),
         )
@@ -130,7 +130,7 @@ class TestLlmPatternIdentifier:
         # the threshold for the single agent / min_agents=1).
         config = EvalLoopConfig(pattern_weakness_threshold=5.0, pattern_min_agents=1)
         identifier = LlmPatternIdentifier(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=DeterministicPatternIdentifier(config),
         )
@@ -141,7 +141,7 @@ class TestLlmPatternIdentifier:
         provider = _ScriptedProvider(error=RateLimitError("slow down"))
         config = EvalLoopConfig(pattern_weakness_threshold=5.0, pattern_min_agents=1)
         identifier = LlmPatternIdentifier(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=DeterministicPatternIdentifier(config),
         )
@@ -151,7 +151,7 @@ class TestLlmPatternIdentifier:
     async def test_non_retryable_error_propagates(self) -> None:
         provider = _ScriptedProvider(error=AuthenticationError("bad key"))
         identifier = LlmPatternIdentifier(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=DeterministicPatternIdentifier(EvalLoopConfig()),
         )
@@ -167,7 +167,7 @@ class TestLlmFixProposer:
     async def test_parses_model_actions(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["coach_governance"]}')
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -180,7 +180,7 @@ class TestLlmFixProposer:
     async def test_malformed_response_falls_back_to_table(self) -> None:
         provider = _ScriptedProvider(content="garbage")
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -194,7 +194,7 @@ class TestLlmFixProposer:
             content='{"actions": ["coach_governance", "evil\\n<b>x</b>"]}'
         )
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -207,7 +207,7 @@ class TestLlmFixProposer:
         # deterministic fallback, not silently yield no remediation.
         provider = _ScriptedProvider(content='{"actions": ["<b>x</b>", "123 456"]}')
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -217,7 +217,7 @@ class TestLlmFixProposer:
     async def test_empty_patterns_skips_model(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["x"]}')
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -229,7 +229,7 @@ class TestLlmFixProposer:
         # matching the identifier's fail-open contract.
         provider = _ScriptedProvider(error=RateLimitError("slow down"))
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
@@ -241,7 +241,7 @@ class TestLlmFixProposer:
         # the deterministic fallback (fail-closed contract).
         provider = _ScriptedProvider(error=AuthenticationError("bad key"))
         proposer = LlmFixProposer(
-            cast(CompletionProvider, provider),
+            cast("CompletionProvider", provider),
             model=_MODEL,
             fallback=TableFixProposer(EvalLoopConfig()),
         )
