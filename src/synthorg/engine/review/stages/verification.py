@@ -24,8 +24,8 @@ in stage metadata for human review while the verdict stays PASS.
 
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -74,11 +74,13 @@ class VerificationReviewStage:
         rubric_lookup: Resolver from rubric name to rubric. Defaults to
             the built-in catalog.
         default_rubric_name: Rubric used when the task does not pin one.
+        clock: Injectable time source for the handoff-artifact timestamp.
+            Defaults to :class:`SystemClock`; tests inject ``FakeClock``.
     """
 
     _NAME: str = "verification"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- DI seam: two strategies + evaluator identity + rubric lookup + clock
         self,
         *,
         decomposer: CriteriaDecomposer,
@@ -86,12 +88,14 @@ class VerificationReviewStage:
         evaluator_agent_id: NotBlankStr = _DEFAULT_EVALUATOR_ID,
         rubric_lookup: RubricLookup = get_rubric,
         default_rubric_name: NotBlankStr = _DEFAULT_RUBRIC_NAME,
+        clock: Clock | None = None,
     ) -> None:
         self._decomposer = decomposer
         self._grader = grader
         self._evaluator_agent_id = evaluator_agent_id
         self._rubric_lookup = rubric_lookup
         self._default_rubric_name = default_rubric_name
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     @property
     def name(self) -> str:
@@ -237,7 +241,7 @@ class VerificationReviewStage:
         # the external artifact store.
         met_text = " ".join(c.description for c in task.acceptance_criteria if c.met)
         artifact = HandoffArtifact(
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
             from_agent_id=generator,
             to_agent_id=evaluator,
             from_stage=NotBlankStr("generator"),

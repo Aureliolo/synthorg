@@ -21,7 +21,7 @@ from synthorg.engine.quality.verification_factory import (
 from synthorg.engine.review.models import ReviewVerdict
 from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.workflow.handoff import HandoffArtifact
-from tests._shared import as_uuid
+from tests._shared import FakeClock, as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -102,6 +102,38 @@ class _BoomGrader:
         raise ValueError(msg)
 
 
+class _CaptureGrader:
+    """RubricGrader that records the artifact it was handed, then PASSes."""
+
+    def __init__(self) -> None:
+        self.artifact: HandoffArtifact | None = None
+
+    @property
+    def name(self) -> str:
+        return "capture"
+
+    async def grade(
+        self,
+        *,
+        artifact: HandoffArtifact,
+        rubric: VerificationRubric,
+        probes: tuple[AtomicProbe, ...],
+        generator_agent_id: NotBlankStr,
+        evaluator_agent_id: NotBlankStr,
+    ) -> VerificationResult:
+        self.artifact = artifact
+        return VerificationResult(
+            verdict=VerificationVerdict.PASS,
+            confidence=0.9,
+            per_criterion_grades={c.name: 1.0 for c in rubric.criteria},
+            findings=(),
+            evaluator_agent_id=evaluator_agent_id,
+            generator_agent_id=generator_agent_id,
+            rubric_name=rubric.name,
+            timestamp=datetime.now(UTC),
+        )
+
+
 class TestVerificationReviewStage:
     async def test_all_criteria_met_passes(self) -> None:
         stage = _deterministic_stage()
@@ -175,6 +207,22 @@ class TestVerificationReviewStage:
         result = await stage.execute(task)
         assert result.verdict is ReviewVerdict.FAIL
         assert result.metadata["verification_verdict"] == "fail"
+
+    async def test_artifact_timestamp_uses_injected_clock(self) -> None:
+        # The handoff-artifact ``created_at`` comes from the injected clock
+        # seam, not wall time, so verification timestamps are deterministic
+        # under test.
+        fixed = datetime(2026, 3, 14, 9, 26, 53, tzinfo=UTC)
+        config = VerificationConfig()
+        grader = _CaptureGrader()
+        stage = VerificationReviewStage(
+            decomposer=build_decomposer(config),
+            grader=grader,
+            clock=FakeClock(start=fixed),
+        )
+        await stage.execute(_task(criteria=(_criterion("works", met=True),)))
+        assert grader.artifact is not None
+        assert grader.artifact.created_at == fixed
 
     async def test_evaluator_distinct_from_generator(self) -> None:
         stage = _deterministic_stage()

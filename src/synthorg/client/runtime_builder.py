@@ -173,8 +173,13 @@ def _resolve_verification_config(
             grader=grader,
             decomposer=decomposer,
         )
-        grader = "heuristic"
-        decomposer = "identity"
+        # Degrade only the setting that asked for "llm"; leave the other so
+        # GraderVariant / DecomposerVariant still validates and rejects an
+        # otherwise-invalid value instead of having it silently rewritten.
+        if grader == "llm":
+            grader = "heuristic"
+        if decomposer == "llm":
+            decomposer = "identity"
     return VerificationConfig(
         grader=GraderVariant(grader),
         decomposer=DecomposerVariant(decomposer),

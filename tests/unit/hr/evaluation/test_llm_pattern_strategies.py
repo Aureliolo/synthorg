@@ -223,3 +223,27 @@ class TestLlmFixProposer:
         )
         assert await proposer.propose(()) == ()
         assert provider.calls == 0
+
+    async def test_retryable_error_falls_back_to_table(self) -> None:
+        # A retryable provider error degrades to the deterministic table,
+        # matching the identifier's fail-open contract.
+        provider = _ScriptedProvider(error=RateLimitError("slow down"))
+        proposer = LlmFixProposer(
+            cast(CompletionProvider, provider),
+            model=_MODEL,
+            fallback=TableFixProposer(EvalLoopConfig()),
+        )
+        actions = await proposer.propose((NotBlankStr("weakness:governance"),))
+        assert _ids(actions) == (NotBlankStr("expand_audit_coverage"),)
+
+    async def test_non_retryable_error_propagates(self) -> None:
+        # A non-retryable provider error must surface, not be swallowed into
+        # the deterministic fallback (fail-closed contract).
+        provider = _ScriptedProvider(error=AuthenticationError("bad key"))
+        proposer = LlmFixProposer(
+            cast(CompletionProvider, provider),
+            model=_MODEL,
+            fallback=TableFixProposer(EvalLoopConfig()),
+        )
+        with pytest.raises(AuthenticationError):
+            await proposer.propose((NotBlankStr("weakness:governance"),))
