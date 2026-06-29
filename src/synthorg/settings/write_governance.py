@@ -12,7 +12,7 @@ and batch write paths) so every surface inherits it; callers thread a
 :class:`SettingsWriteGovernance` through ``set`` / ``set_many``.
 """
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
@@ -26,7 +26,7 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
-from synthorg.settings.models import SettingValue
+from synthorg.settings.models import SettingDefinition, SettingValue
 
 logger = get_logger(__name__)
 
@@ -154,3 +154,28 @@ async def guard_security_writes(
     await enforce_security_write_governance(
         items, governance=governance, get_current=_current
     )
+
+
+async def guard_security_delete(
+    namespace: str,
+    definitions: Iterable[SettingDefinition],
+    *,
+    resolve_fallback: Callable[[SettingDefinition], Awaitable[SettingValue]],
+    get_entry: Callable[[str, str], Awaitable[SettingValue]],
+) -> None:
+    """Hard-block a delete that would weaken a security setting.
+
+    Deleting a security override reverts the key to its env > default fallback,
+    so a delete that would drop a currently-secure toggle to a weaker effective
+    value must go through the explicit confirm+reason set path, never a silent
+    delete. The guarded value is the real env>default fallback (resolved via
+    *resolve_fallback*), not the bare code default, so a weakening env override
+    is not missed. A no-op for any non-security namespace.
+    """
+    if namespace != _SECURITY_NS:
+        return
+    items = [
+        (namespace, definition.key, (await resolve_fallback(definition)).value)
+        for definition in definitions
+    ]
+    await guard_security_writes(items, governance=None, get_entry=get_entry)

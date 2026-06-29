@@ -46,11 +46,7 @@ from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings._setting_audit import emit_security_setting_changed
 from synthorg.settings.encryption import SettingsEncryptor
-from synthorg.settings.enums import (
-    SettingNamespace,
-    SettingsImportSource,
-    SettingSource,
-)
+from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingReadOnlyError,
@@ -62,6 +58,7 @@ from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.type_validators import validate_by_type
 from synthorg.settings.write_governance import (
     SettingsWriteGovernance,
+    guard_security_delete,
     guard_security_writes,
 )
 
@@ -1117,20 +1114,12 @@ class SettingsService:
 
             _reject_if_read_only(definition, action="delete")
 
-            # Deleting a security override reverts the key to its env > default
-            # fallback. Guard the weakening direction (governance=None
-            # hard-blocks it): a delete that would drop a currently-secure
-            # toggle back to a weaker effective value must go through the
-            # explicit confirm+reason set path, never a silent delete. The
-            # post-delete value is the real env>default fallback (not the bare
-            # code default) so a weakening env override is not missed.
-            if namespace == SettingNamespace.SECURITY.value:
-                reverted = await self._resolve_fallback(definition)
-                await guard_security_writes(
-                    [(namespace, key, reverted.value)],
-                    governance=None,
-                    get_entry=self.get,
-                )
+            await guard_security_delete(
+                namespace,
+                [definition],
+                resolve_fallback=self._resolve_fallback,
+                get_entry=self.get,
+            )
 
             await self._repository.delete(
                 (NotBlankStr(namespace), NotBlankStr(key)),
@@ -1220,22 +1209,12 @@ class SettingsService:
         # then deleted) or fire a phantom one (key in the snapshot, then
         # unset before the delete). Returning the actually-removed keys keys
         # the change notifications to what truly changed.
-        # Same weakening guard as single-key delete: clearing a security
-        # namespace reverts every key to its env > default fallback, so a
-        # delete that would drop a currently-secure toggle to a weaker
-        # effective value is hard-blocked (governance=None) and must use the
-        # explicit confirm+reason set path. The post-delete value is the real
-        # env>default fallback (not the bare code default).
-        if namespace == SettingNamespace.SECURITY.value:
-            reverted_items = [
-                (namespace, d.key, (await self._resolve_fallback(d)).value)
-                for d in self._registry.list_namespace(namespace)
-            ]
-            await guard_security_writes(
-                reverted_items,
-                governance=None,
-                get_entry=self.get,
-            )
+        await guard_security_delete(
+            namespace,
+            self._registry.list_namespace(namespace),
+            resolve_fallback=self._resolve_fallback,
+            get_entry=self.get,
+        )
 
         ns = NotBlankStr(namespace)
         try:
