@@ -110,6 +110,7 @@ function buildBudgetConfig(
       enabled: true,
       orchestration_alerts: { critical: 0.7, info: 0.3, warn: 0.5 },
       retry_alerts: { warn_rate: 0.1 },
+      prompt_class_alerts: { cost_warn: null, p95_latency_warn_ms: null, min_seconds_between_alerts: 300 },
     },
     subscriptions: {},
     ...overrides,
