@@ -82,8 +82,17 @@ def _select_provider(
     """
     if provider_registry is None:
         return None
-    if requested and requested in provider_registry:
-        return provider_registry.get(requested)
+    if requested:
+        if requested in provider_registry:
+            return provider_registry.get(requested)
+        # An explicit-but-absent provider is a misconfiguration: surface the
+        # substitution rather than silently running on a different provider.
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="configured eval_loop_llm_provider absent; using first available",
+            requested_provider=requested,
+        )
     available = provider_registry.list_providers()
     return provider_registry.get(available[0]) if available else None
 
@@ -107,14 +116,22 @@ def _build_pattern_strategies(
         return (None, None)
 
     model = _resolve_hr_str("eval_loop_llm_model").strip()
-    provider = _select_provider(
-        provider_registry, _resolve_hr_str("eval_loop_llm_provider").strip()
-    )
-    if not model or provider is None:
+    if not model:
         logger.warning(
             API_APP_STARTUP,
             service="eval_loop",
-            note="llm strategy requested but no model/provider; staying deterministic",
+            note="llm strategy requested but eval_loop_llm_model unset; deterministic",
+        )
+        return (None, None)
+    provider = _select_provider(
+        provider_registry, _resolve_hr_str("eval_loop_llm_provider").strip()
+    )
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="llm strategy requested but no provider available; deterministic",
+            provider_registry_present=provider_registry is not None,
         )
         return (None, None)
 

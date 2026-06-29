@@ -40,10 +40,7 @@ from synthorg.hr.evaluation.external_benchmark_registry import (
 from synthorg.hr.evaluation.models import EvaluationReport
 from synthorg.hr.evaluation.pattern_action_dispatcher import PatternActionDispatcher
 from synthorg.hr.evaluation.pattern_protocols import FixProposer, PatternIdentifier
-from synthorg.hr.evaluation.table_fix_proposer import (
-    TableFixProposer,
-    classify_pattern,
-)
+from synthorg.hr.evaluation.table_fix_proposer import TableFixProposer
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
 from synthorg.observability import (
@@ -160,10 +157,10 @@ class EvalLoopCoordinator:
             observations = await self._pattern_identifier.identify(reports)
 
             # 4. PROPOSE: delegate to the pluggable fix proposer, then
-            # dispatch each action to its remediation service when a
-            # dispatcher is wired.
+            # dispatch the proposer's actual actions (deterministic table or
+            # LLM) to their remediation service when a dispatcher is wired.
             proposed_actions = await self._fix_proposer.propose(observations)
-            await self._dispatch_actions(observations)
+            await self._dispatch_actions(proposed_actions, observations)
 
             # 5. DECIDE: a cycle that identified corrective actions routes
             # them to the training pipeline -- gated so training (an
@@ -278,35 +275,34 @@ class EvalLoopCoordinator:
 
     async def _dispatch_actions(
         self,
+        actions: tuple[NotBlankStr, ...],
         patterns: tuple[NotBlankStr, ...],
     ) -> None:
         """Route each proposed action to its remediation service.
 
-        No-op when no dispatcher is wired (the loop keeps its propose +
-        log behaviour). Each unique mapped action is dispatched once, with
-        the first pattern that produced it; a dispatcher failure is logged
-        and the remaining actions still dispatch (criticals re-raise).
+        No-op when no dispatcher is wired (the loop keeps its propose + log
+        behaviour). ``actions`` are the fix proposer's already-deduplicated
+        output (deterministic table or LLM), so each is dispatched exactly
+        once and the cycle's weakness patterns travel as the originating
+        context for the operator alert. A dispatcher failure is logged and the
+        remaining actions still dispatch (criticals re-raise).
 
         Args:
-            patterns: Weakness patterns from :meth:`_identify_patterns`.
+            actions: De-duplicated action ids from the fix proposer.
+            patterns: The weakness patterns that produced them (alert context).
         """
-        if self._action_dispatcher is None or not patterns:
+        if self._action_dispatcher is None or not actions:
             return
-        override = self._config.pattern_action_map or {}
-        seen: set[str] = set()
-        for pattern in patterns:
-            _, mapped, _ = classify_pattern(pattern, override)
-            if mapped is None or mapped in seen:
-                continue
-            seen.add(mapped)
+        context = NotBlankStr(", ".join(patterns)) if patterns else NotBlankStr("cycle")
+        for action in actions:
             try:
-                accepted = await self._action_dispatcher.dispatch(mapped, pattern)
+                accepted = await self._action_dispatcher.dispatch(action, context)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=mapped,
-                    pattern=pattern,
+                    action_id=action,
+                    pattern=context,
                     dispatched=False,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -315,8 +311,8 @@ class EvalLoopCoordinator:
             if accepted:
                 logger.info(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=mapped,
-                    pattern=pattern,
+                    action_id=action,
+                    pattern=context,
                     dispatched=True,
                     accepted=True,
                 )
@@ -326,8 +322,8 @@ class EvalLoopCoordinator:
                 # silent drop into a success signal for operators/metrics.
                 logger.warning(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=mapped,
-                    pattern=pattern,
+                    action_id=action,
+                    pattern=context,
                     dispatched=False,
                     accepted=False,
                 )

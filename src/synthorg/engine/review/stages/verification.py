@@ -41,7 +41,11 @@ from synthorg.observability import (
     get_logger,
     safe_error_description,
 )
-from synthorg.observability.events.review_pipeline import REVIEW_STAGE_DECIDED
+from synthorg.observability.events.review_pipeline import (
+    REVIEW_STAGE_DECIDED,
+    REVIEW_STAGE_GRADER_FAULT,
+    REVIEW_STAGE_RUBRIC_FALLBACK,
+)
 
 logger = get_logger(__name__)
 
@@ -108,8 +112,10 @@ class VerificationReviewStage:
             )
 
         evaluator = self._distinct_evaluator(generator)
-        rubric = self._resolve_rubric(task)
         try:
+            # Rubric resolution is inside the fail-open guard: a missing
+            # default rubric must SKIP, not escape and block the task.
+            rubric = self._resolve_rubric(task)
             result = await self._grade(
                 task,
                 generator=generator,
@@ -118,6 +124,16 @@ class VerificationReviewStage:
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             reraise_critical(exc)
+            # WARNING, not INFO: a grader/rubric fault is an unexpected
+            # verifier defect an operator must see, distinct from a routine
+            # no-assignee skip.
+            logger.warning(
+                REVIEW_STAGE_GRADER_FAULT,
+                stage=self._NAME,
+                task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return self._skip(
                 f"verification grader fault: {safe_error_description(exc)}",
                 start_ns,
@@ -139,6 +155,10 @@ class VerificationReviewStage:
 
         Returns:
             The pinned rubric when valid, otherwise the default rubric.
+
+        Raises:
+            KeyError: When the default rubric itself is absent; the caller's
+                fail-open guard turns this into a SKIP.
         """
         pinned = task.metadata.get(_RUBRIC_METADATA_KEY)
         name = self._default_rubric_name
@@ -147,11 +167,15 @@ class VerificationReviewStage:
         try:
             return self._rubric_lookup(name)
         except KeyError:
+            if name == self._default_rubric_name:
+                # The default itself is missing: re-looking up the same key
+                # would raise again. Let it propagate to execute()'s fail-open
+                # guard, which SKIPs rather than blocking the task.
+                raise
             logger.warning(
-                REVIEW_STAGE_DECIDED,
+                REVIEW_STAGE_RUBRIC_FALLBACK,
                 stage=self._NAME,
                 task_id=str(task.id),
-                reason="unknown rubric; using default",
                 requested_rubric=name,
                 default_rubric=self._default_rubric_name,
             )

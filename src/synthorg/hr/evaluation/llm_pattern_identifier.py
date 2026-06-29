@@ -7,8 +7,11 @@ per-pillar cut-off would miss. It degrades to an injected deterministic
 :class:`PatternIdentifier` on any provider or parsing failure, so a cycle
 never stalls on an unavailable or misbehaving model.
 
-Only numeric pillar scores keyed by pillar name are sent to the model, so
-no free-form agent content crosses the prompt boundary.
+Only numeric pillar scores are sent to the model. Agents are keyed by a
+positional index (``agent_0``, ``agent_1``, ...), never by their id, so no
+operator-set free-form string crosses the prompt boundary (the model output
+is pillar-keyed and never references an agent, so agent identity is not
+needed).
 """
 
 import json
@@ -91,6 +94,11 @@ class LlmPatternIdentifier:
         content = await self._call_model(reports)
         if content is None:
             return await self._fallback.identify(reports)
+        if not content.strip():
+            logger.warning(
+                EVAL_LOOP_LLM_FALLBACK, step="identify", reason="empty_response"
+            )
+            return await self._fallback.identify(reports)
         patterns = _parse_patterns(content)
         if patterns is None:
             logger.warning(
@@ -151,10 +159,13 @@ class LlmPatternIdentifier:
             return None
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
+            # Reached only by non-ProviderError exceptions: a code defect or
+            # unexpected infra fault, not a provider condition. ERROR + a
+            # distinct reason so it is not mistaken for a provider outage.
+            logger.error(
                 EVAL_LOOP_LLM_FALLBACK,
                 step="identify",
-                reason="provider_error",
+                reason="unexpected_internal_error",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -162,17 +173,23 @@ class LlmPatternIdentifier:
         return response.content
 
 
-def _score_rows(reports: tuple[EvaluationReport, ...]) -> dict[str, dict[str, float]]:
-    """Build the ``agent -> {pillar: score}`` numeric rows.
+def _score_rows(
+    reports: tuple[EvaluationReport, ...],
+) -> dict[str, dict[str, float]]:
+    """Build positional ``agent_N -> {pillar: score}`` numeric rows.
+
+    Agents are keyed by index, never by ``agent_id``, so no operator-set
+    free-form string enters the prompt (the model output is pillar-keyed and
+    never references an agent).
 
     Returns:
         The score rows.
     """
     return {
-        report.agent_id: {
+        f"agent_{index}": {
             score.pillar.value: round(score.score, 4) for score in report.pillar_scores
         }
-        for report in reports
+        for index, report in enumerate(reports)
     }
 
 

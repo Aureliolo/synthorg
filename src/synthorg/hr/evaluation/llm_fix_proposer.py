@@ -12,6 +12,7 @@ model, so no free-form agent content crosses the prompt boundary.
 """
 
 import json
+import re
 from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -47,6 +48,11 @@ _SYSTEM_PROMPT: Final[str] = (
 )
 
 _TASK_ID: NotBlankStr = NotBlankStr("system:hr:eval_fix_proposal")
+
+#: Shape a model-returned action id must match (the snake_case form the
+#: system prompt asks for). Anything else is dropped before it can reach a
+#: notification sink, closing a log / alert injection surface.
+_ACTION_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z][a-z0-9_]{0,63}")
 
 
 class LlmFixProposer:
@@ -87,6 +93,11 @@ class LlmFixProposer:
             return ()
         content = await self._call_model(patterns)
         if content is None:
+            return await self._fallback.propose(patterns)
+        if not content.strip():
+            logger.warning(
+                EVAL_LOOP_LLM_FALLBACK, step="propose", reason="empty_response"
+            )
             return await self._fallback.propose(patterns)
         actions = _parse_actions(content)
         if actions is None:
@@ -146,10 +157,13 @@ class LlmFixProposer:
             return None
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
+            # Reached only by non-ProviderError exceptions: a code defect or
+            # unexpected infra fault, not a provider condition. ERROR + a
+            # distinct reason so it is not mistaken for a provider outage.
+            logger.error(
                 EVAL_LOOP_LLM_FALLBACK,
                 step="propose",
-                reason="provider_error",
+                reason="unexpected_internal_error",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -160,8 +174,12 @@ class LlmFixProposer:
 def _parse_actions(content: str | None) -> tuple[NotBlankStr, ...] | None:
     """Parse action identifiers from the model response.
 
+    Each id must match the snake_case shape the system prompt asks for; a
+    model-returned value carrying newlines, markup, or other unexpected
+    content is dropped rather than interpolated into the operator alert.
+
     Returns:
-        De-duplicated, non-blank action ids, or ``None`` when the response
+        De-duplicated, validated action ids, or ``None`` when the response
         could not be parsed at all (caller falls back).
     """
     if not content or not content.strip():
@@ -175,6 +193,6 @@ def _parse_actions(content: str | None) -> tuple[NotBlankStr, ...] | None:
     actions = [
         NotBlankStr(raw.strip())
         for raw in actions_raw
-        if isinstance(raw, str) and raw.strip()
+        if isinstance(raw, str) and _ACTION_ID_PATTERN.fullmatch(raw.strip())
     ]
     return tuple(dedupe_preserving_order(actions))

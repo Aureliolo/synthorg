@@ -9,10 +9,15 @@ orchestrator stays under its module-size cap.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
+
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.engine.classification.protocol import ClassificationSink
+
+logger = get_logger(__name__)
 
 
 def build_classification(
@@ -47,6 +52,11 @@ def build_classification(
 
     config = app_state.config.coordination.error_taxonomy
     if not config.enabled:
+        logger.info(
+            API_APP_STARTUP,
+            service="classification",
+            note="error-taxonomy classification disabled; post-exec skips it",
+        )
         return None, ()
     sinks: list[ClassificationSink] = []
     # The taxonomy store plays a dual role: it is both a classification sink
@@ -69,4 +79,10 @@ def build_classification(
         resolved = config.model_copy(
             update={"detector_timeout_seconds": detector_timeout_seconds},
         )
+    logger.info(
+        API_APP_STARTUP,
+        service="classification",
+        note="error-taxonomy classification enabled",
+        sink_count=len(sinks),
+    )
     return resolved, tuple(sinks)

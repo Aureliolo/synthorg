@@ -701,6 +701,7 @@ class AgentEngine(
 
             loop = await self._resolve_loop(task, agent_id, task_id)
             # before/after_agent fire around the loop run (no-op when unwired).
+            # Deferred to avoid an engine -> engine.middleware module-level edge.
             from synthorg.engine import _agent_middleware_run as _amr  # noqa: PLC0415
 
             ctx = await _amr.apply_before_agent(

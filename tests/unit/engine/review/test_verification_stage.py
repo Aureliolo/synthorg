@@ -145,6 +145,22 @@ class TestVerificationReviewStage:
         assert result.reason is not None
         assert "grader fault" in result.reason
 
+    async def test_missing_default_rubric_fails_open_to_skip(self) -> None:
+        # A rubric catalog that lacks even the default must not crash the
+        # stage: rubric resolution is inside the fail-open guard, so an
+        # absent default SKIPs rather than blocking task completion.
+        def _empty_catalog(_name: NotBlankStr) -> VerificationRubric:
+            raise KeyError(_name)
+
+        config = VerificationConfig()
+        stage = VerificationReviewStage(
+            decomposer=build_decomposer(config),
+            grader=build_grader(config),
+            rubric_lookup=_empty_catalog,
+        )
+        result = await stage.execute(_task(criteria=(_criterion("works", met=True),)))
+        assert result.verdict is ReviewVerdict.SKIP
+
     async def test_fail_verdict_maps_to_fail(self) -> None:
         config = VerificationConfig()
         stage = VerificationReviewStage(

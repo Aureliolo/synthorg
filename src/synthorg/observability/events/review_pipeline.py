@@ -7,6 +7,13 @@ REVIEW_PIPELINE_STARTED: Final[str] = "review.pipeline.started"
 REVIEW_PIPELINE_STAGE_COMPLETED: Final[str] = "review.pipeline.stage.completed"
 REVIEW_PIPELINE_COMPLETED: Final[str] = "review.pipeline.completed"
 REVIEW_STAGE_DECIDED: Final[str] = "review.stage.decided"
+# A verification stage fell back to the default rubric because the task
+# pinned an unknown one. Distinct from REVIEW_STAGE_DECIDED (a verdict event)
+# so a verdict consumer never sees a verdict-less record.
+REVIEW_STAGE_RUBRIC_FALLBACK: Final[str] = "review.stage.rubric_fallback"
+# A verification grader raised; the stage fails open (SKIP). WARNING-level so
+# a real grader defect surfaces to monitors instead of hiding at INFO.
+REVIEW_STAGE_GRADER_FAULT: Final[str] = "review.stage.grader_fault"
 REVIEW_TASK_LOOKUP_FAILED: Final[str] = "review.task.lookup_failed"
 REVIEW_STAGE_LOOKUP_FAILED: Final[LiteralString] = "review.stage.lookup.failed"
 INTAKE_REQUEST_RECEIVED: Final[str] = "intake.request.received"

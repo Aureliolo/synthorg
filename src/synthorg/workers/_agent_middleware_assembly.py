@@ -15,7 +15,7 @@ module-level edge, mirroring the coordination chain wiring.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import MIDDLEWARE_CHAIN_BUILT
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
@@ -80,9 +80,12 @@ def build_agent_middleware_chain_or_none(
         return build_agent_middleware_chain(config, deps=deps)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        # ERROR, not WARNING: a failed build silently disables the
+        # authority-deference defence for the process lifetime.
+        logger.error(
             MIDDLEWARE_CHAIN_BUILT,
             note="agent middleware chain build failed; engine runs without it",
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None

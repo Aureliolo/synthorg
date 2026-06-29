@@ -179,6 +179,20 @@ class TestLlmFixProposer:
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
         assert actions == (NotBlankStr("expand_audit_coverage"),)
 
+    async def test_injection_shaped_action_id_is_dropped(self) -> None:
+        # A model-returned id carrying a newline / markup must never reach a
+        # notification sink: only the snake_case-valid id survives.
+        provider = _ScriptedProvider(
+            content='{"actions": ["coach_governance", "evil\\n<b>x</b>"]}'
+        )
+        proposer = LlmFixProposer(
+            cast(CompletionProvider, provider),
+            model=_MODEL,
+            fallback=TableFixProposer(EvalLoopConfig()),
+        )
+        actions = await proposer.propose((NotBlankStr("weakness:governance"),))
+        assert actions == (NotBlankStr("coach_governance"),)
+
     async def test_empty_patterns_skips_model(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["x"]}')
         proposer = LlmFixProposer(
