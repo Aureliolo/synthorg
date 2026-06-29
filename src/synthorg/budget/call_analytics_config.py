@@ -11,6 +11,12 @@ from synthorg.budget.coordination_config import OrchestrationAlertThresholds
 # ``RetryAlertConfig(warn_rate=...)`` overrides per deployment.
 _DEFAULT_RETRY_WARN_RATE: Final[float] = 0.10
 
+# A purpose re-alerts at most once per this window, so a dashboard polled
+# every few seconds cannot turn a standing threshold breach into a
+# notification storm. Five minutes balances timely re-notification against
+# operator alert fatigue; override per deployment.
+_DEFAULT_ALERT_WINDOW_SECONDS: Final[float] = 300.0
+
 
 class RetryAlertConfig(BaseModel):
     """Configuration for retry rate alerting.
@@ -32,6 +38,48 @@ class RetryAlertConfig(BaseModel):
     )
 
 
+class PromptClassAlertConfig(BaseModel):
+    """Per-prompt-purpose cost / latency alert thresholds.
+
+    Both thresholds are opt-in (``None`` disables that dimension) so a
+    deployment alerts only on the bounds it cares about. The cost ceiling is
+    denominated in the deployment's budget currency (the same currency the
+    cost records carry), and the latency ceiling is deployment-specific, so
+    neither carries a privileged default. A set threshold must be strictly
+    positive: ``None`` is the disable switch, so ``0.0`` (which would alert on
+    every non-zero value) is not a meaningful ceiling.
+
+    Attributes:
+        cost_warn: A purpose whose total cost over the window exceeds this
+            (in the deployment's budget currency) triggers a warning. ``None``
+            disables cost alerting.
+        p95_latency_warn_ms: A purpose whose p95 latency exceeds this (in
+            milliseconds) triggers a warning. ``None`` disables latency
+            alerting.
+        min_seconds_between_alerts: A purpose re-alerts at most once per this
+            window, throttling notification volume under frequent dashboard
+            polling.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    cost_warn: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Per-purpose total-cost warning ceiling, or None to disable.",
+    )
+    p95_latency_warn_ms: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Per-purpose p95-latency warning ceiling in ms, or None.",
+    )
+    min_seconds_between_alerts: float = Field(
+        default=_DEFAULT_ALERT_WINDOW_SECONDS,
+        gt=0.0,
+        description="Minimum seconds between re-alerts for the same purpose.",
+    )
+
+
 class CallAnalyticsConfig(BaseModel):
     """Configuration for the per-call analytics service.
 
@@ -42,6 +90,7 @@ class CallAnalyticsConfig(BaseModel):
         enabled: Whether analytics collection and alerting is active.
         orchestration_alerts: Thresholds for orchestration ratio alerting.
         retry_alerts: Configuration for retry rate alerting.
+        prompt_class_alerts: Per-prompt-purpose cost / latency thresholds.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -57,4 +106,8 @@ class CallAnalyticsConfig(BaseModel):
     retry_alerts: RetryAlertConfig = Field(
         default_factory=RetryAlertConfig,
         description="Configuration for retry rate alerting.",
+    )
+    prompt_class_alerts: PromptClassAlertConfig = Field(
+        default_factory=PromptClassAlertConfig,
+        description="Per-prompt-purpose cost / latency alert thresholds.",
     )

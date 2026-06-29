@@ -1,7 +1,6 @@
 """Property-based tests for CallAnalyticsService aggregation."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
 
 import pytest
 from hypothesis import given
@@ -12,7 +11,9 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
+from tests._shared import mock_of
 
 
 def _record(
@@ -42,18 +43,16 @@ def _record(
 
 
 def _make_service(records: tuple[CostRecord, ...]) -> CallAnalyticsService:
-    tracker = AsyncMock()
-    tracker.get_records = AsyncMock(return_value=records)
-    tracker.collect_records = AsyncMock(return_value=records)
-    tracker.get_orchestration_ratio = AsyncMock(
-        return_value=OrchestrationRatio(
-            ratio=0.0,
-            alert_level=OrchestrationAlertLevel.NORMAL,
-            total_tokens=0,
-            productive_tokens=0,
-            coordination_tokens=0,
-            system_tokens=0,
-        )
+    tracker = mock_of[CostTrackerProtocol]()
+    tracker.get_records.return_value = records
+    tracker.collect_records.return_value = records
+    tracker.get_orchestration_ratio.return_value = OrchestrationRatio(
+        ratio=0.0,
+        alert_level=OrchestrationAlertLevel.NORMAL,
+        total_tokens=0,
+        productive_tokens=0,
+        coordination_tokens=0,
+        system_tokens=0,
     )
     return CallAnalyticsService(
         cost_tracker=tracker,

@@ -17,6 +17,13 @@ ANALYTICS_RETRY_ALERT_DISPATCH_FAILED: Final[str] = (
     "analytics.retry_alert.dispatch_failed"
 )
 ANALYTICS_ORCHESTRATION_ALERT: Final[str] = "analytics.orchestration_alert"
+ANALYTICS_PROMPT_CLASS_COST_ALERT: Final[str] = "analytics.prompt_class.cost_alert"
+ANALYTICS_PROMPT_CLASS_LATENCY_ALERT: Final[str] = (
+    "analytics.prompt_class.latency_alert"
+)
+ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED: Final[str] = (
+    "analytics.prompt_class.alert_dispatch_failed"
+)
 ANALYTICS_TIER_LOOKUP_FAILED: Final[str] = "analytics.tier_lookup_failed"
 ANALYTICS_SERVICE_CREATED: Final[str] = "analytics.service_created"
 

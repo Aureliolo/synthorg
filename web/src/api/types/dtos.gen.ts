@@ -499,6 +499,7 @@ export type PromotionApplyResultDTO = components['schemas']['PromotionApplyResul
 export type PromotionEvaluationDTO = components['schemas']['PromotionEvaluationDTO']
 export type PromotionRecordDTO = components['schemas']['PromotionRecordDTO']
 export type PromotionRequestDTO = components['schemas']['PromotionRequestDTO']
+export type PromptClassAlertConfig = components['schemas']['PromptClassAlertConfig']
 export type PromptClassBreakdown = components['schemas']['PromptClassBreakdown']
 export type PromptClassBreakdownRow = components['schemas']['PromptClassBreakdownRow']
 export type ProposeResult = components['schemas']['ProposeResult']
