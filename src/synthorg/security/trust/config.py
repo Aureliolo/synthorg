@@ -8,6 +8,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.time_window import DEFAULT_WINDOW_LABELS, parse_window_days_strict
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -227,6 +228,42 @@ class MilestoneCriteria(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 model="MilestoneCriteria",
                 time_active_days=self.time_active_days,
+                clean_history_days=self.clean_history_days,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_clean_history_window_alignment(self) -> Self:
+        """Reject a ``clean_history_days`` no rolling window can satisfy.
+
+        The clean-history gate counts only the snapshot window whose span
+        equals ``clean_history_days`` exactly; a value aligned with no standard
+        rolling window would make ``auto_promote`` permanently unreachable
+        while failing silently every cycle. Rejecting it at config time
+        surfaces the mismatch. Operators who customise the performance windows
+        must keep ``clean_history_days`` aligned with one of them.
+
+        Returns:
+            The validated criteria.
+
+        Raises:
+            ValueError: If ``clean_history_days`` is positive but matches no
+                standard rolling-window span.
+        """
+        if self.clean_history_days <= 0:
+            return self
+        allowed = {parse_window_days_strict(label) for label in DEFAULT_WINDOW_LABELS}
+        if self.clean_history_days not in allowed:
+            msg = (
+                f"clean_history_days={self.clean_history_days} aligns with no "
+                f"rolling window {sorted(allowed)}; auto_promote would be "
+                "unreachable"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MilestoneCriteria",
                 clean_history_days=self.clean_history_days,
                 reason=msg,
             )

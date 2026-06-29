@@ -1346,8 +1346,8 @@
     },
     "src/synthorg/security/trust/config.py": {
       "cap": 500,
-      "loc": 406,
-      "ratio": 0.812,
+      "loc": 439,
+      "ratio": 0.878,
       "tier": "code"
     },
     "src/synthorg/security/trust/service.py": {

@@ -327,6 +327,20 @@ class TestMilestoneCriteriaApprovalFlags:
         )
         assert criteria.auto_promote is True
 
+    def test_clean_history_days_misaligned_with_window_raises(self) -> None:
+        """A clean_history_days matching no rolling window is rejected.
+
+        The exact-match clean-history gate would make a value like 14 (no 14d
+        window) permanently unreachable, so it must fail at config time.
+        """
+        with pytest.raises(ValueError, match="aligns with no rolling window"):
+            MilestoneCriteria(clean_history_days=14)
+
+    def test_clean_history_days_aligned_with_window_ok(self) -> None:
+        """A clean_history_days matching a standard window (90d) is valid."""
+        criteria = MilestoneCriteria(clean_history_days=90)
+        assert criteria.clean_history_days == 90
+
 
 # ── ReVerificationConfig Constraints ─────────────────────────────
 
