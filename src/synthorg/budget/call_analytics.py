@@ -6,7 +6,10 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Final
 
-from synthorg.budget.call_analytics_config import CallAnalyticsConfig
+from synthorg.budget.call_analytics_config import (
+    CallAnalyticsConfig,
+    PromptClassAlertConfig,
+)
 from synthorg.budget.call_analytics_models import (
     AnalyticsAggregation,
     PromptClassBreakdown,
@@ -35,6 +38,9 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
     ANALYTICS_BREAKDOWN_COMPUTED,
     ANALYTICS_BREAKDOWN_MIXED_CURRENCY,
+    ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED,
+    ANALYTICS_PROMPT_CLASS_COST_ALERT,
+    ANALYTICS_PROMPT_CLASS_LATENCY_ALERT,
     ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
     ANALYTICS_RETRY_RATE_ALERT,
     ANALYTICS_SERVICE_CREATED,
@@ -149,6 +155,10 @@ class CallAnalyticsService:
         records = await collect_all_records(self._tracker, start=start, end=end)
         breakdown = _build_prompt_class_breakdown(records)
         logger.debug(ANALYTICS_BREAKDOWN_COMPUTED, row_count=len(breakdown.rows))
+        # The by-purpose view is the only live read path, so the per-purpose
+        # cost / latency alert thresholds are evaluated here; both default to
+        # off, so an unconfigured deployment dispatches nothing.
+        await self.check_prompt_class_alerts(breakdown)
         return breakdown
 
     async def check_alerts(
@@ -182,6 +192,73 @@ class CallAnalyticsService:
                     self._dispatcher,
                     retry_rate=retry_rate,
                     warn_rate=self._config.retry_alerts.warn_rate,
+                )
+
+    async def check_prompt_class_alerts(
+        self,
+        breakdown: PromptClassBreakdown,
+    ) -> None:
+        """Dispatch per-purpose cost / latency alerts for crossed thresholds.
+
+        Both thresholds are opt-in; a deployment that configures neither
+        dispatches nothing. A row's p95 latency is evaluated only when the
+        purpose reported latency at all.
+
+        Args:
+            breakdown: The per-prompt-class breakdown to evaluate.
+        """
+        if not self._config.enabled:
+            return
+        alerts = self._config.prompt_class_alerts
+        if alerts.cost_warn is None and alerts.p95_latency_warn_ms is None:
+            return
+        for row in breakdown.rows:
+            await self._check_prompt_class_row(row, alerts)
+
+    async def _check_prompt_class_row(
+        self,
+        row: PromptClassBreakdownRow,
+        alerts: PromptClassAlertConfig,
+    ) -> None:
+        """Evaluate one breakdown row against the cost / latency ceilings."""
+        if alerts.cost_warn is not None and row.total_cost > alerts.cost_warn:
+            logger.warning(
+                ANALYTICS_PROMPT_CLASS_COST_ALERT,
+                prompt_class_id=row.prompt_class_id,
+                total_cost=row.total_cost,
+                cost_warn=alerts.cost_warn,
+            )
+            if self._dispatcher is not None:
+                await _dispatch_prompt_class_alert(
+                    self._dispatcher,
+                    title="High prompt-purpose cost alert",
+                    body=(
+                        f"Prompt purpose {row.prompt_class_id!r} cost "
+                        f"{row.total_cost:.4f} {row.currency} exceeds the "
+                        f"warning ceiling {alerts.cost_warn:.4f}."
+                    ),
+                )
+        p95 = row.p95_latency_ms
+        if (
+            alerts.p95_latency_warn_ms is not None
+            and p95 is not None
+            and p95 > alerts.p95_latency_warn_ms
+        ):
+            logger.warning(
+                ANALYTICS_PROMPT_CLASS_LATENCY_ALERT,
+                prompt_class_id=row.prompt_class_id,
+                p95_latency_ms=p95,
+                p95_latency_warn_ms=alerts.p95_latency_warn_ms,
+            )
+            if self._dispatcher is not None:
+                await _dispatch_prompt_class_alert(
+                    self._dispatcher,
+                    title="High prompt-purpose latency alert",
+                    body=(
+                        f"Prompt purpose {row.prompt_class_id!r} p95 latency "
+                        f"{p95:.0f}ms exceeds the warning ceiling "
+                        f"{alerts.p95_latency_warn_ms:.0f}ms."
+                    ),
                 )
 
 
@@ -409,6 +486,44 @@ async def _dispatch_retry_rate_alert(
         reraise_critical(exc)
         logger.warning(
             ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _dispatch_prompt_class_alert(
+    dispatcher: NotificationDispatcher,
+    *,
+    title: str,
+    body: str,
+) -> None:
+    """Dispatch a per-prompt-purpose budget / latency warning notification.
+
+    Args:
+        dispatcher: Notification dispatcher.
+        title: Notification title.
+        body: Human-readable alert body.
+    """
+    from synthorg.notifications.models import (  # noqa: PLC0415
+        Notification,
+        NotificationCategory,
+        NotificationSeverity,
+    )
+
+    try:
+        await dispatcher.dispatch(
+            Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.WARNING,
+                title=title,
+                body=body,
+                source="budget.call_analytics",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

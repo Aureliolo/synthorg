@@ -1,0 +1,124 @@
+"""End-to-end emit -> analytics chain for prompt-purpose attribution.
+
+Drives the real cost-recording chokepoint: opens a ``cost_recording_scope``
+with a ``purpose``, emits a :class:`CostRecord` through
+``emit_cost_record_from_context`` exactly as ``BaseCompletionProvider.complete``
+does, drains the tracker, then reads the record back through
+``CallAnalyticsService.get_prompt_class_breakdown``. No existing test crosses
+the whole emit -> tracker -> analytics -> dashboard-DTO span in one chain; the
+per-segment tests each cover only one hop.
+"""
+
+from typing import Final
+
+import pytest
+
+from synthorg.budget.call_analytics import CallAnalyticsService
+from synthorg.budget.call_analytics_config import CallAnalyticsConfig
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
+from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.providers.cost_recording import (
+    cost_recording_scope,
+    current_cost_context,
+    emit_cost_record_from_context,
+)
+from synthorg.providers.models import CompletionResponse, TokenUsage
+
+pytestmark = pytest.mark.unit
+
+_LATENCY_MS: Final[float] = 123.5
+_INPUT_TOKENS: Final[int] = 1000
+_OUTPUT_TOKENS: Final[int] = 200
+_COST: Final[float] = 0.04
+_CURRENCY: Final[str] = "EUR"
+_MODEL: Final[str] = "example-small-001"
+_PROVIDER: Final[str] = "test-provider"
+
+
+def _response() -> CompletionResponse:
+    """A successful completion carrying usage and ``_synthorg_*`` telemetry."""
+    return CompletionResponse(
+        content="ok",
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(
+            input_tokens=_INPUT_TOKENS,
+            output_tokens=_OUTPUT_TOKENS,
+            cost=_COST,
+        ),
+        model=_MODEL,
+        provider_metadata={
+            "_synthorg_latency_ms": _LATENCY_MS,
+            "_synthorg_cache_hit": True,
+            "_synthorg_retry_count": 0,
+        },
+    )
+
+
+async def _emit(tracker: CostTracker, purpose: PromptPurposeId | None) -> None:
+    """Open a scope with ``purpose`` and emit one record, then drain."""
+    async with cost_recording_scope(
+        cost_tracker=tracker,
+        agent_id="agent-1",
+        task_id="task-1",
+        purpose=purpose,
+        call_category=LLMCallCategory.PRODUCTIVE,
+        currency=_CURRENCY,
+    ):
+        ctx = current_cost_context()
+        assert ctx is not None
+        await emit_cost_record_from_context(
+            ctx, _response(), model=_MODEL, provider=_PROVIDER
+        )
+    await tracker.drain_pending_records()
+
+
+async def test_purpose_emit_surfaces_in_breakdown() -> None:
+    tracker = CostTracker()
+    await _emit(tracker, PromptPurposeId.MEMORY_RERANK)
+
+    service = CallAnalyticsService(cost_tracker=tracker, config=CallAnalyticsConfig())
+    breakdown = await service.get_prompt_class_breakdown()
+
+    assert len(breakdown.rows) == 1
+    row = breakdown.rows[0]
+    assert row.prompt_class_id == PromptPurposeId.MEMORY_RERANK
+    # The dashboard tier column is the same design tier the pin records.
+    assert row.tier == tier_for_purpose(PromptPurposeId.MEMORY_RERANK)
+    assert row.total_cost == pytest.approx(_COST)
+    assert row.currency == _CURRENCY
+    assert row.call_count == 1
+    assert row.input_tokens == _INPUT_TOKENS
+    assert row.output_tokens == _OUTPUT_TOKENS
+    assert row.avg_latency_ms == pytest.approx(_LATENCY_MS)
+    assert row.p95_latency_ms == pytest.approx(_LATENCY_MS)
+    assert row.cache_hit_rate == pytest.approx(1.0)
+
+
+async def test_multiple_purposes_grouped_and_unattributed_excluded() -> None:
+    tracker = CostTracker()
+    await _emit(tracker, PromptPurposeId.MEMORY_RERANK)
+    await _emit(tracker, PromptPurposeId.COS_CHAT)
+    # A call with no registered purpose carries no prompt_class_id and must
+    # not appear as a row in the by-purpose breakdown.
+    await _emit(tracker, None)
+
+    service = CallAnalyticsService(cost_tracker=tracker, config=CallAnalyticsConfig())
+    breakdown = await service.get_prompt_class_breakdown()
+
+    ids = [row.prompt_class_id for row in breakdown.rows]
+    # Rows are sorted by prompt_class_id value: 'system:cos:chat' precedes
+    # 'system:memory:rerank'.
+    assert ids == [PromptPurposeId.COS_CHAT, PromptPurposeId.MEMORY_RERANK]
+
+
+async def test_unattributed_only_yields_no_rows() -> None:
+    tracker = CostTracker()
+    await _emit(tracker, None)
+
+    service = CallAnalyticsService(cost_tracker=tracker, config=CallAnalyticsConfig())
+    breakdown = await service.get_prompt_class_breakdown()
+
+    assert breakdown.rows == ()
