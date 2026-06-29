@@ -74,20 +74,12 @@ class PostgresLockoutRepository:
 
     @property
     def lockout_duration_seconds(self) -> int:
-        """Return the lockout duration in seconds for Retry-After.
-
-        Returns:
-            Numeric result of the operation.
-        """
+        """Return the lockout duration in seconds for Retry-After."""
         return self._duration_seconds
 
     @property
     def threshold(self) -> int:
-        """Failed-attempt threshold; used by the controller's audit log.
-
-        Returns:
-            Numeric result of the operation.
-        """
+        """Failed-attempt threshold; used by the controller's audit log."""
         return self._threshold
 
     def is_locked(self, username: str) -> bool:

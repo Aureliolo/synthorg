@@ -121,11 +121,7 @@ class ConfigApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles config tuning proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This applier handles config tuning proposals."""
         return ProposalAltitude.CONFIG_TUNING
 
     async def apply(

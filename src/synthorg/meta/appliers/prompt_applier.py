@@ -117,11 +117,7 @@ class PromptApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles prompt tuning proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This applier handles prompt tuning proposals."""
         return ProposalAltitude.PROMPT_TUNING
 
     async def apply(

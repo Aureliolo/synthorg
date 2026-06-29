@@ -59,11 +59,7 @@ class ArchitectureApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles architecture proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This applier handles architecture proposals."""
         return ProposalAltitude.ARCHITECTURE
 
     async def apply(

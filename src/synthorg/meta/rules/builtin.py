@@ -54,20 +54,12 @@ class QualityDecliningRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("quality_declining")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning, prompt tuning, and code modification.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning, prompt tuning, and code modification."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,
@@ -115,20 +107,12 @@ class SuccessRateDropRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("success_rate_drop")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning."""
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -175,20 +159,12 @@ class BudgetOverrunRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("budget_overrun")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning."""
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -234,20 +210,12 @@ class CoordinationCostRatioRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("coordination_cost_ratio")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and architecture changes.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning and architecture changes."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.ARCHITECTURE,
@@ -295,20 +263,12 @@ class CoordinationOverheadRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("coordination_overhead")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning."""
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -353,20 +313,12 @@ class StragglerBottleneckRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("straggler_bottleneck")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and architecture changes.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning and architecture changes."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.ARCHITECTURE,
@@ -412,20 +364,12 @@ class RedundancyRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("redundancy")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning."""
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -478,20 +422,12 @@ class ScalingFailureRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("scaling_failure")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning."""
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
@@ -540,20 +476,12 @@ class ErrorSpikeRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("error_spike")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning, prompt tuning, and code modification.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests config tuning, prompt tuning, and code modification."""
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,

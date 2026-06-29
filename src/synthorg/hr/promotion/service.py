@@ -636,11 +636,7 @@ class PromotionService(PromotionPersistenceMixin):
 
     @property
     def registry(self) -> AgentRegistryService:
-        """The agent registry the service reads and mutates.
-
-        Returns:
-            The wired agent registry service.
-        """
+        """The agent registry the service reads and mutates."""
         return self._registry
 
     def get_promotion_history(

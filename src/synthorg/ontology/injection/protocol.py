@@ -61,9 +61,5 @@ class OntologyInjectionStrategy(Protocol):
 
     @property
     def strategy_name(self) -> str:
-        """Human-readable strategy identifier.
-
-        Returns:
-            Strategy name string.
-        """
+        """Human-readable strategy identifier."""
         ...

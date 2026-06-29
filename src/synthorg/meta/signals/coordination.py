@@ -52,11 +52,7 @@ class CoordinationSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Signal domain name."""
         return NotBlankStr("coordination")
 
     async def aggregate(

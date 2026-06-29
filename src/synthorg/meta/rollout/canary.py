@@ -111,11 +111,7 @@ class CanarySubsetRollout:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Strategy name."""
         return NotBlankStr("canary")
 
     async def execute(

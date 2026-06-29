@@ -85,11 +85,7 @@ class DepartmentHealth(BaseModel):
     @computed_field
     @property
     def utilization_percent(self) -> float:
-        """Percentage of agents that are active.
-
-        Returns:
-            Resulting numeric value.
-        """
+        """Percentage of agents that are active."""
         if self.agent_count == 0:
             return 0.0
         return round(self.active_agent_count / self.agent_count * 100, 2)

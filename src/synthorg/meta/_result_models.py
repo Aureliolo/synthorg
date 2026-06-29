@@ -195,11 +195,7 @@ class ImprovementCycleResult(BaseModel):
     @computed_field
     @property
     def proposals_count(self) -> int:
-        """Number of proposals produced by the cycle.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of proposals produced by the cycle."""
         return len(self.proposals)
 
 

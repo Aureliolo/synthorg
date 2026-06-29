@@ -60,11 +60,7 @@ class ToolCreationApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles tool-creation proposals.
-
-        Returns:
-            ``ProposalAltitude`` instance.
-        """
+        """This applier handles tool-creation proposals."""
         return ProposalAltitude.TOOL_CREATION
 
     async def apply(self, proposal: ImprovementProposal) -> ApplyResult:

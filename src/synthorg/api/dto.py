@@ -189,11 +189,7 @@ class ApiResponse[T](BaseModel):
     @computed_field
     @property
     def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``).
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Whether the request succeeded (derived from ``error``)."""
         return self.error is None
 
 
@@ -291,11 +287,7 @@ class PaginatedResponse[T](BaseModel):
     @computed_field
     @property
     def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``).
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Whether the request succeeded (derived from ``error``)."""
         return self.error is None
 
 
@@ -910,11 +902,7 @@ class CoordinationResultResponse(BaseModel):
     )
     @property
     def is_success(self) -> bool:
-        """True when every phase completed successfully.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """True when every phase completed successfully."""
         return all(p.success for p in self.phases)
 
 

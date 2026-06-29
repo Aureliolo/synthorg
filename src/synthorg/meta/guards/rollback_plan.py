@@ -24,11 +24,7 @@ class RollbackPlanGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Guard name."""
         return NotBlankStr("rollback_plan")
 
     async def evaluate(

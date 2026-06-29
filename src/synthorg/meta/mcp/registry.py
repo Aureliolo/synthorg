@@ -223,20 +223,12 @@ class DomainToolRegistry:
 
     @property
     def frozen(self) -> bool:
-        """Whether the registry has been frozen.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
+        """Whether the registry has been frozen."""
         return self._frozen
 
     @property
     def tool_count(self) -> int:
-        """Number of registered tools.
-
-        Returns:
-            Resulting integer.
-        """
+        """Number of registered tools."""
         return len(self._tools)
 
     def register(self, tool: MCPToolDef) -> None:

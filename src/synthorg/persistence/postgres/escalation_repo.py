@@ -156,9 +156,6 @@ class PostgresEscalationRepository(EscalationQueueStore):
         Exposed for the cross-instance notify subscriber, which must
         reuse the repository's pool to share credentials and pool
         sizing with the rest of the persistence layer.
-
-        Returns:
-            Result of type ``AsyncConnectionPool``.
         """
         return self._pool
 

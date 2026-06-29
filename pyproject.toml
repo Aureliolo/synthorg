@@ -326,8 +326,7 @@ extend-select = [
     # rule. Selecting the ``DOC`` prefix in ``select`` is inert under that
     # flag, so the codes must live here for the standard ``ruff check`` to
     # enforce them. Enforced across all of src/synthorg/; only tests,
-    # scripts, and the api modules not yet at full compliance carry
-    # per-file-ignores below.
+    # scripts, and evals carry per-file-ignores below.
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring

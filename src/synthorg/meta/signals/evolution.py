@@ -37,11 +37,7 @@ class EvolutionSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Signal domain name."""
         return NotBlankStr("evolution")
 
     async def aggregate(

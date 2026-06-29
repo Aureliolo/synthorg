@@ -202,11 +202,7 @@ class PeriodSummary(BaseModel):
     @computed_field(description="Average cost per record")
     @property
     def avg_cost(self) -> float:
-        """Average cost per record (0.0 if no records).
-
-        Returns:
-            Resulting numeric value.
-        """
+        """Average cost per record (0.0 if no records)."""
         if self.record_count == 0:
             return 0.0
         return self.total_cost / self.record_count

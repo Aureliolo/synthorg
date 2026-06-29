@@ -34,20 +34,12 @@ class BenchmarkRegressionRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name."""
         return NotBlankStr("benchmark_regression")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests prompt tuning and code modification.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Suggests prompt tuning and code modification."""
         return (
             ProposalAltitude.PROMPT_TUNING,
             ProposalAltitude.CODE_MODIFICATION,

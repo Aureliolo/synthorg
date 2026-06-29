@@ -112,20 +112,12 @@ class PostgresPersistenceBackend(
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-        """
+        """Human-readable backend identifier."""
         return NotBlankStr("postgres")
 
     @property
     def kind(self) -> PersistenceBackendKind:
-        """Return the backend discriminator (``POSTGRES``).
-
-        Returns:
-            Result of type ``PersistenceBackendKind``.
-        """
+        """Return the backend discriminator (``POSTGRES``)."""
         return PersistenceBackendKind.POSTGRES
 
     @property
@@ -144,9 +136,6 @@ class PostgresPersistenceBackend(
         Exposed so callers needing the connection details (the
         backup-handler factory) do not have to reach for the
         private ``_config`` attribute.
-
-        Returns:
-            Result of type ``PostgresConfig``.
         """
         return self._config
 

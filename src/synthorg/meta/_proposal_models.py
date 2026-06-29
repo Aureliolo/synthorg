@@ -171,11 +171,7 @@ class ImprovementProposal(BaseModel):
     @computed_field
     @property
     def change_count(self) -> int:
-        """Total number of changes across all altitudes.
-
-        Returns:
-            Resulting integer.
-        """
+        """Total number of changes across all altitudes."""
         return (
             len(self.config_changes)
             + len(self.architecture_changes)

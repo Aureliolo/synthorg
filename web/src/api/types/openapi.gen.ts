@@ -6106,12 +6106,7 @@ export type components = {
             readonly data: components["schemas"]["ActiveCeremonyStrategyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ActiveEmbedderResponse] */
@@ -6119,12 +6114,7 @@ export type components = {
             readonly data: components["schemas"]["ActiveEmbedderResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentConfig] */
@@ -6132,12 +6122,7 @@ export type components = {
             readonly data: components["schemas"]["AgentConfig"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentHealthResponse] */
@@ -6145,12 +6130,7 @@ export type components = {
             readonly data: components["schemas"]["AgentHealthResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentIdentity] */
@@ -6158,12 +6138,7 @@ export type components = {
             readonly data: components["schemas"]["AgentIdentity"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentIdentityDiff] */
@@ -6171,12 +6146,7 @@ export type components = {
             readonly data: components["schemas"]["AgentIdentityDiff"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentPerformanceSummary] */
@@ -6184,12 +6154,7 @@ export type components = {
             readonly data: components["schemas"]["AgentPerformanceSummary"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AgentSpending] */
@@ -6197,12 +6162,7 @@ export type components = {
             readonly data: components["schemas"]["AgentSpending"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AnalyticsAggregation] */
@@ -6210,12 +6170,7 @@ export type components = {
             readonly data: components["schemas"]["AnalyticsAggregation"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AnomalyDetectionResult] */
@@ -6223,12 +6178,7 @@ export type components = {
             readonly data: components["schemas"]["AnomalyDetectionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ApplyTemplatePackResponse] */
@@ -6236,12 +6186,7 @@ export type components = {
             readonly data: components["schemas"]["ApplyTemplatePackResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ApprovalResponse] */
@@ -6249,12 +6194,7 @@ export type components = {
             readonly data: components["schemas"]["ApprovalResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Artifact] */
@@ -6262,12 +6202,7 @@ export type components = {
             readonly data: components["schemas"]["Artifact"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AutonomyLevelResponse] */
@@ -6275,12 +6210,7 @@ export type components = {
             readonly data: components["schemas"]["AutonomyLevelResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[AvailableLocalesResponse] */
@@ -6288,12 +6218,7 @@ export type components = {
             readonly data: components["schemas"]["AvailableLocalesResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[BackupManifest] */
@@ -6301,12 +6226,7 @@ export type components = {
             readonly data: components["schemas"]["BackupManifest"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[BrainEntry] */
@@ -6314,12 +6234,7 @@ export type components = {
             readonly data: components["schemas"]["BrainEntry"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[BudgetConfig] */
@@ -6327,12 +6242,7 @@ export type components = {
             readonly data: components["schemas"]["BudgetConfig"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CalibrationSummaryResponse] */
@@ -6340,12 +6250,7 @@ export type components = {
             readonly data: components["schemas"]["CalibrationSummaryResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CapabilitiesResponse] */
@@ -6353,12 +6258,7 @@ export type components = {
             readonly data: components["schemas"]["CapabilitiesResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CatalogEntry] */
@@ -6366,12 +6266,7 @@ export type components = {
             readonly data: components["schemas"]["CatalogEntry"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CharterApprovalResult] */
@@ -6379,12 +6274,7 @@ export type components = {
             readonly data: components["schemas"]["CharterApprovalResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CheckpointRecord] */
@@ -6392,12 +6282,7 @@ export type components = {
             readonly data: components["schemas"]["CheckpointRecord"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ClientProfile] */
@@ -6405,12 +6290,7 @@ export type components = {
             readonly data: components["schemas"]["ClientProfile"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ClientRequest] */
@@ -6418,12 +6298,7 @@ export type components = {
             readonly data: components["schemas"]["ClientRequest"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CollaborationScoreResult] */
@@ -6431,12 +6306,7 @@ export type components = {
             readonly data: components["schemas"]["CollaborationScoreResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Connection] */
@@ -6444,12 +6314,7 @@ export type components = {
             readonly data: components["schemas"]["Connection"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ConversationalActResult] */
@@ -6457,12 +6322,7 @@ export type components = {
             readonly data: components["schemas"]["ConversationalActResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CookieSessionResponse] */
@@ -6470,12 +6330,7 @@ export type components = {
             readonly data: components["schemas"]["CookieSessionResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CoordinationResultResponse] */
@@ -6483,12 +6338,7 @@ export type components = {
             readonly data: components["schemas"]["CoordinationResultResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[CreatedApiKeyResponse] */
@@ -6496,12 +6346,7 @@ export type components = {
             readonly data: components["schemas"]["CreatedApiKeyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DecompositionResult] */
@@ -6509,12 +6354,7 @@ export type components = {
             readonly data: components["schemas"]["DecompositionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DeliverableReceipt] */
@@ -6522,12 +6362,7 @@ export type components = {
             readonly data: components["schemas"]["DeliverableReceipt"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DemoGreeting] */
@@ -6535,12 +6370,7 @@ export type components = {
             readonly data: components["schemas"]["DemoGreeting"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Department] */
@@ -6548,12 +6378,7 @@ export type components = {
             readonly data: components["schemas"]["Department"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DepartmentHealth] */
@@ -6561,12 +6386,7 @@ export type components = {
             readonly data: components["schemas"]["DepartmentHealth"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, int]] */
@@ -6576,12 +6396,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, object]] */
@@ -6591,12 +6406,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, str]] */
@@ -6606,12 +6416,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, Union[int, str]]] */
@@ -6621,12 +6426,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[dict[str, Union[str, bool, NoneType]]] */
@@ -6636,12 +6436,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DiscoverModelsResponse] */
@@ -6649,12 +6444,7 @@ export type components = {
             readonly data: components["schemas"]["DiscoverModelsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[DiscoveryPolicyResponse] */
@@ -6662,12 +6452,7 @@ export type components = {
             readonly data: components["schemas"]["DiscoveryPolicyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EfficiencyAnalysis] */
@@ -6675,12 +6460,7 @@ export type components = {
             readonly data: components["schemas"]["EfficiencyAnalysis"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EntityResponse] */
@@ -6688,12 +6468,7 @@ export type components = {
             readonly data: components["schemas"]["EntityResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EntityVersionResponse] */
@@ -6701,12 +6476,7 @@ export type components = {
             readonly data: components["schemas"]["EntityVersionResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[EscalationResponse] */
@@ -6714,12 +6484,7 @@ export type components = {
             readonly data: components["schemas"]["EscalationResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ExperimentAssignment] */
@@ -6727,12 +6492,7 @@ export type components = {
             readonly data: components["schemas"]["ExperimentAssignment"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ExperimentVariant] */
@@ -6740,12 +6500,7 @@ export type components = {
             readonly data: components["schemas"]["ExperimentVariant"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[FineTuneStatus] */
@@ -6753,12 +6508,7 @@ export type components = {
             readonly data: components["schemas"]["FineTuneStatus"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Forecast] */
@@ -6766,12 +6516,7 @@ export type components = {
             readonly data: components["schemas"]["Forecast"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ForecastResponse] */
@@ -6779,12 +6524,7 @@ export type components = {
             readonly data: components["schemas"]["ForecastResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[GroupConverseResult] */
@@ -6792,12 +6532,7 @@ export type components = {
             readonly data: components["schemas"]["GroupConverseResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[HealthReport] */
@@ -6805,12 +6540,7 @@ export type components = {
             readonly data: components["schemas"]["HealthReport"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ImportCodebaseAck] */
@@ -6818,12 +6548,7 @@ export type components = {
             readonly data: components["schemas"]["ImportCodebaseAck"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[InstallEntryResponse] */
@@ -6831,12 +6556,7 @@ export type components = {
             readonly data: components["schemas"]["InstallEntryResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[InterviewTurnResult] */
@@ -6844,12 +6564,7 @@ export type components = {
             readonly data: components["schemas"]["InterviewTurnResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[KnowledgeAnswer] */
@@ -6857,12 +6572,7 @@ export type components = {
             readonly data: components["schemas"]["KnowledgeAnswer"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[KnowledgeSource] */
@@ -6870,12 +6580,7 @@ export type components = {
             readonly data: components["schemas"]["KnowledgeSource"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[LearningCurve] */
@@ -6883,12 +6588,7 @@ export type components = {
             readonly data: components["schemas"]["LearningCurve"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[list[ActiveSteeringDirective]] */
@@ -6896,12 +6596,7 @@ export type components = {
             readonly data: readonly components["schemas"]["ActiveSteeringDirective"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[list[ApiKeyResponse]] */
@@ -6909,12 +6604,7 @@ export type components = {
             readonly data: readonly components["schemas"]["ApiKeyResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[list[RiskOverrideResponse]] */
@@ -6922,12 +6612,7 @@ export type components = {
             readonly data: readonly components["schemas"]["RiskOverrideResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[list[SessionResponse]] */
@@ -6935,12 +6620,7 @@ export type components = {
             readonly data: readonly components["schemas"]["SessionResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[LiveActivitySnapshot] */
@@ -6948,12 +6628,7 @@ export type components = {
             readonly data: components["schemas"]["LiveActivitySnapshot"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[LivenessStatus] */
@@ -6961,12 +6636,7 @@ export type components = {
             readonly data: components["schemas"]["LivenessStatus"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[LivingDocument] */
@@ -6974,12 +6644,7 @@ export type components = {
             readonly data: components["schemas"]["LivingDocument"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[MeetingResponse] */
@@ -6987,12 +6652,7 @@ export type components = {
             readonly data: components["schemas"]["MeetingResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[NoneType] */
@@ -7000,12 +6660,7 @@ export type components = {
             readonly data: null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OAuthInitiationResponse] */
@@ -7013,12 +6668,7 @@ export type components = {
             readonly data: components["schemas"]["OAuthInitiationResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OAuthTokenStatusResponse] */
@@ -7026,12 +6676,7 @@ export type components = {
             readonly data: components["schemas"]["OAuthTokenStatusResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OverrideResponse] */
@@ -7039,12 +6684,7 @@ export type components = {
             readonly data: components["schemas"]["OverrideResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[OverviewMetrics] */
@@ -7052,12 +6692,7 @@ export type components = {
             readonly data: components["schemas"]["OverviewMetrics"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ParetoFrontier] */
@@ -7065,12 +6700,7 @@ export type components = {
             readonly data: components["schemas"]["ParetoFrontier"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PipelineResult] */
@@ -7078,12 +6708,7 @@ export type components = {
             readonly data: components["schemas"]["PipelineResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PreflightResult] */
@@ -7091,12 +6716,7 @@ export type components = {
             readonly data: components["schemas"]["PreflightResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PresetDetailResponse] */
@@ -7104,12 +6724,7 @@ export type components = {
             readonly data: components["schemas"]["PresetDetailResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PresetOverride] */
@@ -7117,12 +6732,7 @@ export type components = {
             readonly data: components["schemas"]["PresetOverride"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProbeLocalResponse] */
@@ -7130,12 +6740,7 @@ export type components = {
             readonly data: components["schemas"]["ProbeLocalResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Project] */
@@ -7143,12 +6748,7 @@ export type components = {
             readonly data: components["schemas"]["Project"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProjectCharter] */
@@ -7156,12 +6756,7 @@ export type components = {
             readonly data: components["schemas"]["ProjectCharter"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PromotionApplyResultDTO] */
@@ -7169,12 +6764,7 @@ export type components = {
             readonly data: components["schemas"]["PromotionApplyResultDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PromotionEvaluationDTO] */
@@ -7182,12 +6772,7 @@ export type components = {
             readonly data: components["schemas"]["PromotionEvaluationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[PromptClassBreakdown] */
@@ -7195,12 +6780,7 @@ export type components = {
             readonly data: components["schemas"]["PromptClassBreakdown"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProposeResult] */
@@ -7208,12 +6788,7 @@ export type components = {
             readonly data: components["schemas"]["ProposeResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderHealthSummary] */
@@ -7221,12 +6796,7 @@ export type components = {
             readonly data: components["schemas"]["ProviderHealthSummary"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderModelResponse] */
@@ -7234,12 +6804,7 @@ export type components = {
             readonly data: components["schemas"]["ProviderModelResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ProviderResponse] */
@@ -7247,12 +6812,7 @@ export type components = {
             readonly data: components["schemas"]["ProviderResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[QualityOverrideResponse] */
@@ -7260,12 +6820,7 @@ export type components = {
             readonly data: components["schemas"]["QualityOverrideResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RateLimitsResponse] */
@@ -7273,12 +6828,7 @@ export type components = {
             readonly data: components["schemas"]["RateLimitsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReadinessProbe] */
@@ -7286,12 +6836,7 @@ export type components = {
             readonly data: components["schemas"]["ReadinessProbe"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReadinessStatus] */
@@ -7299,12 +6844,7 @@ export type components = {
             readonly data: components["schemas"]["ReadinessStatus"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReceiptValidationResult] */
@@ -7312,12 +6852,7 @@ export type components = {
             readonly data: components["schemas"]["ReceiptValidationResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RefreshCycleReportDTO] */
@@ -7325,12 +6860,7 @@ export type components = {
             readonly data: components["schemas"]["RefreshCycleReportDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RefreshStatusDTO] */
@@ -7338,12 +6868,7 @@ export type components = {
             readonly data: components["schemas"]["RefreshStatusDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReplaySeekView] */
@@ -7351,12 +6876,7 @@ export type components = {
             readonly data: components["schemas"]["ReplaySeekView"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ReportResponse] */
@@ -7364,12 +6884,7 @@ export type components = {
             readonly data: components["schemas"]["ReportResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ResolvedCeremonyPolicyResponse] */
@@ -7377,12 +6892,7 @@ export type components = {
             readonly data: components["schemas"]["ResolvedCeremonyPolicyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RestoreResponse] */
@@ -7390,12 +6900,7 @@ export type components = {
             readonly data: components["schemas"]["RestoreResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RevealedSecretResponse] */
@@ -7403,12 +6908,7 @@ export type components = {
             readonly data: components["schemas"]["RevealedSecretResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[RiskOverrideResponse] */
@@ -7416,12 +6916,7 @@ export type components = {
             readonly data: components["schemas"]["RiskOverrideResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SatisfactionHistory] */
@@ -7429,12 +6924,7 @@ export type components = {
             readonly data: components["schemas"]["SatisfactionHistory"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[ScalingStrategyResponse] */
@@ -7442,12 +6932,7 @@ export type components = {
             readonly data: components["schemas"]["ScalingStrategyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SecurityConfigExportResponse] */
@@ -7455,12 +6940,7 @@ export type components = {
             readonly data: components["schemas"]["SecurityConfigExportResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SettingEntry] */
@@ -7468,12 +6948,7 @@ export type components = {
             readonly data: components["schemas"]["SettingEntry"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupAgentResponse] */
@@ -7481,12 +6956,7 @@ export type components = {
             readonly data: components["schemas"]["SetupAgentResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupAgentSummary] */
@@ -7494,12 +6964,7 @@ export type components = {
             readonly data: components["schemas"]["SetupAgentSummary"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupCompanyResponse] */
@@ -7507,12 +6972,7 @@ export type components = {
             readonly data: components["schemas"]["SetupCompanyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupCompleteResponse] */
@@ -7520,12 +6980,7 @@ export type components = {
             readonly data: components["schemas"]["SetupCompleteResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupModelRecommendationsResponse] */
@@ -7533,12 +6988,7 @@ export type components = {
             readonly data: components["schemas"]["SetupModelRecommendationsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupNameLocalesResponse] */
@@ -7546,12 +6996,7 @@ export type components = {
             readonly data: components["schemas"]["SetupNameLocalesResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SetupStatusResponse] */
@@ -7559,12 +7004,7 @@ export type components = {
             readonly data: components["schemas"]["SetupStatusResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SimulationStatusResponse] */
@@ -7572,12 +7012,7 @@ export type components = {
             readonly data: components["schemas"]["SimulationStatusResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SsrfViolationDTO] */
@@ -7585,12 +7020,7 @@ export type components = {
             readonly data: components["schemas"]["SsrfViolationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[StageDecisionResult] */
@@ -7598,12 +7028,7 @@ export type components = {
             readonly data: components["schemas"]["StageDecisionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SteeringIssueResult] */
@@ -7611,12 +7036,7 @@ export type components = {
             readonly data: components["schemas"]["SteeringIssueResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SteeringSupersessionResult] */
@@ -7624,12 +7044,7 @@ export type components = {
             readonly data: components["schemas"]["SteeringSupersessionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SubmitObjectiveAck] */
@@ -7637,12 +7052,7 @@ export type components = {
             readonly data: components["schemas"]["SubmitObjectiveAck"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[SyncModelsResponse] */
@@ -7650,12 +7060,7 @@ export type components = {
             readonly data: components["schemas"]["SyncModelsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Task] */
@@ -7663,12 +7068,7 @@ export type components = {
             readonly data: components["schemas"]["Task"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TaskBoardSubmissionResponse] */
@@ -7676,12 +7076,7 @@ export type components = {
             readonly data: components["schemas"]["TaskBoardSubmissionResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TeamResponse] */
@@ -7689,12 +7084,7 @@ export type components = {
             readonly data: components["schemas"]["TeamResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TestConnectionResponse] */
@@ -7702,12 +7092,7 @@ export type components = {
             readonly data: components["schemas"]["TestConnectionResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TestSinkConfigResponse] */
@@ -7715,12 +7100,7 @@ export type components = {
             readonly data: components["schemas"]["TestSinkConfigResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrainingPlanResponse] */
@@ -7728,12 +7108,7 @@ export type components = {
             readonly data: components["schemas"]["TrainingPlanResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrainingResultResponse] */
@@ -7741,12 +7116,7 @@ export type components = {
             readonly data: components["schemas"]["TrainingResultResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[TrendsResponse] */
@@ -7754,12 +7124,7 @@ export type components = {
             readonly data: components["schemas"]["TrendsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[AgentConfig, ...]] */
@@ -7767,12 +7132,7 @@ export type components = {
             readonly data: readonly components["schemas"]["AgentConfig"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[BlueprintInfoResponse, ...]] */
@@ -7780,12 +7140,7 @@ export type components = {
             readonly data: readonly components["schemas"]["BlueprintInfoResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[BrainSearchHit, ...]] */
@@ -7793,12 +7148,7 @@ export type components = {
             readonly data: readonly components["schemas"]["BrainSearchHit"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[CareerEvent, ...]] */
@@ -7806,12 +7156,7 @@ export type components = {
             readonly data: readonly components["schemas"]["CareerEvent"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[Department, ...]] */
@@ -7819,12 +7164,7 @@ export type components = {
             readonly data: readonly components["schemas"]["Department"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[DocSearchHit, ...]] */
@@ -7832,12 +7172,7 @@ export type components = {
             readonly data: readonly components["schemas"]["DocSearchHit"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[DriftReportResponse, ...]] */
@@ -7845,12 +7180,7 @@ export type components = {
             readonly data: readonly components["schemas"]["DriftReportResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[KnowledgeHit, ...]] */
@@ -7858,12 +7188,7 @@ export type components = {
             readonly data: readonly components["schemas"]["KnowledgeHit"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[MeetingResponse, ...]] */
@@ -7871,12 +7196,7 @@ export type components = {
             readonly data: readonly components["schemas"]["MeetingResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[PackInfoResponse, ...]] */
@@ -7884,12 +7204,7 @@ export type components = {
             readonly data: readonly components["schemas"]["PackInfoResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[PromotionRecordDTO, ...]] */
@@ -7897,12 +7212,7 @@ export type components = {
             readonly data: readonly components["schemas"]["PromotionRecordDTO"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[ScalingDecisionResponse, ...]] */
@@ -7910,12 +7220,7 @@ export type components = {
             readonly data: readonly components["schemas"]["ScalingDecisionResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[SettingDefinition, ...]] */
@@ -7923,12 +7228,7 @@ export type components = {
             readonly data: readonly components["schemas"]["SettingDefinition"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[SettingEntry, ...]] */
@@ -7936,12 +7236,7 @@ export type components = {
             readonly data: readonly components["schemas"]["SettingEntry"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[str, ...]] */
@@ -7949,12 +7244,7 @@ export type components = {
             readonly data: readonly string[] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[TeamResponse, ...]] */
@@ -7962,12 +7252,7 @@ export type components = {
             readonly data: readonly components["schemas"]["TeamResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[tuple[TemplateInfoResponse, ...]] */
@@ -7975,12 +7260,7 @@ export type components = {
             readonly data: readonly components["schemas"]["TemplateInfoResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Union[dict[str, object], NoneType]] */
@@ -7990,12 +7270,7 @@ export type components = {
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Union[PresetOverride, NoneType]] */
@@ -8003,12 +7278,7 @@ export type components = {
             readonly data: components["schemas"]["PresetOverride"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[Union[RedTeamReportRecord, NoneType]] */
@@ -8016,12 +7286,7 @@ export type components = {
             readonly data: components["schemas"]["RedTeamReportRecord"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[UpgradeRecommendationDTO] */
@@ -8029,12 +7294,7 @@ export type components = {
             readonly data: components["schemas"]["UpgradeRecommendationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[UserInfoResponse] */
@@ -8042,12 +7302,7 @@ export type components = {
             readonly data: components["schemas"]["UserInfoResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[UserResponse] */
@@ -8055,12 +7310,7 @@ export type components = {
             readonly data: components["schemas"]["UserResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[AgentIdentity]] */
@@ -8068,12 +7318,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_AgentIdentity_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[BudgetConfig]] */
@@ -8081,12 +7326,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_BudgetConfig_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[Company]] */
@@ -8094,12 +7334,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_Company_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[EvaluationConfig]] */
@@ -8107,12 +7342,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_EvaluationConfig_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[Role]] */
@@ -8120,12 +7350,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_Role_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[VersionSnapshot[WorkflowDefinition]] */
@@ -8133,12 +7358,7 @@ export type components = {
             readonly data: components["schemas"]["VersionSnapshot_WorkflowDefinition_"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowDefinition] */
@@ -8146,12 +7366,7 @@ export type components = {
             readonly data: components["schemas"]["WorkflowDefinition"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowDiff] */
@@ -8159,12 +7374,7 @@ export type components = {
             readonly data: components["schemas"]["WorkflowDiff"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowExecution] */
@@ -8172,12 +7382,7 @@ export type components = {
             readonly data: components["schemas"]["WorkflowExecution"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WorkflowValidationResult] */
@@ -8185,12 +7390,7 @@ export type components = {
             readonly data: components["schemas"]["WorkflowValidationResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApiResponse[WsTicketResponse] */
@@ -8198,12 +7398,7 @@ export type components = {
             readonly data: components["schemas"]["WsTicketResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** ApplyTemplatePackRequest */
@@ -9846,12 +9041,7 @@ export type components = {
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
             readonly period_summary: components["schemas"]["PeriodSummary"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** CreateAgentOrgRequest */
@@ -10546,12 +9736,7 @@ export type components = {
             readonly department_cost_7d: number;
             /** @description Department name */
             readonly department_name: string;
-            /**
-             * @description Percentage of agents that are active.
-             *
-             *     Returns:
-             *         Resulting numeric value.
-             */
+            /** @description Percentage of agents that are active. */
             readonly utilization_percent: number;
         };
         /**
@@ -10602,12 +9787,7 @@ export type components = {
         readonly DiscoveryPolicyResponse: {
             /** @default true */
             readonly block_private_ips: boolean;
-            /**
-             * @description Number of entries in the allowlist.
-             *
-             *     Returns:
-             *         Resulting integer.
-             */
+            /** @description Number of entries in the allowlist. */
             readonly entry_count: number;
             /** @default [] */
             readonly host_port_allowlist: readonly string[];
@@ -10808,12 +9988,7 @@ export type components = {
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly meta: components["schemas"]["EntityListMeta"];
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** EntityRelationInput */
@@ -12873,12 +12048,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ActivityEvent] */
@@ -12893,12 +12063,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[AgentConfig] */
@@ -12913,12 +12078,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[AggregatedPattern] */
@@ -12933,12 +12093,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Annotated[Union[CloudPreset, LocalPreset], FieldInfo(annotation=NoneType, required=True, discriminator='kind')]] */
@@ -12953,12 +12108,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ApprovalResponse] */
@@ -12973,12 +12123,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Artifact] */
@@ -12993,12 +12138,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[AuditEntry] */
@@ -13013,12 +12153,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[BackupInfo] */
@@ -13033,12 +12168,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[BrainEntryVersion] */
@@ -13053,12 +12183,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[BrainSummary] */
@@ -13073,12 +12198,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[CatalogEntry] */
@@ -13093,12 +12213,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Channel] */
@@ -13113,12 +12228,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[CheckpointRecord] */
@@ -13133,12 +12243,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ClientProfile] */
@@ -13153,12 +12258,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ClientRequest] */
@@ -13173,12 +12273,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Connection] */
@@ -13193,12 +12288,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[CoordinationMetricsRecord] */
@@ -13213,12 +12303,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Department] */
@@ -13233,12 +12318,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[dict[str, object]] */
@@ -13255,12 +12335,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[dict[str, str]] */
@@ -13277,12 +12352,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[DocSummary] */
@@ -13297,12 +12367,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[DocVersion] */
@@ -13317,12 +12382,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[DriftReportResponse] */
@@ -13337,12 +12397,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[EntityVersionResponse] */
@@ -13357,12 +12412,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[EscalationResponse] */
@@ -13377,12 +12427,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ExperimentAssignment] */
@@ -13397,12 +12442,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ExperimentVariant] */
@@ -13417,12 +12457,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[FineTuneRun] */
@@ -13437,12 +12472,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[FlightRecorderFrameResponse] */
@@ -13457,12 +12487,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[HealthReport] */
@@ -13477,12 +12502,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[InstalledEntry] */
@@ -13497,12 +12517,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[InterruptResponse] */
@@ -13517,12 +12532,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[KnowledgeSource] */
@@ -13537,12 +12547,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[MeetingResponse] */
@@ -13557,12 +12562,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Message] */
@@ -13577,12 +12577,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ParentReference] */
@@ -13597,12 +12592,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[PersonalityPresetInfoResponse] */
@@ -13617,12 +12607,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[PresetSummaryResponse] */
@@ -13637,12 +12622,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Project] */
@@ -13657,12 +12637,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ProjectCharter] */
@@ -13677,12 +12652,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[PromotionRecordDTO] */
@@ -13697,12 +12667,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ProviderAuditEvent] */
@@ -13717,12 +12682,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ProviderModelResponse] */
@@ -13737,12 +12697,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ProviderResponse] */
@@ -13757,12 +12712,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ScalingDecisionResponse] */
@@ -13777,12 +12727,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ScalingSignalResponse] */
@@ -13797,12 +12742,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ScalingStrategyResponse] */
@@ -13817,12 +12757,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SettingEntry] */
@@ -13837,12 +12772,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SetupAgentSummary] */
@@ -13857,12 +12787,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SimulationStatusResponse] */
@@ -13877,12 +12802,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SinkInfoResponse] */
@@ -13897,12 +12817,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SsrfViolationDTO] */
@@ -13917,12 +12832,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[str] */
@@ -13937,12 +12847,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[SubworkflowSummary] */
@@ -13957,12 +12862,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[Task] */
@@ -13977,12 +12877,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[ThresholdRecommendation] */
@@ -13997,12 +12892,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[UpgradeRecommendationDTO] */
@@ -14017,12 +12907,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[UserResponse] */
@@ -14037,12 +12922,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[AgentIdentity]] */
@@ -14057,12 +12937,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[BudgetConfig]] */
@@ -14077,12 +12952,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[Company]] */
@@ -14097,12 +12967,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[EvaluationConfig]] */
@@ -14117,12 +12982,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[Role]] */
@@ -14137,12 +12997,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[VersionSnapshot[WorkflowDefinition]] */
@@ -14157,12 +13012,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[WebhookReceipt] */
@@ -14177,12 +13027,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[WorkflowDefinition] */
@@ -14197,12 +13042,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginatedResponse[WorkflowExecution] */
@@ -14217,12 +13057,7 @@ export type components = {
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
+            /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
         /** PaginationMeta */
@@ -16428,12 +15263,7 @@ export type components = {
         };
         /** SetupCompanyResponse */
         readonly SetupCompanyResponse: {
-            /**
-             * @description Number of agents auto-created from template.
-             *
-             *     Returns:
-             *         Resulting integer.
-             */
+            /** @description Number of agents auto-created from template. */
             readonly agent_count: number;
             /** @default [] */
             readonly agents: readonly components["schemas"]["SetupAgentSummary"][];

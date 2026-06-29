@@ -160,11 +160,7 @@ class HttpGitHubClient:
 
     @property
     def _client(self) -> httpx.AsyncClient:
-        """Lazily create the httpx client on first use.
-
-        Returns:
-            ``httpx.AsyncClient`` instance.
-        """
+        """Lazily create the httpx client on first use."""
         if self.__client is None:
             self.__client = httpx.AsyncClient(
                 base_url=self._api_base_url,

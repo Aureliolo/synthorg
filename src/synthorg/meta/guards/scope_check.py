@@ -36,11 +36,7 @@ class ScopeCheckGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Guard name."""
         return NotBlankStr("scope_check")
 
     async def evaluate(

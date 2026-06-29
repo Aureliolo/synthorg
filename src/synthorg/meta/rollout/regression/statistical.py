@@ -137,11 +137,7 @@ class StatisticalDetector:
 
     @property
     def name(self) -> NotBlankStr:
-        """Detector name.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Detector name."""
         return NotBlankStr("statistical")
 
     async def check(

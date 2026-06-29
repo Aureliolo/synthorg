@@ -52,11 +52,7 @@ class InMemoryAnalyticsCollector:
 
     @property
     def event_count(self) -> int:
-        """Total events stored.
-
-        Returns:
-            Resulting integer.
-        """
+        """Total events stored."""
         return len(self._events)
 
     async def ingest(

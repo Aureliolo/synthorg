@@ -494,20 +494,12 @@ class DeclarativeRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name from the definition.
-
-        Returns:
-            ``NotBlankStr`` instance.
-        """
+        """Rule name from the definition."""
         return self._definition.name
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Target altitudes from the definition.
-
-        Returns:
-            Tuple of the declared element types.
-        """
+        """Target altitudes from the definition."""
         return self._definition.target_altitudes
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
