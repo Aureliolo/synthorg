@@ -64,6 +64,7 @@ _GATES: tuple[str, ...] = (
     "check_dependency_inversion",
     "check_no_magic_numbers",
     "check_setting_to_startup_trace",
+    "check_setting_restart_required_justified",
     "check_long_running_loops_have_kill_switch",
     "check_domain_error_hierarchy",
     "check_error_code_uniqueness",

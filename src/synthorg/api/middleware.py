@@ -155,16 +155,16 @@ _DOCS_CSP: str = build_docs_csp(_DOCS_CSP_DEFAULT_ORIGINS)
 def set_docs_csp_origins(origins: Sequence[str]) -> None:
     """Replace the docs CSP value with one built from *origins*.
 
-    Called once at app startup after resolving
-    ``api.csp_docs_external_origins`` through the settings service.
+    Called at app startup after resolving
+    ``api.csp_docs_external_origins`` through the settings service, and
+    again by ``ApiSecurityHeadersSettingsSubscriber`` on a hot-reload.
     Reset to the default list with ``_DOCS_CSP_DEFAULT_ORIGINS`` for
     test isolation.
 
-    Calling this outside startup creates a brief eventual-consistency
-    window for in-flight HTTP responses, since the docs ``before_send``
-    hook reads the global at request time. The
-    ``api.csp_docs_external_origins`` setting is marked
-    ``restart_required=True`` precisely to keep this single-writer.
+    The docs ``before_send`` hook reads the global at request time, so a
+    hot-reload has a brief eventual-consistency window: a response already
+    in flight may carry the prior CSP while the new value applies to
+    subsequent responses. This is accepted -- the setting is hot-reloadable.
     """
     global _DOCS_CSP  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
     _DOCS_CSP = build_docs_csp(origins)

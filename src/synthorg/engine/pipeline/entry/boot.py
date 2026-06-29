@@ -48,7 +48,11 @@ from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
 from synthorg.observability.events.budget import BUDGET_FORECAST_UNAVAILABLE
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
@@ -188,6 +192,61 @@ async def wire_real_intake_entry(
         app_state.set_intake_entry_adapter_if_absent(adapter)
 
 
+async def _resolve_objectives_default_project(
+    app_state: AppState,
+    env: Mapping[str, str],
+) -> str:
+    """Resolve ``objectives.default_project`` through the live chain.
+
+    Post-init (settings service wired) this reads the full DB > env >
+    default chain so an operator override applies on the next re-wire; a
+    transient resolver outage propagates (the caller preserves the current
+    wiring). Pre-init it falls back to the bootstrap resolver (env > default),
+    the same value the boot path used before persistence connected.
+
+    Returns:
+        The resolved project slug (un-stripped; caller strips).
+
+    Raises:
+        Exception: Propagated when the live resolver read fails post-init, so
+            a transient outage does not silently repoint to the bootstrap slug.
+    """
+    from synthorg.settings.state import (  # noqa: PLC0415
+        SettingsStateSlice,
+        config_resolver_of,
+    )
+
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
+        return str(
+            resolve_init_value(
+                SettingNamespace.OBJECTIVES,
+                _OBJECTIVES_DEFAULT_PROJECT_KEY,
+                env=env,
+            ).value
+        )
+    try:
+        return await config_resolver_of(app_state).get_str(
+            SettingNamespace.OBJECTIVES.value,
+            _OBJECTIVES_DEFAULT_PROJECT_KEY,
+        )
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            OBJECTIVE_ENTRY_WIRED,
+            service="objective_entry_adapter",
+            setting="objectives.default_project",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="resolver outage; preserving current objective-entry wiring",
+        )
+        # Post-init (resolver wired) a transient outage must NOT silently
+        # repoint the adapter to the bootstrap (env>default) slug or re-enable
+        # intake when the DB value was deliberately blank. Propagate so the
+        # subscriber's error path keeps the current adapter; the env>default
+        # fallback above is reserved for the genuine pre-init boot case.
+        raise
+
+
 async def wire_real_objective_entry(
     app_state: AppState,
     *,
@@ -199,8 +258,11 @@ async def wire_real_objective_entry(
     Unlike the intake hook this does NOT depend on the client
     simulation runtime: a configured provider (i.e.
     ``has_work_pipeline``) is sufficient. The objectives default
-    project is resolved via the bootstrap settings resolver (env >
-    registered default).
+    project is resolved through the live settings chain (DB > env >
+    default) when the settings service is wired, falling back to the
+    bootstrap resolver (env > default) pre-init only; a post-init resolver
+    outage propagates so the current adapter is preserved. On the hot path a
+    blank resolved project unwires the adapter (intake stops).
 
     Args:
         app_state: Live application state (work pipeline,
@@ -217,13 +279,8 @@ async def wire_real_objective_entry(
             note="no work pipeline; real objective entry offline",
         )
         return
-    default_project = str(
-        resolve_init_value(
-            SettingNamespace.OBJECTIVES,
-            _OBJECTIVES_DEFAULT_PROJECT_KEY,
-            env=env,
-        ).value
-    ).strip()
+    resolved_project = await _resolve_objectives_default_project(app_state, env)
+    default_project = resolved_project.strip()
     if not default_project:
         logger.warning(
             OBJECTIVE_ENTRY_WIRED,
@@ -231,6 +288,11 @@ async def wire_real_objective_entry(
             mode="disabled",
             note="objectives.default_project resolved blank",
         )
+        # An operator clearing the setting must actually stop intake: unwire
+        # the previously-installed adapter on the hot path rather than leave
+        # it filing against the old project. (Pre-init/boot has nothing wired.)
+        if hot_swap:
+            app_state.clear_objective_entry_adapter()
         return
     await _ensure_project(
         app_state,

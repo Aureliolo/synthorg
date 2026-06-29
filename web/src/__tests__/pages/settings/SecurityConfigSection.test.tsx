@@ -79,6 +79,76 @@ describe('SecurityConfigSection', () => {
     })
   })
 
+  it('sends confirm=true and the entered reason on import', async () => {
+    let captured: { confirm?: boolean; reason?: string } | null = null
+    server.use(
+      http.post('/api/v1/settings/security/import', async ({ request }) => {
+        captured = (await request.json()) as { confirm?: boolean; reason?: string }
+        return HttpResponse.json({
+          success: true,
+          data: { config: {}, exported_at: '2026-04-19T00:00:00Z', custom_policies_warning: null },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<SecurityConfigSection />)
+
+    await uploadConfig({ enabled: false })
+    await user.type(screen.getByLabelText('Reason'), 'Disabling scan for migration')
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    await waitFor(() => {
+      expect(toastTitles()).toContain('Security configuration imported')
+    })
+    expect(captured).toMatchObject({
+      confirm: true,
+      reason: 'Disabling scan for migration',
+    })
+  })
+
+  it('falls back to a default reason when none is entered', async () => {
+    let captured: { confirm?: boolean; reason?: string } | null = null
+    server.use(
+      http.post('/api/v1/settings/security/import', async ({ request }) => {
+        captured = (await request.json()) as { confirm?: boolean; reason?: string }
+        return HttpResponse.json({
+          success: true,
+          data: { config: {}, exported_at: '2026-04-19T00:00:00Z', custom_policies_warning: null },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<SecurityConfigSection />)
+
+    await uploadConfig({ enabled: false })
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    await waitFor(() => {
+      expect(toastTitles()).toContain('Security configuration imported')
+    })
+    expect(captured).toMatchObject({ confirm: true })
+    expect((captured as { reason?: string } | null)?.reason).toBeTruthy()
+  })
+
+  it('keeps the dialog open with the upload intact when the import fails', async () => {
+    server.use(
+      http.post('/api/v1/settings/security/import', () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<SecurityConfigSection />)
+
+    await uploadConfig({ enabled: false })
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    await waitFor(() => {
+      expect(toastTitles()).toContain('Import failed')
+    })
+    // The dialog stays open for a retry rather than dropping the upload.
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument()
+  })
+
   it('does not import when the confirmation is cancelled', async () => {
     const user = userEvent.setup()
     render(<SecurityConfigSection />)

@@ -4,6 +4,7 @@ import { Download, ShieldCheck, Upload } from 'lucide-react'
 import { exportSecurityConfig, importSecurityConfig } from '@/api/endpoints/settings'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
 import { useToastStore } from '@/stores/toast'
 import { downloadTextFile } from '@/utils/download'
@@ -16,6 +17,7 @@ function useSecurityConfigActions() {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [pendingConfig, setPendingConfig] = useState<Record<string, unknown> | null>(null)
+  const [importReason, setImportReason] = useState('')
 
   function notifyCustomPoliciesWarning(warning: string | null | undefined) {
     if (warning) {
@@ -57,23 +59,43 @@ function useSecurityConfigActions() {
     }
   }
 
-  async function handleConfirmImport() {
-    if (!pendingConfig) return
+  async function handleConfirmImport(): Promise<boolean> {
+    if (!pendingConfig) return false
     const config = pendingConfig
-    setPendingConfig(null)
+    // The destructive confirmation IS the deliberate action the backend
+    // security-write guardrail requires, so the import carries confirm=true
+    // plus the operator's reason (a descriptive default when left blank); the
+    // actor is taken from the authenticated request. This lets an import that
+    // weakens the posture through without a separate rejection round-trip.
+    const reason = importReason.trim() || 'Imported via the security settings dashboard'
     setImporting(true)
     try {
-      const result = await importSecurityConfig({ config })
+      const result = await importSecurityConfig({ config, confirm: true, reason })
       toast({ variant: 'success', title: 'Security configuration imported' })
       notifyCustomPoliciesWarning(result.custom_policies_warning)
+      // Returning true closes the dialog; the close handler clears the
+      // pending config + reason. A failed import returns false below so the
+      // dialog stays open with the upload + reason intact for a retry.
+      return true
     } catch (err) {
       toast({ variant: 'error', ...getCrudErrorTitle(err, 'Import failed'), description: getErrorMessage(err) })
+      return false
     } finally {
       setImporting(false)
     }
   }
 
-  return { exporting, importing, pendingConfig, setPendingConfig, handleExport, readImportFile, handleConfirmImport }
+  return {
+    exporting,
+    importing,
+    pendingConfig,
+    setPendingConfig,
+    importReason,
+    setImportReason,
+    handleExport,
+    readImportFile,
+    handleConfirmImport,
+  }
 }
 
 /**
@@ -91,6 +113,8 @@ export function SecurityConfigSection() {
     importing,
     pendingConfig,
     setPendingConfig,
+    importReason,
+    setImportReason,
     handleExport,
     readImportFile,
     handleConfirmImport,
@@ -131,15 +155,31 @@ export function SecurityConfigSection() {
       <ConfirmDialog
         open={pendingConfig !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingConfig(null)
+          if (!open) {
+            setPendingConfig(null)
+            setImportReason('')
+          }
         }}
         title="Import security configuration?"
         description="This overwrites the current security settings with the imported configuration. Invalid configurations are rejected without changing anything."
         confirmLabel="Import"
         variant="destructive"
-        onConfirm={() => void handleConfirmImport()}
-        onCancel={() => setPendingConfig(null)}
-      />
+        onConfirm={handleConfirmImport}
+        onCancel={() => {
+          setPendingConfig(null)
+          setImportReason('')
+        }}
+      >
+        <InputField
+          multiline
+          label="Reason"
+          hint="Recorded in the security audit trail. A weakening import needs a reason; a descriptive default is used if left blank."
+          placeholder="Why is this configuration being imported?"
+          rows={2}
+          value={importReason}
+          onValueChange={setImportReason}
+        />
+      </ConfirmDialog>
     </SectionCard>
   )
 }

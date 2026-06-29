@@ -1,3 +1,4 @@
+# module-kind: integration
 """Outbound A2A client for delegating to external agents.
 
 Sends JSON-RPC 2.0 requests to external A2A-compatible agents,
@@ -79,6 +80,22 @@ class A2AClient(SkillNegotiationMixin):
         self._network_validator = network_validator
         self._timeout = timeout_seconds
         self._http_client = http_client
+
+    def set_timeout_seconds(self, value: float) -> None:
+        """Update the per-request HTTP timeout (hot).
+
+        Pushed in by ``A2AClientSettingsSubscriber`` so an operator change
+        to ``a2a.client_timeout_seconds`` applies on the next request (both
+        the persistent-client and SSRF-pinned paths read ``_timeout`` per
+        call) without a restart.
+
+        Raises:
+            ValueError: If *value* is not positive.
+        """
+        if value <= 0:
+            msg = f"timeout_seconds must be > 0, got {value}"
+            raise ValueError(msg)
+        self._timeout = value
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client if present."""
@@ -507,10 +524,14 @@ class A2AClient(SkillNegotiationMixin):
             HTTP response.
         """
         if self._http_client is not None:
+            # Pass the timeout per request (not just the client's baked-in
+            # default) so a hot ``set_timeout_seconds`` update applies to the
+            # persistent-client path, matching the SSRF-pinned path below.
             return await self._http_client.post(
                 url,
                 json=rpc_req.model_dump(mode="json"),
                 headers=headers,
+                timeout=self._timeout,
             )
         transport: httpx.AsyncBaseTransport | None = None
         if pinned_ip is not None and pinned_hostname is not None:

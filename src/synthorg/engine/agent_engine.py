@@ -187,6 +187,7 @@ class AgentEngine(
         policy_engine: PolicyEngine | None = None,
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
+        security_config_provider: Callable[[], SecurityConfig | None] | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
         parked_context_repo: ParkedContextRepository | None = None,
         cost_forecast_repo: CostForecastRepository | None = None,
@@ -330,6 +331,12 @@ class AgentEngine(
         else:
             self._cost_tracker = cost_tracker
         self._security_config = security_config
+        # When a provider is wired (boot path), the live security config is
+        # read through it per request so operator toggles to
+        # security.enabled / audit_enabled / post_tool_scanning_enabled /
+        # output_scan_policy_type apply without a restart. Tests / direct
+        # construction omit it and fall back to the static ``security_config``.
+        self._security_config_provider = security_config_provider
         self._task_engine = task_engine
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
@@ -399,11 +406,6 @@ class AgentEngine(
         an acting agent has no MCP tools, so ``/meta/chat/act`` 503s.
         """
         return self._mcp_self_consumer is not None
-
-    @property
-    def has_security_governance(self) -> bool:
-        """Whether an enabled ``SecurityConfig`` governs sensitive actions."""
-        return self._security_config is not None and self._security_config.enabled
 
     async def coordinate(
         self,

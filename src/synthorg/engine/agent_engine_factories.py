@@ -34,7 +34,7 @@ from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.enforcer import BudgetEnforcer
@@ -113,9 +113,33 @@ class AgentEngineFactoriesMixin:
     _tool_registry: ToolRegistry | None
     _tool_invocation_tracker: ToolInvocationTracker | None
     _security_config: SecurityConfig | None
+    _security_config_provider: Callable[[], SecurityConfig | None] | None
     _budget_enforcer: BudgetEnforcer | None
     _audit_log: AuditLog
     _cost_tracker: CostTrackerProtocol | None
+
+    def _live_security_config(self) -> SecurityConfig | None:
+        """Return the live security config (provider when wired, else static).
+
+        The boot path wires ``_security_config_provider`` to read the
+        ``AppState`` security holder, so operator toggles to the four
+        ``security.*`` flags apply per request without a restart. Tests /
+        direct construction fall back to the static boot ``_security_config``.
+        """
+        if self._security_config_provider is not None:
+            return self._security_config_provider()
+        return self._security_config
+
+    @property
+    def has_security_governance(self) -> bool:
+        """Whether an enabled ``SecurityConfig`` governs sensitive actions.
+
+        Reads the live config (through the holder when wired) so a runtime
+        toggle of ``security.enabled`` gates the direct-MCP acting surface
+        without a restart.
+        """
+        live = self._live_security_config()
+        return live is not None and live.enabled
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured.
@@ -268,7 +292,7 @@ class AgentEngineFactoriesMixin:
             configured.
         """
         return make_security_interceptor(
-            self._security_config,
+            self._live_security_config(),
             self._audit_log,
             approval_store=self._approval_store,
             effective_autonomy=effective_autonomy,

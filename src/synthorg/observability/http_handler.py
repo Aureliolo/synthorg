@@ -92,6 +92,11 @@ class HttpBatchHandler(logging.Handler):
         self._flush_interval = flush_interval
         self._timeout = timeout
         self._max_retries = max_retries
+        # The (timeout, max_retries) the flusher captured for the batch it is
+        # currently sending. ``close()`` budgets its join against the MAX of
+        # this and the live values, so a hot shrink of either knob cannot
+        # under-budget an in-flight send and abandon the final drain.
+        self._active_send_policy: tuple[float, int] = (timeout, max_retries)
         self._queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
         self._pending_count = 0
         self._pending_lock = threading.Lock()
@@ -134,6 +139,47 @@ class HttpBatchHandler(logging.Handler):
             msg = "export callback must be callable or None"
             raise TypeError(msg)
         self._export_callback = callback
+
+    def set_batch_size(self, value: int) -> None:
+        """Update the per-POST batch size (hot).
+
+        Values arrive pre-validated from ``ObservabilityBridgeConfig``
+        (the subscriber re-resolves + validates the snapshot before
+        calling this), so the assignment is unguarded. The flusher thread
+        reads ``_batch_size`` per emit / drain; the single-reference write
+        is GIL-atomic.
+        """
+        self._batch_size = value
+
+    def set_flush_interval(self, value: float) -> None:
+        """Update the automatic-flush interval in seconds (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig``. The flusher thread
+        reads ``_flush_interval`` as its ``wait`` timeout on the next loop.
+        """
+        self._flush_interval = value
+
+    def set_timeout(self, value: float) -> None:
+        """Update the HTTP POST timeout in seconds (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig``; read per POST.
+        """
+        self._timeout = value
+
+    def set_max_retries(self, value: int) -> None:
+        """Update the per-POST retry count (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig`` (``ge=0``); read per
+        POST.
+
+        Raises:
+            ValueError: If *value* is negative (defence in depth mirroring
+                the constructor guard).
+        """
+        if value < 0:
+            msg = "max_retries must be greater than or equal to 0"
+            raise ValueError(msg)
+        self._max_retries = value
 
     def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
         """Call the registered export callback, swallowing callback errors.
@@ -282,15 +328,20 @@ class HttpBatchHandler(logging.Handler):
             instance when every attempt failed.
         """
         last_error: Exception | None = None
+        # Snapshot the retry policy once for this batch so every attempt and
+        # close()'s join budget agree on the same (timeout, max_retries): a
+        # concurrent hot shrink applies to the NEXT batch, never mid-send.
+        timeout, max_retries = self._timeout, self._max_retries
+        self._active_send_policy = (timeout, max_retries)
         # See docs/reference/retry-patterns.md: Pattern C/Sync -- this
         # method runs inside a stdlib logging-handler thread using
         # synchronous urllib.request, so the async GeneralRetryHandler
         # cannot be awaited from here.
-        for attempt in range(1 + self._max_retries):
+        for attempt in range(1 + max_retries):
             try:
                 with urllib.request.urlopen(  # noqa: S310
                     request,
-                    timeout=self._timeout,
+                    timeout=timeout,
                 ):
                     pass  # Response body not needed
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -302,7 +353,7 @@ class HttpBatchHandler(logging.Handler):
                     if 400 <= exc.code < 500:  # noqa: PLR2004
                         return exc
                 last_error = exc
-                if attempt < self._max_retries:
+                if attempt < max_retries:
                     # Bounded backoff before the next attempt. close()
                     # budgets backoff_total into its join timeout, so a
                     # single batch's retries run to completion rather than
@@ -323,11 +374,15 @@ class HttpBatchHandler(logging.Handler):
         # Allow enough time for in-flight retries to finish: worst case is
         # (1 + max_retries) attempts each up to ``timeout`` plus the
         # bounded backoff between them. Since the backoff uses time.sleep
-        # and is non-interruptible, this is an upper bound.
-        backoff_total = sum(
-            backoff_delay(attempt) for attempt in range(self._max_retries)
-        )
-        join_timeout = (1 + self._max_retries) * self._timeout + backoff_total
+        # and is non-interruptible, this is an upper bound. Budget against the
+        # MAX of the in-flight batch's captured policy and the live values, so
+        # a hot shrink of timeout/retries cannot under-budget a send already
+        # running under the older, larger policy and abandon the final drain.
+        active_timeout, active_retries = self._active_send_policy
+        timeout = max(active_timeout, self._timeout)
+        max_retries = max(active_retries, self._max_retries)
+        backoff_total = sum(backoff_delay(attempt) for attempt in range(max_retries))
+        join_timeout = (1 + max_retries) * timeout + backoff_total
         self._flusher.join(timeout=join_timeout)
         # Only drain from the calling thread if the flusher has exited.
         # If join() timed out the flusher may still be in _drain_and_flush,

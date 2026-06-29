@@ -299,12 +299,12 @@ _r.register(
         description=(
             "Build and run the coordination middleware pipeline"
             " (task/progress ledgers, plan-review gate, replan hook)."
-            " On by default. Built at coordinator construction, so a change"
-            " applies on the next coordinator rebuild (restart-required)."
+            " On by default. A change triggers a runtime-services rebuild"
+            " via a settings subscriber (which rebuilds the coordinator)"
+            " without a restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 

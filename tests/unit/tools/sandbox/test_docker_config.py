@@ -36,7 +36,6 @@ class TestDockerSandboxConfigDefaults:
         assert config.timeout_seconds == 120.0
         assert config.pids_limit == 64
         assert config.tmpfs_size == "64m"
-        assert config.sidecar_pids_limit == 32
         assert config.sidecar_tmpfs_size == "8m"
         assert config.mount_mode == "ro"
         assert config.runtime is None
@@ -301,14 +300,6 @@ class TestDockerSandboxConfigBounds:
         with pytest.raises(ValidationError, match="pids_limit"):
             DockerSandboxConfig(pids_limit=1025)
 
-    def test_sidecar_pids_limit_zero_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="sidecar_pids_limit"):
-            DockerSandboxConfig(sidecar_pids_limit=0)
-
-    def test_sidecar_pids_limit_exceeds_max_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="sidecar_pids_limit"):
-            DockerSandboxConfig(sidecar_pids_limit=1025)
-
     def test_blank_tmpfs_size_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DockerSandboxConfig(tmpfs_size="")
@@ -348,12 +339,10 @@ class TestDockerSandboxConfigBounds:
         config = DockerSandboxConfig(
             pids_limit=128,
             tmpfs_size="256m",
-            sidecar_pids_limit=64,
             sidecar_tmpfs_size="16m",
         )
         assert config.pids_limit == 128
         assert config.tmpfs_size == "256m"
-        assert config.sidecar_pids_limit == 64
         assert config.sidecar_tmpfs_size == "16m"
 
 

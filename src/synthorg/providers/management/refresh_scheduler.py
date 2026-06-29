@@ -27,6 +27,7 @@ from synthorg.providers.management.model_refresh_service import (
 )
 from synthorg.providers.management.refresh_config import (
     RefreshMode,
+    _resolve_interval_seconds,
     resolve_refresh_mode,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
@@ -77,6 +78,19 @@ class ModelRefreshScheduler(AsyncCycleScheduler):
         self._service = service
         self._config_resolver = config_resolver
         self._apply_recommendation = apply_recommendation
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        """Re-resolve ``providers.model_refresh_interval_seconds`` each tick.
+
+        The cadence is operator-tunable at runtime: a change applies on the
+        next tick (fail-safe to the registered default on a read failure)
+        without a restart, mirroring the per-tick mode re-read.
+
+        Returns:
+            The resolved cadence in seconds for the next wait.
+        """
+        return await _resolve_interval_seconds(self._config_resolver)
 
     @override
     async def _run_cycle_once(self) -> None:

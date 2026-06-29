@@ -146,16 +146,6 @@ class DockerSandboxConfig(BaseModel):
             "container (Docker tmpfs size syntax, e.g. '64m')."
         ),
     )
-    sidecar_pids_limit: int = Field(
-        default=32,
-        ge=1,
-        le=1024,
-        description=(
-            "PIDs cap for the network sidecar container. Tighter than "
-            "the main sandbox because the sidecar only runs dnsmasq + "
-            "iptables + a small Python health server."
-        ),
-    )
     sidecar_tmpfs_size: NotBlankStr = Field(
         default="8m",
         description=(

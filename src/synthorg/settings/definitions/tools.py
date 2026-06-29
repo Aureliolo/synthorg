@@ -38,10 +38,12 @@ _r.register(
         key="docker_sidecar_health_poll_interval_seconds",
         type=SettingType.FLOAT,
         default="0.2",
-        description="Interval between sidecar container health probes",
+        description=(
+            "Interval between sidecar container health probes. Resolved"
+            " per container launch, so a change applies without a restart."
+        ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0.05,
         max_value=5.0,
     )
@@ -55,11 +57,11 @@ _r.register(
         default="15.0",
         description=(
             "Maximum time to wait for the sidecar container to report"
-            " healthy before failing sandbox startup"
+            " healthy before failing sandbox startup. Resolved per"
+            " container launch, so a change applies without a restart."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=300.0,
     )
@@ -76,10 +78,11 @@ _r.register(
             " size string. Accepts raw bytes (e.g. '1048576') or a"
             " single-character unit suffix 'b'/'k'/'m'/'g' (case-insensitive):"
             " '512b', '64k', '64m', '1G'. The leading digit must be non-zero."
+            " Resolved per container launch, so a change applies without"
+            " a restart."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
     )
 )
@@ -90,10 +93,13 @@ _r.register(
         key="docker_sidecar_cpu_limit",
         type=SettingType.FLOAT,
         default="0.5",
-        description="CPU quota (in cores) for the sandbox sidecar container",
+        description=(
+            "CPU quota (in cores) for the sandbox sidecar container."
+            " Resolved per container launch, so a change applies without"
+            " a restart."
+        ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0.1,
         max_value=16.0,
     )
@@ -107,11 +113,11 @@ _r.register(
         default="32",
         description=(
             "Maximum number of processes allowed inside the sidecar"
-            " container (PIDs cgroup limit)"
+            " container (PIDs cgroup limit). Resolved per container"
+            " launch, so a change applies without a restart."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1,
         max_value=4096,
     )
@@ -125,11 +131,11 @@ _r.register(
         default="5",
         description=(
             "Grace period Docker waits after SIGTERM before sending SIGKILL"
-            " to sandbox containers"
+            " to sandbox containers. Resolved per container stop, so a"
+            " change applies without a restart."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1,
         max_value=300,
     )

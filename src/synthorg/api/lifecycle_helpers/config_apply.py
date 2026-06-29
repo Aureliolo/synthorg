@@ -17,6 +17,7 @@ from synthorg.api.lifecycle_helpers.bridge_snapshots import (
     _apply_api_bridge_config_snapshot,
     _apply_memory_bridge_config_snapshot,
     _apply_observability_bridge_config_snapshot,
+    _apply_tools_bridge_config_snapshot,
     _apply_workers_bridge_config_snapshot,
 )
 from synthorg.api.state import AppState
@@ -29,7 +30,10 @@ from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+from synthorg.settings.bridge_configs import (
+    NotificationsBridgeConfig,
+    ObservabilityBridgeConfig,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -414,6 +418,9 @@ def _wire_resolver_dependents(app_state: AppState) -> None:
         escalation_notify_subscriber.set_config_resolver(
             config_resolver_of(app_state),
         )
+    event_stream_hub = communication.event_stream_hub
+    if event_stream_hub is not None:
+        event_stream_hub.set_config_resolver(config_resolver_of(app_state))
     bus = communication.message_bus
     if bus is not None:
         set_resolver = getattr(bus, "set_config_resolver", None)
@@ -465,6 +472,74 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+
+def apply_http_log_handler_settings(snapshot: ObservabilityBridgeConfig) -> None:
+    """Push the HTTP log-handler batch knobs onto every live handler.
+
+    Iterates the installed logging handlers and applies the four
+    ``observability.http_*`` fields to each :class:`HttpBatchHandler` via its
+    setters. Values arrive pre-validated on *snapshot*. A per-handler failure
+    is logged and skipped so one bad handler does not abort the others.
+
+    Shared by the startup applier (:func:`_apply_http_log_handler_config`) and
+    ``ObservabilityBridgeSettingsSubscriber`` so the boot and hot-reload paths
+    apply identically.
+    """
+    from synthorg.observability.http_handler import (  # noqa: PLC0415
+        HttpBatchHandler,
+    )
+    from synthorg.observability.sinks import (  # noqa: PLC0415
+        iter_logging_handlers,
+    )
+
+    for handler in iter_logging_handlers():
+        if not isinstance(handler, HttpBatchHandler):
+            continue
+        try:
+            handler.set_batch_size(snapshot.http_batch_size)
+            handler.set_flush_interval(snapshot.http_flush_interval_seconds)
+            handler.set_timeout(snapshot.http_timeout_seconds)
+            handler.set_max_retries(snapshot.http_max_retries)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                setting="observability.http_log_handler",
+                phase="apply_to_handler",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+
+async def _apply_http_log_handler_config(app_state: AppState) -> None:
+    """Apply the operator-tuned HTTP log-handler batch knobs at startup.
+
+    Resolves the observability bridge snapshot and pushes the four
+    ``http_*`` fields onto every live ``HttpBatchHandler`` so a DB override
+    applies without a restart (mirrors ``_apply_audit_chain_signing_timeout``).
+    By the time this runs ``_apply_bridge_config`` has already swapped the
+    observability snapshot onto ``app_state``, so a failed second resolve
+    falls back to that already-applied snapshot rather than leaving the live
+    handlers on stale boot-time knobs.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
+    try:
+        snapshot = await config_resolver_of(app_state).get_observability_bridge_config()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            setting="observability.http_log_handler",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        snapshot = app_state.bridge_config.observability
+    apply_http_log_handler_settings(snapshot)
 
 
 async def _apply_observability_settings(app_state: AppState) -> None:
@@ -529,6 +604,7 @@ async def _apply_bridge_config(
     await _apply_workers_bridge_config_snapshot(app_state)
     await _apply_memory_bridge_config_snapshot(app_state)
     await _apply_observability_bridge_config_snapshot(app_state)
+    await _apply_tools_bridge_config_snapshot(app_state)
     await _apply_ws_ticket_settings(app_state)
     await _apply_ws_auth_timeout(app_state)
     await _apply_ws_dos_settings(app_state)
@@ -537,6 +613,7 @@ async def _apply_bridge_config(
     await _apply_sandbox_image_cache(app_state)
     _wire_resolver_dependents(app_state)
     await _apply_audit_chain_signing_timeout(app_state)
+    await _apply_http_log_handler_config(app_state)
     await _apply_observability_settings(app_state)
     await _apply_notification_dispatcher_config(app_state, effective_config)
 

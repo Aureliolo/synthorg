@@ -114,9 +114,10 @@ class OAuthTokenManager:
     async def _resolve_flow_timeout(self) -> None:
         """Rebuild the flow with the operator-tuned HTTP timeout.
 
-        Called once inside :meth:`start` before the refresh loop spawns
-        so refreshes use the resolved value. A settings outage is
-        non-fatal -- the flow keeps its built-in default.
+        Called at the top of every refresh sweep so an operator change to
+        ``integrations.oauth_http_timeout_seconds`` takes effect on the
+        next sweep without a restart. A settings outage is non-fatal --
+        the flow keeps its current timeout.
         """
         if self._config_resolver is None:
             return
@@ -208,7 +209,8 @@ class OAuthTokenManager:
                 self._task = None
             if self._task is not None:
                 return
-            await self._resolve_flow_timeout()
+            # The refresh loop re-resolves the flow timeout at the top of
+            # each sweep (so the knob is hot); resolve loop cadence here.
             await self._resolve_loop_tuning()
             task = asyncio.create_task(
                 self._refresh_loop(),
@@ -268,6 +270,9 @@ class OAuthTokenManager:
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
+                # Re-resolve the operator-tuned HTTP timeout each sweep so
+                # oauth_http_timeout_seconds is hot (rebuilds the flow).
+                await self._resolve_flow_timeout()
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise

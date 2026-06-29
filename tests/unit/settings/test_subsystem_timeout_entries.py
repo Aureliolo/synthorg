@@ -12,8 +12,6 @@ that sits outside the registered bounds would fail at first read, so
 asserting the default value implicitly confirms the bounds accept it.
 """
 
-from unittest.mock import AsyncMock
-
 import pytest
 from pydantic import BaseModel, ConfigDict
 
@@ -22,6 +20,7 @@ from synthorg.settings import definitions as _settings_definitions  # noqa: F401
 from synthorg.settings.enums import SettingSource, SettingType
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -32,11 +31,11 @@ class _FakeConfig(BaseModel):
 
 @pytest.fixture
 def service() -> SettingsService:
-    repo = AsyncMock(spec=SettingsRepository)
-    # ``spec=`` already auto-mocks every method on ``SettingsRepository``;
-    # configure the return values via the auto-mocked attributes rather
-    # than assigning fresh ``AsyncMock`` instances (which would be bare
-    # mocks and trip ``scripts/check_mock_spec.py``).
+    repo = mock_of[SettingsRepository]()
+    # ``mock_of`` autospecs every method on ``SettingsRepository``; configure
+    # the return values on the auto-mocked attributes rather than assigning
+    # fresh ``AsyncMock`` instances (which would be bare mocks and trip
+    # ``scripts/check_mock_spec.py``).
     repo.get.return_value = None
     repo.get_namespace.return_value = ()
     repo.list_items.return_value = ()
@@ -87,7 +86,7 @@ _SUBSYSTEM_TIMEOUT_ENTRIES: tuple[tuple[str, str, SettingType, str, str, bool], 
         SettingType.FLOAT,
         "1.0",
         "2.5",
-        True,
+        False,
     ),
     (
         "engine",
