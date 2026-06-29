@@ -61,6 +61,7 @@ async def wire_run_narrator(
             config=config,
             provider_registry=provider_registry,
             cost_tracker=cost_tracker,
+            master_enabled=si_config.chief_of_staff_enabled,
         )
     except MemoryError, RecursionError:
         # Interpreter-level criticals are never best-effort; let them abort.
@@ -81,6 +82,7 @@ def _attach_narrator(
     config: ChiefOfStaffConfig,
     provider_registry: ProviderRegistry,
     cost_tracker: CostTrackerProtocol | None,
+    master_enabled: bool,
 ) -> None:
     """Build the narrator and attach it to the work pipeline.
 
@@ -112,6 +114,7 @@ def _attach_narrator(
         cost_tracker=cost_tracker,
         currency=currency,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=master_enabled,
     )
     if narrator is None:
         logger.info(

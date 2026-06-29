@@ -28,7 +28,7 @@ from synthorg.observability.events.chief_of_staff import (
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
-    resolve_str_with_fallback,
+    resolve_model_with_fallback,
 )
 from synthorg.settings.resolver import ConfigResolver
 
@@ -77,22 +77,26 @@ class SelfImprovementLiveConfigMixin:
     _memory_backend: MemoryBackend | None
     _outcome_store: MemoryBackendOutcomeStore | None
     _confidence_adjuster: ConfidenceAdjuster | None
+    _learning_no_backend_warned: bool
 
     def _ensure_learning_components(self) -> None:
         """Build the outcome store + confidence adjuster on demand.
 
         Idempotent: a no-op once the adjuster exists, so a runtime enable
-        builds the pair exactly once and later cycles reuse them. Warns and
-        leaves the components unset when no memory backend is wired (learning
-        cannot persist outcomes without one).
+        builds the pair exactly once and later cycles reuse them. Warns once
+        and leaves the components unset when no memory backend is wired
+        (learning cannot persist outcomes without one); the warn-once latch
+        keeps a persistently backend-less loop from re-logging every cycle.
         """
         if self._confidence_adjuster is not None:
             return
         if self._memory_backend is None:
-            logger.warning(
-                COS_OUTCOME_RECORD_FAILED,
-                reason="learning_enabled_but_no_memory_backend",
-            )
+            if not self._learning_no_backend_warned:
+                self._learning_no_backend_warned = True
+                logger.warning(
+                    COS_OUTCOME_RECORD_FAILED,
+                    reason="learning_enabled_but_no_memory_backend",
+                )
             return
         self._outcome_store = MemoryBackendOutcomeStore(
             backend=self._memory_backend,
@@ -178,7 +182,7 @@ class SelfImprovementLiveConfigMixin:
         Returns:
             The resolved analysis settings.
         """
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.SELF_IMPROVEMENT,
             key="analysis_model",

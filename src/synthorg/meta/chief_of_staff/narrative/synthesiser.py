@@ -39,7 +39,7 @@ from synthorg.providers.models import (
 )
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import resolve_model_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -132,7 +132,7 @@ class NarrativeSynthesiser:
             temperature=self._config.narrative_temperature,
             max_tokens=self._config.narrative_max_tokens,
         )
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="narrative_model",

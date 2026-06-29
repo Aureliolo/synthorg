@@ -52,7 +52,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.errors import ProviderError
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import resolve_model_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -329,7 +329,7 @@ class CodeModificationStrategy:
             temperature=self._code_config.temperature,
             max_tokens=self._code_config.max_tokens,
         )
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.SELF_IMPROVEMENT,
             key="code_modification_model",

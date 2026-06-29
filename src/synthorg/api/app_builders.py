@@ -221,6 +221,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     clock: Clock | None = None,
     role_router: RoleRouter | None = None,
     config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> ChiefOfStaffProposer | None:
     """Resolve a ChiefOfStaffProposer from config + wiring.
 
@@ -284,6 +285,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         role_router=role_router,
         provider_registry=provider_registry,
         config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
 
 

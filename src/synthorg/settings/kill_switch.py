@@ -13,6 +13,8 @@ This helper concentrates that shape so per-subsystem gates stay terse
 and consistent across the codebase.
 """
 
+from typing import Final
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
@@ -123,3 +125,72 @@ async def resolve_str_with_fallback(
         )
         return fallback
     return resolved if resolved.strip() else fallback
+
+
+# Upper bound on a live-resolved model identifier. A real model id is a short
+# ``provider/model:tag`` token; anything longer is a malformed / injected value.
+_MAX_MODEL_ID_LEN: Final[int] = 256
+
+
+def _is_clean_model_id(value: str) -> bool:
+    """Whether *value* is a structurally plausible model identifier.
+
+    A model id is a single-line printable token without surrounding
+    whitespace and within a sane length bound. ``str.isprintable`` rejects
+    every control character (newlines, tabs, NUL), so an injected multi-line
+    or control-laden value fails here. This is a sanity guard against a
+    corrupted settings store, NOT a provider allowlist: operators legitimately
+    set arbitrary custom model strings, so any clean token passes.
+
+    Returns:
+        ``True`` when *value* is a clean model identifier.
+    """
+    return (
+        bool(value)
+        and value == value.strip()
+        and len(value) <= _MAX_MODEL_ID_LEN
+        and value.isprintable()
+    )
+
+
+async def resolve_model_with_fallback(
+    *,
+    resolver: ConfigResolverProtocol | None,
+    namespace: str,
+    key: str,
+    fallback: str,
+) -> str:
+    """Resolve a live model identifier, falling back on a malformed value.
+
+    Wraps :func:`resolve_str_with_fallback` and additionally rejects a
+    resolved value that is not a clean single-line model identifier,
+    returning the baked *fallback* instead (with a warning). The resolved
+    model feeds straight into a provider call, so a corrupted settings store
+    must not inject a control-laden or oversized string into that boundary.
+    A blank / missing / outage value already collapses to *fallback* upstream.
+
+    Args:
+        resolver: The application's config resolver, or ``None`` when the
+            caller is not yet wired.
+        namespace: Setting namespace (e.g. ``"chief_of_staff"``).
+        key: Model setting key within the namespace.
+        fallback: Baked-config model returned when no resolver is wired, the
+            lookup fails, the value is blank, or the value is malformed.
+
+    Returns:
+        The resolved clean model identifier, or *fallback* otherwise.
+    """
+    resolved = await resolve_str_with_fallback(
+        resolver=resolver, namespace=namespace, key=key, fallback=fallback
+    )
+    if resolved == fallback or _is_clean_model_id(resolved):
+        return resolved
+    logger.warning(
+        SETTINGS_FETCH_FAILED,
+        namespace=namespace,
+        key=key,
+        error_type="MalformedModelIdentifier",
+        error="resolved model identifier failed structural validation",
+        fallback=fallback,
+    )
+    return fallback

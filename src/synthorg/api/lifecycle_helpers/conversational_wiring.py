@@ -70,6 +70,7 @@ async def wire_group_chat_service(
         cost_tracker=cost_tracker,
         approval_store=app_state.slice(ApprovalStateSlice).store,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=si_config.chief_of_staff_enabled,
     )
     if service is not None:
         app_state.wire(MetaStateSlice, group_chat_service=service)
@@ -336,6 +337,7 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         cost_tracker=cost_tracker,
         role_router=role_router,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        master_enabled=si_config.chief_of_staff_enabled,
     )
     if proposer is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_proposer=proposer)

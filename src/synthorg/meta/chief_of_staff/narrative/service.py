@@ -51,9 +51,16 @@ _TITLE_MAX: int = 512
 class ChiefOfStaffNarrator:
     """Generates and persists a run narrative for a completed brief."""
 
-    __slots__ = ("_config", "_config_resolver", "_docs", "_reader", "_synthesiser")
+    __slots__ = (
+        "_config",
+        "_config_resolver",
+        "_docs",
+        "_master_enabled",
+        "_reader",
+        "_synthesiser",
+    )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
         self,
         *,
         reader: NarrativeReader,
@@ -61,19 +68,22 @@ class ChiefOfStaffNarrator:
         docs: DocsService,
         config: ChiefOfStaffConfig,
         config_resolver: ConfigResolver | None = None,
+        master_enabled: bool = True,
     ) -> None:
         self._reader = reader
         self._synthesiser = synthesiser
         self._docs = docs
         self._config = config
         self._config_resolver = config_resolver
+        self._master_enabled = master_enabled
 
     async def _narrative_active(self) -> bool:
         """Resolve the per-run documentary-mode gate live.
 
         Requires both the persona master switch and
-        ``chief_of_staff.narrative_enabled``; falls back to the baked flag
-        (master assumed on) with no resolver wired.
+        ``chief_of_staff.narrative_enabled``; falls back to the baked master +
+        baked flag with no resolver wired, so a settings outage cannot resume
+        narrative spend after the persona was disabled.
 
         Returns:
             ``True`` when this run should generate a narrative.
@@ -81,7 +91,7 @@ class ChiefOfStaffNarrator:
         return await resolve_cos_autonomous_cap(
             resolver=self._config_resolver,
             key="narrative_enabled",
-            master_fallback=True,
+            master_fallback=self._master_enabled,
             cap_fallback=self._config.narrative_enabled,
         )
 

@@ -69,7 +69,7 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import resolve_model_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -359,7 +359,7 @@ class LlmConcernRouter:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="routing_model",

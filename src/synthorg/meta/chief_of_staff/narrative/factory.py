@@ -39,6 +39,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
     cost_tracker: CostTrackerProtocol | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> ChiefOfStaffNarrator | None:
     """Construct the run narrator, or ``None`` when a collaborator is absent.
 
@@ -58,6 +59,8 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         currency: ISO 4217 code the run's costs are denominated in.
         config_resolver: Optional resolver for the live ``narrative_enabled``
             per-run gate and the per-call ``narrative_model`` read.
+        master_enabled: Baked ``self_improvement.chief_of_staff_enabled``
+            persona switch, the gate's master fallback on resolver outage.
 
     Returns:
         A ready :class:`ChiefOfStaffNarrator`, or ``None`` when any
@@ -91,6 +94,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         docs=docs_service,
         config=config,
         config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
     logger.info(API_APP_STARTUP, service="chief_of_staff_narrator", note="built")
     return narrator

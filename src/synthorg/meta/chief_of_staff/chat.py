@@ -55,7 +55,7 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import resolve_model_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -279,7 +279,7 @@ class ChiefOfStaffChat:
             temperature=self._config.chat_temperature,
             max_tokens=self._config.chat_max_tokens,
         )
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="chat_model",

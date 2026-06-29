@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
+    resolve_model_with_fallback,
     resolve_str_with_fallback,
 )
 
@@ -141,3 +142,50 @@ async def test_str_system_errors_propagate(exc_type: type[BaseException]) -> Non
             key="chat_model",
             fallback="baked-model",
         )
+
+
+async def test_model_returns_clean_live_value() -> None:
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value="provider/live-model:tag")
+    result = await resolve_model_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "provider/live-model:tag"
+
+
+async def test_model_blank_resolves_to_fallback() -> None:
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value="   ")
+    result = await resolve_model_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "baked-model"
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    ["live\nmodel", "model\twith\ttabs", " surrounded ", "x" * 257],
+    ids=["newline", "tabs", "whitespace", "too_long"],
+)
+async def test_model_malformed_falls_back(malformed: str) -> None:
+    """A control-laden / oversized / untrimmed model id falls back, not passes.
+
+    The structural guard keeps a corrupted settings store from injecting a
+    malformed identifier straight into a provider call; a clean custom token
+    still passes (operators are not constrained to an allowlist).
+    """
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value=malformed)
+    result = await resolve_model_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "baked-model"

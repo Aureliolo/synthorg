@@ -31,6 +31,7 @@ from synthorg.persistence.conversation_invite_protocol import (
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
 )
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock
 from tests.unit.meta.chief_of_staff.propose_fakes import (
     START,
@@ -279,12 +280,14 @@ def build_group_chat_service(
     return service, conv_repo, turn_repo, participant_repo
 
 
-def build_group_chat_with_invites(
+def build_group_chat_with_invites(  # noqa: PLR0913 -- test builder: many independent knobs
     *,
     agent_caller: ScriptedAgentCaller,
     registry: AgentRegistryService,
     config: ChiefOfStaffConfig | None = None,
     clock_start: datetime = START,
+    config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> tuple[
     GroupChatService,
     FakeConversationRepo,
@@ -331,6 +334,8 @@ def build_group_chat_with_invites(
         participant_repo=participant_repo,
         clock=clock,
         invite_coordinator=coordinator,
+        config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
     return (
         service,

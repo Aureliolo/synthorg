@@ -132,6 +132,7 @@ class GroupChatService:
         cost_tracker: CostTrackerProtocol | None = None,
         invite_coordinator: GroupInviteCoordinator | None = None,
         config_resolver: ConfigResolver | None = None,
+        master_enabled: bool = True,
     ) -> None:
         self._agent_caller = agent_caller
         self._agent_registry = agent_registry
@@ -148,6 +149,7 @@ class GroupChatService:
         # the literal plain-text contribution path.
         self._invite_coordinator = invite_coordinator
         self._config_resolver = config_resolver
+        self._master_enabled = master_enabled
         self._locks = ConversationLockRegistry()
 
     async def _live_invite_coordinator(self) -> GroupInviteCoordinator | None:
@@ -166,7 +168,7 @@ class GroupChatService:
         active = await resolve_cos_autonomous_cap(
             resolver=self._config_resolver,
             key="invite_enabled",
-            master_fallback=True,
+            master_fallback=self._master_enabled,
             cap_fallback=self._config.invite_enabled,
         )
         return self._invite_coordinator if active else None

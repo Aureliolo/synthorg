@@ -89,7 +89,7 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import resolve_model_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -155,6 +155,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         role_router: RoleRouter | None = None,
         provider_registry: ProviderRegistry | None = None,
         config_resolver: ConfigResolver | None = None,
+        master_enabled: bool = True,
     ) -> None:
         self._provider = provider
         self._config = config
@@ -167,6 +168,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._role_router = role_router
         self._provider_registry = provider_registry
         self._config_resolver = config_resolver
+        self._master_enabled = master_enabled
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
         # append assistant + proposals -> update conversation) so two
@@ -181,8 +183,9 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         """Resolve the per-turn concern-routing gate live.
 
         Requires both the persona master switch and
-        ``chief_of_staff.routing_enabled``. Falls back to the baked flag
-        (master assumed on) when no resolver is wired.
+        ``chief_of_staff.routing_enabled``. Falls back to the baked master +
+        baked flag when no resolver is wired, so a settings outage cannot
+        resume routing after the persona was disabled.
 
         Returns:
             ``True`` when this turn should classify to a role agent.
@@ -190,7 +193,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         return await resolve_cos_autonomous_cap(
             resolver=self._config_resolver,
             key="routing_enabled",
-            master_fallback=True,
+            master_fallback=self._master_enabled,
             cap_fallback=self._config.routing_enabled,
         )
 
@@ -200,7 +203,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         Returns:
             The model identifier for this turn's structured call.
         """
-        model = await resolve_str_with_fallback(
+        model = await resolve_model_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="propose_model",

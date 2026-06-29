@@ -6,6 +6,7 @@ and the analysis-model seam take effect at runtime through a live
 cycle reads each toggle once (captured-reference semantics).
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, patch
 
@@ -16,7 +17,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.meta.appliers.config_applier import SettingsWritePort
 from synthorg.meta.config import SelfImprovementConfig
-from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.models import ImprovementProposal, ProposalAltitude
 from synthorg.meta.service import SelfImprovementService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
@@ -154,6 +155,23 @@ async def test_learning_lazily_activates_on_runtime_enable(
     await backend.disconnect()
 
 
+async def test_learning_without_backend_warns_once(
+    settings: SettingsService,
+) -> None:
+    """A persistently backend-less learning cap warns once, not every cycle."""
+    svc = _svc(settings, memory_backend=None)
+    await _enable_loop(settings)
+    await settings.set("self_improvement", "chief_of_staff_enabled", "true")
+    await settings.set("chief_of_staff", "learning_enabled", "true")
+
+    with patch("synthorg.meta._service_live_config.logger") as mock_logger:
+        await svc.run_cycle(_snap(quality=4.0))
+        await svc.run_cycle(_snap(quality=4.0))
+
+    assert mock_logger.warning.call_count == 1
+    assert _adjuster(svc) is None
+
+
 async def test_learning_master_gate_blocks_without_persona(
     settings: SettingsService,
 ) -> None:
@@ -203,3 +221,53 @@ async def test_analysis_settings_model_is_live(settings: SettingsService) -> Non
     # Sampling parameters stay baked (blob-only, not registered settings).
     assert live.temperature == SelfImprovementConfig().analysis_temperature
     assert live.max_tokens == SelfImprovementConfig().analysis_max_tokens
+
+
+async def test_concurrent_swap_does_not_corrupt_in_flight_cycle(
+    settings: SettingsService,
+) -> None:
+    """A settings swap during a cycle does not change that cycle's snapshot.
+
+    The cycle resolves its enabled-altitude set once before dispatch; a
+    concurrent ``settings.set`` that lands while a strategy is mid-dispatch
+    must not retroactively drop an altitude the cycle already captured, so the
+    architecture strategy still dispatches its proposal this cycle.
+    """
+    svc = _svc(settings, config_tuning=True, architecture=True)
+    await _enable_loop(settings)
+    # The live read tracks the settings store (architecture is off by default),
+    # so turn it on explicitly before the cycle captures its snapshot.
+    await settings.set("self_improvement", "architecture_proposals_enabled", "true")
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    dispatched: list[ImprovementProposal] = []
+    original = svc._dispatch_strategies
+
+    async def slow_dispatch(
+        snapshot: object, matches: object, strategies: object
+    ) -> list[ImprovementProposal]:
+        entered.set()
+        await release.wait()
+        result = await original(snapshot, matches, strategies)  # type: ignore[arg-type]
+        dispatched.extend(result)
+        return result
+
+    with patch.object(svc, "_dispatch_strategies", slow_dispatch):
+        cycle = asyncio.ensure_future(svc.run_cycle(_snap(coord_ratio=0.5)))
+        await entered.wait()
+        # Land the swap after the cycle captured its altitude snapshot.
+        await settings.set(
+            "self_improvement", "architecture_proposals_enabled", "false"
+        )
+        release.set()
+        await cycle
+
+    # The in-flight cycle dispatched the architecture strategy from its captured
+    # (pre-swap) snapshot, even though architecture was disabled mid-cycle.
+    assert ProposalAltitude.ARCHITECTURE in {p.altitude for p in dispatched}
+    # A fresh cycle reflects the swap: architecture no longer dispatches.
+    dispatched.clear()
+    with patch.object(svc, "_dispatch_strategies", slow_dispatch):
+        release.set()
+        await svc.run_cycle(_snap(coord_ratio=0.5))
+    assert ProposalAltitude.ARCHITECTURE not in {p.altitude for p in dispatched}

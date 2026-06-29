@@ -39,6 +39,7 @@ from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
 
@@ -242,6 +243,7 @@ def build_proposer(
     config: ChiefOfStaffConfig | None = None,
     role_router: RoleRouter | None = None,
     provider_registry: ProviderRegistry | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> tuple[
     ChiefOfStaffProposer,
     FakeConversationRepo,
@@ -274,5 +276,6 @@ def build_proposer(
         clock=FakeClock(start=START),
         role_router=role_router,
         provider_registry=provider_registry,
+        config_resolver=config_resolver,
     )
     return proposer, conv_repo, turn_repo, proposal_repo, approval_store

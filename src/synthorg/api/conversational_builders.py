@@ -45,6 +45,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     approval_store: ApprovalStoreProtocol | None = None,
     clock: Clock | None = None,
     config_resolver: ConfigResolver | None = None,
+    master_enabled: bool = True,
 ) -> GroupChatService | None:
     """Resolve a GroupChatService from config + wiring.
 
@@ -116,6 +117,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
         cost_tracker=cost_tracker,
         invite_coordinator=invite_coordinator,
         config_resolver=config_resolver,
+        master_enabled=master_enabled,
     )
 
 

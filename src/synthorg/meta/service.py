@@ -212,6 +212,7 @@ class SelfImprovementService(
         self._memory_backend = memory_backend
         self._outcome_store: MemoryBackendOutcomeStore | None = None
         self._confidence_adjuster: ConfidenceAdjuster | None = None
+        self._learning_no_backend_warned = False
         if config.chief_of_staff.learning_enabled:
             self._ensure_learning_components()
 

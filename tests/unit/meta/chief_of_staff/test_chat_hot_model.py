@@ -2,7 +2,7 @@
 
 ``chief_of_staff.chat_model`` is read live per call so an operator can
 retarget the explain-chat model without a restart. The other per-feature
-models (propose / routing / narrative) use the identical resolver seam.
+models (propose / routing / narrative) are covered in ``test_hot_models.py``.
 """
 
 from collections.abc import AsyncIterator
