@@ -54,7 +54,9 @@ _SYSTEM_PROMPT: Final[str] = (
     f"{sorted(_VALID_PILLARS)}. Return an empty list if none are weak."
 )
 
-_TASK_ID: NotBlankStr = NotBlankStr("system:hr:eval_pattern_analysis")
+# Derived from the prompt-purpose enum so the cost-scope task id and the
+# registered prompt purpose can never drift apart.
+_TASK_ID: NotBlankStr = NotBlankStr(PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS)
 
 
 class LlmPatternIdentifier:
@@ -220,4 +222,10 @@ def _parse_patterns(content: str | None) -> tuple[NotBlankStr, ...] | None:
         if kind == "weakness" and pillar in _VALID_PILLARS and token not in seen:
             seen.add(token)
             out.append(NotBlankStr(token))
+    # An empty ``patterns_raw`` is a deliberate "no weakness found"; a non-empty
+    # list where every entry was rejected is malformed output, so signal a parse
+    # failure (None) and let the caller fall back to the deterministic detector
+    # rather than collapsing the garbage to an empty result.
+    if patterns_raw and not out:
+        return None
     return tuple(out)

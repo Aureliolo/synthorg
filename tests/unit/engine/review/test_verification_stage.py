@@ -184,3 +184,17 @@ class TestVerificationReviewStage:
             result.metadata["evaluator_agent_id"]
             != result.metadata["generator_agent_id"]
         )
+
+    async def test_evaluator_id_colliding_with_generator_is_suffixed(self) -> None:
+        # When the configured evaluator id equals the generator, the
+        # self-evaluation guard suffixes it (":auto") so verification is never
+        # attributed to the generating agent.
+        config = VerificationConfig()
+        stage = VerificationReviewStage(
+            decomposer=build_decomposer(config),
+            grader=build_grader(config),
+            evaluator_agent_id=_GENERATOR,
+        )
+        result = await stage.execute(_task(criteria=(_criterion("works", met=True),)))
+        assert result.metadata["generator_agent_id"] == _GENERATOR
+        assert result.metadata["evaluator_agent_id"] == f"{_GENERATOR}:auto"

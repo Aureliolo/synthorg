@@ -8,10 +8,22 @@ strategies speak the established token vocabulary: weakness patterns
 (``"weakness:<pillar>"``) and free-form action identifiers.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.models import EvaluationReport
+
+
+class ProposedAction(NamedTuple):
+    """A remediation action plus the weakness pattern(s) that produced it.
+
+    Carrying the originating patterns lets the dispatcher attribute each
+    operator alert to the specific weakness rather than the whole cycle's
+    pattern set, so a routed remediation keeps accurate provenance.
+    """
+
+    action_id: NotBlankStr
+    patterns: tuple[NotBlankStr, ...]
 
 
 @runtime_checkable
@@ -40,13 +52,14 @@ class FixProposer(Protocol):
     async def propose(
         self,
         patterns: tuple[NotBlankStr, ...],
-    ) -> tuple[NotBlankStr, ...]:
-        """Map identified patterns to remediation action identifiers.
+    ) -> tuple[ProposedAction, ...]:
+        """Map identified patterns to remediation actions.
 
         Args:
             patterns: Pattern tokens from a :class:`PatternIdentifier`.
 
         Returns:
-            Ordered, de-duplicated action identifiers.
+            Ordered, de-duplicated :class:`ProposedAction` entries, each
+            carrying the originating pattern(s).
         """
         ...

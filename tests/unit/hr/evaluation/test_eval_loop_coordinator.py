@@ -385,9 +385,14 @@ class TestEvalLoopCoordinatorProposeActions:
         actions = await coordinator._fix_proposer.propose(
             ("weakness:intelligence", "weakness:governance"),
         )
-        assert actions == (
+        assert tuple(a.action_id for a in actions) == (
             _DEFAULT_PATTERN_ACTIONS["intelligence"],
             _DEFAULT_PATTERN_ACTIONS["governance"],
+        )
+        # Each action keeps the originating pattern as its provenance.
+        assert tuple(a.patterns for a in actions) == (
+            ("weakness:intelligence",),
+            ("weakness:governance",),
         )
 
     async def test_override_beats_default(self) -> None:
@@ -398,7 +403,7 @@ class TestEvalLoopCoordinatorProposeActions:
         actions = await coordinator._fix_proposer.propose(
             ("weakness:intelligence",),
         )
-        assert actions == ("custom_action",)
+        assert tuple(a.action_id for a in actions) == ("custom_action",)
 
     async def test_unknown_pattern_skipped(self) -> None:
         import structlog

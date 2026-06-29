@@ -23,7 +23,7 @@ from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.evaluation.pattern_protocols import FixProposer
+from synthorg.hr.evaluation.pattern_protocols import FixProposer, ProposedAction
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
@@ -49,7 +49,9 @@ _SYSTEM_PROMPT: Final[str] = (
     "warranted."
 )
 
-_TASK_ID: NotBlankStr = NotBlankStr("system:hr:eval_fix_proposal")
+# Derived from the prompt-purpose enum so the cost-scope task id and the
+# registered prompt purpose can never drift apart.
+_TASK_ID: NotBlankStr = NotBlankStr(PromptPurposeId.HR_EVAL_FIX_PROPOSAL)
 
 #: Shape a model-returned action id must match (the snake_case form the
 #: system prompt asks for). Anything else is dropped before it can reach a
@@ -85,11 +87,16 @@ class LlmFixProposer:
     async def propose(
         self,
         patterns: tuple[NotBlankStr, ...],
-    ) -> tuple[NotBlankStr, ...]:
-        """Propose action ids, falling back to the deterministic strategy.
+    ) -> tuple[ProposedAction, ...]:
+        """Propose actions, falling back to the deterministic strategy.
+
+        The model returns a flat action list with no per-action mapping, so
+        each proposed action carries the full input pattern set as its
+        provenance (the model weighed all patterns together).
 
         Returns:
-            Ordered, de-duplicated action identifiers.
+            Ordered, de-duplicated actions, each carrying the originating
+            pattern(s).
         """
         if not patterns:
             return ()
@@ -112,7 +119,9 @@ class LlmFixProposer:
                 actions=list(actions),
                 source="llm",
             )
-        return actions
+        return tuple(
+            ProposedAction(action_id=action, patterns=patterns) for action in actions
+        )
 
     async def _call_model(
         self,

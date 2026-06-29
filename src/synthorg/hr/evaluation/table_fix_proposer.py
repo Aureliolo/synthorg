@@ -13,10 +13,10 @@ to when no model is available or its call fails.
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.pattern_protocols import ProposedAction
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_ACTION_PROPOSED,
@@ -96,17 +96,22 @@ class TableFixProposer:
     async def propose(
         self,
         patterns: tuple[NotBlankStr, ...],
-    ) -> tuple[NotBlankStr, ...]:
-        """Map identified patterns to action identifiers.
+    ) -> tuple[ProposedAction, ...]:
+        """Map identified patterns to remediation actions.
 
         Returns:
-            Ordered, de-duplicated action identifiers.
+            Ordered, de-duplicated actions, each carrying the originating
+            pattern(s). An action proposed by several patterns accumulates
+            all of them (first-seen order).
         """
         if not patterns:
             return ()
 
         override = self._config.pattern_action_map or {}
-        actions: list[NotBlankStr] = []
+        # Insertion-ordered map preserves first-seen action order while
+        # accumulating every pattern that proposed each action, so the
+        # dispatcher can attribute the alert to the right weakness(es).
+        action_patterns: dict[NotBlankStr, list[NotBlankStr]] = {}
         for pattern in patterns:
             reason, mapped, extra = classify_pattern(pattern, override)
             if mapped is None:
@@ -118,13 +123,16 @@ class TableFixProposer:
                     **extra,
                 )
                 continue
-            actions.append(mapped)
+            action_patterns.setdefault(mapped, []).append(pattern)
 
-        unique_actions = dedupe_preserving_order(actions)
-        if unique_actions:
+        proposed = tuple(
+            ProposedAction(action_id=action, patterns=tuple(pats))
+            for action, pats in action_patterns.items()
+        )
+        if proposed:
             logger.info(
                 EVAL_LOOP_ACTION_PROPOSED,
-                action_count=len(unique_actions),
-                actions=list(unique_actions),
+                action_count=len(proposed),
+                actions=[pa.action_id for pa in proposed],
             )
-        return unique_actions
+        return proposed

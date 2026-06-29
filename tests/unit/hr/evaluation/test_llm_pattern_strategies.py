@@ -21,6 +21,7 @@ from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.llm_fix_proposer import LlmFixProposer
 from synthorg.hr.evaluation.llm_pattern_identifier import LlmPatternIdentifier
 from synthorg.hr.evaluation.models import EvaluationReport, PillarScore
+from synthorg.hr.evaluation.pattern_protocols import ProposedAction
 from synthorg.hr.evaluation.table_fix_proposer import TableFixProposer
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.errors import AuthenticationError, RateLimitError
@@ -158,6 +159,10 @@ class TestLlmPatternIdentifier:
             await identifier.identify((_report("a", ("governance", 1.0)),))
 
 
+def _ids(actions: tuple[ProposedAction, ...]) -> tuple[NotBlankStr, ...]:
+    return tuple(a.action_id for a in actions)
+
+
 class TestLlmFixProposer:
     async def test_parses_model_actions(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["coach_governance"]}')
@@ -167,7 +172,10 @@ class TestLlmFixProposer:
             fallback=TableFixProposer(EvalLoopConfig()),
         )
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
-        assert actions == (NotBlankStr("coach_governance"),)
+        assert _ids(actions) == (NotBlankStr("coach_governance"),)
+        # The LLM output is flat, so each action carries the full input
+        # pattern set as its provenance.
+        assert actions[0].patterns == (NotBlankStr("weakness:governance"),)
 
     async def test_malformed_response_falls_back_to_table(self) -> None:
         provider = _ScriptedProvider(content="garbage")
@@ -177,7 +185,7 @@ class TestLlmFixProposer:
             fallback=TableFixProposer(EvalLoopConfig()),
         )
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
-        assert actions == (NotBlankStr("expand_audit_coverage"),)
+        assert _ids(actions) == (NotBlankStr("expand_audit_coverage"),)
 
     async def test_injection_shaped_action_id_is_dropped(self) -> None:
         # A model-returned id carrying a newline / markup must never reach a
@@ -191,7 +199,7 @@ class TestLlmFixProposer:
             fallback=TableFixProposer(EvalLoopConfig()),
         )
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
-        assert actions == (NotBlankStr("coach_governance"),)
+        assert _ids(actions) == (NotBlankStr("coach_governance"),)
 
     async def test_all_invalid_actions_falls_back_to_table(self) -> None:
         # A non-empty actions list where every entry is rejected is malformed
@@ -204,7 +212,7 @@ class TestLlmFixProposer:
             fallback=TableFixProposer(EvalLoopConfig()),
         )
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
-        assert actions == (NotBlankStr("expand_audit_coverage"),)
+        assert _ids(actions) == (NotBlankStr("expand_audit_coverage"),)
 
     async def test_empty_patterns_skips_model(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["x"]}')

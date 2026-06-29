@@ -137,6 +137,9 @@ class TestMilestoneTrustStrategy:
             quality=8.0,
             success_rate=1.0,
             tasks_completed=10,
+            # A window that actually covers the 7-day clean-history window,
+            # so auto-promote has positive clean-history evidence.
+            window_size="7d",
         )
 
         result = await strategy.evaluate(
@@ -147,6 +150,50 @@ class TestMilestoneTrustStrategy:
 
         assert result.recommended_level == ToolAccessLevel.RESTRICTED
         assert result.requires_human_approval is False
+
+    async def test_auto_promote_blocked_without_qualifying_clean_window(self) -> None:
+        """Auto-promote needs a window covering the clean-history duration.
+
+        A snapshot whose only window is wider than ``clean_history_days``
+        carries no evidence the agent was clean over the required period, so
+        the milestone must NOT auto-promote (it stays at the current level
+        rather than passing vacuously).
+        """
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    time_active_days=7,
+                    clean_history_days=7,
+                    auto_promote=True,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            created_at=_NOW - timedelta(days=60),
+        )
+        # Only a 30d window: nothing actually covers the 7-day requirement.
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=8.0,
+            success_rate=1.0,
+            tasks_completed=10,
+            window_size="30d",
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
 
     async def test_evaluate_no_change_when_criteria_not_met(
         self,

@@ -39,7 +39,11 @@ from synthorg.hr.evaluation.external_benchmark_registry import (
 )
 from synthorg.hr.evaluation.models import EvaluationReport
 from synthorg.hr.evaluation.pattern_action_dispatcher import PatternActionDispatcher
-from synthorg.hr.evaluation.pattern_protocols import FixProposer, PatternIdentifier
+from synthorg.hr.evaluation.pattern_protocols import (
+    FixProposer,
+    PatternIdentifier,
+    ProposedAction,
+)
 from synthorg.hr.evaluation.table_fix_proposer import TableFixProposer
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
@@ -165,7 +169,10 @@ class EvalLoopCoordinator:
             # dispatch the proposer's actual actions (deterministic table or
             # LLM) to their remediation service when a dispatcher is wired.
             proposed_actions = await self._fix_proposer.propose(observations)
-            await self._dispatch_actions(proposed_actions, observations)
+            await self._dispatch_actions(proposed_actions)
+            # The report records WHICH actions were proposed (provenance is an
+            # internal dispatch concern), so flatten to action ids here.
+            proposed_action_ids = tuple(pa.action_id for pa in proposed_actions)
 
             # 5. DECIDE: a cycle that identified corrective actions routes
             # them to the training pipeline -- gated so training (an
@@ -175,8 +182,8 @@ class EvalLoopCoordinator:
                 logger.info(
                     EVAL_LOOP_TRAINING_TRIGGERED,
                     cycle_id=str(cycle_id),
-                    action_count=len(proposed_actions),
-                    actions=list(proposed_actions),
+                    action_count=len(proposed_action_ids),
+                    actions=list(proposed_action_ids),
                 )
 
             # 6. Optionally run benchmarks.
@@ -194,7 +201,7 @@ class EvalLoopCoordinator:
                 agents_evaluated=len(ids),
                 agent_reports=reports,
                 observations=observations,
-                proposed_actions=proposed_actions,
+                proposed_actions=proposed_action_ids,
                 training_triggered=training_triggered,
                 benchmark_results=benchmark_results,
                 created_at=self._clock.now(),
@@ -280,33 +287,34 @@ class EvalLoopCoordinator:
 
     async def _dispatch_actions(
         self,
-        actions: tuple[NotBlankStr, ...],
-        patterns: tuple[NotBlankStr, ...],
+        proposed: tuple[ProposedAction, ...],
     ) -> None:
         """Route each proposed action to its remediation service.
 
         No-op when no dispatcher is wired (the loop keeps its propose + log
-        behaviour). ``actions`` are the fix proposer's already-deduplicated
-        output (deterministic table or LLM), so each is dispatched exactly
-        once and the cycle's weakness patterns travel as the originating
-        context for the operator alert. A dispatcher failure is logged and the
-        remaining actions still dispatch (criticals re-raise).
+        behaviour). ``proposed`` is the fix proposer's already-deduplicated
+        output (deterministic table or LLM), so each action is dispatched
+        exactly once, with its OWN originating pattern(s) as the operator-alert
+        context rather than the whole cycle's pattern set. A dispatcher failure
+        is logged and the remaining actions still dispatch (criticals re-raise).
 
         Args:
-            actions: De-duplicated action ids from the fix proposer.
-            patterns: The weakness patterns that produced them (alert context).
+            proposed: De-duplicated actions from the fix proposer, each
+                carrying the weakness pattern(s) that produced it.
         """
-        if self._action_dispatcher is None or not actions:
+        if self._action_dispatcher is None or not proposed:
             return
-        context = NotBlankStr(", ".join(patterns)) if patterns else NotBlankStr("cycle")
-        for action in actions:
+        for action_id, patterns in proposed:
+            context = (
+                NotBlankStr(", ".join(patterns)) if patterns else NotBlankStr("cycle")
+            )
             try:
-                accepted = await self._action_dispatcher.dispatch(action, context)
+                accepted = await self._action_dispatcher.dispatch(action_id, context)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=action,
+                    action_id=action_id,
                     pattern=context,
                     dispatched=False,
                     error_type=type(exc).__name__,
@@ -316,7 +324,7 @@ class EvalLoopCoordinator:
             if accepted:
                 logger.info(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=action,
+                    action_id=action_id,
                     pattern=context,
                     dispatched=True,
                     accepted=True,
@@ -327,7 +335,7 @@ class EvalLoopCoordinator:
                 # silent drop into a success signal for operators/metrics.
                 logger.warning(
                     EVAL_LOOP_ACTION_DISPATCHED,
-                    action_id=action,
+                    action_id=action_id,
                     pattern=context,
                     dispatched=False,
                     accepted=False,
@@ -335,7 +343,7 @@ class EvalLoopCoordinator:
 
     def _should_trigger_training(
         self,
-        proposed_actions: tuple[NotBlankStr, ...],
+        proposed_actions: tuple[ProposedAction, ...],
     ) -> bool:
         """Decide whether this cycle's actions route to the training pipeline.
 

@@ -146,7 +146,12 @@ class TestRunWithAgentMiddleware:
         # When the loop fails AND after_agent cleanup also raises, the loop's
         # exception must be the one that propagates (cleanup errors are
         # swallowed on the failure path so the primary failure is preserved).
-        async def _failing_after(*_args: object, **_kwargs: object) -> None:
+        after_calls: list[object] = []
+
+        async def _failing_after(*_args: object, **kwargs: object) -> None:
+            # Record the cleanup invocation BEFORE raising so the test can
+            # assert it ran (with the pre-loop ctx) even on the failure path.
+            after_calls.append(kwargs.get("ctx"))
             msg = "cleanup boom"
             raise RuntimeError(msg)
 
@@ -171,6 +176,9 @@ class TestRunWithAgentMiddleware:
                 task_id=str(task.id),
                 effective_autonomy=None,
             )
+        # after_agent cleanup still fired (on the pre-loop ctx) even though the
+        # loop raised; its own error was swallowed so ValueError propagated.
+        assert after_calls == [ctx]
 
     async def test_returns_result_and_fires_after_agent_on_success(
         self, monkeypatch: pytest.MonkeyPatch
