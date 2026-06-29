@@ -11,6 +11,7 @@ dispatcher logs subscriber context).
 from unittest.mock import create_autospec
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
@@ -102,6 +103,23 @@ class TestRebuild:
         # Every other field is preserved verbatim from the prior snapshot.
         assert swapped.max_audit_records_per_query == 42_000
 
+    async def test_rpm_cap_change_swaps_with_model_copy(self) -> None:
+        original = ApiBridgeConfig(
+            max_lifecycle_events_per_query=10_000,
+            max_rpm_default=120,
+        )
+        sub, app_state = _make_subscriber(
+            snapshot=original,
+            resolver_int_return=600,
+        )
+
+        await sub.on_settings_changed("api", "max_rpm_default")
+
+        swapped = app_state.bridge_config.api
+        assert swapped.max_rpm_default == 600
+        # Every other field is preserved verbatim from the prior snapshot.
+        assert swapped.max_lifecycle_events_per_query == 10_000
+
     async def test_resolver_failure_does_not_swap(self) -> None:
         original = ApiBridgeConfig(max_lifecycle_events_per_query=8_000)
         sub, app_state = _make_subscriber(
@@ -139,9 +157,8 @@ class TestRebuild:
             resolver_int_return=50,  # below the ge=100 bound
         )
 
-        with pytest.raises(Exception) as exc_info:  # noqa: PT011 -- pydantic ValidationError
+        with pytest.raises(ValidationError):
             await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
-        assert exc_info.type.__name__ == "ValidationError"
 
         # Prior snapshot retained because the swap never happens when
         # validation fails.

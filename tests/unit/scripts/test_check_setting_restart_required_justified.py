@@ -60,6 +60,16 @@ _r.register(
 )  # lint-allow: restart-required -- bound OS resource, cannot hot-reload
 """
 
+_MARKED_NO_REASON = """\
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="example_knob",
+        restart_required=True,
+    )
+)  # lint-allow: restart-required
+"""
+
 _READ_ONLY = """\
 _r.register(
     SettingDefinition(
@@ -96,6 +106,19 @@ def test_marker_justifies_restart_required(tmp_path: Path) -> None:
     assert records[0].has_marker is True
     unjustified, _stale = _GATE.evaluate(records, baseline=set())
     assert unjustified == []
+
+
+def test_reason_less_marker_does_not_justify(tmp_path: Path) -> None:
+    """A bare `# lint-allow: restart-required` (no ` -- <reason>`) is unjustified.
+
+    The marker must carry a reason; otherwise a developer could satisfy the
+    gate without stating why the setting is restart-bound.
+    """
+    repo = _make_definitions(tmp_path, _MARKED_NO_REASON)
+    records = _GATE.scan_definitions(repo)
+    assert records[0].has_marker is False
+    unjustified, _stale = _GATE.evaluate(records, baseline=set())
+    assert [r.setting_key for r in unjustified] == ["api.example_knob"]
 
 
 def test_baseline_entry_justifies_restart_required(tmp_path: Path) -> None:

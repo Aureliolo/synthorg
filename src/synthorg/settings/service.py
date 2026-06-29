@@ -344,12 +344,12 @@ class SettingsService:
         if not definition.read_only_post_init:
             setting_value = await self._resolve_db(definition)
             if setting_value is not None:
-                # Direct dict mutation is intentional: the previous
-                # copy-on-write pattern {**self._cache, k: v} had a
-                # TOCTOU race under concurrent TaskGroup reads (the
-                # spread sees a stale snapshot after an await).  In
-                # asyncio's cooperative concurrency, dict item assignment
-                # is a single-opcode operation and safe without locking.
+                # Direct dict item assignment, not a {**self._cache, k: v}
+                # copy-on-write spread: the spread would read a stale
+                # snapshot after the await above and clobber a concurrent
+                # TaskGroup writer's entry (TOCTOU). Under asyncio's
+                # cooperative concurrency, a single dict item assignment is
+                # one opcode and safe without a lock.
                 if not definition.sensitive:
                     self._cache[cache_key] = setting_value
                 await self._emit_resolved(definition, source="db")
@@ -1113,6 +1113,18 @@ class SettingsService:
 
             _reject_if_read_only(definition, action="delete")
 
+            # Deleting a security override reverts the key to env > default.
+            # Guard the weakening direction (governance=None hard-blocks it):
+            # a delete that would drop a currently-secure toggle back to a
+            # weaker code default must go through the explicit confirm+reason
+            # set path, never a silent delete. A no-op for non-security keys
+            # and for reverts that tighten (e.g. clearing a weak override).
+            await guard_security_writes(
+                [(namespace, key, definition.default or "")],
+                governance=None,
+                get_entry=self.get,
+            )
+
             await self._repository.delete(
                 (NotBlankStr(namespace), NotBlankStr(key)),
             )
@@ -1194,12 +1206,27 @@ class SettingsService:
 
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
-        # exactly the keys whose row was actually removed.  This avoids
-        # the TOCTOU race the older ``get_namespace`` + ``delete_namespace``
-        # pair had -- a concurrent ``set`` between the snapshot and the
-        # delete would either drop a publish (key set after snapshot,
-        # then deleted) or fire a phantom one (key visible in snapshot,
-        # then unset before delete).
+        # exactly the keys whose row was actually removed. A separate
+        # ``get_namespace`` snapshot followed by ``delete_namespace`` would
+        # have a TOCTOU race -- a concurrent ``set`` between the snapshot and
+        # the delete would either drop a publish (key set after the snapshot,
+        # then deleted) or fire a phantom one (key in the snapshot, then
+        # unset before the delete). Returning the actually-removed keys keys
+        # the change notifications to what truly changed.
+        # Same weakening guard as single-key delete: clearing a security
+        # namespace reverts every key to env > default, so a delete that
+        # would drop a currently-secure toggle to a weaker code default is
+        # hard-blocked (governance=None) and must use the explicit
+        # confirm+reason set path. No-op for non-security namespaces.
+        await guard_security_writes(
+            [
+                (namespace, d.key, d.default or "")
+                for d in self._registry.list_namespace(namespace)
+            ],
+            governance=None,
+            get_entry=self.get,
+        )
+
         ns = NotBlankStr(namespace)
         try:
             removed_keys = await self._repository.delete_namespace_returning_keys(ns)

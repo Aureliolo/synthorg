@@ -9,10 +9,13 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
+from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
+from synthorg.settings.models import SettingValue
 from synthorg.settings.write_governance import (
     SettingsWriteGovernance,
     enforce_security_write_governance,
+    guard_security_writes,
 )
 
 pytestmark = pytest.mark.unit
@@ -131,3 +134,68 @@ async def test_non_security_namespace_is_ignored() -> None:
         governance=None,
         get_current=_current_factory({}),
     )
+
+
+async def test_batch_short_circuits_on_first_weakening() -> None:
+    """A batch raises on the first weakening item without confirmation."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [
+                ("api", "max_rpm_default", "10"),  # non-security, skipped
+                ("security", "enabled", "false"),  # weakening -> raises
+                ("security", "audit_enabled", "false"),  # never reached
+            ],
+            governance=None,
+            get_current=_current_factory({("security", "enabled"): "true"}),
+        )
+
+
+def _entry_factory(
+    values: dict[tuple[str, str], str],
+) -> Callable[[str, str], Awaitable[SettingValue]]:
+    """Build a ``get_entry`` returning a ``SettingValue`` (raises if unset)."""
+
+    async def _get_entry(namespace: str, key: str) -> SettingValue:
+        return SettingValue(
+            namespace=SettingNamespace(namespace),
+            key=key,
+            value=values[namespace, key],
+            source=SettingSource.DATABASE,
+        )
+
+    return _get_entry
+
+
+async def test_guard_rejects_weakening_via_entry_resolver() -> None:
+    """``guard_security_writes`` rejects a weakening write resolved as enabled."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await guard_security_writes(
+            [("security", "enabled", "false")],
+            governance=None,
+            get_entry=_entry_factory({("security", "enabled"): "true"}),
+        )
+
+
+async def test_guard_allows_weakening_with_governance() -> None:
+    """A satisfied governance authorises the weakening through the adapter."""
+    await guard_security_writes(
+        [("security", "enabled", "false")],
+        governance=_SATISFIED,
+        get_entry=_entry_factory({("security", "enabled"): "true"}),
+    )
+
+
+async def test_guard_entry_failure_treated_as_unset_first_write() -> None:
+    """A raising ``get_entry`` resolves to None, so first-write-of-false guards."""
+
+    async def _raising(namespace: str, key: str) -> SettingValue:
+        del namespace, key
+        msg = "settings backend down"
+        raise RuntimeError(msg)
+
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await guard_security_writes(
+            [("security", "enabled", "false")],
+            governance=None,
+            get_entry=_raising,
+        )

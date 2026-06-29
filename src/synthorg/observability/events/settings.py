@@ -8,6 +8,15 @@ SETTINGS_VALUE_RESOLVED: Final[str] = "settings.value.resolved"
 SETTINGS_CACHE_INVALIDATED: Final[str] = "settings.cache.invalidated"
 SETTINGS_ENCRYPTION_ERROR: Final[str] = "settings.encryption.error"
 SETTINGS_VALIDATION_FAILED: Final[str] = "settings.validation.failed"
+SETTINGS_SECURITY_GOVERNANCE_CONFIRMED: Final[str] = (
+    "settings.security.governance_confirmed"
+)
+"""Emitted when a security-weakening settings write is AUTHORISED by a
+satisfied :class:`SettingsWriteGovernance` (confirm + reason + actor).
+Distinct from ``SETTINGS_VALIDATION_FAILED`` so an alert keyed on the
+rejection event does not fire on every deliberate operator downgrade, and
+so the audit trail tells an authorised weakening apart from a blocked one
+by event name rather than by inspecting a free-text note."""
 SETTINGS_NOTIFICATION_PUBLISHED: Final[str] = "settings.notification.published"
 SETTINGS_NOTIFICATION_FAILED: Final[str] = "settings.notification.failed"
 SETTINGS_FETCH_FAILED: Final[str] = "settings.fetch.failed"

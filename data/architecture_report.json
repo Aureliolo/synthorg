@@ -1388,8 +1388,8 @@
     },
     "src/synthorg/settings/service.py": {
       "cap": 1100,
-      "loc": 1080,
-      "ratio": 0.982,
+      "loc": 1093,
+      "ratio": 0.994,
       "tier": "complex_service"
     },
     "src/synthorg/telemetry/collector.py": {
@@ -1526,7 +1526,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 210,
-    "synthorg.core.critical_errors": 602,
+    "synthorg.core.critical_errors": 601,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1588,7 +1588,7 @@
     "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1748,
+    "synthorg.observability": 1747,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 199,
     "synthorg.observability.events.approval_gate": 20,
@@ -1606,7 +1606,7 @@
     "synthorg.observability.events.meta": 66,
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 52,
-    "synthorg.observability.events.security": 76,
+    "synthorg.observability.events.security": 75,
     "synthorg.observability.events.settings": 53,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
@@ -1641,7 +1641,7 @@
     "synthorg.settings.models": 43,
     "synthorg.settings.registry": 44,
     "synthorg.settings.resolver": 36,
-    "synthorg.settings.service": 38,
+    "synthorg.settings.service": 37,
     "synthorg.settings.state": 99,
     "synthorg.tools.base": 78,
     "synthorg.tools.network_validator": 29
@@ -1817,7 +1817,7 @@
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,
-      "loc": 961
+      "loc": 974
     },
     "synthorg.telemetry.collector:TelemetryCollector": {
       "lcom4": 1,

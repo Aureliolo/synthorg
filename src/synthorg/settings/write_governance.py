@@ -20,7 +20,10 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_VALIDATION_FAILED
+from synthorg.observability.events.settings import (
+    SETTINGS_SECURITY_GOVERNANCE_CONFIRMED,
+    SETTINGS_VALIDATION_FAILED,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
 from synthorg.settings.models import SettingValue
@@ -102,7 +105,7 @@ async def enforce_security_write_governance(
             continue
         if governance is not None and governance.is_satisfied:
             logger.info(
-                SETTINGS_VALIDATION_FAILED,
+                SETTINGS_SECURITY_GOVERNANCE_CONFIRMED,
                 namespace=namespace,
                 key=key,
                 note="security-weakening transition confirmed",
@@ -117,8 +120,10 @@ async def enforce_security_write_governance(
             note="security-weakening transition rejected (no confirm+reason)",
         )
         msg = (
-            f"Weakening security setting {namespace}.{key} requires"
-            " confirm=True with a non-blank reason and actor"
+            f"Weakening security setting {namespace}.{key} requires the"
+            " deliberate security-configuration path that carries an explicit"
+            " confirm + reason + actor (the security settings import surface);"
+            " a generic settings write cannot disable or relax security."
         )
         raise SecurityToggleConfirmationRequiredError(msg)
 

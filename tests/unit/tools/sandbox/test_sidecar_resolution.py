@@ -54,9 +54,14 @@ def test_seeded_snapshot_is_read_per_getter() -> None:
             docker_stop_grace_timeout_seconds=10,
         )
     )
-    assert get_resolved_sidecar_memory_limit() == "128m"
-    assert get_resolved_sidecar_cpu_limit() == 1.5
-    assert get_resolved_sidecar_max_pids() == 64
-    assert get_resolved_sidecar_health_poll_interval_seconds() == 0.5
-    assert get_resolved_sidecar_health_timeout_seconds() == 30.0
-    assert get_resolved_docker_stop_grace_timeout_seconds() == 10
+    try:
+        assert get_resolved_sidecar_memory_limit() == "128m"
+        assert get_resolved_sidecar_cpu_limit() == 1.5
+        assert get_resolved_sidecar_max_pids() == 64
+        assert get_resolved_sidecar_health_poll_interval_seconds() == 0.5
+        assert get_resolved_sidecar_health_timeout_seconds() == 30.0
+        assert get_resolved_docker_stop_grace_timeout_seconds() == 10
+    finally:
+        # Reset the process singleton explicitly so isolation does not depend
+        # solely on the directory-scoped autouse conftest fixture.
+        set_resolved_sidecar_limits(None)
