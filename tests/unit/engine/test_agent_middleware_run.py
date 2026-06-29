@@ -140,6 +140,38 @@ class TestRunWithAgentMiddleware:
             )
         assert len(after_calls) == 1
 
+    async def test_after_agent_cleanup_error_does_not_mask_loop_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # When the loop fails AND after_agent cleanup also raises, the loop's
+        # exception must be the one that propagates (cleanup errors are
+        # swallowed on the failure path so the primary failure is preserved).
+        async def _failing_after(*_args: object, **_kwargs: object) -> None:
+            msg = "cleanup boom"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(_amr, "apply_after_agent", _failing_after)
+        chain = AgentMiddlewareChain((AuthorityDeferenceGuard(),))
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        ctx = AgentContext.from_identity(identity, task=task)
+
+        async def _boom(_run_ctx: AgentContext) -> SimpleNamespace:
+            msg = "loop boom"
+            raise ValueError(msg)
+
+        with suppress_type_checks(), pytest.raises(ValueError, match="loop boom"):
+            await run_with_agent_middleware(
+                chain,
+                loop_runner=_boom,
+                ctx=ctx,
+                identity=identity,
+                task=task,
+                agent_id=str(identity.id),
+                task_id=str(task.id),
+                effective_autonomy=None,
+            )
+
     async def test_returns_result_and_fires_after_agent_on_success(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -155,7 +187,17 @@ class TestRunWithAgentMiddleware:
         identity = make_e2e_identity()
         task = make_e2e_task(identity=identity)
         ctx = AgentContext.from_identity(identity, task=task)
-        result = SimpleNamespace(context=ctx)
+        # The post-loop context must be a DISTINCT object from the pre-loop
+        # ctx, else the assertion below cannot prove after_agent received the
+        # result's context rather than the pre-loop one.
+        post_loop_ctx = ctx.model_copy(
+            update={
+                "conversation": (
+                    ChatMessage(role=MessageRole.USER, content="post-loop turn"),
+                )
+            }
+        )
+        result = SimpleNamespace(context=post_loop_ctx)
 
         async def _ok(_run_ctx: AgentContext) -> SimpleNamespace:
             return result
@@ -172,5 +214,7 @@ class TestRunWithAgentMiddleware:
                 effective_autonomy=None,
             )
         assert got is result
-        # Post-loop context (the result's) is what after_agent receives.
-        assert after_calls == [ctx]
+        # after_agent receives the post-loop (result's) context, not the
+        # pre-loop ctx.
+        assert after_calls == [post_loop_ctx]
+        assert after_calls[0] is not ctx

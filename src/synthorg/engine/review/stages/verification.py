@@ -222,10 +222,13 @@ class VerificationReviewStage:
             The ``(artifact, probes)`` pair the grader scores.
         """
         task_id = NotBlankStr(str(task.id))
+        # Decompose under the evaluator identity (not the generator): the whole
+        # verification stage runs as the evaluator, so decomposition cost /
+        # guarding must be attributed to it too, matching the grade() call.
         probes = await self._decomposer.decompose(
             task.acceptance_criteria,
             task_id=task_id,
-            agent_id=generator,
+            agent_id=evaluator,
         )
         # The deterministic default grades the proportion of acceptance
         # criteria marked met; the met-criteria text is the artifact

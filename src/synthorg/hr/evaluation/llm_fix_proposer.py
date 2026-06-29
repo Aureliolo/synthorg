@@ -197,4 +197,10 @@ def _parse_actions(content: str | None) -> tuple[NotBlankStr, ...] | None:
         for raw in actions_raw
         if isinstance(raw, str) and _ACTION_ID_PATTERN.fullmatch(raw.strip())
     ]
+    # A non-empty action list where every entry was rejected is malformed
+    # model output, not a deliberate "no actions" -> signal a parse failure
+    # (None) so the caller degrades to the deterministic proposer rather than
+    # treating the garbage as a successful no-op.
+    if actions_raw and not actions:
+        return None
     return tuple(dedupe_preserving_order(actions))

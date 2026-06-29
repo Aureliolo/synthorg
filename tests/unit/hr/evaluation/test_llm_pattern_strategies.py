@@ -193,6 +193,19 @@ class TestLlmFixProposer:
         actions = await proposer.propose((NotBlankStr("weakness:governance"),))
         assert actions == (NotBlankStr("coach_governance"),)
 
+    async def test_all_invalid_actions_falls_back_to_table(self) -> None:
+        # A non-empty actions list where every entry is rejected is malformed
+        # output, not a deliberate "no actions": it must trigger the
+        # deterministic fallback, not silently yield no remediation.
+        provider = _ScriptedProvider(content='{"actions": ["<b>x</b>", "123 456"]}')
+        proposer = LlmFixProposer(
+            cast(CompletionProvider, provider),
+            model=_MODEL,
+            fallback=TableFixProposer(EvalLoopConfig()),
+        )
+        actions = await proposer.propose((NotBlankStr("weakness:governance"),))
+        assert actions == (NotBlankStr("expand_audit_coverage"),)
+
     async def test_empty_patterns_skips_model(self) -> None:
         provider = _ScriptedProvider(content='{"actions": ["x"]}')
         proposer = LlmFixProposer(

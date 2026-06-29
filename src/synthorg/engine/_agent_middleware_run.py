@@ -20,13 +20,15 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.middleware.models import AgentMiddlewareContext
 from synthorg.engine.middleware.protocol import AgentMiddlewareChain
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.middleware import MIDDLEWARE_HOOK_ERROR
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
@@ -193,18 +195,43 @@ async def run_with_agent_middleware[R: _HasAgentContext](  # noqa: PLR0913
         task_id=task_id,
         effective_autonomy=effective_autonomy,
     )
-    result: R | None = None
     try:
         result = await loop_runner(ctx)
-        return result  # noqa: RET504 -- result is read in the finally below
-    finally:
-        after_ctx = result.context if result is not None else ctx
-        await apply_after_agent(
-            chain,
-            ctx=after_ctx,
-            identity=identity,
-            task=task,
-            agent_id=agent_id,
-            task_id=task_id,
-            effective_autonomy=effective_autonomy,
-        )
+    except BaseException:
+        # The loop failed. Fire after_agent on the pre-loop context as a
+        # best-effort cleanup, but never let a cleanup error replace the
+        # primary loop failure: swallow a non-critical cleanup error (logging
+        # it) so the original loop exception is the one that propagates.
+        try:
+            await apply_after_agent(
+                chain,
+                ctx=ctx,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
+        except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(cleanup_exc)
+            logger.warning(
+                MIDDLEWARE_HOOK_ERROR,
+                hook="after_agent",
+                note="after_agent cleanup failed during loop-failure unwind; "
+                "preserving the original loop error",
+                error_type=type(cleanup_exc).__name__,
+                error=safe_error_description(cleanup_exc),
+            )
+        raise
+    # The loop succeeded: fire after_agent on the post-loop context. A failure
+    # here is the only error in flight, so let it propagate normally.
+    await apply_after_agent(
+        chain,
+        ctx=result.context,
+        identity=identity,
+        task=task,
+        agent_id=agent_id,
+        task_id=task_id,
+        effective_autonomy=effective_autonomy,
+    )
+    return result

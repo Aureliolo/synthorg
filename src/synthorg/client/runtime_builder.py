@@ -41,6 +41,7 @@ from synthorg.engine.review.factory import (
 )
 from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
+from synthorg.llm.model_tier_policy import tier_model_id
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -69,10 +70,6 @@ _VERIFICATION_ENABLED_KEY = "verification_review_enabled"
 _VERIFICATION_GRADER_KEY = "verification_grader"
 _VERIFICATION_DECOMPOSER_KEY = "verification_decomposer"
 _DEFAULT_STRATEGY = "direct"
-# Vendor-agnostic placeholder model id for the opt-in LLM verification
-# variants; operators override via the provider post-init swap path,
-# mirroring the vision-verifier gate's tier resolver.
-_PLACEHOLDER_MODEL_ID = "example-medium-001"
 
 
 def _select_provider(app_state: AppState) -> CompletionProvider | None:
@@ -208,8 +205,11 @@ def _build_verification_stage(
     if not enabled:
         return None
     config = _resolve_verification_config(env=env, has_provider=provider is not None)
+    # Honour the requested tier via the model-tier policy (large -> medium ->
+    # small archetype id) rather than discarding it and pinning one model, so
+    # an LLM-backed decomposer/grader selects the model its tier policy maps to.
     tier_resolver = (
-        (lambda _tier: NotBlankStr(_PLACEHOLDER_MODEL_ID))
+        (lambda tier: NotBlankStr(tier_model_id(tier)))
         if provider is not None
         else None
     )
