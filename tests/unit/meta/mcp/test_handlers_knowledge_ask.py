@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
@@ -17,11 +18,22 @@ from synthorg.knowledge.models import (
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.handlers.knowledge import _knowledge_ask
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 22, tzinfo=UTC)
+
+
+def _resolver(*, enabled: bool = True, synthesis: bool = True) -> ConfigResolver:
+    """A resolver gating knowledge.enabled / knowledge.synthesis_enabled."""
+
+    async def _get_bool(namespace: str, key: str) -> bool:
+        del namespace
+        return synthesis if key == "synthesis_enabled" else enabled
+
+    return cast("ConfigResolver", mock_of[ConfigResolver](get_bool=_get_bool))
 
 
 def _answer() -> KnowledgeAnswer:
@@ -71,7 +83,8 @@ def _service_with_ask() -> KnowledgeService:
 
 async def test_ask_returns_wrapped_answer() -> None:
     app_state = make_app_state(
-        slices={KnowledgeStateSlice: {"service": _service_with_ask()}}
+        config_resolver=_resolver(),
+        slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
     )
     result = await _knowledge_ask(
         app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
@@ -85,14 +98,39 @@ async def test_ask_returns_wrapped_answer() -> None:
 
 
 async def test_ask_errors_when_service_absent() -> None:
-    app_state = make_app_state()
+    app_state = make_app_state(config_resolver=_resolver())
     result = await _knowledge_ask(app_state=app_state, arguments={"query": "q"})
     assert json.loads(result)["status"] == "error"
 
 
 async def test_ask_errors_on_invalid_args() -> None:
     app_state = make_app_state(
-        slices={KnowledgeStateSlice: {"service": _service_with_ask()}}
+        config_resolver=_resolver(),
+        slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
     )
     result = await _knowledge_ask(app_state=app_state, arguments={})
+    assert json.loads(result)["status"] == "error"
+
+
+async def test_ask_503_when_knowledge_disabled() -> None:
+    """The live gate 503s ask when knowledge.enabled=false in settings."""
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
+    )
+    result = await _knowledge_ask(
+        app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
+    )
+    assert json.loads(result)["status"] == "error"
+
+
+async def test_ask_503_when_synthesis_disabled() -> None:
+    """ask 503s when synthesis_enabled=false even though the service is wired."""
+    app_state = make_app_state(
+        config_resolver=_resolver(synthesis=False),
+        slices={KnowledgeStateSlice: {"service": _service_with_ask()}},
+    )
+    result = await _knowledge_ask(
+        app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
+    )
     assert json.loads(result)["status"] == "error"

@@ -60,6 +60,7 @@ from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -141,6 +142,27 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
     )
 
 
+async def _resolve_intake_default_project(app_state: AppState) -> str:
+    """Resolve the live intake default project (DB > env > default).
+
+    Reads ``simulations.intake_default_project`` from the wired
+    ``ConfigResolver`` so a hot change is honoured; falls back to the value
+    baked into the cached simulation state when the resolver is not yet wired
+    (a pre-resolver boot path).
+
+    Returns:
+        The default project id (may be blank; the caller guards on that).
+    """
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return client_simulation_state_of(app_state).intake_default_project or ""
+    return (
+        await resolver.get_str(
+            SettingNamespace.SIMULATIONS.value, "intake_default_project"
+        )
+    ).strip()
+
+
 async def wire_real_intake_entry(
     app_state: AppState,
     *,
@@ -164,7 +186,7 @@ async def wire_real_intake_entry(
             note="no work pipeline / simulation runtime; real intake offline",
         )
         return
-    default_project = client_simulation_state_of(app_state).intake_default_project
+    default_project = await _resolve_intake_default_project(app_state)
     if not default_project:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,

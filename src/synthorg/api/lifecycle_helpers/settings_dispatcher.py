@@ -27,6 +27,7 @@ from synthorg.settings.subscribers import (
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
+    KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MemorySettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
@@ -36,9 +37,11 @@ from synthorg.settings.subscribers import (
     ObservabilitySettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
+    ResearchSettingsSubscriber,
     RuntimeReloadSettingsSubscriber,
     SecurityBridgeSettingsSubscriber,
     SecurityTimeoutSettingsSubscriber,
+    SimulationsSettingsSubscriber,
     ToolsBridgeSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
     WsAuthLimitsSettingsSubscriber,
@@ -101,6 +104,15 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
+    research_sub = ResearchSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    knowledge_sub = KnowledgeSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    simulations_sub = SimulationsSettingsSubscriber(app_state=app_state)
     subs: list[SettingsSubscriber] = [
         provider_sub,
         memory_sub,
@@ -161,6 +173,9 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
             app_state=app_state,
             settings_service=settings_service,
         ),
+        research_sub,
+        knowledge_sub,
+        simulations_sub,
     ]
     if backup_service is not None:
         subs.append(

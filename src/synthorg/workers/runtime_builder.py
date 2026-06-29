@@ -489,6 +489,10 @@ async def reload_runtime_services(app_state: AppState) -> None:
             so the caller decides whether a failure is fatal (setup
             reinit) or best-effort (MCP reload).
     """
+    from synthorg.client.runtime_builder import (  # noqa: PLC0415
+        reload_client_simulation_runtime,
+    )
+    from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
     from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
         wire_real_intake_entry,
         wire_real_objective_entry,
@@ -499,6 +503,14 @@ async def reload_runtime_services(app_state: AppState) -> None:
     )
 
     async with _RUNTIME_RELOAD_LOCK:
+        # Rebuild the client-simulation state from the live settings DB BEFORE
+        # the coordinator: the coordinator captures the intake engine at
+        # assembly, so the state must reflect the latest intake_strategy /
+        # model / review pipeline first. Only when a simulation runtime was
+        # composed at boot (a TaskEngine was present); otherwise there is
+        # nothing to refresh.
+        if has_simulation_runtime(app_state):
+            await reload_client_simulation_runtime(app_state)
         services = await build_runtime_services(
             app_state,
             workspace_root=agent_workspace_root_of(app_state),

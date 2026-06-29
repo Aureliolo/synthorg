@@ -174,3 +174,30 @@ async def test_rejects_non_positive_drain_timeout() -> None:
     """A non-positive drain timeout is rejected at construction."""
     with pytest.raises(ValueError, match="drain_timeout_seconds must be positive"):
         _CountingScheduler(drain_timeout_seconds=0)
+
+
+async def test_resolve_wait_interval_defaults_to_construction_interval() -> None:
+    """The base hook returns the construction-time interval."""
+    scheduler = _CountingScheduler(interval_seconds=123.0)
+    assert await scheduler._resolve_wait_interval() == 123.0
+
+
+class _IntervalSpyScheduler(_CountingScheduler):
+    """Signals each per-tick interval re-read so the loop can be observed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.interval_read = asyncio.Event()
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        self.interval_read.set()
+        return 60.0
+
+
+async def test_resolve_wait_interval_re_read_each_tick() -> None:
+    """The loop re-reads the interval per tick, so a change applies live."""
+    scheduler = _IntervalSpyScheduler()
+    await scheduler.start()
+    await asyncio.wait_for(scheduler.interval_read.wait(), timeout=5.0)
+    await scheduler.stop()

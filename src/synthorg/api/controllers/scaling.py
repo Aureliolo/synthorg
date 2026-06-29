@@ -9,6 +9,7 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
@@ -376,8 +377,16 @@ class ScalingController(Controller):
 
         Returns:
             Decisions produced by the evaluation.
+
+        Raises:
+            ServiceUnavailableError: When ``hr.scaling_enabled`` is off.
         """
         app_state: AppState = state.app_state
+        # Live gate: the service is ghost-wired at boot, so the master switch
+        # is enforced here per request (toggling it needs no restart).
+        await ensure_feature_enabled(
+            app_state, "hr", "scaling_enabled", feature_label="Auto-scaling"
+        )
         scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()

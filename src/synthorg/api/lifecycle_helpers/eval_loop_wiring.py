@@ -10,11 +10,13 @@ then publishes it on :class:`HrStateSlice` so the coordinator is available
 for operator-triggered cycles and the optional background driver.
 
 The periodic :class:`EvalLoopCycleScheduler` that drives ``run_cycle`` on a
-cadence is OPT-IN: a cycle can route corrective actions to the training
-pipeline, so the background driver only starts when
-``hr.eval_loop_cycle_enabled`` is set. When disabled the coordinator is still
-published (operators can trigger cycles via the API); only the unattended
-driver stays dormant.
+cadence is ghost-wired: it is always constructed and started, but only does
+work each tick when ``hr.eval_loop_cycle_enabled`` is set AND
+``hr.eval_loop_cycle_paused`` is not. A cycle can route corrective actions to
+the training pipeline, so the loop is opt-in (default off): both the master
+switch and the cadence / window are re-read live per tick, so an operator can
+enable, pause, retune, or disable it with no restart. Operators can also
+trigger cycles by hand via the API regardless of the switch.
 
 Gated on a wired tracker + training service; without them the coordinator
 stays absent and its consumers honestly 503.
@@ -53,7 +55,7 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import parse_bool, parse_float
+from synthorg.settings.mirrors import parse_float
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -215,22 +217,6 @@ async def wire_eval_loop(
         fix_proposer=fix_proposer,
         clock=app_state.clock,
     )
-
-    enabled = bool(
-        resolve_init_value(
-            SettingNamespace.HR,
-            "eval_loop_cycle_enabled",
-            parse=parse_bool,
-        ).value
-    )
-    if not enabled:
-        app_state.wire(HrStateSlice, eval_loop_coordinator=coordinator)
-        logger.info(
-            API_APP_STARTUP,
-            service="eval_loop",
-            note="coordinator wired; cycle scheduler opt-in (disabled)",
-        )
-        return
 
     interval_seconds = float(
         resolve_init_value(

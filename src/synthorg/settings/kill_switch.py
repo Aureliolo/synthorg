@@ -127,6 +127,50 @@ async def resolve_str_with_fallback(
     return resolved if resolved.strip() else fallback
 
 
+async def resolve_float_with_fallback(
+    *,
+    resolver: ConfigResolverProtocol | None,
+    namespace: str,
+    key: str,
+    fallback: float,
+) -> float:
+    """Resolve a float setting through ``ConfigResolver`` with a fallback.
+
+    The float sibling of :func:`resolve_bool_with_fallback`, for per-tick
+    re-reads of operator-tunable cadence / window knobs (e.g. a scheduler
+    interval). Returns *fallback* immediately when the resolver is ``None``,
+    and on a resolver outage logs a single ``SETTINGS_FETCH_FAILED`` warning and
+    returns *fallback* so a transient settings failure cannot wedge the caller.
+
+    Args:
+        resolver: The application's config resolver, or ``None`` when the caller
+            is not yet wired.
+        namespace: Setting namespace (e.g. ``"hr"``).
+        key: Setting key within the namespace.
+        fallback: Value to return when no resolver is wired or the lookup fails.
+            Pass the construction-time value (the last-known-good cadence) so the
+            resolver-up and resolver-down paths stay consistent.
+
+    Returns:
+        The resolved float, or *fallback* on missing resolver / outage.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        return await resolver.get_float(namespace, key)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=namespace,
+            key=key,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=fallback,
+        )
+        return fallback
+
+
 # Upper bound on a live-resolved model identifier. A real model id is a short
 # ``provider/model:tag`` token; anything longer is a malformed / injected value.
 _MAX_MODEL_ID_LEN: Final[int] = 256

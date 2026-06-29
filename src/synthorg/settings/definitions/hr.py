@@ -87,16 +87,16 @@ _r.register(
         default="false",
         description=(
             "Master switch for the periodic evaluation-loop cycle"
-            " scheduler. Off by default: the coordinator is constructed and"
-            " available at boot, but the background driver that runs"
-            " evaluation cycles on a cadence only starts when an operator"
+            " scheduler. Off by default: the scheduler is always constructed"
+            " and started, but every tick short-circuits until an operator"
             " opts in (a cycle evaluates every agent's five-pillar"
             " performance and can route corrective actions to training)."
-            " Baked at startup; toggling requires a restart."
+            " Re-read live per tick, so toggling it takes effect on the next"
+            " tick with no restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -125,11 +125,12 @@ _r.register(
         description=(
             "Cadence between automatic evaluation-loop cycles. Default 24h"
             " keeps the closed loop low-overhead; the scheduler floors this"
-            " at 60 seconds. Resolved once at startup."
+            " at 60 seconds. Re-read live per tick, so a change applies on the"
+            " next sleep with no restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=60.0,
     )
 )
@@ -143,12 +144,12 @@ _r.register(
         description=(
             "Look-back window each evaluation cycle collects agent"
             " performance metrics over. Default 168h (7 days) smooths"
-            " single-task noise into a stable pillar signal. Resolved once"
-            " at startup."
+            " single-task noise into a stable pillar signal. Re-read live each"
+            " cycle, so a change applies on the next cycle with no restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=1.0,
     )
 )
@@ -239,16 +240,16 @@ _r.register(
         default="false",
         description=(
             "Master switch for the dynamic auto-scaling pipeline. Off by"
-            " default: the scaling endpoints stay dormant until an operator"
-            " opts in, because an enabled pipeline evaluates workload /"
-            " budget / skill / performance signals into real hire and prune"
-            " decisions (routed through the approval gate). When enabled the"
-            " ScalingService and the durable HiringService are constructed at"
-            " boot. Baked at startup; toggling requires a restart."
+            " default: a scaling evaluation produces real hire and prune"
+            " decisions from workload / budget / skill / performance signals"
+            " (routed through the approval gate). The ScalingService and the"
+            " durable HiringService are ghost-wired at boot, and the switch is"
+            " enforced live at the evaluate endpoint, so toggling it takes"
+            " effect on the next request with no restart."
         ),
         group="Scaling",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 

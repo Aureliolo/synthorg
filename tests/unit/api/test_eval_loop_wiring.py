@@ -1,10 +1,9 @@
 """Unit tests for ``wire_eval_loop`` startup wiring.
 
 Covers the dependency-absent skip (no tracker / training service),
-idempotency for a re-entered lifespan, the default opt-out path (the
-coordinator is published but the cycle scheduler stays dormant), and the
-opt-in path that starts the scheduler when ``hr.eval_loop_cycle_enabled``
-is set.
+idempotency for a re-entered lifespan, and the ghost-wire path: the cycle
+scheduler is always constructed and started, then gated per tick on
+``hr.eval_loop_cycle_enabled`` (so toggling it needs no restart).
 """
 
 import pytest
@@ -94,20 +93,13 @@ async def test_already_wired_is_idempotent() -> None:
     assert app_state.slice(HrStateSlice).eval_loop_coordinator is existing
 
 
-async def test_publishes_coordinator_with_scheduler_dormant_by_default() -> None:
-    app_state = _wired_app_state()
-    await wire_eval_loop(app_state)
-    published = app_state.slice(HrStateSlice)
-    # wire_eval_loop always publishes the coordinator when its deps exist ...
-    assert published.eval_loop_coordinator is not None
-    # ... but the unattended cycle driver is opt-in, so it stays dormant.
-    assert published.eval_loop_cycle_scheduler is None
+async def test_ghost_wires_and_starts_scheduler_by_default() -> None:
+    """The scheduler is always constructed + started, even with the switch off.
 
-
-async def test_publishes_scheduler_when_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("SYNTHORG_HR_EVAL_LOOP_CYCLE_ENABLED", "true")
+    The default ``hr.eval_loop_cycle_enabled=false`` no longer gates wiring:
+    the loop runs but idles per tick (gated by the resolver), so toggling the
+    switch takes effect with no restart.
+    """
     app_state = _wired_app_state()
     await wire_eval_loop(app_state)
     published = app_state.slice(HrStateSlice)

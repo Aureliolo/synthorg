@@ -36,13 +36,14 @@ _r.register(
         description=(
             "Master switch for the knowledge substrate (document ingestion"
             " and retrieval). On by default; turning it off is advanced."
-            " Knowledge uses the embedding model that powers memory. Read at"
-            " startup (the substrate wires into the boot engine), so a change"
-            " is restart-required."
+            " Knowledge uses the embedding model that powers memory. The"
+            " substrate is ghost-wired at startup and the switch is enforced"
+            " live per request at the knowledge tools, so toggling it takes"
+            " effect on the next call with no restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -55,11 +56,13 @@ _r.register(
         description=(
             "Whether the knowledge ask surface (generative RAG: retrieve"
             " chunks then synthesise a grounded, citation-bound answer) is"
-            " wired. On by default; it still requires a synthesis model to be"
-            " set before the ask surface answers. Retrieval is unaffected."
+            " available. On by default; the synthesiser is ghost-wired and the"
+            " ask surface is gated live on this flag, so toggling it takes"
+            " effect with no restart. It still requires a synthesis model to be"
+            " set before ask answers. Retrieval is unaffected."
         ),
         group="Synthesis",
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -76,7 +79,7 @@ _r.register(
         ),
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -88,14 +91,15 @@ _r.register(
         default="",
         description=(
             "Model identifier the knowledge synthesis step uses. Must be set"
-            " (and synthesis enabled) for the ask surface to wire at startup;"
-            " until then ask returns a configure-a-model error and retrieval"
-            " stays available. This is knowledge's own model, distinct from"
-            " the embedding model (which powers retrieval) and decomposition."
+            " for the ask surface to answer; until then ask returns a"
+            " configure-a-model error and retrieval stays available. A change"
+            " rebuilds and swaps the synthesiser live with no restart. This is"
+            " knowledge's own model, distinct from the embedding model (which"
+            " powers retrieval) and decomposition."
         ),
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -108,7 +112,7 @@ _r.register(
         description="Discriminator selecting the knowledge synthesis strategy.",
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -126,7 +130,7 @@ _r.register(
         ),
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=1,
         max_value=KNOWLEDGE_SEARCH_MAX_LIMIT,
     )

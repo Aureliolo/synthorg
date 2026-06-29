@@ -8,7 +8,8 @@ since the board filing carries its own project). Both are no-ops
 when the pipeline / simulation runtime is absent (empty company).
 """
 
-from unittest.mock import MagicMock
+from typing import cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,6 +28,7 @@ from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -86,6 +88,35 @@ async def test_skips_create_when_project_exists() -> None:
     await wire_real_intake_entry(app_state)
     projects.create.assert_not_called()
     assert app_state.slice(EngineStateSlice).intake_entry_adapter is not None
+
+
+async def test_intake_default_project_read_live_from_db_resolver() -> None:
+    """The intake project is read from the settings DB, not the cached state.
+
+    Proves the hot path: a DB override of ``simulations.intake_default_project``
+    is honoured at (re)wire time over the value baked into the cached
+    ``ClientSimulationState``.
+    """
+    projects = mock_of[ProjectRepository]()
+    projects.get.return_value = None
+    sim_state = mock_of[ClientSimulationState](
+        intake_default_project="cached-project",
+    )
+    resolver = cast(
+        "ConfigResolver",
+        mock_of[ConfigResolver](get_str=AsyncMock(return_value="db-project")),
+    )
+    app_state = make_app_state(
+        work_pipeline=mock_of[WorkPipeline](),
+        client_simulation_state=sim_state,
+        persistence=mock_of[PersistenceBackend](projects=projects),
+        config_resolver=resolver,
+    )
+
+    await wire_real_intake_entry(app_state)
+
+    created = projects.create.call_args.args[0]
+    assert created.id == _project_uuid("db-project")
 
 
 async def test_hot_swap_uses_swap_seam() -> None:

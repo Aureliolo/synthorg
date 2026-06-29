@@ -280,8 +280,22 @@ class AsyncCycleScheduler(ABC):
             else:
                 self._log_cycle_paused()
             try:
-                wait_interval = await self._resolve_wait_interval()
-                await asyncio.wait_for(stop_event.wait(), timeout=wait_interval)
+                interval = await self._resolve_wait_interval()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # A broken interval read must not wedge the loop; log it and
+                # fall back to the construction-time cadence.
+                reraise_critical(exc)
+                logger.warning(
+                    self._failed_event,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="interval_read_failed",
+                )
+                interval = self._interval
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -293,7 +307,8 @@ class AsyncCycleScheduler(ABC):
         Default returns the construction-time ``interval_seconds``. A
         subclass whose cadence is operator-tunable at runtime overrides this
         to re-resolve the interval each tick (fail-safe to the current
-        value) so a change applies without a restart.
+        value) so a change applies without a restart. A raise here is caught
+        by :meth:`_run`, which falls back to ``self._interval``.
 
         Returns:
             The wait interval in seconds for this tick.

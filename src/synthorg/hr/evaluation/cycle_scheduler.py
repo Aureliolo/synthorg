@@ -26,13 +26,20 @@ from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_CYCLE_SCHEDULER_STARTED,
     EVAL_LOOP_CYCLE_SCHEDULER_STOPPED,
 )
-from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.kill_switch import (
+    resolve_bool_with_fallback,
+    resolve_float_with_fallback,
+)
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
-_PAUSE_NS: Final[str] = "hr"
+_HR_NS: Final[str] = "hr"
+_ENABLED_KEY: Final[str] = "eval_loop_cycle_enabled"
 _PAUSE_KEY: Final[str] = "eval_loop_cycle_paused"
+_INTERVAL_KEY: Final[str] = "eval_loop_cycle_interval_seconds"
+_WINDOW_KEY: Final[str] = "eval_loop_cycle_window_hours"
+_SECONDS_PER_HOUR: Final[float] = 3600.0
 
 
 class EvalLoopCycleScheduler(AsyncCycleScheduler):
@@ -74,29 +81,70 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
 
     @override
     async def _resolve_cycle_enabled(self) -> bool:
-        """Return whether the cycle is enabled (inverts the paused flag).
+        """Return whether the cycle should run this tick.
 
-        Reads ``hr.eval_loop_cycle_paused`` from the resolver and inverts it.
-        Fail-safe to enabled (returns ``True``) when no resolver is wired or
-        the read fails, so a settings-backend outage never silently halts the
-        loop the operator opted into.
+        Folds the master switch and the pause kill-switch into one per-tick
+        read so both apply with no restart: the scheduler is always constructed
+        and started, but only does work when ``hr.eval_loop_cycle_enabled`` is
+        set AND ``hr.eval_loop_cycle_paused`` is not.
+
+        The master switch is opt-in (default off), so its fail-safe is
+        ``False`` (disabled): a settings-backend outage must not silently start
+        a loop that routes corrective actions to training. The pause flag
+        fail-safes to ``False`` (not paused), so an outage does not silently
+        halt a loop the operator opted into.
 
         Returns:
-            ``True`` when the cycle should run this tick; ``False`` when an
-            operator has paused it.
+            ``True`` when the cycle should run this tick; ``False`` when the
+            master switch is off or an operator has paused it.
         """
+        enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace=_HR_NS,
+            key=_ENABLED_KEY,
+            fallback=False,
+        )
+        if not enabled:
+            return False
         paused = await resolve_bool_with_fallback(
             resolver=self._config_resolver,
-            namespace=_PAUSE_NS,
+            namespace=_HR_NS,
             key=_PAUSE_KEY,
             fallback=False,
         )
         return not paused
 
     @override
+    async def _resolve_wait_interval(self) -> float:
+        """Re-read the cadence per tick so a change applies with no restart.
+
+        Fail-safe to the construction-time interval on a resolver outage.
+
+        Returns:
+            The live ``hr.eval_loop_cycle_interval_seconds`` value.
+        """
+        return await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=_HR_NS,
+            key=_INTERVAL_KEY,
+            fallback=self._interval,
+        )
+
+    @override
     async def _run_cycle_once(self) -> None:
-        """Run one evaluation cycle, logging how many agents it evaluated."""
-        report = await self._coordinator.run_cycle(window=self._window)
+        """Run one evaluation cycle over the live look-back window.
+
+        The window is re-read each tick (fail-safe to the construction-time
+        window) so an operator can widen / narrow it with no restart.
+        """
+        window_hours = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=_HR_NS,
+            key=_WINDOW_KEY,
+            fallback=self._window.total_seconds() / _SECONDS_PER_HOUR,
+        )
+        window = timedelta(seconds=window_hours * _SECONDS_PER_HOUR)
+        report = await self._coordinator.run_cycle(window=window)
         logger.info(
             EVAL_LOOP_CYCLE_RAN,
             cycle_id=str(report.cycle_id),

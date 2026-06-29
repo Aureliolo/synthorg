@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
+    resolve_float_with_fallback,
     resolve_model_with_fallback,
     resolve_str_with_fallback,
 )
@@ -46,6 +47,43 @@ async def test_resolver_outage_falls_back() -> None:
         fallback=True,
     )
     assert result is True
+
+
+async def test_float_returns_fallback_when_resolver_missing() -> None:
+    result = await resolve_float_with_fallback(
+        resolver=None,
+        namespace="hr",
+        key="eval_loop_cycle_interval_seconds",
+        fallback=86400.0,
+    )
+    assert result == 86400.0
+
+
+async def test_float_returns_resolver_value_when_wired() -> None:
+    resolver = AsyncMock()
+    resolver.get_float = AsyncMock(return_value=120.0)
+    result = await resolve_float_with_fallback(
+        resolver=resolver,
+        namespace="hr",
+        key="eval_loop_cycle_interval_seconds",
+        fallback=86400.0,
+    )
+    assert result == 120.0
+    resolver.get_float.assert_awaited_once_with(
+        "hr", "eval_loop_cycle_interval_seconds"
+    )
+
+
+async def test_float_resolver_outage_falls_back() -> None:
+    resolver = AsyncMock()
+    resolver.get_float = AsyncMock(side_effect=RuntimeError("transient"))
+    result = await resolve_float_with_fallback(
+        resolver=resolver,
+        namespace="hr",
+        key="eval_loop_cycle_window_hours",
+        fallback=168.0,
+    )
+    assert result == 168.0
 
 
 @pytest.mark.parametrize(

@@ -331,12 +331,22 @@ async def install_runtime_services(
     # for an empty company (no pipeline). The task-board adapter
     # follows the same gate but skips the project bootstrap (board
     # filings carry their own project).
+    from synthorg.client.runtime_builder import (  # noqa: PLC0415
+        reload_client_simulation_runtime,
+    )
+    from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
     from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
         wire_real_intake_entry,
         wire_real_objective_entry,
         wire_real_task_board_entry,
     )
 
+    # Re-resolve the client-simulation runtime from the settings DB now that the
+    # resolver is wired: construction read only env/default, so a DB override of
+    # intake_strategy / model / project / review pipeline is honoured here on
+    # every boot (not just on a later reload).
+    if has_simulation_runtime(app_state):
+        await reload_client_simulation_runtime(app_state)
     await wire_real_intake_entry(app_state)
     await wire_real_objective_entry(app_state)
     await wire_real_task_board_entry(app_state)
