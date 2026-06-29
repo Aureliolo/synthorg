@@ -11,10 +11,7 @@ instance rather than restarting the dead one.
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.settings import (
-    SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
-)
+from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAP_FAILED
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -80,13 +77,9 @@ class ChiefOfStaffAlertsSettingsSubscriber:
                 await self._ensure_running()
             else:
                 await self._ensure_stopped()
-            logger.info(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note=f"alerts monitor {'started' if effective else 'stopped'}",
-            )
+            # The dispatcher emits SETTINGS_SUBSCRIBER_NOTIFIED once per
+            # subscriber after this returns; the monitor's own start()/stop()
+            # log the lifecycle transition, so a log here would double-count.
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
