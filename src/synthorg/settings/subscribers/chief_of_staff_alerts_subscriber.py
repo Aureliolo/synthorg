@@ -10,6 +10,7 @@ instance rather than restarting the dead one.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAP_FAILED
 from synthorg.settings.service import SettingsService
@@ -74,7 +75,7 @@ class ChiefOfStaffAlertsSettingsSubscriber:
                 cap_fallback=cfg.chief_of_staff.alerts_enabled,
             )
             if effective:
-                await self._ensure_running()
+                await self._ensure_running(cfg.chief_of_staff)
             else:
                 await self._ensure_stopped()
             # The dispatcher emits SETTINGS_SUBSCRIBER_NOTIFIED once per
@@ -92,16 +93,18 @@ class ChiefOfStaffAlertsSettingsSubscriber:
             )
             raise
 
-    async def _ensure_running(self) -> None:
-        """Start the wired monitor, rebuilding a fresh one if it is dead."""
+    async def _ensure_running(self, cos_config: ChiefOfStaffConfig) -> None:
+        """Start the wired monitor, rebuilding a fresh one if it is dead.
+
+        Builds a fresh monitor from *cos_config* (the snapshot captured by
+        ``on_settings_changed``), not a second settings reload, so the
+        start/stop decision and the constructed monitor share one snapshot.
+        """
         from synthorg.meta.chief_of_staff.monitor import (  # noqa: PLC0415
             InflectionMonitorLifecycleError,
         )
         from synthorg.meta.chief_of_staff.monitor_builder import (  # noqa: PLC0415
             build_org_inflection_monitor,
-        )
-        from synthorg.meta.config import (  # noqa: PLC0415
-            load_self_improvement_config,
         )
         from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -114,10 +117,7 @@ class ChiefOfStaffAlertsSettingsSubscriber:
                 pass
             else:
                 return
-        si_config = await load_self_improvement_config(self._settings_service)
-        monitor = build_org_inflection_monitor(
-            self._app_state, cos_config=si_config.chief_of_staff
-        )
+        monitor = build_org_inflection_monitor(self._app_state, cos_config=cos_config)
         if monitor is None:
             return
         # Wire BEFORE start so a running daemon is always tracked for shutdown.
