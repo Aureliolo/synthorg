@@ -130,6 +130,25 @@ describe('SecurityConfigSection', () => {
     expect((captured as { reason?: string } | null)?.reason).toBeTruthy()
   })
 
+  it('keeps the dialog open with the upload intact when the import fails', async () => {
+    server.use(
+      http.post('/api/v1/settings/security/import', () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<SecurityConfigSection />)
+
+    await uploadConfig({ enabled: false })
+    await user.click(await screen.findByRole('button', { name: 'Import' }))
+
+    await waitFor(() => {
+      expect(toastTitles()).toContain('Import failed')
+    })
+    // The dialog stays open for a retry rather than dropping the upload.
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument()
+  })
+
   it('does not import when the confirmation is cancelled', async () => {
     const user = userEvent.setup()
     render(<SecurityConfigSection />)

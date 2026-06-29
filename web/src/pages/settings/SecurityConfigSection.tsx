@@ -59,8 +59,8 @@ function useSecurityConfigActions() {
     }
   }
 
-  async function handleConfirmImport() {
-    if (!pendingConfig) return
+  async function handleConfirmImport(): Promise<boolean> {
+    if (!pendingConfig) return false
     const config = pendingConfig
     // The destructive confirmation IS the deliberate action the backend
     // security-write guardrail requires, so the import carries confirm=true
@@ -68,15 +68,18 @@ function useSecurityConfigActions() {
     // actor is taken from the authenticated request. This lets an import that
     // weakens the posture through without a separate rejection round-trip.
     const reason = importReason.trim() || 'Imported via the security settings dashboard'
-    setPendingConfig(null)
     setImporting(true)
     try {
       const result = await importSecurityConfig({ config, confirm: true, reason })
       toast({ variant: 'success', title: 'Security configuration imported' })
       notifyCustomPoliciesWarning(result.custom_policies_warning)
-      setImportReason('')
+      // Returning true closes the dialog; the close handler clears the
+      // pending config + reason. A failed import returns false below so the
+      // dialog stays open with the upload + reason intact for a retry.
+      return true
     } catch (err) {
       toast({ variant: 'error', ...getCrudErrorTitle(err, 'Import failed'), description: getErrorMessage(err) })
+      return false
     } finally {
       setImporting(false)
     }
@@ -161,7 +164,7 @@ export function SecurityConfigSection() {
         description="This overwrites the current security settings with the imported configuration. Invalid configurations are rejected without changing anything."
         confirmLabel="Import"
         variant="destructive"
-        onConfirm={() => void handleConfirmImport()}
+        onConfirm={handleConfirmImport}
         onCancel={() => {
           setPendingConfig(null)
           setImportReason('')

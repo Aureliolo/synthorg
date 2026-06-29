@@ -144,9 +144,10 @@ class TestBackupSubscriberPath:
         sub, service = _make_subscriber(path="/var/lib/synthorg/backups")
         await sub.on_settings_changed("backup", "path")
         service.set_backup_path.assert_awaited_once_with("/var/lib/synthorg/backups")
-        # A path change must not toggle the scheduler.
+        # A path change updates the live root only -- never the scheduler.
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_called()
+        service.scheduler.reschedule.assert_not_called()
 
     async def test_blank_path_is_ignored(self) -> None:
         sub, service = _make_subscriber(path="")
