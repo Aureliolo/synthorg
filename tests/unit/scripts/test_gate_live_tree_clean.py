@@ -1,12 +1,12 @@
-"""Live-tree regression guard for the epic #2490 enforcement gates.
+"""Live-tree clean guard for the cost-scope-purpose and prompt-class-metadata gates.
 
-The per-gate unit tests prove each gate flags a *synthetic* violation; this adds
-the complementary clean assertion the F1 gate test was missing (mirroring
-``test_check_completion_config_temperature.test_clean_src_tree``): both the F2
-cost-scope-purpose gate and the F1 prompt-class-metadata gate must return ``0``
-against the real ``src/synthorg`` tree, so a future prompt class that tags spend
-without a purpose / metadata property is caught at unit-test speed, not only at
-pre-push / CI.
+The per-gate unit tests prove each gate flags a *synthetic* violation; this is
+the complementary clean assertion (mirroring
+``test_check_completion_config_temperature.test_clean_src_tree``): both
+``check_cost_scope_purpose`` and ``check_prompt_class_metadata`` must return
+``0`` against the real ``src/synthorg`` tree, so a prompt class that tags spend
+without a purpose or a metadata property is caught at unit-test speed, not only
+at pre-push / CI.
 """
 
 import importlib.util

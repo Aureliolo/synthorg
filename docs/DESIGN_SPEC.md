@@ -39,7 +39,7 @@ The design specification has been split into focused documentation pages for bet
 | [Semantic Ontology](design/ontology.md) | Entity Definitions, Versioning, Drift | Shared vocabulary, decorator, backend, bootstrap, drift detection |
 | [Providers](design/providers.md) | Provider abstraction, routing | LLM provider layer, LiteLLM integration, multi-provider resolution |
 | [Budget & Cost](design/budget.md) | Budget hierarchy, cost tracking, CFO, reporting | Per-agent cost enforcement, quota degradation, risk budget, PTE |
-| [LLM Call Analytics & Coordination Metrics](design/coordination-metrics.md) | Per-call tracking, orchestration ratio, coordination error taxonomy | Call categorisation, the coordination metrics suite, and the multi-agent tuning signals complementing budget controls |
+| [LLM Call Analytics & Coordination Metrics](design/coordination-metrics.md) | Per-call tracking, orchestration ratio, per-purpose cost/latency alerts, coordination error taxonomy | Call categorisation, the coordination metrics suite, and the multi-agent tuning signals complementing budget controls |
 | [Tools & Capabilities](design/tools.md) | Tool categories, sandboxing, MCP, trust | Layered sandbox, progressive disclosure, action types, access levels |
 | [Toolsmith (Self-Extending Toolkit)](design/toolsmith.md) | Runtime MCP tool-surface extension | Capability-gap detection, governed proposal/apply cycle, human-approval gating for new tools |
 | [Integrations](design/integrations.md) | OAuth flows, MCP catalog, webhooks, tunnel, health | External service integrations: OAuth provider connections, MCP server catalog + install, outbound webhooks, ngrok-style tunnel, integration-health rollups |

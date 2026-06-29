@@ -4,9 +4,8 @@ Drives the real cost-recording chokepoint: opens a ``cost_recording_scope``
 with a ``purpose``, emits a :class:`CostRecord` through
 ``emit_cost_record_from_context`` exactly as ``BaseCompletionProvider.complete``
 does, drains the tracker, then reads the record back through
-``CallAnalyticsService.get_prompt_class_breakdown``. No existing test crosses
-the whole emit -> tracker -> analytics -> dashboard-DTO span in one chain; the
-per-segment tests each cover only one hop.
+``CallAnalyticsService.get_prompt_class_breakdown``. This proves the full
+emit -> tracker -> analytics -> dashboard-DTO span end-to-end in one chain.
 """
 
 from typing import Final

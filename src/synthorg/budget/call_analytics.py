@@ -1,10 +1,11 @@
 # module-kind: service
 """Per-call analytics aggregation and alerting service."""
 
+import asyncio
 import math
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Final
+from typing import Final, NamedTuple
 
 from synthorg.budget.call_analytics_config import (
     CallAnalyticsConfig,
@@ -29,6 +30,7 @@ from synthorg.budget.tracker_protocol import (
     collect_all_records,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import SlidingWindowEventLimiter
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
@@ -58,6 +60,19 @@ _MIN_RETRY_COUNT: Final[int] = 1
 _PERCENTILE_INTERPOLATION_FACTOR: Final[float] = 0.95
 
 
+class _AdmittedAlert(NamedTuple):
+    """A per-purpose alert that passed the cooldown and awaits dispatch.
+
+    ``handle`` is the limiter admission to refund if the dispatch fails;
+    ``dispatcher`` is captured at admit time (only set when one is wired).
+    """
+
+    prompt_class_id: str
+    body: str
+    handle: object
+    dispatcher: NotificationDispatcher
+
+
 class CallAnalyticsService:
     """Aggregates per-call metrics and dispatches threshold alerts.
 
@@ -82,7 +97,17 @@ class CallAnalyticsService:
         self._tracker = cost_tracker
         self._config = config
         self._dispatcher = notification_dispatcher
-        logger.debug(ANALYTICS_SERVICE_CREATED, enabled=config.enabled)
+        # One alert per purpose per window so a frequently-polled dashboard
+        # cannot turn a standing breach into a notification storm.
+        self._alert_limiter = SlidingWindowEventLimiter(
+            max_events=1,
+            window_seconds=config.prompt_class_alerts.min_seconds_between_alerts,
+        )
+        logger.debug(
+            ANALYTICS_SERVICE_CREATED,
+            enabled=config.enabled,
+            has_dispatcher=notification_dispatcher is not None,
+        )
 
     async def get_aggregation(  # noqa: PLR0913 -- orthogonal record filters
         self,
@@ -188,10 +213,15 @@ class CallAnalyticsService:
                 warn_rate=self._config.retry_alerts.warn_rate,
             )
             if self._dispatcher is not None:
-                await _dispatch_retry_rate_alert(
+                warn_rate = self._config.retry_alerts.warn_rate
+                await _dispatch_budget_alert(
                     self._dispatcher,
-                    retry_rate=retry_rate,
-                    warn_rate=self._config.retry_alerts.warn_rate,
+                    title="High retry rate alert",
+                    body=(
+                        f"Retry rate {retry_rate:.1%} exceeds warning "
+                        f"threshold {warn_rate:.1%}."
+                    ),
+                    on_failure_event=ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
                 )
 
     async def check_prompt_class_alerts(
@@ -202,7 +232,11 @@ class CallAnalyticsService:
 
         Both thresholds are opt-in; a deployment that configures neither
         dispatches nothing. A row's p95 latency is evaluated only when the
-        purpose reported latency at all.
+        purpose reported latency at all. Each purpose re-alerts at most once
+        per ``min_seconds_between_alerts`` window, so repeated dashboard reads
+        cannot storm the notification sinks; a row breaching both dimensions
+        produces a single combined notification dispatched concurrently with
+        the other purposes' alerts.
 
         Args:
             breakdown: The per-prompt-class breakdown to evaluate.
@@ -212,15 +246,45 @@ class CallAnalyticsService:
         alerts = self._config.prompt_class_alerts
         if alerts.cost_warn is None and alerts.p95_latency_warn_ms is None:
             return
+        admitted: list[_AdmittedAlert] = []
         for row in breakdown.rows:
-            await self._check_prompt_class_row(row, alerts)
+            body = self._row_alert_body(row, alerts)
+            if body is None:
+                continue
+            handle = await self._alert_limiter.take(row.prompt_class_id)
+            if handle is None:
+                # Within this purpose's cooldown window: suppress the repeat
+                # log and dispatch so a polled dashboard does not re-alert.
+                continue
+            if self._dispatcher is None:
+                # The breach was logged by _row_alert_body; there is no sink to
+                # dispatch to. Hold the admission so the log stays throttled.
+                continue
+            admitted.append(
+                _AdmittedAlert(row.prompt_class_id, body, handle, self._dispatcher)
+            )
+        if not admitted:
+            return
+        async with asyncio.TaskGroup() as tg:
+            for alert in admitted:
+                _ = tg.create_task(self._dispatch_admitted(alert))
 
-    async def _check_prompt_class_row(
+    def _row_alert_body(
         self,
         row: PromptClassBreakdownRow,
         alerts: PromptClassAlertConfig,
-    ) -> None:
-        """Evaluate one breakdown row against the cost / latency ceilings."""
+    ) -> str | None:
+        """Log each breached dimension for a row and return a combined body.
+
+        The per-dimension WARNING logs stay separate (so spend and latency
+        regressions stay queryable), but a single body backs one notification
+        per row.
+
+        Returns:
+            A combined alert body, or ``None`` when the row breaches neither
+            ceiling (so the caller skips it without consuming a cooldown slot).
+        """
+        parts: list[str] = []
         if alerts.cost_warn is not None and row.total_cost > alerts.cost_warn:
             logger.warning(
                 ANALYTICS_PROMPT_CLASS_COST_ALERT,
@@ -228,16 +292,10 @@ class CallAnalyticsService:
                 total_cost=row.total_cost,
                 cost_warn=alerts.cost_warn,
             )
-            if self._dispatcher is not None:
-                await _dispatch_prompt_class_alert(
-                    self._dispatcher,
-                    title="High prompt-purpose cost alert",
-                    body=(
-                        f"Prompt purpose {row.prompt_class_id!r} cost "
-                        f"{row.total_cost:.4f} {row.currency} exceeds the "
-                        f"warning ceiling {alerts.cost_warn:.4f}."
-                    ),
-                )
+            parts.append(
+                f"cost {row.total_cost:.4f} {row.currency} exceeds the warning "
+                f"ceiling {alerts.cost_warn:.4f}"
+            )
         p95 = row.p95_latency_ms
         if (
             alerts.p95_latency_warn_ms is not None
@@ -250,16 +308,25 @@ class CallAnalyticsService:
                 p95_latency_ms=p95,
                 p95_latency_warn_ms=alerts.p95_latency_warn_ms,
             )
-            if self._dispatcher is not None:
-                await _dispatch_prompt_class_alert(
-                    self._dispatcher,
-                    title="High prompt-purpose latency alert",
-                    body=(
-                        f"Prompt purpose {row.prompt_class_id!r} p95 latency "
-                        f"{p95:.0f}ms exceeds the warning ceiling "
-                        f"{alerts.p95_latency_warn_ms:.0f}ms."
-                    ),
-                )
+            parts.append(
+                f"p95 latency {p95:.0f}ms exceeds the warning ceiling "
+                f"{alerts.p95_latency_warn_ms:.0f}ms"
+            )
+        if not parts:
+            return None
+        return f"Prompt purpose {row.prompt_class_id!r}: {'; '.join(parts)}."
+
+    async def _dispatch_admitted(self, alert: _AdmittedAlert) -> None:
+        """Dispatch one admitted alert; refund its slot on a swallowed failure."""
+        dispatched = await _dispatch_budget_alert(
+            alert.dispatcher,
+            title="High prompt-purpose cost / latency alert",
+            body=alert.body,
+            on_failure_event=ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED,
+            prompt_class_id=alert.prompt_class_id,
+        )
+        if not dispatched:
+            await self._alert_limiter.release(alert.prompt_class_id, alert.handle)
 
 
 # ── Pure helpers ─────────────────────────────────────────────────────────────
@@ -452,57 +519,31 @@ def _p95(values: list[float]) -> float:
     return sorted_values[lo] + frac * (sorted_values[hi] - sorted_values[lo])
 
 
-async def _dispatch_retry_rate_alert(
-    dispatcher: NotificationDispatcher,
-    *,
-    retry_rate: float,
-    warn_rate: float,
-) -> None:
-    """Dispatch a retry-rate warning notification.
-
-    Args:
-        dispatcher: Notification dispatcher.
-        retry_rate: Observed retry rate.
-        warn_rate: Configured warn threshold.
-    """
-    from synthorg.notifications.models import (  # noqa: PLC0415
-        Notification,
-        NotificationCategory,
-        NotificationSeverity,
-    )
-
-    body = f"Retry rate {retry_rate:.1%} exceeds warning threshold {warn_rate:.1%}."
-    try:
-        await dispatcher.dispatch(
-            Notification(
-                category=NotificationCategory.BUDGET,
-                severity=NotificationSeverity.WARNING,
-                title="High retry rate alert",
-                body=body,
-                source="budget.call_analytics",
-            ),
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            ANALYTICS_RETRY_ALERT_DISPATCH_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
-async def _dispatch_prompt_class_alert(
+async def _dispatch_budget_alert(
     dispatcher: NotificationDispatcher,
     *,
     title: str,
     body: str,
-) -> None:
-    """Dispatch a per-prompt-purpose budget / latency warning notification.
+    on_failure_event: str,
+    **failure_context: object,
+) -> bool:
+    """Dispatch a budget WARNING notification.
+
+    A dispatch failure is logged with ``on_failure_event`` (plus any
+    ``failure_context``) and swallowed so a flaky sink never breaks the caller;
+    ``MemoryError`` / ``RecursionError`` re-raise first. The boolean return lets
+    a rate-limited caller refund its admission slot when the dispatch failed.
 
     Args:
         dispatcher: Notification dispatcher.
         title: Notification title.
         body: Human-readable alert body.
+        on_failure_event: Event constant logged when dispatch fails.
+        failure_context: Extra structured fields for the failure log.
+
+    Returns:
+        ``True`` when the notification was dispatched; ``False`` on a swallowed
+        failure.
     """
     from synthorg.notifications.models import (  # noqa: PLC0415
         Notification,
@@ -523,7 +564,10 @@ async def _dispatch_prompt_class_alert(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
-            ANALYTICS_PROMPT_CLASS_ALERT_DISPATCH_FAILED,
+            on_failure_event,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+            **failure_context,
         )
+        return False
+    return True

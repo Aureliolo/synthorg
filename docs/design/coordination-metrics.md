@@ -106,12 +106,23 @@ The **orchestration ratio** (`coordination / total`) is surfaced in metrics and 
         - per_provider                     # provider reliability and cost comparison
         - orchestration_ratio              # coordination vs productive tokens
       alerts:
-        orchestration_ratio:
+        orchestration_alerts:
           info: 0.30                       # info if coordination > 30% of total
           warn: 0.50                       # warn if coordination > 50% of total
           critical: 0.70                   # critical if coordination > 70% of total
-        retry_rate_warn: 0.1               # warn if > 10% of calls need retries
+        retry_alerts:
+          warn_rate: 0.1                   # warn if > 10% of calls need retries
+        prompt_class_alerts:               # per-prompt-purpose ceilings (opt-in)
+          cost_warn: null                  # budget-currency total-cost ceiling, or null
+          p95_latency_warn_ms: null        # p95 latency ceiling in ms, or null
+          min_seconds_between_alerts: 300  # re-alert throttle window per purpose
     ```
+
+    The `alerts` keys mirror the `CallAnalyticsConfig` sub-models
+    (`orchestration_alerts`, `retry_alerts`, `prompt_class_alerts`). A
+    per-purpose alert is opt-in: with both ceilings `null` no notification
+    fires, and a purpose re-alerts at most once per
+    `min_seconds_between_alerts` so a polled dashboard cannot storm the sinks.
 
     Analytics metadata is append-only and never blocks execution. Failed analytics writes are
     logged and skipped; the agent's task is never delayed by telemetry.

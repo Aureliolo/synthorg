@@ -1,7 +1,7 @@
 """Closure guard across the three prompt-purpose populations.
 
-The epic keeps three sets in lock-step: the prompt-purpose registry (the source
-of ids), the pin registry (a pin per id), and the committed drift golden (a
+Three sets must stay in lock-step: the prompt-purpose registry (the source of
+ids), the pin registry (a pin per id), and the committed drift golden (a
 fingerprint per id). The freshness canary catches a *changed* fingerprint; this
 guard catches a *missing* one: a new ``PromptPurposeId`` added without a pin or
 a golden refresh, which the per-segment tests would each miss because each only

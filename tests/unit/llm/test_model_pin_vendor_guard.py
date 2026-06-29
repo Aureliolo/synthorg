@@ -1,10 +1,10 @@
 """Guard: model pins record a design tier, never a vendor model name.
 
-The provider-agnostic tenet (epic #2490) requires every pin's ``model`` to be a
+The provider-agnostic design requires every pin's ``model`` to be an
 ``example-{tier}-001`` archetype id, not a real vendor model. ``test_model_pins``
 checks that ``pin_for`` returns a valid :class:`ModelPinMetadata`; this guard adds
 the explicit negative: no pin's model matches a vendor token, and every model is a
-design-tier archetype. It ratchets against a future vendor name leaking into a pin.
+design-tier archetype. It ratchets against a vendor name leaking into a pin.
 """
 
 import re

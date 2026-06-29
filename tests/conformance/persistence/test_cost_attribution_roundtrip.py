@@ -1,12 +1,12 @@
 """Both-backend round-trip: persisted prompt_class_id drives the dashboard DTO.
 
-``test_core_repositories`` proves ``prompt_class_id`` survives a repo round-trip;
-this goes one hop further, across the persistence -> analytics boundary that no
-single test crosses today: it persists attributed cost on each backend, reads it
-back, and feeds it through ``CallAnalyticsService.get_prompt_class_breakdown`` to
-assert the by-purpose dashboard rows reconstruct correctly. It also pins the
-honest fact that latency / cache / success are in-memory telemetry the
-``cost_records`` schema does not persist, so they come back ``None``.
+Persistence round-trips preserve ``prompt_class_id`` as a bare string; this
+crosses the persistence -> analytics boundary: it persists attributed cost on
+each backend, reads it back, and feeds it through
+``CallAnalyticsService.get_prompt_class_breakdown`` to assert the by-purpose
+dashboard rows reconstruct correctly. It also pins the fact that latency /
+cache / success are in-memory telemetry the ``cost_records`` schema does not
+persist, so they come back ``None``.
 """
 
 from datetime import UTC, datetime
