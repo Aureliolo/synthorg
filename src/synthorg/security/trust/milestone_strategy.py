@@ -218,14 +218,12 @@ class MilestoneTrustStrategy:
         if milestone.clean_history_days > 0:
             has_clean_window = False
             for window in snapshot.windows:
-                # Only check windows whose period fits within the
-                # required clean-history duration (e.g. skip the 90d
-                # window when clean_history_days=7).
+                # Only the window whose span EXACTLY matches the required
+                # clean-history duration is evidence: a shorter window (e.g. 7d)
+                # cannot prove a longer requirement (e.g. 30d), and a wider one
+                # is too coarse. An unparseable span never qualifies.
                 window_days = parse_window_days(str(window.window_size))
-                if (
-                    window_days is not None
-                    and window_days > milestone.clean_history_days
-                ):
+                if window_days is None or window_days != milestone.clean_history_days:
                     continue
                 if window.data_point_count <= 0 or window.success_rate is None:
                     continue

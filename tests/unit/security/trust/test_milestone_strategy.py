@@ -195,6 +195,48 @@ class TestMilestoneTrustStrategy:
 
         assert result.recommended_level == ToolAccessLevel.SANDBOXED
 
+    async def test_auto_promote_blocked_by_too_short_clean_window(self) -> None:
+        """A clean window SHORTER than the requirement is insufficient evidence.
+
+        A clean 7d window does not prove 30 days of clean history, so a
+        ``clean_history_days=30`` milestone must NOT auto-promote on it.
+        """
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    time_active_days=7,
+                    clean_history_days=30,
+                    auto_promote=True,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            created_at=_NOW - timedelta(days=60),
+        )
+        # A clean 7d window cannot cover the 30-day requirement.
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=8.0,
+            success_rate=1.0,
+            tasks_completed=10,
+            window_size="7d",
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+
     async def test_evaluate_no_change_when_criteria_not_met(
         self,
         milestone_config: TrustConfig,
