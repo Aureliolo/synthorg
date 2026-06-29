@@ -8153,6 +8153,7 @@ export type components = {
              */
             readonly enabled: boolean;
             readonly orchestration_alerts: components["schemas"]["OrchestrationAlertThresholds"];
+            readonly prompt_class_alerts: components["schemas"]["PromptClassAlertConfig"];
             readonly retry_alerts: components["schemas"]["RetryAlertConfig"];
         };
         /** CancelEscalationRequest */
@@ -13725,6 +13726,21 @@ export type components = {
             readonly status: "pending" | "approved" | "rejected" | "expired";
             /** @description Target seniority level */
             readonly target_level: string;
+        };
+        /**
+         * PromptClassAlertConfig
+         * @description Per-prompt-purpose cost / latency alert thresholds.
+         */
+        readonly PromptClassAlertConfig: {
+            /** @description Per-purpose total-cost warning ceiling, or None to disable. */
+            readonly cost_warn: number | null;
+            /**
+             * @description Minimum seconds between re-alerts for the same purpose.
+             * @default 300
+             */
+            readonly min_seconds_between_alerts: number;
+            /** @description Per-purpose p95-latency warning ceiling in ms, or None. */
+            readonly p95_latency_warn_ms: number | null;
         };
         /** PromptClassBreakdown */
         readonly PromptClassBreakdown: {
