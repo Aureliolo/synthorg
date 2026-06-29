@@ -78,14 +78,17 @@ def build_agent_middleware_chain_or_none(
     }
     try:
         return build_agent_middleware_chain(config, deps=deps)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
-        # ERROR, not WARNING: a failed build silently disables the
-        # authority-deference defence for the process lifetime.
+        # Fail closed: the operator opted into the chain via
+        # ``enable_agent_middleware``, so its authority-deference defence is a
+        # required safety control. Degrading to no-middleware would run the
+        # agent path unprotected; abort startup so the broken control is
+        # visible instead of silently disabled for the process lifetime.
         logger.error(
             MIDDLEWARE_CHAIN_BUILT,
-            note="agent middleware chain build failed; engine runs without it",
+            note="agent middleware chain build failed; failing closed (startup aborts)",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        raise

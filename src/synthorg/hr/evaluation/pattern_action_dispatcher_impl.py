@@ -13,10 +13,6 @@ from synthorg.notifications.models import (
     NotificationSeverity,
 )
 from synthorg.notifications.protocol import NotificationDispatcherProtocol
-from synthorg.observability import get_logger
-from synthorg.observability.events.eval_loop import EVAL_LOOP_ACTION_DISPATCHED
-
-logger = get_logger(__name__)
 
 _SOURCE: NotBlankStr = NotBlankStr("hr.eval_loop")
 
@@ -43,6 +39,11 @@ class RemediationActionDispatcher:
         Returns:
             ``True``: the recommendation was routed to the notification
             dispatcher (the action is claimed by the operator surface).
+
+        The caller (``EvalLoopCoordinator._dispatch_actions``) owns the
+        single ``EVAL_LOOP_ACTION_DISPATCHED`` emission per action, so this
+        method does not log it again (double-logging would double-count the
+        dispatched/accepted metrics).
         """
         await self._notifications.dispatch(
             Notification(
@@ -56,13 +57,5 @@ class RemediationActionDispatcher:
                 source=_SOURCE,
                 metadata={"action_id": action_id, "pattern": pattern},
             )
-        )
-        logger.info(
-            EVAL_LOOP_ACTION_DISPATCHED,
-            action_id=action_id,
-            pattern=pattern,
-            dispatched=True,
-            accepted=True,
-            channel="notification",
         )
         return True

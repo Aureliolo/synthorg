@@ -11,6 +11,11 @@ REVIEW_STAGE_DECIDED: Final[str] = "review.stage.decided"
 # pinned an unknown one. Distinct from REVIEW_STAGE_DECIDED (a verdict event)
 # so a verdict consumer never sees a verdict-less record.
 REVIEW_STAGE_RUBRIC_FALLBACK: Final[str] = "review.stage.rubric_fallback"
+# Verification setup (rubric resolution or criteria decomposition) raised
+# before grading began; the stage fails open (SKIP). Distinct from
+# REVIEW_STAGE_GRADER_FAULT so a rubric/decomposer defect is never mistaken
+# for a grader defect when an operator triages.
+REVIEW_STAGE_SETUP_FAULT: Final[str] = "review.stage.setup_fault"
 # A verification grader raised; the stage fails open (SKIP). WARNING-level so
 # a real grader defect surfaces to monitors instead of hiding at INFO.
 REVIEW_STAGE_GRADER_FAULT: Final[str] = "review.stage.grader_fault"

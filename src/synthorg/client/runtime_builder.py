@@ -298,12 +298,15 @@ def build_client_simulation_runtime(
     """Construct the boot client-simulation runtime state.
 
     Default ``direct`` intake makes no LLM call (works for an empty
-    company). The review pipeline is ``InternalReviewStage`` only:
-    ``ClientReviewStage`` needs a per-request client, unavailable
-    generically at boot. ``app_state.task_engine`` must be set (the
-    caller gates on this); ``provider_registry`` / ``cost_tracker``
-    are consulted when present. ``env`` overrides ``os.environ`` for
-    tests.
+    company). The default review pipeline is ``("verification",
+    "internal")``: a rubric-grading ``VerificationReviewStage`` gates
+    before the ``InternalReviewStage`` (set
+    ``simulations.verification_review_enabled`` to ``false`` to drop it,
+    leaving ``internal`` only). ``ClientReviewStage`` is never wired
+    here: it needs a per-request client, unavailable generically at
+    boot. ``app_state.task_engine`` must be set (the caller gates on
+    this); ``provider_registry`` / ``cost_tracker`` are consulted when
+    present. ``env`` overrides ``os.environ`` for tests.
 
     Returns:
         The wired ``ClientSimulationState`` for boot.

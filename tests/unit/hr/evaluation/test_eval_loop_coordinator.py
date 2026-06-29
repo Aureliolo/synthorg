@@ -17,6 +17,7 @@ from synthorg.hr.evaluation.evaluator import EvaluationService
 from synthorg.hr.evaluation.external_benchmark_registry import ExternalBenchmarkRegistry
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.evaluation.models import EvaluationReport
+from synthorg.hr.evaluation.pattern_protocols import PatternIdentifier
 from synthorg.hr.evaluation.table_fix_proposer import (
     DEFAULT_PATTERN_ACTIONS as _DEFAULT_PATTERN_ACTIONS,
 )
@@ -47,6 +48,7 @@ def _make_coordinator(
     config: EvalLoopConfig | None = None,
     task_metrics: tuple[MagicMock, ...] = (),
     eval_report: MagicMock | None = None,
+    pattern_identifier: PatternIdentifier | None = None,
 ) -> EvalLoopCoordinator:
     """Build an EvalLoopCoordinator with mocked dependencies."""
     tracker = mock_of[PerformanceTracker](
@@ -73,6 +75,7 @@ def _make_coordinator(
         dataset_builder=dataset_builder,
         benchmark_registry=benchmark_registry,
         config=config,
+        pattern_identifier=pattern_identifier,
     )
 
 
@@ -157,6 +160,24 @@ class TestEvalLoopCoordinatorRunCycle:
         coordinator = _make_coordinator(config=config)
         report = await coordinator.run_cycle(window=timedelta(hours=1))
         assert report.proposed_actions == ()
+
+    async def test_disabled_flag_skips_injected_identifier(self) -> None:
+        """``pattern_identifier_enabled=False`` bypasses an injected identifier.
+
+        The deterministic default checks the flag internally, but an injected
+        identifier (e.g. the LLM strategy from eval_loop_wiring) would
+        otherwise run regardless; run_cycle gates the IDENTIFY phase so the
+        flag is honoured no matter which strategy is wired.
+        """
+        identify_mock = AsyncMock(return_value=(NotBlankStr("weakness:governance"),))
+        injected = cast(PatternIdentifier, SimpleNamespace(identify=identify_mock))
+        config = EvalLoopConfig(pattern_identifier_enabled=False)
+        coordinator = _make_coordinator(config=config, pattern_identifier=injected)
+        report = await coordinator.run_cycle(
+            window=timedelta(hours=1), agent_ids=("agent-x",)
+        )
+        identify_mock.assert_not_awaited()
+        assert report.observations == ()
         assert report.training_triggered is False
 
 

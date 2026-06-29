@@ -4,8 +4,10 @@ Proposes remediation action identifiers for identified weakness patterns
 with a dedicated LLM call, going beyond the static per-pillar table: it can
 account for the combination of weaknesses in a cycle rather than mapping
 each pillar in isolation. It degrades to an injected deterministic
-:class:`FixProposer` on any provider or parsing failure, so a cycle always
-yields actionable output.
+:class:`FixProposer` on a retryable provider error, an empty/unparseable
+response, or an unexpected internal fault, so a transient or misbehaving
+model still yields actionable output. A non-retryable :class:`ProviderError`
+still propagates and aborts the cycle.
 
 Only the weakness pattern tokens (``"weakness:<pillar>"``) are sent to the
 model, so no free-form agent content crosses the prompt boundary.

@@ -153,8 +153,13 @@ class EvalLoopCoordinator:
             # 2. ENRICH: evaluate each agent via 5-pillar framework.
             reports = await self._enrich(ids)
 
-            # 3. IDENTIFY: delegate to the pluggable pattern identifier.
-            observations = await self._pattern_identifier.identify(reports)
+            # 3. IDENTIFY: delegate to the pluggable pattern identifier,
+            # honouring the global disable flag. The deterministic default
+            # checks the flag internally, but an injected LLM identifier
+            # would otherwise bypass it, so gate the phase here for both.
+            observations: tuple[NotBlankStr, ...] = ()
+            if self._config.pattern_identifier_enabled:
+                observations = await self._pattern_identifier.identify(reports)
 
             # 4. PROPOSE: delegate to the pluggable fix proposer, then
             # dispatch the proposer's actual actions (deterministic table or

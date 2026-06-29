@@ -14,8 +14,10 @@ meaningful without a provider or the external artifact store. The
 operator may switch to the LLM decomposer / grader via the
 ``simulations.verification_*`` settings.
 
-A grader fault fails OPEN (the stage SKIPs) so a verifier defect can
-never block task completion. A REFER verdict (grader confidence below
+A setup fault (rubric resolution / criteria decomposition) or a grader
+fault both fail OPEN (the stage SKIPs) so a verifier defect can never
+block task completion, but under distinct events so an operator triages
+the right component. A REFER verdict (grader confidence below
 the rubric threshold) does not hard-fail the work either: it is surfaced
 in stage metadata for human review while the verdict stays PASS.
 """
@@ -31,6 +33,7 @@ from synthorg.engine.quality.decomposer_protocol import CriteriaDecomposer
 from synthorg.engine.quality.grader_protocol import RubricGrader
 from synthorg.engine.quality.rubric_catalog import get_rubric
 from synthorg.engine.quality.verification import (
+    AtomicProbe,
     VerificationResult,
     VerificationRubric,
     VerificationVerdict,
@@ -45,6 +48,7 @@ from synthorg.observability.events.review_pipeline import (
     REVIEW_STAGE_DECIDED,
     REVIEW_STAGE_GRADER_FAULT,
     REVIEW_STAGE_RUBRIC_FALLBACK,
+    REVIEW_STAGE_SETUP_FAULT,
 )
 
 logger = get_logger(__name__)
@@ -112,21 +116,41 @@ class VerificationReviewStage:
             )
 
         evaluator = self._distinct_evaluator(generator)
+        # SETUP: rubric resolution + criteria decomposition. A fault here is a
+        # rubric-catalog / decomposer defect, NOT a grader defect, so it fails
+        # open under its own event so an operator triages the right component.
         try:
-            # Rubric resolution is inside the fail-open guard: a missing
-            # default rubric must SKIP, not escape and block the task.
             rubric = self._resolve_rubric(task)
-            result = await self._grade(
-                task,
-                generator=generator,
-                evaluator=evaluator,
-                rubric=rubric,
+            artifact, probes = await self._prepare_grading(
+                task, generator=generator, evaluator=evaluator
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             reraise_critical(exc)
-            # WARNING, not INFO: a grader/rubric fault is an unexpected
-            # verifier defect an operator must see, distinct from a routine
-            # no-assignee skip.
+            logger.warning(
+                REVIEW_STAGE_SETUP_FAULT,
+                stage=self._NAME,
+                task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return self._skip(
+                f"verification setup fault: {safe_error_description(exc)}",
+                start_ns,
+                error_type=type(exc).__name__,
+            )
+        # GRADE: the real grading path. A fault here is a grader defect.
+        try:
+            result = await self._grader.grade(
+                artifact=artifact,
+                rubric=rubric,
+                probes=probes,
+                generator_agent_id=generator,
+                evaluator_agent_id=evaluator,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            reraise_critical(exc)
+            # WARNING, not INFO: a grader fault is an unexpected verifier
+            # defect an operator must see, distinct from a routine skip.
             logger.warning(
                 REVIEW_STAGE_GRADER_FAULT,
                 stage=self._NAME,
@@ -181,18 +205,21 @@ class VerificationReviewStage:
             )
             return self._rubric_lookup(self._default_rubric_name)
 
-    async def _grade(
+    async def _prepare_grading(
         self,
         task: Task,
         *,
         generator: NotBlankStr,
         evaluator: NotBlankStr,
-        rubric: VerificationRubric,
-    ) -> VerificationResult:
-        """Run decomposition + grading for the task.
+    ) -> tuple[HandoffArtifact, tuple[AtomicProbe, ...]]:
+        """Decompose acceptance criteria and build the grading artifact.
+
+        This is the setup phase that runs before the grader: a fault here
+        (decomposer defect) is distinct from a grader fault, so the caller
+        guards it under :data:`REVIEW_STAGE_SETUP_FAULT`.
 
         Returns:
-            The structured :class:`VerificationResult` from the grader.
+            The ``(artifact, probes)`` pair the grader scores.
         """
         task_id = NotBlankStr(str(task.id))
         probes = await self._decomposer.decompose(
@@ -215,13 +242,7 @@ class VerificationReviewStage:
             payload={"met_criteria": met_text},
             acceptance_probes=probes,
         )
-        return await self._grader.grade(
-            artifact=artifact,
-            rubric=rubric,
-            probes=probes,
-            generator_agent_id=generator,
-            evaluator_agent_id=evaluator,
-        )
+        return artifact, probes
 
     def _to_stage_result(
         self,

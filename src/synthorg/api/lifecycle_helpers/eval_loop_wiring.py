@@ -75,7 +75,11 @@ def _select_provider(
     provider_registry: ProviderRegistry | None,
     requested: str,
 ) -> CompletionProvider | None:
-    """Pick the requested provider, or the first available one.
+    """Pick the requested provider, else the first available one.
+
+    A pinned-but-absent ``requested`` provider resolves to ``None`` (the
+    caller then degrades to the deterministic strategy); the first-available
+    fallback applies only when no provider is pinned.
 
     Returns:
         A completion provider, or ``None`` when none can be resolved.
@@ -85,14 +89,18 @@ def _select_provider(
     if requested:
         if requested in provider_registry:
             return provider_registry.get(requested)
-        # An explicit-but-absent provider is a misconfiguration: surface the
-        # substitution rather than silently running on a different provider.
+        # An explicit-but-absent provider is a misconfiguration (a typo or
+        # stale config): return None so the caller degrades to the
+        # deterministic strategy rather than silently running the LLM
+        # strategy on a different provider than the operator named.
         logger.warning(
             API_APP_STARTUP,
             service="eval_loop",
-            note="configured eval_loop_llm_provider absent; using first available",
+            note="configured eval_loop_llm_provider absent; degrading to deterministic",
             requested_provider=requested,
         )
+        return None
+    # No provider pinned: use the first available one.
     available = provider_registry.list_providers()
     return provider_registry.get(available[0]) if available else None
 

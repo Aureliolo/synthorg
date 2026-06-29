@@ -160,6 +160,10 @@ class TestVerificationReviewStage:
         )
         result = await stage.execute(_task(criteria=(_criterion("works", met=True),)))
         assert result.verdict is ReviewVerdict.SKIP
+        assert result.reason is not None
+        # A rubric-resolution fault is a SETUP fault, not a grader fault, so
+        # an operator triages the right component.
+        assert "setup fault" in result.reason
 
     async def test_fail_verdict_maps_to_fail(self) -> None:
         config = VerificationConfig()

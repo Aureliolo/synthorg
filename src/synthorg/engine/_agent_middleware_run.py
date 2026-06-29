@@ -16,6 +16,9 @@ behaviour runs inline elsewhere in the engine, so firing them is a safe
 no-op that reserves the chain's ordering contract.
 """
 
+from collections.abc import Awaitable, Callable
+from typing import Protocol
+
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
@@ -30,6 +33,15 @@ from synthorg.providers.models import ChatMessage
 logger = get_logger(__name__)
 
 _AUTHORITY_METADATA_KEY = "authority_deference"
+
+
+class _HasAgentContext(Protocol):
+    """The slice of a loop result this module reads: its post-run context."""
+
+    @property
+    def context(self) -> AgentContext:
+        """The agent context after the run loop completed."""
+        ...
 
 
 def _build_context(  # noqa: PLR0913 -- keyword-only DI
@@ -148,3 +160,51 @@ async def apply_after_agent(  # noqa: PLR0913 -- keyword-only DI
         effective_autonomy=effective_autonomy,
     )
     await chain.run_after_agent(mw_ctx)
+
+
+async def run_with_agent_middleware[R: _HasAgentContext](  # noqa: PLR0913
+    chain: AgentMiddlewareChain | None,
+    *,
+    loop_runner: Callable[[AgentContext], Awaitable[R]],
+    ctx: AgentContext,
+    identity: AgentIdentity,
+    task: Task,
+    agent_id: str,
+    task_id: str,
+    effective_autonomy: EffectiveAutonomy | None,
+) -> R:
+    """Run *loop_runner* inside the before/after_agent middleware envelope.
+
+    Fires ``before_agent`` (applying its context effects), runs the loop,
+    then guarantees ``after_agent`` in a ``finally`` -- it is the end-of-run
+    cleanup seam, so a loop timeout or exception must not skip it. The
+    post-loop context is passed to ``after_agent`` when the run completed,
+    otherwise the pre-loop context.
+
+    Returns:
+        Whatever *loop_runner* returns (its result is propagated unchanged).
+    """
+    ctx = await apply_before_agent(
+        chain,
+        ctx=ctx,
+        identity=identity,
+        task=task,
+        agent_id=agent_id,
+        task_id=task_id,
+        effective_autonomy=effective_autonomy,
+    )
+    result: R | None = None
+    try:
+        result = await loop_runner(ctx)
+        return result  # noqa: RET504 -- result is read in the finally below
+    finally:
+        after_ctx = result.context if result is not None else ctx
+        await apply_after_agent(
+            chain,
+            ctx=after_ctx,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+        )

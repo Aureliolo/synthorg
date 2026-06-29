@@ -4,8 +4,10 @@ Identifies cross-agent weakness patterns with a dedicated LLM call over the
 per-agent pillar scores, going beyond the deterministic threshold count: it
 can weigh several pillars together and surface a systemic weakness a fixed
 per-pillar cut-off would miss. It degrades to an injected deterministic
-:class:`PatternIdentifier` on any provider or parsing failure, so a cycle
-never stalls on an unavailable or misbehaving model.
+:class:`PatternIdentifier` on a retryable provider error, an empty/unparseable
+response, or an unexpected internal fault, so a transient or misbehaving model
+does not stall the cycle. A non-retryable :class:`ProviderError` still
+propagates and aborts the cycle.
 
 Only numeric pillar scores are sent to the model. Agents are keyed by a
 positional index (``agent_0``, ``agent_1``, ...), never by their id, so no
@@ -45,7 +47,7 @@ _VALID_PILLARS: Final[frozenset[str]] = frozenset(p.value for p in EvaluationPil
 
 _SYSTEM_PROMPT: Final[str] = (
     "You are an evaluation analyst for a fleet of AI agents. Given each "
-    "agent's five-pillar scores (0.0-1.0; lower is weaker), identify the "
+    "agent's five-pillar scores (0.0-10.0; lower is weaker), identify the "
     "pillars on which the fleet is systemically weak. Weigh consistency "
     "across agents, not just a single low score. Reply ONLY with JSON: "
     '{"patterns": ["weakness:<pillar>", ...]} using these pillar names: '
