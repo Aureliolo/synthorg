@@ -9,6 +9,7 @@ from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
     set_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox._sidecar_resolution import set_resolved_sidecar_limits
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
@@ -30,11 +31,16 @@ def _isolate_sandbox_image_resolution(
     monkeypatch.delenv("SYNTHORG_SIDECAR_IMAGE", raising=False)
     set_resolved_sandbox_image(None)
     set_resolved_sidecar_image(None)
+    # The sidecar resource-limit / stop-grace cache (hot per launch) is the
+    # same shape of process-singleton; reset it so a test that pokes it via
+    # ``set_resolved_sidecar_limits(...)`` cannot leak into later tests.
+    set_resolved_sidecar_limits(None)
     try:
         yield
     finally:
         set_resolved_sandbox_image(None)
         set_resolved_sidecar_image(None)
+        set_resolved_sidecar_limits(None)
 
 
 @pytest.fixture

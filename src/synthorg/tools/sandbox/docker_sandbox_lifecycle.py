@@ -23,6 +23,9 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_SUCCESS,
     DOCKER_HEALTH_CHECK,
 )
+from synthorg.tools.sandbox._sidecar_resolution import (
+    get_resolved_docker_stop_grace_timeout_seconds,
+)
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
@@ -30,7 +33,6 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
 
 logger = get_logger(__name__)
 
-_STOP_TIMEOUT_SECONDS: Final[int] = 5
 _MAX_STDERR_LOG_CHARS: Final[int] = 200
 
 
@@ -146,8 +148,10 @@ class DockerSandboxLifecycleMixin:
         """Stop a running container."""
         try:
             container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
+            # Resolved per stop from the operator-tunable cache so a
+            # tools.docker_stop_grace_timeout_seconds change is hot.
             await container_obj.stop(
-                t=_STOP_TIMEOUT_SECONDS,
+                t=get_resolved_docker_stop_grace_timeout_seconds(),
             )
             logger.debug(
                 DOCKER_CONTAINER_STOPPED,

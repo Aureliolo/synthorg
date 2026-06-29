@@ -13,12 +13,15 @@ from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def _make_subscriber(
     *,
     scheduler_running: bool = False,
     enabled: bool = True,
     schedule_hours: int = 6,
+    path: str = "",
 ) -> tuple[BackupSettingsSubscriber, MagicMock]:
     """Create a subscriber with a mock BackupService and SettingsService.
 
@@ -49,6 +52,8 @@ def _make_subscriber(
             result.value = str(enabled)
         elif key == "schedule_hours":
             result.value = str(schedule_hours)
+        elif key == "path":
+            result.value = path
         else:
             result.value = ""
         return result
@@ -62,7 +67,6 @@ def _make_subscriber(
     return sub, service
 
 
-@pytest.mark.unit
 class TestBackupSubscriberProtocol:
     """BackupSettingsSubscriber conforms to SettingsSubscriber."""
 
@@ -76,6 +80,7 @@ class TestBackupSubscriberProtocol:
             {
                 ("backup", "enabled"),
                 ("backup", "schedule_hours"),
+                ("backup", "path"),
                 ("backup", "compression"),
                 ("backup", "on_shutdown"),
                 ("backup", "on_startup"),
@@ -88,7 +93,6 @@ class TestBackupSubscriberProtocol:
         assert sub.subscriber_name == "backup-settings"
 
 
-@pytest.mark.unit
 class TestBackupSubscriberEnabled:
     """on_settings_changed('backup', 'enabled') toggles the scheduler."""
 
@@ -133,7 +137,24 @@ class TestBackupSubscriberEnabled:
         assert service.scheduler.start.await_count == 2
 
 
-@pytest.mark.unit
+class TestBackupSubscriberPath:
+    """on_settings_changed('backup', 'path') updates the live backup root."""
+
+    async def test_path_change_calls_set_backup_path(self) -> None:
+        sub, service = _make_subscriber(path="/var/lib/synthorg/backups")
+        await sub.on_settings_changed("backup", "path")
+        service.set_backup_path.assert_awaited_once_with("/var/lib/synthorg/backups")
+        # A path change updates the live root only -- never the scheduler.
+        service.scheduler.start.assert_not_called()
+        service.scheduler.stop.assert_not_called()
+        service.scheduler.reschedule.assert_not_called()
+
+    async def test_blank_path_is_ignored(self) -> None:
+        sub, service = _make_subscriber(path="")
+        await sub.on_settings_changed("backup", "path")
+        service.set_backup_path.assert_not_called()
+
+
 class TestBackupSubscriberAdvisory:
     """Advisory keys log info but do not touch the scheduler."""
 

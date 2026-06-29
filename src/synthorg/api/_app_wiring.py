@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.api._benchmark_wiring import (
     build_benchmark_score_repo,
+    build_pareto_inputs,
     select_benchmark_provider,
 )
 from synthorg.api.state import AppState
@@ -27,8 +28,6 @@ from synthorg.providers.registry import ProviderRegistry
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.enforcer import BudgetEnforcer
-    from synthorg.budget.forecast_history import CostTrackerHistoryLookup
-    from synthorg.budget.pareto_assignments import AgentRegistryAssignmentLookup
     from synthorg.budget.tracker import CostTracker
     from synthorg.engine.intervention import SteeringSupersessionProposer
 
@@ -76,62 +75,6 @@ def _build_cost_forecast_repo(
         )
 
     return build_for_backend(persistence, sqlite=_sqlite, postgres=_postgres)
-
-
-def _build_pareto_inputs(
-    app_state: AppState,
-) -> tuple[
-    AgentRegistryAssignmentLookup | None,
-    CostTrackerHistoryLookup | None,
-    CostTracker | None,
-]:
-    """Resolve the live roster + spend lookups for the Pareto frontier.
-
-    Sources the frontier and the forecaster's history from the live roster
-    and observed spend so they render real downgrade candidates / warm
-    forecasts instead of empty defaults. Also attaches the durable
-    project-cost write + restart-safe dedup repos onto the cost tracker now
-    that persistence is connected (the tracker is built at the synchronous
-    construction phase before a backend exists; the dedup guard makes the
-    increment idempotent across a JetStream redelivery after a restart). A
-    registry/tracker absent at wiring time leaves both lookups ``None``
-    (cold-start forecaster, empty-frontier analyzer) rather than poisoning
-    startup.
-
-    Returns:
-        ``(assignment_lookup, history_lookup, cost_tracker)``.
-    """
-    from synthorg.budget.forecast_history import (  # noqa: PLC0415
-        CostTrackerHistoryLookup,
-    )
-    from synthorg.budget.pareto_assignments import (  # noqa: PLC0415
-        AgentRegistryAssignmentLookup,
-    )
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
-
-    persistence = persistence_of(app_state)
-    registry = app_state.slice(HrStateSlice).agent_registry
-    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    if cost_tracker is not None:
-        cost_tracker.attach_durable_repos(
-            project_cost_repo=persistence.project_cost_aggregates,
-            claim_seen_repo=persistence.project_cost_claim_seen,
-        )
-    if registry is None or cost_tracker is None:
-        return None, None, cost_tracker
-    assignment_lookup = AgentRegistryAssignmentLookup(
-        registry=registry,
-        cost_tracker=cost_tracker,
-        clock=app_state.clock.now,
-    )
-    history_lookup = CostTrackerHistoryLookup(
-        registry=registry,
-        cost_tracker=cost_tracker,
-        clock=app_state.clock.now,
-    )
-    return assignment_lookup, history_lookup, cost_tracker
 
 
 def _build_budget_enforcer(
@@ -197,7 +140,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         repo=benchmark_score_repo,
         tier_map=model_tier_map,
     )
-    assignment_lookup, history_lookup, cost_tracker = _build_pareto_inputs(app_state)
+    assignment_lookup, history_lookup, cost_tracker = build_pareto_inputs(app_state)
     forecaster = CostForecaster(
         budget_config=budget_config,
         history_lookup=history_lookup,

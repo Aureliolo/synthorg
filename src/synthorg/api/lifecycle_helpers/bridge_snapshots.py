@@ -152,9 +152,47 @@ async def _apply_observability_bridge_config_snapshot(app_state: AppState) -> No
     )
 
 
+async def _apply_tools_bridge_config_snapshot(app_state: AppState) -> None:
+    """Snapshot ``ToolsBridgeConfig`` onto ``AppState`` at startup.
+
+    Resolves the Docker sidecar resource limits + stop-grace knobs once via
+    :meth:`ConfigResolver.get_tools_bridge_config` and atomically swaps the
+    result onto ``app_state``, then seeds the process-singleton sidecar cache
+    that the per-container-launch read sites consult. On any non-fatal resolve
+    failure the default ``ToolsBridgeConfig()`` snapshot is retained (and the
+    cache keeps its bridge defaults).
+
+    No-op when no resolver is wired.
+    """
+    from synthorg.settings.bridge_configs import ToolsBridgeConfig  # noqa: PLC0415
+    from synthorg.tools.sandbox._sidecar_resolution import (  # noqa: PLC0415
+        set_resolved_sidecar_limits,
+    )
+
+    # Seed the process-singleton cache with THIS app state's defaults before
+    # resolving, so a resolver failure falls back to the current bridge
+    # defaults rather than a stale snapshot left behind by a previous app /
+    # test run in the same process.
+    set_resolved_sidecar_limits(app_state.bridge_config.tools)
+
+    def _apply(snapshot: ToolsBridgeConfig) -> None:
+        app_state.bridge_config.swap_tools(snapshot)
+        set_resolved_sidecar_limits(snapshot)
+
+    await _apply_bridge_snapshot(
+        app_state,
+        bridge="tools",
+        # Lambda is required: ``config_resolver`` raises until wired, so
+        # access must defer past the helper's has_config_resolver guard.
+        getter=lambda: config_resolver_of(app_state).get_tools_bridge_config(),
+        setter=_apply,
+    )
+
+
 __all__ = [
     "_apply_api_bridge_config_snapshot",
     "_apply_memory_bridge_config_snapshot",
     "_apply_observability_bridge_config_snapshot",
+    "_apply_tools_bridge_config_snapshot",
     "_apply_workers_bridge_config_snapshot",
 ]

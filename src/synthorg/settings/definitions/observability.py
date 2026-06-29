@@ -85,10 +85,12 @@ _r.register(
         key="http_batch_size",
         type=SettingType.INTEGER,
         default="100",
-        description="Default batch size for HTTP log handlers",
+        description=(
+            "Default batch size for HTTP log handlers. Live-applied to every"
+            " HTTP log handler via a settings subscriber without a restart."
+        ),
         group="HTTP Sink",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=10,
         max_value=1000,
     )
@@ -100,10 +102,12 @@ _r.register(
         key="http_flush_interval_seconds",
         type=SettingType.FLOAT,
         default="5.0",
-        description="Default flush interval for HTTP log handlers",
+        description=(
+            "Default flush interval for HTTP log handlers. Live-applied via"
+            " a settings subscriber without a restart."
+        ),
         group="HTTP Sink",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0.5,
         max_value=60.0,
     )
@@ -115,10 +119,12 @@ _r.register(
         key="http_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
-        description="Default HTTP timeout for log-handler POSTs",
+        description=(
+            "Default HTTP timeout for log-handler POSTs. Live-applied via a"
+            " settings subscriber without a restart."
+        ),
         group="HTTP Sink",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=60.0,
     )
@@ -130,10 +136,12 @@ _r.register(
         key="http_max_retries",
         type=SettingType.INTEGER,
         default="3",
-        description="Default retry count for HTTP log-handler POSTs",
+        description=(
+            "Default retry count for HTTP log-handler POSTs. Live-applied"
+            " via a settings subscriber without a restart."
+        ),
         group="HTTP Sink",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0,
         max_value=10,
     )

@@ -18,18 +18,30 @@ from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers import (
+    A2AClientSettingsSubscriber,
     ApiBridgeSettingsSubscriber,
+    ApiSecurityHeadersSettingsSubscriber,
     BackupSettingsSubscriber,
+    BudgetBenchmarkProviderSettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
+    EngineTimeoutEnforcementSettingsSubscriber,
+    EscalationReconnectSettingsSubscriber,
+    EventStreamHistorySettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MemorySettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
+    NotificationsBridgeSettingsSubscriber,
+    ObjectiveEntrySettingsSubscriber,
     ObservabilityBridgeSettingsSubscriber,
     ObservabilitySettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
+    RuntimeReloadSettingsSubscriber,
+    SecurityBridgeSettingsSubscriber,
     SecurityTimeoutSettingsSubscriber,
+    ToolsBridgeSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
+    WsAuthLimitsSettingsSubscriber,
 )
 
 logger = get_logger(__name__)
@@ -100,6 +112,55 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         observability_bridge_sub,
         meta_self_improvement_sub,
         cos_alerts_sub,
+        ApiSecurityHeadersSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        ObjectiveEntrySettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        ToolsBridgeSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        WsAuthLimitsSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        NotificationsBridgeSettingsSubscriber(
+            app_state=app_state,
+            config=config,
+            settings_service=settings_service,
+        ),
+        RuntimeReloadSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        EngineTimeoutEnforcementSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        BudgetBenchmarkProviderSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        EventStreamHistorySettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        EscalationReconnectSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        A2AClientSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        SecurityBridgeSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
     ]
     if backup_service is not None:
         subs.append(

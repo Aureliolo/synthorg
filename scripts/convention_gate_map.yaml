@@ -81,6 +81,11 @@ mandatory_rules:
     header: Configuration Precedence
     gate: scripts/check_setting_to_startup_trace.py
 
+  - id: claude-md::restart-required-justification
+    file: CLAUDE.md
+    header: Restart-Required Justification
+    gate: scripts/check_setting_restart_required_justified.py
+
   - id: claude-md::no-hardcoded-values
     file: CLAUDE.md
     header: No Hardcoded Values

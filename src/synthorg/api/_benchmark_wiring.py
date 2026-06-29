@@ -12,6 +12,8 @@ a corrupt committed seed artifact is surfaced at ERROR rather than being
 masked as a transient failure.
 """
 
+from typing import TYPE_CHECKING
+
 from pydantic import ValidationError
 
 from synthorg.api.state import AppState
@@ -22,6 +24,11 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
+
+if TYPE_CHECKING:
+    from synthorg.budget.forecast_history import CostTrackerHistoryLookup
+    from synthorg.budget.pareto_assignments import AgentRegistryAssignmentLookup
+    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -198,8 +205,124 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
         )
 
 
+def build_pareto_inputs(
+    app_state: AppState,
+) -> tuple[
+    AgentRegistryAssignmentLookup | None,
+    CostTrackerHistoryLookup | None,
+    CostTracker | None,
+]:
+    """Resolve the live roster + spend lookups for the Pareto frontier.
+
+    Sources the frontier and the forecaster's history from the live roster
+    and observed spend so they render real downgrade candidates / warm
+    forecasts instead of empty defaults. Also attaches the durable
+    project-cost write + restart-safe dedup repos onto the cost tracker now
+    that persistence is connected (the tracker is built at the synchronous
+    construction phase before a backend exists; the dedup guard makes the
+    increment idempotent across a JetStream redelivery after a restart). A
+    registry/tracker absent at wiring time leaves both lookups ``None``
+    (cold-start forecaster, empty-frontier analyzer) rather than poisoning
+    startup.
+
+    Returns:
+        ``(assignment_lookup, history_lookup, cost_tracker)``.
+    """
+    from synthorg.budget.forecast_history import (  # noqa: PLC0415
+        CostTrackerHistoryLookup,
+    )
+    from synthorg.budget.pareto_assignments import (  # noqa: PLC0415
+        AgentRegistryAssignmentLookup,
+    )
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+    registry = app_state.slice(HrStateSlice).agent_registry
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    if cost_tracker is not None:
+        cost_tracker.attach_durable_repos(
+            project_cost_repo=persistence.project_cost_aggregates,
+            claim_seen_repo=persistence.project_cost_claim_seen,
+        )
+    if registry is None or cost_tracker is None:
+        return None, None, cost_tracker
+    assignment_lookup = AgentRegistryAssignmentLookup(
+        registry=registry,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock.now,
+    )
+    history_lookup = CostTrackerHistoryLookup(
+        registry=registry,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock.now,
+    )
+    return assignment_lookup, history_lookup, cost_tracker
+
+
+async def rebuild_cost_dial_benchmark_provider(app_state: AppState) -> None:
+    """Rebuild the benchmark provider + Pareto analyzer from live settings.
+
+    Hot-reload counterpart to the ``benchmark_provider`` / ``model_tier_overrides``
+    slice of ``_wire_cost_dial_services``. Resolves both settings through the
+    live chain (DB > env > default) -- the boot path reads them off ``BudgetConfig``
+    mirrors (bootstrap, env > default), which cannot see a DB override -- then
+    rebuilds the provider and the Pareto analyzer and re-wires them onto
+    ``BudgetStateSlice``. The engine routing strategy that also reads the slice
+    provider is refreshed separately by the runtime-services reload the subscriber
+    triggers after this call.
+
+    No-op when the cost-dial services are not wired (no resolver / no budget
+    config / no benchmark repo) so a dev/test rig without persistence is safe.
+    """
+    from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
+    from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+    from synthorg.settings.state import (  # noqa: PLC0415
+        SettingsStateSlice,
+        config_resolver_of,
+    )
+
+    budget_slice = app_state.slice(BudgetStateSlice)
+    budget_config = budget_slice.budget_config
+    repo = budget_slice.benchmark_score_repo
+    if (
+        app_state.slice(SettingsStateSlice).config_resolver is None
+        or budget_config is None
+        or repo is None
+    ):
+        return
+    resolver = config_resolver_of(app_state)
+    strategy = await resolver.get_str(
+        SettingNamespace.BUDGET.value, "benchmark_provider"
+    )
+    overrides = await resolver.get_json(
+        SettingNamespace.BUDGET.value, "model_tier_overrides"
+    )
+    model_tier_map = ModelTierMap(overrides=overrides)
+    benchmark_provider = select_benchmark_provider(
+        strategy, repo=repo, tier_map=model_tier_map
+    )
+    assignment_lookup, _history_lookup, _cost_tracker = build_pareto_inputs(app_state)
+    analyzer = ParetoAnalyzer(
+        benchmark_provider=benchmark_provider,
+        budget_config=budget_config,
+        assignment_lookup=assignment_lookup,
+        model_tier_map=model_tier_map,
+    )
+    app_state.wire(
+        BudgetStateSlice,
+        benchmark_provider=benchmark_provider,
+        pareto_analyzer=analyzer,
+    )
+
+
 __all__ = [
     "build_benchmark_score_repo",
+    "build_pareto_inputs",
+    "rebuild_cost_dial_benchmark_provider",
     "seed_benchmark_scores",
     "select_benchmark_provider",
 ]

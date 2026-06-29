@@ -25,16 +25,15 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_HEALTH_FAILED,
     SANDBOX_SIDECAR_HEALTHY,
 )
+from synthorg.tools.sandbox._sidecar_resolution import (
+    get_resolved_sidecar_limits,
+)
 from synthorg.tools.sandbox.container_log_shipper import build_correlation_env
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
 
 logger = get_logger(__name__)
 
-_SIDECAR_HEALTH_POLL_INTERVAL: Final[float] = 0.2
-_SIDECAR_HEALTH_TIMEOUT: Final[float] = 15.0
-_SIDECAR_MEMORY: Final[str] = "64m"
-_SIDECAR_CPU: Final[float] = 0.5
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 
 
@@ -90,8 +89,12 @@ class DockerSandboxSidecarMixin:
 
         env_list.extend(build_correlation_env())
 
-        memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
-        nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
+        # One coherent snapshot per launch from the operator-tunable cache so
+        # a tools.docker_sidecar_* change applies without a restart and a
+        # concurrent hot update cannot mix old/new values within this launch.
+        limits = get_resolved_sidecar_limits()
+        memory_bytes = self._parse_memory_limit(limits.docker_sidecar_memory_limit)
+        nano_cpus = int(limits.docker_sidecar_cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.sidecar_tmpfs_size},noexec,nosuid"
 
         config: dict[str, object] = {
@@ -108,7 +111,7 @@ class DockerSandboxSidecarMixin:
                 },
                 "Memory": memory_bytes,
                 "NanoCpus": nano_cpus,
-                "PidsLimit": self._config.sidecar_pids_limit,
+                "PidsLimit": limits.docker_sidecar_max_pids,
                 "AutoRemove": False,
                 "SecurityOpt": ["no-new-privileges"],
             },
@@ -161,15 +164,21 @@ class DockerSandboxSidecarMixin:
         Raises:
             SandboxStartError: On timeout or unhealthy status.
         """
+        # One coherent snapshot per health-wait so the deadline and the
+        # timeout log below report the same operator-tuned value (hot per
+        # launch) and cannot mix old/new across the two reads.
+        limits = get_resolved_sidecar_limits()
+        health_timeout = limits.docker_sidecar_health_timeout_seconds
+        poll_interval = limits.docker_sidecar_health_poll_interval_seconds
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + _SIDECAR_HEALTH_TIMEOUT
+        deadline = loop.time() + health_timeout
         container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
 
         while loop.time() < deadline:
             try:
                 info = await container_obj.show()
             except TimeoutError, ConnectionError, OSError:
-                await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
+                await asyncio.sleep(poll_interval)
                 continue
 
             state = info.get("State", {})
@@ -203,12 +212,12 @@ class DockerSandboxSidecarMixin:
                 )
                 raise SandboxStartError(msg)
 
-            await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
+            await asyncio.sleep(poll_interval)
 
         msg = "Sidecar health check timed out"
         logger.warning(
             SANDBOX_SIDECAR_HEALTH_FAILED,
             sidecar_id=sidecar_id[:12],
-            timeout=_SIDECAR_HEALTH_TIMEOUT,
+            timeout=health_timeout,
         )
         raise SandboxStartError(msg)

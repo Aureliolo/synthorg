@@ -78,19 +78,12 @@ _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     }
 )
 
-_SIDECAR_HEALTH_POLL_INTERVAL: Final[float] = 0.2
-_SIDECAR_HEALTH_TIMEOUT: Final[float] = 15.0
-_SIDECAR_MEMORY: Final[str] = "64m"
-_SIDECAR_CPU: Final[float] = 0.5
-_SIDECAR_PIDS: Final[int] = 32
-
 logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _CONTAINER_WORKSPACE: Final[str] = "/workspace"
 _PROJECTS_SUBDIR: Final[str] = "projects"
-_STOP_TIMEOUT_SECONDS: Final[int] = 5
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 # Cap structured-log stderr captures so a stream of binary output from
 # inside a container cannot blow up our logging pipeline.

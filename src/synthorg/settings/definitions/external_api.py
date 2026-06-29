@@ -21,11 +21,11 @@ _r.register(
             "Master switch for the governed external-access tool. Off by"
             " default (safe egress posture): agents reaching arbitrary hosts"
             " is an SSRF / exfiltration surface, so an operator opts in"
-            " knowingly. Read at startup, so enabling it is restart-required;"
-            " the tool is not registered until then."
+            " knowingly. A change triggers a runtime-services rebuild via a"
+            " settings subscriber (the tool is registered/withdrawn for the"
+            " next task) without a restart."
         ),
         group="General",
-        restart_required=True,
     )
 )
 
@@ -39,11 +39,12 @@ _r.register(
             "Discriminator selecting the ExternalAccessProvider strategy"
             " used for egress. 'httpx' (default) makes DNS-pinned"
             " requests directly; future strategies (e.g. a sidecar proxy)"
-            " register under their own key."
+            " register under their own key. A change triggers a"
+            " runtime-services rebuild via a settings subscriber without"
+            " a restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )

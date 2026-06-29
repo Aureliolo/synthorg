@@ -23,6 +23,7 @@ from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -38,6 +39,27 @@ def _app_state(
     app_state = make_app_state(
         work_pipeline=mock_of[WorkPipeline]() if has_work_pipeline else None,
         persistence=mock_of[PersistenceBackend](projects=projects),
+    )
+    return app_state, projects
+
+
+def _app_state_with_resolver(
+    *,
+    project_value: str = "objectives",
+    raises: BaseException | None = None,
+) -> tuple[AppState, MagicMock]:
+    """App state with a live config resolver (post-init objective path)."""
+    projects = mock_of[ProjectRepository]()
+    projects.get.return_value = None
+    resolver = mock_of[ConfigResolver]()
+    if raises is not None:
+        resolver.get_str.side_effect = raises
+    else:
+        resolver.get_str.return_value = project_value
+    app_state = make_app_state(
+        work_pipeline=mock_of[WorkPipeline](),
+        persistence=mock_of[PersistenceBackend](projects=projects),
+        config_resolver=resolver,
     )
     return app_state, projects
 
@@ -80,3 +102,26 @@ async def test_hot_swap_uses_swap_seam() -> None:
     replaced = app_state.slice(EngineStateSlice).objective_entry_adapter
     assert replaced is not sentinel
     assert isinstance(replaced, ObjectiveEntryAdapter)
+
+
+async def test_hot_swap_blank_project_unwires_adapter() -> None:
+    """Clearing objectives.default_project unwires the live adapter."""
+    app_state, projects = _app_state_with_resolver(project_value="")
+    sentinel = object()
+    app_state.wire(EngineStateSlice, objective_entry_adapter=sentinel)
+    await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
+    assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
+    projects.create.assert_not_called()
+
+
+async def test_post_init_resolver_outage_propagates_and_keeps_adapter() -> None:
+    """A live-resolver outage propagates without repointing to bootstrap."""
+    app_state, projects = _app_state_with_resolver(
+        raises=RuntimeError("resolver outage")
+    )
+    sentinel = object()
+    app_state.wire(EngineStateSlice, objective_entry_adapter=sentinel)
+    with pytest.raises(RuntimeError, match="resolver outage"):
+        await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
+    assert app_state.slice(EngineStateSlice).objective_entry_adapter is sentinel
+    projects.create.assert_not_called()

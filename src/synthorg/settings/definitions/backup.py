@@ -50,10 +50,13 @@ _r.register(
         key="path",
         type=SettingType.STRING,
         default="/data/backups",
-        description="Directory path for storing backups",
+        description=(
+            "Directory path for storing backups. A change is pushed onto"
+            " the live backup service + retention manager via a settings"
+            " subscriber, so it applies without a restart."
+        ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 

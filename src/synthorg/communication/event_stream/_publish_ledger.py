@@ -79,6 +79,41 @@ class PublishLedger:
         """The configured dedup TTL (read by the hub for its publish log)."""
         return self._dedup_ttl_seconds
 
+    def set_history_max_sessions(self, value: int) -> None:
+        """Update the LRU session cap (hot).
+
+        Trims the live session store down to the new cap immediately (oldest
+        first), so a shrink tightens the memory bound at once rather than
+        waiting for the next new session to trigger eviction; the change
+        applies without a restart.
+
+        Raises:
+            ValueError: If *value* is below 1 (an empty-cap ``popitem``
+                would break the eviction loop).
+        """
+        if value < 1:
+            msg = f"history_max_sessions must be >= 1, got {value}"
+            raise ValueError(msg)
+        self._history_max_sessions = value
+        while len(self._history) > value:
+            self._history.popitem(last=False)
+
+    def set_history_per_session(self, value: int) -> None:
+        """Update the per-session replay ring-buffer depth (hot).
+
+        Sessions created after this call size their ``deque`` to the new
+        depth; existing per-session buffers keep their ``maxlen`` until the
+        session is recycled (accepted behaviour -- ``deque.maxlen`` is
+        immutable). The change applies without a restart.
+
+        Raises:
+            ValueError: If *value* is below 1.
+        """
+        if value < 1:
+            msg = f"history_per_session must be >= 1, got {value}"
+            raise ValueError(msg)
+        self._history_per_session = value
+
     @property
     def seen_event_ids(self) -> Mapping[str, OrderedDict[str, float]]:
         """Read-only view of the per-session dedup windows.

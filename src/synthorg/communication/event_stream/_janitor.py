@@ -10,7 +10,7 @@ fan-out hot path in ``stream.py`` stays focused on publish/subscribe.
 """
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 
 from synthorg.communication.event_stream.types import StreamEvent
@@ -21,8 +21,47 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_HUB_JANITOR_FAILED,
     EVENT_STREAM_HUB_JANITOR_PRUNED,
 )
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+
+async def resolve_janitor_float(
+    resolver: ConfigResolverProtocol | None,
+    key: str,
+    fallback: float,
+) -> float:
+    """Resolve a janitor ``communication.*`` float, fail-safe to *fallback*.
+
+    Re-read each sweep so an operator change to the interval / idle TTL
+    applies without a restart.
+
+    Returns:
+        The resolver value, or *fallback* when no resolver is wired or the
+        read fails (a settings-backend hiccup must never stall or crash the
+        janitor).
+
+    Raises:
+        asyncio.CancelledError: Propagated when the resolver await is
+            cancelled.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        return await resolver.get_float(SettingNamespace.COMMUNICATION.value, key)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            EVENT_STREAM_HUB_JANITOR_FAILED,
+            setting=f"communication.{key}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=fallback,
+        )
+        return fallback
 
 
 # Intentionally NOT frozen: ``last_active`` is mutated in-place under the
@@ -88,7 +127,7 @@ async def prune_idle_subscribers(
 async def janitor_loop(
     *,
     clock: Clock,
-    janitor_interval_seconds: float,
+    resolve_interval: Callable[[], Awaitable[float]],
     prune: Callable[[], Coroutine[object, object, None]],
 ) -> None:
     """Periodically run ``prune`` until cancelled.
@@ -102,8 +141,13 @@ async def janitor_loop(
 
     Args:
         clock: Sleep source between sweeps.
-        janitor_interval_seconds: Delay between sweeps.
-        prune: Zero-argument coroutine that performs one sweep.
+        resolve_interval: Awaited at the top of each sweep to obtain the
+            delay before the next sweep, so an operator change to the
+            janitor interval applies without a restart (fail-safe to the
+            current value inside the resolver).
+        prune: Zero-argument coroutine that performs one sweep (it
+            re-resolves the idle TTL internally for the same hot-reload
+            reason).
 
     Raises:
         asyncio.CancelledError: Propagated on shutdown so the janitor
@@ -111,7 +155,7 @@ async def janitor_loop(
     """
     # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
     while True:
-        await clock.sleep(janitor_interval_seconds)
+        await clock.sleep(await resolve_interval())
         try:
             await prune()
         except asyncio.CancelledError:

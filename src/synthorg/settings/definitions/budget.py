@@ -186,15 +186,13 @@ _r.register(
             " ``measured`` reads measured per-model scores from the"
             " benchmark-score repository, seeded at boot from the"
             " committed recording artifact, falling back to the stub for"
-            " any unmeasured model. Sourced from the"
-            " SYNTHORG_BUDGET_BENCHMARK_PROVIDER env var > default at"
-            " API-process start; the provider is wired once at startup,"
-            " so a change requires a restart."
+            " any unmeasured model. Resolved through the live settings"
+            " chain (DB > env > default); a change rebuilds the"
+            " benchmark provider + Pareto analyser and reloads runtime"
+            " services without a restart."
         ),
         group="Cost Dial",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         env_var_override="SYNTHORG_BUDGET_BENCHMARK_PROVIDER",
         validator_pattern=r"^(stub|measured)$",
     )
@@ -214,14 +212,13 @@ _r.register(
             " Empty (the default) leaves resolution entirely to the"
             " heuristic, so a normal boot is unchanged. Lets an operator"
             " running arbitrary model ids map them onto a tier so their"
-            " measured scores are queried. Sourced from the"
-            " SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES env var > default at"
-            " API-process start; wired once, so a change needs a restart."
+            " measured scores are queried. Resolved through the live"
+            " settings chain (DB > env > default); a change rebuilds the"
+            " benchmark provider + Pareto analyser and reloads runtime"
+            " services without a restart."
         ),
         group="Cost Dial",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         env_var_override="SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES",
     )
 )

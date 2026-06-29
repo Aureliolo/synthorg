@@ -18,6 +18,7 @@ from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
     MemoryBridgeConfig,
     ObservabilityBridgeConfig,
+    ToolsBridgeConfig,
     WorkersBridgeConfig,
 )
 
@@ -42,6 +43,8 @@ class BridgeConfigState:
         "_memory_lock",
         "_observability",
         "_observability_lock",
+        "_tools",
+        "_tools_lock",
         "_workers",
         "_workers_lock",
     )
@@ -56,6 +59,8 @@ class BridgeConfigState:
         self._memory_lock: threading.Lock = threading.Lock()
         self._observability: ObservabilityBridgeConfig = ObservabilityBridgeConfig()
         self._observability_lock: threading.Lock = threading.Lock()
+        self._tools: ToolsBridgeConfig = ToolsBridgeConfig()
+        self._tools_lock: threading.Lock = threading.Lock()
         # One-shot flag: bridge config applied exactly once per lifetime
         # even across re-entered lifespans (shared-app test fixtures).
         self._applied: bool = False
@@ -77,7 +82,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: Literal["_api", "_workers", "_memory", "_observability"],
+        attr: Literal["_api", "_workers", "_memory", "_observability", "_tools"],
         service: str,
         config: BaseModel,
     ) -> None:
@@ -107,7 +112,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: Literal["_api", "_workers", "_memory", "_observability"],
+        attr: Literal["_api", "_workers", "_memory", "_observability", "_tools"],
         service: str,
         updates: dict[str, object],
     ) -> None:
@@ -283,9 +288,11 @@ class BridgeConfigState:
     def swap_observability(self, config: ObservabilityBridgeConfig) -> None:
         """Replace the ``ObservabilityBridgeConfig`` snapshot wholesale.
 
-        Used by ``_apply_bridge_config`` at startup with the value
-        resolved through ``ConfigResolver.get_observability_bridge_config``.
-        Hot-reload paths must use :meth:`mutate_observability`.
+        Used both by ``_apply_bridge_config`` at startup and by
+        ``ObservabilityBridgeSettingsSubscriber`` on a hot change (which
+        re-resolves the whole snapshot through
+        ``ConfigResolver.get_observability_bridge_config``). Single-field hot
+        paths use :meth:`mutate_observability` instead.
         """
         self._swap(
             lock=self._observability_lock,
@@ -305,5 +312,48 @@ class BridgeConfigState:
             lock=self._observability_lock,
             attr="_observability",
             service="observability_bridge_config",
+            updates=updates,
+        )
+
+    @property
+    def tools(self) -> ToolsBridgeConfig:
+        """Return the current ``ToolsBridgeConfig`` snapshot.
+
+        Always non-None: ``__init__`` default-constructs a
+        ``ToolsBridgeConfig()`` (Field defaults == the registered
+        ``tools.*`` defaults) so a consumer reading it before
+        ``_apply_tools_bridge_config_snapshot`` runs or under a resolver
+        outage still sees the documented sidecar / stop-grace defaults.
+        """
+        return self._tools
+
+    def swap_tools(self, config: ToolsBridgeConfig) -> None:
+        """Replace the ``ToolsBridgeConfig`` snapshot wholesale under the lock.
+
+        Used both by ``_apply_tools_bridge_config_snapshot`` at startup and by
+        ``ToolsBridgeSettingsSubscriber`` on a hot change (which re-resolves
+        every ``tools.*`` field through ``ConfigResolver.get_tools_bridge_config``
+        and replaces the whole snapshot, mirroring
+        :meth:`swap_observability`). Single-field hot paths use
+        :meth:`mutate_tools` instead, which re-validates the field updates.
+        """
+        self._swap(
+            lock=self._tools_lock,
+            attr="_tools",
+            service="tools_bridge_config",
+            config=config,
+        )
+
+    def mutate_tools(self, updates: dict[str, object]) -> None:
+        """Apply ``updates`` to the tools snapshot under a lock.
+
+        Re-validates via ``model_validate`` so an out-of-range operator
+        value raises ``ValidationError`` and the prior snapshot is
+        retained (mirrors :meth:`mutate_api`).
+        """
+        self._mutate(
+            lock=self._tools_lock,
+            attr="_tools",
+            service="tools_bridge_config",
             updates=updates,
         )

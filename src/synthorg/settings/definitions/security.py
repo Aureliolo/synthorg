@@ -29,10 +29,15 @@ _r.register(
         key="enabled",
         type=SettingType.BOOLEAN,
         default="true",
-        description="Master switch for the security subsystem",
+        description=(
+            "Master switch for the security subsystem. A change is applied"
+            " to the live per-request interceptor via a settings subscriber"
+            " without a restart. Disabling (true->false) is a"
+            " security-weakening transition and requires the deliberate"
+            " confirm+reason+actor guardrail at the write path."
+        ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -42,10 +47,14 @@ _r.register(
         key="audit_enabled",
         type=SettingType.BOOLEAN,
         default="true",
-        description="Whether to record security audit entries",
+        description=(
+            "Whether to record security audit entries. Applied to the live"
+            " interceptor via a settings subscriber without a restart."
+            " Disabling (true->false) is a security-weakening transition and"
+            " requires the deliberate confirm+reason+actor guardrail."
+        ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -55,10 +64,14 @@ _r.register(
         key="post_tool_scanning_enabled",
         type=SettingType.BOOLEAN,
         default="true",
-        description="Scan tool output for secrets and sensitive data",
+        description=(
+            "Scan tool output for secrets and sensitive data. Applied to"
+            " the live interceptor via a settings subscriber without a"
+            " restart. Disabling (true->false) is a security-weakening"
+            " transition and requires the deliberate confirm+reason+actor guardrail."
+        ),
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -68,10 +81,15 @@ _r.register(
         key="output_scan_policy_type",
         type=SettingType.ENUM,
         default="autonomy_tiered",
-        description="Response policy when output scan detects sensitive content",
+        description=(
+            "Response policy when output scan detects sensitive content."
+            " Applied to the live interceptor via a settings subscriber"
+            " without a restart. Switching to ``log_only`` is a"
+            " security-weakening transition and requires the deliberate"
+            " confirm+reason+actor guardrail."
+        ),
         group="Output Scanning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         enum_values=("redact", "withhold", "log_only", "autonomy_tiered"),
     )
 )

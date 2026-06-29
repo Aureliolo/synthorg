@@ -166,6 +166,10 @@ _r.register(
         ),
         group="Acts on your behalf",
         level=SettingLevel.ADVANCED,
+        # lint-allow: restart-required -- security invariant: the acting actor
+        # is built fail-closed at startup (needs engine.has_security_governance)
+        # with no per-request governance re-check, so a live write must not
+        # enable autonomous MCP acting.
         restart_required=True,
     )
 )

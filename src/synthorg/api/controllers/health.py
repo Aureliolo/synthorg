@@ -33,6 +33,8 @@ from synthorg.observability import (
 from synthorg.observability.events.api import API_HEALTH_CHECK
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.telemetry.state import TelemetryStateSlice
 
 logger = get_logger(__name__)
@@ -247,6 +249,44 @@ def _status_code_for(outcome: ReadinessOutcome) -> int:
     return 200 if outcome is ReadinessOutcome.OK else 503
 
 
+async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
+    """Resolve the readiness-probe timeout budget per probe.
+
+    Reads ``api.readiness_probe_timeout_seconds`` through the live settings
+    chain (DB > env > default) so an operator change applies without a
+    restart. This setting is resolver-read-only (no bridge snapshot or
+    subscriber), so the boot-config value is the only stable non-resolver
+    source and is the correct fallback on a missing resolver or a resolver
+    outage -- a settings-backend hiccup must not perturb the probe budget.
+
+    Returns:
+        The probe-timeout ceiling in seconds.
+
+    Raises:
+        CancelledError: Propagated when the resolver await is cancelled.
+    """
+    boot_value = app_state.config.api.readiness_probe_timeout_seconds
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
+        return boot_value
+    try:
+        return await config_resolver_of(app_state).get_float(
+            SettingNamespace.API.value,
+            "readiness_probe_timeout_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_HEALTH_CHECK,
+            setting="api.readiness_probe_timeout_seconds",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=boot_value,
+        )
+        return boot_value
+
+
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     """Probe every configured dependency and compute the readiness status.
 
@@ -263,7 +303,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         BaseExceptionGroup: Re-raised only for fatal signals
             (MemoryError / RecursionError / CancelledError).
     """
-    probe_timeout = app_state.config.api.readiness_probe_timeout_seconds
+    probe_timeout = await _resolve_readiness_probe_timeout(app_state)
     try:
         # Bound the whole dependency fan-out: a single hung probe (a
         # wedged health_check that never returns) must yield a 503
