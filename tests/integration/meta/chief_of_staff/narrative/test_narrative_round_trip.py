@@ -274,9 +274,15 @@ class TestNarrativeRoundTrip:
         links = [b for b in doc.body if isinstance(b, LinkBlock)]
         assert any(b.url == "#brain-entry-dec-1" for b in links)
 
-    async def test_disabled_narrator_is_not_built(
+    async def test_disabled_narrator_built_but_skips_generation(
         self, docs_service: DocsService
     ) -> None:
+        """Disabled documentary mode builds the narrator but skips per run.
+
+        The narrator is wired unconditionally so ``narrative_enabled`` can
+        flip on live without a restart; with the capability off its per-run
+        gate short-circuits to ``None`` and emits no narrative.
+        """
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(),
             provider=mock_of[CompletionProvider](
@@ -287,7 +293,13 @@ class TestNarrativeRoundTrip:
             frames=mock_of[FlightRecorderFrameRepository](),
             task_repo=mock_of[TaskRepository](),
         )
-        assert narrator is None
+        assert narrator is not None
+
+        with structlog.testing.capture_logs() as events:
+            metadata = await narrator.generate(task_id=_TASK, project_id=_PROJECT)
+
+        assert metadata is None
+        assert not any(e["event"] == COS_NARRATIVE_GENERATED for e in events)
 
     async def test_narrative_generated_on_real_pipeline_run(
         self, docs_service: DocsService
