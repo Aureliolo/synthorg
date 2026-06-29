@@ -28,14 +28,29 @@ from synthorg.api.lifecycle_helpers._model_pin_wiring import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
+from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.cycle_scheduler import EvalLoopCycleScheduler
+from synthorg.hr.evaluation.deterministic_pattern_identifier import (
+    DeterministicPatternIdentifier,
+)
 from synthorg.hr.evaluation.dogfooding_dataset_builder import DogfoodingDatasetBuilder
 from synthorg.hr.evaluation.evaluator import EvaluationService
+from synthorg.hr.evaluation.llm_fix_proposer import LlmFixProposer
+from synthorg.hr.evaluation.llm_pattern_identifier import LlmPatternIdentifier
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
+from synthorg.hr.evaluation.pattern_action_dispatcher_impl import (
+    RemediationActionDispatcher,
+)
+from synthorg.hr.evaluation.pattern_protocols import FixProposer, PatternIdentifier
+from synthorg.hr.evaluation.table_fix_proposer import TableFixProposer
 from synthorg.hr.state import HrStateSlice
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_bool, parse_float
@@ -44,9 +59,114 @@ from synthorg.settings.state import SettingsStateSlice
 logger = get_logger(__name__)
 
 _SECONDS_PER_HOUR: Final[float] = 3600.0
+_LLM_MODE: Final[str] = "llm"
 
 
-async def wire_eval_loop(app_state: AppState) -> None:
+def _resolve_hr_str(key: str) -> str:
+    """Resolve a string-typed ``hr.*`` setting at boot.
+
+    Returns:
+        The resolved string value (may be empty).
+    """
+    return str(resolve_init_value(SettingNamespace.HR, key).value)
+
+
+def _select_provider(
+    provider_registry: ProviderRegistry | None,
+    requested: str,
+) -> CompletionProvider | None:
+    """Pick the requested provider, else the first available one.
+
+    A pinned-but-absent ``requested`` provider resolves to ``None`` (the
+    caller then degrades to the deterministic strategy); the first-available
+    fallback applies only when no provider is pinned.
+
+    Returns:
+        A completion provider, or ``None`` when none can be resolved.
+    """
+    if provider_registry is None:
+        return None
+    if requested:
+        if requested in provider_registry:
+            return provider_registry.get(requested)
+        # An explicit-but-absent provider is a misconfiguration (a typo or
+        # stale config): return None so the caller degrades to the
+        # deterministic strategy rather than silently running the LLM
+        # strategy on a different provider than the operator named.
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="configured eval_loop_llm_provider absent; degrading to deterministic",
+            requested_provider=requested,
+        )
+        return None
+    # No provider pinned: use the first available one.
+    available = provider_registry.list_providers()
+    return provider_registry.get(available[0]) if available else None
+
+
+def _build_pattern_strategies(
+    provider_registry: ProviderRegistry | None,
+) -> tuple[PatternIdentifier | None, FixProposer | None]:
+    """Build provider-backed IDENTIFY/PROPOSE strategies when opted in.
+
+    Returns ``(None, None)`` for any step left in deterministic mode (the
+    coordinator then uses its shipped defaults). An ``llm``-mode step with no
+    model configured or no provider available degrades to deterministic.
+
+    Returns:
+        The ``(pattern_identifier, fix_proposer)`` overrides, each possibly
+        ``None``.
+    """
+    identifier_mode = _resolve_hr_str("eval_loop_pattern_identifier_mode")
+    proposer_mode = _resolve_hr_str("eval_loop_fix_proposer_mode")
+    if _LLM_MODE not in (identifier_mode, proposer_mode):
+        return (None, None)
+
+    model = _resolve_hr_str("eval_loop_llm_model").strip()
+    if not model:
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="llm strategy requested but eval_loop_llm_model unset; deterministic",
+        )
+        return (None, None)
+    provider = _select_provider(
+        provider_registry, _resolve_hr_str("eval_loop_llm_provider").strip()
+    )
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="llm strategy requested but no provider available; deterministic",
+            provider_registry_present=provider_registry is not None,
+        )
+        return (None, None)
+
+    config = EvalLoopConfig()
+    model_id = NotBlankStr(model)
+    identifier: PatternIdentifier | None = None
+    proposer: FixProposer | None = None
+    if identifier_mode == _LLM_MODE:
+        identifier = LlmPatternIdentifier(
+            provider,
+            model=model_id,
+            fallback=DeterministicPatternIdentifier(config),
+        )
+    if proposer_mode == _LLM_MODE:
+        proposer = LlmFixProposer(
+            provider,
+            model=model_id,
+            fallback=TableFixProposer(config),
+        )
+    return (identifier, proposer)
+
+
+async def wire_eval_loop(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None = None,
+) -> None:
     """Wire the evaluation-loop coordinator + opt-in cycle scheduler.
 
     Idempotent for re-entered lifespans: returns early when the coordinator is
@@ -54,6 +174,8 @@ async def wire_eval_loop(app_state: AppState) -> None:
 
     Args:
         app_state: The application state holding the collaborator slices.
+        provider_registry: Registry used to resolve a completion provider when
+            an IDENTIFY/PROPOSE step is configured for ``llm`` mode.
     """
     hr = app_state.slice(HrStateSlice)
     if hr.eval_loop_coordinator is not None:
@@ -67,6 +189,15 @@ async def wire_eval_loop(app_state: AppState) -> None:
         return
 
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    # Route proposed remediation actions to operators when a notification
+    # dispatcher is wired; absent one, the coordinator proposes + logs only.
+    notification_dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+    action_dispatcher = (
+        RemediationActionDispatcher(notification_dispatcher=notification_dispatcher)
+        if notification_dispatcher is not None
+        else None
+    )
+    pattern_identifier, fix_proposer = _build_pattern_strategies(provider_registry)
     coordinator = EvalLoopCoordinator(
         performance_tracker=hr.performance_tracker,
         evaluation_service=EvaluationService(
@@ -79,6 +210,9 @@ async def wire_eval_loop(app_state: AppState) -> None:
             performance_tracker=hr.performance_tracker,
         ),
         benchmark_registry=build_pin_validation_registry(app_state),
+        action_dispatcher=action_dispatcher,
+        pattern_identifier=pattern_identifier,
+        fix_proposer=fix_proposer,
         clock=app_state.clock,
     )
 

@@ -289,7 +289,7 @@ class TestStrategyParametrize:
 
 @pytest.mark.unit
 class TestMilestoneCriteriaApprovalFlags:
-    """Tests for MilestoneCriteria._validate_approval_flags."""
+    """Tests for MilestoneCriteria approval-flag validators."""
 
     def test_auto_promote_and_requires_human_raises(self) -> None:
         """auto_promote=True with requires_human_approval=True raises."""
@@ -298,6 +298,44 @@ class TestMilestoneCriteriaApprovalFlags:
                 auto_promote=True,
                 requires_human_approval=True,
             )
+
+    def test_auto_promote_defaults_off(self) -> None:
+        """Auto-promotion is opt-in, so the secure default is off."""
+        assert MilestoneCriteria().auto_promote is False
+
+    def test_auto_promote_without_gates_raises(self) -> None:
+        """auto_promote=True without temporal/clean-history gates raises."""
+        with pytest.raises(ValueError, match="time_active_days and"):
+            MilestoneCriteria(auto_promote=True)
+
+    def test_auto_promote_with_only_time_gate_raises(self) -> None:
+        """auto_promote needs BOTH a tenure and a clean-history gate."""
+        with pytest.raises(ValueError, match="clean_history_days"):
+            MilestoneCriteria(auto_promote=True, time_active_days=7)
+
+    def test_auto_promote_with_only_history_gate_raises(self) -> None:
+        """auto_promote needs BOTH a tenure and a clean-history gate."""
+        with pytest.raises(ValueError, match="time_active_days"):
+            MilestoneCriteria(auto_promote=True, clean_history_days=7)
+
+    def test_auto_promote_with_both_gates_ok(self) -> None:
+        """auto_promote with positive tenure and clean-history gates is valid."""
+        criteria = MilestoneCriteria(
+            auto_promote=True,
+            time_active_days=7,
+            clean_history_days=7,
+        )
+        assert criteria.auto_promote is True
+
+    def test_clean_history_days_window_alignment_checked_at_root(self) -> None:
+        """A standalone milestone accepts any clean_history_days.
+
+        The window-alignment check lives at ``RootConfig`` (validated against
+        the effective ``performance.windows``), not on the standalone model,
+        so constructing a milestone in isolation does not enforce it.
+        """
+        criteria = MilestoneCriteria(clean_history_days=14)
+        assert criteria.clean_history_days == 14
 
 
 # ── ReVerificationConfig Constraints ─────────────────────────────

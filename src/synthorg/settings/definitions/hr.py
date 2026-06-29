@@ -153,6 +153,82 @@ _r.register(
     )
 )
 
+# ── Eval-loop IDENTIFY / PROPOSE strategy selection ──────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_pattern_identifier_mode",
+        type=SettingType.ENUM,
+        default="deterministic",
+        enum_values=("deterministic", "llm"),
+        description=(
+            "Strategy that identifies cross-agent weakness patterns each"
+            " cycle. 'deterministic' counts agents scoring below the pillar"
+            " thresholds (no provider). 'llm' weighs the pillar scores with a"
+            " dedicated model call and degrades to deterministic when no model"
+            " or provider is available. Wired at startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_fix_proposer_mode",
+        type=SettingType.ENUM,
+        default="deterministic",
+        enum_values=("deterministic", "llm"),
+        description=(
+            "Strategy that proposes remediation actions for identified"
+            " patterns. 'deterministic' maps each pillar via the static action"
+            " table. 'llm' proposes actions with a dedicated model call and"
+            " degrades to the table when no model or provider is available."
+            " Wired at startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_llm_model",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Model identifier for the eval-loop 'llm' identify/propose"
+            " strategies. Empty (the default) keeps both steps deterministic"
+            " regardless of their mode. Resolved once at startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="eval_loop_llm_provider",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Provider name resolving the eval-loop 'llm' strategy model."
+            " Empty selects the first registered provider. Resolved once at"
+            " startup."
+        ),
+        group="Evaluation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
 # ── Dynamic-scaling kill switch ──────────────────────────────────
 
 _r.register(

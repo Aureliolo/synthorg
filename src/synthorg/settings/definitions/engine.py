@@ -210,6 +210,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="enable_agent_middleware",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the agent middleware chain is wired into the engine."
+            " When enabled, its before_agent / after_agent hooks fire at"
+            " the execution boundary; the live effect is authority-"
+            " deference defence (a justification header is injected when"
+            " authority cues are detected in the conversation). Baked in"
+            " at process startup."
+        ),
+        group="Safety",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="shutdown_tool_timeout_seconds",
         type=SettingType.FLOAT,
         default="60.0",

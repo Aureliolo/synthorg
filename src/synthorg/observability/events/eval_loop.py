@@ -6,6 +6,9 @@ EVAL_LOOP_CYCLE_START: Final[str] = "eval.loop.cycle_start"
 EVAL_LOOP_CYCLE_COMPLETE: Final[str] = "eval.loop.cycle_complete"
 EVAL_LOOP_CYCLE_FAILED: Final[str] = "eval.loop.cycle_failed"
 EVAL_LOOP_PATTERN_IDENTIFIED: Final[str] = "eval.loop.pattern_identified"
+# A provider-backed identify/propose strategy degraded to its deterministic
+# fallback (empty/malformed model output, or a retryable provider failure).
+EVAL_LOOP_LLM_FALLBACK: Final[str] = "eval.loop.llm_fallback"
 EVAL_LOOP_BENCHMARK_EXECUTED: Final[str] = "eval.loop.benchmark_executed"
 EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED: Final[str] = (
     "eval.loop.benchmark_already_registered"

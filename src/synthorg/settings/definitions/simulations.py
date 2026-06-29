@@ -112,6 +112,68 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
+        key="verification_review_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the rubric-grading verification stage runs first in"
+            " the review pipeline. The stage decomposes a task's"
+            " acceptance criteria into atomic probes and grades the work"
+            " against a calibrated rubric with a separate evaluator"
+            " identity. Baked in at process startup."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
+        key="verification_grader",
+        type=SettingType.ENUM,
+        default="heuristic",
+        enum_values=("heuristic", "llm"),
+        description=(
+            "Grader variant for the verification review stage."
+            " 'heuristic' is deterministic and needs no provider;"
+            " 'llm' grades via the registered completion provider and"
+            " degrades to 'heuristic' when no provider is present."
+            " Baked in at process startup."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
+        key="verification_decomposer",
+        type=SettingType.ENUM,
+        default="identity",
+        enum_values=("identity", "llm"),
+        description=(
+            "Decomposer variant for the verification review stage."
+            " 'identity' maps each acceptance criterion to one probe"
+            " with no LLM call; 'llm' decomposes via the registered"
+            " completion provider and degrades to 'identity' when no"
+            " provider is present. Baked in at process startup."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
         key="review_timeout_seconds",
         type=SettingType.FLOAT,
         default="30.0",

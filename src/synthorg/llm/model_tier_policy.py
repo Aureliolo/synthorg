@@ -129,6 +129,8 @@ _TIER_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptTierKind], ...]] = 
     (PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE, _M),
     (PromptPurposeId.HR_TRAINING_CURATION, _L),
     (PromptPurposeId.HR_CALIBRATION, _S),
+    (PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS, _M),
+    (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, _L),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, _L),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, _S),
 )

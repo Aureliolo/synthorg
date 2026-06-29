@@ -47,6 +47,10 @@ Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via
 
 The `RubricGrader` protocol follows the standard protocol + strategy + factory + config discriminator pattern (mirroring `engine/classification/`). Variants: `LLM` (production) and `HEURISTIC` (testing/fallback). Configuration via `VerificationConfig`.
 
+### Rubric Grading on the Review Pipeline
+
+The decomposer + grader factories are wired onto the live post-completion path as a `VerificationReviewStage` (`engine/review/stages/verification.py`), which runs first in the review pipeline. It decomposes a task's acceptance criteria into probes, grades the work against a rubric with a *separate* evaluator identity, and maps the verdict onto the pipeline: `PASS`/`REFER` let the task proceed (REFER is surfaced in stage metadata for human review, never a hard fail), `FAIL` bounces the task to `IN_PROGRESS` for rework. A grader fault fails OPEN (the stage `SKIP`s) so a verifier defect never blocks completion. The deterministic default (identity decomposer + heuristic grader) grades the proportion of acceptance criteria marked met, so the stage works without a provider; `simulations.verification_grader` / `verification_decomposer` switch to the LLM variants and `simulations.verification_review_enabled` gates the stage (on by default, baked in at startup).
+
 ---
 
 ## Harness Middleware Layer
@@ -67,6 +71,8 @@ Protocol: `AgentMiddleware` (`engine/middleware/protocol.py`). Six async hooks i
 | `after_agent` | Once on completion | Save results, notify, cleanup |
 
 Composition: `before_*` left-to-right, `after_*` right-to-left, `wrap_*` onion-style (each wraps the next). Exceptions propagate to the classification pipeline.
+
+The chain is wired into the engine at boot (gated by `engine.enable_agent_middleware`, on by default): its `before_agent` / `after_agent` hooks fire at the `AgentEngine` execution boundary (`engine/_agent_middleware_run.py`). The live effect today is authority-deference defence: when `AuthorityDeferenceGuard.before_agent` detects authority cues in the conversation, the engine injects its justification header as a system message. The per-call slots (`security_interceptor`, `approval_gate`, `cost_recording`, `classification`) remain ordering placeholders whose real logic stays inline (`ToolInvoker`, the execution loop, `_post_execution_pipeline`) until the chain is also wired into the per-turn model / tool call sites.
 
 Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deference`, `sanitize_message`, `security_interceptor`, `policy_gate`, `approval_gate`, `assumption_violation`, `classification`, `cost_recording`.
 

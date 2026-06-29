@@ -6,8 +6,10 @@ its size budget. These are plain functions over a ``RootConfig``
 instance, invoked from the model's ``@model_validator`` wrappers.
 """
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
+from synthorg.core.time_window import parse_window_days_strict
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
@@ -15,6 +17,62 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
+
+
+def validate_unique_agent_names(config: RootConfig) -> None:
+    """Reject duplicate agent names.
+
+    Raises:
+        ValueError: When two or more agents share a name.
+    """
+    names = [a.name for a in config.agents]
+    if len(names) != len(set(names)):
+        dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+        msg = f"Duplicate agent names: {dupes}"
+        logger.warning(CONFIG_VALIDATION_FAILED, model="RootConfig", error=msg)
+        raise ValueError(msg)
+
+
+def validate_unique_department_names(config: RootConfig) -> None:
+    """Reject duplicate department names.
+
+    Raises:
+        ValueError: When two or more departments share a name.
+    """
+    names = [d.name for d in config.departments]
+    if len(names) != len(set(names)):
+        dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+        msg = f"Duplicate department names: {dupes}"
+        logger.warning(CONFIG_VALIDATION_FAILED, model="RootConfig", error=msg)
+        raise ValueError(msg)
+
+
+def validate_milestone_clean_history_windows(config: RootConfig) -> None:
+    """Reject a milestone ``clean_history_days`` no perf window covers.
+
+    The milestone trust gate matches the snapshot window whose span equals
+    ``clean_history_days`` exactly, and those snapshot windows come from
+    ``performance.windows``. A value aligned with none of the EFFECTIVE windows
+    would make the milestone permanently unreachable while failing silently
+    every evaluation, so it is rejected here against the actual configured
+    windows (not a hardcoded default, which could drift).
+
+    Raises:
+        ValueError: When a milestone's positive ``clean_history_days`` matches
+            no configured ``performance.windows`` span.
+    """
+    allowed = {parse_window_days_strict(str(w)) for w in config.performance.windows}
+    for key, milestone in config.trust.milestones.items():
+        if milestone.clean_history_days <= 0:
+            continue
+        if milestone.clean_history_days not in allowed:
+            msg = (
+                f"milestone {key!r} clean_history_days="
+                f"{milestone.clean_history_days} matches no performance "
+                f"window {sorted(allowed)}; the milestone would be unreachable"
+            )
+            logger.warning(CONFIG_VALIDATION_FAILED, model="RootConfig", error=msg)
+            raise ValueError(msg)
 
 
 def collect_model_refs(config: RootConfig) -> set[str]:

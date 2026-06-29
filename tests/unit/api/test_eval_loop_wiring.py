@@ -9,15 +9,46 @@ is set.
 
 import pytest
 
-from synthorg.api.lifecycle_helpers.eval_loop_wiring import wire_eval_loop
+from synthorg.api.lifecycle_helpers.eval_loop_wiring import (
+    _select_provider,
+    wire_eval_loop,
+)
 from synthorg.api.state import AppState
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.state import HrStateSlice
 from synthorg.hr.training.service import TrainingService
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
+
+
+class TestSelectProvider:
+    """``_select_provider`` resolution + misconfiguration handling."""
+
+    def test_pinned_present_returns_it(self) -> None:
+        driver = mock_of[BaseCompletionProvider]()
+        registry = ProviderRegistry({"example-provider": driver})
+        assert _select_provider(registry, "example-provider") is driver
+
+    def test_pinned_but_absent_returns_none(self) -> None:
+        # An explicit-but-absent provider (typo / stale config) degrades to
+        # the deterministic strategy (None), never silently substitutes a
+        # different provider than the operator named.
+        registry = ProviderRegistry(
+            {"example-provider": mock_of[BaseCompletionProvider]()}
+        )
+        assert _select_provider(registry, "absent-name") is None
+
+    def test_unpinned_uses_first_available(self) -> None:
+        driver = mock_of[BaseCompletionProvider]()
+        registry = ProviderRegistry({"example-provider": driver})
+        assert _select_provider(registry, "") is driver
+
+    def test_no_registry_returns_none(self) -> None:
+        assert _select_provider(None, "example-provider") is None
 
 
 def _wired_app_state() -> AppState:

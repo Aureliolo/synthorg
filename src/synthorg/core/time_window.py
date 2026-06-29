@@ -12,6 +12,12 @@ from typing import Final
 
 _WINDOW_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(\d+)d$")
 
+#: The standard rolling-window labels the performance subsystem aggregates over
+#: by default. Centralised here (the single source of truth for window labels)
+#: so the trust milestone gate can validate ``clean_history_days`` against the
+#: same vocabulary the snapshots actually produce.
+DEFAULT_WINDOW_LABELS: Final[tuple[str, ...]] = ("7d", "30d", "90d")
+
 
 def parse_window_days(window_size: str) -> int | None:
     """Return the day count from a ``'<N>d'`` label.

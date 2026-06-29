@@ -6,6 +6,7 @@ from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.core.time_window import DEFAULT_WINDOW_LABELS
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_float
@@ -61,11 +62,7 @@ class PerformanceConfig(BaseModel):
         description="Minimum data points for meaningful aggregation",
     )
     windows: tuple[NotBlankStr, ...] = Field(
-        default=(
-            NotBlankStr("7d"),
-            NotBlankStr("30d"),
-            NotBlankStr("90d"),
-        ),
+        default_factory=lambda: tuple(NotBlankStr(w) for w in DEFAULT_WINDOW_LABELS),
         min_length=1,
         description="Time window labels for rolling metrics",
     )

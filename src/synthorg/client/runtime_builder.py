@@ -24,12 +24,24 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.quality.verification_config import (
+    DecomposerVariant,
+    GraderVariant,
+    VerificationConfig,
+)
+from synthorg.engine.quality.verification_factory import (
+    build_decomposer,
+    build_grader,
+)
 from synthorg.engine.review.factory import (
     ReviewPipelineStrategy,
     build_review_pipeline,
 )
+from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
+from synthorg.llm.model_tier_policy import tier_model_id
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -39,6 +51,7 @@ from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_bool
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -53,6 +66,9 @@ _INTAKE_STRATEGY_KEY = "intake_strategy"
 _INTAKE_MODEL_KEY = "intake_model"
 _INTAKE_DEFAULT_PROJECT_KEY = "intake_default_project"
 _REVIEW_PIPELINE_STRATEGY_KEY = "review_pipeline_strategy"
+_VERIFICATION_ENABLED_KEY = "verification_review_enabled"
+_VERIFICATION_GRADER_KEY = "verification_grader"
+_VERIFICATION_DECOMPOSER_KEY = "verification_decomposer"
 _DEFAULT_STRATEGY = "direct"
 
 
@@ -125,6 +141,98 @@ def _resolve_review_pipeline_strategy(
     return cast("ReviewPipelineStrategy", value)
 
 
+def _resolve_verification_config(
+    *,
+    env: Mapping[str, str],
+    has_provider: bool,
+) -> VerificationConfig:
+    """Resolve the verification grader/decomposer variants from settings.
+
+    The ``llm`` variants degrade to the deterministic ``heuristic`` /
+    ``identity`` variants when no provider is registered (empty company),
+    so the stage always comes online without a provider.
+
+    Returns:
+        The resolved :class:`VerificationConfig`.
+    """
+    grader = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _VERIFICATION_GRADER_KEY, env=env
+        ).value
+    )
+    decomposer = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _VERIFICATION_DECOMPOSER_KEY, env=env
+        ).value
+    )
+    if not has_provider and (grader == "llm" or decomposer == "llm"):
+        logger.warning(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            note="verification llm variant requested without a provider; "
+            "degrading to deterministic heuristic/identity",
+            grader=grader,
+            decomposer=decomposer,
+        )
+        # Degrade only the setting that asked for "llm"; leave the other so
+        # GraderVariant / DecomposerVariant still validates and rejects an
+        # otherwise-invalid value instead of having it silently rewritten.
+        if grader == "llm":
+            grader = "heuristic"
+        if decomposer == "llm":
+            decomposer = "identity"
+    return VerificationConfig(
+        grader=GraderVariant(grader),
+        decomposer=DecomposerVariant(decomposer),
+    )
+
+
+def _build_verification_stage(
+    *,
+    env: Mapping[str, str],
+    provider: CompletionProvider | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> VerificationReviewStage | None:
+    """Build the rubric-grading review stage when enabled.
+
+    Returns:
+        A :class:`VerificationReviewStage` when
+        ``simulations.verification_review_enabled`` is set, otherwise
+        ``None`` (the stage is omitted from the pipeline).
+    """
+    enabled = bool(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS,
+            _VERIFICATION_ENABLED_KEY,
+            env=env,
+            parse=parse_bool,
+        ).value
+    )
+    if not enabled:
+        return None
+    config = _resolve_verification_config(env=env, has_provider=provider is not None)
+    # Honour the requested tier via the model-tier policy (large -> medium ->
+    # small archetype id) rather than discarding it and pinning one model, so
+    # an LLM-backed decomposer/grader selects the model its tier policy maps to.
+    tier_resolver = (
+        (lambda tier: NotBlankStr(tier_model_id(tier)))
+        if provider is not None
+        else None
+    )
+    decomposer = build_decomposer(
+        config,
+        provider=provider,
+        tier_resolver=tier_resolver,
+        cost_tracker=cost_tracker,
+    )
+    grader = build_grader(
+        config,
+        provider=provider,
+        tier_resolver=tier_resolver,
+        cost_tracker=cost_tracker,
+    )
+    return VerificationReviewStage(decomposer=decomposer, grader=grader)
+
+
 def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
     *,
     requested_strategy: str,
@@ -195,12 +303,15 @@ def build_client_simulation_runtime(
     """Construct the boot client-simulation runtime state.
 
     Default ``direct`` intake makes no LLM call (works for an empty
-    company). The review pipeline is ``InternalReviewStage`` only:
-    ``ClientReviewStage`` needs a per-request client, unavailable
-    generically at boot. ``app_state.task_engine`` must be set (the
-    caller gates on this); ``provider_registry`` / ``cost_tracker``
-    are consulted when present. ``env`` overrides ``os.environ`` for
-    tests.
+    company). The default review pipeline is ``("verification",
+    "internal")``: a rubric-grading ``VerificationReviewStage`` gates
+    before the ``InternalReviewStage`` (set
+    ``simulations.verification_review_enabled`` to ``false`` to drop it,
+    leaving ``internal`` only). ``ClientReviewStage`` is never wired
+    here: it needs a per-request client, unavailable generically at
+    boot. ``app_state.task_engine`` must be set (the caller gates on
+    this); ``provider_registry`` / ``cost_tracker`` are consulted when
+    present. ``env`` overrides ``os.environ`` for tests.
 
     Returns:
         The wired ``ClientSimulationState`` for boot.
@@ -218,13 +329,22 @@ def build_client_simulation_runtime(
         cost_tracker=cost_tracker,
     )
     review_strategy = _resolve_review_pipeline_strategy(env)
-    review_pipeline = build_review_pipeline(strategy=review_strategy)
+    verification_stage = _build_verification_stage(
+        env=env,
+        provider=provider,
+        cost_tracker=cost_tracker,
+    )
+    review_pipeline = build_review_pipeline(
+        strategy=review_strategy,
+        verification_stage=verification_stage,
+    )
     logger.info(
         CLIENT_SIMULATION_RUNTIME_WIRED,
         requested_strategy=requested_strategy,
         effective_strategy=effective_strategy,
         has_provider=provider is not None,
         review_stages=list(review_pipeline.stage_names),
+        verification_stage_active=verification_stage is not None,
         intake_default_project=default_project,
     )
     return ClientSimulationState(

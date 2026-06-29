@@ -11,6 +11,8 @@
   "system:cos:routing": "b3696598e2d70e19554d335833035955f83b6494695257628a692eccf3105e66",
   "system:evolution:propose": "0cd27a261f2ac93d80721a1a195704e526ea351073690b66509653e68f99b4fb",
   "system:hr:calibration": "1cc99db7ebb2494ea235d42bb1846136f898acf9745e40c77f475521d5bce69e",
+  "system:hr:eval_fix_proposal": "957533c6cdad0356ee2b61ae8b5bd5c54402c8b9bde8842883728d6702a6f1cf",
+  "system:hr:eval_pattern_analysis": "280ad87a48f0b0c1333378cec3ca0bc38316017d8b74044954dc05ac0bd7c690",
   "system:hr:training_curation": "3d237192acb6cb1d3252b40d1d68fcf4c1aaf0343620879ee153cbe1a2ef7fba",
   "system:intake": "8af3953c5585457a3ef7b8fecce2b7bed45dda2515daf3798b5bd1416d77d662",
   "system:knowledge:synthesis": "6df5c25b9a93e89ca06f09af55b81e39b7639735f3885d6c74d649a233b2bc9e",

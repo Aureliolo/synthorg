@@ -10,11 +10,28 @@ from synthorg.client.models import (
     TaskRequirement,
 )
 from synthorg.client.protocols import ClientInterface
+from synthorg.core.task import Task
 from synthorg.engine.review.factory import build_review_pipeline
+from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
 from synthorg.engine.review.stages.client import ClientReviewStage
 from synthorg.engine.review.stages.internal import InternalReviewStage
 
 pytestmark = pytest.mark.unit
+
+
+class _StubStage:
+    """ReviewStage stub used to assert pipeline ordering."""
+
+    @property
+    def name(self) -> str:
+        return "stub-verification"
+
+    async def execute(self, task: Task) -> ReviewStageResult:  # pragma: no cover
+        del task
+        return ReviewStageResult(
+            stage_name="stub-verification",
+            verdict=ReviewVerdict.PASS,
+        )
 
 
 class _FirstClientStrategy:
@@ -82,3 +99,16 @@ class TestBuildReviewPipeline:
             client_pool=(_StubClient(),),
         )
         assert pipeline.stage_names == ("internal",)
+
+    def test_verification_stage_prepended_when_supplied(self) -> None:
+        pipeline = build_review_pipeline(verification_stage=_StubStage())
+        assert pipeline.stage_names == ("stub-verification", "internal")
+
+    def test_verification_stage_runs_before_client_and_internal(self) -> None:
+        pipeline = build_review_pipeline(
+            strategy="client_then_internal",
+            client_pool=(_StubClient(),),
+            pool_strategy=_FirstClientStrategy(),
+            verification_stage=_StubStage(),
+        )
+        assert pipeline.stage_names == ("stub-verification", "client", "internal")

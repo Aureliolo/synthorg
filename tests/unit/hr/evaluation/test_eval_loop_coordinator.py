@@ -15,11 +15,12 @@ from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.dogfooding_dataset_builder import DogfoodingDatasetBuilder
 from synthorg.hr.evaluation.evaluator import EvaluationService
 from synthorg.hr.evaluation.external_benchmark_registry import ExternalBenchmarkRegistry
-from synthorg.hr.evaluation.loop_coordinator import (
-    _DEFAULT_PATTERN_ACTIONS,
-    EvalLoopCoordinator,
-)
+from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.evaluation.models import EvaluationReport
+from synthorg.hr.evaluation.pattern_protocols import PatternIdentifier, ProposedAction
+from synthorg.hr.evaluation.table_fix_proposer import (
+    DEFAULT_PATTERN_ACTIONS as _DEFAULT_PATTERN_ACTIONS,
+)
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
 from tests._shared import mock_of
@@ -47,6 +48,7 @@ def _make_coordinator(
     config: EvalLoopConfig | None = None,
     task_metrics: tuple[MagicMock, ...] = (),
     eval_report: MagicMock | None = None,
+    pattern_identifier: PatternIdentifier | None = None,
 ) -> EvalLoopCoordinator:
     """Build an EvalLoopCoordinator with mocked dependencies."""
     tracker = mock_of[PerformanceTracker](
@@ -73,6 +75,7 @@ def _make_coordinator(
         dataset_builder=dataset_builder,
         benchmark_registry=benchmark_registry,
         config=config,
+        pattern_identifier=pattern_identifier,
     )
 
 
@@ -157,13 +160,36 @@ class TestEvalLoopCoordinatorRunCycle:
         coordinator = _make_coordinator(config=config)
         report = await coordinator.run_cycle(window=timedelta(hours=1))
         assert report.proposed_actions == ()
+
+    async def test_disabled_flag_skips_injected_identifier(self) -> None:
+        """``pattern_identifier_enabled=False`` bypasses an injected identifier.
+
+        The deterministic default checks the flag internally, but an injected
+        identifier (e.g. the LLM strategy from eval_loop_wiring) would
+        otherwise run regardless; run_cycle gates the IDENTIFY phase so the
+        flag is honoured no matter which strategy is wired.
+        """
+        identify_mock = AsyncMock(return_value=(NotBlankStr("weakness:governance"),))
+        injected = cast("PatternIdentifier", SimpleNamespace(identify=identify_mock))
+        config = EvalLoopConfig(pattern_identifier_enabled=False)
+        coordinator = _make_coordinator(config=config, pattern_identifier=injected)
+        report = await coordinator.run_cycle(
+            window=timedelta(hours=1), agent_ids=("agent-x",)
+        )
+        identify_mock.assert_not_awaited()
+        assert report.observations == ()
         assert report.training_triggered is False
 
 
 class TestEvalLoopCoordinatorTrainingDecision:
     """EvalLoopCoordinator._should_trigger_training() gating."""
 
-    _ACTIONS: tuple[NotBlankStr, ...] = (NotBlankStr("increase_review_depth"),)
+    _ACTIONS: tuple[ProposedAction, ...] = (
+        ProposedAction(
+            action_id=NotBlankStr("increase_review_depth"),
+            patterns=(NotBlankStr("weakness:governance"),),
+        ),
+    )
 
     def test_fires_when_actions_and_opt_in(self) -> None:
         coordinator = _make_coordinator(
@@ -257,7 +283,7 @@ def _make_report(
         agent_id=agent_id,
         pillar_scores=tuple(_make_pillar_score(p, s) for p, s in pillar_scores),
     )
-    return cast(EvaluationReport, stub)
+    return cast("EvaluationReport", stub)
 
 
 class TestEvalLoopCoordinatorIdentifyPatterns:
@@ -267,11 +293,11 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
         config = EvalLoopConfig(pattern_identifier_enabled=False)
         coordinator = _make_coordinator(config=config)
         report = _make_report("a", ("intelligence", 1.0))
-        assert await coordinator._identify_patterns((report,)) == ()
+        assert await coordinator._pattern_identifier.identify((report,)) == ()
 
     async def test_empty_reports_returns_empty(self) -> None:
         coordinator = _make_coordinator()
-        assert await coordinator._identify_patterns(()) == ()
+        assert await coordinator._pattern_identifier.identify(()) == ()
 
     async def test_clusters_pillars_below_threshold(self) -> None:
         config = EvalLoopConfig(
@@ -284,7 +310,7 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
             _make_report("b", ("intelligence", 3.0), ("efficiency", 7.0)),
             _make_report("c", ("intelligence", 9.0), ("efficiency", 9.0)),
         )
-        patterns = await coordinator._identify_patterns(reports)
+        patterns = await coordinator._pattern_identifier.identify(reports)
         assert patterns == ("weakness:intelligence",)
 
     async def test_sorts_patterns_by_count_desc_then_name(self) -> None:
@@ -298,7 +324,7 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
             _make_report("b", ("intelligence", 2.0), ("governance", 2.0)),
             _make_report("c", ("governance", 2.0)),  # governance has 3 weak agents
         )
-        patterns = await coordinator._identify_patterns(reports)
+        patterns = await coordinator._pattern_identifier.identify(reports)
         # governance first (3 weak), then intelligence (2 weak)
         assert patterns == ("weakness:governance", "weakness:intelligence")
 
@@ -312,7 +338,7 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
             _make_report("a", ("intelligence", 1.0)),
             _make_report("b", ("intelligence", 2.0)),
         )
-        assert await coordinator._identify_patterns(reports) == ()
+        assert await coordinator._pattern_identifier.identify(reports) == ()
 
     async def test_duplicate_pillar_in_same_report_counts_once(self) -> None:
         """A single agent report with a duplicated pillar counts once.
@@ -339,7 +365,7 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
                 ("intelligence", 2.0),
             ),
         )
-        patterns = await coordinator._identify_patterns(reports)
+        patterns = await coordinator._pattern_identifier.identify(reports)
         assert patterns == (), (
             "Duplicate pillar entries from the same agent must not inflate "
             f"weak_counts; got {patterns!r}"
@@ -351,7 +377,7 @@ class TestEvalLoopCoordinatorProposeActions:
 
     async def test_empty_patterns_returns_empty(self) -> None:
         coordinator = _make_coordinator()
-        assert await coordinator._propose_actions(()) == ()
+        assert await coordinator._fix_proposer.propose(()) == ()
 
     async def test_maps_known_pillars_to_default_actions(self) -> None:
         """Known pillars resolve to the source-of-truth default mapping.
@@ -361,12 +387,17 @@ class TestEvalLoopCoordinatorProposeActions:
         this test's expectation.
         """
         coordinator = _make_coordinator()
-        actions = await coordinator._propose_actions(
+        actions = await coordinator._fix_proposer.propose(
             ("weakness:intelligence", "weakness:governance"),
         )
-        assert actions == (
+        assert tuple(a.action_id for a in actions) == (
             _DEFAULT_PATTERN_ACTIONS["intelligence"],
             _DEFAULT_PATTERN_ACTIONS["governance"],
+        )
+        # Each action keeps the originating pattern as its provenance.
+        assert tuple(a.patterns for a in actions) == (
+            ("weakness:intelligence",),
+            ("weakness:governance",),
         )
 
     async def test_override_beats_default(self) -> None:
@@ -374,10 +405,10 @@ class TestEvalLoopCoordinatorProposeActions:
             pattern_action_map={"intelligence": "custom_action"},
         )
         coordinator = _make_coordinator(config=config)
-        actions = await coordinator._propose_actions(
+        actions = await coordinator._fix_proposer.propose(
             ("weakness:intelligence",),
         )
-        assert actions == ("custom_action",)
+        assert tuple(a.action_id for a in actions) == ("custom_action",)
 
     async def test_unknown_pattern_skipped(self) -> None:
         import structlog
@@ -388,7 +419,7 @@ class TestEvalLoopCoordinatorProposeActions:
 
         coordinator = _make_coordinator()
         with structlog.testing.capture_logs() as cap:
-            actions = await coordinator._propose_actions(
+            actions = await coordinator._fix_proposer.propose(
                 ("weakness:unknown",),
             )
         assert actions == ()
@@ -414,7 +445,7 @@ class TestEvalLoopCoordinatorProposeActions:
         # (EVAL_LOOP_ACTION_PROPOSED with reason="malformed_pattern")
         # and skips the entry rather than emitting a bogus action.
         with structlog.testing.capture_logs() as cap:
-            actions = await coordinator._propose_actions(
+            actions = await coordinator._fix_proposer.propose(
                 ("justatoken",),
             )
         assert actions == ()
@@ -447,7 +478,7 @@ class TestEvalLoopCoordinatorProposeActions:
 
         coordinator = _make_coordinator()
         with structlog.testing.capture_logs() as cap:
-            actions = await coordinator._propose_actions(("weakness:",))
+            actions = await coordinator._fix_proposer.propose(("weakness:",))
         assert actions == ()
         unmapped = [
             rec

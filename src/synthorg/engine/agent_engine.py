@@ -40,7 +40,7 @@ from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
-from synthorg.engine.loop_protocol import make_budget_checker
+from synthorg.engine.loop_protocol import ExecutionResult, make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.run_result import AgentRunResult
@@ -700,18 +700,40 @@ class AgentEngine(
             )
 
             loop = await self._resolve_loop(task, agent_id, task_id)
+            # before/after_agent fire around the loop run (no-op when unwired);
+            # after_agent is guaranteed in a finally inside the helper so a
+            # loop timeout/exception cannot skip the end-of-run cleanup seam.
+            # Deferred to avoid an engine -> engine.middleware module-level edge.
+            from synthorg.engine import _agent_middleware_run as _amr  # noqa: PLC0415
 
-            execution_result = await self._run_loop_with_timeout(
-                loop=loop,
+            async def _run_loop(run_ctx: AgentContext) -> ExecutionResult:
+                """Run the execution loop for the middleware envelope.
+
+                Returns:
+                    The :class:`ExecutionResult` from the timed run loop.
+                """
+                return await self._run_loop_with_timeout(
+                    loop=loop,
+                    ctx=run_ctx,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    completion_config=completion_config,
+                    budget_checker=budget_checker,
+                    tool_invoker=tool_invoker,
+                    start=start,
+                    timeout_seconds=timeout_seconds,
+                    provider=provider or self._provider,
+                )
+
+            execution_result = await _amr.run_with_agent_middleware(
+                self._agent_middleware_chain,
+                loop_runner=_run_loop,
                 ctx=ctx,
+                identity=identity,
+                task=task,
                 agent_id=agent_id,
                 task_id=task_id,
-                completion_config=completion_config,
-                budget_checker=budget_checker,
-                tool_invoker=tool_invoker,
-                start=start,
-                timeout_seconds=timeout_seconds,
-                provider=provider or self._provider,
+                effective_autonomy=effective_autonomy,
             )
 
             execution_result = await self._post_execution_pipeline(

@@ -21,13 +21,14 @@ from synthorg.security.trust.service import TrustService
 from tests._shared.trust import NoOpTrustStrategy
 
 
-def make_performance_snapshot(
+def make_performance_snapshot(  # noqa: PLR0913 -- keyword-only test builder
     agent_id: str = "agent-001",
     *,
     quality: float = 8.0,
     success_rate: float = 0.9,
     tasks_completed: int = 15,
     human_feedback_score: float | None = None,
+    window_size: str = "30d",
 ) -> AgentPerformanceSnapshot:
     """Build an ``AgentPerformanceSnapshot`` for testing.
 
@@ -38,6 +39,8 @@ def make_performance_snapshot(
         tasks_completed: Number of successfully completed tasks.
         human_feedback_score: Active human-feedback signal (0.0-1.0),
             or ``None`` for no human override.
+        window_size: Period of the single metrics window (e.g. ``"7d"``);
+            controls which clean-history milestone windows it satisfies.
 
     Returns:
         A frozen performance snapshot.
@@ -58,7 +61,7 @@ def make_performance_snapshot(
         tasks_failed = 0
 
     window = WindowMetrics(
-        window_size="30d",
+        window_size=window_size,
         data_point_count=total,
         tasks_completed=tasks_completed,
         tasks_failed=tasks_failed,

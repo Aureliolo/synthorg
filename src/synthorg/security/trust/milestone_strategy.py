@@ -94,15 +94,13 @@ class MilestoneTrustStrategy:
                 now=now,
             ):
                 recommended = to_level
-                requires_human = milestone.requires_human_approval
-                # Auto-promotion on task-count alone is unsafe: without a
-                # tenure AND clean-history gate an agent can be elevated the
-                # instant it clears the task/quality bar. Fall back to human
-                # approval unless the milestone gates on both.
-                if milestone.auto_promote and (
-                    milestone.time_active_days <= 0 or milestone.clean_history_days <= 0
-                ):
-                    requires_human = True
+                # Only an explicit, gate-validated auto_promote skips the
+                # human gate; the config invariant guarantees such a milestone
+                # carries tenure and clean-history gates, so every other
+                # milestone routes through a human.
+                requires_human = (
+                    milestone.requires_human_approval or not milestone.auto_promote
+                )
                 details_parts.append(f"Milestone {key!r} achieved")
                 break
 
@@ -218,22 +216,27 @@ class MilestoneTrustStrategy:
                 return False
 
         if milestone.clean_history_days > 0:
+            has_clean_window = False
             for window in snapshot.windows:
-                # Only check windows whose period fits within the
-                # required clean-history duration (e.g. skip the 90d
-                # window when clean_history_days=7).
+                # Only the window whose span EXACTLY matches the required
+                # clean-history duration is evidence: a shorter window (e.g. 7d)
+                # cannot prove a longer requirement (e.g. 30d), and a wider one
+                # is too coarse. An unparseable span never qualifies.
                 window_days = parse_window_days(str(window.window_size))
-                if (
-                    window_days is not None
-                    and window_days > milestone.clean_history_days
-                ):
+                if window_days is None or window_days != milestone.clean_history_days:
                     continue
-                if (
-                    window.data_point_count > 0
-                    and window.success_rate is not None
-                    and window.success_rate < 1.0
-                ):
+                if window.data_point_count <= 0 or window.success_rate is None:
+                    continue
+                if window.success_rate < 1.0:
                     return False
+                has_clean_window = True
+            # Auto-promote demands positive evidence: at least one window with
+            # data must actually cover the required clean-history duration. An
+            # absence of any qualifying window is NOT a clean history, so it must
+            # fail (routing the milestone through human approval) rather than
+            # passing vacuously.
+            if not has_clean_window:
+                return False
 
         return True
 
