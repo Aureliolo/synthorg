@@ -534,14 +534,27 @@ async def reload_runtime_services(app_state: AppState) -> None:
                 coordinator_swapped = True
             if services.work_pipeline is not None:
                 app_state.swap_work_pipeline(services.work_pipeline)
+            # No new coordinator (the documented no-provider success path returns
+            # ``coordinator=None`` without raising): the previously wired
+            # coordinator, if any, keeps the old intake engine, so revert the
+            # eagerly-committed simulation state to stay paired with it BEFORE the
+            # intake adapters read it. Mirrors the except-block rollback; only a
+            # swapped-in new coordinator (which captured the new intake engine)
+            # makes the new simulation state the consistent pairing.
+            if (
+                sim_present
+                and previous_sim_state is not None
+                and not coordinator_swapped
+            ):
+                app_state.wire(ClientStateSlice, simulation_state=previous_sim_state)
             await wire_real_intake_entry(app_state, hot_swap=True)
             await wire_real_objective_entry(app_state, hot_swap=True)
             await wire_real_task_board_entry(app_state, hot_swap=True)
         except Exception as exc:
             reraise_critical(exc)
-            # Roll back the eagerly-committed simulation state only while the
-            # coordinator still reflects the previous intake engine. Once the
-            # new coordinator is swapped in it has already captured the new
+            # Roll back the eagerly-committed simulation state while no new
+            # coordinator was swapped in (same condition as the success path
+            # above): a swapped-in coordinator has already captured the new
             # intake engine, so the new simulation state is then the consistent
             # pairing and must stay.
             if (

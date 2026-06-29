@@ -14,6 +14,7 @@ from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.client.state import ClientStateSlice
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.persistence_errors import PersistenceConnectionError
@@ -38,10 +39,12 @@ from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
+    WorkerExecutionService,
 )
 from synthorg.workers.runtime_builder import (
     RuntimeServices,
     build_runtime_services,
+    reload_runtime_services,
 )
 from tests._shared import FakeClock, make_app_state, mock_of
 
@@ -687,3 +690,110 @@ class TestWorkPipelineWiring:
         )
         result = await build_runtime_services(app_state, workspace_root=tmp_path)
         assert result.work_pipeline is None
+
+
+class TestReloadRuntimeServicesSimulationStatePairing:
+    """``reload_runtime_services`` keeps the simulation state paired with the
+    coordinator: the eager simulation-state commit only survives when a new
+    coordinator (which captured the new intake engine) is swapped in."""
+
+    @staticmethod
+    def _wire_reload_seams(
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        new_sim: ClientSimulationState,
+        services: RuntimeServices,
+        tmp_path: Path,
+    ) -> None:
+        """Stub the deferred reload collaborators so only the pairing logic runs.
+
+        ``reload_client_simulation_runtime`` is replaced with a commit of
+        *new_sim* (mirroring the real eager commit), and the runtime rebuild
+        returns *services*; the intake-adapter wiring degrades to no-ops.
+        """
+
+        async def _reload(state: AppState) -> None:
+            state.wire(ClientStateSlice, simulation_state=new_sim)
+
+        async def _build(*_args: object, **_kwargs: object) -> RuntimeServices:
+            return services
+
+        async def _noop_wire(*_args: object, **_kwargs: object) -> None:
+            return None
+
+        monkeypatch.setattr(
+            "synthorg.client.state.has_simulation_runtime", lambda _state: True
+        )
+        monkeypatch.setattr(
+            "synthorg.client.runtime_builder.reload_client_simulation_runtime",
+            _reload,
+        )
+        monkeypatch.setattr(
+            "synthorg.workers.runtime_builder.build_runtime_services", _build
+        )
+        monkeypatch.setattr(
+            "synthorg.engine.workspace.state.agent_workspace_root_of",
+            lambda _state: tmp_path,
+        )
+        for name in (
+            "wire_real_intake_entry",
+            "wire_real_objective_entry",
+            "wire_real_task_board_entry",
+        ):
+            monkeypatch.setattr(
+                f"synthorg.engine.pipeline.entry.boot.{name}", _noop_wire
+            )
+
+    async def test_no_provider_reverts_simulation_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """No new coordinator (no-provider path) reverts the eager commit.
+
+        ``build_runtime_services`` returns ``coordinator=None`` without raising;
+        the previously wired coordinator keeps the old intake engine, so the new
+        simulation state must be rolled back to avoid a split-brain pairing.
+        """
+        previous = mock_of[ClientSimulationState]()
+        new_sim = mock_of[ClientSimulationState]()
+        app_state = make_app_state(client_simulation_state=previous)
+        services = RuntimeServices(
+            worker_execution_service=mock_of[WorkerExecutionService](),
+            coordinator=None,
+            work_pipeline=None,
+            red_team_runtime=None,
+            vision_gate=None,
+        )
+        self._wire_reload_seams(
+            monkeypatch, new_sim=new_sim, services=services, tmp_path=tmp_path
+        )
+
+        await reload_runtime_services(app_state)
+
+        assert app_state.slice(ClientStateSlice).simulation_state is previous
+
+    async def test_new_coordinator_keeps_simulation_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A swapped-in coordinator captured the new intake engine, so the new
+        simulation state is the consistent pairing and must survive."""
+        previous = mock_of[ClientSimulationState]()
+        new_sim = mock_of[ClientSimulationState]()
+        app_state = make_app_state(client_simulation_state=previous)
+        services = RuntimeServices(
+            worker_execution_service=mock_of[WorkerExecutionService](),
+            coordinator=mock_of[MultiAgentCoordinator](),
+            work_pipeline=None,
+            red_team_runtime=None,
+            vision_gate=None,
+        )
+        self._wire_reload_seams(
+            monkeypatch, new_sim=new_sim, services=services, tmp_path=tmp_path
+        )
+
+        await reload_runtime_services(app_state)
+
+        assert app_state.slice(ClientStateSlice).simulation_state is new_sim
