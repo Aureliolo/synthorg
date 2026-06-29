@@ -135,6 +135,47 @@ class HttpBatchHandler(logging.Handler):
             raise TypeError(msg)
         self._export_callback = callback
 
+    def set_batch_size(self, value: int) -> None:
+        """Update the per-POST batch size (hot).
+
+        Values arrive pre-validated from ``ObservabilityBridgeConfig``
+        (the subscriber re-resolves + validates the snapshot before
+        calling this), so the assignment is unguarded. The flusher thread
+        reads ``_batch_size`` per emit / drain; the single-reference write
+        is GIL-atomic.
+        """
+        self._batch_size = value
+
+    def set_flush_interval(self, value: float) -> None:
+        """Update the automatic-flush interval in seconds (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig``. The flusher thread
+        reads ``_flush_interval`` as its ``wait`` timeout on the next loop.
+        """
+        self._flush_interval = value
+
+    def set_timeout(self, value: float) -> None:
+        """Update the HTTP POST timeout in seconds (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig``; read per POST.
+        """
+        self._timeout = value
+
+    def set_max_retries(self, value: int) -> None:
+        """Update the per-POST retry count (hot).
+
+        Pre-validated by ``ObservabilityBridgeConfig`` (``ge=0``); read per
+        POST.
+
+        Raises:
+            ValueError: If *value* is negative (defence in depth mirroring
+                the constructor guard).
+        """
+        if value < 0:
+            msg = "max_retries must be greater than or equal to 0"
+            raise ValueError(msg)
+        self._max_retries = value
+
     def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
         """Call the registered export callback, swallowing callback errors.
 

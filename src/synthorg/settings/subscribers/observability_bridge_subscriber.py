@@ -7,13 +7,15 @@ edits a watched ``observability.*`` setting carried on
 the per-preset RFC 3161 TSA endpoints).
 
 The snapshot is re-resolved wholesale (DB > env > default per field) and
-swapped, mirroring :class:`MemoryBridgeSettingsSubscriber`. Only
-``audit_chain_signing_timeout_seconds`` is live-applied to its handler
-(via the startup ``_apply_audit_chain_signing_timeout`` setter path and
-its own notify-only subscriber); the HTTP-handler and TSA-endpoint fields
-are baked into their handlers at ``configure_logging`` time, so a DB edit
-to those is ``restart_required`` -- this subscriber keeps the snapshot
-authoritative for ``/settings`` reads in the meantime.
+swapped, mirroring :class:`MemoryBridgeSettingsSubscriber`. The four
+``http_*`` batch knobs are additionally live-applied onto every installed
+:class:`HttpBatchHandler` via ``apply_http_log_handler_settings`` (the same
+helper the startup ``_apply_http_log_handler_config`` path uses), so an
+operator edit takes effect on the next batch / POST without a restart. The
+TSA-endpoint fields are baked into their handlers at ``configure_logging``
+time, so a DB edit to those is ``restart_required`` -- this subscriber keeps
+the snapshot authoritative for ``/settings`` reads in the meantime;
+``audit_chain_signing_timeout_seconds`` is live-applied by its own path.
 """
 
 from synthorg.api.state import AppState
@@ -102,10 +104,15 @@ class ObservabilityBridgeSettingsSubscriber:
                 note="ignored unexpected pair",
             )
             return
+        from synthorg.api.lifecycle_helpers.config_apply import (  # noqa: PLC0415
+            apply_http_log_handler_settings,
+        )
+
         try:
             resolver = config_resolver_of(self._app_state)
             snapshot = await resolver.get_observability_bridge_config()
             self._app_state.bridge_config.swap_observability(snapshot)
+            apply_http_log_handler_settings(snapshot)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

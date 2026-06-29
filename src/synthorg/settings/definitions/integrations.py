@@ -32,11 +32,13 @@ _r.register(
         default="30.0",
         description=(
             "HTTP timeout for OAuth token exchange across device,"
-            " authorization-code, and client-credentials flows"
+            " authorization-code, and client-credentials flows."
+            " Resolved per OAuth operation (callback exchange and each"
+            " background token refresh), so a change applies without a"
+            " restart."
         ),
         group="OAuth",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=5.0,
         max_value=300.0,
     )

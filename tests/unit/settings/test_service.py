@@ -1122,7 +1122,7 @@ class TestSecuritySettingsAuditEmission:
         :meth:`test_delete_namespace_no_rows_does_not_emit` because the
         assertion (``result == 0``) is distinct.
         """
-        from synthorg.settings import service as service_mod
+        from synthorg.settings import _setting_audit as audit_mod
 
         audited = namespace_kind == "audited"
         registry = _build_audit_registry(audited=audited, operation=operation)
@@ -1132,7 +1132,7 @@ class TestSecuritySettingsAuditEmission:
             repository=mock_repo,
             registry=registry,
         )
-        with _logger_info_spy(service_mod) as captured:
+        with _logger_info_spy(audit_mod) as captured:
             await _invoke_audit_operation(
                 svc=svc,
                 operation=operation,
@@ -1146,7 +1146,7 @@ class TestSecuritySettingsAuditEmission:
         config: _FakeConfig,
     ) -> None:
         """An empty ``delete_namespace`` must not fire the audit event."""
-        from synthorg.settings import service as service_mod
+        from synthorg.settings import _setting_audit as audit_mod
 
         registry = SettingsRegistry()
         registry.register(
@@ -1162,7 +1162,7 @@ class TestSecuritySettingsAuditEmission:
             repository=mock_repo,
             registry=registry,
         )
-        with _logger_info_spy(service_mod) as captured:
+        with _logger_info_spy(audit_mod) as captured:
             result = await svc.delete_namespace("security")
             assert result == 0
             assert SECURITY_SETTINGS_CHANGED not in captured

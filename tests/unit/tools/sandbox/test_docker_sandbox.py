@@ -991,8 +991,9 @@ class TestSidecarLifecycle:
             with (
                 _patch_aiodocker(mock_docker),
                 patch(
-                    "synthorg.tools.sandbox.docker_sandbox._SIDECAR_HEALTH_TIMEOUT",
-                    15.0,
+                    "synthorg.tools.sandbox.docker_sandbox_sidecar"
+                    ".get_resolved_sidecar_health_timeout_seconds",
+                    return_value=15.0,
                 ),
                 patch(
                     "synthorg.tools.sandbox.docker_sandbox.asyncio.sleep",

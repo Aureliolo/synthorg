@@ -280,11 +280,25 @@ class AsyncCycleScheduler(ABC):
             else:
                 self._log_cycle_paused()
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=self._interval)
+                wait_interval = await self._resolve_wait_interval()
+                await asyncio.wait_for(stop_event.wait(), timeout=wait_interval)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 raise
+
+    async def _resolve_wait_interval(self) -> float:
+        """Return the seconds to wait before the next cycle (per tick).
+
+        Default returns the construction-time ``interval_seconds``. A
+        subclass whose cadence is operator-tunable at runtime overrides this
+        to re-resolve the interval each tick (fail-safe to the current
+        value) so a change applies without a restart.
+
+        Returns:
+            The wait interval in seconds for this tick.
+        """
+        return self._interval
 
     async def _resolve_cycle_enabled(self) -> bool:
         """Return whether the cycle should run this tick.

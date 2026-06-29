@@ -142,10 +142,12 @@ _r.register(
         description=(
             "Confidence score assigned when a quality-classifier rule"
             " matches a step (used by RuleBasedStepClassifier)."
+            " Applied on the next runtime-services rebuild, triggered by"
+            " a settings subscriber, so a change takes effect without a"
+            " restart."
         ),
         group="Classification",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0.0,
         max_value=1.0,
     )
@@ -159,11 +161,12 @@ _r.register(
         default="0.5",
         description=(
             "Confidence score assigned when a quality-classifier"
-            " falls back to heuristic (no rule matched)."
+            " falls back to heuristic (no rule matched). Applied on the"
+            " next runtime-services rebuild, triggered by a settings"
+            " subscriber, so a change takes effect without a restart."
         ),
         group="Classification",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0.0,
         max_value=1.0,
     )
@@ -178,10 +181,12 @@ _r.register(
         description=(
             "Per-detector timeout in the classification pipeline."
             " Prevents a hung detector from blocking classification."
+            " Applied on the next runtime-services rebuild, triggered by"
+            " a settings subscriber, so a change takes effect without a"
+            " restart."
         ),
         group="Classification",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=600.0,
     )
@@ -197,13 +202,14 @@ _r.register(
         description=(
             "Whether asyncio.timeout wrappers on engine coroutines"
             " are enforced. Dev operators may disable for debugging;"
-            " leave enabled in production."
+            " leave enabled in production. Mutable kill-switch: the"
+            " ``engine_timeout`` context manager reads a process cache"
+            " per coroutine entry, and a settings subscriber pushes the"
+            " new value into the cache, so a change applies without a"
+            " restart."
         ),
         group="Safety",
         level=SettingLevel.ADVANCED,
-        # The flag is read once when the engine coroutines are wired, not
-        # per-run, so a DB edit only takes effect after a restart.
-        restart_required=True,
     )
 )
 
@@ -565,11 +571,12 @@ _r.register(
             "Model matcher: smallest parameter count a model may have to be"
             " auto-assigned to an agent. Smaller models cannot reliably run an"
             " agent loop, so the demand path excludes them; an explicit"
-            " family/pattern/id reference still honours them."
+            " family/pattern/id reference still honours them. Applied on"
+            " the next runtime-services rebuild, triggered by a settings"
+            " subscriber, so a change takes effect without a restart."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=0,
     )
 )

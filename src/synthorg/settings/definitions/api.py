@@ -163,12 +163,11 @@ _r.register(
             "Ceiling for the /readyz dependency-probe fan-out. A hung probe"
             " returns a 503 verdict within this budget instead of stalling;"
             " kept just under the typical k8s 5s readinessProbe timeout."
-            " Read from the boot config, so a change needs a restart."
+            " Resolved per probe, so a change applies without a restart."
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
         min_value=0.1,
-        restart_required=True,
     )
 )
 
@@ -267,10 +266,11 @@ _r.register(
             " CDN, fonts, and proxy hosts. Override (for example, to an"
             " internally-mirrored CDN) when operators do not allow the"
             " backend to reach the public Scalar infrastructure."
+            " Hot-reloadable: a change re-applies the /docs CSP within"
+            " the eventual-consistency window of one in-flight response."
         ),
         group="Security Headers",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -291,11 +291,11 @@ _r.register(
             " anchor (for example ``#auth``). Override when the docs"
             " site is hosted at a non-default origin. HTTPS-only: the"
             " URL appears in every error response and must not downgrade"
-            " operator deployments to plaintext."
+            " operator deployments to plaintext. Hot-reloadable: a change"
+            " re-applies to subsequent error responses without a restart."
         ),
         group="Errors",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         validator_pattern=(r"^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$"),
     )
 )
@@ -595,11 +595,12 @@ _r.register(
         default="60",
         description=(
             "Fallback max requests-per-minute applied to per-connection"
-            " coordinators when the catalog does not provide a value"
+            " coordinators when the catalog does not provide a value."
+            " Read live from the API bridge snapshot at coordinator"
+            " build, so a change applies without a restart."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1,
         max_value=100_000,
     )
@@ -685,12 +686,11 @@ _r.register(
             " reconnects against a healthy replica. Failures age out"
             " without being reset on success, so a flaky backend"
             " cannot keep a stale-auth stream alive by interleaving"
-            " successes. Resolved at startup (restart to change)."
+            " successes. Sampled per new connection-open; a change"
+            " applies to subsequent connections without a restart."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=1,
         max_value=3_600,
     )
@@ -708,12 +708,11 @@ _r.register(
             " authenticated stream (WebSocket: close 4011; SSE:"
             " ``revoked`` frame) drops so the client reconnects"
             " against a healthy replica. Shared by WS and SSE so the"
-            " failover tolerance is a single tunable, not two."
+            " failover tolerance is a single tunable, not two. Sampled"
+            " per new connection-open; a change applies without a restart."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=1,
         max_value=100,
     )
@@ -778,12 +777,12 @@ _r.register(
         type=SettingType.INTEGER,
         default="20",
         description=(
-            "Maximum number of context keys attached to a single meeting"
-            " (baked into the request DTO validator at startup)"
+            "Maximum number of context keys attached to a single meeting."
+            " Resolved per request when a meeting is triggered, so an"
+            " operator change takes effect without a restart."
         ),
         group="Query Limits",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=5,
         max_value=100,
     )
@@ -800,11 +799,11 @@ _r.register(
         description=(
             "How long the WebSocket handler waits for the first-message"
             " auth payload after accepting the connection before"
-            " closing with a 4001 auth-timeout code."
+            " closing with a 4001 auth-timeout code. Sampled per new"
+            " connection-open; a change applies without a restart."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=120.0,
     )
@@ -821,13 +820,11 @@ _r.register(
             " connections. A connection that goes idle (no inbound"
             " frame) for longer than this is closed with policy code"
             " 1008. Bounds the number of slots a silent client can"
-            " hold (DoS prevention). Resolved at controller"
-            " construction; runtime mutation requires a restart."
+            " hold (DoS prevention). Sampled per new connection-open;"
+            " a change applies to subsequent connections without a restart."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=1,
         max_value=600,
     )
@@ -924,11 +921,12 @@ _r.register(
         description=(
             "Time-remaining threshold at or below which a pending"
             " approval is classified 'critical' (default 1 hour)."
-            " Must be less than approval_urgency_high_seconds."
+            " Must be less than approval_urgency_high_seconds. Resolved"
+            " per request (with a critical<high check at resolve time),"
+            " so an operator change takes effect without a restart."
         ),
         group="Approvals",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=60.0,
         max_value=86_400.0,
     )
@@ -942,11 +940,12 @@ _r.register(
         default="14400.0",
         description=(
             "Time-remaining threshold at or below which a pending"
-            " approval is classified 'high' (default 4 hours)."
+            " approval is classified 'high' (default 4 hours). Resolved"
+            " per request, so an operator change takes effect without a"
+            " restart."
         ),
         group="Approvals",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=300.0,
         max_value=604_800.0,
     )

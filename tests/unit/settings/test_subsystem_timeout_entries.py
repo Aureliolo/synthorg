@@ -87,7 +87,7 @@ _SUBSYSTEM_TIMEOUT_ENTRIES: tuple[tuple[str, str, SettingType, str, str, bool], 
         SettingType.FLOAT,
         "1.0",
         "2.5",
-        True,
+        False,
     ),
     (
         "engine",

@@ -9,12 +9,12 @@ from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
-# path is restart_required=True (filtered by dispatcher).
 # retention_days is not watched -- read at prune time.
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("backup", "enabled"),
         ("backup", "schedule_hours"),
+        ("backup", "path"),
         ("backup", "compression"),
         ("backup", "on_shutdown"),
         ("backup", "on_startup"),
@@ -80,6 +80,8 @@ class BackupSettingsSubscriber:
             await self._toggle_scheduler()
         elif key == "schedule_hours":
             await self._reschedule()
+        elif key == "path":
+            await self._apply_path()
         else:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -147,6 +149,41 @@ class BackupSettingsSubscriber:
                 key="enabled",
                 note="scheduler stopped",
             )
+
+    async def _apply_path(self) -> None:
+        """Push a changed ``backup.path`` onto the service + retention manager."""
+        try:
+            result = await self._settings_service.get("backup", "path")
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="path",
+                note="failed to read setting",
+            )
+            return
+        path = str(result.value).strip()
+        if not path:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="path",
+                note="blank path ignored",
+            )
+            return
+        self._backup_service.set_backup_path(path)
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace="backup",
+            key="path",
+            note="backup path updated",
+        )
 
     async def _reschedule(self) -> None:
         """Update the scheduler interval from current settings."""

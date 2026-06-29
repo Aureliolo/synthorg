@@ -118,7 +118,7 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `telemetry.enabled` | `SYNTHORG_TELEMETRY_ENABLED` | Mutable; the collector reads the env var at boot for the fast-path, then honours runtime DB mutations on the next process restart. |
 | `engine.timeout_enforcement_enabled` | `SYNTHORG_ENGINE_TIMEOUT_ENFORCEMENT_ENABLED` | Mutable kill-switch. |
 | `providers.model_refresh_mode` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_MODE` | Config discriminator for the periodic model-refresh subsystem (`off` / `manual_only` / `detect_only` / `reconcile_recommend`); `off` is the safe default. The scheduler re-reads it every tick (fail-safe to `off`), so mode changes apply without a restart. |
-| `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Baked into the scheduler at wiring time; changing it needs a restart. |
+| `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Re-read by the scheduler each tick (like the mode), so a change applies on the next cycle without a restart. |
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
 | `chief_of_staff.propose_enabled` | `SYNTHORG_CHIEF_OF_STAFF_PROPOSE_ENABLED` | On-by-default conversational capability; live-gated per request via `ensure_feature_enabled` (no restart). The sibling `explain_chat_enabled` / `group_chat_enabled` behave the same; `routing_enabled` is `restart_required`. |
 | `chief_of_staff.chat_model` | `SYNTHORG_CHIEF_OF_STAFF_CHAT_MODEL` | Per-feature model for conversational turns; auto-filled at setup-complete when left blank. |
@@ -422,6 +422,55 @@ overhead or coupling. For restart-required knobs (e.g.
 ## Bootstrap-wiring trace (ghost-wired settings gate)
 
 A registered setting whose consuming machinery exists but is never instantiated at boot is **ghost-wired**: the value resolves cleanly through the precedence chain, but no code path that reads it ever runs in default config. The standing gate `scripts/check_setting_to_startup_trace.py` (pre-push and CI) detects two ghost-service patterns and matches settings to them via three matchers. The full mechanics, the suppression marker, and the baseline-file contract have their own reference: [Bootstrap-Wiring Trace (Ghost-Wired Settings Gate)](bootstrap-wiring-trace.md).
+
+## Restart-required justification gate
+
+A setting flagged `restart_required=True` (or `read_only_post_init=True`,
+which implies it) is **skipped by the settings-change dispatcher**
+(`settings/dispatcher.py`): the operator edit lands in the DB but no
+subscriber runs, so the running process keeps the boot value. The audit
+behind #2514 found the large majority of those flags were immutable by
+omission, not necessity, and converted the per-request / per-tick knobs to
+hot-reloadable using the existing seams:
+
+- a per-request / per-call `ConfigResolver.get_*()` read (e.g.
+  `api.max_meeting_context_keys`, `api.readiness_probe_timeout_seconds`,
+  `integrations.oauth_http_timeout_seconds`);
+- a `set_*()` setter on a live object pushed by a `SettingsSubscriber`
+  (e.g. the `WsAuthLimits` knobs, the `HttpBatchHandler` HTTP batch knobs,
+  `backup.path`, `a2a.client_timeout_seconds`,
+  `engine.timeout_enforcement_enabled`);
+- a bridge-config snapshot + subscriber (e.g. the `tools.docker_sidecar_*`
+  resource limits, read per container launch through the sidecar cache);
+- a `reload_runtime_services` trigger for knobs `build_runtime_services`
+  already re-reads (the engine classifier / matcher knobs,
+  `external_api.enabled` / `provider_type`,
+  `coordination.enable_coordination_middleware`,
+  `budget.benchmark_provider` / `model_tier_overrides`).
+
+`scripts/check_setting_restart_required_justified.py` (pre-push + CI) keeps
+this from regressing: every restart-bound definition must either carry a
+per-line `# lint-allow: restart-required -- <reason>` marker on its
+`register(...)` block, or sit on the baseline
+`scripts/setting_restart_required_baseline.txt` (the genuine OS/transport
+keeps plus the namespaces deferred to #2515 / #2516). It fails when a new
+unjustified restart-bound setting appears and warns (passing) on a stale
+baseline entry. Regenerate the baseline (rare, explicit approval) with
+`--update-baseline`.
+
+### Security toggle write guardrail
+
+`security.enabled`, `audit_enabled`, `post_tool_scanning_enabled`, and
+`output_scan_policy_type` are hot-reloadable, but **weakening** them is a
+deliberate-action decision: turning a boolean off, or switching
+`output_scan_policy_type` to `log_only`, requires `confirm=True` plus a
+non-blank `reason` and actor at the write path
+(`settings/write_governance.py`, enforced centrally in
+`SettingsService.set` / `set_many`, surfaced via the dedicated
+`POST /settings/security/import` endpoint). Enabling / tightening applies
+immediately with no gate. The per-request interceptor reads the live config
+through `app_state.security_runtime_config`, which the
+`SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
 ## Kill-Switch Idiom (MANDATORY)
 

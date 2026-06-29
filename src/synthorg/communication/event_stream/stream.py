@@ -26,6 +26,7 @@ from synthorg.communication.event_stream._janitor import (
     _Subscriber,
     janitor_loop,
     prune_idle_subscribers,
+    resolve_janitor_float,
 )
 from synthorg.communication.event_stream._publish_ledger import PublishLedger
 from synthorg.communication.event_stream.types import (
@@ -44,6 +45,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_HUB_STOP_TIMEOUT,
     EVENT_STREAM_HUB_STOPPED,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -162,6 +164,7 @@ class EventStreamHub:
 
     __slots__ = (
         "_clock",
+        "_config_resolver",
         "_janitor_task",
         "_ledger",
         "_lifecycle_lock",
@@ -216,6 +219,48 @@ class EventStreamHub:
         self._janitor_task: asyncio.Task[None] | None = None
         self._running = False
         self._stop_failed = False
+        # Optional live resolver: when wired (post-startup), the janitor
+        # re-reads its interval + idle TTL each sweep so an operator change
+        # applies without a restart. ``None`` keeps the start()-provided
+        # fallbacks (tests / pre-startup rigs).
+        self._config_resolver: ConfigResolverProtocol | None = None
+
+    def set_config_resolver(self, resolver: ConfigResolverProtocol) -> None:
+        """Inject the live config resolver after construction.
+
+        Wired by ``config_apply._wire_resolver_dependents`` once the
+        settings service exists so the janitor's interval + idle TTL become
+        hot. Repeated calls replace the resolver (latest wins).
+        """
+        self._config_resolver = resolver
+
+    def set_history_max_sessions(self, value: int) -> None:
+        """Update the SSE replay LRU session cap (delegates to the ledger)."""
+        self._ledger.set_history_max_sessions(value)
+
+    def set_history_per_session(self, value: int) -> None:
+        """Update the SSE replay per-session depth (delegates to the ledger)."""
+        self._ledger.set_history_per_session(value)
+
+    async def _run_prune(self, idle_ttl_fallback: float) -> None:
+        """Run one idle-subscriber sweep, re-resolving the TTL first.
+
+        The idle TTL is re-read each sweep (fail-safe to *idle_ttl_fallback*,
+        the value passed to ``start()``) so an operator change applies on the
+        next sweep without a restart.
+        """
+        idle_ttl_seconds = await resolve_janitor_float(
+            self._config_resolver,
+            "event_stream_subscriber_idle_ttl_seconds",
+            idle_ttl_fallback,
+        )
+        await prune_idle_subscribers(
+            clock=self._clock,
+            idle_ttl_seconds=idle_ttl_seconds,
+            subscribers=self._subscribers,
+            forget_session=self._ledger.forget_session,
+            lock=self._lock_for_current_loop(),
+        )
 
     def __del__(self) -> None:
         """Cancel an orphaned janitor task if the hub is GC'd un-stopped.
@@ -336,14 +381,12 @@ class EventStreamHub:
             self._janitor_task = asyncio.create_task(
                 janitor_loop(
                     clock=self._clock,
-                    janitor_interval_seconds=janitor_interval_seconds,
-                    prune=lambda: prune_idle_subscribers(
-                        clock=self._clock,
-                        idle_ttl_seconds=idle_ttl_seconds,
-                        subscribers=self._subscribers,
-                        forget_session=self._ledger.forget_session,
-                        lock=self._lock_for_current_loop(),
+                    resolve_interval=lambda: resolve_janitor_float(
+                        self._config_resolver,
+                        "event_stream_janitor_interval_seconds",
+                        janitor_interval_seconds,
                     ),
+                    prune=lambda: self._run_prune(idle_ttl_seconds),
                 ),
                 name="event-stream-hub-janitor",
             )

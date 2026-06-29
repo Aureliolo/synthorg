@@ -17,11 +17,12 @@ _r.register(
         type=SettingType.FLOAT,
         default="30.0",
         description=(
-            "HTTP timeout for the A2A federation client and gateway-side peer calls"
+            "HTTP timeout for the A2A federation client and gateway-side"
+            " peer calls. Passed per request and pushed in via a settings"
+            " subscriber, so a change applies without a restart."
         ),
         group="Client",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=5.0,
         max_value=300.0,
     )

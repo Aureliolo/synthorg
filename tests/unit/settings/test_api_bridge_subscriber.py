@@ -71,7 +71,10 @@ class TestSubscriberProtocol:
     def test_watched_keys(self) -> None:
         sub, _ = _make_subscriber(resolver_int_return=10_000)
         assert sub.watched_keys == frozenset(
-            {("api", "max_lifecycle_events_per_query")}
+            {
+                ("api", "max_lifecycle_events_per_query"),
+                ("api", "max_rpm_default"),
+            }
         )
 
     def test_subscriber_name(self) -> None:

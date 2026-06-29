@@ -253,12 +253,12 @@ _r.register(
         description=(
             "Per-session SSE replay ring-buffer depth. Recent events are"
             " retained so a reconnecting client sending Last-Event-ID is"
-            " replayed the gap it missed. Resolved at construction;"
-            " restart-required because the ring buffer is sized once."
+            " replayed the gap it missed. A change applies to sessions"
+            " created after it (existing per-session buffers keep their"
+            " depth until recycled) without a restart."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=16,
         max_value=10000,
     )
@@ -273,12 +273,11 @@ _r.register(
         description=(
             "Maximum number of sessions retained in the SSE replay history"
             " before the oldest session's buffer is evicted (FIFO). Bounds"
-            " total replay memory across session churn. Resolved at"
-            " construction; restart-required."
+            " total replay memory across session churn. A change applies"
+            " via a settings subscriber without a restart."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=16,
         max_value=100000,
     )
@@ -297,12 +296,11 @@ _r.register(
             " the long-lived-SSE-client expectation: a dashboard tab"
             " can stay subscribed across a quiet workday without being"
             " evicted, while crashed/disconnected sessions still get"
-            " reclaimed within the day. Resolved once at lifespan"
-            " startup; runtime changes require a restart."
+            " reclaimed within the day. Re-read at the top of each janitor"
+            " sweep, so a change applies on the next sweep without a restart."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=30.0,
         max_value=86400.0,
     )
@@ -317,12 +315,12 @@ _r.register(
         description=(
             "Wall-clock interval between EventStreamHub janitor sweeps."
             " Default 5min balances memory-reclaim latency against"
-            " wakeup overhead under low subscriber churn. Resolved once"
-            " at lifespan startup; runtime changes require a restart."
+            " wakeup overhead under low subscriber churn. Re-read at the"
+            " top of each sweep, so a change applies on the next sweep"
+            " without a restart."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=5.0,
         max_value=3600.0,
     )
@@ -393,15 +391,13 @@ _r.register(
         type=SettingType.FLOAT,
         default="1.0",
         description=(
-            "[Bootstrap-only -- read via EscalationQueueConfig at startup;"
-            " this entry exists for /settings discoverability only.]"
-            " Delay before the Postgres LISTEN/NOTIFY escalation"
-            " subscriber retries after a connection drop."
+            "Delay before the Postgres LISTEN/NOTIFY escalation subscriber"
+            " retries after a connection drop. Read per reconnect attempt"
+            " and pushed in via a settings subscriber, so a change applies"
+            " without a restart."
         ),
         group="Escalation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=0.1,
         max_value=60.0,
     )

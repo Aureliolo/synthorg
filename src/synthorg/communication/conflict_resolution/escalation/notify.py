@@ -77,6 +77,14 @@ class EscalationNotifySubscriber(Protocol):
         """
         ...
 
+    def set_reconnect_delay_seconds(self, value: float) -> None:
+        """Update the post-disconnect reconnect back-off (hot).
+
+        Pushed in by ``EscalationReconnectSettingsSubscriber`` so an
+        operator change applies on the next reconnect without a restart.
+        """
+        ...
+
 
 class NoopEscalationNotifySubscriber:
     """No-op subscriber for single-worker / in-memory deployments."""
@@ -91,6 +99,10 @@ class NoopEscalationNotifySubscriber:
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:  # noqa: ARG002
         """Noop -- the no-op subscriber has no kill-switch to gate."""
+        return
+
+    def set_reconnect_delay_seconds(self, value: float) -> None:  # noqa: ARG002
+        """Noop -- the no-op subscriber has no reconnect loop."""
         return
 
 
@@ -213,6 +225,21 @@ class PostgresEscalationNotifySubscriber:
         of falling through to the registered default.
         """
         self._config_resolver = resolver
+
+    def set_reconnect_delay_seconds(self, value: float) -> None:
+        """Update the post-disconnect reconnect back-off (hot).
+
+        The reconnect loop reads ``_reconnect_delay`` per attempt, so a
+        change pushed in by ``EscalationReconnectSettingsSubscriber`` applies
+        on the next reconnect without a restart.
+
+        Raises:
+            ValueError: If *value* is not positive.
+        """
+        if value <= 0:
+            msg = f"reconnect_delay_seconds must be > 0, got {value}"
+            raise ValueError(msg)
+        self._reconnect_delay = value
 
     async def start(self) -> None:
         """Schedule the background subscriber loop.

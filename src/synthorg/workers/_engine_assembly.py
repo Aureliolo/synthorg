@@ -532,6 +532,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
             app_state,
         ),
         security_config=app_state.config.security,
+        # Live security config the per-request interceptor reads, so an
+        # operator toggle of the security.* flags applies without a restart.
+        security_config_provider=lambda: app_state.security_runtime_config.current,
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
         config_resolver=config_resolver_of(app_state),

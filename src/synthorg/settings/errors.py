@@ -45,6 +45,28 @@ class SettingReadOnlyError(SettingValidationError):
     """
 
 
+class SecurityToggleConfirmationRequiredError(SettingsError):
+    """Raised when a security-weakening toggle write lacks confirm + reason.
+
+    Turning ``security.enabled`` / ``audit_enabled`` /
+    ``post_tool_scanning_enabled`` off, or switching
+    ``security.output_scan_policy_type`` to ``log_only``, reduces the
+    running security posture. The write path requires a deliberate
+    ``confirm=True`` + non-blank ``reason`` + actor identity for that
+    direction; the enable / tighten direction is unguarded. Maps to 403 so
+    the API surfaces it as a forbidden-without-confirmation action rather
+    than a generic validation failure.
+    """
+
+    default_message: ClassVar[str] = (
+        "Disabling or weakening a security setting requires explicit"
+        " confirmation (confirm=True) and a non-blank reason"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED
+    status_code: ClassVar[int] = 403
+
+
 class SettingsEncryptionError(SettingsError):
     """Raised when encryption key is unavailable or decryption fails."""
 

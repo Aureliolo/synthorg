@@ -28,6 +28,7 @@ from synthorg.security.config import SecurityConfig
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 logger = get_logger(__name__)
 
@@ -56,6 +57,12 @@ class SecurityConfigImportRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     config: dict[str, object]
+    # Deliberate-action guardrail for the security-weakening direction
+    # (disabling a toggle, or switching output_scan_policy_type to log_only).
+    # Enabling / tightening ignores these. ``reason`` must be non-blank when
+    # ``confirm`` is set; the actor is taken from the authenticated request.
+    confirm: bool = False
+    reason: str = ""
 
 
 async def _persist_security_settings(
@@ -63,6 +70,7 @@ async def _persist_security_settings(
     config: SecurityConfig,
     *,
     import_source: SettingsImportSource,
+    governance: SettingsWriteGovernance | None = None,
 ) -> int:
     """Persist registered security settings from a validated config.
 
@@ -81,6 +89,9 @@ async def _persist_security_settings(
         import_source: Source attribution forwarded so audit logs
             distinguish bulk-import writes from per-key
             ``PATCH /settings`` calls.
+        governance: Deliberate-action context (confirm + reason + actor)
+            authorising any security-weakening transition in the batch;
+            the enable / tighten direction ignores it.
 
     Returns:
         The number of registered settings persisted (so the caller can
@@ -108,6 +119,7 @@ async def _persist_security_settings(
         items,
         expected_updated_at_map={(ns_val, key): "" for ns_val, key, _ in items},
         import_source=import_source,
+        governance=governance,
     )
     return len(items)
 
@@ -219,6 +231,11 @@ class SettingsSecurityController(Controller):
             ),
             validated,
             import_source=SettingsImportSource.API_BODY,
+            governance=SettingsWriteGovernance(
+                confirm=data.confirm,
+                reason=data.reason,
+                actor=str(actor.user_id),
+            ),
         )
         logger.info(
             SECURITY_SETTINGS_IMPORTED,

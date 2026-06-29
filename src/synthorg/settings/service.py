@@ -28,7 +28,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
     SETTINGS_DELETE_FAILED,
@@ -45,6 +44,7 @@ from synthorg.observability.events.settings import (
 from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
+from synthorg.settings._setting_audit import emit_security_setting_changed
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
@@ -56,49 +56,15 @@ from synthorg.settings.errors import (
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.type_validators import validate_by_type
+from synthorg.settings.write_governance import (
+    SettingsWriteGovernance,
+    guard_security_writes,
+)
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
 _SENSITIVE_MASK = "********"
-
-# Namespaces whose changes always represent a security decision and must
-# be appended to the cryptographic audit chain. Settings in these
-# namespaces affect authentication, authorization, autonomy gating, or
-# encryption -- a forensic investigator needs to be able to prove the
-# change order is intact.
-_AUDITED_SETTING_NAMESPACES: frozenset[str] = frozenset(
-    {"auth", "security", "autonomy", "encryption", "rbac"},
-)
-
-
-def _emit_security_setting_changed(
-    namespace: str,
-    *,
-    action_type: str,
-    key: str | None = None,
-    **extra: object,
-) -> None:
-    """Emit ``SECURITY_SETTINGS_CHANGED`` when *namespace* is audited.
-
-    Centralises the gate so set / set_many / delete / delete_namespace
-    use a single, consistent payload shape -- and so a future
-    namespace addition only has to touch
-    :data:`_AUDITED_SETTING_NAMESPACES`.
-
-    ``key`` is optional because ``delete_namespace`` operates on the
-    whole namespace and substitutes ``count`` via ``extra`` instead.
-    """
-    if namespace not in _AUDITED_SETTING_NAMESPACES:
-        return
-    payload: dict[str, object] = {
-        "namespace": namespace,
-        "action_type": action_type,
-        **extra,
-    }
-    if key is not None:
-        payload["key"] = key
-    logger.info(SECURITY_SETTINGS_CHANGED, **payload)
 
 
 def _env_var_name(namespace: str, key: str) -> str:
@@ -702,7 +668,7 @@ class SettingsService:
             return "", ""
         return setting_value.value, setting_value.updated_at or ""
 
-    async def set(
+    async def set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
         self,
         namespace: str,
         key: str,
@@ -710,12 +676,18 @@ class SettingsService:
         *,
         expected_updated_at: str | None = None,
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> SettingEntry:
         """Span-wrapped public entry point for a setting write.
 
         The ``settings.set`` span carries only namespace/key, never the
         value (which may be a secret); record_exception / set_status are
         off so exception frame-locals are not serialised.
+
+        ``governance`` carries the deliberate confirm + reason + actor a
+        security-weakening transition requires (see
+        :mod:`synthorg.settings.write_governance`); the enable / tighten
+        direction ignores it.
 
         Returns:
             The persisted ``SettingEntry`` from :meth:`_set`.
@@ -732,9 +704,10 @@ class SettingsService:
                 value,
                 expected_updated_at=expected_updated_at,
                 import_source=import_source,
+                governance=governance,
             )
 
-    async def _set(
+    async def _set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
         self,
         namespace: str,
         key: str,
@@ -742,6 +715,7 @@ class SettingsService:
         *,
         expected_updated_at: str | None = None,
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> SettingEntry:
         """Validate, encrypt, and persist a setting value with optional CAS.
 
@@ -784,6 +758,12 @@ class SettingsService:
             definition,
             action="set",
             import_source=import_source,
+        )
+
+        await guard_security_writes(
+            [(namespace, key, value)],
+            governance=governance,
+            get_entry=self.get,
         )
 
         try:
@@ -832,7 +812,7 @@ class SettingsService:
         self._invalidate_cache(namespace, key)
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
         record_settings_mutation(namespace=namespace)
-        _emit_security_setting_changed(namespace, key=key, action_type="set")
+        emit_security_setting_changed(namespace, key=key, action_type="set")
         await self._publish_change(namespace, key, definition)
 
         display_value = _SENSITIVE_MASK if definition.sensitive else value
@@ -849,12 +829,16 @@ class SettingsService:
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str],
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> str:
         """Span-wrapped public entry point for a batch setting write.
 
         The ``settings.set_many`` span carries only the batch size, never
         namespaces / keys / values; record_exception / set_status are off
         so exception frame-locals are not serialised.
+
+        ``governance`` authorises any security-weakening transition in the
+        batch (see :mod:`synthorg.settings.write_governance`).
 
         Returns:
             The shared ``updated_at`` ISO string from :meth:`_set_many`.
@@ -869,6 +853,7 @@ class SettingsService:
                 items,
                 expected_updated_at_map=expected_updated_at_map,
                 import_source=import_source,
+                governance=governance,
             )
 
     async def _set_many(
@@ -877,6 +862,7 @@ class SettingsService:
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str],
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> str:
         """Atomically persist multiple setting values with per-key CAS.
 
@@ -924,6 +910,12 @@ class SettingsService:
             )
             raise ValueError(msg)
 
+        await guard_security_writes(
+            items,
+            governance=governance,
+            get_entry=self.get,
+        )
+
         updated_at = now_iso_utc()
         prepared, definitions = self._prepare_set_many(
             items,
@@ -953,7 +945,7 @@ class SettingsService:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
             record_settings_mutation(namespace=namespace)
-            _emit_security_setting_changed(
+            emit_security_setting_changed(
                 namespace,
                 key=key,
                 action_type="set_many",
@@ -1133,7 +1125,7 @@ class SettingsService:
                 key=key,
             )
             record_settings_mutation(namespace=namespace)
-            _emit_security_setting_changed(namespace, key=key, action_type="delete")
+            emit_security_setting_changed(namespace, key=key, action_type="delete")
 
             await self._publish_change(namespace, key, definition)
 
@@ -1257,7 +1249,7 @@ class SettingsService:
         # ``settings_mutations`` increment per actually-deleted key.
         for _ in range(deleted):
             record_settings_mutation(namespace=namespace)
-        _emit_security_setting_changed(
+        emit_security_setting_changed(
             namespace,
             action_type="delete_namespace",
             count=deleted,

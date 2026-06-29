@@ -76,6 +76,7 @@ class TestBackupSubscriberProtocol:
             {
                 ("backup", "enabled"),
                 ("backup", "schedule_hours"),
+                ("backup", "path"),
                 ("backup", "compression"),
                 ("backup", "on_shutdown"),
                 ("backup", "on_startup"),

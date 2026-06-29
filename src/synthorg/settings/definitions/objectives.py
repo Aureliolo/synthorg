@@ -21,12 +21,11 @@ _r.register(
             "Project that the real objective work-entry path files"
             " items into. The same value stamps every WorkItem the"
             " objective entry adapter feeds the pipeline, and the"
-            " project is created at boot if absent. Baked in at"
-            " process startup."
+            " project is created if absent. Resolved through the live"
+            " settings chain (DB > env > default); a change re-wires the"
+            " objective entry adapter without a restart."
         ),
         group="Objectives",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
     )
 )

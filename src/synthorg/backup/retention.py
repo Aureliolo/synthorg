@@ -60,6 +60,14 @@ class RetentionManager:
         self._backup_path = backup_path
         self._config_resolver = config_resolver
 
+    def set_backup_path(self, path: Path) -> None:
+        """Update the directory scanned for retention pruning (hot).
+
+        Called by ``BackupService.set_backup_path`` when ``backup.path``
+        changes so the next prune scans the new directory without a restart.
+        """
+        self._backup_path = path
+
     async def _resolve_max_age_days(self) -> int:
         """Resolve the retention age cap, preferring the live setting.
 

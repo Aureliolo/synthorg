@@ -32,10 +32,12 @@ _r.register(
         key="slack_webhook_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
-        description="HTTP timeout for Slack incoming-webhook posts",
+        description=(
+            "HTTP timeout for Slack incoming-webhook posts. A change"
+            " rebuilds the dispatcher's sinks without a restart."
+        ),
         group="Slack",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=60.0,
     )
@@ -47,10 +49,12 @@ _r.register(
         key="ntfy_webhook_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
-        description="HTTP timeout for ntfy.sh webhook posts",
+        description=(
+            "HTTP timeout for ntfy.sh webhook posts. A change rebuilds"
+            " the dispatcher's sinks without a restart."
+        ),
         group="ntfy",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=60.0,
     )
@@ -62,10 +66,12 @@ _r.register(
         key="email_smtp_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
-        description="Socket timeout for SMTP connections when sending email",
+        description=(
+            "Socket timeout for SMTP connections when sending email."
+            " A change rebuilds the dispatcher's sinks without a restart."
+        ),
         group="Email",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1.0,
         max_value=60.0,
     )
@@ -81,12 +87,12 @@ _r.register(
             "Optional fallback Slack incoming-webhook URL applied when a"
             " Slack notification sink is configured without its own"
             " ``webhook_url`` parameter. Leave blank to require every"
-            " sink to specify the URL explicitly."
+            " sink to specify the URL explicitly. A change rebuilds the"
+            " dispatcher's sinks without a restart."
         ),
         group="Slack",
         level=SettingLevel.ADVANCED,
         sensitive=True,
-        restart_required=True,
         validator_pattern=(
             r"^(?:|https://hooks\.slack\.com/services/"
             r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+)$"
@@ -105,10 +111,10 @@ _r.register(
             " specify one explicitly. Empty by default: an operator must"
             " set an explicit endpoint (a self-hosted ntfy avoids leaking"
             " topic names to the public ntfy.sh instance). HTTPS only."
+            " A change rebuilds the dispatcher's sinks without a restart."
         ),
         group="ntfy",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         # Empty (unset) or an explicit https endpoint; http:// is rejected
         # so topic names are never sent in plaintext.
         validator_pattern=r"^(|https://[\w.\-:]+(?:/.*)?)$",

@@ -31,6 +31,7 @@ _NAMESPACE = "api"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         (_NAMESPACE, "max_lifecycle_events_per_query"),
+        (_NAMESPACE, "max_rpm_default"),
     }
 )
 

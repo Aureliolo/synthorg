@@ -138,10 +138,11 @@ _r.register(
         description=(
             "Cadence in seconds between automatic model-refresh cycles when"
             " the mode schedules a loop. Floored at the scheduler minimum."
+            " Re-read by the scheduler each tick (like the mode), so a"
+            " change applies on the next cycle without a restart."
         ),
         group="Model Refresh",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=60.0,
         max_value=604800.0,
     )

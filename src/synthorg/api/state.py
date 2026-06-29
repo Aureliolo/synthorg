@@ -37,6 +37,7 @@ from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.runtime_config import MutableSecurityConfig
 from synthorg.workers.execution_service import WorkerExecutionService
 
 logger = get_logger(__name__)
@@ -81,6 +82,7 @@ class AppState(AppStateSliceMixin):
     per_op_limits: PerOpLimitsState
     request_locks: RequestLockRegistry
     ws_auth_limits: WsAuthLimits
+    security_runtime_config: MutableSecurityConfig
 
     def __init__(
         self,
@@ -126,6 +128,10 @@ class AppState(AppStateSliceMixin):
         self.per_op_limits = PerOpLimitsState()
         self.request_locks = RequestLockRegistry()
         self.ws_auth_limits = WsAuthLimits()
+        # Live security config the per-request interceptor reads, seeded
+        # from the boot config; SecurityBridgeSubscriber swaps it on an
+        # operator toggle so security posture is hot-reloadable.
+        self.security_runtime_config = MutableSecurityConfig(config.security)
         # Per-feature typed state slices, composed at boot by the
         # feature-manifest substrate (``compose_feature_slices``).
         self._init_slice_store()

@@ -15,6 +15,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.settings.enums import SettingsImportSource
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 from synthorg.settings.registry import SettingsRegistry
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 
 @runtime_checkable
@@ -55,7 +56,7 @@ class SettingsServiceProtocol(Protocol):
         """Read a value and its ``updated_at`` token for compare-and-set."""
         ...
 
-    async def set(
+    async def set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
         self,
         namespace: str,
         key: str,
@@ -63,6 +64,7 @@ class SettingsServiceProtocol(Protocol):
         *,
         expected_updated_at: str | None = None,
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> SettingEntry:
         """Validate, encrypt, and persist a value with optional CAS."""
         ...
@@ -73,6 +75,7 @@ class SettingsServiceProtocol(Protocol):
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str],
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+        governance: SettingsWriteGovernance | None = None,
     ) -> str:
         """Atomically persist multiple values with per-key CAS."""
         ...

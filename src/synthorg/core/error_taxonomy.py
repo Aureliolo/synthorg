@@ -61,6 +61,7 @@ class ErrorCode(IntEnum):
     TOOL_PERMISSION_DENIED = 1007
     SESSION_NO_TOKEN = 1008
     SESSION_EXPIRED = 1009
+    SECURITY_TOGGLE_CONFIRM_REQUIRED = 1010
 
     # 2xxx -- validation
     VALIDATION_ERROR = 2000
@@ -300,9 +301,10 @@ _ERROR_DOCS_BASE: str = _ERROR_DOCS_BASE_DEFAULT
 def set_error_docs_base_url(value: str) -> None:
     """Replace the active RFC 9457 ``type`` base URL.
 
-    Called once at app startup with the resolved
-    ``api.error_docs_base_url`` setting. Reset to
-    :data:`_ERROR_DOCS_BASE_DEFAULT` for test isolation.
+    Called at app startup with the resolved ``api.error_docs_base_url``
+    setting, and again by ``ApiSecurityHeadersSettingsSubscriber`` on a
+    hot-reload. Reset to :data:`_ERROR_DOCS_BASE_DEFAULT` for test
+    isolation.
 
     Validates the input at the boundary so a future caller that
     bypasses the bridge-config validator cannot inject a malformed or
@@ -310,11 +312,10 @@ def set_error_docs_base_url(value: str) -> None:
     stripped (``category_type_uri`` appends ``#<category>``); userinfo,
     query, and fragment components are rejected outright.
 
-    Calling this outside startup creates a brief eventual-consistency
-    window for in-flight error responses, since :func:`category_type_uri`
-    reads the global at call time. The ``api.error_docs_base_url``
-    setting is ``restart_required=True`` precisely to keep this
-    single-writer.
+    :func:`category_type_uri` reads the global at call time, so a hot-reload
+    has a brief eventual-consistency window: an error response already being
+    built may carry the prior base URL while the new value applies to
+    subsequent responses. This is accepted -- the setting is hot-reloadable.
 
     Args:
         value: HTTPS base URL (e.g. ``https://docs.example.com/errors``).
