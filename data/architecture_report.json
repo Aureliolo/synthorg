@@ -1582,7 +1582,7 @@
     "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1732,
+    "synthorg.observability": 1733,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 199,
     "synthorg.observability.events.approval_gate": 20,
