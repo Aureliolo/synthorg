@@ -118,15 +118,16 @@ class TestLiveCadenceAndWindow:
 
     @pytest.mark.parametrize(
         "bad_hours",
-        [0.0, -1.0, float("nan"), float("inf")],
-        ids=["zero", "negative", "nan", "inf"],
+        [0.0, -1.0, float("nan"), float("inf"), 1e15],
+        ids=["zero", "negative", "nan", "inf", "overflow"],
     )
     async def test_invalid_window_collapses_to_construction(
         self, bad_hours: float
     ) -> None:
-        # A stored nan / inf / non-positive window only fails over on a resolver
-        # error otherwise; the runtime path must collapse it to the last-known-
-        # good window rather than build a nonsensical (or raising) timedelta.
+        # A stored nan / inf / non-positive / finite-but-enormous window only
+        # fails over on a resolver error otherwise; the runtime path must
+        # collapse it to the last-known-good window rather than build a
+        # nonsensical timedelta or raise OverflowError past timedelta.max.
         coordinator = _coordinator()
         resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=bad_hours))
         scheduler = _scheduler(

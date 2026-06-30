@@ -46,6 +46,10 @@ _PAUSE_KEY: Final[str] = "eval_loop_cycle_paused"
 _INTERVAL_KEY: Final[str] = "eval_loop_cycle_interval_seconds"
 _WINDOW_KEY: Final[str] = "eval_loop_cycle_window_hours"
 _SECONDS_PER_HOUR: Final[float] = 3600.0
+# Upper bound on a live-resolved window: ``timedelta(seconds=...)`` raises
+# ``OverflowError`` past ``timedelta.max``, so a finite-but-enormous setting must
+# fall back rather than reach the constructor.
+_MAX_WINDOW_SECONDS: Final[float] = timedelta.max.total_seconds()
 
 
 class EvalLoopCycleScheduler(AsyncCycleScheduler):
@@ -153,11 +157,16 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
             key=_WINDOW_KEY,
             fallback=fallback_hours,
         )
-        # The resolver only fails over on a read error; a stored nan, inf, or
-        # non-positive value still reaches here and would build a nonsensical
-        # (or raising) timedelta. Collapse it to the last-known-good window so
-        # the runtime path matches the resolver-outage fallback.
-        if not math.isfinite(window_hours) or window_hours <= 0:
+        # The resolver only fails over on a read error; a stored nan, inf,
+        # non-positive, or finite-but-enormous value still reaches here and
+        # would build a nonsensical timedelta -- or raise ``OverflowError`` past
+        # ``timedelta.max``. Collapse any of those to the last-known-good window
+        # so the runtime path matches the resolver-outage fallback.
+        if (
+            not math.isfinite(window_hours)
+            or window_hours <= 0
+            or window_hours * _SECONDS_PER_HOUR >= _MAX_WINDOW_SECONDS
+        ):
             logger.warning(
                 EVAL_LOOP_CYCLE_SCHEDULER_FAILED,
                 note="window_read_invalid",
