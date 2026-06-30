@@ -248,3 +248,42 @@ async def test_interval_resolution_failure_falls_back_and_continues() -> None:
 
     assert scheduler.cycles >= 1
     assert scheduler.interval_calls >= 1
+
+
+class _InvalidIntervalScheduler(_CountingScheduler):
+    """Returns a sub-minimum interval to exercise the invariant re-check."""
+
+    def __init__(self, *, bad_interval: float) -> None:
+        super().__init__(interval_seconds=60.0)
+        self._bad_interval = bad_interval
+        self.interval_calls = 0
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        self.interval_calls += 1
+        return self._bad_interval
+
+
+@pytest.mark.parametrize(
+    "bad_interval",
+    [0.0, -1.0, float("nan"), float("inf"), 5.0],
+    ids=["zero", "negative", "nan", "inf", "below_minimum"],
+)
+async def test_invalid_interval_falls_back_and_continues(bad_interval: float) -> None:
+    """A live interval below the minimum (or non-finite) does not wedge the loop.
+
+    ``__init__`` rejects such values, but the per-tick re-read bypasses that
+    guard; the loop must re-apply the invariant and fall back to the
+    construction cadence instead of hot-spinning on ``timeout=0`` / breaking
+    ``wait_for`` on ``nan`` / ``inf``.
+    """
+    scheduler = _InvalidIntervalScheduler(bad_interval=bad_interval)
+    await scheduler.start()
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+        assert scheduler.is_running
+    finally:
+        await scheduler.stop()
+
+    assert scheduler.cycles >= 1
+    assert scheduler.interval_calls >= 1

@@ -115,3 +115,24 @@ class TestLiveCadenceAndWindow:
         )
         await scheduler._run_cycle_once()
         coordinator.run_cycle.assert_awaited_once_with(window=timedelta(hours=72))
+
+    @pytest.mark.parametrize(
+        "bad_hours",
+        [0.0, -1.0, float("nan"), float("inf")],
+        ids=["zero", "negative", "nan", "inf"],
+    )
+    async def test_invalid_window_collapses_to_construction(
+        self, bad_hours: float
+    ) -> None:
+        # A stored nan / inf / non-positive window only fails over on a resolver
+        # error otherwise; the runtime path must collapse it to the last-known-
+        # good window rather than build a nonsensical (or raising) timedelta.
+        coordinator = _coordinator()
+        resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=bad_hours))
+        scheduler = _scheduler(
+            resolver=resolver,
+            coordinator=coordinator,
+            window=timedelta(hours=72),
+        )
+        await scheduler._run_cycle_once()
+        coordinator.run_cycle.assert_awaited_once_with(window=timedelta(hours=72))

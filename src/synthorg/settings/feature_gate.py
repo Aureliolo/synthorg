@@ -9,10 +9,14 @@ message rather than serving a capability the operator has turned off. Used by th
 Chief-of-Staff chat capabilities, the research and knowledge MCP tools, and the
 auto-scaling evaluate endpoint.
 
-This lives in the settings layer (not ``api``) so both the API controllers and
-the ``meta`` MCP handlers can gate without a meta-to-api runtime import: the
-handlers already depend on ``synthorg.settings`` for the config resolver, so the
-gate sits below both packages and the layering stays forward-only.
+This lives in the settings layer (not ``api``) so the ``meta`` MCP handlers gate
+through ``synthorg.settings`` (which they already depend on for the config
+resolver) instead of importing ``api`` directly. The shared ``AppStateSliceMixin``
+annotation is sourced from ``api.state_slices`` at runtime, the same accepted
+``settings -> api`` edge ``settings.state``'s accessors already carry (the
+``.importlinter`` contracts permit it; a ``TYPE_CHECKING``-only import would break
+the ``--typeguard-forward-ref-policy=ERROR`` runtime check). The gate's own
+resolver lookup is deferred to request time.
 """
 
 from synthorg.api.state_slices import AppStateSliceMixin

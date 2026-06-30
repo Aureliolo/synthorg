@@ -30,8 +30,13 @@ def _resolver(*, enabled: bool = True, synthesis: bool = True) -> ConfigResolver
     """A resolver gating knowledge.enabled / knowledge.synthesis_enabled."""
 
     async def _get_bool(namespace: str, key: str) -> bool:
-        del namespace
-        return synthesis if key == "synthesis_enabled" else enabled
+        assert namespace == "knowledge"
+        if key == "enabled":
+            return enabled
+        if key == "synthesis_enabled":
+            return synthesis
+        msg = f"unexpected config lookup: {namespace}.{key}"
+        raise AssertionError(msg)
 
     return cast("ConfigResolver", mock_of[ConfigResolver](get_bool=_get_bool))
 

@@ -73,8 +73,23 @@ async def drain_simulation_background_tasks(app_state: AppState) -> None:
         task.cancel()
     if still_running:
         # ``shield`` so a cancel of this drain (the outer budget) does not
-        # re-orphan the very stragglers it is awaiting.
-        await asyncio.shield(asyncio.gather(*still_running, return_exceptions=True))
+        # re-orphan the very stragglers it is awaiting. Mirror the ``done``
+        # loop above: a straggler that raised a non-cancellation error during
+        # its final unwind must not vanish silently.
+        results = await asyncio.shield(
+            asyncio.gather(*still_running, return_exceptions=True)
+        )
+        for result in results:
+            if isinstance(result, BaseException) and not isinstance(
+                result, asyncio.CancelledError
+            ):
+                logger.warning(
+                    API_APP_SHUTDOWN,
+                    service="simulation_task_drain",
+                    error_type=type(result).__name__,
+                    error=safe_error_description(result),
+                    note="simulation task raised during shutdown drain",
+                )
 
 
 @dataclass

@@ -53,7 +53,7 @@ class ResearchConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Construction-time gate on the service factory: the wiring always"
             " sets this ``True`` (the runtime master switch is the live"

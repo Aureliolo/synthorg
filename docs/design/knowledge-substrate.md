@@ -257,12 +257,15 @@ output (not ingested corpus text), so the SEC-1 wrap applies to the input chunks
 (as in search) and, defensively, to the answer fields when returned over MCP.
 
 Synthesis is **on by default (opt-out)** but functionally gated on a configured
-model: it is wired at startup only when `knowledge.synthesis_enabled` is true
-AND a `knowledge.synthesis_model` is set AND a provider is registered. Absent
-any of these the substrate stays retrieval-only and the `ask` surface raises
-`KnowledgeSynthesisUnavailableError` (503). The build is best-effort: a bad
-setting value or unknown strategy degrades to retrieval-only rather than
-poisoning startup. The synthesis model is knowledge's own (distinct from the
+model: the synthesiser is **ghost-wired at startup whenever a
+`knowledge.synthesis_model` is set AND a provider is registered** (startup wiring
+does NOT consult `knowledge.synthesis_enabled`), and `knowledge.synthesis_enabled`
+is enforced **live at the `ask` entrypoint** so toggling it takes effect with no
+restart. Absent a model or provider the substrate stays retrieval-only and the
+`ask` surface raises `KnowledgeSynthesisUnavailableError` (503); when
+`synthesis_enabled` is off the live `ask` gate 503s even though the synthesiser is
+wired. The build is best-effort: a bad setting value or unknown strategy degrades
+to retrieval-only rather than poisoning startup. The synthesis model is knowledge's own (distinct from the
 embedding model, which powers retrieval, and from decomposition).
 
 ## Freshness and invalidation

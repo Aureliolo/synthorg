@@ -29,6 +29,7 @@ model-refresh scheduler relies on).
 
 import asyncio
 import contextlib
+import math
 from abc import ABC, abstractmethod
 from typing import Final
 
@@ -303,6 +304,17 @@ class AsyncCycleScheduler(ABC):
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     note="interval_read_failed",
+                )
+                interval = self._interval
+            # Re-apply the constructor's invariant: a live settings value of 0,
+            # a negative, nan, or inf would bypass __init__'s guard and turn the
+            # loop into a hot spin (or break wait_for); fall back to the
+            # construction cadence instead.
+            if not math.isfinite(interval) or interval < MIN_INTERVAL_SECONDS:
+                logger.warning(
+                    self._failed_event,
+                    note="interval_read_invalid",
+                    interval_seconds=interval,
                 )
                 interval = self._interval
             try:

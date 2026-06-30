@@ -33,9 +33,14 @@ _NOW = datetime(2026, 5, 22, tzinfo=UTC)
 
 def _resolver(*, enabled: bool = True) -> ConfigResolver:
     """A config resolver whose ``research.enabled`` resolves to *enabled*."""
+
+    async def _get_bool(namespace: str, key: str) -> bool:
+        assert (namespace, key) == ("research", "enabled")
+        return enabled
+
     return cast(
         "ConfigResolver",
-        mock_of[ConfigResolver](get_bool=AsyncMock(return_value=enabled)),
+        mock_of[ConfigResolver](get_bool=AsyncMock(side_effect=_get_bool)),
     )
 
 

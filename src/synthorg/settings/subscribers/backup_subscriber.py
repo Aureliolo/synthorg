@@ -161,7 +161,7 @@ class BackupSettingsSubscriber:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
@@ -179,7 +179,20 @@ class BackupSettingsSubscriber:
                 note="blank path ignored",
             )
             return
-        await self._backup_service.set_backup_path(path)
+        try:
+            await self._backup_service.set_backup_path(path)
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SETTINGS_SERVICE_SWAP_FAILED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="path",
+                note="set_backup_path() failed",
+            )
+            raise
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,

@@ -18,6 +18,7 @@ the evaluation cadence work, the two-flag enabled check
 per-tick cadence / window re-reads.
 """
 
+import math
 from datetime import timedelta
 from typing import Final, override
 
@@ -145,12 +146,24 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
         The window is re-read each tick (fail-safe to the construction-time
         window) so an operator can widen / narrow it with no restart.
         """
+        fallback_hours = self._window.total_seconds() / _SECONDS_PER_HOUR
         window_hours = await resolve_float_with_fallback(
             resolver=self._config_resolver,
             namespace=_HR_NS,
             key=_WINDOW_KEY,
-            fallback=self._window.total_seconds() / _SECONDS_PER_HOUR,
+            fallback=fallback_hours,
         )
+        # The resolver only fails over on a read error; a stored nan, inf, or
+        # non-positive value still reaches here and would build a nonsensical
+        # (or raising) timedelta. Collapse it to the last-known-good window so
+        # the runtime path matches the resolver-outage fallback.
+        if not math.isfinite(window_hours) or window_hours <= 0:
+            logger.warning(
+                EVAL_LOOP_CYCLE_SCHEDULER_FAILED,
+                note="window_read_invalid",
+                window_hours=window_hours,
+            )
+            window_hours = fallback_hours
         window = timedelta(seconds=window_hours * _SECONDS_PER_HOUR)
         report = await self._coordinator.run_cycle(window=window)
         logger.info(
