@@ -27,16 +27,23 @@ in the same change."""
 class KnowledgeConfig(BaseModel):
     """Top-level knowledge-substrate configuration.
 
-    Disabled by default: the substrate is wired only when an operator
-    turns it on, mirroring other opt-in subsystems. The discriminators
-    select pluggable strategies via their factories.
+    On by default: the substrate is ghost-wired at boot whenever persistence +
+    a memory backend exist, and the ``knowledge.enabled`` master switch is
+    enforced live per request at the knowledge MCP handlers (read from the
+    settings service, not this boot config). The discriminators select pluggable
+    strategies via their factories.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
-        description="Whether the knowledge substrate is wired at startup",
+        description=(
+            "Not consulted for the enable decision: the substrate is ghost-wired"
+            " at boot and gated live at the handlers via the settings-service"
+            " ``knowledge.enabled`` flag. Retained only for config-schema"
+            " back-compatibility."
+        ),
     )
     pdf_loader: PdfLoaderKind = Field(
         default="pdfplumber",

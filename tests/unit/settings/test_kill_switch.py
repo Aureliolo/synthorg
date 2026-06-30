@@ -6,9 +6,12 @@ import pytest
 
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
+    resolve_float_with_fallback,
     resolve_model_with_fallback,
     resolve_str_with_fallback,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -24,8 +27,7 @@ async def test_returns_fallback_when_resolver_missing() -> None:
 
 
 async def test_returns_resolver_value_when_wired() -> None:
-    resolver = AsyncMock()
-    resolver.get_bool = AsyncMock(return_value=False)
+    resolver = mock_of[ConfigResolverProtocol](get_bool=AsyncMock(return_value=False))
     result = await resolve_bool_with_fallback(
         resolver=resolver,
         namespace="engine",
@@ -37,8 +39,9 @@ async def test_returns_resolver_value_when_wired() -> None:
 
 
 async def test_resolver_outage_falls_back() -> None:
-    resolver = AsyncMock()
-    resolver.get_bool = AsyncMock(side_effect=RuntimeError("transient"))
+    resolver = mock_of[ConfigResolverProtocol](
+        get_bool=AsyncMock(side_effect=RuntimeError("transient"))
+    )
     result = await resolve_bool_with_fallback(
         resolver=resolver,
         namespace="engine",
@@ -46,6 +49,43 @@ async def test_resolver_outage_falls_back() -> None:
         fallback=True,
     )
     assert result is True
+
+
+async def test_float_returns_fallback_when_resolver_missing() -> None:
+    result = await resolve_float_with_fallback(
+        resolver=None,
+        namespace="hr",
+        key="eval_loop_cycle_interval_seconds",
+        fallback=86400.0,
+    )
+    assert result == 86400.0
+
+
+async def test_float_returns_resolver_value_when_wired() -> None:
+    resolver = mock_of[ConfigResolverProtocol](get_float=AsyncMock(return_value=120.0))
+    result = await resolve_float_with_fallback(
+        resolver=resolver,
+        namespace="hr",
+        key="eval_loop_cycle_interval_seconds",
+        fallback=86400.0,
+    )
+    assert result == 120.0
+    resolver.get_float.assert_awaited_once_with(
+        "hr", "eval_loop_cycle_interval_seconds"
+    )
+
+
+async def test_float_resolver_outage_falls_back() -> None:
+    resolver = mock_of[ConfigResolverProtocol](
+        get_float=AsyncMock(side_effect=RuntimeError("transient"))
+    )
+    result = await resolve_float_with_fallback(
+        resolver=resolver,
+        namespace="hr",
+        key="eval_loop_cycle_window_hours",
+        fallback=168.0,
+    )
+    assert result == 168.0
 
 
 @pytest.mark.parametrize(
@@ -62,8 +102,9 @@ async def test_system_errors_propagate(exc_type: type[BaseException]) -> None:
     independently catches a regression that would otherwise demote one
     of them to a silent fallback.
     """
-    resolver = AsyncMock()
-    resolver.get_bool = AsyncMock(side_effect=exc_type())
+    resolver = mock_of[ConfigResolverProtocol](
+        get_bool=AsyncMock(side_effect=exc_type())
+    )
     with pytest.raises(exc_type):
         await resolve_bool_with_fallback(
             resolver=resolver,
@@ -141,6 +182,29 @@ async def test_str_system_errors_propagate(exc_type: type[BaseException]) -> Non
             namespace="chief_of_staff",
             key="chat_model",
             fallback="baked-model",
+        )
+
+
+@pytest.mark.parametrize(
+    "exc_type",
+    [MemoryError, RecursionError],
+    ids=["memory_error", "recursion_error"],
+)
+async def test_float_system_errors_propagate(exc_type: type[BaseException]) -> None:
+    """The float helper re-raises ``MemoryError`` / ``RecursionError`` unchanged.
+
+    Mirrors the bool-helper contract: an unrecoverable interpreter condition
+    must never be demoted to the last-known-good cadence fallback.
+    """
+    resolver = mock_of[ConfigResolverProtocol](
+        get_float=AsyncMock(side_effect=exc_type())
+    )
+    with pytest.raises(exc_type):
+        await resolve_float_with_fallback(
+            resolver=resolver,
+            namespace="hr",
+            key="eval_loop_cycle_interval_seconds",
+            fallback=86400.0,
         )
 
 

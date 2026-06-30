@@ -1,6 +1,6 @@
 """Conformance for the feature-enablement flags + per-feature models.
 
-Each dissolved Chief-of-Staff / self-improvement / knowledge flag (and
+Each Chief-of-Staff / self-improvement / knowledge feature-enablement flag (and
 each per-feature model) is asserted on three axes:
 
 1. Registry presence with the documented default + type.
@@ -87,9 +87,9 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
     ("self_improvement", "tool_creation_enabled", SettingType.BOOLEAN, "false", False),
     ("self_improvement", "analysis_model", SettingType.STRING, "", False),
     ("self_improvement", "code_modification_model", SettingType.STRING, "", False),
-    # Knowledge: on by default, no model of its own; wired into the boot
-    # engine, so a change is restart-required.
-    ("knowledge", "enabled", SettingType.BOOLEAN, "true", True),
+    # Knowledge: on by default, no model of its own; ghost-wired and
+    # live-gated at the knowledge tools, so a change applies with no restart.
+    ("knowledge", "enabled", SettingType.BOOLEAN, "true", False),
 )
 
 

@@ -18,12 +18,14 @@ no LLM calls, so the runtime comes online for an empty company.
 
 import os
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.client.state import ClientStateSlice
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.quality.verification_config import (
@@ -39,6 +41,7 @@ from synthorg.engine.review.factory import (
     ReviewPipelineStrategy,
     build_review_pipeline,
 )
+from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
 from synthorg.llm.model_tier_policy import tier_model_id
@@ -52,6 +55,7 @@ from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_bool
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -295,29 +299,30 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
         return strategy, requested_strategy
 
 
-def build_client_simulation_runtime(
+def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choices
     app_state: AppState,
     *,
-    env: Mapping[str, str] = os.environ,
-) -> ClientSimulationState:
-    """Construct the boot client-simulation runtime state.
+    env: Mapping[str, str],
+    requested_strategy: str,
+    model: str | None,
+    default_project: str,
+    review_strategy: ReviewPipelineStrategy,
+) -> tuple[IntakeEngine, ReviewPipeline]:
+    """Build the config-driven simulation components from resolved choices.
 
-    Default ``direct`` intake makes no LLM call (works for an empty
-    company). The default review pipeline is ``("verification",
-    "internal")``: a rubric-grading ``VerificationReviewStage`` gates
-    before the ``InternalReviewStage`` (set
-    ``simulations.verification_review_enabled`` to ``false`` to drop it,
-    leaving ``internal`` only). ``ClientReviewStage`` is never wired
-    here: it needs a per-request client, unavailable generically at
-    boot. ``app_state.task_engine`` must be set (the caller gates on
-    this); ``provider_registry`` / ``cost_tracker`` are consulted when
-    present. ``env`` overrides ``os.environ`` for tests.
+    Returns the stateless intake engine + review pipeline that the boot builder
+    and the runtime reload both compose; the intake strategy degrades to
+    ``direct`` when unsatisfiable. Only these two config-driven objects are
+    rebuilt, so the reload path can swap them onto the existing state and keep
+    the mutable stores intact. The verification-stage settings
+    (``verification_review_enabled`` / ``verification_grader`` /
+    ``verification_decomposer``) are read from ``env`` in both paths and are not
+    live-reloadable (they retain ``restart_required`` in the registry).
 
     Returns:
-        The wired ``ClientSimulationState`` for boot.
+        The ``(intake_engine, review_pipeline)`` pair.
     """
     task_engine = task_engine_of(app_state)
-    requested_strategy, model, default_project = _resolve_intake_settings(env)
     provider = _select_provider(app_state)
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     strategy, effective_strategy = _build_intake_with_fallback(
@@ -328,7 +333,6 @@ def build_client_simulation_runtime(
         provider=provider,
         cost_tracker=cost_tracker,
     )
-    review_strategy = _resolve_review_pipeline_strategy(env)
     verification_stage = _build_verification_stage(
         env=env,
         provider=provider,
@@ -347,8 +351,116 @@ def build_client_simulation_runtime(
         verification_stage_active=verification_stage is not None,
         intake_default_project=default_project,
     )
+    return IntakeEngine(strategy=strategy), review_pipeline
+
+
+def build_client_simulation_runtime(
+    app_state: AppState,
+    *,
+    env: Mapping[str, str] = os.environ,
+) -> ClientSimulationState:
+    """Construct the boot client-simulation runtime state.
+
+    Default ``direct`` intake makes no LLM call (works for an empty
+    company). The default review pipeline is ``("verification",
+    "internal")``: a rubric-grading ``VerificationReviewStage`` gates
+    before the ``InternalReviewStage`` (set
+    ``simulations.verification_review_enabled`` to ``false`` to drop it,
+    leaving ``internal`` only). ``ClientReviewStage`` is never wired
+    here: it needs a per-request client, unavailable generically at
+    boot. ``app_state.task_engine`` must be set (the caller gates on
+    this); ``provider_registry`` / ``cost_tracker`` are consulted when
+    present. ``env`` overrides ``os.environ`` for tests.
+
+    The four intake / review choices are read via the bootstrap resolver
+    (env > registered default) because ``ConfigResolver`` is not wired at
+    construction; a DB override is then picked up on-startup and on every
+    settings change via :func:`reload_client_simulation_runtime`.
+
+    Returns:
+        The wired ``ClientSimulationState`` for boot.
+    """
+    requested_strategy, model, default_project = _resolve_intake_settings(env)
+    review_strategy = _resolve_review_pipeline_strategy(env)
+    intake_engine, review_pipeline = _build_simulation_components(
+        app_state,
+        env=env,
+        requested_strategy=requested_strategy,
+        model=model,
+        default_project=default_project,
+        review_strategy=review_strategy,
+    )
     return ClientSimulationState(
-        intake_engine=IntakeEngine(strategy=strategy),
+        intake_engine=intake_engine,
         review_pipeline=review_pipeline,
         intake_default_project=default_project,
     )
+
+
+async def reload_client_simulation_runtime(app_state: AppState) -> None:
+    """Rebuild the simulation components from the live settings and swap them in.
+
+    Re-reads the four hot intake / review keys (``intake_strategy``,
+    ``intake_model``, ``intake_default_project``, ``review_pipeline_strategy``)
+    through the DB-backed ``ConfigResolver`` (DB > env > default), rebuilds the
+    intake engine + review pipeline, and atomically swaps them onto the existing
+    ``ClientSimulationState`` via ``dataclasses.replace``. Replacing only the
+    config-driven fields preserves the live mutable stores (client pool, request
+    / simulation / feedback stores, in-flight background tasks), so a hot-reload
+    never discards in-flight work. Called on-startup (so a DB override is
+    honoured on every boot, since construction reads only env/default) and on
+    every ``reload_runtime_services`` / simulations settings change.
+
+    When the resolver is not yet wired (a pre-startup context) the four keys
+    fall back to the bootstrap resolver (env > registered default). A blank
+    ``intake_default_project`` is rejected (the previous runtime is retained
+    unchanged) so an operator clearing the override cannot wire an empty project.
+    """
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        requested_strategy, model, default_project = _resolve_intake_settings(
+            os.environ
+        )
+        review_strategy = _resolve_review_pipeline_strategy(os.environ)
+    else:
+        namespace = SettingNamespace.SIMULATIONS.value
+        requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
+        raw_model = await resolver.get_str(namespace, _INTAKE_MODEL_KEY)
+        model = (raw_model.strip() or None) if raw_model else None
+        default_project = (
+            await resolver.get_str(namespace, _INTAKE_DEFAULT_PROJECT_KEY)
+        ).strip()
+        review_strategy = cast(
+            "ReviewPipelineStrategy",
+            await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
+        )
+    if not default_project:
+        logger.warning(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            service="client_simulation_runtime",
+            note="intake_default_project resolved blank; retaining previous runtime",
+        )
+        return
+    intake_engine, review_pipeline = _build_simulation_components(
+        app_state,
+        env=os.environ,
+        requested_strategy=requested_strategy,
+        model=model,
+        default_project=default_project,
+        review_strategy=review_strategy,
+    )
+    existing = app_state.slice(ClientStateSlice).simulation_state
+    if existing is None:
+        new_state = ClientSimulationState(
+            intake_engine=intake_engine,
+            review_pipeline=review_pipeline,
+            intake_default_project=default_project,
+        )
+    else:
+        new_state = replace(
+            existing,
+            intake_engine=intake_engine,
+            review_pipeline=review_pipeline,
+            intake_default_project=default_project,
+        )
+    app_state.wire(ClientStateSlice, simulation_state=new_state)

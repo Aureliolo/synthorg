@@ -36,16 +36,15 @@ _r.register(
         default="direct",
         enum_values=("direct", "agent"),
         description=(
-            "Intake strategy wired into the client-simulation runtime at"
-            " boot. 'direct' creates a task per accepted request with no"
-            " LLM call; 'agent' routes each request through an LLM triage"
-            " step using the registered completion provider. Baked in at"
-            " process startup."
+            "Intake strategy wired into the client-simulation runtime."
+            " 'direct' creates a task per accepted request with no LLM call;"
+            " 'agent' routes each request through an LLM triage step using the"
+            " registered completion provider. A change rebuilds and swaps the"
+            " simulation runtime live with no restart."
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -58,13 +57,12 @@ _r.register(
         description=(
             "Model identifier passed to the agent intake strategy. Only"
             " consulted when simulations.intake_strategy is 'agent';"
-            " ignored by the 'direct' strategy. Baked in at process"
-            " startup."
+            " ignored by the 'direct' strategy. A change rebuilds and swaps"
+            " the simulation runtime live with no restart."
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -79,12 +77,13 @@ _r.register(
             " into. The same value is wired into the intake strategy"
             " (DirectIntake / AgentIntake) and the WorkItem the intake"
             " entry adapter feeds the pipeline, and the project is"
-            " created at boot if absent. Baked in at process startup."
+            " created if absent. A change rebuilds and re-wires the simulation"
+            " runtime live with no restart, re-resolving the project from the"
+            " settings DB when the intake entry adapter is swapped."
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -96,16 +95,16 @@ _r.register(
         default="internal_only",
         enum_values=("internal_only", "client_then_internal"),
         description=(
-            "Review pipeline wired into the client-simulation runtime at"
-            " boot. 'internal_only' runs a single internal review stage;"
+            "Review pipeline wired into the client-simulation runtime."
+            " 'internal_only' runs a single internal review stage;"
             " 'client_then_internal' prepends a client-delegated stage"
             " when a client pool is available, otherwise it degrades to"
-            " internal-only. Baked in at process startup."
+            " internal-only. A change rebuilds and swaps the simulation"
+            " runtime live with no restart."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 

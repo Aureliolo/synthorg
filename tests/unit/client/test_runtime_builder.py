@@ -5,6 +5,8 @@ agent-missing-collaborators) and ``build_client_simulation_runtime``
 (strategy selection from settings, agent fallback, task-engine gating).
 """
 
+from typing import cast
+
 import pytest
 import structlog
 
@@ -12,14 +14,19 @@ from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.client.state import ClientStateSlice
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import AgentIntake, DirectIntake
+from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import as_uuid, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -229,6 +236,143 @@ class TestBuildClientSimulationRuntime:
         # rather than recurse into a fallback.
         with pytest.raises(UnknownStrategyError):
             runtime_builder.build_client_simulation_runtime(app_state, env={})
+
+
+def _str_resolver(values: dict[str, str]) -> ConfigResolver:
+    """A resolver whose ``get_str`` returns *values* for simulations keys."""
+
+    async def _get_str(namespace: str, key: str) -> str:
+        # Lock the namespace contract: the reload must read the simulations
+        # scope, so a regression that read the right keys from the wrong
+        # namespace fails here instead of silently returning these values.
+        assert namespace == SettingNamespace.SIMULATIONS.value
+        return values[key]
+
+    return cast("ConfigResolver", mock_of[ConfigResolver](get_str=_get_str))
+
+
+class TestReloadClientSimulationRuntime:
+    """``reload_client_simulation_runtime`` reads the live settings DB."""
+
+    async def test_rebuilds_from_db_resolver(self) -> None:
+        from synthorg.client.runtime_builder import (
+            reload_client_simulation_runtime,
+        )
+
+        resolver = _str_resolver(
+            {
+                "intake_strategy": "direct",
+                "intake_model": "",
+                "intake_default_project": "db-project",
+                "review_pipeline_strategy": "internal_only",
+            }
+        )
+        app_state = make_app_state(
+            task_engine=mock_of[TaskEngine](),
+            config_resolver=resolver,
+        )
+
+        await reload_client_simulation_runtime(app_state)
+
+        state = app_state.slice(ClientStateSlice).simulation_state
+        assert state is not None
+        # The DB-resolved project flows through, not the env/default.
+        assert state.intake_default_project == "db-project"
+
+    async def test_falls_back_to_bootstrap_without_resolver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from synthorg.client.runtime_builder import (
+            reload_client_simulation_runtime,
+        )
+
+        # The no-resolver path is env > default; clear the simulations override
+        # vars so an ambient ``SYNTHORG_SIMULATIONS_*`` in the process env cannot
+        # change the asserted default and make this test flaky.
+        for key in (
+            "INTAKE_STRATEGY",
+            "INTAKE_MODEL",
+            "INTAKE_DEFAULT_PROJECT",
+            "REVIEW_PIPELINE_STRATEGY",
+        ):
+            monkeypatch.delenv(f"SYNTHORG_SIMULATIONS_{key}", raising=False)
+
+        app_state = make_app_state(task_engine=mock_of[TaskEngine]())
+
+        await reload_client_simulation_runtime(app_state)
+
+        state = app_state.slice(ClientStateSlice).simulation_state
+        assert state is not None
+        assert state.intake_default_project == "client-intake"
+
+    async def test_reload_preserves_in_flight_stores(self) -> None:
+        from synthorg.client.runtime_builder import (
+            reload_client_simulation_runtime,
+        )
+
+        existing = ClientSimulationState(
+            intake_engine=mock_of[IntakeEngine](),
+            review_pipeline=mock_of[ReviewPipeline](),
+            intake_default_project="old-project",
+        )
+        resolver = _str_resolver(
+            {
+                "intake_strategy": "direct",
+                "intake_model": "",
+                "intake_default_project": "db-project",
+                "review_pipeline_strategy": "internal_only",
+            }
+        )
+        app_state = make_app_state(
+            task_engine=mock_of[TaskEngine](),
+            config_resolver=resolver,
+            slices={ClientStateSlice: {"simulation_state": existing}},
+        )
+
+        await reload_client_simulation_runtime(app_state)
+
+        new_state = app_state.slice(ClientStateSlice).simulation_state
+        assert new_state is not None
+        # Config-driven fields are rebuilt from the DB.
+        assert new_state.intake_default_project == "db-project"
+        assert new_state.intake_engine is not existing.intake_engine
+        # The mutable in-flight stores are preserved, not reset to empty, so a
+        # hot-reload never discards in-flight requests / simulations / tasks.
+        assert new_state.pool is existing.pool
+        assert new_state.request_store is existing.request_store
+        assert new_state.simulation_store is existing.simulation_store
+        assert new_state.feedback_store is existing.feedback_store
+        assert new_state.background_tasks is existing.background_tasks
+
+    async def test_blank_default_project_retains_previous_runtime(self) -> None:
+        from synthorg.client.runtime_builder import (
+            reload_client_simulation_runtime,
+        )
+
+        existing = ClientSimulationState(
+            intake_engine=mock_of[IntakeEngine](),
+            review_pipeline=mock_of[ReviewPipeline](),
+            intake_default_project="kept-project",
+        )
+        resolver = _str_resolver(
+            {
+                "intake_strategy": "direct",
+                "intake_model": "",
+                "intake_default_project": "   ",
+                "review_pipeline_strategy": "internal_only",
+            }
+        )
+        app_state = make_app_state(
+            task_engine=mock_of[TaskEngine](),
+            config_resolver=resolver,
+            slices={ClientStateSlice: {"simulation_state": existing}},
+        )
+
+        await reload_client_simulation_runtime(app_state)
+
+        # A blank resolved project is rejected: the previous runtime is retained
+        # unchanged rather than wiring an empty project.
+        assert app_state.slice(ClientStateSlice).simulation_state is existing
 
 
 def test_internal_stage_name_contract() -> None:

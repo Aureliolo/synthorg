@@ -63,6 +63,29 @@ def _require_service(app_state: AppState) -> ResearchService:
     return svc
 
 
+async def _require_enabled_service(app_state: AppState) -> ResearchService:
+    """Live-gate on ``research.enabled`` then return the wired service.
+
+    The service is ghost-wired at startup (built whenever a model + provider
+    exist), so the master switch is enforced here per request: an operator
+    toggling ``research.enabled`` in settings takes effect on the next call
+    with no restart.
+
+    Returns:
+        The wired research service when the feature is enabled.
+
+    Raises:
+        ServiceUnavailableError: When ``research.enabled`` resolves to ``False``
+            or the service is not wired.
+    """
+    from synthorg.settings.feature_gate import ensure_feature_enabled  # noqa: PLC0415
+
+    await ensure_feature_enabled(
+        app_state, "research", "enabled", feature_label="Research"
+    )
+    return _require_service(app_state)
+
+
 def _created_by(actor: AgentIdentity | None) -> NotBlankStr:
     """Return created by."""
     return NotBlankStr(str(actor.id)) if actor is not None else _OPERATOR
@@ -89,7 +112,7 @@ async def _research_run(
 ) -> str:
     """Return research run."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         args = typed_args(arguments, ResearchRunArgs)
         brief_id, run_id = derive_research_ids(args, project_id=args.project_id)
         brief = build_research_brief(
@@ -118,7 +141,7 @@ async def _research_get(
 ) -> str:
     """Return research get."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         args = typed_args(arguments, ResearchGetArgs)
         run = await svc.get_run(args.run_id)
         if run is None:
@@ -145,7 +168,7 @@ async def _research_list(
 ) -> str:
     """Return research list."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         args = typed_args(arguments, ResearchListArgs)
         runs = await svc.list_runs(
             ResearchRunFilter(

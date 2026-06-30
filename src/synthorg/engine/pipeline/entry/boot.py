@@ -60,6 +60,7 @@ from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -141,6 +142,34 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
     )
 
 
+async def _resolve_intake_default_project(app_state: AppState) -> str:
+    """Resolve the live intake default project (DB > env > default).
+
+    Reads ``simulations.intake_default_project`` from the wired
+    ``ConfigResolver`` so a hot change is honoured; falls back to the value
+    baked into the cached simulation state when the resolver is not yet wired
+    (a pre-resolver boot path) OR when the resolver returns a blank value. The
+    blank fallback mirrors ``reload_client_simulation_runtime()``, which rejects
+    a blank value and retains the cached runtime: without it, cold-boot wiring
+    would leave the intake adapter offline on the same blank value that a hot
+    reload keeps alive.
+
+    Returns:
+        The default project id (may be blank when no cached value exists; the
+        caller guards on that).
+    """
+    cached = client_simulation_state_of(app_state).intake_default_project or ""
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return cached
+    value = (
+        await resolver.get_str(
+            SettingNamespace.SIMULATIONS.value, "intake_default_project"
+        )
+    ).strip()
+    return value or cached
+
+
 async def wire_real_intake_entry(
     app_state: AppState,
     *,
@@ -157,6 +186,11 @@ async def wire_real_intake_entry(
     if app_state.slice(
         EngineStateSlice
     ).work_pipeline is None or not has_simulation_runtime(app_state):
+        # On a hot reload that lost the pipeline / simulation runtime, uninstall
+        # the previously wired adapter so it stops routing through the stale
+        # pipeline it captured at build time (a boot install has nothing wired).
+        if hot_swap:
+            app_state.clear_intake_entry_adapter()
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="intake_entry_adapter",
@@ -164,8 +198,10 @@ async def wire_real_intake_entry(
             note="no work pipeline / simulation runtime; real intake offline",
         )
         return
-    default_project = client_simulation_state_of(app_state).intake_default_project
+    default_project = await _resolve_intake_default_project(app_state)
     if not default_project:
+        if hot_swap:
+            app_state.clear_intake_entry_adapter()
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="intake_entry_adapter",
@@ -272,6 +308,10 @@ async def wire_real_objective_entry(
         env: Environment mapping override for tests.
     """
     if app_state.slice(EngineStateSlice).work_pipeline is None:
+        # Hot reload lost the pipeline: uninstall the stale adapter (it holds the
+        # old pipeline by reference); a boot install has nothing wired yet.
+        if hot_swap:
+            app_state.clear_objective_entry_adapter()
         logger.info(
             OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
@@ -389,6 +429,11 @@ async def wire_real_task_board_entry(
     if app_state.slice(
         EngineStateSlice
     ).work_pipeline is None or not has_simulation_runtime(app_state):
+        # Hot reload lost the pipeline / simulation runtime: uninstall the stale
+        # adapter (it holds the old pipeline by reference); a boot install has
+        # nothing wired yet.
+        if hot_swap:
+            app_state.clear_task_board_entry_adapter()
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="task_board_entry_adapter",

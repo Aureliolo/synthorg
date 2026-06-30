@@ -329,8 +329,11 @@ async def _build_and_wire_research(
 ) -> None:
     """Build the research service from config and swap it onto the slice.
 
-    No-op (logs + returns) when research is disabled, no model is set, or no
-    provider is configured.
+    Ghost-wired: the service is built whenever a model + provider exist,
+    regardless of ``research.enabled``. The master switch is enforced live
+    per request at the research MCP handlers (``_require_enabled_service``),
+    so toggling ``research.enabled`` takes effect with no restart. No-op
+    (logs + returns) only when no model is set or no provider is configured.
     """
     from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
@@ -341,15 +344,12 @@ async def _build_and_wire_research(
         build_research_tool_factory,
     )
 
-    enabled = (
-        await runtime_settings.get("research", "enabled")
-    ).value.strip().lower() == "true"
     model = (await runtime_settings.get("research", "model")).value.strip()
-    if not enabled or not model:
+    if not model:
         logger.info(
             API_APP_STARTUP,
             service="research_engine",
-            note="research disabled or model unset; wiring skipped",
+            note="research model unset; wiring skipped",
         )
         return
     provider_names = provider_registry.list_providers()

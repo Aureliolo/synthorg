@@ -10,12 +10,14 @@ requests so an approved hire is not orphaned by a restart), an
 :class:`OffboardingService`, and the :class:`ScalingService`, then publishes
 the service on :class:`HrStateSlice` so the ``/scaling`` endpoints come alive.
 
-Activating the pipeline starts real auto-hire / auto-prune evaluation, so it
-is OPT-IN behind ``hr.scaling_enabled`` (off by default, baked at startup like
-``eval_loop_cycle_enabled``). Best-effort + idempotent + persistence-gated: an
-already-wired service short-circuits, the disabled gate leaves the service
-absent, and a missing collaborator (no persistence / registry / tracker /
-approval store) leaves the service absent rather than poisoning startup.
+Running a scaling evaluation triggers real auto-hire / auto-prune decisions, so
+it is OPT-IN behind ``hr.scaling_enabled`` (off by default). The service is
+ghost-wired: always constructed when its collaborators exist, and the switch is
+enforced live at the ``/scaling/evaluate`` entrypoint, so toggling it takes
+effect on the next request with no restart. Best-effort + idempotent +
+collaborator-gated: an already-wired service short-circuits, and a missing
+collaborator (no persistence / registry / tracker / approval store) leaves the
+service absent rather than poisoning startup.
 """
 
 from typing import TYPE_CHECKING
@@ -25,9 +27,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import parse_bool
 
 if TYPE_CHECKING:
     # Annotation-only imports: kept out of the module body so this early
@@ -41,7 +40,12 @@ logger = get_logger(__name__)
 
 
 async def wire_scaling(app_state: AppState) -> None:
-    """Construct the scaling + hiring pipeline at boot when opted in.
+    """Construct the scaling + hiring pipeline at boot when collaborators exist.
+
+    Ghost-wired: the pipeline is built whenever its collaborators are present,
+    regardless of ``hr.scaling_enabled``. The switch is enforced live at the
+    ``/scaling/evaluate`` entrypoint, so toggling it takes effect on the next
+    request with no restart.
 
     Args:
         app_state: The application state holding the collaborator slices.
@@ -52,28 +56,16 @@ async def wire_scaling(app_state: AppState) -> None:
     hr = app_state.slice(HrStateSlice)
     if hr.scaling_service is not None:
         return
-    enabled = bool(
-        resolve_init_value(
-            SettingNamespace.HR,
-            "scaling_enabled",
-            parse=parse_bool,
-        ).value
-    )
-    if not enabled:
+    # Ghost-wired: the service is always constructed when its collaborators
+    # exist, regardless of ``hr.scaling_enabled``. The switch is enforced live
+    # at the ``/scaling/evaluate`` entrypoint, so toggling it takes effect on
+    # the next request with no restart. A missing collaborator is routine
+    # (the service simply stays absent and the endpoint 503s), so it logs INFO.
+    if app_state.slice(PersistenceStateSlice).backend is None:
         logger.info(
             API_APP_STARTUP,
             service="scaling",
-            note="disabled (opt-in hr.scaling_enabled); pipeline unwired",
-        )
-        return
-    # Past the enabled gate the operator explicitly opted in, so a missing
-    # prerequisite is a misconfiguration worth a WARNING rather than routine
-    # INFO startup noise (mirrors ``wire_promotion``).
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="scaling",
-            note="hr.scaling_enabled is set but persistence absent; unwired",
+            note="persistence absent; scaling pipeline unwired",
         )
         return
     approval_store = app_state.slice(ApprovalStateSlice).store
@@ -82,10 +74,10 @@ async def wire_scaling(app_state: AppState) -> None:
         or hr.performance_tracker is None
         or approval_store is None
     ):
-        logger.warning(
+        logger.info(
             API_APP_STARTUP,
             service="scaling",
-            note="hr.scaling_enabled is set but a collaborator is absent; unwired",
+            note="a scaling collaborator is absent; pipeline unwired",
             registry_present=hr.agent_registry is not None,
             tracker_present=hr.performance_tracker is not None,
             approval_store_present=approval_store is not None,

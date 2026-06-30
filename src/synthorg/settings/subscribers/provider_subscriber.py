@@ -196,6 +196,13 @@ class ProviderSettingsSubscriber:
                 )
                 return
             self._app_state.swap_provider_registry(new_registry)
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="providers",
+                key="retry_max_attempts",
+                note="provider registry rebuilt and swapped",
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.error(

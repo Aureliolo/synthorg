@@ -43,16 +43,22 @@ validates every citation resolves before the report is emitted."""
 class ResearchConfig(BaseModel):
     """Top-level research-subsystem configuration.
 
-    Disabled by default: the subsystem is wired only when an operator turns
-    it on, mirroring other opt-in subsystems. The discriminators select
+    On by default: the service is ghost-wired at boot whenever a model +
+    provider exist, and the ``research.enabled`` master switch is enforced live
+    per request at the research MCP tools (read from the settings service). The
+    wiring builds this config with ``enabled=True``; the discriminators select
     pluggable strategies via the service factory.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
-        default=False,
-        description="Whether the research subsystem is wired at startup",
+        default=True,
+        description=(
+            "Construction-time gate on the service factory: the wiring always"
+            " sets this ``True`` (the runtime master switch is the live"
+            " settings-service ``research.enabled`` flag at the tools)."
+        ),
     )
     query_planner: QueryPlannerKind = Field(
         default="llm",

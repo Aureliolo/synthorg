@@ -29,6 +29,7 @@ model-refresh scheduler relies on).
 
 import asyncio
 import contextlib
+import math
 from abc import ABC, abstractmethod
 from typing import Final
 
@@ -111,6 +112,17 @@ class AsyncCycleScheduler(ABC):
         self._lifecycle_lock: asyncio.Lock | None = None
         self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._stop_failed: bool = False
+
+    @property
+    def is_running(self) -> bool:
+        """True while the background cycle task is live (started, not drained).
+
+        Reflects an actually-scheduled, not-yet-finished loop task, so a caller
+        can distinguish "started and spinning" from "constructed but never
+        started" or "stopped". Returns ``False`` once ``stop()`` has drained the
+        task or the loop has exited.
+        """
+        return self._task is not None and not self._task.done()
 
     def _lifecycle_primitives_for_current_loop(
         self,
@@ -280,8 +292,33 @@ class AsyncCycleScheduler(ABC):
             else:
                 self._log_cycle_paused()
             try:
-                wait_interval = await self._resolve_wait_interval()
-                await asyncio.wait_for(stop_event.wait(), timeout=wait_interval)
+                interval = await self._resolve_wait_interval()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # A broken interval read must not wedge the loop; log it and
+                # fall back to the construction-time cadence.
+                reraise_critical(exc)
+                logger.warning(
+                    self._failed_event,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="interval_read_failed",
+                )
+                interval = self._interval
+            # Re-apply the constructor's invariant: a live settings value of 0,
+            # a negative, nan, or inf would bypass __init__'s guard and turn the
+            # loop into a hot spin (or break wait_for); fall back to the
+            # construction cadence instead.
+            if not math.isfinite(interval) or interval < MIN_INTERVAL_SECONDS:
+                logger.warning(
+                    self._failed_event,
+                    note="interval_read_invalid",
+                    interval_seconds=interval,
+                )
+                interval = self._interval
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -293,7 +330,8 @@ class AsyncCycleScheduler(ABC):
         Default returns the construction-time ``interval_seconds``. A
         subclass whose cadence is operator-tunable at runtime overrides this
         to re-resolve the interval each tick (fail-safe to the current
-        value) so a change applies without a restart.
+        value) so a change applies without a restart. A raise here is caught
+        by :meth:`_run`, which falls back to ``self._interval``.
 
         Returns:
             The wait interval in seconds for this tick.

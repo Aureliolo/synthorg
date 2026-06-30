@@ -26,13 +26,14 @@ _r.register(
         default="true",
         description=(
             "Master switch for the research subsystem. On by default: the"
-            " service + tool are wired at startup when a research model is"
-            " configured, so agents can run research briefs out of the box."
-            " Read at startup, so a change is restart-required. When off, the"
-            " research service and tool are not wired."
+            " service + tool are ghost-wired at startup whenever a research"
+            " model is configured, and the switch is enforced live per request"
+            " at the research tools, so toggling it takes effect on the next"
+            " call with no restart. When off, the research tools return a"
+            " disabled error."
         ),
         group="General",
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -49,7 +50,7 @@ _r.register(
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -61,12 +62,12 @@ _r.register(
         default="",
         description=(
             "Model identifier the research pipeline uses for its LLM calls."
-            " Must be set (and the subsystem enabled) for research to wire"
-            " at startup."
+            " Must be set for the research service to be wired; a change"
+            " rebuilds and swaps the service live with no restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -79,7 +80,7 @@ _r.register(
         description="Discriminator selecting the query-planning strategy.",
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -96,7 +97,7 @@ _r.register(
         ),
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -113,7 +114,7 @@ _r.register(
         ),
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -127,7 +128,7 @@ _r.register(
         description="Discriminator selecting the synthesis strategy.",
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -146,7 +147,7 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=1,
         max_value=100,
     )
@@ -166,7 +167,7 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=0.0,
         max_value=1.0,
     )
@@ -186,7 +187,7 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=0.1,
         max_value=1.0,
     )
@@ -205,7 +206,7 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=1,
         max_value=200,
     )

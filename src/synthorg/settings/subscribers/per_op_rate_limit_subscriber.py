@@ -178,6 +178,12 @@ class PerOpRateLimitSettingsSubscriber:
             )
             raise
         self._app_state.per_op_limits.swap_rate_limit_config(new_config)
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            trigger_key=trigger_key,
+            note="per-op rate-limit config rebuilt and swapped",
+        )
 
     async def _rebuild_concurrency_config(self, trigger_key: str) -> None:
         """Rebuild ``PerOpConcurrencyConfig`` and swap into AppState."""
@@ -207,6 +213,12 @@ class PerOpRateLimitSettingsSubscriber:
             )
             raise
         self._app_state.per_op_limits.swap_concurrency_config(new_config)
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            trigger_key=trigger_key,
+            note="per-op concurrency config rebuilt and swapped",
+        )
 
     async def _read_bool(self, key: str) -> bool:
         """Read a boolean setting, rejecting anything but ``"true"``/``"false"``.

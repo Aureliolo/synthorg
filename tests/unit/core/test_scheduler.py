@@ -174,3 +174,116 @@ async def test_rejects_non_positive_drain_timeout() -> None:
     """A non-positive drain timeout is rejected at construction."""
     with pytest.raises(ValueError, match="drain_timeout_seconds must be positive"):
         _CountingScheduler(drain_timeout_seconds=0)
+
+
+async def test_resolve_wait_interval_defaults_to_construction_interval() -> None:
+    """The base hook returns the construction-time interval."""
+    scheduler = _CountingScheduler(interval_seconds=123.0)
+    assert await scheduler._resolve_wait_interval() == 123.0
+
+
+class _IntervalSpyScheduler(_CountingScheduler):
+    """Signals each per-tick interval re-read so the loop can be observed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.interval_read = asyncio.Event()
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        self.interval_read.set()
+        return 60.0
+
+
+async def test_resolve_wait_interval_re_read_each_tick() -> None:
+    """The loop re-reads the interval per tick, so a change applies live."""
+    scheduler = _IntervalSpyScheduler()
+    await scheduler.start()
+    try:
+        await asyncio.wait_for(scheduler.interval_read.wait(), timeout=5.0)
+        # The first interval read fired; prove the loop is still alive (now
+        # sleeping until the next tick) rather than having resolved the interval
+        # exactly once and exited.
+        assert scheduler.is_running
+    finally:
+        # Always drain the live background task, even if the wait or assertion
+        # above fails, so a failure never leaks the task into async teardown.
+        await scheduler.stop()
+
+
+class _RaisingIntervalScheduler(_CountingScheduler):
+    """Raises from the interval re-read to exercise the loop's fallback."""
+
+    def __init__(self) -> None:
+        super().__init__(interval_seconds=60.0)
+        self.interval_calls = 0
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        self.interval_calls += 1
+        msg = "resolver outage"
+        raise RuntimeError(msg)
+
+
+async def test_interval_resolution_failure_falls_back_and_continues() -> None:
+    """A raising interval re-read does not kill the loop.
+
+    The base ``_run`` logs and falls back to the construction interval, so a
+    transient resolver outage cannot stop the scheduler mid-flight; the cycle
+    (which runs before the interval read) still completes.
+    """
+    scheduler = _RaisingIntervalScheduler()
+    await scheduler.start()
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+        # The raising interval read must not kill the loop: after the cycle ran
+        # and the read raised, the task is still alive (fell back to the
+        # construction interval and is now sleeping), so a regression that let
+        # the raise unwind the task fails here.
+        assert scheduler.is_running
+    finally:
+        # Always drain the live background task, even if the wait or assertion
+        # above fails, so a failure never leaks the task into async teardown.
+        await scheduler.stop()
+
+    assert scheduler.cycles >= 1
+    assert scheduler.interval_calls >= 1
+
+
+class _InvalidIntervalScheduler(_CountingScheduler):
+    """Returns a sub-minimum interval to exercise the invariant re-check."""
+
+    def __init__(self, *, bad_interval: float) -> None:
+        super().__init__(interval_seconds=60.0)
+        self._bad_interval = bad_interval
+        self.interval_calls = 0
+
+    @override
+    async def _resolve_wait_interval(self) -> float:
+        self.interval_calls += 1
+        return self._bad_interval
+
+
+@pytest.mark.parametrize(
+    "bad_interval",
+    [0.0, -1.0, float("nan"), float("inf"), 5.0],
+    ids=["zero", "negative", "nan", "inf", "below_minimum"],
+)
+async def test_invalid_interval_falls_back_and_continues(bad_interval: float) -> None:
+    """A live interval below the minimum (or non-finite) does not wedge the loop.
+
+    ``__init__`` rejects such values, but the per-tick re-read bypasses that
+    guard; the loop must re-apply the invariant and fall back to the
+    construction cadence instead of hot-spinning on ``timeout=0`` / breaking
+    ``wait_for`` on ``nan`` / ``inf``.
+    """
+    scheduler = _InvalidIntervalScheduler(bad_interval=bad_interval)
+    await scheduler.start()
+    try:
+        await asyncio.wait_for(scheduler.ran.wait(), timeout=5.0)
+        assert scheduler.is_running
+    finally:
+        await scheduler.stop()
+
+    assert scheduler.cycles >= 1
+    assert scheduler.interval_calls >= 1

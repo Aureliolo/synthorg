@@ -13,7 +13,10 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
+from synthorg.observability.events.settings import (
+    SETTINGS_SERVICE_SWAP_FAILED,
+    SETTINGS_SUBSCRIBER_NOTIFIED,
+)
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.service import SettingsService
 
@@ -83,7 +86,7 @@ class SecurityTimeoutSettingsSubscriber:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 exc,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
@@ -96,7 +99,7 @@ class SecurityTimeoutSettingsSubscriber:
             interval = float(result.value)
         except (ValueError, TypeError) as exc:
             logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,
@@ -111,7 +114,7 @@ class SecurityTimeoutSettingsSubscriber:
             self._scheduler.reschedule(interval)
         except ValueError as exc:
             logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,

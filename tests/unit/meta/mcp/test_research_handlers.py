@@ -2,6 +2,8 @@
 
 import json
 from datetime import UTC, datetime
+from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,8 +16,9 @@ from synthorg.research.config import ResearchConfig
 from synthorg.research.factory import build_research_service
 from synthorg.research.service import ResearchService
 from synthorg.research.state import ResearchStateSlice
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.web.web_search import SearchResult
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, make_app_state, mock_of
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.research._fakes import (
     FakeWebSearchProvider,
@@ -26,6 +29,20 @@ from tests.unit.research._fakes import (
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 22, tzinfo=UTC)
+
+
+def _resolver(*, enabled: bool = True) -> ConfigResolver:
+    """A config resolver whose ``research.enabled`` resolves to *enabled*."""
+
+    async def _get_bool(namespace: str, key: str) -> bool:
+        assert (namespace, key) == ("research", "enabled")
+        return enabled
+
+    return cast(
+        "ConfigResolver",
+        mock_of[ConfigResolver](get_bool=AsyncMock(side_effect=_get_bool)),
+    )
+
 
 _PLAN = json.dumps(
     {
@@ -88,6 +105,7 @@ def _service() -> ResearchService:
 async def test_run_returns_cited_report() -> None:
     app_state = make_app_state(
         clock=FakeClock(start=_NOW),
+        config_resolver=_resolver(enabled=True),
         slices={ResearchStateSlice: {"service": _service()}},
     )
     result = await _research_run(
@@ -101,7 +119,7 @@ async def test_run_returns_cited_report() -> None:
 
 
 async def test_run_503_when_service_absent() -> None:
-    app_state = make_app_state()
+    app_state = make_app_state(config_resolver=_resolver(enabled=True))
     result = await _research_run(
         app_state=app_state,
         arguments={"question": "what are widgets?"},
@@ -110,8 +128,25 @@ async def test_run_503_when_service_absent() -> None:
     assert body["status"] == "error"
 
 
+async def test_run_503_when_disabled_in_settings() -> None:
+    """The live gate 503s a wired service when research.enabled=false."""
+    app_state = make_app_state(
+        clock=FakeClock(start=_NOW),
+        config_resolver=_resolver(enabled=False),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
+    result = await _research_run(
+        app_state=app_state,
+        arguments={"question": "what are widgets?", "include_knowledge": False},
+    )
+    _assert_feature_gate_503(result)
+
+
 async def test_get_missing_returns_error() -> None:
-    app_state = make_app_state(slices={ResearchStateSlice: {"service": _service()}})
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=True),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
     result = await _research_get(
         app_state=app_state, arguments={"run_id": "does-not-exist"}
     )
@@ -120,8 +155,47 @@ async def test_get_missing_returns_error() -> None:
 
 
 async def test_list_returns_empty_initially() -> None:
-    app_state = make_app_state(slices={ResearchStateSlice: {"service": _service()}})
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=True),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
     result = await _research_list(app_state=app_state, arguments={})
     body = json.loads(result)
     assert body["status"] == "ok"
     assert body["data"] == []
+
+
+async def test_get_503_when_disabled_in_settings() -> None:
+    """The read handler 503s a wired service when research.enabled=false."""
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
+    result = await _research_get(
+        app_state=app_state, arguments={"run_id": "does-not-exist"}
+    )
+    _assert_feature_gate_503(result)
+
+
+async def test_list_503_when_disabled_in_settings() -> None:
+    """The list handler 503s a wired service when research.enabled=false."""
+    app_state = make_app_state(
+        config_resolver=_resolver(enabled=False),
+        slices={ResearchStateSlice: {"service": _service()}},
+    )
+    result = await _research_list(app_state=app_state, arguments={})
+    _assert_feature_gate_503(result)
+
+
+def _assert_feature_gate_503(result: str) -> None:
+    """Assert the envelope is the live-gate service-unavailable (503) rejection.
+
+    The service is wired in these tests, so the only ``ServiceUnavailableError``
+    path is the feature gate; its message says the capability is *disabled*
+    (distinct from the unwired-service message), which pins the 503 live-gate
+    contract rather than accepting any generic handler error.
+    """
+    body = json.loads(result)
+    assert body["status"] == "error"
+    assert body["error_type"] == "ServiceUnavailableError"
+    assert "disabled" in body["message"]

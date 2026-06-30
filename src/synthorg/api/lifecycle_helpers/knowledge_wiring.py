@@ -36,29 +36,58 @@ async def wire_knowledge_engine(
     *,
     provider_registry: ProviderRegistry | None,
 ) -> None:
-    """Wire the knowledge + provenance substrate once persistence + memory exist."""
+    """Wire the knowledge + provenance substrate once persistence + memory exist.
+
+    Idempotent for re-entered lifespans: returns early when the service is
+    already wired. The substrate is ghost-wired: it builds regardless of
+    ``knowledge.enabled``, which is enforced live per request at the knowledge
+    MCP handlers, so an operator toggling it takes effect with no restart.
+    """
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
-    from synthorg.memory.state import (  # noqa: PLC0415
-        MemoryStateSlice,
-        memory_backend_of,
-    )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
-        persistence_of,
     )
 
     if app_state.slice(PersistenceStateSlice).backend is None:
         return
     if app_state.slice(KnowledgeStateSlice).service is not None:
         return
+    await _build_and_wire_knowledge(app_state, provider_registry=provider_registry)
+
+
+async def _build_and_wire_knowledge(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    synthesis_failure_event: str = API_APP_STARTUP,
+) -> None:
+    """Build the knowledge substrate + synthesis arm and swap it onto the slice.
+
+    Unconditionally rebuilds and swaps, so a settings subscriber can re-run it
+    to pick up a new synthesis model / provider / strategy. No-op (logs +
+    returns) when the memory backend is absent; RAISES ``ServiceUnavailableError``
+    when persistence is absent (the boot caller pre-gates on persistence; the
+    settings subscriber surfaces that as a logged rebuild failure). The
+    ``knowledge.enabled`` and ``knowledge.synthesis_enabled`` switches are NOT
+    consulted here: they are enforced live at the handlers / ``/ask`` gate.
+
+    Args:
+        app_state: The application state holding the slices + swap surface.
+        provider_registry: Provider registry for the synthesis arm.
+        synthesis_failure_event: Event the synthesis-build failure logs under.
+            Defaults to ``API_APP_STARTUP`` (boot); the settings subscriber
+            passes ``SETTINGS_SERVICE_SWAP_FAILED`` so an operator-triggered
+            synthesis-config change that breaks the build surfaces as a settings
+            failure rather than a misleading startup log.
+    """
+    from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
+    from synthorg.memory.state import (  # noqa: PLC0415
+        MemoryStateSlice,
+        memory_backend_of,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
     config = app_state.config.knowledge
-    if not config.enabled:
-        logger.info(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="knowledge substrate disabled (knowledge.enabled=false); skipped",
-        )
-        return
     if app_state.slice(MemoryStateSlice).backend is None:
         logger.info(
             API_APP_STARTUP,
@@ -80,7 +109,7 @@ async def wire_knowledge_engine(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; synthesis is optional
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
+            synthesis_failure_event,
             service="knowledge_engine",
             note="synthesis build failed; retrieval-only",
             error_type=type(exc).__name__,
@@ -129,11 +158,13 @@ async def _maybe_build_knowledge_synthesizer(
     *,
     provider_registry: ProviderRegistry | None,
 ) -> Synthesizer | None:
-    """Build the knowledge synthesiser when enabled + a model is configured.
+    """Build the knowledge synthesiser when a model + provider are configured.
 
-    Returns ``None`` (logged) when settings are unavailable, synthesis is
-    disabled, no model is set, or no usable provider is registered, so the
-    substrate degrades to retrieval-only.
+    Ghost-wired: the synthesiser is built whenever a model + usable provider
+    exist, regardless of ``knowledge.synthesis_enabled`` (enforced live at the
+    ``/ask`` gate). Returns ``None`` (logged) when settings are unavailable, no
+    model is set, or no usable provider is registered, so the substrate degrades
+    to retrieval-only.
 
     Returns:
         A wired synthesiser, or ``None`` when synthesis is not configured.
@@ -142,7 +173,6 @@ async def _maybe_build_knowledge_synthesizer(
     from synthorg.knowledge.synthesis.factory import (  # noqa: PLC0415
         build_knowledge_synthesizer,
     )
-    from synthorg.settings.mirrors import parse_bool  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     runtime_settings = app_state.slice(SettingsStateSlice).settings_service
@@ -153,15 +183,12 @@ async def _maybe_build_knowledge_synthesizer(
             note="settings service or provider registry unavailable; retrieval-only",
         )
         return None
-    enabled = parse_bool(
-        (await runtime_settings.get("knowledge", "synthesis_enabled")).value
-    )
     model = (await runtime_settings.get("knowledge", "synthesis_model")).value.strip()
-    if not enabled or not model:
+    if not model:
         logger.info(
             API_APP_STARTUP,
             service="knowledge_engine",
-            note="synthesis disabled or model unset; retrieval-only",
+            note="synthesis model unset; retrieval-only",
         )
         return None
     provider_name = (

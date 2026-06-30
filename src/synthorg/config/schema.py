@@ -134,7 +134,8 @@ class RootConfig(BaseModel):
         coordination: Multi-agent coordination configuration.
         stagnation: Intra-loop stagnation detection selector and sub-configs.
         strategy: Strategy and trendslop mitigation configuration.
-        knowledge: Knowledge-substrate configuration (opt-in, off by default).
+        knowledge: Knowledge-substrate configuration (on by default; disabled at
+            runtime via the settings-service ``knowledge.enabled`` flag).
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
@@ -306,7 +307,10 @@ class RootConfig(BaseModel):
     )
     knowledge: KnowledgeConfig = Field(
         default_factory=KnowledgeConfig,
-        description="Knowledge-substrate configuration (opt-in, off by default)",
+        description=(
+            "Knowledge-substrate configuration (on by default; disabled at"
+            " runtime via the settings-service knowledge.enabled flag)"
+        ),
     )
     git_clone: GitCloneNetworkPolicy = Field(
         default_factory=GitCloneNetworkPolicy,

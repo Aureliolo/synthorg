@@ -260,6 +260,21 @@ async def install_runtime_services(
     # the whole startup.
     _try_wire_environment_service(app_state)
 
+    # Re-resolve the client-simulation runtime from the settings DB BEFORE
+    # building the runtime services: ``build_runtime_services`` assembles the
+    # coordinator, which captures the simulation intake/review components during
+    # construction. Construction read only env/default, so a DB override of
+    # intake_strategy / model / project / review pipeline must be applied here
+    # first or the coordinator would pin the pre-override components while the
+    # entry adapters read the newly swapped state.
+    from synthorg.client.runtime_builder import (  # noqa: PLC0415
+        reload_client_simulation_runtime,
+    )
+    from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
+
+    if has_simulation_runtime(app_state):
+        await reload_client_simulation_runtime(app_state)
+
     try:
         services = await build_runtime_services(
             app_state,
@@ -337,6 +352,9 @@ async def install_runtime_services(
         wire_real_task_board_entry,
     )
 
+    # The client-simulation runtime was re-resolved from the settings DB before
+    # the runtime services were built (above), so the coordinator captured the
+    # DB-backed intake/review components; attach the real work-entry adapters.
     await wire_real_intake_entry(app_state)
     await wire_real_objective_entry(app_state)
     await wire_real_task_board_entry(app_state)

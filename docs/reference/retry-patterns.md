@@ -1,6 +1,6 @@
 # Retry Patterns
 
-Three retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all three would either obscure the semantics or expose so many knobs that the abstraction is worse than three small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
+Four retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all four would either obscure the semantics or expose so many knobs that the abstraction is worse than four small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
 
 The canonical helper for transient-I/O backoff is `synthorg.core.resilience.GeneralRetryHandler`; its module docstring carries the same carve-out list mirrored here, so a developer reading the helper sees the same boundaries.
 
@@ -60,6 +60,17 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 - `scripts/check_image_signatures.py` `_request_with_retry`: bounded retry on the token-mint and tag->digest HEAD against GHCR (transient network error + 5xx retried, 4xx returned immediately). A standalone CI gate that cannot import `synthorg.core`.
 - `scripts/check_image_signatures.py` `signature_present`: eventual-consistency poll for a freshly-published cosign referrer tag (retries both a transient network error and a propagation-window 404, on its own short `SIG_PROPAGATION_*` budget; a persistent non-404 registry error raises rather than reporting a false "unsigned" verdict). Same CI-script context.
 
+## Pattern D -- Long-lived consumer poll loops
+
+**When**: an unbounded background consumer that repeatedly polls a message-bus channel for the life of the process. This is not a bounded-attempt retry of a single operation (Pattern A): there is no "budget" to exhaust because the loop's job is to run until the app shuts down. A transient poll error must not tear the consumer down, so the loop logs the error, sleeps a bounded backoff, and continues; a separate `consecutive_errors` ceiling breaks the loop (channel-dead) so a genuinely dead channel does not spin forever.
+
+**How**: an inline `while not stopped` poll loop with a constant error-backoff `asyncio.sleep` and a `consecutive_errors` counter that `break`s past a ceiling. `GeneralRetryHandler` is the wrong tool: it wraps one operation in a finite attempt budget and re-raises when the budget is spent, whereas a consumer loop must survive an unbounded number of transient errors and only stop on the dead-channel ceiling or a shutdown signal. Forcing this through Pattern A would either drop the consumer on the first error-budget exhaustion or require an infinite `attempts`, which the helper is not built for.
+
+**Sites**:
+
+- `src/synthorg/settings/dispatcher.py` `SettingsChangeDispatcher._poll_loop`: polls the settings-change channel; a poll error backs off `_ERROR_BACKOFF` and continues, breaking only when `consecutive_errors` hits the channel-dead ceiling.
+- `src/synthorg/api/bus_bridge.py` the per-channel bridge poll loop: polls a bus channel to fan WebSocket events out; a poll error backs off `poll_timeout` and continues, breaking on the same consecutive-error ceiling.
+
 ## Decision tree
 
 | If your loop is...                                                  | Reach for                            |
@@ -68,7 +79,8 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | LLM re-prompted with prior-attempt context, no sleep                | Inline loop (Pattern B)              |
 | CAS / version-race retry that branches on driver constraint name    | Inline loop (Pattern C/CAS)          |
 | Sync code in a stdlib `logging.Handler` thread, or a `scripts/` CI gate that cannot import `synthorg.core` | Inline loop (Pattern C/Sync)         |
-| None of the above                                                   | Stop and ask before adding a fourth family |
+| Unbounded background consumer polling a bus channel for the process lifetime | Inline poll loop (Pattern D)         |
+| None of the above                                                   | Stop and ask before adding a fifth family |
 
 ## Adding a new retry site
 

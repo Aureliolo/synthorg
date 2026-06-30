@@ -228,15 +228,25 @@ of `InternalReviewStage`) during app construction whenever a
 `/simulations` + `/requests` controllers register. The strategy is
 selected from the `simulations` settings namespace
 (`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`,
-`intake_default_project`) via the bootstrap resolver (env >
-registered default); the choices are baked in at startup
-(`read_only_post_init`). `intake_default_project` is the project the
-intake strategy files tasks into and the real work-entry adapter
-stamps on the work item (see [Real work-entry path](#real-work-entry-path)). The default `direct` strategy
-makes no LLM calls, so the runtime comes online for an empty company.
-A selected `agent` strategy that cannot be satisfied (no provider or
-no model) degrades to `direct` with a warning rather than failing
-boot.
+`intake_default_project`, `review_pipeline_strategy`): construction
+reads them via the bootstrap resolver (env > registered default)
+because `ConfigResolver` is not wired yet, but these four keys are
+hot (`restart_required=False`, not `read_only_post_init`). An
+on-startup hook re-resolves them from the settings DB once the
+resolver is wired, and the `SimulationsSettingsSubscriber` rebuilds
+the simulation runtime via `reload_runtime_services` on any change,
+so a strategy / model / project / review-pipeline change applies with
+no restart. The rebuild swaps only the config-driven intake engine +
+review pipeline onto the existing `ClientSimulationState` (via
+`dataclasses.replace`), preserving the live client pool and the
+request / simulation / feedback stores so in-flight work is never
+discarded. `intake_default_project` is the project the intake
+strategy files tasks into and the real work-entry adapter stamps on
+the work item (see [Real work-entry path](#real-work-entry-path)). The
+default `direct` strategy makes no LLM calls, so the runtime comes
+online for an empty company. A selected `agent` strategy that cannot
+be satisfied (no provider or no model) degrades to `direct` with a
+warning rather than failing boot.
 
 ### Real work-entry path
 
@@ -276,10 +286,11 @@ boot + post-setup hot-swap shape as the intake helper, minus the
 project bootstrap since board filings carry their own project) and
 attached to the `AppState.task_board_entry_adapter` seam.
 
-The `simulations.intake_default_project` setting (env >
-registered default, baked in at startup) names the project the
-intake strategy files tasks into and the adapter stamps on the work
-item; that project is created at startup if absent so the pipeline's
+The `simulations.intake_default_project` setting (DB > env >
+registered default, hot) names the project the intake strategy files
+tasks into and the adapter stamps on the work item; `wire_real_intake_entry`
+re-reads it live from the settings resolver whenever the adapter is
+(re)wired, and that project is created if absent so the pipeline's
 project-existence check and the created task agree.
 
 ---

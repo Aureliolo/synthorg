@@ -257,12 +257,15 @@ output (not ingested corpus text), so the SEC-1 wrap applies to the input chunks
 (as in search) and, defensively, to the answer fields when returned over MCP.
 
 Synthesis is **on by default (opt-out)** but functionally gated on a configured
-model: it is wired at startup only when `knowledge.synthesis_enabled` is true
-AND a `knowledge.synthesis_model` is set AND a provider is registered. Absent
-any of these the substrate stays retrieval-only and the `ask` surface raises
-`KnowledgeSynthesisUnavailableError` (503). The build is best-effort: a bad
-setting value or unknown strategy degrades to retrieval-only rather than
-poisoning startup. The synthesis model is knowledge's own (distinct from the
+model: the synthesiser is **ghost-wired at startup whenever a
+`knowledge.synthesis_model` is set AND a provider is registered** (startup wiring
+does NOT consult `knowledge.synthesis_enabled`), and `knowledge.synthesis_enabled`
+is enforced **live at the `ask` entrypoint** so toggling it takes effect with no
+restart. Absent a model or provider the substrate stays retrieval-only and the
+`ask` surface raises `KnowledgeSynthesisUnavailableError` (503); when
+`synthesis_enabled` is off the live `ask` gate 503s even though the synthesiser is
+wired. The build is best-effort: a bad setting value or unknown strategy degrades
+to retrieval-only rather than poisoning startup. The synthesis model is knowledge's own (distinct from the
 embedding model, which powers retrieval, and from decomposition).
 
 ## Freshness and invalidation
@@ -343,17 +346,25 @@ MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
 ## Configuration
 
-`KnowledgeConfig` (frozen) defaults to `enabled=False` until setup wires it.
-It carries the `pdf_loader` and `code_chunker` discriminators (defaults
-`pdfplumber` / `tree_sitter`).
+The substrate is on by default. It is ghost-wired at boot whenever persistence
+and a memory backend exist, and the `knowledge.enabled` master switch (Cat-1,
+default `true`) is enforced live per request at the knowledge MCP handlers, so
+toggling it over the settings API takes effect with no restart. `KnowledgeConfig`
+(frozen) carries the `pdf_loader` and `code_chunker` discriminators (defaults
+`pdfplumber` / `tree_sitter`); its `enabled` field is retained for schema
+back-compatibility but is not the runtime gate.
 
 The generative-RAG `ask` surface is governed by the `knowledge` settings
 namespace (Cat-1, runtime-readable over the settings API so the wizard and
-dashboard can toggle it): `synthesis_enabled` (bool, default true),
-`synthesis_model` (str, default blank; must be set for `ask` to wire),
-`synthesis_provider` (str, blank selects the first registered provider),
-`synthesis_synthesizer` (strategy discriminator, default `llm`), and
-`synthesis_max_chunks` (int, top hits fed to the synthesiser). Chunk budgets and
+dashboard can toggle it), all hot (`restart_required=False`): `synthesis_enabled`
+(bool, default true; live-gated at the `ask` entrypoint), `synthesis_model` (str,
+default blank; must be set for `ask` to answer), `synthesis_provider` (str, blank
+selects the first registered provider), `synthesis_synthesizer` (strategy
+discriminator, default `llm`), and `synthesis_max_chunks` (int, top hits fed to
+the synthesiser). The synthesiser is ghost-wired whenever a model + provider
+exist, and a `KnowledgeSettingsSubscriber` rebuilds and swaps it on any
+`synthesis_model` / `synthesis_provider` / `synthesis_synthesizer` /
+`synthesis_max_chunks` change with no restart. Chunk budgets and
 namespace/tag constants live in `knowledge/constants.py` as module-level
 `Final` values because they are part of the on-disk plus RAG-index contract: a
 runtime change would silently invalidate previously indexed chunks (the same

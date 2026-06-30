@@ -24,6 +24,9 @@ from synthorg.settings.subscribers.escalation_reconnect_subscriber import (
 from synthorg.settings.subscribers.event_stream_history_subscriber import (
     EventStreamHistorySettingsSubscriber,
 )
+from synthorg.settings.subscribers.knowledge_subscriber import (
+    KnowledgeSettingsSubscriber,
+)
 from synthorg.settings.subscribers.memory_bridge_subscriber import (
     MemoryBridgeSettingsSubscriber,
 )
@@ -51,6 +54,9 @@ from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
+from synthorg.settings.subscribers.research_subscriber import (
+    ResearchSettingsSubscriber,
+)
 from synthorg.settings.subscribers.runtime_reload_subscriber import (
     RuntimeReloadSettingsSubscriber,
 )
@@ -59,6 +65,9 @@ from synthorg.settings.subscribers.security_bridge_subscriber import (
 )
 from synthorg.settings.subscribers.security_timeout_subscriber import (
     SecurityTimeoutSettingsSubscriber,
+)
+from synthorg.settings.subscribers.simulations_subscriber import (
+    SimulationsSettingsSubscriber,
 )
 from synthorg.settings.subscribers.timeout_enforcement_subscriber import (
     EngineTimeoutEnforcementSettingsSubscriber,
@@ -83,6 +92,7 @@ __all__ = [
     "EngineTimeoutEnforcementSettingsSubscriber",
     "EscalationReconnectSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",
+    "KnowledgeSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
     "MemorySettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",
@@ -92,9 +102,11 @@ __all__ = [
     "ObservabilitySettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
+    "ResearchSettingsSubscriber",
     "RuntimeReloadSettingsSubscriber",
     "SecurityBridgeSettingsSubscriber",
     "SecurityTimeoutSettingsSubscriber",
+    "SimulationsSettingsSubscriber",
     "ToolsBridgeSettingsSubscriber",
     "WorkersBridgeSettingsSubscriber",
     "WsAuthLimitsSettingsSubscriber",

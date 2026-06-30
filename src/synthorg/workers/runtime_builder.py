@@ -489,6 +489,13 @@ async def reload_runtime_services(app_state: AppState) -> None:
             so the caller decides whether a failure is fatal (setup
             reinit) or best-effort (MCP reload).
     """
+    from synthorg.client.runtime_builder import (  # noqa: PLC0415
+        reload_client_simulation_runtime,
+    )
+    from synthorg.client.state import (  # noqa: PLC0415
+        ClientStateSlice,
+        has_simulation_runtime,
+    )
     from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
         wire_real_intake_entry,
         wire_real_objective_entry,
@@ -499,21 +506,74 @@ async def reload_runtime_services(app_state: AppState) -> None:
     )
 
     async with _RUNTIME_RELOAD_LOCK:
-        services = await build_runtime_services(
-            app_state,
-            workspace_root=agent_workspace_root_of(app_state),
+        # Rebuild the client-simulation state from the live settings DB BEFORE
+        # the coordinator: the coordinator captures the intake engine at
+        # assembly, so the state must reflect the latest intake_strategy /
+        # model / review pipeline first. ``reload_client_simulation_runtime``
+        # commits the new state into AppState eagerly, so capture the live state
+        # first to roll it back if the coordinator rebuild then fails: otherwise
+        # the new simulation state would stay live against the still-wired old
+        # coordinator, diverging on which intake engine each uses. Only when a
+        # simulation runtime was composed at boot (a TaskEngine was present);
+        # otherwise there is nothing to refresh.
+        sim_present = has_simulation_runtime(app_state)
+        previous_sim_state = (
+            app_state.slice(ClientStateSlice).simulation_state if sim_present else None
         )
+        coordinator_swapped = False
         try:
+            if sim_present:
+                await reload_client_simulation_runtime(app_state)
+            services = await build_runtime_services(
+                app_state,
+                workspace_root=agent_workspace_root_of(app_state),
+            )
             app_state.swap_worker_execution_service(services.worker_execution_service)
             if services.coordinator is not None:
                 app_state.swap_coordinator(services.coordinator)
+                coordinator_swapped = True
+            else:
+                # No provider on this rebuild: unwire the stale coordinator so
+                # /coordinate goes offline instead of routing through an engine
+                # for a provider that is gone.
+                app_state.clear_coordinator()
             if services.work_pipeline is not None:
                 app_state.swap_work_pipeline(services.work_pipeline)
+            else:
+                # Clear the stale spine so the entry adapters below resolve it as
+                # absent and uninstall themselves (they captured it by
+                # reference, so skipping the swap alone leaves them routing
+                # through the dead pipeline).
+                app_state.clear_work_pipeline()
+            # No new coordinator (the documented no-provider success path returns
+            # ``coordinator=None`` without raising): the previously wired
+            # coordinator, if any, keeps the old intake engine, so revert the
+            # eagerly-committed simulation state to stay paired with it BEFORE the
+            # intake adapters read it. Mirrors the except-block rollback; only a
+            # swapped-in new coordinator (which captured the new intake engine)
+            # makes the new simulation state the consistent pairing.
+            if (
+                sim_present
+                and previous_sim_state is not None
+                and not coordinator_swapped
+            ):
+                app_state.wire(ClientStateSlice, simulation_state=previous_sim_state)
             await wire_real_intake_entry(app_state, hot_swap=True)
             await wire_real_objective_entry(app_state, hot_swap=True)
             await wire_real_task_board_entry(app_state, hot_swap=True)
         except Exception as exc:
             reraise_critical(exc)
+            # Roll back the eagerly-committed simulation state while no new
+            # coordinator was swapped in (same condition as the success path
+            # above): a swapped-in coordinator has already captured the new
+            # intake engine, so the new simulation state is then the consistent
+            # pairing and must stay.
+            if (
+                sim_present
+                and previous_sim_state is not None
+                and not coordinator_swapped
+            ):
+                app_state.wire(ClientStateSlice, simulation_state=previous_sim_state)
             logger.error(
                 WORKERS_RUNTIME_HOT_SWAP_FAILED,
                 error_type=type(exc).__name__,

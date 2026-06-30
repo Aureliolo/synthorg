@@ -77,6 +77,47 @@ def _require_service(app_state: AppState) -> KnowledgeService:
     return svc
 
 
+async def _require_enabled_service(
+    app_state: AppState,
+    *,
+    require_synthesis: bool = False,
+) -> KnowledgeService:
+    """Live-gate the knowledge substrate, then return the wired service.
+
+    The substrate is ghost-wired at startup (built whenever persistence + a
+    memory backend exist), so the ``knowledge.enabled`` master switch is
+    enforced here per request: toggling it in settings takes effect on the
+    next call with no restart. The grounded-answer ``/ask`` capability is
+    additionally gated on ``knowledge.synthesis_enabled`` when
+    *require_synthesis* is set, so disabling synthesis 503s ``ask`` while
+    search / ingest / list / get / reindex / delete stay live.
+
+    Args:
+        app_state: The application state (carries the config resolver + slice).
+        require_synthesis: Also require ``knowledge.synthesis_enabled``.
+
+    Returns:
+        The wired knowledge service when the gates pass.
+
+    Raises:
+        ServiceUnavailableError: When a gated flag resolves to ``False`` or the
+            service is not wired.
+    """
+    from synthorg.settings.feature_gate import ensure_feature_enabled  # noqa: PLC0415
+
+    await ensure_feature_enabled(
+        app_state, "knowledge", "enabled", feature_label="Knowledge"
+    )
+    if require_synthesis:
+        await ensure_feature_enabled(
+            app_state,
+            "knowledge",
+            "synthesis_enabled",
+            feature_label="Knowledge answer synthesis",
+        )
+    return _require_service(app_state)
+
+
 def _hit_dict(hit: KnowledgeHit) -> dict[str, object]:
     """Serialise a hit, wrapping the untrusted chunk text.
 
@@ -117,7 +158,7 @@ async def _knowledge_search(
 ) -> str:
     """Return knowledge search."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         search_args = typed_args(arguments, KnowledgeSearchArgs)
         hits = await svc.search(
             query=search_args.query,
@@ -143,7 +184,7 @@ async def _knowledge_ask(
 ) -> str:
     """Return a grounded, citation-bound answer over the corpus."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state, require_synthesis=True)
         ask_args = typed_args(arguments, KnowledgeAskArgs)
         answer = await svc.ask(
             query=ask_args.query,
@@ -170,7 +211,7 @@ async def _knowledge_ingest(
     """Return knowledge ingest."""
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         args = typed_args(arguments, KnowledgeIngestArgs)
         source = await svc.ingest(
             source_type=args.source_type,
@@ -207,7 +248,7 @@ async def _knowledge_reindex(
     """Return knowledge reindex."""
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         source_id = typed_args(arguments, KnowledgeReindexArgs).source_id
         source = await svc.reindex(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_REINDEX)
@@ -241,7 +282,7 @@ async def _knowledge_list(
 ) -> str:
     """Return knowledge list."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         list_args = typed_args(arguments, KnowledgeListArgs)
         sources = await svc.list_sources(
             project_id=list_args.project_id,
@@ -269,7 +310,7 @@ async def _knowledge_get(
 ) -> str:
     """Return knowledge get."""
     try:
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         source_id = typed_args(arguments, KnowledgeGetArgs).source_id
         source = await svc.get_source(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_GET)
@@ -295,7 +336,7 @@ async def _knowledge_delete(
     """Return knowledge delete."""
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        svc = _require_service(app_state)
+        svc = await _require_enabled_service(app_state)
         source_id = typed_args(arguments, KnowledgeDeleteArgs).source_id
         deleted = await svc.delete_source(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DELETE)

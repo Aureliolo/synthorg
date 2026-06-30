@@ -4,7 +4,10 @@ from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, log_exception_redacted
-from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
+from synthorg.observability.events.settings import (
+    SETTINGS_SERVICE_SWAP_FAILED,
+    SETTINGS_SUBSCRIBER_NOTIFIED,
+)
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -99,7 +102,7 @@ class BackupSettingsSubscriber:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
@@ -125,7 +128,7 @@ class BackupSettingsSubscriber:
                 # still records the failure.
                 log_exception_redacted(
                     logger,
-                    SETTINGS_SUBSCRIBER_NOTIFIED,
+                    SETTINGS_SERVICE_SWAP_FAILED,
                     exc,
                     subscriber=self.subscriber_name,
                     namespace="backup",
@@ -158,7 +161,7 @@ class BackupSettingsSubscriber:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
@@ -176,7 +179,20 @@ class BackupSettingsSubscriber:
                 note="blank path ignored",
             )
             return
-        await self._backup_service.set_backup_path(path)
+        try:
+            await self._backup_service.set_backup_path(path)
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SETTINGS_SERVICE_SWAP_FAILED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="path",
+                note="set_backup_path() failed",
+            )
+            raise
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
@@ -193,7 +209,7 @@ class BackupSettingsSubscriber:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
@@ -207,7 +223,7 @@ class BackupSettingsSubscriber:
             hours = int(result.value)
         except ValueError, TypeError:
             logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
+                SETTINGS_SERVICE_SWAP_FAILED,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="schedule_hours",
