@@ -141,7 +141,6 @@ Some settings are bootstrap-only and cannot be hot-reloaded safely. They are mar
 - `api.rate_limit_auth_endpoint_max_requests` (the dedicated per-minute limiter applied as route middleware on the login / setup / change-password / dev-login endpoints; bound at module import, `read_only_post_init`)
 - `api.per_op_rate_limit.backend` / `api.per_op_concurrency.backend` (the per-op stores are constructed once at startup; enabled / overrides ARE runtime-editable)
 - `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
-- `observability.ws_ticket_max_pending_per_user` (ticket store is constructed once)
 - `observability.tsa_endpoint_freetsa` / `tsa_endpoint_digicert` / `tsa_endpoint_sectigo` (the timestamp trust-anchor URL is baked into `TsaClient` at construction with trust-root validation; swapping the authority mid audit-chain is security-sensitive)
 
 Changing a restart-required setting writes the new value to the database but the running process continues using the old value. Restart the backend to pick up the change.

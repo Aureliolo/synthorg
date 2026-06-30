@@ -9,6 +9,11 @@ late-bound (composed onto its slice *after* the dispatcher is built and
 started), so the reader holds a getter that re-reads the slice on each call
 and fails safe to the bootstrap defaults until -- and whenever -- the resolver
 is unavailable.
+
+Resolve failures are logged once per distinct error type (re-arming when the
+failure mode changes or a resolve succeeds) so a sustained settings-backend
+outage -- read on every poll iteration across several methods -- does not flood
+the log, while a genuine change of failure mode is still surfaced.
 """
 
 import asyncio
@@ -54,7 +59,20 @@ class DispatcherConfigReader:
         self._config_resolver_getter: (
             Callable[[], ConfigResolverProtocol | None] | None
         ) = config_resolver_getter
-        self._resolve_failed_logged: bool = False
+        # The error type of the last logged resolve failure, or ``None`` when
+        # the dedup is armed. Re-armed on a successful resolve and whenever the
+        # failure type changes, so an outage logs once per failure mode rather
+        # than once per poll iteration.
+        self._last_logged_error_type: str | None = None
+
+    def reset(self) -> None:
+        """Re-arm the resolve-failure log dedup.
+
+        Called from ``SettingsChangeDispatcher.start()`` so a fresh lifecycle
+        does not inherit a stale dedup flag from a prior run that ended mid
+        outage (which would silently drop the new lifecycle's first warning).
+        """
+        self._last_logged_error_type = None
 
     def _resolver(self) -> ConfigResolverProtocol | None:
         """Return the live config resolver, or ``None`` before it is wired.
@@ -67,6 +85,28 @@ class DispatcherConfigReader:
             return None
         return self._config_resolver_getter()
 
+    def _note_resolve_failure(
+        self,
+        exc: Exception,
+        *,
+        key: str | None = None,
+        fallback: float | int | None = None,
+    ) -> None:
+        """Log a resolve failure once per distinct error type."""
+        error_type = type(exc).__name__
+        if error_type == self._last_logged_error_type:
+            return
+        self._last_logged_error_type = error_type
+        fields: dict[str, object] = {
+            "error_type": error_type,
+            "error": safe_error_description(exc),
+        }
+        if key is not None:
+            fields["key"] = key
+        if fallback is not None:
+            fields["fallback"] = fallback
+        logger.warning(SETTINGS_DISPATCHER_RESOLVE_FAILED, **fields)
+
     async def enabled(self) -> bool:
         """Resolve the kill-switch flag, fail-safe to ``True``.
 
@@ -74,10 +114,7 @@ class DispatcherConfigReader:
         the propagation loop without tearing down subscribers. A
         settings-backend outage must not silently silence the
         dispatcher (the operator is the only sanctioned silencer), so
-        any resolver failure resolves to enabled. The first failure
-        per run logs a WARNING; the surface re-arms on the next
-        successful resolve so a transient outage does not fill the
-        log with duplicates.
+        any resolver failure resolves to enabled.
 
         Returns:
             ``True`` when the dispatcher should process messages
@@ -100,15 +137,9 @@ class DispatcherConfigReader:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            if not self._resolve_failed_logged:
-                logger.warning(
-                    SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                self._resolve_failed_logged = True
+            self._note_resolve_failure(exc, key="dispatcher_enabled")
             return True
-        self._resolve_failed_logged = False
+        self._last_logged_error_type = None
         return value
 
     async def max_consecutive_errors(self) -> int:
@@ -141,21 +172,21 @@ class DispatcherConfigReader:
         if resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
         try:
-            return await resolver.get_int(
+            value = await resolver.get_int(
                 SettingNamespace.SETTINGS.value, "dispatcher_max_consecutive_errors"
             )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
+            self._note_resolve_failure(
+                exc,
                 key="dispatcher_max_consecutive_errors",
                 fallback=_MAX_CONSECUTIVE_ERRORS,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return _MAX_CONSECUTIVE_ERRORS
+        self._last_logged_error_type = None
+        return value
 
     async def stop_drain_timeout(self) -> float:
         """Resolve the stop() drain hard deadline; bootstrap fallback is 10.0s.
@@ -184,7 +215,7 @@ class DispatcherConfigReader:
         if resolver is None:
             return _STOP_DRAIN_TIMEOUT
         try:
-            return await resolver.get_float(
+            value = await resolver.get_float(
                 SettingNamespace.SETTINGS.value,
                 "dispatcher_stop_drain_timeout_seconds",
             )
@@ -192,14 +223,14 @@ class DispatcherConfigReader:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
+            self._note_resolve_failure(
+                exc,
                 key="dispatcher_stop_drain_timeout_seconds",
                 fallback=_STOP_DRAIN_TIMEOUT,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return _STOP_DRAIN_TIMEOUT
+        self._last_logged_error_type = None
+        return value
 
     async def poll_timeout(self) -> float:
         """Resolve the poll timeout; bootstrap fallback is ``_POLL_TIMEOUT``.
@@ -221,21 +252,19 @@ class DispatcherConfigReader:
         if resolver is None:
             return _POLL_TIMEOUT
         try:
-            return await resolver.get_float(
+            value = await resolver.get_float(
                 SettingNamespace.SETTINGS.value, "dispatcher_poll_timeout_seconds"
             )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_poll_timeout_seconds",
-                fallback=_POLL_TIMEOUT,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            self._note_resolve_failure(
+                exc, key="dispatcher_poll_timeout_seconds", fallback=_POLL_TIMEOUT
             )
             return _POLL_TIMEOUT
+        self._last_logged_error_type = None
+        return value
 
     async def error_backoff(self) -> float:
         """Resolve the post-error backoff; bootstrap fallback is ``_ERROR_BACKOFF``.
@@ -256,21 +285,19 @@ class DispatcherConfigReader:
         if resolver is None:
             return _ERROR_BACKOFF
         try:
-            return await resolver.get_float(
+            value = await resolver.get_float(
                 SettingNamespace.SETTINGS.value, "dispatcher_error_backoff_seconds"
             )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_error_backoff_seconds",
-                fallback=_ERROR_BACKOFF,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            self._note_resolve_failure(
+                exc, key="dispatcher_error_backoff_seconds", fallback=_ERROR_BACKOFF
             )
             return _ERROR_BACKOFF
+        self._last_logged_error_type = None
+        return value
 
 
 __all__ = ["DispatcherConfigReader"]

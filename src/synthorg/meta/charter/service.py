@@ -230,6 +230,11 @@ class CharterInterviewService(CharterCrudMixin):
                 CHARTER_CONFIG_RESOLVE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                # Surface the boot fallback now in effect so an operator who
+                # changed a charter knob can tell from this one entry whether
+                # the live or the boot value is governing the interview.
+                fallback_interview_model=self._config.interview_model,
+                fallback_interview_max_turns=self._config.interview_max_turns,
             )
             return self._config
 

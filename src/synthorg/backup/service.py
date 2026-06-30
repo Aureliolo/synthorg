@@ -1,3 +1,4 @@
+# module-kind: service
 """Backup service -- central orchestrator for backup/restore operations."""
 
 import asyncio
@@ -6,7 +7,7 @@ import shutil
 from copy import deepcopy
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from uuid import uuid4
 
 from synthorg import __version__
@@ -15,6 +16,7 @@ from synthorg.backup.config import BackupConfig
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
+    ComponentBackupError,
     ManifestError,
     RestoreError,
 )
@@ -80,6 +82,10 @@ def _validate_backup_id(backup_id: str) -> None:
 class BackupService(BackupServiceArchiveMixin):
     """Central orchestrator for backup and restore operations."""
 
+    _HOT_CONFIG_FLAG_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"compression", "on_startup", "on_shutdown"}
+    )
+
     def __init__(
         self,
         config: BackupConfig,
@@ -141,7 +147,16 @@ class BackupService(BackupServiceArchiveMixin):
         Args:
             key: One of ``compression`` / ``on_startup`` / ``on_shutdown``.
             value: The new boolean value.
+
+        Raises:
+            ValueError: If *key* is not a hot-reloadable boolean flag. Guards
+                against a caller pushing an arbitrary attribute name into the
+                ``model_copy`` (defence in depth above ``BackupConfig``'s own
+                ``extra="forbid"`` validation).
         """
+        if key not in self._HOT_CONFIG_FLAG_KEYS:
+            msg = f"apply_config_flag: unknown backup flag {key!r}"
+            raise ValueError(msg)
         async with self._backup_lock:
             self._config = self._config.model_copy(update={key: value})
 
@@ -293,6 +308,11 @@ class BackupService(BackupServiceArchiveMixin):
 
         Returns:
             The manifest describing the components backed up.
+
+        Raises:
+            ComponentBackupError: When a requested component has no registered
+                handler (a wiring error); the outer ``_do_backup`` then removes
+                the partial directory, so no incomplete backup is published.
         """
         await asyncio.to_thread(self._backup_path.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
@@ -310,13 +330,24 @@ class BackupService(BackupServiceArchiveMixin):
         for comp in effective_components:
             handler = self._handlers.get(comp)
             if handler is None:
-                logger.warning(
+                # A requested component with no handler is a wiring error, not
+                # a runtime fault. Skipping it would yield a backup that omits
+                # the component while still reporting success (the manifest and
+                # BACKUP_COMPLETED would not flag the gap) -- an operator could
+                # discover the missing data only during a restore. Fail loud:
+                # the outer _do_backup rmtree+re-raise leaves no partial dir,
+                # matching the all-or-nothing contract for handler failures.
+                logger.error(
                     BACKUP_FAILED,
                     backup_id=backup_id,
                     component=comp.value,
-                    error="No handler registered",
+                    error="No handler registered for requested component",
                 )
-                continue
+                msg = (
+                    f"backup component {comp.value!r} was requested but has no"
+                    " registered handler"
+                )
+                raise ComponentBackupError(msg)
             size = await handler.backup(backup_dir)
             total_size += size
             backed_up_components.append(comp)
@@ -480,9 +511,24 @@ class BackupService(BackupServiceArchiveMixin):
             raise
         finally:
             if temp_extracted and backup_dir is not None:
-                exists = await asyncio.to_thread(backup_dir.exists)
-                if exists:
-                    await asyncio.to_thread(shutil.rmtree, backup_dir)
+                # Cleanup of the extracted temp dir must not mask the in-flight
+                # outcome: an uncaught OSError here would replace a successful
+                # restore's return (surfacing it as a failure) or shadow the
+                # RestoreError already being propagated (and already logged
+                # above). Swallow + log the cleanup failure separately instead.
+                try:
+                    exists = await asyncio.to_thread(backup_dir.exists)
+                    if exists:
+                        await asyncio.to_thread(shutil.rmtree, backup_dir)
+                except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(cleanup_exc)
+                    log_exception_redacted(
+                        logger,
+                        BACKUP_RESTORE_FAILED,
+                        cleanup_exc,
+                        backup_id=backup_id,
+                        note="temp_dir_cleanup_failed",
+                    )
 
         return response
 

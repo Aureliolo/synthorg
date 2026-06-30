@@ -459,25 +459,40 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
         )
     else:
         namespace = SettingNamespace.SIMULATIONS.value
-        requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
-        raw_model = await resolver.get_str(namespace, _INTAKE_MODEL_KEY)
-        model = (raw_model.strip() or None) if raw_model else None
-        default_project = (
-            await resolver.get_str(namespace, _INTAKE_DEFAULT_PROJECT_KEY)
-        ).strip()
-        review_strategy = cast(
-            "ReviewPipelineStrategy",
-            await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
-        )
-        verification_enabled = await resolver.get_bool(
-            namespace, _VERIFICATION_ENABLED_KEY
-        )
-        verification_grader = await resolver.get_str(
-            namespace, _VERIFICATION_GRADER_KEY
-        )
-        verification_decomposer = await resolver.get_str(
-            namespace, _VERIFICATION_DECOMPOSER_KEY
-        )
+        try:
+            requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
+            raw_model = await resolver.get_str(namespace, _INTAKE_MODEL_KEY)
+            model = (raw_model.strip() or None) if raw_model else None
+            default_project = (
+                await resolver.get_str(namespace, _INTAKE_DEFAULT_PROJECT_KEY)
+            ).strip()
+            review_strategy = cast(
+                "ReviewPipelineStrategy",
+                await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
+            )
+            verification_enabled = await resolver.get_bool(
+                namespace, _VERIFICATION_ENABLED_KEY
+            )
+            verification_grader = await resolver.get_str(
+                namespace, _VERIFICATION_GRADER_KEY
+            )
+            verification_decomposer = await resolver.get_str(
+                namespace, _VERIFICATION_DECOMPOSER_KEY
+            )
+        except Exception as exc:
+            # Log which subsystem's resolve failed before propagating: on the
+            # startup-lifecycle path this is the only entry tying the failure
+            # to the client-simulation runtime (the subscriber path also wraps
+            # it with SETTINGS_SERVICE_SWAP_FAILED). Re-raise re-propagates
+            # criticals, so no separate reraise_critical guard is needed.
+            logger.warning(
+                CLIENT_SIMULATION_RUNTIME_WIRED,
+                service="client_simulation_runtime",
+                note="settings resolve failed; runtime not rebuilt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
     if not default_project:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,

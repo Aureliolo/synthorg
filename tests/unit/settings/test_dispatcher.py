@@ -748,7 +748,7 @@ class TestResolverHelpers:
             config_resolver_getter=_raising_resolver,
         )
         assert await d._config.enabled() is True
-        assert d._config._resolve_failed_logged is True
+        assert d._config._last_logged_error_type == "RuntimeError"
         assert await d._config.enabled() is True
 
     async def test_resolve_max_consecutive_errors_no_resolver(self) -> None:

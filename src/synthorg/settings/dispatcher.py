@@ -245,7 +245,16 @@ class SettingsChangeDispatcher:
             self._drop_stale_loop_state()
         if self._lifecycle_lock is None:
             self._lifecycle_lock = asyncio.Lock()
-        async with self._lifecycle_lock:
+        # Hold the lock through a local so a concurrent ``stop()`` -- which
+        # clears ``self._lifecycle_lock`` AFTER releasing it so the next
+        # start() on a fresh loop builds a new lock -- cannot leave this
+        # start(), already waiting on that same lock, running with a ``None``
+        # instance ref. Re-anchoring inside the body restores it; otherwise a
+        # later ``stop()`` early-returns on its ``is None`` guard and orphans
+        # the poll task + bus subscription for the process lifetime.
+        lifecycle_lock = self._lifecycle_lock
+        async with lifecycle_lock:
+            self._lifecycle_lock = lifecycle_lock
             if self._stop_failed:
                 msg = (
                     "SettingsChangeDispatcher is unrestartable after a "
@@ -295,6 +304,10 @@ class SettingsChangeDispatcher:
                 )
                 raise
             try:
+                # Re-arm the resolve-failure log dedup so a fresh lifecycle
+                # does not inherit a stale flag from a prior run that ended
+                # mid-outage (which would drop this run's first warning).
+                self._config.reset()
                 self._running = True
                 self._task = asyncio.create_task(
                     self._poll_loop(),
@@ -399,20 +412,20 @@ class SettingsChangeDispatcher:
                     )
                     raise
                 except asyncio.CancelledError:
-                    # Only suppress when the cancellation came from
-                    # the poll task completing (expected). If the
-                    # task is still running, the CancelledError came
-                    # from the outer caller cancelling ``stop()``;
-                    # propagate it so lifecycle state does not get
-                    # silently cleared mid-drain. Suppressing caller
-                    # cancellation would violate the asyncio
-                    # cancellation contract and leave the dispatcher
-                    # in an inconsistent state. ``_task`` may have
-                    # been cleared by ``_reset_running_under_lock``
-                    # racing in under a previous lifecycle-lock
-                    # holder; treat that as "task completed" since
-                    # the reset only fires after the task is done.
-                    if self._task is not None and not self._task.done():
+                    # Suppress ONLY when this is our own cancellation of the
+                    # poll task completing (``_task.cancelled()`` is True).
+                    # A CancelledError when the task is still running, or done
+                    # for an unrelated reason (it crashed before our cancel
+                    # took effect, so ``cancelled()`` is False), came from the
+                    # outer caller cancelling ``stop()``; propagate it so
+                    # lifecycle state is not silently cleared mid-drain and the
+                    # asyncio cancellation contract is honoured. Checking
+                    # ``done()`` instead would wrongly swallow an external
+                    # cancel that coincides with a crashed task. ``_task`` may
+                    # have been cleared by ``_reset_running_under_lock`` racing
+                    # in under a prior lifecycle-lock holder; treat that as
+                    # "task completed" since the reset only fires after done.
+                    if self._task is not None and not self._task.cancelled():
                         raise
                 self._task = None
 
@@ -556,16 +569,19 @@ class SettingsChangeDispatcher:
         # the get_bool lives in dispatcher_config.py, out of the gate's view.
         # lint-allow: long-running-loop-kill-switch -- guard reads through the reader
         while True:
-            # Resolve the poll timeout, then gate on the kill switch as a
-            # top-level statement in the loop body. When an operator has paused
-            # dispatch via the flag, sleep the same poll-timeout we'd otherwise
-            # spend in ``bus.receive`` so the loop yields the event loop at the
-            # same cadence and the flip takes effect within one tick.
-            poll_timeout = await self._config.poll_timeout()
-            if not await self._config.enabled():
-                await asyncio.sleep(poll_timeout)
-                continue
             try:
+                # Resolve the poll timeout, then gate on the kill switch as a
+                # top-level statement in the loop body. When an operator has
+                # paused dispatch via the flag, sleep the same poll-timeout
+                # we'd otherwise spend in ``bus.receive`` so the loop yields at
+                # the same cadence and the flip takes effect within one tick.
+                # These reads sit inside the try so a transient OSError from
+                # the resolve path counts against ``max_errors`` rather than
+                # escaping the loop unobserved.
+                poll_timeout = await self._config.poll_timeout()
+                if not await self._config.enabled():
+                    await asyncio.sleep(poll_timeout)
+                    continue
                 envelope = await self._bus.receive(
                     _SETTINGS_CHANNEL,
                     _SUBSCRIBER_ID,

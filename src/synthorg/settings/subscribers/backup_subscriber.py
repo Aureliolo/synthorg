@@ -3,7 +3,11 @@
 from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -104,8 +108,14 @@ class BackupSettingsSubscriber:
         """Start or stop the scheduler based on the current setting value."""
         try:
             result = await self._settings_service.get("backup", "enabled")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
+            # Re-raise after logging: a swallowed read failure would let the
+            # dispatcher record SETTINGS_SUBSCRIBER_NOTIFIED (apparent success)
+            # even though the scheduler was never toggled. Propagating makes
+            # the dispatcher log SETTINGS_SUBSCRIBER_ERROR instead, matching
+            # the action-failure paths below; the dispatcher loop still
+            # continues (it catches per-subscriber).
             log_exception_redacted(
                 logger,
                 SETTINGS_SERVICE_SWAP_FAILED,
@@ -115,7 +125,7 @@ class BackupSettingsSubscriber:
                 key="enabled",
                 note="failed to read setting",
             )
-            return
+            raise
 
         scheduler = self._backup_service.scheduler
         enabled = compare_ci(str(result.value), "true")
@@ -150,7 +160,23 @@ class BackupSettingsSubscriber:
                 note="scheduler started",
             )
         elif not enabled and scheduler.is_running:
-            await scheduler.stop()
+            try:
+                await scheduler.stop()
+            except Exception as exc:
+                reraise_critical(exc)
+                # Symmetric with the start() arm above: tie a stop() failure
+                # back to the triggering setting before re-raising so the
+                # dispatcher records it with context.
+                log_exception_redacted(
+                    logger,
+                    SETTINGS_SERVICE_SWAP_FAILED,
+                    exc,
+                    subscriber=self.subscriber_name,
+                    namespace="backup",
+                    key="enabled",
+                    note="scheduler.stop() failed",
+                )
+                raise
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
@@ -163,7 +189,7 @@ class BackupSettingsSubscriber:
         """Push a changed ``backup.path`` onto the service + retention manager."""
         try:
             result = await self._settings_service.get("backup", "path")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -174,7 +200,7 @@ class BackupSettingsSubscriber:
                 key="path",
                 note="failed to read setting",
             )
-            return
+            raise
         path = str(result.value).strip()
         if not path:
             logger.warning(
@@ -219,7 +245,7 @@ class BackupSettingsSubscriber:
         """
         try:
             result = await self._settings_service.get("backup", key)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -230,7 +256,7 @@ class BackupSettingsSubscriber:
                 key=key,
                 note="failed to read setting",
             )
-            return
+            raise
         value = compare_ci(str(result.value), "true")
         try:
             await self._backup_service.apply_config_flag(key, value=value)
@@ -258,7 +284,7 @@ class BackupSettingsSubscriber:
         """Update the scheduler interval from current settings."""
         try:
             result = await self._settings_service.get("backup", "schedule_hours")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -269,23 +295,40 @@ class BackupSettingsSubscriber:
                 key="schedule_hours",
                 note="failed to read setting",
             )
-            return
+            raise
 
         scheduler = self._backup_service.scheduler
         try:
             hours = int(result.value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError) as exc:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="schedule_hours",
                 value=result.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="invalid schedule value",
             )
             return
 
-        scheduler.reschedule(hours)
+        try:
+            scheduler.reschedule(hours)
+        except Exception as exc:
+            reraise_critical(exc)
+            # Symmetric with the start()/stop() arms: tie a reschedule failure
+            # back to the triggering setting before re-raising.
+            log_exception_redacted(
+                logger,
+                SETTINGS_SERVICE_SWAP_FAILED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="schedule_hours",
+                note="scheduler.reschedule() failed",
+            )
+            raise
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,

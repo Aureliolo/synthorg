@@ -129,12 +129,26 @@ async def _resolve_eval_loop_modes(
             _resolve_hr_str("eval_loop_llm_provider").strip(),
         )
     namespace = SettingNamespace.HR.value
-    return (
-        await resolver.get_str(namespace, "eval_loop_pattern_identifier_mode"),
-        await resolver.get_str(namespace, "eval_loop_fix_proposer_mode"),
-        (await resolver.get_str(namespace, "eval_loop_llm_model")).strip(),
-        (await resolver.get_str(namespace, "eval_loop_llm_provider")).strip(),
-    )
+    try:
+        return (
+            await resolver.get_str(namespace, "eval_loop_pattern_identifier_mode"),
+            await resolver.get_str(namespace, "eval_loop_fix_proposer_mode"),
+            (await resolver.get_str(namespace, "eval_loop_llm_model")).strip(),
+            (await resolver.get_str(namespace, "eval_loop_llm_provider")).strip(),
+        )
+    except Exception as exc:
+        # Identify the failing subsystem before propagating: the reload-helper
+        # caller (reload_eval_loop_pattern_strategies) re-raises without its own
+        # context, so without this the only entry would be the resolver's. The
+        # re-raise re-propagates criticals, so no separate guard is needed.
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="settings resolve failed; pattern strategies not rebuilt",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
 
 
 def _build_pattern_strategies(

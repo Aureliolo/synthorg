@@ -20,13 +20,13 @@ The implementation lives under `src/synthorg/research/`. See the [research mode 
 
 ## Enablement
 
-The master toggle is `research.enabled` (default `false`, restart required). When disabled, the service is not wired and the MCP handlers return `503`.
+The master toggle is `research.enabled` (default `true`, hot: no restart). The service is ghost-wired at boot and live-gated per request at the MCP handlers, which return `503` while it is disabled.
 
-Settings live in the `research` namespace (`src/synthorg/settings/definitions/research.py`); all keys are restart-required:
+Settings live in the `research` namespace (`src/synthorg/settings/definitions/research.py`); all keys are hot-reloadable (the model / provider / strategy / threshold keys rebuild and swap the service via `ResearchSettingsSubscriber`):
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `research.enabled` | bool | `false` | Master switch. |
+| `research.enabled` | bool | `true` | Master switch. |
 | `research.provider` | str | `""` | LLM provider for pipeline calls (empty uses the first registered provider). |
 | `research.model` | str | `""` | LLM model id (must be set for research to wire). |
 | `research.query_planner` | str | `llm` | Query-planning strategy. |
