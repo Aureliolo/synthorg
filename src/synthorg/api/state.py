@@ -290,6 +290,17 @@ class AppState(AppStateSliceMixin):
 
         self.wire(RuntimeStateSlice, coordinator=coordinator)
 
+    def clear_coordinator(self) -> None:
+        """Unwire the multi-agent coordinator (provider-removal reload).
+
+        A reload that rebuilds with no provider yields no coordinator; clearing
+        the stale one takes ``/coordinate`` offline instead of routing new work
+        through an engine for a provider that is gone.
+        """
+        from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+        self.wire(RuntimeStateSlice, coordinator=None)
+
     def set_work_pipeline_if_absent(self, work_pipeline: WorkPipeline) -> None:
         """Install the work-pipeline spine only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
@@ -301,6 +312,17 @@ class AppState(AppStateSliceMixin):
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
         self.wire(EngineStateSlice, work_pipeline=work_pipeline)
+
+    def clear_work_pipeline(self) -> None:
+        """Unwire the work-pipeline spine (provider-removal reload).
+
+        A reload that rebuilds with no provider yields no work pipeline;
+        clearing the stale one makes the entry adapters resolve it as absent and
+        take themselves offline rather than routing through a dead spine.
+        """
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+        self.wire(EngineStateSlice, work_pipeline=None)
 
     def set_intake_entry_adapter_if_absent(
         self,
@@ -318,6 +340,17 @@ class AppState(AppStateSliceMixin):
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
         self.wire(EngineStateSlice, intake_entry_adapter=adapter)
+
+    def clear_intake_entry_adapter(self) -> None:
+        """Uninstall the intake entry adapter (hot reload to offline).
+
+        The adapter captures the work pipeline by reference at build time, so a
+        reload that takes intake offline must remove it; leaving it wired keeps
+        routing new client requests through the stale pipeline.
+        """
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+        self.wire(EngineStateSlice, intake_entry_adapter=None)
 
     def set_objective_entry_adapter_if_absent(
         self,
@@ -338,11 +371,13 @@ class AppState(AppStateSliceMixin):
         self.wire(EngineStateSlice, objective_entry_adapter=adapter)
 
     def clear_objective_entry_adapter(self) -> None:
-        """Unwire the objective entry adapter (hot disable on blank project).
+        """Uninstall the objective entry adapter (hot disable / offline).
 
-        Clearing ``objectives.default_project`` must actually stop objective
-        intake, so the previously-installed adapter is removed rather than
-        left filing against the old project.
+        The adapter holds the work pipeline by reference, so a hot reload that
+        takes objective intake offline (the provider is removed, or
+        ``objectives.default_project`` is cleared) must remove it rather than
+        leave it routing through the stale pipeline / filing against the old
+        project.
         """
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
@@ -383,6 +418,17 @@ class AppState(AppStateSliceMixin):
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
         self.wire(EngineStateSlice, task_board_entry_adapter=adapter)
+
+    def clear_task_board_entry_adapter(self) -> None:
+        """Uninstall the task-board entry adapter (hot reload to offline).
+
+        Mirrors :meth:`clear_intake_entry_adapter`: the adapter holds the work
+        pipeline by reference, so a reload that takes the task board offline must
+        remove it rather than leave it routing through the stale pipeline.
+        """
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+        self.wire(EngineStateSlice, task_board_entry_adapter=None)
 
     def swap_notification_dispatcher(
         self,

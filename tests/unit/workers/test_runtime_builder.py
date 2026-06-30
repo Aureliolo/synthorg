@@ -24,8 +24,10 @@ from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.parallel import ParallelExecutor
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -46,6 +48,7 @@ from synthorg.workers.runtime_builder import (
     build_runtime_services,
     reload_runtime_services,
 )
+from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import FakeClock, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -744,20 +747,27 @@ class TestReloadRuntimeServicesSimulationStatePairing:
                 f"synthorg.engine.pipeline.entry.boot.{name}", _noop_wire
             )
 
-    async def test_no_provider_reverts_simulation_state(
+    async def test_no_provider_reverts_sim_state_and_clears_runtime(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """No new coordinator (no-provider path) reverts the eager commit.
+        """The no-provider rebuild reverts the eager commit AND unwires the
+        stale coordinator + work pipeline.
 
-        ``build_runtime_services`` returns ``coordinator=None`` without raising;
-        the previously wired coordinator keeps the old intake engine, so the new
-        simulation state must be rolled back to avoid a split-brain pairing.
+        ``build_runtime_services`` returns ``coordinator=None`` /
+        ``work_pipeline=None`` without raising. A previously wired coordinator /
+        pipeline (provider present before) must be cleared so removed-provider
+        traffic goes offline instead of routing through the stale engine, and
+        the eagerly-committed simulation state is rolled back to its previous
+        value.
         """
         previous = mock_of[ClientSimulationState]()
         new_sim = mock_of[ClientSimulationState]()
         app_state = make_app_state(client_simulation_state=previous)
+        # Provider was present before this reload: stale coordinator + pipeline.
+        app_state.swap_coordinator(mock_of[MultiAgentCoordinator]())
+        app_state.swap_work_pipeline(mock_of[WorkPipeline]())
         services = RuntimeServices(
             worker_execution_service=mock_of[WorkerExecutionService](),
             coordinator=None,
@@ -772,6 +782,8 @@ class TestReloadRuntimeServicesSimulationStatePairing:
         await reload_runtime_services(app_state)
 
         assert app_state.slice(ClientStateSlice).simulation_state is previous
+        assert app_state.slice(RuntimeStateSlice).coordinator is None
+        assert app_state.slice(EngineStateSlice).work_pipeline is None
 
     async def test_new_coordinator_keeps_simulation_state(
         self,

@@ -524,8 +524,8 @@
     },
     "src/synthorg/engine/pipeline/entry/boot.py": {
       "cap": 500,
-      "loc": 405,
-      "ratio": 0.81,
+      "loc": 415,
+      "ratio": 0.83,
       "tier": "code"
     },
     "src/synthorg/engine/pipeline/service.py": {
@@ -1484,8 +1484,8 @@
     },
     "src/synthorg/workers/runtime_builder.py": {
       "cap": 600,
-      "loc": 483,
-      "ratio": 0.805,
+      "loc": 487,
+      "ratio": 0.812,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/worker.py": {

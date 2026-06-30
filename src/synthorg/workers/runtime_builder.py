@@ -532,8 +532,19 @@ async def reload_runtime_services(app_state: AppState) -> None:
             if services.coordinator is not None:
                 app_state.swap_coordinator(services.coordinator)
                 coordinator_swapped = True
+            else:
+                # No provider on this rebuild: unwire the stale coordinator so
+                # /coordinate goes offline instead of routing through an engine
+                # for a provider that is gone.
+                app_state.clear_coordinator()
             if services.work_pipeline is not None:
                 app_state.swap_work_pipeline(services.work_pipeline)
+            else:
+                # Clear the stale spine so the entry adapters below resolve it as
+                # absent and uninstall themselves (they captured it by
+                # reference, so skipping the swap alone leaves them routing
+                # through the dead pipeline).
+                app_state.clear_work_pipeline()
             # No new coordinator (the documented no-provider success path returns
             # ``coordinator=None`` without raising): the previously wired
             # coordinator, if any, keeps the old intake engine, so revert the

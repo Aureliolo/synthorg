@@ -186,6 +186,11 @@ async def wire_real_intake_entry(
     if app_state.slice(
         EngineStateSlice
     ).work_pipeline is None or not has_simulation_runtime(app_state):
+        # On a hot reload that lost the pipeline / simulation runtime, uninstall
+        # the previously wired adapter so it stops routing through the stale
+        # pipeline it captured at build time (a boot install has nothing wired).
+        if hot_swap:
+            app_state.clear_intake_entry_adapter()
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="intake_entry_adapter",
@@ -195,6 +200,8 @@ async def wire_real_intake_entry(
         return
     default_project = await _resolve_intake_default_project(app_state)
     if not default_project:
+        if hot_swap:
+            app_state.clear_intake_entry_adapter()
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="intake_entry_adapter",
@@ -301,6 +308,10 @@ async def wire_real_objective_entry(
         env: Environment mapping override for tests.
     """
     if app_state.slice(EngineStateSlice).work_pipeline is None:
+        # Hot reload lost the pipeline: uninstall the stale adapter (it holds the
+        # old pipeline by reference); a boot install has nothing wired yet.
+        if hot_swap:
+            app_state.clear_objective_entry_adapter()
         logger.info(
             OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
@@ -418,6 +429,11 @@ async def wire_real_task_board_entry(
     if app_state.slice(
         EngineStateSlice
     ).work_pipeline is None or not has_simulation_runtime(app_state):
+        # Hot reload lost the pipeline / simulation runtime: uninstall the stale
+        # adapter (it holds the old pipeline by reference); a boot install has
+        # nothing wired yet.
+        if hot_swap:
+            app_state.clear_task_board_entry_adapter()
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="task_board_entry_adapter",

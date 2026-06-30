@@ -20,6 +20,7 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.pipeline.entry.boot import (
     _project_uuid,
     wire_real_intake_entry,
+    wire_real_objective_entry,
     wire_real_task_board_entry,
 )
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
@@ -133,6 +134,34 @@ async def test_hot_swap_uses_swap_seam() -> None:
     assert isinstance(replaced, IntakeEntryAdapter)
 
 
+async def test_hot_swap_offline_uninstalls_intake_adapter() -> None:
+    # A hot reload to an offline state (no work pipeline) must uninstall the
+    # previously wired adapter; leaving it keeps routing through the stale
+    # pipeline it captured at build time. A boot install (hot_swap=False) has
+    # nothing wired, so only the hot-swap path clears.
+    app_state, _ = _app_state(has_work_pipeline=False)
+    app_state.wire(EngineStateSlice, intake_entry_adapter=object())
+    await wire_real_intake_entry(app_state, hot_swap=True)
+    assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
+
+
+async def test_hot_swap_offline_uninstalls_objective_adapter() -> None:
+    app_state, _ = _app_state(has_work_pipeline=False)
+    app_state.wire(EngineStateSlice, objective_entry_adapter=object())
+    await wire_real_objective_entry(app_state, hot_swap=True)
+    assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
+
+
+async def test_boot_offline_leaves_intake_adapter_untouched() -> None:
+    # The boot path (hot_swap=False) must NOT clear: there is nothing wired yet,
+    # and clearing would be a spurious write. A pre-existing sentinel survives.
+    app_state, _ = _app_state(has_work_pipeline=False)
+    sentinel = object()
+    app_state.wire(EngineStateSlice, intake_entry_adapter=sentinel)
+    await wire_real_intake_entry(app_state, hot_swap=False)
+    assert app_state.slice(EngineStateSlice).intake_entry_adapter is sentinel
+
+
 async def test_task_board_noop_without_work_pipeline() -> None:
     app_state, projects = _app_state(has_work_pipeline=False)
     await wire_real_task_board_entry(app_state)
@@ -172,6 +201,13 @@ async def test_task_board_hot_swap_uses_swap_seam() -> None:
     replaced = app_state.slice(EngineStateSlice).task_board_entry_adapter
     assert replaced is not sentinel
     assert isinstance(replaced, TaskBoardEntryAdapter)
+
+
+async def test_task_board_hot_swap_offline_uninstalls_adapter() -> None:
+    app_state, _ = _app_state(has_work_pipeline=False)
+    app_state.wire(EngineStateSlice, task_board_entry_adapter=object())
+    await wire_real_task_board_entry(app_state, hot_swap=True)
+    assert app_state.slice(EngineStateSlice).task_board_entry_adapter is None
 
 
 async def test_task_board_tolerates_unset_default_project() -> None:
