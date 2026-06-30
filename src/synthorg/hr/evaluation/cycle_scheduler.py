@@ -22,7 +22,7 @@ import math
 from datetime import timedelta
 from typing import Final, override
 
-from synthorg.core.scheduler import AsyncCycleScheduler
+from synthorg.core.scheduler import MIN_INTERVAL_SECONDS, AsyncCycleScheduler
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
@@ -131,17 +131,31 @@ class EvalLoopCycleScheduler(AsyncCycleScheduler):
     async def _resolve_wait_interval(self) -> float:
         """Re-read the cadence per tick so a change applies with no restart.
 
-        Fail-safe to the construction-time interval on a resolver outage.
+        Fail-safe to the construction-time interval on a resolver outage, and
+        validates the live value at this trust boundary: a stored ``0``,
+        negative, ``nan``, ``inf``, or sub-minimum setting collapses to the
+        construction cadence (mirroring the window guard in
+        :meth:`_run_cycle_once`), so the loop never sleeps on a bad timeout. The
+        base loop re-checks the same invariant as a safety net.
 
         Returns:
-            The live ``hr.eval_loop_cycle_interval_seconds`` value.
+            The live ``hr.eval_loop_cycle_interval_seconds`` value, or the
+            construction cadence when it is missing / invalid.
         """
-        return await resolve_float_with_fallback(
+        interval = await resolve_float_with_fallback(
             resolver=self._config_resolver,
             namespace=_HR_NS,
             key=_INTERVAL_KEY,
             fallback=self._interval,
         )
+        if not math.isfinite(interval) or interval < MIN_INTERVAL_SECONDS:
+            logger.warning(
+                EVAL_LOOP_CYCLE_SCHEDULER_FAILED,
+                note="interval_read_invalid",
+                interval_seconds=interval,
+            )
+            return self._interval
+        return interval
 
     @override
     async def _run_cycle_once(self) -> None:

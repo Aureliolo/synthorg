@@ -93,6 +93,23 @@ class TestLiveCadenceAndWindow:
         scheduler = _scheduler(resolver=None, interval_seconds=300.0)
         assert await scheduler._resolve_wait_interval() == 300.0
 
+    @pytest.mark.parametrize(
+        "bad_seconds",
+        [0.0, -1.0, 30.0, float("nan"), float("inf")],
+        ids=["zero", "negative", "below_minimum", "nan", "inf"],
+    )
+    async def test_invalid_interval_collapses_to_construction(
+        self, bad_seconds: float
+    ) -> None:
+        # The read validates at this trust boundary: a stored 0 / negative /
+        # sub-minimum / nan / inf cadence collapses to the construction value
+        # so the loop never sleeps on a bad timeout.
+        resolver = mock_of[ConfigResolver](
+            get_float=AsyncMock(return_value=bad_seconds)
+        )
+        scheduler = _scheduler(resolver=resolver, interval_seconds=86400.0)
+        assert await scheduler._resolve_wait_interval() == 86400.0
+
     async def test_window_re_read_and_passed_to_run_cycle(self) -> None:
         coordinator = _coordinator()
         resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=2.0))
