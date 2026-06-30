@@ -550,13 +550,17 @@ class SettingsChangeDispatcher:
         """
         consecutive_errors = 0
 
+        # The loop body re-reads the dispatcher_enabled kill switch every
+        # iteration via self._config.enabled() (DispatcherConfigReader.enabled
+        # -> get_bool(settings, "dispatcher_enabled"), fail-safe to enabled);
+        # the get_bool lives in dispatcher_config.py, out of the gate's view.
+        # lint-allow: long-running-loop-kill-switch -- guard reads through the reader
         while True:
             # Resolve the poll timeout, then gate on the kill switch as a
-            # top-level statement in the loop body so the long-running-loops
-            # gate sees the guard. When an operator has paused dispatch via
-            # the flag, sleep the same poll-timeout we'd otherwise spend in
-            # ``bus.receive`` so the loop yields the event loop at the same
-            # cadence and the flip takes effect within one tick.
+            # top-level statement in the loop body. When an operator has paused
+            # dispatch via the flag, sleep the same poll-timeout we'd otherwise
+            # spend in ``bus.receive`` so the loop yields the event loop at the
+            # same cadence and the flip takes effect within one tick.
             poll_timeout = await self._config.poll_timeout()
             if not await self._config.enabled():
                 await asyncio.sleep(poll_timeout)
