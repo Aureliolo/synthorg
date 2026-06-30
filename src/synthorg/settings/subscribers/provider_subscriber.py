@@ -39,7 +39,7 @@ class ProviderSettingsSubscriber:
     only takes effect through a registry rebuild; rebuilding + reloading here
     is the seam that makes the setting live for the completion path. The
     rebuild resolves the current provider set (DB-persisted blob, else the
-    boot template) and re-binds the always-on credential catalog so
+    boot template) and re-binds the always-on credential catalogue so
     ``connection_name`` auth keeps resolving. A rebuild is skipped while a
     cassette session is active (the recorded-LLM seam is baked in at process
     start), in which case the new cap applies on the next restart.
@@ -150,7 +150,7 @@ class ProviderSettingsSubscriber:
 
         Resolves the live ``providers.retry_max_attempts`` value and the
         current provider set (the DB-persisted blob, falling back to the
-        boot template), rebuilds the registry with the catalog re-bound, and
+        boot template), rebuilds the registry with the catalogue re-bound, and
         hot-swaps it. Skipped while a cassette session is active, since the
         recorded-LLM seam is baked in at process start and the cap then
         applies on the next restart. On failure the existing registry stays
