@@ -231,6 +231,49 @@ class TestProviderSubscriberRebuild:
         assert state.slice(ProvidersStateSlice).registry is old_registry
         assert len(calls) == 2
 
+    async def test_runtime_reload_failure_rolls_back_to_unset_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A reload failure with no prior registry restores the unset state.
+
+        When the slice had no registry before the swap, rolling back must clear
+        the slice back to ``None`` rather than leaving the newly swapped
+        registry committed while the engine never adopted it.
+        """
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        calls: list[int] = []
+
+        async def _reload(_state: object) -> None:
+            calls.append(1)
+            if len(calls) == 1:
+                msg = "reload boom"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", _reload)
+        cfg = RootConfig(company_name="test")
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(return_value=7),
+            get_provider_configs=AsyncMock(return_value={}),
+        )
+        # No provider_registry: the slice starts with registry unset (None).
+        state = make_app_state(
+            config=cfg,
+            approval_store=ApprovalStore(),
+            model_router=ModelRouter(cfg.routing, dict(cfg.providers)),
+            config_resolver=resolver,
+        )
+        sub = ProviderSettingsSubscriber(
+            config=cfg,
+            app_state=state,
+            settings_service=mock_of[SettingsService](),
+        )
+        with pytest.raises(RuntimeError, match="reload boom"):
+            await sub.on_settings_changed("providers", "retry_max_attempts")
+        # Rolled back to the unset state, not left on the swapped registry.
+        assert state.slice(ProvidersStateSlice).registry is None
+        assert len(calls) == 2
+
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""
         svc = AsyncMock()

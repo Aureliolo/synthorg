@@ -218,24 +218,26 @@ class ProviderSettingsSubscriber:
             except Exception:
                 # The slice swap already committed but the runtime never
                 # adopted it, so the slice now points at the new registry while
-                # the engine may still hold the old one (or a partially
-                # reloaded runtime). Restore the previous registry and re-heal
-                # the runtime so the slice and engine stay consistent, then let
-                # the original failure propagate to the dispatcher.
-                if previous_registry is not None:
-                    self._app_state.swap_provider_registry(previous_registry)
-                    try:
-                        await reload_runtime_services(self._app_state)
-                    except Exception as heal_exc:  # noqa: BLE001
-                        reraise_critical(heal_exc)
-                        logger.error(
-                            SETTINGS_SERVICE_SWAP_FAILED,
-                            service="provider_registry",
-                            error_type=type(heal_exc).__name__,
-                            error=safe_error_description(heal_exc),
-                            note="rollback runtime reload failed -- registry "
-                            "restored but runtime may be inconsistent",
-                        )
+                # the engine may still hold the prior one (or a partially
+                # reloaded runtime). Restore the pre-swap registry -- which may
+                # have been unset (``None``) -- via ``wire`` (the
+                # ``swap_provider_registry`` shim only accepts a non-None
+                # registry, so it cannot express the unset case), re-heal the
+                # runtime so the slice and engine stay consistent, then let the
+                # original failure propagate to the dispatcher.
+                self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
+                try:
+                    await reload_runtime_services(self._app_state)
+                except Exception as heal_exc:  # noqa: BLE001
+                    reraise_critical(heal_exc)
+                    logger.error(
+                        SETTINGS_SERVICE_SWAP_FAILED,
+                        service="provider_registry",
+                        error_type=type(heal_exc).__name__,
+                        error=safe_error_description(heal_exc),
+                        note="rollback runtime reload failed -- registry "
+                        "restored but runtime may be inconsistent",
+                    )
                 raise
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,

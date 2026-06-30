@@ -104,7 +104,7 @@ def _fake_resolver(
     resolver.get_int.side_effect = _get_int
     resolver.get_float.side_effect = _get_float
     resolver.get_bool.side_effect = _get_bool
-    return cast(ConfigResolver, resolver)
+    return cast("ConfigResolver", resolver)
 
 
 class _FakeSubscriber:
@@ -719,7 +719,7 @@ def _raising_resolver() -> ConfigResolver:
     resolver.get_bool.side_effect = _raise
     resolver.get_int.side_effect = _raise
     resolver.get_float.side_effect = _raise
-    return cast(ConfigResolver, resolver)
+    return cast("ConfigResolver", resolver)
 
 
 @pytest.mark.unit
@@ -774,7 +774,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver_getter=lambda: cast(ConfigResolver, resolver),
+            config_resolver_getter=lambda: cast("ConfigResolver", resolver),
         )
         # poll_timeout fails (suppression armed for its key), enabled succeeds.
         assert await d._config.poll_timeout() == 1.0
