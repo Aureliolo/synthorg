@@ -8,6 +8,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.service import SettingsService
 
@@ -163,7 +164,6 @@ class ProviderSettingsSubscriber:
         from synthorg.providers.management._persistence import (  # noqa: PLC0415
             resolve_retry_max_attempts,
         )
-        from synthorg.providers.registry import ProviderRegistry  # noqa: PLC0415
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
@@ -201,48 +201,7 @@ class ProviderSettingsSubscriber:
                     note="cassette became active during rebuild -- skipped swap",
                 )
                 return
-            previous_registry = live
-            self._app_state.swap_provider_registry(new_registry)
-            from synthorg.workers.runtime_builder import (  # noqa: PLC0415
-                reload_runtime_services,
-            )
-
-            try:
-                # The running AgentEngine captured the registry at construction
-                # (engine/agent_engine.py), so a slice swap alone leaves the
-                # completion path on the old retry cap. Rebuild the runtime
-                # services so the engine adopts the rebuilt registry; this
-                # mirrors the budget-benchmark subscriber's swap-then-reload
-                # pattern.
-                await reload_runtime_services(self._app_state)
-            except Exception as reload_exc:
-                # A system-level failure (MemoryError / RecursionError) must
-                # propagate immediately rather than drive a second reload under
-                # the same fatal condition.
-                reraise_critical(reload_exc)
-                # The slice swap already committed but the runtime never
-                # adopted it, so the slice now points at the new registry while
-                # the engine may still hold the prior one (or a partially
-                # reloaded runtime). Restore the pre-swap registry -- which may
-                # have been unset (``None``) -- via ``wire`` (the
-                # ``swap_provider_registry`` shim only accepts a non-None
-                # registry, so it cannot express the unset case), re-heal the
-                # runtime so the slice and engine stay consistent, then let the
-                # original failure propagate to the dispatcher.
-                self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
-                try:
-                    await reload_runtime_services(self._app_state)
-                except Exception as heal_exc:  # noqa: BLE001
-                    reraise_critical(heal_exc)
-                    logger.error(
-                        SETTINGS_SERVICE_SWAP_FAILED,
-                        service="provider_registry",
-                        error_type=type(heal_exc).__name__,
-                        error=safe_error_description(heal_exc),
-                        note="rollback runtime reload failed -- registry "
-                        "restored but runtime may be inconsistent",
-                    )
-                raise
+            await self._apply_registry_swap(new_registry, live)
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
@@ -258,4 +217,47 @@ class ProviderSettingsSubscriber:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
+
+    async def _apply_registry_swap(
+        self,
+        new_registry: ProviderRegistry,
+        previous_registry: ProviderRegistry | None,
+    ) -> None:
+        """Swap in *new_registry* and reload the runtime, rolling back on failure.
+
+        The slice swap commits before the runtime reload (the running
+        ``AgentEngine`` captured the registry at construction, so a slice swap
+        alone leaves the completion path on the old retry cap). If the reload
+        raises, the slice and the engine would diverge, so the pre-swap registry
+        -- which may have been unset (``None``), expressible only via ``wire``
+        and not the non-None ``swap_provider_registry`` shim -- is restored and
+        the runtime re-healed before the original error propagates. The runtime
+        builder is imported before the swap so an import failure cannot leave a
+        committed swap un-reloaded. ``MemoryError`` / ``RecursionError`` skip the
+        rollback so a fatal condition is not driven through a second reload.
+        """
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+        from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+            reload_runtime_services,
+        )
+
+        self._app_state.swap_provider_registry(new_registry)
+        try:
+            await reload_runtime_services(self._app_state)
+        except Exception as reload_exc:
+            reraise_critical(reload_exc)
+            self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
+            try:
+                await reload_runtime_services(self._app_state)
+            except Exception as heal_exc:  # noqa: BLE001
+                reraise_critical(heal_exc)
+                logger.error(
+                    SETTINGS_SERVICE_SWAP_FAILED,
+                    service="provider_registry",
+                    error_type=type(heal_exc).__name__,
+                    error=safe_error_description(heal_exc),
+                    note="rollback runtime reload failed -- registry "
+                    "restored but runtime may be inconsistent",
+                )
             raise
