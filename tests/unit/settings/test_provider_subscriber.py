@@ -102,8 +102,14 @@ class TestProviderSubscriberRebuild:
         # Old router is still in place (swap never called)
         assert state.slice(ProvidersStateSlice).model_router is old_router
 
-    async def test_retry_max_attempts_change_rebuilds_registry(self) -> None:
-        """A retry_max_attempts change rebuilds and swaps the registry."""
+    async def test_retry_max_attempts_change_rebuilds_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retry_max_attempts change rebuilds the registry + reloads runtime."""
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        reload_spy = AsyncMock()
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", reload_spy)
         cfg = RootConfig(company_name="test")
         resolver = mock_of[ConfigResolver](
             get_int=AsyncMock(return_value=7),
@@ -125,6 +131,9 @@ class TestProviderSubscriberRebuild:
         await sub.on_settings_changed("providers", "retry_max_attempts")
         assert state.slice(ProvidersStateSlice).registry is not old_registry
         resolver.get_int.assert_awaited_once_with("providers", "retry_max_attempts")
+        # The running engine captured the old registry; the runtime rebuild is
+        # what makes the new cap reach the completion path.
+        reload_spy.assert_awaited_once_with(state)
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""
@@ -175,6 +184,95 @@ class TestProviderSubscriberRebuild:
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed("providers", "retry_max_attempts")
         assert state.slice(ProvidersStateSlice).registry is old_registry
+
+    async def test_runtime_reload_failure_rolls_back_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A reload failure after the swap restores the previous registry.
+
+        The slice swap commits before the runtime reload; if the reload then
+        raises, the slice and the running engine would otherwise be left on
+        different registries. The subscriber must roll the swap back and re-heal
+        the runtime, then propagate the original failure.
+        """
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        calls: list[int] = []
+
+        async def _reload(_state: object) -> None:
+            calls.append(1)
+            if len(calls) == 1:
+                msg = "reload boom"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", _reload)
+        cfg = RootConfig(company_name="test")
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(return_value=7),
+            get_provider_configs=AsyncMock(return_value={}),
+        )
+        old_registry = ProviderRegistry({})
+        state = make_app_state(
+            config=cfg,
+            approval_store=ApprovalStore(),
+            model_router=ModelRouter(cfg.routing, dict(cfg.providers)),
+            config_resolver=resolver,
+            provider_registry=old_registry,
+        )
+        sub = ProviderSettingsSubscriber(
+            config=cfg,
+            app_state=state,
+            settings_service=mock_of[SettingsService](),
+        )
+        with pytest.raises(RuntimeError, match="reload boom"):
+            await sub.on_settings_changed("providers", "retry_max_attempts")
+        # Swap rolled back to the original registry, and the runtime was
+        # re-healed (a second reload) so engine + slice stay consistent.
+        assert state.slice(ProvidersStateSlice).registry is old_registry
+        assert len(calls) == 2
+
+    async def test_runtime_reload_failure_rolls_back_to_unset_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A reload failure with no prior registry restores the unset state.
+
+        When the slice had no registry before the swap, rolling back must clear
+        the slice back to ``None`` rather than leaving the newly swapped
+        registry committed while the engine never adopted it.
+        """
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        calls: list[int] = []
+
+        async def _reload(_state: object) -> None:
+            calls.append(1)
+            if len(calls) == 1:
+                msg = "reload boom"
+                raise RuntimeError(msg)
+
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", _reload)
+        cfg = RootConfig(company_name="test")
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(return_value=7),
+            get_provider_configs=AsyncMock(return_value={}),
+        )
+        # No provider_registry: the slice starts with registry unset (None).
+        state = make_app_state(
+            config=cfg,
+            approval_store=ApprovalStore(),
+            model_router=ModelRouter(cfg.routing, dict(cfg.providers)),
+            config_resolver=resolver,
+        )
+        sub = ProviderSettingsSubscriber(
+            config=cfg,
+            app_state=state,
+            settings_service=mock_of[SettingsService](),
+        )
+        with pytest.raises(RuntimeError, match="reload boom"):
+            await sub.on_settings_changed("providers", "retry_max_attempts")
+        # Rolled back to the unset state, not left on the swapped registry.
+        assert state.slice(ProvidersStateSlice).registry is None
+        assert len(calls) == 2
 
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""

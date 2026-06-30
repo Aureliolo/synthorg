@@ -1,12 +1,12 @@
 """Tests for ``MemoryBridgeSettingsSubscriber``.
 
 The subscriber re-resolves the whole ``MemoryBridgeConfig`` via
-``ConfigResolver.get_memory_bridge_config`` on any watched
-``memory.*`` bridge-key change and swaps it wholesale (the JSON VRAM
-table's parse + ordering validation lives in the resolver). Tests
-cover protocol conformance, happy-path swap, unexpected key/namespace
-no-op, resolver-failure (no swap, re-raised), and ``MemoryError``
-propagation.
+``ConfigResolver.get_memory_bridge_config`` on a watched
+``memory.fine_tune_vram_batch_table`` change and swaps it wholesale (the
+JSON VRAM table's parse + ordering validation lives in the resolver).
+Tests cover protocol conformance, happy-path swap, unexpected
+key/namespace no-op, resolver-failure (no swap, re-raised), and
+``MemoryError`` propagation.
 """
 
 from unittest.mock import AsyncMock, create_autospec
@@ -26,6 +26,8 @@ from synthorg.settings.subscribers.memory_bridge_subscriber import (
 from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
+
+_WATCHED_KEY = "fine_tune_vram_batch_table"
 
 
 def _make_subscriber(
@@ -67,13 +69,7 @@ class TestSubscriberProtocol:
 
     def test_watched_keys(self) -> None:
         sub, _ = _make_subscriber(resolved=MemoryBridgeConfig())
-        assert sub.watched_keys == frozenset(
-            {
-                ("memory", "consolidation_enforce_batch_size"),
-                ("memory", "fine_tune_vram_batch_table"),
-                ("memory", "fine_tune_chunk_size"),
-            }
-        )
+        assert sub.watched_keys == frozenset({("memory", _WATCHED_KEY)})
 
     def test_subscriber_name(self) -> None:
         sub, _ = _make_subscriber(resolved=MemoryBridgeConfig())
@@ -84,39 +80,38 @@ class TestRebuild:
     """``on_settings_changed`` re-resolves + swaps the whole snapshot."""
 
     async def test_change_swaps_full_resolved_snapshot(self) -> None:
-        original = MemoryBridgeConfig(fine_tune_chunk_size=512)
+        original = MemoryBridgeConfig()
         resolved = MemoryBridgeConfig(
-            fine_tune_chunk_size=2048,
-            consolidation_enforce_batch_size=5000,
+            fine_tune_vram_batch_table=((48.0, 256), (24.0, 128)),
         )
         sub, app_state = _make_subscriber(snapshot=original, resolved=resolved)
 
-        await sub.on_settings_changed("memory", "fine_tune_chunk_size")
+        await sub.on_settings_changed("memory", _WATCHED_KEY)
 
         swapped = app_state.bridge_config.memory
         assert swapped is resolved
-        assert swapped.fine_tune_chunk_size == 2048
-        assert swapped.consolidation_enforce_batch_size == 5000
+        assert swapped.fine_tune_vram_batch_table == ((48.0, 256), (24.0, 128))
 
     async def test_resolver_failure_does_not_swap(self) -> None:
-        original = MemoryBridgeConfig(fine_tune_chunk_size=768)
+        original = MemoryBridgeConfig(
+            fine_tune_vram_batch_table=((40.0, 128),),
+        )
         sub, app_state = _make_subscriber(
             snapshot=original,
             side_effect=RuntimeError("resolver outage"),
         )
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("memory", "fine_tune_chunk_size")
+            await sub.on_settings_changed("memory", _WATCHED_KEY)
 
         assert app_state.bridge_config.memory is original
-        assert app_state.bridge_config.memory.fine_tune_chunk_size == 768
 
     async def test_memory_error_propagates(self) -> None:
         sub, app_state = _make_subscriber(side_effect=MemoryError())
         before = app_state.bridge_config.memory
 
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("memory", "fine_tune_chunk_size")
+            await sub.on_settings_changed("memory", _WATCHED_KEY)
 
         assert app_state.bridge_config.memory is before
 
@@ -125,21 +120,25 @@ class TestUnexpectedRouting:
     """Unexpected (namespace, key) pairs are logged and no-op."""
 
     async def test_unknown_namespace_is_ignored(self) -> None:
-        original = MemoryBridgeConfig(fine_tune_chunk_size=640)
+        original = MemoryBridgeConfig()
         sub, app_state = _make_subscriber(
             snapshot=original,
-            resolved=MemoryBridgeConfig(fine_tune_chunk_size=4096),
+            resolved=MemoryBridgeConfig(
+                fine_tune_vram_batch_table=((48.0, 256),),
+            ),
         )
 
-        await sub.on_settings_changed("other", "fine_tune_chunk_size")
+        await sub.on_settings_changed("other", _WATCHED_KEY)
 
         assert app_state.bridge_config.memory is original
 
     async def test_unknown_key_is_ignored(self) -> None:
-        original = MemoryBridgeConfig(fine_tune_chunk_size=640)
+        original = MemoryBridgeConfig()
         sub, app_state = _make_subscriber(
             snapshot=original,
-            resolved=MemoryBridgeConfig(fine_tune_chunk_size=4096),
+            resolved=MemoryBridgeConfig(
+                fine_tune_vram_batch_table=((48.0, 256),),
+            ),
         )
 
         await sub.on_settings_changed("memory", "some_unrelated_key")

@@ -21,17 +21,20 @@ from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
 from synthorg.settings.subscribers.escalation_reconnect_subscriber import (
     EscalationReconnectSettingsSubscriber,
 )
+from synthorg.settings.subscribers.eval_loop_subscriber import (
+    EvalLoopSettingsSubscriber,
+)
 from synthorg.settings.subscribers.event_stream_history_subscriber import (
     EventStreamHistorySettingsSubscriber,
+)
+from synthorg.settings.subscribers.github_api_url_subscriber import (
+    GithubApiUrlSettingsSubscriber,
 )
 from synthorg.settings.subscribers.knowledge_subscriber import (
     KnowledgeSettingsSubscriber,
 )
 from synthorg.settings.subscribers.memory_bridge_subscriber import (
     MemoryBridgeSettingsSubscriber,
-)
-from synthorg.settings.subscribers.memory_subscriber import (
-    MemorySettingsSubscriber,
 )
 from synthorg.settings.subscribers.meta_self_improvement_subscriber import (
     MetaSelfImprovementSettingsSubscriber,
@@ -91,10 +94,11 @@ __all__ = [
     "ChiefOfStaffAlertsSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",
     "EscalationReconnectSettingsSubscriber",
+    "EvalLoopSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",
+    "GithubApiUrlSettingsSubscriber",
     "KnowledgeSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
-    "MemorySettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",
     "NotificationsBridgeSettingsSubscriber",
     "ObjectiveEntrySettingsSubscriber",

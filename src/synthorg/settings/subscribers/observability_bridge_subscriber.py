@@ -3,19 +3,19 @@
 Hot-swaps ``app_state.bridge_config.observability`` when an operator
 edits a watched ``observability.*`` setting carried on
 :class:`~synthorg.settings.bridge_configs.ObservabilityBridgeConfig`
-(the HTTP log-handler batch knobs, the audit-chain signing timeout, and
-the per-preset RFC 3161 TSA endpoints).
+(the HTTP log-handler batch knobs and the audit-chain signing timeout).
 
 The snapshot is re-resolved wholesale (DB > env > default per field) and
 swapped, mirroring :class:`MemoryBridgeSettingsSubscriber`. The four
 ``http_*`` batch knobs are additionally live-applied onto every installed
 :class:`HttpBatchHandler` via ``apply_http_log_handler_settings`` (the same
 helper the startup ``_apply_http_log_handler_config`` path uses), so an
-operator edit takes effect on the next batch / POST without a restart. The
-TSA-endpoint fields are baked into their handlers at ``configure_logging``
-time, so a DB edit to those is ``restart_required`` -- this subscriber keeps
-the snapshot authoritative for ``/settings`` reads in the meantime;
-``audit_chain_signing_timeout_seconds`` is live-applied by its own path.
+operator edit takes effect on the next batch / POST without a restart.
+``audit_chain_signing_timeout_seconds`` is pushed onto every live
+:class:`AuditChainSink` via ``_apply_audit_chain_signing_timeout`` so it too
+applies without a restart. The per-preset RFC 3161 TSA endpoints are baked
+into their clients at ``configure_logging`` and stay ``restart_required``
+(not watched here).
 """
 
 from synthorg.api.state import AppState
@@ -40,11 +40,14 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         "http_timeout_seconds",
         "http_max_retries",
         "audit_chain_signing_timeout_seconds",
-        "tsa_endpoint_freetsa",
-        "tsa_endpoint_digicert",
-        "tsa_endpoint_sectigo",
     )
 )
+# The ``tsa_endpoint_*`` keys are deliberately NOT watched: the timestamp
+# authority URL is baked into each ``TsaClient`` at ``configure_logging``
+# with trust-root validation and has no live setter, and swapping the
+# timestamping authority mid audit-chain is security-sensitive. Those keys
+# stay ``restart_required`` (so the dispatcher never delivers them anyway);
+# watching them here would only be dead entries.
 
 # Surface a typo/rename in the watched set at import time, not on the
 # next operator hot-reload (mirrors MemoryBridgeSettingsSubscriber).
@@ -105,6 +108,7 @@ class ObservabilityBridgeSettingsSubscriber:
             )
             return
         from synthorg.api.lifecycle_helpers.config_apply import (  # noqa: PLC0415
+            _apply_audit_chain_signing_timeout,
             apply_http_log_handler_settings,
         )
 
@@ -113,6 +117,12 @@ class ObservabilityBridgeSettingsSubscriber:
             snapshot = await resolver.get_observability_bridge_config()
             self._app_state.bridge_config.swap_observability(snapshot)
             apply_http_log_handler_settings(snapshot)
+            if key == "audit_chain_signing_timeout_seconds":
+                # The signing timeout lives on each live ``AuditChainSink``
+                # instance, not on the bridge snapshot, so push it onto the
+                # running sinks; the snapshot swap above only keeps
+                # ``/settings`` reads consistent.
+                await _apply_audit_chain_signing_timeout(self._app_state)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

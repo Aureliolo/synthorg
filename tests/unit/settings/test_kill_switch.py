@@ -7,6 +7,7 @@ import pytest
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
     resolve_float_with_fallback,
+    resolve_int_with_fallback,
     resolve_model_with_fallback,
     resolve_str_with_fallback,
 )
@@ -86,6 +87,43 @@ async def test_float_resolver_outage_falls_back() -> None:
         fallback=168.0,
     )
     assert result == 168.0
+
+
+async def test_int_returns_fallback_when_resolver_missing() -> None:
+    result = await resolve_int_with_fallback(
+        resolver=None,
+        namespace="memory",
+        key="consolidation_enforce_batch_size",
+        fallback=1000,
+    )
+    assert result == 1000
+
+
+async def test_int_returns_resolver_value_when_wired() -> None:
+    resolver = mock_of[ConfigResolverProtocol](get_int=AsyncMock(return_value=2500))
+    result = await resolve_int_with_fallback(
+        resolver=resolver,
+        namespace="memory",
+        key="consolidation_enforce_batch_size",
+        fallback=1000,
+    )
+    assert result == 2500
+    resolver.get_int.assert_awaited_once_with(
+        "memory", "consolidation_enforce_batch_size"
+    )
+
+
+async def test_int_resolver_outage_falls_back() -> None:
+    resolver = mock_of[ConfigResolverProtocol](
+        get_int=AsyncMock(side_effect=RuntimeError("transient"))
+    )
+    result = await resolve_int_with_fallback(
+        resolver=resolver,
+        namespace="memory",
+        key="consolidation_enforce_batch_size",
+        fallback=1000,
+    )
+    assert result == 1000
 
 
 @pytest.mark.parametrize(

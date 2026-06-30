@@ -108,9 +108,11 @@ async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
 async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
     """Snapshot ``MemoryBridgeConfig`` onto ``AppState`` at startup.
 
-    Resolves the consolidation enforce-batch + fine-tune preflight knobs once
-    via :meth:`ConfigResolver.get_memory_bridge_config` and atomically swaps the
+    Resolves the fine-tune preflight VRAM-to-batch table once via
+    :meth:`ConfigResolver.get_memory_bridge_config` and atomically swaps the
     result onto ``app_state`` so memory consumers observe operator-tuned values.
+    The consolidation enforce-batch size is no longer bridged: the consolidation
+    service resolves it directly through its own ``ConfigResolver``.
     On any non-fatal resolve failure the default ``MemoryBridgeConfig()``
     snapshot (Field defaults == registered ``memory.*`` defaults) is retained.
 

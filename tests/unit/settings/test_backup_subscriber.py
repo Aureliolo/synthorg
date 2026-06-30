@@ -22,6 +22,7 @@ def _make_subscriber(
     enabled: bool = True,
     schedule_hours: int = 6,
     path: str = "",
+    flag_value: bool = True,
 ) -> tuple[BackupSettingsSubscriber, MagicMock]:
     """Create a subscriber with a mock BackupService and SettingsService.
 
@@ -54,6 +55,8 @@ def _make_subscriber(
             result.value = str(schedule_hours)
         elif key == "path":
             result.value = path
+        elif key in ("compression", "on_shutdown", "on_startup"):
+            result.value = str(flag_value)
         else:
             result.value = ""
         return result
@@ -155,8 +158,8 @@ class TestBackupSubscriberPath:
         service.set_backup_path.assert_not_called()
 
 
-class TestBackupSubscriberAdvisory:
-    """Advisory keys log info but do not touch the scheduler."""
+class TestBackupSubscriberFlags:
+    """compression / on_shutdown / on_startup hot-push onto the frozen config."""
 
     @pytest.mark.parametrize(
         "key",
@@ -166,16 +169,25 @@ class TestBackupSubscriberAdvisory:
             "on_startup",
         ],
     )
-    async def test_advisory_key_does_not_start_scheduler(
+    async def test_flag_change_pushes_to_service_without_toggle(
         self,
         key: str,
     ) -> None:
-        sub, service = _make_subscriber(scheduler_running=False)
+        sub, service = _make_subscriber(scheduler_running=False, flag_value=False)
 
         await sub.on_settings_changed("backup", key)
 
+        # The flag is hot-replaced on the service; the scheduler is untouched.
+        service.apply_config_flag.assert_awaited_once_with(key, value=False)
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_called()
+
+    async def test_flag_change_pushes_true_value(self) -> None:
+        sub, service = _make_subscriber(flag_value=True)
+
+        await sub.on_settings_changed("backup", "compression")
+
+        service.apply_config_flag.assert_awaited_once_with("compression", value=True)
 
     async def test_schedule_hours_reschedules_without_toggle(self) -> None:
         """schedule_hours calls reschedule but does not stop/start scheduler."""
@@ -186,12 +198,3 @@ class TestBackupSubscriberAdvisory:
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_called()
         service.scheduler.reschedule.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "key",
-        ["compression", "on_shutdown", "on_startup"],
-    )
-    async def test_advisory_keys_do_not_raise(self, key: str) -> None:
-        sub, _ = _make_subscriber()
-        # Should complete without error -- just logs INFO
-        await sub.on_settings_changed("backup", key)

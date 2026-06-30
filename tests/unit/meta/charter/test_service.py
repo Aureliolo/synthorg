@@ -1,5 +1,6 @@
 """Unit tests for the charter interview orchestration service."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import pytest
@@ -197,15 +198,17 @@ class _ScriptedStrategy:
     def __init__(self, decisions: list[InterviewDecision]) -> None:
         self._decisions = decisions
         self.calls = 0
+        self.configs: list[CharterConfig] = []
 
     async def run_turn(
         self,
         history: tuple[ConversationTurn, ...],
         *,
         project_id: NotBlankStr | None,
-        currency: str,
+        config: CharterConfig,
     ) -> InterviewDecision:
-        del history, project_id, currency
+        del history, project_id
+        self.configs.append(config)
         decision = self._decisions[self.calls]
         self.calls += 1
         return decision
@@ -216,6 +219,7 @@ def _service(
     *,
     config: CharterConfig | None = None,
     clock: FakeClock | None = None,
+    config_provider: Callable[[], Awaitable[CharterConfig]] | None = None,
 ) -> tuple[CharterInterviewService, _FakeCharterRepo]:
     charter_repo = _FakeCharterRepo()
     service = CharterInterviewService(
@@ -225,6 +229,7 @@ def _service(
         turn_repo=_FakeTurnRepo(),
         charter_repo=charter_repo,
         clock=clock or FakeClock(start=_START),
+        config_provider=config_provider,
     )
     return service, charter_repo
 
@@ -314,6 +319,79 @@ class TestRunTurn:
                     conversation_id=NotBlankStr(r1.conversation_id),
                 )
             )
+
+
+class TestLiveConfig:
+    """The per-turn ``config_provider`` feeds live values into the strategy."""
+
+    def _service_with(
+        self,
+        decisions: list[InterviewDecision],
+        *,
+        config_provider: Callable[[], Awaitable[CharterConfig]],
+    ) -> tuple[CharterInterviewService, _ScriptedStrategy]:
+        strategy = _ScriptedStrategy(decisions)
+        service = CharterInterviewService(
+            strategy=strategy,
+            config=CharterConfig(),
+            conversation_repo=_FakeConversationRepo(),
+            turn_repo=_FakeTurnRepo(),
+            charter_repo=_FakeCharterRepo(),
+            clock=FakeClock(start=_START),
+            config_provider=config_provider,
+        )
+        return service, strategy
+
+    async def test_live_config_threaded_into_strategy(self) -> None:
+        live = CharterConfig(
+            interview_model=NotBlankStr("example-medium-001"),
+            interview_max_turns=7,
+        )
+
+        async def _provide() -> CharterConfig:
+            return live
+
+        service, strategy = self._service_with(
+            [InterviewDecision(needs_more=True, next_question="q?")],
+            config_provider=_provide,
+        )
+        await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        assert strategy.configs[0] is live
+
+    async def test_live_max_turns_caps_the_interview(self) -> None:
+        async def _provide() -> CharterConfig:
+            return CharterConfig(interview_max_turns=1)
+
+        question = InterviewDecision(needs_more=True, next_question="more?")
+        service, _ = self._service_with([question, question], config_provider=_provide)
+        r1 = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        r2 = await service.run_turn(
+            InterviewTurnArgs(
+                message=NotBlankStr("again"),
+                created_by="u1",
+                conversation_id=NotBlankStr(r1.conversation_id),
+            )
+        )
+        assert r2.conversation_closed is True
+
+    async def test_provider_failure_falls_back_to_boot_config(self) -> None:
+        async def _provide() -> CharterConfig:
+            msg = "settings db blip"
+            raise RuntimeError(msg)
+
+        service, strategy = self._service_with(
+            [InterviewDecision(needs_more=True, next_question="q?")],
+            config_provider=_provide,
+        )
+        await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        # The turn still ran, using the boot CharterConfig() default.
+        assert strategy.configs[0] == CharterConfig()
 
 
 class TestEditAndCancel:

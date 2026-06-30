@@ -282,18 +282,19 @@ triggers, guards, context, config, factory, service).
 
 ### Boot wiring and rollout
 
-The pipeline is OPT-IN. `build_scaling_service` (in `hr/scaling/factory.py`)
-assembles the `ScalingService` over the hiring and offboarding services, and
-`wire_scaling` (in `api/lifecycle_helpers/scaling_wiring.py`) constructs it at
-startup only when the operator sets `hr.scaling_enabled` (off by default,
-`restart_required`). Until then the `/scaling` endpoints stay dormant
-(returning empty data) rather than 503-ing. Enabling it activates real
-auto-hire / auto-prune evaluation, so the gate ships off and is baked at
-startup. When enabled, `wire_scaling` also constructs the durable
-`HiringService`, attaches the per-backend `hiring_requests` repository, and
-reloads in-flight requests so an approved hire is not orphaned by a restart.
+The pipeline is OPT-IN but ghost-wired. `build_scaling_service` (in
+`hr/scaling/factory.py`) assembles the `ScalingService` over the hiring and
+offboarding services, and `wire_scaling` (in
+`api/lifecycle_helpers/scaling_wiring.py`) constructs it at startup whenever its
+collaborators are present, regardless of `hr.scaling_enabled`. The
+`hr.scaling_enabled` switch (off by default) is enforced live at the `/scaling`
+endpoints via `ensure_feature_enabled`, which 503s while it is off; toggling it
+applies on the next request with no restart. `wire_scaling` also constructs the
+durable `HiringService`, attaches the per-backend `hiring_requests` repository,
+and reloads in-flight requests so an approved hire is not orphaned by a restart.
 Gated on a connected persistence backend plus a wired registry, performance
-tracker, and approval store; absent any of those the service stays unwired.
+tracker, and approval store; absent any of those the service stays unwired and
+the endpoints 503.
 
 ---
 

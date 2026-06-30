@@ -21,27 +21,41 @@ _r.register(
 )
 
 _r.register(
+    # lint-allow: restart-required -- baked into the frozen CompanyMemoryConfig
+    # at startup; a change applies on the next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="default_level",
         type=SettingType.ENUM,
         default="persistent",
-        description="Default memory persistence level for agents",
+        description=(
+            "Default memory persistence level for agents. Baked into the"
+            " company memory config at startup, so a change applies on the"
+            " next restart."
+        ),
         group="General",
         enum_values=("none", "session", "project", "persistent"),
+        restart_required=True,
     )
 )
 
 _r.register(
+    # lint-allow: restart-required -- baked into the frozen ConsolidationConfig
+    # at startup; a change applies on the next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="consolidation_interval",
         type=SettingType.ENUM,
         default="daily",
-        description="How often to consolidate and archive memories",
+        description=(
+            "How often to consolidate and archive memories. Baked into the"
+            " consolidation config at startup, so a change applies on the"
+            " next restart."
+        ),
         group="Maintenance",
         level=SettingLevel.ADVANCED,
         enum_values=("hourly", "daily", "weekly", "never"),
+        restart_required=True,
     )
 )
 

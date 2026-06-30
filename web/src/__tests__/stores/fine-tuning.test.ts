@@ -51,6 +51,7 @@ const BASE_RUN: FineTuneRun = {
     temperature: 1,
     top_k: 5,
     batch_size: 8,
+    chunk_size: 512,
     validation_split: 0.1,
   },
   started_at: '2026-04-28T08:00:00+00:00',

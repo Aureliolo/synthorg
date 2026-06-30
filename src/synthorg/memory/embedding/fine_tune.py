@@ -401,6 +401,7 @@ async def generate_training_data(  # noqa: PLR0913
     *,
     query_generator: QueryGenerator | None = None,
     validation_split: float = _DEFAULT_VALIDATION_SPLIT,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE_WORDS,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
 ) -> tuple[Path, Path]:
@@ -416,6 +417,9 @@ async def generate_training_data(  # noqa: PLR0913
             chunk. Defaults to the extractive generator when ``None``
             (e.g. the sidecar path, which has no live provider).
         validation_split: Fraction held out for evaluation.
+        chunk_size: Word-boundary chunk size for splitting documents;
+            resolved from ``memory.fine_tune_chunk_size`` at the API
+            boundary and threaded through the run config.
         progress_callback: Called with progress 0.0-1.0.
         cancellation: Checked between documents.
 
@@ -440,7 +444,7 @@ async def generate_training_data(  # noqa: PLR0913
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
             cancellation.check()
-        chunks = _chunk_text(content)
+        chunks = _chunk_text(content, chunk_size)
         for chunk in chunks:
             query = await generator.generate(chunk)
             all_pairs.append(

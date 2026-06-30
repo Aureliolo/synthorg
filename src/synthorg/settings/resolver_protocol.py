@@ -31,7 +31,6 @@ from synthorg.settings.bridge_configs import (
     MetaBridgeConfig,
     NotificationsBridgeConfig,
     ObservabilityBridgeConfig,
-    SettingsDispatcherBridgeConfig,
     ToolsBridgeConfig,
     WorkersBridgeConfig,
 )
@@ -128,10 +127,4 @@ class ConfigResolverProtocol(Protocol):
 
     async def get_observability_bridge_config(self) -> ObservabilityBridgeConfig:
         """Assemble the observability bridge config from bridged settings."""
-        ...
-
-    async def get_settings_dispatcher_bridge_config(
-        self,
-    ) -> SettingsDispatcherBridgeConfig:
-        """Assemble the settings-dispatcher bridge config from bridged settings."""
         ...

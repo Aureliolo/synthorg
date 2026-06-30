@@ -9,6 +9,7 @@ approved charter is dispatched into the work pipeline by
 ``CharterDispatcher`` via the dedicated approve endpoint.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from synthorg.communication.conversation.enums import (
@@ -16,6 +17,7 @@ from synthorg.communication.conversation.enums import (
     ConversationStatus,
 )
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta._ids import new_opaque_id
 from synthorg.meta.charter._charter_crud import CharterCrudMixin
@@ -34,8 +36,9 @@ from synthorg.meta.errors import (
     ConversationClosedError,
     ConversationNotFoundError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.charter import (
+    CHARTER_CONFIG_RESOLVE_FAILED,
     CHARTER_CONVERSATION_CLOSED,
     CHARTER_CONVERSATION_NOT_FOUND,
     CHARTER_INTERVIEW_CAP_REACHED,
@@ -79,11 +82,16 @@ class CharterInterviewService(CharterCrudMixin):
 
     Args:
         strategy: Pluggable interview strategy (one model turn).
-        config: Charter-interview configuration.
+        config: Charter-interview configuration baked at startup; the
+            fallback when live resolution is unavailable / fails.
         conversation_repo: Conversation header store.
         turn_repo: Append-only conversation turn store.
         charter_repo: Project charter store.
         clock: Injectable time source (defaults to ``SystemClock``).
+        config_provider: Optional async provider of the live
+            ``CharterConfig`` (DB > env > default), called once per turn
+            so ``charter.*`` settings changes land without a restart. A
+            ``None`` provider (or a failing one) falls back to *config*.
     """
 
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
@@ -95,6 +103,7 @@ class CharterInterviewService(CharterCrudMixin):
         turn_repo: ConversationTurnRepository,
         charter_repo: CharterRepository,
         clock: Clock | None = None,
+        config_provider: Callable[[], Awaitable[CharterConfig]] | None = None,
     ) -> None:
         self._strategy = strategy
         self._config = config
@@ -102,6 +111,7 @@ class CharterInterviewService(CharterCrudMixin):
         self._turn_repo = turn_repo
         self._charter_repo = charter_repo
         self._clock: Clock = clock or SystemClock()
+        self._config_provider = config_provider
         # Per-conversation locks serialise the turn pipeline so two
         # concurrent run_turn() calls on one conversation cannot
         # interleave their history snapshots nor double-create charters.
@@ -152,6 +162,7 @@ class CharterInterviewService(CharterCrudMixin):
             )
             raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
+        live_config = await self._live_config()
         prior_turns = await self._ordered_turns(str(conversation.id))
         next_sequence = len(prior_turns)
 
@@ -171,7 +182,7 @@ class CharterInterviewService(CharterCrudMixin):
         assistant_turns = sum(
             1 for t in prior_turns if t.role is ConversationRole.ASSISTANT
         )
-        if assistant_turns >= self._config.interview_max_turns:
+        if assistant_turns >= live_config.interview_max_turns:
             return await self._cap_conversation(conversation, next_sequence + 1, now)
 
         history = (
@@ -187,7 +198,7 @@ class CharterInterviewService(CharterCrudMixin):
         decision = await self._strategy.run_turn(
             history,
             project_id=args.project,
-            currency=self._config.default_currency,
+            config=live_config,
         )
         if decision.needs_more:
             assert decision.next_question is not None  # noqa: S101 -- validator-guaranteed
@@ -198,6 +209,34 @@ class CharterInterviewService(CharterCrudMixin):
         return await self._record_draft(
             conversation, decision.draft, next_sequence + 1, now
         )
+
+    async def _live_config(self) -> CharterConfig:
+        """Resolve the live charter config for this turn.
+
+        Falls back to the startup config when no provider is wired or the
+        live read fails, so a transient settings-DB blip degrades to the
+        last-known-good config rather than failing the interview.
+
+        Returns:
+            ``CharterConfig`` instance.
+        """
+        if self._config_provider is None:
+            return self._config
+        try:
+            return await self._config_provider()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised; rest degrade
+            reraise_critical(exc)
+            logger.warning(
+                CHARTER_CONFIG_RESOLVE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                # Surface the boot fallback now in effect so an operator who
+                # changed a charter knob can tell from this one entry whether
+                # the live or the boot value is governing the interview.
+                fallback_interview_model=self._config.interview_model,
+                fallback_interview_max_turns=self._config.interview_max_turns,
+            )
+            return self._config
 
     async def _resolve_conversation(
         self, args: InterviewTurnArgs, now: datetime

@@ -34,6 +34,6 @@ Operationally this means **revocation takes effect within at most one revalidati
 
 WS and SSE share one cadence constant and one sliding-window failure model. Transient persistence-backend errors during a revalidation tick are admitted into a per-connection sliding window (`api.auth_revalidate_window_seconds`, default 60s; `api.auth_revalidate_max_failures`, default 5). Failures age out of the window instead of resetting on success, so a flaky backend that interleaves one good response between failure clusters cannot hold a stale-auth stream open indefinitely; once the window saturates the stream closes (WS: close code 4011; SSE: a final `revoked` frame with `reason=backend_unavailable`) and the client reconnects against a healthy replica.
 
-Both failure-tolerance settings are resolved once at startup (`restart_required`, `read_only_post_init`): changing them requires a restart and does not retune already-open streams. The unified sliding-window model is shared verbatim between WebSocket and SSE.
+Both failure-tolerance settings are sampled per new connection-open: a change applies to subsequently-opened streams with no restart, but does not retune already-open streams. The unified sliding-window model is shared verbatim between WebSocket and SSE.
 
 429 rate-limit `Retry-After` is per-policy (per-operation budgets, account-lockout duration) and is intentionally **not** coupled to the revalidation cadence; the unified cadence governs WS and SSE auth revalidation only.

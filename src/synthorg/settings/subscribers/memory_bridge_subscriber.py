@@ -1,24 +1,21 @@
 """Memory bridge-config settings subscriber.
 
-Hot-swaps ``app_state.bridge_config.memory`` when an operator edits
-a watched ``memory.*`` setting whose value lives on
-:class:`~synthorg.settings.bridge_configs.MemoryBridgeConfig` (the
-consolidation enforce-batch size and the embedding fine-tune preflight
-VRAM table + chunk size).
+Hot-swaps ``app_state.bridge_config.memory`` when an operator edits the
+``memory.fine_tune_vram_batch_table`` setting carried on
+:class:`~synthorg.settings.bridge_configs.MemoryBridgeConfig`, which the
+memory controller reads per request for fine-tune preflight sizing.
 
-Unlike the api/workers bridges (single scalar per key), this bridge
-carries a structured JSON field (``fine_tune_vram_batch_table``) whose
-parse + ordering validation lives in
-:meth:`ConfigResolver.get_memory_bridge_config`. So on any watched-key
-change the subscriber re-resolves the whole snapshot through that
-method and swaps it wholesale -- each field is still resolved
-independently (DB > env > default), and an invalid operator value
-raises there so the prior snapshot is retained.
+The bridge carries a structured JSON field (the VRAM table) whose parse +
+ordering validation lives in
+:meth:`ConfigResolver.get_memory_bridge_config`. On a change the subscriber
+re-resolves the snapshot through that method and swaps it wholesale; an
+invalid operator value raises there so the prior snapshot is retained.
 
-The separate notify-only ``MemorySettingsSubscriber`` continues to
-cover the non-bridge ``memory.default_level`` /
-``memory.consolidation_interval`` keys; this subscriber owns only the
-three bridge-backed keys.
+Only the VRAM table is bridged. ``memory.consolidation_enforce_batch_size``
+is re-read live by the consolidation service through its own
+``ConfigResolver`` (no ``app_state`` there), and ``memory.fine_tune_chunk_size``
+is resolved into the fine-tune run config at run start; neither needs this
+subscriber.
 """
 
 from synthorg.api.state import AppState
@@ -36,12 +33,7 @@ logger = get_logger(__name__)
 
 _NAMESPACE = "memory"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
-    (_NAMESPACE, k)
-    for k in (
-        "consolidation_enforce_batch_size",
-        "fine_tune_vram_batch_table",
-        "fine_tune_chunk_size",
-    )
+    (_NAMESPACE, k) for k in ("fine_tune_vram_batch_table",)
 )
 
 # Surface a typo/rename in the watched set at import time, not on the

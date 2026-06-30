@@ -238,8 +238,14 @@ class TestBuildClientSimulationRuntime:
             runtime_builder.build_client_simulation_runtime(app_state, env={})
 
 
-def _str_resolver(values: dict[str, str]) -> ConfigResolver:
-    """A resolver whose ``get_str`` returns *values* for simulations keys."""
+def _str_resolver(
+    values: dict[str, str], *, verification_enabled: bool = True
+) -> ConfigResolver:
+    """A resolver whose ``get_str`` returns *values* for simulations keys.
+
+    ``get_bool`` answers the one boolean reload key
+    (``verification_review_enabled``) with *verification_enabled*.
+    """
 
     async def _get_str(namespace: str, key: str) -> str:
         # Lock the namespace contract: the reload must read the simulations
@@ -248,7 +254,15 @@ def _str_resolver(values: dict[str, str]) -> ConfigResolver:
         assert namespace == SettingNamespace.SIMULATIONS.value
         return values[key]
 
-    return cast("ConfigResolver", mock_of[ConfigResolver](get_str=_get_str))
+    async def _get_bool(namespace: str, key: str) -> bool:
+        assert namespace == SettingNamespace.SIMULATIONS.value
+        assert key == "verification_review_enabled"
+        return verification_enabled
+
+    return cast(
+        "ConfigResolver",
+        mock_of[ConfigResolver](get_str=_get_str, get_bool=_get_bool),
+    )
 
 
 class TestReloadClientSimulationRuntime:
@@ -265,6 +279,8 @@ class TestReloadClientSimulationRuntime:
                 "intake_model": "",
                 "intake_default_project": "db-project",
                 "review_pipeline_strategy": "internal_only",
+                "verification_grader": "heuristic",
+                "verification_decomposer": "identity",
             }
         )
         app_state = make_app_state(
@@ -278,6 +294,37 @@ class TestReloadClientSimulationRuntime:
         assert state is not None
         # The DB-resolved project flows through, not the env/default.
         assert state.intake_default_project == "db-project"
+
+    async def test_verification_disabled_via_db_drops_stage(self) -> None:
+        """A DB ``verification_review_enabled=false`` drops the stage on reload."""
+        from synthorg.client.runtime_builder import (
+            reload_client_simulation_runtime,
+        )
+
+        resolver = _str_resolver(
+            {
+                "intake_strategy": "direct",
+                "intake_model": "",
+                "intake_default_project": "db-project",
+                "review_pipeline_strategy": "internal_only",
+                "verification_grader": "heuristic",
+                "verification_decomposer": "identity",
+            },
+            verification_enabled=False,
+        )
+        app_state = make_app_state(
+            task_engine=mock_of[TaskEngine](),
+            config_resolver=resolver,
+        )
+
+        await reload_client_simulation_runtime(app_state)
+
+        state = app_state.slice(ClientStateSlice).simulation_state
+        assert state is not None
+        assert state.review_pipeline is not None
+        # The verification stage is gone because the DB value disabled it,
+        # proving the verification settings are now DB-resolved (not env-only).
+        assert "verification" not in state.review_pipeline.stage_names
 
     async def test_falls_back_to_bootstrap_without_resolver(
         self, monkeypatch: pytest.MonkeyPatch
@@ -321,6 +368,8 @@ class TestReloadClientSimulationRuntime:
                 "intake_model": "",
                 "intake_default_project": "db-project",
                 "review_pipeline_strategy": "internal_only",
+                "verification_grader": "heuristic",
+                "verification_decomposer": "identity",
             }
         )
         app_state = make_app_state(
@@ -360,6 +409,8 @@ class TestReloadClientSimulationRuntime:
                 "intake_model": "",
                 "intake_default_project": "   ",
                 "review_pipeline_strategy": "internal_only",
+                "verification_grader": "heuristic",
+                "verification_decomposer": "identity",
             }
         )
         app_state = make_app_state(

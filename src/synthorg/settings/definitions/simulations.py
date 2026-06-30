@@ -119,12 +119,12 @@ _r.register(
             " the review pipeline. The stage decomposes a task's"
             " acceptance criteria into atomic probes and grades the work"
             " against a calibrated rubric with a separate evaluator"
-            " identity. Baked in at process startup."
+            " identity. SimulationsSettingsSubscriber rebuilds the review"
+            " pipeline on a change, so it applies without a restart."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -140,12 +140,12 @@ _r.register(
             " 'heuristic' is deterministic and needs no provider;"
             " 'llm' grades via the registered completion provider and"
             " degrades to 'heuristic' when no provider is present."
-            " Baked in at process startup."
+            " SimulationsSettingsSubscriber rebuilds the review pipeline"
+            " on a change, so it applies without a restart."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -161,12 +161,13 @@ _r.register(
             " 'identity' maps each acceptance criterion to one probe"
             " with no LLM call; 'llm' decomposes via the registered"
             " completion provider and degrades to 'identity' when no"
-            " provider is present. Baked in at process startup."
+            " provider is present. SimulationsSettingsSubscriber rebuilds"
+            " the review pipeline on a change, so it applies without a"
+            " restart."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 

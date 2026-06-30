@@ -42,12 +42,10 @@ _DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 _BASELINE_HEADER: Final[str] = """\
 # Frozen baseline of settings that remain restart-bound
 # (restart_required=True or read_only_post_init=True), one `<namespace>.<key>`
-# per line, sorted. Two categories live here:
-#   1. Genuine keeps -- bound OS/transport resources, Litestar middleware,
-#      fixed-size buffers, boot-baked logging/audit/TSA, image pins, secrets.
-#   2. Deferred -- settings whose conversion is tracked by the sibling issues
-#      #2515 (research/knowledge/hr/simulations) and #2516
-#      (self_improvement/chief_of_staff); these shrink out as those PRs land.
+# per line, sorted. These are genuine keeps -- bound OS/transport resources,
+# Litestar middleware, fixed-size buffers, boot-baked logging/audit/TSA
+# trust-anchors, image pins, and secrets -- for which a live retune is unsafe
+# or impossible.
 #
 # scripts/check_setting_restart_required_justified.py fails when a restart-bound
 # setting is neither on this list nor carries a

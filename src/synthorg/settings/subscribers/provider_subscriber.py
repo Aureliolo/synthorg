@@ -8,6 +8,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.service import SettingsService
 
@@ -24,19 +25,25 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 class ProviderSettingsSubscriber:
     """React to provider-namespace settings changes.
 
-    On ``routing_strategy`` change, rebuilds :class:`ModelRouter`
-    with the new strategy and swaps it into ``AppState``.
+    On ``routing_strategy`` change, rebuilds :class:`ModelRouter` with the
+    new strategy and swaps it into ``AppState``. NOTE: the wired
+    ``ProvidersStateSlice.model_router`` is consumed only by the Prometheus
+    ``model_router`` label fetcher; agent model selection runs through the
+    separate stakes / work-routing policies, so this change updates the
+    exported metric label, not live routing behaviour.
 
     On ``retry_max_attempts`` change, rebuilds the :class:`ProviderRegistry`
-    so the new org-wide retry cap applies live without a restart. The cap
-    is baked into each driver's :class:`RetryHandler` at build time, so a
-    change only takes effect through a registry rebuild; rebuilding here
-    is the seam that makes the setting live. The rebuild resolves the
-    current provider set (DB-persisted blob, else the boot template) and
-    re-binds the always-on credential catalog so ``connection_name`` auth
-    keeps resolving. A rebuild is skipped while a cassette session is
-    active (the recorded-LLM seam is baked in at process start), in which
-    case the new cap applies on the next restart.
+    so the new org-wide retry cap applies live without a restart, then
+    triggers a runtime-services rebuild so the running ``AgentEngine`` (which
+    captured the registry at construction) adopts the rebuilt one. The cap is
+    baked into each driver's :class:`RetryHandler` at build time, so a change
+    only takes effect through a registry rebuild; rebuilding + reloading here
+    is the seam that makes the setting live for the completion path. The
+    rebuild resolves the current provider set (DB-persisted blob, else the
+    boot template) and re-binds the always-on credential catalogue so
+    ``connection_name`` auth keeps resolving. A rebuild is skipped while a
+    cassette session is active (the recorded-LLM seam is baked in at process
+    start), in which case the new cap applies on the next restart.
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next
@@ -144,7 +151,7 @@ class ProviderSettingsSubscriber:
 
         Resolves the live ``providers.retry_max_attempts`` value and the
         current provider set (the DB-persisted blob, falling back to the
-        boot template), rebuilds the registry with the catalog re-bound, and
+        boot template), rebuilds the registry with the catalogue re-bound, and
         hot-swaps it. Skipped while a cassette session is active, since the
         recorded-LLM seam is baked in at process start and the cap then
         applies on the next restart. On failure the existing registry stays
@@ -157,7 +164,6 @@ class ProviderSettingsSubscriber:
         from synthorg.providers.management._persistence import (  # noqa: PLC0415
             resolve_retry_max_attempts,
         )
-        from synthorg.providers.registry import ProviderRegistry  # noqa: PLC0415
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
@@ -195,13 +201,13 @@ class ProviderSettingsSubscriber:
                     note="cassette became active during rebuild -- skipped swap",
                 )
                 return
-            self._app_state.swap_provider_registry(new_registry)
+            await self._apply_registry_swap(new_registry, live)
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="providers",
                 key="retry_max_attempts",
-                note="provider registry rebuilt and swapped",
+                note="provider registry rebuilt, swapped, and runtime reloaded",
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -211,4 +217,47 @@ class ProviderSettingsSubscriber:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            raise
+
+    async def _apply_registry_swap(
+        self,
+        new_registry: ProviderRegistry,
+        previous_registry: ProviderRegistry | None,
+    ) -> None:
+        """Swap in *new_registry* and reload the runtime, rolling back on failure.
+
+        The slice swap commits before the runtime reload (the running
+        ``AgentEngine`` captured the registry at construction, so a slice swap
+        alone leaves the completion path on the old retry cap). If the reload
+        raises, the slice and the engine would diverge, so the pre-swap registry
+        -- which may have been unset (``None``), expressible only via ``wire``
+        and not the non-None ``swap_provider_registry`` shim -- is restored and
+        the runtime re-healed before the original error propagates. The runtime
+        builder is imported before the swap so an import failure cannot leave a
+        committed swap un-reloaded. ``MemoryError`` / ``RecursionError`` skip the
+        rollback so a fatal condition is not driven through a second reload.
+        """
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+        from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+            reload_runtime_services,
+        )
+
+        self._app_state.swap_provider_registry(new_registry)
+        try:
+            await reload_runtime_services(self._app_state)
+        except Exception as reload_exc:
+            reraise_critical(reload_exc)
+            self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
+            try:
+                await reload_runtime_services(self._app_state)
+            except Exception as heal_exc:  # noqa: BLE001
+                reraise_critical(heal_exc)
+                logger.error(
+                    SETTINGS_SERVICE_SWAP_FAILED,
+                    service="provider_registry",
+                    error_type=type(heal_exc).__name__,
+                    error=safe_error_description(heal_exc),
+                    note="rollback runtime reload failed -- registry "
+                    "restored but runtime may be inconsistent",
+                )
             raise

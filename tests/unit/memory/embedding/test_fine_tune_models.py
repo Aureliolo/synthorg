@@ -388,6 +388,11 @@ class TestBaseModelValidation:
         [
             "https://evil.example/model",
             "file://etc/passwd",
+            # Schemeless URL forms (no ``//`` authority) still carry a scheme
+            # and must be rejected via scheme parsing, not a ``://`` substring.
+            "file:/tmp/model",
+            "https:example",
+            "s3:bucket/key",
             "../../etc/passwd",
             "models\\windows",
             "C:/models/x",

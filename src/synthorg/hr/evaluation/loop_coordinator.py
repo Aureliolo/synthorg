@@ -113,6 +113,25 @@ class EvalLoopCoordinator:
         self._fix_proposer: FixProposer = fix_proposer or TableFixProposer(self._config)
         self._clock: Clock = clock or SystemClock()
 
+    def set_pattern_strategies(
+        self,
+        *,
+        pattern_identifier: PatternIdentifier | None,
+        fix_proposer: FixProposer | None,
+    ) -> None:
+        """Hot-swap the IDENTIFY / PROPOSE strategies.
+
+        Pushed by ``EvalLoopSettingsSubscriber`` when an operator edits the
+        ``hr.eval_loop_*`` model / mode keys, so a change applies on the next
+        cycle without a restart. ``None`` resets the step to its deterministic
+        default (the same fallback the constructor and the provider-backed
+        strategies use). The next ``run_cycle`` reads these fresh.
+        """
+        self._pattern_identifier = pattern_identifier or DeterministicPatternIdentifier(
+            self._config
+        )
+        self._fix_proposer = fix_proposer or TableFixProposer(self._config)
+
     @property
     def config(self) -> EvalLoopConfig:
         """Return the coordinator configuration."""
@@ -150,6 +169,15 @@ class EvalLoopCoordinator:
             window_seconds=window.total_seconds(),
         )
 
+        # Snapshot the pluggable strategies once for the whole cycle. A hot
+        # ``set_pattern_strategies()`` swap (driven by an eval_loop settings
+        # change) can fire between the IDENTIFY and PROPOSE awaits below;
+        # reading the live attributes at each phase would otherwise run one
+        # cycle with a mismatched (old identifier, new proposer) pair. The
+        # reload takes effect on the next cycle instead.
+        pattern_identifier = self._pattern_identifier
+        fix_proposer = self._fix_proposer
+
         try:
             # 1. COLLECT: gather agent IDs with metrics in window.
             ids = agent_ids or self._collect_agent_ids(since=window_start)
@@ -163,12 +191,12 @@ class EvalLoopCoordinator:
             # would otherwise bypass it, so gate the phase here for both.
             observations: tuple[NotBlankStr, ...] = ()
             if self._config.pattern_identifier_enabled:
-                observations = await self._pattern_identifier.identify(reports)
+                observations = await pattern_identifier.identify(reports)
 
             # 4. PROPOSE: delegate to the pluggable fix proposer, then
             # dispatch the proposer's actual actions (deterministic table or
             # LLM) to their remediation service when a dispatcher is wired.
-            proposed_actions = await self._fix_proposer.propose(observations)
+            proposed_actions = await fix_proposer.propose(observations)
             await self._dispatch_actions(proposed_actions)
             # The report records WHICH actions were proposed (provenance is an
             # internal dispatch concern), so flatten to action ids here.

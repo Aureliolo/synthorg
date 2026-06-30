@@ -141,8 +141,7 @@ Some settings are bootstrap-only and cannot be hot-reloaded safely. They are mar
 - `api.rate_limit_auth_endpoint_max_requests` (the dedicated per-minute limiter applied as route middleware on the login / setup / change-password / dev-login endpoints; bound at module import, `read_only_post_init`)
 - `api.per_op_rate_limit.backend` / `api.per_op_concurrency.backend` (the per-op stores are constructed once at startup; enabled / overrides ARE runtime-editable)
 - `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
-- `backup.path` (backup scheduler's output directory)
-- `observability.ws_ticket_max_pending_per_user` (ticket store is constructed once)
+- `observability.tsa_endpoint_freetsa` / `tsa_endpoint_digicert` / `tsa_endpoint_sectigo` (the timestamp trust-anchor URL is baked into `TsaClient` at construction with trust-root validation; swapping the authority mid audit-chain is security-sensitive)
 
 Changing a restart-required setting writes the new value to the database but the running process continues using the old value. Restart the backend to pick up the change.
 
@@ -150,9 +149,12 @@ Changing a restart-required setting writes the new value to the database but the
 
 The `SettingsChangeDispatcher` polls the `#settings` message bus channel and routes change events to registered `SettingsSubscriber` implementations. Concrete subscribers today:
 
-- `ProviderSettingsSubscriber`: rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router()`
-- `MemorySettingsSubscriber`: advisory logging for non-restart memory settings
-- `BackupSettingsSubscriber`: toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change
+- `ProviderSettingsSubscriber`: rebuilds the provider registry on `retry_max_attempts` change and triggers a runtime-services rebuild so the running engine adopts the new cap
+- `BackupSettingsSubscriber`: toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change, re-points the backup path on `path` change, and re-applies the `compression` / `on_shutdown` / `on_startup` config flags onto the live service
+- `EvalLoopSettingsSubscriber`: re-resolves the `hr.eval_loop_*` model / provider / mode keys and swaps the rebuilt pattern-identifier + fix-proposer strategies onto the live eval-loop coordinator
+- `GithubApiUrlSettingsSubscriber`: re-binds `integrations.github_api_url` onto the GitHub health checker
+- `ObservabilityBridgeSettingsSubscriber`: re-applies `audit_chain_signing_timeout_seconds` onto the live audit sink (plus the HTTP-log batch knobs)
+- plus the per-domain bridge / live-config subscribers (api, workers, observability, security, tools, notifications, research, knowledge, simulations, ...) registered in `api/lifecycle_helpers/settings_dispatcher.py`
 
 Settings resolved via `ConfigResolver` bridge configs (e.g. `get_communication_bridge_config()`) are re-fetched at the top of each polling iteration in their consumers, so operator changes take effect within one poll cycle without restart.
 

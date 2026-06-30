@@ -236,8 +236,8 @@
     },
     "src/synthorg/backup/service.py": {
       "cap": 500,
-      "loc": 484,
-      "ratio": 0.968,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/budget/_enforcer_helpers.py": {
@@ -290,8 +290,8 @@
     },
     "src/synthorg/client/runtime_builder.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 458,
+      "ratio": 0.916,
       "tier": "code"
     },
     "src/synthorg/communication/async_tasks/service.py": {
@@ -812,26 +812,26 @@
     },
     "src/synthorg/memory/consolidation/service.py": {
       "cap": 500,
-      "loc": 424,
-      "ratio": 0.848,
+      "loc": 433,
+      "ratio": 0.866,
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune.py": {
       "cap": 1100,
-      "loc": 882,
-      "ratio": 0.802,
+      "loc": 886,
+      "ratio": 0.805,
       "tier": "complex_service"
     },
     "src/synthorg/memory/embedding/fine_tune_models.py": {
       "cap": 500,
-      "loc": 494,
-      "ratio": 0.988,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune_orchestrator.py": {
       "cap": 600,
-      "loc": 512,
-      "ratio": 0.853,
+      "loc": 521,
+      "ratio": 0.868,
       "tier": "orchestrator"
     },
     "src/synthorg/memory/retrieval/hierarchical/supervisor.py": {
@@ -896,8 +896,8 @@
     },
     "src/synthorg/meta/charter/service.py": {
       "cap": 500,
-      "loc": 401,
-      "ratio": 0.802,
+      "loc": 432,
+      "ratio": 0.864,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/group_chat.py": {
@@ -1382,8 +1382,8 @@
     },
     "src/synthorg/settings/bridge_configs.py": {
       "cap": 500,
-      "loc": 463,
-      "ratio": 0.926,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/settings/definitions/tools.py": {
@@ -1392,16 +1392,10 @@
       "ratio": 0.816,
       "tier": "code"
     },
-    "src/synthorg/settings/dispatcher.py": {
-      "cap": 600,
-      "loc": 592,
-      "ratio": 0.987,
-      "tier": "service"
-    },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1095,
-      "ratio": 0.995,
+      "loc": 1061,
+      "ratio": 0.965,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1519,7 +1513,7 @@
     "synthorg.api.pagination": 61,
     "synthorg.api.path_params": 80,
     "synthorg.api.rate_limits": 92,
-    "synthorg.api.state": 282,
+    "synthorg.api.state": 284,
     "synthorg.api.state_slices": 32,
     "synthorg.api.ws_models": 20,
     "synthorg.approval.enums": 78,
@@ -1550,7 +1544,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 210,
-    "synthorg.core.critical_errors": 606,
+    "synthorg.core.critical_errors": 610,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1613,7 +1607,7 @@
     "synthorg.meta.signal_models": 23,
     "synthorg.meta.state": 21,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1752,
+    "synthorg.observability": 1754,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 200,
     "synthorg.observability.events.approval_gate": 20,
@@ -1632,7 +1626,7 @@
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 52,
     "synthorg.observability.events.security": 75,
-    "synthorg.observability.events.settings": 58,
+    "synthorg.observability.events.settings": 60,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
     "synthorg.observability.events.workflow": 26,
@@ -1655,20 +1649,20 @@
     "synthorg.providers.models": 123,
     "synthorg.providers.protocol": 76,
     "synthorg.providers.registry": 36,
-    "synthorg.providers.state": 31,
+    "synthorg.providers.state": 32,
     "synthorg.research.models": 23,
     "synthorg.security.autonomy.enums": 73,
     "synthorg.security.models": 28,
     "synthorg.settings.bridge_configs": 24,
-    "synthorg.settings.enums": 162,
+    "synthorg.settings.enums": 165,
     "synthorg.settings.errors": 28,
     "synthorg.settings.kill_switch": 21,
     "synthorg.settings.mirrors": 37,
     "synthorg.settings.models": 43,
     "synthorg.settings.registry": 44,
     "synthorg.settings.resolver": 52,
-    "synthorg.settings.service": 39,
-    "synthorg.settings.state": 103,
+    "synthorg.settings.service": 41,
+    "synthorg.settings.state": 105,
     "synthorg.tools.base": 78,
     "synthorg.tools.network_validator": 29
   },
@@ -1783,7 +1777,7 @@
     },
     "synthorg.memory.embedding.fine_tune_orchestrator:FineTuneOrchestrator": {
       "lcom4": 1,
-      "loc": 447
+      "loc": 456
     },
     "synthorg.memory.service:MemoryService": {
       "lcom4": 5,
@@ -1833,13 +1827,9 @@
       "lcom4": 2,
       "loc": 865
     },
-    "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
-      "lcom4": 1,
-      "loc": 517
-    },
     "synthorg.settings.resolver:ConfigResolver": {
-      "lcom4": 1,
-      "loc": 1027
+      "lcom4": 2,
+      "loc": 994
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,

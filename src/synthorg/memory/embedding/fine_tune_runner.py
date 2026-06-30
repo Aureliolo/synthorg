@@ -339,6 +339,7 @@ async def _dispatch_stage(
     """
     # Lazy imports -- only load ML deps when actually running a stage.
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
+        _DEFAULT_CHUNK_SIZE_WORDS,
         contrastive_fine_tune,
         deploy_checkpoint,
         evaluate_checkpoint,
@@ -351,6 +352,9 @@ async def _dispatch_stage(
             await generate_training_data(
                 source_dir=str(config["source_dir"]),
                 output_dir=str(config["output_dir"]),
+                chunk_size=int(
+                    str(config.get("chunk_size", _DEFAULT_CHUNK_SIZE_WORDS))
+                ),
                 cancellation=token,
             )
         case FineTuneStage.MINING_NEGATIVES:

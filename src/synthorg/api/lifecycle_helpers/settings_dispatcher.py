@@ -26,10 +26,11 @@ from synthorg.settings.subscribers import (
     ChiefOfStaffAlertsSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
+    EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
+    GithubApiUrlSettingsSubscriber,
     KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
-    MemorySettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
     NotificationsBridgeSettingsSubscriber,
     ObjectiveEntrySettingsSubscriber,
@@ -70,7 +71,6 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
-    memory_sub = MemorySettingsSubscriber()
     log_dir = config.logging.log_dir if config.logging is not None else "logs"
     observability_sub = ObservabilitySettingsSubscriber(
         settings_service=settings_service,
@@ -112,7 +112,6 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
     simulations_sub = SimulationsSettingsSubscriber(app_state=app_state)
     subs: list[SettingsSubscriber] = [
         provider_sub,
-        memory_sub,
         observability_sub,
         per_op_rl_sub,
         api_bridge_sub,
@@ -147,6 +146,14 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
             settings_service=settings_service,
         ),
         EngineTimeoutEnforcementSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        EvalLoopSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        GithubApiUrlSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),
@@ -188,9 +195,14 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
                 settings_service=settings_service,
             ),
         )
-    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    # Late-bind the resolver: this builder runs before
+    # ``compose_settings_dependent_services`` wires the resolver onto the
+    # slice, so the dispatcher must read the slice on each resolve rather
+    # than capture a (still-``None``) value here.
     return SettingsChangeDispatcher(
         message_bus=message_bus,
         subscribers=tuple(subs),
-        config_resolver=config_resolver,
+        config_resolver_getter=lambda: (
+            app_state.slice(SettingsStateSlice).config_resolver
+        ),
     )

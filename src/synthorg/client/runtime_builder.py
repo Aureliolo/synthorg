@@ -145,20 +145,23 @@ def _resolve_review_pipeline_strategy(
     return cast("ReviewPipelineStrategy", value)
 
 
-def _resolve_verification_config(
-    *,
-    env: Mapping[str, str],
-    has_provider: bool,
-) -> VerificationConfig:
-    """Resolve the verification grader/decomposer variants from settings.
+def _resolve_verification_choices(env: Mapping[str, str]) -> tuple[bool, str, str]:
+    """Resolve ``(enabled, grader, decomposer)`` from the bootstrap chain.
 
-    The ``llm`` variants degrade to the deterministic ``heuristic`` /
-    ``identity`` variants when no provider is registered (empty company),
-    so the stage always comes online without a provider.
+    Boot helper (env > registered default). The reload path resolves these
+    same three keys through the DB-backed ``ConfigResolver`` instead.
 
     Returns:
-        The resolved :class:`VerificationConfig`.
+        The ``(enabled, grader, decomposer)`` triple.
     """
+    enabled = bool(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS,
+            _VERIFICATION_ENABLED_KEY,
+            env=env,
+            parse=parse_bool,
+        ).value
+    )
     grader = str(
         resolve_init_value(
             SettingNamespace.SIMULATIONS, _VERIFICATION_GRADER_KEY, env=env
@@ -169,6 +172,24 @@ def _resolve_verification_config(
             SettingNamespace.SIMULATIONS, _VERIFICATION_DECOMPOSER_KEY, env=env
         ).value
     )
+    return enabled, grader, decomposer
+
+
+def _make_verification_config(
+    grader: str,
+    decomposer: str,
+    *,
+    has_provider: bool,
+) -> VerificationConfig:
+    """Build the verification config from resolved grader/decomposer choices.
+
+    The ``llm`` variants degrade to the deterministic ``heuristic`` /
+    ``identity`` variants when no provider is registered (empty company),
+    so the stage always comes online without a provider.
+
+    Returns:
+        The resolved :class:`VerificationConfig`.
+    """
     if not has_provider and (grader == "llm" or decomposer == "llm"):
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
@@ -192,28 +213,28 @@ def _resolve_verification_config(
 
 def _build_verification_stage(
     *,
-    env: Mapping[str, str],
+    enabled: bool,
+    grader: str,
+    decomposer: str,
     provider: CompletionProvider | None,
     cost_tracker: CostTrackerProtocol | None,
 ) -> VerificationReviewStage | None:
     """Build the rubric-grading review stage when enabled.
+
+    The ``enabled`` / ``grader`` / ``decomposer`` choices are resolved by the
+    caller (DB-backed on the reload path, env on the boot path) so the stage
+    rebuilds with the operator's live values on a settings change.
 
     Returns:
         A :class:`VerificationReviewStage` when
         ``simulations.verification_review_enabled`` is set, otherwise
         ``None`` (the stage is omitted from the pipeline).
     """
-    enabled = bool(
-        resolve_init_value(
-            SettingNamespace.SIMULATIONS,
-            _VERIFICATION_ENABLED_KEY,
-            env=env,
-            parse=parse_bool,
-        ).value
-    )
     if not enabled:
         return None
-    config = _resolve_verification_config(env=env, has_provider=provider is not None)
+    config = _make_verification_config(
+        grader, decomposer, has_provider=provider is not None
+    )
     # Honour the requested tier via the model-tier policy (large -> medium ->
     # small archetype id) rather than discarding it and pinning one model, so
     # an LLM-backed decomposer/grader selects the model its tier policy maps to.
@@ -222,19 +243,19 @@ def _build_verification_stage(
         if provider is not None
         else None
     )
-    decomposer = build_decomposer(
+    decomposer_impl = build_decomposer(
         config,
         provider=provider,
         tier_resolver=tier_resolver,
         cost_tracker=cost_tracker,
     )
-    grader = build_grader(
+    grader_impl = build_grader(
         config,
         provider=provider,
         tier_resolver=tier_resolver,
         cost_tracker=cost_tracker,
     )
-    return VerificationReviewStage(decomposer=decomposer, grader=grader)
+    return VerificationReviewStage(decomposer=decomposer_impl, grader=grader_impl)
 
 
 def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
@@ -302,11 +323,13 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
 def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choices
     app_state: AppState,
     *,
-    env: Mapping[str, str],
     requested_strategy: str,
     model: str | None,
     default_project: str,
     review_strategy: ReviewPipelineStrategy,
+    verification_enabled: bool,
+    verification_grader: str,
+    verification_decomposer: str,
 ) -> tuple[IntakeEngine, ReviewPipeline]:
     """Build the config-driven simulation components from resolved choices.
 
@@ -314,10 +337,10 @@ def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choi
     and the runtime reload both compose; the intake strategy degrades to
     ``direct`` when unsatisfiable. Only these two config-driven objects are
     rebuilt, so the reload path can swap them onto the existing state and keep
-    the mutable stores intact. The verification-stage settings
-    (``verification_review_enabled`` / ``verification_grader`` /
-    ``verification_decomposer``) are read from ``env`` in both paths and are not
-    live-reloadable (they retain ``restart_required`` in the registry).
+    the mutable stores intact. Every config-driven choice (intake, review, and
+    the three verification-stage settings) is resolved by the caller (DB-backed
+    on reload, env on boot), so an operator change to any of them is picked up
+    on the next reload without a restart.
 
     Returns:
         The ``(intake_engine, review_pipeline)`` pair.
@@ -334,7 +357,9 @@ def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choi
         cost_tracker=cost_tracker,
     )
     verification_stage = _build_verification_stage(
-        env=env,
+        enabled=verification_enabled,
+        grader=verification_grader,
+        decomposer=verification_decomposer,
         provider=provider,
         cost_tracker=cost_tracker,
     )
@@ -372,9 +397,9 @@ def build_client_simulation_runtime(
     this); ``provider_registry`` / ``cost_tracker`` are consulted when
     present. ``env`` overrides ``os.environ`` for tests.
 
-    The four intake / review choices are read via the bootstrap resolver
-    (env > registered default) because ``ConfigResolver`` is not wired at
-    construction; a DB override is then picked up on-startup and on every
+    The intake / review / verification choices are read via the bootstrap
+    resolver (env > registered default) because ``ConfigResolver`` is not wired
+    at construction; a DB override is then picked up on-startup and on every
     settings change via :func:`reload_client_simulation_runtime`.
 
     Returns:
@@ -382,13 +407,18 @@ def build_client_simulation_runtime(
     """
     requested_strategy, model, default_project = _resolve_intake_settings(env)
     review_strategy = _resolve_review_pipeline_strategy(env)
+    verification_enabled, verification_grader, verification_decomposer = (
+        _resolve_verification_choices(env)
+    )
     intake_engine, review_pipeline = _build_simulation_components(
         app_state,
-        env=env,
         requested_strategy=requested_strategy,
         model=model,
         default_project=default_project,
         review_strategy=review_strategy,
+        verification_enabled=verification_enabled,
+        verification_grader=verification_grader,
+        verification_decomposer=verification_decomposer,
     )
     return ClientSimulationState(
         intake_engine=intake_engine,
@@ -400,10 +430,12 @@ def build_client_simulation_runtime(
 async def reload_client_simulation_runtime(app_state: AppState) -> None:
     """Rebuild the simulation components from the live settings and swap them in.
 
-    Re-reads the four hot intake / review keys (``intake_strategy``,
-    ``intake_model``, ``intake_default_project``, ``review_pipeline_strategy``)
-    through the DB-backed ``ConfigResolver`` (DB > env > default), rebuilds the
-    intake engine + review pipeline, and atomically swaps them onto the existing
+    Re-reads the hot intake / review / verification keys (``intake_strategy``,
+    ``intake_model``, ``intake_default_project``, ``review_pipeline_strategy``,
+    ``verification_review_enabled`` / ``verification_grader`` /
+    ``verification_decomposer``) through the DB-backed ``ConfigResolver``
+    (DB > env > default), rebuilds the intake engine + review pipeline (including
+    the verification stage), and atomically swaps them onto the existing
     ``ClientSimulationState`` via ``dataclasses.replace``. Replacing only the
     config-driven fields preserves the live mutable stores (client pool, request
     / simulation / feedback stores, in-flight background tasks), so a hot-reload
@@ -411,8 +443,8 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
     honoured on every boot, since construction reads only env/default) and on
     every ``reload_runtime_services`` / simulations settings change.
 
-    When the resolver is not yet wired (a pre-startup context) the four keys
-    fall back to the bootstrap resolver (env > registered default). A blank
+    When the resolver is not yet wired (a pre-startup context) the keys fall
+    back to the bootstrap resolver (env > registered default). A blank
     ``intake_default_project`` is rejected (the previous runtime is retained
     unchanged) so an operator clearing the override cannot wire an empty project.
     """
@@ -422,18 +454,45 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
             os.environ
         )
         review_strategy = _resolve_review_pipeline_strategy(os.environ)
+        verification_enabled, verification_grader, verification_decomposer = (
+            _resolve_verification_choices(os.environ)
+        )
     else:
         namespace = SettingNamespace.SIMULATIONS.value
-        requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
-        raw_model = await resolver.get_str(namespace, _INTAKE_MODEL_KEY)
-        model = (raw_model.strip() or None) if raw_model else None
-        default_project = (
-            await resolver.get_str(namespace, _INTAKE_DEFAULT_PROJECT_KEY)
-        ).strip()
-        review_strategy = cast(
-            "ReviewPipelineStrategy",
-            await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
-        )
+        try:
+            requested_strategy = await resolver.get_str(namespace, _INTAKE_STRATEGY_KEY)
+            raw_model = await resolver.get_str(namespace, _INTAKE_MODEL_KEY)
+            model = (raw_model.strip() or None) if raw_model else None
+            default_project = (
+                await resolver.get_str(namespace, _INTAKE_DEFAULT_PROJECT_KEY)
+            ).strip()
+            review_strategy = cast(
+                "ReviewPipelineStrategy",
+                await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
+            )
+            verification_enabled = await resolver.get_bool(
+                namespace, _VERIFICATION_ENABLED_KEY
+            )
+            verification_grader = await resolver.get_str(
+                namespace, _VERIFICATION_GRADER_KEY
+            )
+            verification_decomposer = await resolver.get_str(
+                namespace, _VERIFICATION_DECOMPOSER_KEY
+            )
+        except Exception as exc:
+            # Log which subsystem's resolve failed before propagating: on the
+            # startup-lifecycle path this is the only entry tying the failure
+            # to the client-simulation runtime (the subscriber path also wraps
+            # it with SETTINGS_SERVICE_SWAP_FAILED). Re-raise re-propagates
+            # criticals, so no separate reraise_critical guard is needed.
+            logger.warning(
+                CLIENT_SIMULATION_RUNTIME_WIRED,
+                service="client_simulation_runtime",
+                note="settings resolve failed; runtime not rebuilt",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
     if not default_project:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
@@ -443,11 +502,13 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
         return
     intake_engine, review_pipeline = _build_simulation_components(
         app_state,
-        env=os.environ,
         requested_strategy=requested_strategy,
         model=model,
         default_project=default_project,
         review_strategy=review_strategy,
+        verification_enabled=verification_enabled,
+        verification_grader=verification_grader,
+        verification_decomposer=verification_decomposer,
     )
     existing = app_state.slice(ClientStateSlice).simulation_state
     if existing is None:

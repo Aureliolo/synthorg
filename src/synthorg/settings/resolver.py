@@ -57,7 +57,6 @@ from synthorg.settings.bridge_configs import (
     MetaBridgeConfig,
     NotificationsBridgeConfig,
     ObservabilityBridgeConfig,
-    SettingsDispatcherBridgeConfig,
     ToolsBridgeConfig,
     WorkersBridgeConfig,
 )
@@ -1068,13 +1067,6 @@ class ConfigResolver:
         """
         from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
 
-        values = await self._resolve_bridge_fields(
-            "memory",
-            (
-                ("consolidation_enforce_batch_size", "int"),
-                ("fine_tune_chunk_size", "int"),
-            ),
-        )
         # ``get_json`` parses the value and emits the structured
         # ``SETTINGS_VALIDATION_FAILED`` warning on JSON-decode errors,
         # keeping this setting on the same observability path as every
@@ -1112,8 +1104,7 @@ class ConfigResolver:
                 f"by vram_gb so threshold selection is unambiguous; got {table!r}"
             )
             raise ValueError(msg)
-        values["fine_tune_vram_batch_table"] = table
-        return MemoryBridgeConfig(**values)
+        return MemoryBridgeConfig(fine_tune_vram_batch_table=table)
 
     async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:
         """Assemble ``IntegrationsBridgeConfig`` from bridged settings.
@@ -1228,33 +1219,3 @@ class ConfigResolver:
             ),
         )
         return ObservabilityBridgeConfig(**values)
-
-    async def get_settings_dispatcher_bridge_config(
-        self,
-    ) -> SettingsDispatcherBridgeConfig:
-        """Assemble ``SettingsDispatcherBridgeConfig`` from bridged settings.
-
-        Returns:
-            A ``SettingsDispatcherBridgeConfig`` populated with the
-            bridged settings-dispatcher settings resolved from the
-            settings service.
-        """
-        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-            SettingsDispatcherBridgeConfig,
-        )
-
-        values = await self._resolve_bridge_fields(
-            "settings",
-            (
-                ("dispatcher_poll_timeout_seconds", "float"),
-                ("dispatcher_error_backoff_seconds", "float"),
-                ("dispatcher_max_consecutive_errors", "int"),
-            ),
-        )
-        # Field names on the dataclass are short (poll_timeout_seconds etc.);
-        # translate from the namespaced key form.
-        return SettingsDispatcherBridgeConfig(
-            poll_timeout_seconds=values["dispatcher_poll_timeout_seconds"],
-            error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
-            max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
-        )

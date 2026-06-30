@@ -157,13 +157,14 @@ _r.register(
         default="5.0",
         description=(
             "Timeout for signing and timestamp operations in the audit-chain"
-            " sink. Applied once at API startup via"
-            " AuditChainSink.set_signing_timeout_seconds; runtime dispatch is"
-            " not wired, so a change requires a process restart."
+            " sink. The ObservabilityBridgeSettingsSubscriber pushes a change"
+            " onto every live AuditChainSink via"
+            " AuditChainSink.set_signing_timeout_seconds, so it applies"
+            " without a restart."
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         min_value=1.0,
         max_value=60.0,
     )

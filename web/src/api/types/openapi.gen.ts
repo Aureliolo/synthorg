@@ -10488,6 +10488,11 @@ export type components = {
              * @default 128
              */
             readonly batch_size: number;
+            /**
+             * @description Word-boundary chunk size for stage-1 synthetic data generation. Resolved from memory.fine_tune_chunk_size at run start.
+             * @default 512
+             */
+            readonly chunk_size: number;
             readonly data_source: components["schemas"]["FineTuneDataSourceType"];
             /**
              * @description Training epochs

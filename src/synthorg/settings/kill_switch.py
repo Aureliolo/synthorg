@@ -171,6 +171,50 @@ async def resolve_float_with_fallback(
         return fallback
 
 
+async def resolve_int_with_fallback(
+    *,
+    resolver: ConfigResolverProtocol | None,
+    namespace: str,
+    key: str,
+    fallback: int,
+) -> int:
+    """Resolve an int setting through ``ConfigResolver`` with a fallback.
+
+    The int sibling of :func:`resolve_float_with_fallback`, for per-call
+    re-reads of operator-tunable size / count knobs (e.g. a per-batch cap).
+    Returns *fallback* immediately when the resolver is ``None``, and on a
+    resolver outage logs a single ``SETTINGS_FETCH_FAILED`` warning and returns
+    *fallback* so a transient settings failure cannot wedge the caller.
+
+    Args:
+        resolver: The application's config resolver, or ``None`` when the caller
+            is not yet wired.
+        namespace: Setting namespace (e.g. ``"memory"``).
+        key: Setting key within the namespace.
+        fallback: Value to return when no resolver is wired or the lookup fails.
+            Pass the construction-time value so resolver-up / resolver-down paths
+            stay consistent.
+
+    Returns:
+        The resolved int, or *fallback* on missing resolver / outage.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        return await resolver.get_int(namespace, key)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=namespace,
+            key=key,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=fallback,
+        )
+        return fallback
+
+
 # Upper bound on a live-resolved model identifier. A real model id is a short
 # ``provider/model:tag`` token; anything longer is a malformed / injected value.
 _MAX_MODEL_ID_LEN: Final[int] = 256

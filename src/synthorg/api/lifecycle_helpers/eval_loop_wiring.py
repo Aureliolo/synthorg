@@ -56,6 +56,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_float
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -107,25 +108,72 @@ def _select_provider(
     return provider_registry.get(available[0]) if available else None
 
 
+async def _resolve_eval_loop_modes(
+    resolver: ConfigResolverProtocol | None,
+) -> tuple[str, str, str, str]:
+    """Resolve ``(identifier_mode, proposer_mode, model, provider)`` for the loop.
+
+    DB-backed (DB > env > default) when a resolver is wired so an operator
+    edit applies on reload; falls back to the bootstrap chain (env > default)
+    in a pre-startup / test context where the resolver is absent.
+
+    Returns:
+        The ``(identifier_mode, proposer_mode, model, provider_name)`` tuple
+        with ``model`` / ``provider_name`` stripped.
+    """
+    if resolver is None:
+        return (
+            _resolve_hr_str("eval_loop_pattern_identifier_mode"),
+            _resolve_hr_str("eval_loop_fix_proposer_mode"),
+            _resolve_hr_str("eval_loop_llm_model").strip(),
+            _resolve_hr_str("eval_loop_llm_provider").strip(),
+        )
+    namespace = SettingNamespace.HR.value
+    try:
+        return (
+            await resolver.get_str(namespace, "eval_loop_pattern_identifier_mode"),
+            await resolver.get_str(namespace, "eval_loop_fix_proposer_mode"),
+            (await resolver.get_str(namespace, "eval_loop_llm_model")).strip(),
+            (await resolver.get_str(namespace, "eval_loop_llm_provider")).strip(),
+        )
+    except Exception as exc:
+        # Identify the failing subsystem before propagating: the reload-helper
+        # caller (reload_eval_loop_pattern_strategies) re-raises without its own
+        # context, so without this the only entry would be the resolver's. The
+        # re-raise re-propagates criticals, so no separate guard is needed.
+        logger.warning(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="settings resolve failed; pattern strategies not rebuilt",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
+
+
 def _build_pattern_strategies(
     provider_registry: ProviderRegistry | None,
+    *,
+    identifier_mode: str,
+    proposer_mode: str,
+    model: str,
+    provider_name: str,
 ) -> tuple[PatternIdentifier | None, FixProposer | None]:
-    """Build provider-backed IDENTIFY/PROPOSE strategies when opted in.
+    """Build provider-backed IDENTIFY/PROPOSE strategies from resolved choices.
 
     Returns ``(None, None)`` for any step left in deterministic mode (the
     coordinator then uses its shipped defaults). An ``llm``-mode step with no
-    model configured or no provider available degrades to deterministic.
+    model configured or no provider available degrades to deterministic. The
+    four mode / model / provider choices are resolved by the caller (DB on the
+    reload path, env on boot) so a change rebuilds the strategies live.
 
     Returns:
         The ``(pattern_identifier, fix_proposer)`` overrides, each possibly
         ``None``.
     """
-    identifier_mode = _resolve_hr_str("eval_loop_pattern_identifier_mode")
-    proposer_mode = _resolve_hr_str("eval_loop_fix_proposer_mode")
     if _LLM_MODE not in (identifier_mode, proposer_mode):
         return (None, None)
 
-    model = _resolve_hr_str("eval_loop_llm_model").strip()
     if not model:
         logger.warning(
             API_APP_STARTUP,
@@ -133,9 +181,7 @@ def _build_pattern_strategies(
             note="llm strategy requested but eval_loop_llm_model unset; deterministic",
         )
         return (None, None)
-    provider = _select_provider(
-        provider_registry, _resolve_hr_str("eval_loop_llm_provider").strip()
-    )
+    provider = _select_provider(provider_registry, provider_name)
     if provider is None:
         logger.warning(
             API_APP_STARTUP,
@@ -199,7 +245,19 @@ async def wire_eval_loop(
         if notification_dispatcher is not None
         else None
     )
-    pattern_identifier, fix_proposer = _build_pattern_strategies(provider_registry)
+    (
+        identifier_mode,
+        proposer_mode,
+        model,
+        provider_name,
+    ) = await _resolve_eval_loop_modes(config_resolver)
+    pattern_identifier, fix_proposer = _build_pattern_strategies(
+        provider_registry,
+        identifier_mode=identifier_mode,
+        proposer_mode=proposer_mode,
+        model=model,
+        provider_name=provider_name,
+    )
     coordinator = EvalLoopCoordinator(
         performance_tracker=hr.performance_tracker,
         evaluation_service=EvaluationService(
@@ -273,4 +331,55 @@ async def wire_eval_loop(
     logger.info(API_APP_STARTUP, service="eval_loop", note="wired")
 
 
-__all__ = ["wire_eval_loop"]
+async def reload_eval_loop_pattern_strategies(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None = None,
+) -> None:
+    """Re-resolve the IDENTIFY/PROPOSE strategies and swap them onto the loop.
+
+    Called by ``EvalLoopSettingsSubscriber`` when an operator edits a
+    ``hr.eval_loop_*`` model / mode key. Re-resolves the four choices from the
+    live settings DB, rebuilds the provider-backed strategies (degrading to
+    deterministic when a model / provider is unavailable), and hot-swaps them
+    onto the wired coordinator so the next cycle uses them. A no-op when the
+    coordinator is not wired (the eval loop is off / unavailable).
+
+    Args:
+        app_state: Application state holding the coordinator + resolver.
+        provider_registry: Registry used to resolve a completion provider for an
+            ``llm``-mode step.
+    """
+    coordinator = app_state.slice(HrStateSlice).eval_loop_coordinator
+    if coordinator is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="eval_loop",
+            note="coordinator absent; pattern-strategy reload skipped",
+        )
+        return
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    (
+        identifier_mode,
+        proposer_mode,
+        model,
+        provider_name,
+    ) = await _resolve_eval_loop_modes(resolver)
+    pattern_identifier, fix_proposer = _build_pattern_strategies(
+        provider_registry,
+        identifier_mode=identifier_mode,
+        proposer_mode=proposer_mode,
+        model=model,
+        provider_name=provider_name,
+    )
+    coordinator.set_pattern_strategies(
+        pattern_identifier=pattern_identifier, fix_proposer=fix_proposer
+    )
+    logger.info(
+        API_APP_STARTUP,
+        service="eval_loop",
+        note="pattern strategies reloaded",
+    )
+
+
+__all__ = ["reload_eval_loop_pattern_strategies", "wire_eval_loop"]

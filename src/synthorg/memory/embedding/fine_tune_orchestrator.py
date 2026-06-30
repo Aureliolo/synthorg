@@ -149,11 +149,18 @@ class FineTuneOrchestrator:
     async def start(
         self,
         request: FineTuneRequest,
+        *,
+        chunk_size: int | None = None,
     ) -> FineTuneRun:
         """Start a new pipeline run.
 
         Args:
             request: Fine-tuning request parameters.
+            chunk_size: Stage-1 word-chunk size resolved from
+                ``memory.fine_tune_chunk_size`` at the API boundary; baked
+                into the run config so the value is fixed for the run's life
+                (a mid-run setting edit does not re-chunk in flight). ``None``
+                keeps the run-config default.
 
         Returns:
             The created run record.
@@ -162,6 +169,8 @@ class FineTuneOrchestrator:
             FineTuneRunActiveError: If a run is already active (409 Conflict).
         """
         config = build_config(request)
+        if chunk_size is not None:
+            config = config.model_copy(update={"chunk_size": chunk_size})
         now = datetime.now(UTC)
         run = FineTuneRun(
             id=uuid.uuid4(),

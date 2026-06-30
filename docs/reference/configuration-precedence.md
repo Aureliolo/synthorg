@@ -438,28 +438,40 @@ hot-reloadable using the existing seams:
 
 - a per-request / per-call `ConfigResolver.get_*()` read (e.g.
   `api.max_meeting_context_keys`, `api.readiness_probe_timeout_seconds`,
-  `integrations.oauth_http_timeout_seconds`);
+  `integrations.oauth_http_timeout_seconds`, and the `charter.interview_*` /
+  `charter.default_currency` knobs the interview service resolves once per
+  turn through an injected config provider);
 - a `set_*()` setter on a live object pushed by a `SettingsSubscriber`
   (e.g. the `WsAuthLimits` knobs, the `HttpBatchHandler` HTTP batch knobs,
-  `backup.path`, `a2a.client_timeout_seconds`,
-  `engine.timeout_enforcement_enabled`);
+  `backup.path`, the `backup.compression` / `on_shutdown` / `on_startup`
+  config flags, `a2a.client_timeout_seconds`,
+  `engine.timeout_enforcement_enabled`,
+  `observability.audit_chain_signing_timeout_seconds` re-applied onto the
+  live audit sink, and `integrations.github_api_url` re-bound onto the
+  GitHub health checker);
 - a bridge-config snapshot + subscriber (e.g. the `tools.docker_sidecar_*`
   resource limits, read per container launch through the sidecar cache);
+- a rebuild-and-swap subscriber that re-resolves and replaces a live
+  strategy / pipeline (the `hr.eval_loop_llm_model` / `llm_provider` /
+  `pattern_identifier_mode` / `fix_proposer_mode` strategies swapped onto
+  the eval-loop coordinator);
 - a `reload_runtime_services` trigger for knobs `build_runtime_services`
   already re-reads (the engine classifier / matcher knobs,
   `external_api.enabled` / `provider_type`,
   `coordination.enable_coordination_middleware`,
-  `budget.benchmark_provider` / `model_tier_overrides`).
+  `budget.benchmark_provider` / `model_tier_overrides`, and the
+  `simulations.verification_review_enabled` / `verification_grader` /
+  `verification_decomposer` pipeline rebuild).
 
 `scripts/check_setting_restart_required_justified.py` (pre-push + CI) keeps
 this from regressing: every restart-bound definition must either carry a
 per-line `# lint-allow: restart-required -- <reason>` marker on its
 `register(...)` block, or sit on the baseline
-`scripts/setting_restart_required_baseline.txt` (the genuine OS/transport
-keeps plus the namespaces deferred to #2515 / #2516). It fails when a new
-unjustified restart-bound setting appears and warns (passing) on a stale
-baseline entry. Regenerate the baseline (rare, explicit approval) with
-`--update-baseline`.
+`scripts/setting_restart_required_baseline.txt` (the genuine OS / transport /
+security-sensitive keeps, e.g. the TSA timestamp-authority endpoints baked
+into `TsaClient` at construction). It fails when a new unjustified
+restart-bound setting appears and warns (passing) on a stale baseline entry.
+Regenerate the baseline (rare, explicit approval) with `--update-baseline`.
 
 ### Security toggle write guardrail
 
