@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
-from typing import cast, override
+from typing import Final, cast, override
 
 import pytest
 
@@ -13,9 +13,15 @@ from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
+from synthorg.settings import dispatcher_config as _cfg
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import mock_of
+
+# Mirror the dispatcher's own bootstrap timing defaults so the fake resolver's
+# defaults track the real ones rather than baking in drifting literals.
+_FAKE_RESOLVER_DEFAULT_POLL_TIMEOUT_SECONDS: Final = _cfg._POLL_TIMEOUT
+_FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS: Final = _cfg._ERROR_BACKOFF
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -55,8 +61,8 @@ def _fake_resolver(
     *,
     max_consecutive_errors: int | None = None,
     stop_drain_timeout_seconds: float | None = None,
-    poll_timeout_seconds: float = 1.0,
-    error_backoff_seconds: float = 1.0,
+    poll_timeout_seconds: float = _FAKE_RESOLVER_DEFAULT_POLL_TIMEOUT_SECONDS,
+    error_backoff_seconds: float = _FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS,
     enabled: bool = True,
 ) -> ConfigResolver:
     """Build a ``ConfigResolver`` autospec double with deterministic tunables.

@@ -215,7 +215,11 @@ class ProviderSettingsSubscriber:
                 # mirrors the budget-benchmark subscriber's swap-then-reload
                 # pattern.
                 await reload_runtime_services(self._app_state)
-            except Exception:
+            except Exception as reload_exc:
+                # A system-level failure (MemoryError / RecursionError) must
+                # propagate immediately rather than drive a second reload under
+                # the same fatal condition.
+                reraise_critical(reload_exc)
                 # The slice swap already committed but the runtime never
                 # adopted it, so the slice now points at the new registry while
                 # the engine may still hold the prior one (or a partially
