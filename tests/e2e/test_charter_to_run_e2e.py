@@ -456,7 +456,6 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
                     make_text_response(_DRAFT),
                 ]
             ),
-            config=CharterConfig(),
         ),
         config=CharterConfig(),
         conversation_repo=conversation_repo,

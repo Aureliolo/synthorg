@@ -408,30 +408,31 @@ def _discover_bridge_entries() -> list[tuple[type[BaseModel], str, str, str, str
             continue
         source = inspect.getsource(method)
         builder_match = _BRIDGE_BUILDER_RE.search(source)
-        call_match = _BRIDGE_FIELDS_CALL_RE.search(source)
-        if builder_match is None or call_match is None:
+        if builder_match is None:
             msg = (
-                f"Could not parse bridge builder {name!r}; the"
-                " `_resolve_bridge_fields` shape changed and the gate"
-                " discovery regex needs updating."
+                f"Could not parse bridge builder {name!r}; the return-shape"
+                " changed and the gate discovery regex needs updating."
             )
             raise AssertionError(msg)
         cls_name = builder_match.group(1)
-        namespace = call_match.group(1)
-        body = call_match.group(2)
         cls = getattr(bridge_configs_module, cls_name, None)
         assert cls is not None, (
             f"Bridge builder {name!r} returns {cls_name!r} which is not"
             " importable from synthorg.settings.bridge_configs."
         )
-        # Build the registered_key -> field_name map. Default is
-        # identity; explicit remappings via ``field=values["key"]``
-        # override.
+        # A builder whose every field is special-cased (e.g. the
+        # memory builder's JSON-only ``fine_tune_vram_batch_table``,
+        # validated via ``get_json`` rather than ``_resolve_bridge_fields``)
+        # has no scalar-field call and contributes no scalar mirror entries.
+        call_match = _BRIDGE_FIELDS_CALL_RE.search(source)
         registered_keys: list[tuple[str, str]] = []
-        for field_match in _BRIDGE_FIELD_ENTRY_RE.finditer(body):
-            registered_key = field_match.group(1)
-            scalar_type = field_match.group(2)
-            registered_keys.append((registered_key, scalar_type))
+        namespace = "" if call_match is None else call_match.group(1)
+        if call_match is not None:
+            body = call_match.group(2)
+            for field_match in _BRIDGE_FIELD_ENTRY_RE.finditer(body):
+                registered_key = field_match.group(1)
+                scalar_type = field_match.group(2)
+                registered_keys.append((registered_key, scalar_type))
         remap: dict[str, str] = {}
         builder_tail = source[builder_match.end() :]
         for ctor_match in _BRIDGE_CTOR_REMAP_RE.finditer(builder_tail):

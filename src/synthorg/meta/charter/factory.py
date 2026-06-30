@@ -46,7 +46,6 @@ def build_charter_interview_strategy(
     if config.interview_strategy == _LLM:
         return LLMCharterInterviewer(
             provider=provider,
-            config=config,
             cost_tracker=cost_tracker,
         )
     logger.warning(

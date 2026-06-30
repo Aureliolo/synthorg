@@ -24,19 +24,25 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 class ProviderSettingsSubscriber:
     """React to provider-namespace settings changes.
 
-    On ``routing_strategy`` change, rebuilds :class:`ModelRouter`
-    with the new strategy and swaps it into ``AppState``.
+    On ``routing_strategy`` change, rebuilds :class:`ModelRouter` with the
+    new strategy and swaps it into ``AppState``. NOTE: the wired
+    ``ProvidersStateSlice.model_router`` is consumed only by the Prometheus
+    ``model_router`` label fetcher; agent model selection runs through the
+    separate stakes / work-routing policies, so this change updates the
+    exported metric label, not live routing behaviour.
 
     On ``retry_max_attempts`` change, rebuilds the :class:`ProviderRegistry`
-    so the new org-wide retry cap applies live without a restart. The cap
-    is baked into each driver's :class:`RetryHandler` at build time, so a
-    change only takes effect through a registry rebuild; rebuilding here
-    is the seam that makes the setting live. The rebuild resolves the
-    current provider set (DB-persisted blob, else the boot template) and
-    re-binds the always-on credential catalog so ``connection_name`` auth
-    keeps resolving. A rebuild is skipped while a cassette session is
-    active (the recorded-LLM seam is baked in at process start), in which
-    case the new cap applies on the next restart.
+    so the new org-wide retry cap applies live without a restart, then
+    triggers a runtime-services rebuild so the running ``AgentEngine`` (which
+    captured the registry at construction) adopts the rebuilt one. The cap is
+    baked into each driver's :class:`RetryHandler` at build time, so a change
+    only takes effect through a registry rebuild; rebuilding + reloading here
+    is the seam that makes the setting live for the completion path. The
+    rebuild resolves the current provider set (DB-persisted blob, else the
+    boot template) and re-binds the always-on credential catalog so
+    ``connection_name`` auth keeps resolving. A rebuild is skipped while a
+    cassette session is active (the recorded-LLM seam is baked in at process
+    start), in which case the new cap applies on the next restart.
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next
@@ -196,12 +202,22 @@ class ProviderSettingsSubscriber:
                 )
                 return
             self._app_state.swap_provider_registry(new_registry)
+            # The running AgentEngine captured the registry at construction
+            # (engine/agent_engine.py), so a slice swap alone leaves the
+            # completion path on the old retry cap. Rebuild the runtime
+            # services so the engine adopts the rebuilt registry; this mirrors
+            # the budget-benchmark subscriber's swap-then-reload pattern.
+            from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+                reload_runtime_services,
+            )
+
+            await reload_runtime_services(self._app_state)
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="providers",
                 key="retry_max_attempts",
-                note="provider registry rebuilt and swapped",
+                note="provider registry rebuilt, swapped, and runtime reloaded",
             )
         except Exception as exc:
             reraise_critical(exc)

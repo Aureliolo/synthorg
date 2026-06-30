@@ -259,16 +259,6 @@ class ObservabilityBridgeConfig(BaseModel):
     )
 
 
-class SettingsDispatcherBridgeConfig(BaseModel):
-    """Operator-tunable values for the settings-change dispatcher itself."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
-    error_backoff_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
-    max_consecutive_errors: int = Field(default=30, ge=5, le=100)
-
-
 class ApiBridgeConfig(BaseModel):
     """Operator-tunable values for the API subsystem.
 
@@ -559,14 +549,16 @@ class WorkersBridgeConfig(BaseModel):
 class MemoryBridgeConfig(BaseModel):
     """Operator-tunable values for the memory subsystem.
 
-    Covers consolidation batch-size and the embedding fine-tune
-    preflight (VRAM-to-batch-size table + word-chunk size).
+    Carries the embedding fine-tune preflight VRAM-to-batch-size table,
+    which the memory controller reads per request. The consolidation
+    enforce-batch size and the fine-tune word-chunk size are NOT bridged:
+    their consumers (the consolidation service and the fine-tune pipeline)
+    have no ``app_state``, so they resolve those settings directly through
+    their own ``ConfigResolver`` / run-config instead.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    consolidation_enforce_batch_size: int = Field(default=1000, ge=100, le=10_000)
     fine_tune_vram_batch_table: tuple[tuple[float, int], ...] = Field(
         default=((40.0, 128), (16.0, 64), (8.0, 32))
     )
-    fine_tune_chunk_size: int = Field(default=512, ge=64, le=4096)

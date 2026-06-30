@@ -56,6 +56,9 @@ class TestProtocol:
             "intake_model",
             "intake_default_project",
             "review_pipeline_strategy",
+            "verification_review_enabled",
+            "verification_grader",
+            "verification_decomposer",
         ):
             assert ("simulations", key) in watched
 

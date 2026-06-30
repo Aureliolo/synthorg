@@ -1,12 +1,13 @@
 """Simulations settings subscriber: rebuilds the client-simulation runtime.
 
-The client-simulation intake strategy, model, default project, and review
-pipeline are baked into the ``ClientSimulationState`` at construction, and the
-multi-agent coordinator captures the intake engine at assembly. A change to any
-of those keys therefore goes live through the same ``reload_runtime_services``
-path that a provider reinit uses: it rebuilds the simulation state from the live
-settings DB AND the coordinator around it, keeping them coherent. The reload is
-atomic per service, so an in-flight task keeps its captured engine.
+The client-simulation intake strategy, model, default project, review pipeline,
+and verification stage (enabled / grader / decomposer) are baked into the
+``ClientSimulationState`` at construction, and the multi-agent coordinator
+captures the intake engine at assembly. A change to any of those keys therefore
+goes live through the same ``reload_runtime_services`` path that a provider
+reinit uses: it rebuilds the simulation state from the live settings DB AND the
+coordinator around it, keeping them coherent. The reload is atomic per service,
+so an in-flight task keeps its captured engine.
 """
 
 from synthorg.api.state import AppState
@@ -25,6 +26,9 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("simulations", "intake_model"),
         ("simulations", "intake_default_project"),
         ("simulations", "review_pipeline_strategy"),
+        ("simulations", "verification_review_enabled"),
+        ("simulations", "verification_grader"),
+        ("simulations", "verification_decomposer"),
     }
 )
 

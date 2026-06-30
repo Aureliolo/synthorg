@@ -16,6 +16,8 @@ CHARTER_INTERVIEW_DRAFTED: Final[str] = "charter.interview.drafted"
 CHARTER_INTERVIEW_CAP_REACHED: Final[str] = "charter.interview.cap_reached"
 CHARTER_INTERVIEW_RESPONSE_INVALID: Final[str] = "charter.interview.response_invalid"
 CHARTER_INTERVIEW_FAILED: Final[str] = "charter.interview.failed"
+CHARTER_CONFIG_RESOLVE_FAILED: Final[str] = "charter.config.resolve_failed"
+"""Live charter-config resolution failed; the turn fell back to boot config."""
 
 # -- Review / edit lifecycle -------------------------------------------
 
@@ -53,6 +55,7 @@ __all__ = [
     "CHARTER_ALREADY_DECIDED",
     "CHARTER_APPROVED",
     "CHARTER_CANCELLED",
+    "CHARTER_CONFIG_RESOLVE_FAILED",
     "CHARTER_CONVERSATION_CLOSED",
     "CHARTER_CONVERSATION_NOT_FOUND",
     "CHARTER_DISPATCHED",

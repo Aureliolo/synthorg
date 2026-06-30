@@ -40,7 +40,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_REQUESTED,
 )
 from synthorg.persistence.state import persistence_backend_label
-from synthorg.settings.state import SettingsStateSlice
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -92,9 +93,15 @@ class MemoryFineTuneController(Controller):
                 backend=persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
+        # Resolve the stage-1 chunk size live (DB > env > default) and bake it
+        # into the run so an operator edit to memory.fine_tune_chunk_size applies
+        # to the next run without a restart.
+        chunk_size = await config_resolver_of(app_state).get_int(
+            SettingNamespace.MEMORY, "fine_tune_chunk_size"
+        )
         # ``orchestrator.start`` raises ``FineTuneRunActiveError`` directly when
         # a run is already active; it propagates to the 409 handler unchanged.
-        run = await orchestrator.start(data)
+        run = await orchestrator.start(data, chunk_size=chunk_size)
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=str(run.id),

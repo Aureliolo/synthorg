@@ -168,11 +168,12 @@ _r.register(
             " cycle. 'deterministic' counts agents scoring below the pillar"
             " thresholds (no provider). 'llm' weighs the pillar scores with a"
             " dedicated model call and degrades to deterministic when no model"
-            " or provider is available. Wired at startup."
+            " or provider is available. EvalLoopSettingsSubscriber rebuilds and"
+            " swaps the strategy on a change, so it applies without a restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -188,11 +189,12 @@ _r.register(
             " patterns. 'deterministic' maps each pillar via the static action"
             " table. 'llm' proposes actions with a dedicated model call and"
             " degrades to the table when no model or provider is available."
-            " Wired at startup."
+            " EvalLoopSettingsSubscriber rebuilds and swaps the strategy on a"
+            " change, so it applies without a restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -205,11 +207,12 @@ _r.register(
         description=(
             "Model identifier for the eval-loop 'llm' identify/propose"
             " strategies. Empty (the default) keeps both steps deterministic"
-            " regardless of their mode. Resolved once at startup."
+            " regardless of their mode. EvalLoopSettingsSubscriber rebuilds the"
+            " strategies on a change, so it applies without a restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -221,12 +224,13 @@ _r.register(
         default="",
         description=(
             "Provider name resolving the eval-loop 'llm' strategy model."
-            " Empty selects the first registered provider. Resolved once at"
-            " startup."
+            " Empty selects the first registered provider."
+            " EvalLoopSettingsSubscriber rebuilds the strategies on a change,"
+            " so it applies without a restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
     )
 )
 

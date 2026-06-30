@@ -80,6 +80,7 @@ async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for test
         output_dir=out_dir,
         query_generator=query_generator,
         validation_split=cfg.validation_split,
+        chunk_size=cfg.chunk_size,
         progress_callback=progress_callback,
         cancellation=cancellation,
     )

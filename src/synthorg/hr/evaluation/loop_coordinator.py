@@ -113,6 +113,25 @@ class EvalLoopCoordinator:
         self._fix_proposer: FixProposer = fix_proposer or TableFixProposer(self._config)
         self._clock: Clock = clock or SystemClock()
 
+    def set_pattern_strategies(
+        self,
+        *,
+        pattern_identifier: PatternIdentifier | None,
+        fix_proposer: FixProposer | None,
+    ) -> None:
+        """Hot-swap the IDENTIFY / PROPOSE strategies.
+
+        Pushed by ``EvalLoopSettingsSubscriber`` when an operator edits the
+        ``hr.eval_loop_*`` model / mode keys, so a change applies on the next
+        cycle without a restart. ``None`` resets the step to its deterministic
+        default (the same fallback the constructor and the provider-backed
+        strategies use). The next ``run_cycle`` reads these fresh.
+        """
+        self._pattern_identifier = pattern_identifier or DeterministicPatternIdentifier(
+            self._config
+        )
+        self._fix_proposer = fix_proposer or TableFixProposer(self._config)
+
     @property
     def config(self) -> EvalLoopConfig:
         """Return the coordinator configuration."""

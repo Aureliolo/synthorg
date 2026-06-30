@@ -1,9 +1,9 @@
 """Charter namespace setting definitions.
 
 Covers the deep CEO interview to project charter subsystem. The values
-are sourced from ``RootConfig.meta.charter`` at startup (Cat-2 config:
-env > code default); these entries exist for ``/settings``
-discoverability and are baked in at process startup.
+are resolved live (DB > env > code default) per interview turn by the
+charter interview service, so a ``/settings`` change lands on the next
+turn without a restart.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -12,25 +12,18 @@ from synthorg.settings.registry import get_registry
 
 _r = get_registry()
 
-_BOOTSTRAP_NOTE = (
-    "[Bootstrap-only -- read via RootConfig.meta.charter at startup; this"
-    " entry exists for /settings discoverability only.] "
-)
-
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.CHARTER,
         key="interview_model",
         type=SettingType.STRING,
         default="example-large-001",
-        description=_BOOTSTRAP_NOTE
-        + "Model identifier for charter-interview turns. This is a deep,"
-        " human-in-the-loop elicitation, so it should be a top-tier"
+        description="Model identifier for charter-interview turns. This is a"
+        " deep, human-in-the-loop elicitation, so it should be a top-tier"
         " reasoning-capable model -- not a small/cheap one.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -41,14 +34,12 @@ _r.register(
         type=SettingType.INTEGER,
         default="12",
         description=(
-            _BOOTSTRAP_NOTE
-            + "Maximum elicitation turns before the interview force-closes"
+            "Maximum elicitation turns before the interview force-closes"
             " without converging on a charter."
         ),
         group="Charter",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -58,13 +49,10 @@ _r.register(
         key="interview_temperature",
         type=SettingType.FLOAT,
         default="0.3",
-        description=(
-            _BOOTSTRAP_NOTE + "Sampling temperature for charter-interview turns."
-        ),
+        description="Sampling temperature for charter-interview turns.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -74,11 +62,10 @@ _r.register(
         key="interview_max_tokens",
         type=SettingType.INTEGER,
         default="3000",
-        description=_BOOTSTRAP_NOTE + "Token budget for one charter-interview turn.",
+        description="Token budget for one charter-interview turn.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )
 
@@ -89,14 +76,12 @@ _r.register(
         type=SettingType.STRING,
         default="USD",  # lint-allow: regional-defaults -- budget DEFAULT_CURRENCY
         description=(
-            _BOOTSTRAP_NOTE
-            + "ISO 4217 currency assumed for the charter budget envelope when"
+            "ISO 4217 currency assumed for the charter budget envelope when"
             " the interview does not elicit one; must match budget.currency"
             " for charter approval to create the backing forecast."
         ),
         group="Charter",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        restart_required=False,
     )
 )

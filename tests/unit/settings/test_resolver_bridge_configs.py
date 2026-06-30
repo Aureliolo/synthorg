@@ -32,7 +32,6 @@ from synthorg.settings.bridge_configs import (
     MetaBridgeConfig,
     NotificationsBridgeConfig,
     ObservabilityBridgeConfig,
-    SettingsDispatcherBridgeConfig,
     ToolsBridgeConfig,
 )
 from synthorg.settings.enums import SettingNamespace, SettingSource
@@ -242,15 +241,11 @@ _HAPPY_CASES: tuple[
         "get_memory_bridge_config",
         MemoryBridgeConfig,
         {
-            ("memory", "consolidation_enforce_batch_size"): "2500",
-            ("memory", "fine_tune_chunk_size"): "512",
             ("memory", "fine_tune_vram_batch_table"): (
                 "[[40.0, 128], [16.0, 64], [8.0, 32]]"
             ),
         },
         {
-            "consolidation_enforce_batch_size": 2500,
-            "fine_tune_chunk_size": 512,
             "fine_tune_vram_batch_table": (
                 (40.0, 128),
                 (16.0, 64),
@@ -351,20 +346,6 @@ _HAPPY_CASES: tuple[
             "tsa_endpoint_freetsa": "https://tsa.example.com/tsr",
             "tsa_endpoint_digicert": "https://timestamp.digicert.com",
             "tsa_endpoint_sectigo": "https://timestamp.sectigo.com",
-        },
-    ),
-    (
-        "get_settings_dispatcher_bridge_config",
-        SettingsDispatcherBridgeConfig,
-        {
-            ("settings", "dispatcher_poll_timeout_seconds"): "0.25",
-            ("settings", "dispatcher_error_backoff_seconds"): "2.0",
-            ("settings", "dispatcher_max_consecutive_errors"): "50",
-        },
-        {
-            "poll_timeout_seconds": 0.25,
-            "error_backoff_seconds": 2.0,
-            "max_consecutive_errors": 50,
         },
     ),
 )

@@ -56,13 +56,18 @@ class TestApplyMemoryBridgeConfigSnapshot:
         assert state.bridge_config.memory == MemoryBridgeConfig()
 
     async def test_happy_path_swaps_snapshot(self) -> None:
-        custom = MemoryBridgeConfig(fine_tune_chunk_size=1024)
+        custom = MemoryBridgeConfig(
+            fine_tune_vram_batch_table=((48.0, 256), (24.0, 128)),
+        )
         state = _make_state(config_resolver=_resolver_returning(custom))
 
         await _apply_memory_bridge_config_snapshot(state)
 
         assert state.bridge_config.memory is custom
-        assert state.bridge_config.memory.fine_tune_chunk_size == 1024
+        assert state.bridge_config.memory.fine_tune_vram_batch_table == (
+            (48.0, 256),
+            (24.0, 128),
+        )
 
     async def test_failure_keeps_default_and_logs_warning(
         self,

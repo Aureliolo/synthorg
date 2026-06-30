@@ -78,7 +78,7 @@ class CharterInterviewStrategy(Protocol):
         history: tuple[ConversationTurn, ...],
         *,
         project_id: NotBlankStr | None,
-        currency: str,
+        config: CharterConfig,
     ) -> InterviewDecision:
         """Run one interview turn over *history*.
 
@@ -87,7 +87,8 @@ class CharterInterviewStrategy(Protocol):
                 including the latest user message.
             project_id: An existing project to target, or ``None`` to
                 let the interview propose a new project.
-            currency: ISO 4217 code the charter envelope must use.
+            config: The interview config resolved live for this turn
+                (model, sampling, and the envelope currency).
 
         Returns:
             The structured elicit-or-draft decision.
@@ -102,9 +103,13 @@ class CharterInterviewStrategy(Protocol):
 class LLMCharterInterviewer:
     """LLM-backed :class:`CharterInterviewStrategy`.
 
+    The per-turn model, sampling, and currency are read from the
+    ``CharterConfig`` passed to :meth:`run_turn` (resolved live by the
+    service), so a ``/settings`` change to a ``charter.*`` knob lands on
+    the next interview turn without a restart.
+
     Args:
         provider: LLM completion provider.
-        config: Charter-interview configuration.
         cost_tracker: Optional cost tracker for LLM accounting.
     """
 
@@ -119,11 +124,9 @@ class LLMCharterInterviewer:
         self,
         *,
         provider: CompletionProvider,
-        config: CharterConfig,
         cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
-        self._config = config
         self._cost_tracker = cost_tracker
 
     async def run_turn(
@@ -131,7 +134,7 @@ class LLMCharterInterviewer:
         history: tuple[ConversationTurn, ...],
         *,
         project_id: NotBlankStr | None,
-        currency: str,
+        config: CharterConfig,
     ) -> InterviewDecision:
         """Call the model and parse its structured interview output.
 
@@ -147,7 +150,7 @@ class LLMCharterInterviewer:
             project_hint=wrap_untrusted(
                 TAG_TASK_DATA, _render_project_hint(project_id)
             ),
-            currency=wrap_untrusted(TAG_TASK_DATA, currency),
+            currency=wrap_untrusted(TAG_TASK_DATA, config.default_currency),
         )
         user = CHARTER_INTERVIEW_USER.format(
             conversation_history=wrap_untrusted(
@@ -159,8 +162,8 @@ class LLMCharterInterviewer:
             ChatMessage(role=MessageRole.USER, content=user),
         ]
         completion_config = CompletionConfig(
-            temperature=self._config.interview_temperature,
-            max_tokens=self._config.interview_max_tokens,
+            temperature=config.interview_temperature,
+            max_tokens=config.interview_max_tokens,
         )
         try:
             async with cost_recording_scope(
@@ -172,7 +175,7 @@ class LLMCharterInterviewer:
             ):
                 response = await self._provider.complete(
                     messages,
-                    self._config.interview_model,
+                    config.interview_model,
                     config=completion_config,
                 )
         except Exception as exc:

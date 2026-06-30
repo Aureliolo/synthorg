@@ -127,6 +127,24 @@ class BackupService(BackupServiceArchiveMixin):
             self._backup_path = new_path
             self._retention.set_backup_path(new_path)
 
+    async def apply_config_flag(self, key: str, *, value: bool) -> None:
+        """Hot-replace a boolean backup-config flag in place.
+
+        Covers ``compression`` (read per backup at ``_execute_backup``) and
+        ``on_startup`` / ``on_shutdown`` (read by the lifecycle hooks via the
+        properties below). The frozen ``BackupConfig`` is swapped for a
+        ``model_copy`` carrying the new value so a change pushed in by
+        ``BackupSettingsSubscriber`` applies without a restart. Serialised
+        under ``_backup_lock`` so the swap cannot interleave with an in-flight
+        backup reading ``self._config``.
+
+        Args:
+            key: One of ``compression`` / ``on_startup`` / ``on_shutdown``.
+            value: The new boolean value.
+        """
+        async with self._backup_lock:
+            self._config = self._config.model_copy(update={key: value})
+
     @property
     def is_unrestartable(self) -> bool:
         """Whether a timed-out scheduler ``stop()`` left the service unrestartable.

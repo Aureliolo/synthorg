@@ -205,7 +205,7 @@ _r.register(
         ),
         group="GitHub",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        restart_required=False,
         # HTTPS-only: a bearer token rides the Authorization header, so a
         # plaintext http:// endpoint would leak it on the wire.
         validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",

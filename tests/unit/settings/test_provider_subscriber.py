@@ -102,8 +102,14 @@ class TestProviderSubscriberRebuild:
         # Old router is still in place (swap never called)
         assert state.slice(ProvidersStateSlice).model_router is old_router
 
-    async def test_retry_max_attempts_change_rebuilds_registry(self) -> None:
-        """A retry_max_attempts change rebuilds and swaps the registry."""
+    async def test_retry_max_attempts_change_rebuilds_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retry_max_attempts change rebuilds the registry + reloads runtime."""
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        reload_spy = AsyncMock()
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", reload_spy)
         cfg = RootConfig(company_name="test")
         resolver = mock_of[ConfigResolver](
             get_int=AsyncMock(return_value=7),
@@ -125,6 +131,9 @@ class TestProviderSubscriberRebuild:
         await sub.on_settings_changed("providers", "retry_max_attempts")
         assert state.slice(ProvidersStateSlice).registry is not old_registry
         resolver.get_int.assert_awaited_once_with("providers", "retry_max_attempts")
+        # The running engine captured the old registry; the runtime rebuild is
+        # what makes the new cap reach the completion path.
+        reload_spy.assert_awaited_once_with(state)
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""

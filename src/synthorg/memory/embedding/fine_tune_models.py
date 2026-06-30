@@ -345,6 +345,15 @@ class FineTuneRunConfig(BaseModel):
         lt=1.0,
         description="Fraction held out for evaluation",
     )
+    chunk_size: int = Field(
+        default=512,
+        ge=64,
+        le=4096,
+        description=(
+            "Word-boundary chunk size for stage-1 synthetic data generation."
+            " Resolved from memory.fine_tune_chunk_size at run start."
+        ),
+    )
 
     @model_validator(mode="after")
     def _require_source_dir_in_directory_mode(self) -> Self:

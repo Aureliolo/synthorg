@@ -228,16 +228,19 @@ of `InternalReviewStage`) during app construction whenever a
 `/simulations` + `/requests` controllers register. The strategy is
 selected from the `simulations` settings namespace
 (`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`,
-`intake_default_project`, `review_pipeline_strategy`): construction
+`intake_default_project`, `review_pipeline_strategy`, plus the
+verification stage's `verification_review_enabled` /
+`verification_grader` / `verification_decomposer`): construction
 reads them via the bootstrap resolver (env > registered default)
-because `ConfigResolver` is not wired yet, but these four keys are
+because `ConfigResolver` is not wired yet, but these keys are
 hot (`restart_required=False`, not `read_only_post_init`). An
 on-startup hook re-resolves them from the settings DB once the
 resolver is wired, and the `SimulationsSettingsSubscriber` rebuilds
 the simulation runtime via `reload_runtime_services` on any change,
-so a strategy / model / project / review-pipeline change applies with
-no restart. The rebuild swaps only the config-driven intake engine +
-review pipeline onto the existing `ClientSimulationState` (via
+so a strategy / model / project / review-pipeline / verification
+change applies with no restart. The rebuild swaps only the
+config-driven intake engine + review pipeline (including the
+verification stage) onto the existing `ClientSimulationState` (via
 `dataclasses.replace`), preserving the live client pool and the
 request / simulation / feedback stores so in-flight work is never
 discarded. `intake_default_project` is the project the intake

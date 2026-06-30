@@ -41,7 +41,10 @@ from synthorg.observability.events.consolidation import (
     MAX_MEMORIES_ENFORCE_FAILED,
     MAX_MEMORIES_ENFORCED,
 )
-from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.kill_switch import (
+    resolve_bool_with_fallback,
+    resolve_int_with_fallback,
+)
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -242,14 +245,23 @@ class MemoryConsolidationService:
             if excess <= 0:
                 return 0
 
+            # Re-read the enforce-batch size live per run so an operator edit to
+            # ``memory.consolidation_enforce_batch_size`` applies without a
+            # restart; the construction value is the fallback on resolver outage.
+            max_enforce_batch = await resolve_int_with_fallback(
+                resolver=self._config_resolver,
+                namespace="memory",
+                key="consolidation_enforce_batch_size",
+                fallback=self._max_enforce_batch,
+            )
             deleted = 0
             remaining = excess
             while remaining > 0:
-                batch_size = min(remaining, self._max_enforce_batch)
+                batch_size = min(remaining, max_enforce_batch)
                 # Cap the per-fetch size to MemoryQuery's own upper
-                # bound; ``self._max_enforce_batch`` can exceed it
-                # (up to 10k) and the query would then fail
-                # validation before hitting the backend.
+                # bound; ``max_enforce_batch`` can exceed it (up to 10k)
+                # and the query would then fail validation before hitting
+                # the backend.
                 effective_limit = min(batch_size, _MEMORY_QUERY_MAX_LIMIT)
                 query = MemoryQuery(limit=effective_limit)
                 entries = await self._backend.retrieve(agent_id, query)

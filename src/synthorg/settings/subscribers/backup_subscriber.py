@@ -28,9 +28,13 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 class BackupSettingsSubscriber:
     """React to backup-namespace settings changes.
 
-    On ``enabled`` change, starts or stops the backup scheduler.
-    On ``schedule_hours`` change, reschedules the interval.
-    Other keys are advisory-only (read at use time).
+    On ``enabled`` change, starts or stops the backup scheduler. On
+    ``schedule_hours`` change, reschedules the interval. On ``path`` change,
+    re-points the write + retention scan directory. On ``compression`` /
+    ``on_shutdown`` / ``on_startup`` change, hot-replaces the flag on the
+    service's frozen ``BackupConfig`` so it applies without a restart.
+    ``retention_days`` is not watched: the retention manager re-reads it from
+    the resolver at every prune.
 
     Args:
         backup_service: Backup service managing the scheduler.
@@ -85,6 +89,8 @@ class BackupSettingsSubscriber:
             await self._reschedule()
         elif key == "path":
             await self._apply_path()
+        elif key in ("compression", "on_shutdown", "on_startup"):
+            await self._apply_flag(key)
         else:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -199,6 +205,53 @@ class BackupSettingsSubscriber:
             namespace="backup",
             key="path",
             note="backup path updated",
+        )
+
+    async def _apply_flag(self, key: str) -> None:
+        """Resolve a boolean backup flag and push it onto the live service.
+
+        Covers ``compression`` / ``on_shutdown`` / ``on_startup``: each lives on
+        the service's frozen ``BackupConfig``, so the value is hot-replaced via
+        ``BackupService.apply_config_flag`` rather than left for a restart.
+        ``compression`` then applies to the next backup and ``on_shutdown`` to
+        the next graceful shutdown; ``on_startup`` updates the in-memory config
+        and takes operational effect on the next process start.
+        """
+        try:
+            result = await self._settings_service.get("backup", key)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SETTINGS_SERVICE_SWAP_FAILED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key=key,
+                note="failed to read setting",
+            )
+            return
+        value = compare_ci(str(result.value), "true")
+        try:
+            await self._backup_service.apply_config_flag(key, value=value)
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SETTINGS_SERVICE_SWAP_FAILED,
+                exc,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key=key,
+                note="apply_config_flag() failed",
+            )
+            raise
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace="backup",
+            key=key,
+            note="backup config flag updated",
         )
 
     async def _reschedule(self) -> None:

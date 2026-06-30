@@ -9,17 +9,22 @@ missing collaborator leaves the charter controllers to 503 rather than
 poisoning startup.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.meta.charter.dispatch import CharterDispatcher
@@ -30,6 +35,51 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
+
+
+async def _resolve_live_charter_config(
+    resolver: ConfigResolverProtocol, *, fallback: CharterConfig
+) -> CharterConfig:
+    """Build a ``CharterConfig`` from the live settings DB (DB > env > default).
+
+    The boot *fallback* supplies the strategy discriminator (which is not a
+    hot knob) and field validation bounds. Constructing a fresh config
+    revalidates the resolved scalars against the model's field constraints.
+
+    Returns:
+        ``CharterConfig`` instance.
+    """
+    ns = SettingNamespace.CHARTER
+    return CharterConfig(
+        interview_strategy=fallback.interview_strategy,
+        interview_model=await resolver.get_str(ns, "interview_model"),
+        interview_temperature=await resolver.get_float(ns, "interview_temperature"),
+        interview_max_tokens=await resolver.get_int(ns, "interview_max_tokens"),
+        interview_max_turns=await resolver.get_int(ns, "interview_max_turns"),
+        default_currency=await resolver.get_str(ns, "default_currency"),
+    )
+
+
+def _charter_config_provider(
+    app_state: AppState, *, fallback: CharterConfig
+) -> Callable[[], Awaitable[CharterConfig]]:
+    """Build the per-turn live-config provider for the interview service.
+
+    The resolver is read from the slice on each call (late-bound: it may be
+    wired after this builder runs), and an unwired resolver yields the boot
+    *fallback*.
+
+    Returns:
+        An async callable resolving the live ``CharterConfig``.
+    """
+
+    async def _provide() -> CharterConfig:
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
+        if resolver is None:
+            return fallback
+        return await _resolve_live_charter_config(resolver, fallback=fallback)
+
+    return _provide
 
 
 async def _wire_charter_engine(
@@ -54,6 +104,7 @@ async def _wire_charter_engine(
         return
     try:
         built = await _build_charter_interview(
+            app_state,
             provider_registry=provider_registry,
             persistence=persistence,
             cost_tracker=cost_tracker,
@@ -88,6 +139,7 @@ async def _wire_charter_engine(
 
 
 async def _build_charter_interview(
+    app_state: AppState,
     *,
     provider_registry: ProviderRegistry,
     persistence: PersistenceBackend,
@@ -140,6 +192,7 @@ async def _build_charter_interview(
         conversation_repo=conv_repos.conversation_repo,
         turn_repo=conv_repos.turn_repo,
         charter_repo=charter_repo,
+        config_provider=_charter_config_provider(app_state, fallback=charter_config),
     )
     return interview_service, charter_repo, conv_repos
 
