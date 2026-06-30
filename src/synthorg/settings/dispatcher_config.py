@@ -10,10 +10,13 @@ started), so the reader holds a getter that re-reads the slice on each call
 and fails safe to the bootstrap defaults until -- and whenever -- the resolver
 is unavailable.
 
-Resolve failures are logged once per distinct error type (re-arming when the
-failure mode changes or a resolve succeeds) so a sustained settings-backend
-outage -- read on every poll iteration across several methods -- does not flood
-the log, while a genuine change of failure mode is still surfaced.
+Resolve failures are logged once per distinct error type *per setting key*
+(re-arming when that key's failure mode changes or that key resolves
+successfully) so a sustained settings-backend outage -- read on every poll
+iteration across several methods -- does not flood the log, while a genuine
+change of failure mode is still surfaced. The dedup is scoped per key so one
+knob's persistent failure is not silently re-armed by an unrelated knob's
+successful read on the same poll tick.
 """
 
 import asyncio
@@ -59,20 +62,22 @@ class DispatcherConfigReader:
         self._config_resolver_getter: (
             Callable[[], ConfigResolverProtocol | None] | None
         ) = config_resolver_getter
-        # The error type of the last logged resolve failure, or ``None`` when
-        # the dedup is armed. Re-armed on a successful resolve and whenever the
-        # failure type changes, so an outage logs once per failure mode rather
-        # than once per poll iteration.
-        self._last_logged_error_type: str | None = None
+        # Per-key error type of the last logged resolve failure. A key is
+        # present only while its dedup is suppressing repeats of the same
+        # failure mode; it is dropped on that key's next successful resolve and
+        # whenever its failure type changes. Scoping per key keeps one knob's
+        # persistent failure from being re-armed by an unrelated knob's
+        # successful read on the same poll tick.
+        self._last_logged_error_types: dict[str, str] = {}
 
     def reset(self) -> None:
-        """Re-arm the resolve-failure log dedup.
+        """Re-arm every key's resolve-failure log dedup.
 
         Called from ``SettingsChangeDispatcher.start()`` so a fresh lifecycle
         does not inherit a stale dedup flag from a prior run that ended mid
         outage (which would silently drop the new lifecycle's first warning).
         """
-        self._last_logged_error_type = None
+        self._last_logged_error_types.clear()
 
     def _resolver(self) -> ConfigResolverProtocol | None:
         """Return the live config resolver, or ``None`` before it is wired.
@@ -89,23 +94,30 @@ class DispatcherConfigReader:
         self,
         exc: Exception,
         *,
-        key: str | None = None,
+        key: str,
         fallback: float | int | None = None,
     ) -> None:
-        """Log a resolve failure once per distinct error type."""
+        """Log a resolve failure once per distinct error type for ``key``."""
         error_type = type(exc).__name__
-        if error_type == self._last_logged_error_type:
+        if self._last_logged_error_types.get(key) == error_type:
             return
-        self._last_logged_error_type = error_type
+        self._last_logged_error_types[key] = error_type
         fields: dict[str, object] = {
             "error_type": error_type,
             "error": safe_error_description(exc),
+            "key": key,
         }
-        if key is not None:
-            fields["key"] = key
         if fallback is not None:
             fields["fallback"] = fallback
         logger.warning(SETTINGS_DISPATCHER_RESOLVE_FAILED, **fields)
+
+    def _note_resolve_success(self, key: str) -> None:
+        """Re-arm ``key``'s dedup after it resolves successfully.
+
+        Clears only this key so an unrelated knob's persistent failure keeps
+        its suppression and does not re-flood on the next poll tick.
+        """
+        self._last_logged_error_types.pop(key, None)
 
     async def enabled(self) -> bool:
         """Resolve the kill-switch flag, fail-safe to ``True``.
@@ -139,7 +151,7 @@ class DispatcherConfigReader:
             reraise_critical(exc)
             self._note_resolve_failure(exc, key="dispatcher_enabled")
             return True
-        self._last_logged_error_type = None
+        self._note_resolve_success("dispatcher_enabled")
         return value
 
     async def max_consecutive_errors(self) -> int:
@@ -185,7 +197,7 @@ class DispatcherConfigReader:
                 fallback=_MAX_CONSECUTIVE_ERRORS,
             )
             return _MAX_CONSECUTIVE_ERRORS
-        self._last_logged_error_type = None
+        self._note_resolve_success("dispatcher_max_consecutive_errors")
         return value
 
     async def stop_drain_timeout(self) -> float:
@@ -229,7 +241,7 @@ class DispatcherConfigReader:
                 fallback=_STOP_DRAIN_TIMEOUT,
             )
             return _STOP_DRAIN_TIMEOUT
-        self._last_logged_error_type = None
+        self._note_resolve_success("dispatcher_stop_drain_timeout_seconds")
         return value
 
     async def poll_timeout(self) -> float:
@@ -263,7 +275,7 @@ class DispatcherConfigReader:
                 exc, key="dispatcher_poll_timeout_seconds", fallback=_POLL_TIMEOUT
             )
             return _POLL_TIMEOUT
-        self._last_logged_error_type = None
+        self._note_resolve_success("dispatcher_poll_timeout_seconds")
         return value
 
     async def error_backoff(self) -> float:
@@ -296,7 +308,7 @@ class DispatcherConfigReader:
                 exc, key="dispatcher_error_backoff_seconds", fallback=_ERROR_BACKOFF
             )
             return _ERROR_BACKOFF
-        self._last_logged_error_type = None
+        self._note_resolve_success("dispatcher_error_backoff_seconds")
         return value
 
 

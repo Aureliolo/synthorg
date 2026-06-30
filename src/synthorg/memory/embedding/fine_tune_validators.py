@@ -1,6 +1,7 @@
 """Shared field validators for the fine-tuning pipeline models."""
 
 from pathlib import PurePosixPath, PureWindowsPath
+from urllib.parse import urlsplit
 
 
 def assert_safe_base_model(value: str | None) -> None:
@@ -21,9 +22,6 @@ def assert_safe_base_model(value: str | None) -> None:
     """
     if value is None:
         return
-    if "://" in value:
-        msg = "base_model must be a model id or POSIX path, not a URL"
-        raise ValueError(msg)
     parts = PureWindowsPath(value).parts + PurePosixPath(value).parts
     if ".." in parts:
         msg = "base_model must not contain parent-directory traversal (..)"
@@ -33,6 +31,14 @@ def assert_safe_base_model(value: str | None) -> None:
             "base_model must be a POSIX path or model id "
             "(no backslashes or drive letters)"
         )
+        raise ValueError(msg)
+    # Parse the scheme rather than searching for ``://``: schemeless URL
+    # forms (``file:/tmp/model``, ``https:example``) carry a scheme without
+    # the authority separator and would otherwise slip the loader a remote
+    # artefact. A Windows drive letter parses as a single-char scheme but is
+    # already rejected above, so any scheme that survives to here is a URL.
+    if urlsplit(value).scheme:
+        msg = "base_model must be a model id or POSIX path, not a URL"
         raise ValueError(msg)
 
 

@@ -221,8 +221,9 @@ through `TASK_CREATED`. It routes requests to a configured `IntakeStrategy`:
 ### Boot wiring
 
 `synthorg.client.runtime_builder.build_client_simulation_runtime`
-constructs the `IntakeEngine` (plus a single-stage `ReviewPipeline`
-of `InternalReviewStage`) during app construction whenever a
+constructs the `IntakeEngine` (plus a `ReviewPipeline` of
+`InternalReviewStage` with the `VerificationReviewStage` appended when
+`verification_review_enabled`) during app construction whenever a
 `TaskEngine` is present, and `create_app` attaches the resulting
 `ClientSimulationState` so `has_simulation_runtime` is true and the
 `/simulations` + `/requests` controllers register. The strategy is

@@ -201,17 +201,42 @@ class ProviderSettingsSubscriber:
                     note="cassette became active during rebuild -- skipped swap",
                 )
                 return
+            previous_registry = live
             self._app_state.swap_provider_registry(new_registry)
-            # The running AgentEngine captured the registry at construction
-            # (engine/agent_engine.py), so a slice swap alone leaves the
-            # completion path on the old retry cap. Rebuild the runtime
-            # services so the engine adopts the rebuilt registry; this mirrors
-            # the budget-benchmark subscriber's swap-then-reload pattern.
             from synthorg.workers.runtime_builder import (  # noqa: PLC0415
                 reload_runtime_services,
             )
 
-            await reload_runtime_services(self._app_state)
+            try:
+                # The running AgentEngine captured the registry at construction
+                # (engine/agent_engine.py), so a slice swap alone leaves the
+                # completion path on the old retry cap. Rebuild the runtime
+                # services so the engine adopts the rebuilt registry; this
+                # mirrors the budget-benchmark subscriber's swap-then-reload
+                # pattern.
+                await reload_runtime_services(self._app_state)
+            except Exception:
+                # The slice swap already committed but the runtime never
+                # adopted it, so the slice now points at the new registry while
+                # the engine may still hold the old one (or a partially
+                # reloaded runtime). Restore the previous registry and re-heal
+                # the runtime so the slice and engine stay consistent, then let
+                # the original failure propagate to the dispatcher.
+                if previous_registry is not None:
+                    self._app_state.swap_provider_registry(previous_registry)
+                    try:
+                        await reload_runtime_services(self._app_state)
+                    except Exception as heal_exc:  # noqa: BLE001
+                        reraise_critical(heal_exc)
+                        logger.error(
+                            SETTINGS_SERVICE_SWAP_FAILED,
+                            service="provider_registry",
+                            error_type=type(heal_exc).__name__,
+                            error=safe_error_description(heal_exc),
+                            note="rollback runtime reload failed -- registry "
+                            "restored but runtime may be inconsistent",
+                        )
+                raise
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,

@@ -748,8 +748,43 @@ class TestResolverHelpers:
             config_resolver_getter=_raising_resolver,
         )
         assert await d._config.enabled() is True
-        assert d._config._last_logged_error_type == "RuntimeError"
+        assert (
+            d._config._last_logged_error_types["dispatcher_enabled"] == "RuntimeError"
+        )
         assert await d._config.enabled() is True
+
+    async def test_resolve_failure_dedup_is_scoped_per_key(self) -> None:
+        # A persistently failing knob must keep its log suppression even when a
+        # different knob resolves successfully on the same tick, so an outage of
+        # one setting does not re-flood once another setting recovers.
+        bus = _FakeBus()
+        resolver = mock_of[ConfigResolver]()
+
+        def _get_bool(namespace: str, key: str) -> bool:
+            return True
+
+        def _flaky_float(namespace: str, key: str) -> float:
+            if key == "dispatcher_poll_timeout_seconds":
+                msg = "poll-timeout backend down"
+                raise RuntimeError(msg)
+            return 0.5
+
+        resolver.get_bool.side_effect = _get_bool
+        resolver.get_float.side_effect = _flaky_float
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(),
+            config_resolver_getter=lambda: cast(ConfigResolver, resolver),
+        )
+        # poll_timeout fails (suppression armed for its key), enabled succeeds.
+        assert await d._config.poll_timeout() == 1.0
+        assert await d._config.enabled() is True
+        # enabled's success must NOT have cleared poll_timeout's suppression.
+        assert (
+            d._config._last_logged_error_types["dispatcher_poll_timeout_seconds"]
+            == "RuntimeError"
+        )
+        assert "dispatcher_enabled" not in d._config._last_logged_error_types
 
     async def test_resolve_max_consecutive_errors_no_resolver(self) -> None:
         bus = _FakeBus()

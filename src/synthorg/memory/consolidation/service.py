@@ -72,8 +72,9 @@ class MemoryConsolidationService:
             ``None`` or disabled in config).
         max_enforce_batch: Maximum memories to enforce retention on per
             invocation. Must match the bounds of the
-            ``memory.consolidation_enforce_batch_size`` setting
-            (``MemoryBridgeConfig``): between 100 and 10000 inclusive.
+            ``memory.consolidation_enforce_batch_size`` setting: between 100
+            and 10000 inclusive. This setting is resolved directly here via
+            ``config_resolver`` (it is not carried on ``MemoryBridgeConfig``).
             Defaults to the module constant so the service still works
             standalone when the settings layer is not wired in.
     """

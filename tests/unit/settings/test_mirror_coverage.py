@@ -385,6 +385,13 @@ _BRIDGE_BUILDER_RE: Final[re.Pattern[str]] = re.compile(
 _BRIDGE_CTOR_REMAP_RE: Final[re.Pattern[str]] = re.compile(
     r'(\w+)\s*=\s*values\[\s*"([^"]+)"\s*\]',
 )
+# Bridge builders that resolve every field as structured JSON via ``get_json``
+# rather than the scalar ``_resolve_bridge_fields()`` call, so they legitimately
+# contribute no scalar mirror entries. Any builder NOT listed here that drops
+# its scalar-field call fails discovery instead of silently vanishing.
+_SCALARLESS_BRIDGE_BUILDERS: Final[frozenset[str]] = frozenset(
+    {"get_memory_bridge_config"}
+)
 
 
 def _discover_bridge_entries() -> list[tuple[type[BaseModel], str, str, str, str]]:
@@ -420,19 +427,29 @@ def _discover_bridge_entries() -> list[tuple[type[BaseModel], str, str, str, str
             f"Bridge builder {name!r} returns {cls_name!r} which is not"
             " importable from synthorg.settings.bridge_configs."
         )
-        # A builder whose every field is special-cased (e.g. the
-        # memory builder's JSON-only ``fine_tune_vram_batch_table``,
-        # validated via ``get_json`` rather than ``_resolve_bridge_fields``)
-        # has no scalar-field call and contributes no scalar mirror entries.
+        # A builder whose every field is special-cased (e.g. the memory
+        # builder's JSON-only ``fine_tune_vram_batch_table``, validated via
+        # ``get_json`` rather than ``_resolve_bridge_fields``) has no
+        # scalar-field call and contributes no scalar mirror entries. Only the
+        # explicitly-listed JSON-only builders may skip discovery; any OTHER
+        # builder that drops its ``_resolve_bridge_fields()`` call must update
+        # this gate rather than silently vanish from mirror coverage.
         call_match = _BRIDGE_FIELDS_CALL_RE.search(source)
+        if call_match is None:
+            assert name in _SCALARLESS_BRIDGE_BUILDERS, (
+                f"Bridge builder {name!r} no longer uses _resolve_bridge_fields(); "
+                "add it to _SCALARLESS_BRIDGE_BUILDERS (if genuinely JSON-only) "
+                "or restore the scalar-field call, instead of silently skipping "
+                "its mirrored fields."
+            )
+            continue
         registered_keys: list[tuple[str, str]] = []
-        namespace = "" if call_match is None else call_match.group(1)
-        if call_match is not None:
-            body = call_match.group(2)
-            for field_match in _BRIDGE_FIELD_ENTRY_RE.finditer(body):
-                registered_key = field_match.group(1)
-                scalar_type = field_match.group(2)
-                registered_keys.append((registered_key, scalar_type))
+        namespace = call_match.group(1)
+        body = call_match.group(2)
+        for field_match in _BRIDGE_FIELD_ENTRY_RE.finditer(body):
+            registered_key = field_match.group(1)
+            scalar_type = field_match.group(2)
+            registered_keys.append((registered_key, scalar_type))
         remap: dict[str, str] = {}
         builder_tail = source[builder_match.end() :]
         for ctor_match in _BRIDGE_CTOR_REMAP_RE.finditer(builder_tail):
