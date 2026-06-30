@@ -28,7 +28,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
-    SETTINGS_DISPATCHER_RESOLVE_FAILED,
     SETTINGS_DISPATCHER_START_REJECTED,
     SETTINGS_DISPATCHER_STARTED,
     SETTINGS_DISPATCHER_STOP_FAILED,
@@ -37,17 +36,13 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
     SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
 )
-from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.dispatcher_config import DispatcherConfigReader
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.subscriber import SettingsSubscriber
 
 logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__settings_dispatcher__"
-_POLL_TIMEOUT: Final[float] = 1.0
-"""Bootstrap poll timeout used before the settings resolver is ready."""
-_ERROR_BACKOFF: Final[float] = 1.0
-"""Bootstrap error backoff used before the settings resolver is ready."""
 _SETTINGS_CHANNEL: Final[str] = "#settings"
 
 
@@ -88,21 +83,18 @@ class SettingsChangeDispatcher:
     ) -> None:
         self._bus = message_bus
         self._subscribers = subscribers
-        # Late-bound kill-switch surface. The config resolver is composed
-        # onto its slice *after* this dispatcher is built and started
-        # (``compose_settings_dependent_services`` runs after
-        # ``auto_wire_settings`` builds + starts the dispatcher), so a
-        # value captured here would be ``None`` for the whole process
-        # lifetime: the operator kill switch and poll knobs would never go
-        # live. Holding a getter that reads the slice on each resolve picks
+        # Late-bound kill-switch + knob surface. The config resolver is
+        # composed onto its slice *after* this dispatcher is built and
+        # started (``compose_settings_dependent_services`` runs after
+        # ``auto_wire_settings`` builds + starts the dispatcher), so a value
+        # captured here would be ``None`` for the whole process lifetime:
+        # the operator kill switch and poll knobs would never go live. The
+        # reader holds a getter that reads the slice on each resolve, picking
         # up the resolver the instant composition wires it, matching the
         # late-bound provider idiom (``workers/_construction.py``). ``None``
         # (or a getter returning ``None``) is the bootstrap / test default:
         # the dispatcher then runs unconditionally, fail-safe to enabled.
-        self._config_resolver_getter: (
-            Callable[[], ConfigResolverProtocol | None] | None
-        ) = config_resolver_getter
-        self._resolve_failed_logged: bool = False
+        self._config = DispatcherConfigReader(config_resolver_getter)
         self._task: asyncio.Task[None] | None = None
         self._running: bool = False
         # Set to True when a stop() drain exceeds the hard deadline.
@@ -365,7 +357,7 @@ class SettingsChangeDispatcher:
                 return
 
             if self._task is not None:
-                drain_timeout = await self._resolve_stop_drain_timeout()
+                drain_timeout = await self._config.stop_drain_timeout()
                 self._task.cancel()
                 try:
                     # ``asyncio.shield`` guarantees the hard deadline
@@ -539,227 +531,6 @@ class SettingsChangeDispatcher:
                 self._running = False
                 self._task = None
 
-    def _resolver(self) -> ConfigResolverProtocol | None:
-        """Return the live config resolver, or ``None`` before it is wired.
-
-        Reads through the late-bound getter on every call so a resolver
-        composed onto the slice after this dispatcher started is picked up
-        without reconstruction.
-        """
-        if self._config_resolver_getter is None:
-            return None
-        return self._config_resolver_getter()
-
-    async def _resolve_enabled(self) -> bool:
-        """Resolve the kill-switch flag, fail-safe to ``True``.
-
-        Operators flip ``settings.dispatcher.enabled=false`` to pause
-        the propagation loop without tearing down subscribers. A
-        settings-backend outage must not silently silence the
-        dispatcher (the operator is the only sanctioned silencer), so
-        any resolver failure resolves to enabled. The first failure
-        per run logs a WARNING; the surface re-arms on the next
-        successful resolve so a transient outage does not fill the
-        log with duplicates.
-
-        Returns:
-            ``True`` when the dispatcher should process messages
-            (including every resolver-failure case, fail-safe), ``False``
-            only when an operator has explicitly set
-            ``settings.dispatcher.enabled=false``.
-
-        Raises:
-            asyncio.CancelledError: If the coroutine is cancelled while
-                awaiting the resolver.
-        """
-        resolver = self._resolver()
-        if resolver is None:
-            return True
-        try:
-            value = await resolver.get_bool(
-                SettingNamespace.SETTINGS.value, "dispatcher_enabled"
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            if not self._resolve_failed_logged:
-                logger.warning(
-                    SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                self._resolve_failed_logged = True
-            return True
-        self._resolve_failed_logged = False
-        return value
-
-    async def _resolve_max_consecutive_errors(self) -> int:
-        """Resolve the consecutive-error budget; bootstrap fallback is 30.
-
-        Read each loop iteration so an operator can lower / raise the
-        budget without a dispatcher restart. Resolver outage falls
-        back to the bootstrap default so the loop keeps pumping with
-        a sane default rather than aborting on the first error.
-
-        The bootstrap literal (30) duplicates the registered default
-        in ``settings/definitions/settings.py``
-        (``dispatcher_max_consecutive_errors``); kept inline as a
-        literal because importing the registry value at module-load
-        risks a circular import (registry depends on settings models;
-        settings models depend on enums; the dispatcher module is on
-        the resolution path back). Keep both in lockstep when
-        adjusting the registered default.
-
-        Returns:
-            The configured maximum number of consecutive poll errors
-            before the loop exits, or the bootstrap default of 30 when
-            the resolver is unavailable.
-
-        Raises:
-            asyncio.CancelledError: If the coroutine is cancelled while
-                awaiting the resolver.
-        """
-        # Mirrors the settings.dispatcher_max_consecutive_errors registered
-        # default; kept inline (not imported) to avoid a settings-registry
-        # circular import at this pre-resolver boot site.
-        bootstrap_default = 30
-        resolver = self._resolver()
-        if resolver is None:
-            return bootstrap_default
-        try:
-            return await resolver.get_int(
-                SettingNamespace.SETTINGS.value, "dispatcher_max_consecutive_errors"
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_max_consecutive_errors",
-                fallback=bootstrap_default,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return bootstrap_default
-
-    async def _resolve_stop_drain_timeout(self) -> float:
-        """Resolve the stop() drain hard deadline; bootstrap fallback is 10.0s.
-
-        Read once at stop() entry so an operator can extend the
-        deadline ahead of a planned drain without code changes.
-        Resolver outage falls back to the bootstrap default so the
-        drain still bounds the lifecycle lock.
-
-        The bootstrap literal (10.0) duplicates the registered
-        default in ``settings/definitions/settings.py``
-        (``dispatcher_stop_drain_timeout_seconds``); kept inline
-        for the same circular-import reason described on
-        ``_resolve_max_consecutive_errors``. Keep both in lockstep
-        when adjusting the registered default.
-
-        Returns:
-            The configured ``stop()`` drain timeout in seconds, or the
-            bootstrap default of 10.0 when the resolver is unavailable.
-
-        Raises:
-            asyncio.CancelledError: If the coroutine is cancelled while
-                awaiting the resolver.
-        """
-        bootstrap_default = 10.0
-        resolver = self._resolver()
-        if resolver is None:
-            return bootstrap_default
-        try:
-            return await resolver.get_float(
-                SettingNamespace.SETTINGS.value,
-                "dispatcher_stop_drain_timeout_seconds",
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_stop_drain_timeout_seconds",
-                fallback=bootstrap_default,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return bootstrap_default
-
-    async def _resolve_poll_timeout(self) -> float:
-        """Resolve the poll timeout; bootstrap fallback is ``_POLL_TIMEOUT``.
-
-        Read each loop iteration so an operator can tune how fast the
-        dispatcher reacts to changes (and how often it re-checks the kill
-        switch) without a restart. Resolver outage falls back to the
-        bootstrap default so the loop keeps yielding at a sane cadence.
-
-        Returns:
-            The configured poll timeout in seconds, or the bootstrap
-            default when the resolver is unavailable.
-
-        Raises:
-            asyncio.CancelledError: If the coroutine is cancelled while
-                awaiting the resolver.
-        """
-        resolver = self._resolver()
-        if resolver is None:
-            return _POLL_TIMEOUT
-        try:
-            return await resolver.get_float(
-                SettingNamespace.SETTINGS.value, "dispatcher_poll_timeout_seconds"
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_poll_timeout_seconds",
-                fallback=_POLL_TIMEOUT,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return _POLL_TIMEOUT
-
-    async def _resolve_error_backoff(self) -> float:
-        """Resolve the post-error backoff; bootstrap fallback is ``_ERROR_BACKOFF``.
-
-        Read on the error path so an operator can tune recovery cadence
-        without a restart. Resolver outage falls back to the bootstrap
-        default so the loop still backs off after a failed iteration.
-
-        Returns:
-            The configured error backoff in seconds, or the bootstrap
-            default when the resolver is unavailable.
-
-        Raises:
-            asyncio.CancelledError: If the coroutine is cancelled while
-                awaiting the resolver.
-        """
-        resolver = self._resolver()
-        if resolver is None:
-            return _ERROR_BACKOFF
-        try:
-            return await resolver.get_float(
-                SettingNamespace.SETTINGS.value, "dispatcher_error_backoff_seconds"
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                SETTINGS_DISPATCHER_RESOLVE_FAILED,
-                key="dispatcher_error_backoff_seconds",
-                fallback=_ERROR_BACKOFF,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return _ERROR_BACKOFF
-
     async def _ensure_channel(self) -> None:
         """Create ``#settings`` channel if it does not exist."""
         try:
@@ -786,8 +557,8 @@ class SettingsChangeDispatcher:
             # the flag, sleep the same poll-timeout we'd otherwise spend in
             # ``bus.receive`` so the loop yields the event loop at the same
             # cadence and the flip takes effect within one tick.
-            poll_timeout = await self._resolve_poll_timeout()
-            if not await self._resolve_enabled():
+            poll_timeout = await self._config.poll_timeout()
+            if not await self._config.enabled():
                 await asyncio.sleep(poll_timeout)
                 continue
             try:
@@ -808,7 +579,7 @@ class SettingsChangeDispatcher:
                 raise
             except (CommunicationError, OSError, TimeoutError) as exc:
                 consecutive_errors += 1
-                max_errors = await self._resolve_max_consecutive_errors()
+                max_errors = await self._config.max_consecutive_errors()
                 if consecutive_errors >= max_errors:
                     log_exception_redacted(
                         logger,
@@ -824,7 +595,7 @@ class SettingsChangeDispatcher:
                     error=safe_error_description(exc),
                 )
                 # See docs/reference/retry-patterns.md: Pattern D
-                await asyncio.sleep(await self._resolve_error_backoff())
+                await asyncio.sleep(await self._config.error_backoff())
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(logger, SETTINGS_DISPATCHER_CHANNEL_DEAD, exc)

@@ -824,8 +824,8 @@
     },
     "src/synthorg/memory/embedding/fine_tune_models.py": {
       "cap": 500,
-      "loc": 503,
-      "ratio": 1.006,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune_orchestrator.py": {
@@ -1392,12 +1392,6 @@
       "ratio": 0.816,
       "tier": "code"
     },
-    "src/synthorg/settings/dispatcher.py": {
-      "cap": 600,
-      "loc": 672,
-      "ratio": 1.12,
-      "tier": "service"
-    },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
       "loc": 1061,
@@ -1550,7 +1544,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 210,
-    "synthorg.core.critical_errors": 609,
+    "synthorg.core.critical_errors": 610,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1613,7 +1607,7 @@
     "synthorg.meta.signal_models": 23,
     "synthorg.meta.state": 21,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1753,
+    "synthorg.observability": 1754,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 200,
     "synthorg.observability.events.approval_gate": 20,
@@ -1632,7 +1626,7 @@
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 52,
     "synthorg.observability.events.security": 75,
-    "synthorg.observability.events.settings": 59,
+    "synthorg.observability.events.settings": 60,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
     "synthorg.observability.events.workflow": 26,
@@ -1832,10 +1826,6 @@
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 2,
       "loc": 865
-    },
-    "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
-      "lcom4": 1,
-      "loc": 596
     },
     "synthorg.settings.resolver:ConfigResolver": {
       "lcom4": 2,

@@ -626,15 +626,8 @@ class TestEnsureChannel:
 
 @pytest.mark.unit
 class TestConsecutiveErrors:
-    async def test_transient_errors_do_not_kill_loop(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_transient_errors_do_not_kill_loop(self) -> None:
         """OSError/TimeoutError are tolerated below the threshold."""
-        import synthorg.settings.dispatcher as _mod
-
-        monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
-
         sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
         call_count = 0
 
@@ -664,7 +657,9 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver_getter=lambda: _fake_resolver(max_consecutive_errors=5),
+            config_resolver_getter=lambda: _fake_resolver(
+                max_consecutive_errors=5, error_backoff_seconds=0.01
+            ),
         )
         await d.start()
         try:
@@ -673,14 +668,8 @@ class TestConsecutiveErrors:
         finally:
             await d.stop()
 
-    async def test_max_consecutive_errors_kills_loop(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_max_consecutive_errors_kills_loop(self) -> None:
         """Loop exits after the configured max-consecutive-errors OSErrors."""
-        import synthorg.settings.dispatcher as _mod
-
-        monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
 
         class _PermanentErrorBus(_FakeBus):
             @override
@@ -699,7 +688,9 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver_getter=lambda: _fake_resolver(max_consecutive_errors=5),
+            config_resolver_getter=lambda: _fake_resolver(
+                max_consecutive_errors=5, error_backoff_seconds=0.01
+            ),
         )
         await d.start()
         assert d._task is not None
@@ -713,11 +704,11 @@ class TestConsecutiveErrors:
 def _raising_resolver() -> ConfigResolver:
     """Build a ``ConfigResolver`` autospec double that raises on every read.
 
-    Exercises the dispatcher's bootstrap-fallback / resolve-failure
-    paths: ``_resolve_enabled`` resolves to ``True``,
-    ``_resolve_max_consecutive_errors`` to ``30``, and
-    ``_resolve_stop_drain_timeout`` to ``10.0``, in each case via
-    the broad ``except Exception`` branch in the dispatcher.
+    Exercises the config reader's bootstrap-fallback / resolve-failure
+    paths: ``enabled`` resolves to ``True``,
+    ``max_consecutive_errors`` to ``30``, and ``stop_drain_timeout`` to
+    ``10.0``, in each case via the broad ``except Exception`` branch in
+    :class:`DispatcherConfigReader`.
     """
     resolver = mock_of[ConfigResolver]()
 
@@ -738,7 +729,7 @@ class TestResolverHelpers:
     async def test_resolve_enabled_no_resolver_returns_true(self) -> None:
         bus = _FakeBus()
         d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
-        assert await d._resolve_enabled() is True
+        assert await d._config.enabled() is True
 
     async def test_resolve_enabled_uses_resolver_value(self) -> None:
         bus = _FakeBus()
@@ -747,7 +738,7 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=lambda: _fake_resolver(enabled=False),
         )
-        assert await d._resolve_enabled() is False
+        assert await d._config.enabled() is False
 
     async def test_resolve_enabled_resolver_failure_returns_true(self) -> None:
         bus = _FakeBus()
@@ -756,14 +747,14 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=_raising_resolver,
         )
-        assert await d._resolve_enabled() is True
-        assert d._resolve_failed_logged is True
-        assert await d._resolve_enabled() is True
+        assert await d._config.enabled() is True
+        assert d._config._resolve_failed_logged is True
+        assert await d._config.enabled() is True
 
     async def test_resolve_max_consecutive_errors_no_resolver(self) -> None:
         bus = _FakeBus()
         d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
-        assert await d._resolve_max_consecutive_errors() == 30
+        assert await d._config.max_consecutive_errors() == 30
 
     async def test_resolve_max_consecutive_errors_uses_resolver(self) -> None:
         bus = _FakeBus()
@@ -772,7 +763,7 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=lambda: _fake_resolver(max_consecutive_errors=7),
         )
-        assert await d._resolve_max_consecutive_errors() == 7
+        assert await d._config.max_consecutive_errors() == 7
 
     async def test_resolve_max_consecutive_errors_resolver_failure(self) -> None:
         bus = _FakeBus()
@@ -781,12 +772,12 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=_raising_resolver,
         )
-        assert await d._resolve_max_consecutive_errors() == 30
+        assert await d._config.max_consecutive_errors() == 30
 
     async def test_resolve_stop_drain_timeout_no_resolver(self) -> None:
         bus = _FakeBus()
         d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
-        assert await d._resolve_stop_drain_timeout() == 10.0
+        assert await d._config.stop_drain_timeout() == 10.0
 
     async def test_resolve_stop_drain_timeout_uses_resolver(self) -> None:
         bus = _FakeBus()
@@ -797,7 +788,7 @@ class TestResolverHelpers:
                 stop_drain_timeout_seconds=2.5
             ),
         )
-        assert await d._resolve_stop_drain_timeout() == 2.5
+        assert await d._config.stop_drain_timeout() == 2.5
 
     async def test_resolve_stop_drain_timeout_resolver_failure(self) -> None:
         bus = _FakeBus()
@@ -806,14 +797,14 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=_raising_resolver,
         )
-        assert await d._resolve_stop_drain_timeout() == 10.0
+        assert await d._config.stop_drain_timeout() == 10.0
 
     async def test_resolve_poll_timeout_no_resolver(self) -> None:
-        import synthorg.settings.dispatcher as _mod
+        import synthorg.settings.dispatcher_config as _cfg
 
         bus = _FakeBus()
         d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
-        assert await d._resolve_poll_timeout() == _mod._POLL_TIMEOUT
+        assert await d._config.poll_timeout() == _cfg._POLL_TIMEOUT
 
     async def test_resolve_poll_timeout_uses_resolver(self) -> None:
         bus = _FakeBus()
@@ -822,14 +813,14 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=lambda: _fake_resolver(poll_timeout_seconds=0.25),
         )
-        assert await d._resolve_poll_timeout() == 0.25
+        assert await d._config.poll_timeout() == 0.25
 
     async def test_resolve_error_backoff_no_resolver(self) -> None:
-        import synthorg.settings.dispatcher as _mod
+        import synthorg.settings.dispatcher_config as _cfg
 
         bus = _FakeBus()
         d = SettingsChangeDispatcher(message_bus=bus, subscribers=())
-        assert await d._resolve_error_backoff() == _mod._ERROR_BACKOFF
+        assert await d._config.error_backoff() == _cfg._ERROR_BACKOFF
 
     async def test_resolve_error_backoff_uses_resolver(self) -> None:
         bus = _FakeBus()
@@ -838,7 +829,7 @@ class TestResolverHelpers:
             subscribers=(),
             config_resolver_getter=lambda: _fake_resolver(error_backoff_seconds=2.0),
         )
-        assert await d._resolve_error_backoff() == 2.0
+        assert await d._config.error_backoff() == 2.0
 
     async def test_late_bound_resolver_is_picked_up_after_wiring(self) -> None:
         """A resolver wired after construction is honoured without a rebuild.
@@ -858,10 +849,10 @@ class TestResolverHelpers:
             config_resolver_getter=lambda: holder["resolver"],
         )
         # Before composition wires the resolver: fail-safe to enabled.
-        assert await d._resolve_enabled() is True
+        assert await d._config.enabled() is True
         # Composition (or an operator edit) installs the resolver later.
         holder["resolver"] = _fake_resolver(enabled=False)
-        assert await d._resolve_enabled() is False
+        assert await d._config.enabled() is False
 
 
 @pytest.mark.unit
@@ -887,7 +878,7 @@ class TestKillSwitch:
                 return None
 
         # Deterministic synchronisation: the loop calls
-        # ``_resolve_enabled`` on every iteration. Hook the resolver to
+        # ``_config.enabled`` on every iteration. Hook the resolver to
         # tick an iteration counter and signal an Event after N ticks
         # so the test waits for *exact* loop progress rather than a
         # wall-clock budget. A small resolved poll-timeout keeps the
