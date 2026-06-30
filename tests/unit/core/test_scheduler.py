@@ -219,7 +219,7 @@ class _RaisingIntervalScheduler(_CountingScheduler):
         self.interval_calls = 0
 
     @override
-    async def _resolve_interval_seconds(self) -> float:
+    async def _resolve_wait_interval(self) -> float:
         self.interval_calls += 1
         msg = "resolver outage"
         raise RuntimeError(msg)
