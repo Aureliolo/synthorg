@@ -5,6 +5,7 @@ import { getBudgetConfig } from '@/api/endpoints/budget'
 import { listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
 import { listActivities } from '@/api/endpoints/activities'
 import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
+import { deepEqual } from '@/utils/equality'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -135,7 +136,12 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   fetchOverview: async () => {
     try {
       const overview = await getOverviewMetrics()
-      set({ overview })
+      // Unchanged data keeps the existing reference so subscribers
+      // (charts, gauges, status bar) skip a full re-render wave on
+      // every idle poll tick.
+      if (!deepEqual(overview, get().overview)) {
+        set({ overview })
+      }
     } catch (err) {
       log.warn(
         'Failed to refresh overview (polling):',

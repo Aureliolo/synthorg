@@ -9,6 +9,7 @@ import { getBudgetConfig, listCostRecords } from '@/api/endpoints/budget'
 import { listActivities } from '@/api/endpoints/activities'
 import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
+import { deepEqual } from '@/utils/equality'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
@@ -259,7 +260,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
   fetchOverview: async () => {
     try {
       const overview = await getOverviewMetrics()
-      set({ overview })
+      // Unchanged data keeps the existing reference so subscribers
+      // skip a full re-render wave on every idle poll tick.
+      if (!deepEqual(overview, get().overview)) {
+        set({ overview })
+      }
     } catch (err) {
       log.warn('Failed to refresh overview (polling):', sanitizeForLog(err))
     }

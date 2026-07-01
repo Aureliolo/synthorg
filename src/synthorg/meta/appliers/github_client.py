@@ -138,9 +138,8 @@ class HttpGitHubClient:
         self._base_branch = base_branch
         self._timeout = timeout
         self._api_base_url = api_base_url
-        # Lazily created to avoid deepcopy issues (RLock inside
-        # httpx.AsyncClient is not picklable, and the meta factory
-        # deep-copies the appliers registry).
+        # Lazily created so constructing the client (e.g. at boot-time
+        # applier wiring) opens no network resources until first use.
         self.__client: httpx.AsyncClient | None = None
         # Retry GitHub throttling, honouring the server's Retry-After hint
         # over the computed backoff. Only a 429 (GitHubRateLimitError) is

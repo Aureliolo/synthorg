@@ -6,7 +6,6 @@ enabled altitudes and disabled rules.
 """
 
 from collections.abc import Mapping
-from copy import deepcopy
 from types import MappingProxyType
 from typing import assert_never
 
@@ -263,7 +262,14 @@ def build_appliers(
         )
 
         maybe_install_code_applier(appliers, config.code_modification)
-    return MappingProxyType(deepcopy(appliers))
+    # No deepcopy: the dict is locally built (no external aliasing to
+    # isolate from) and the appliers hold LIVE services (workflow
+    # service, agent registry, cached providers). Deep-copying that
+    # object graph both breaks identity with the wired services and
+    # crashes on unpicklable members (asyncio primitives inside the
+    # durable contexts). MappingProxyType alone provides the read-only
+    # mapping contract.
+    return MappingProxyType(appliers)
 
 
 def build_regression_detector() -> TieredRegressionDetector:
