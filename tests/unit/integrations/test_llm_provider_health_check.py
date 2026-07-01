@@ -1,9 +1,12 @@
-"""LlmProviderHealthCheck: lenient reachability + no-base_url handling.
+"""LlmProviderHealthCheck: tracker-first health + reachability fallback.
 
-An LLM endpoint that answers with any sub-500 status is reachable (a 404 on
-the base path or a 401 for a missing key still proves the service is up), so
-those map to HEALTHY. A 5xx is the provider failing (UNHEALTHY), and a
-connection with no ``base_url`` (litellm-routed) is UNKNOWN.
+When a provider-health lookup is bound, the checker reports the provider
+tracker's aggregated verdict (the same source the Providers screen shows).
+Without a lookup -- or when the tracker has no signal -- it falls back to
+the reachability probe: any sub-500 status is HEALTHY (a 404 on the base
+path or a 401 for a missing key still proves the service is up), a 5xx is
+UNHEALTHY, and a connection with no ``base_url`` (litellm-routed) is
+UNKNOWN.
 """
 
 from unittest.mock import patch
@@ -18,6 +21,7 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
 )
 from synthorg.integrations.health.checks.llm_provider import LlmProviderHealthCheck
+from synthorg.providers.health import ProviderHealthSummary
 
 pytestmark = pytest.mark.unit
 
@@ -29,6 +33,78 @@ def _make_connection(base_url: str | None) -> Connection:
         auth_method=AuthMethod.API_KEY,
         base_url=base_url,
     )
+
+
+def _summary(*, calls: int, error_rate: float) -> ProviderHealthSummary:
+    return ProviderHealthSummary(
+        calls_last_24h=calls,
+        error_rate_percent_24h=error_rate,
+        avg_response_time_ms=120.0,
+    )
+
+
+class TestTrackerPreferredPath:
+    """A bound provider-health lookup wins over any URL probe."""
+
+    async def test_tracker_up_is_healthy_without_probe(
+        self, respx_mock: object
+    ) -> None:
+        check = LlmProviderHealthCheck()
+
+        async def _lookup(_name: str) -> ProviderHealthSummary:
+            return _summary(calls=10, error_rate=0.0)
+
+        check.bind_provider_health(_lookup)
+        report = await check.check(_make_connection("https://api.example.com/v1"))
+        assert report.status is ConnectionStatus.HEALTHY
+        assert report.latency_ms == 120.0
+        # The tracker verdict short-circuits: no HTTP probe fired.
+        assert len(respx_mock.calls) == 0  # type: ignore[attr-defined]
+
+    async def test_tracker_down_is_unhealthy_with_error_rate_detail(self) -> None:
+        check = LlmProviderHealthCheck()
+
+        async def _lookup(_name: str) -> ProviderHealthSummary:
+            return _summary(calls=8, error_rate=90.0)
+
+        check.bind_provider_health(_lookup)
+        report = await check.check(_make_connection(None))
+        assert report.status is ConnectionStatus.UNHEALTHY
+        assert report.error_detail is not None
+        assert "error rate" in report.error_detail
+
+    async def test_tracker_unknown_falls_back_to_unknown_without_base_url(
+        self,
+    ) -> None:
+        """Zero recorded calls leaves the tracker silent; no URL -> UNKNOWN."""
+        check = LlmProviderHealthCheck()
+
+        async def _lookup(_name: str) -> ProviderHealthSummary:
+            return _summary(calls=0, error_rate=0.0)
+
+        check.bind_provider_health(_lookup)
+        report = await check.check(_make_connection(None))
+        assert report.status is ConnectionStatus.UNKNOWN
+
+    async def test_non_provider_connection_falls_back_to_probe(
+        self, respx_mock: object
+    ) -> None:
+        """A lookup returning ``None`` keeps the reachability probe."""
+        respx_mock.get("https://api.example.com/v1").mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(200),
+        )
+        check = LlmProviderHealthCheck()
+
+        async def _lookup(_name: str) -> ProviderHealthSummary | None:
+            return None
+
+        check.bind_provider_health(_lookup)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_make_connection("https://api.example.com/v1"))
+        assert report.status is ConnectionStatus.HEALTHY
 
 
 class TestLlmProviderHealthCheck:

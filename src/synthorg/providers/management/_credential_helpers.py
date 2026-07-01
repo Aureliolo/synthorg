@@ -40,6 +40,19 @@ def credential_connection_name(provider_name: str) -> str:
     return f"provider-{provider_name}"
 
 
+def provider_name_for_connection(connection_name: str) -> str | None:
+    """Inverse of :func:`credential_connection_name`.
+
+    Returns:
+        The provider name a ``provider-<name>`` connection backs, or
+        ``None`` for connections outside that naming convention.
+    """
+    prefix = "provider-"
+    if not connection_name.startswith(prefix):
+        return None
+    return connection_name.removeprefix(prefix) or None
+
+
 async def store_provider_api_key(
     app_state: AppState, provider_name: str, api_key: str
 ) -> str:

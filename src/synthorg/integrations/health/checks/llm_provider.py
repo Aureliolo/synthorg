@@ -1,5 +1,6 @@
 """LLM-provider connection health check."""
 
+from collections.abc import Awaitable, Callable
 from typing import Final
 
 import httpx
@@ -15,6 +16,7 @@ from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,
     HEALTH_CHECK_PASSED,
 )
+from synthorg.providers.health import ProviderHealthStatus, ProviderHealthSummary
 from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import (
     DnsValidationOk,
@@ -30,16 +32,31 @@ _TIMEOUT: Final[float] = 10.0
 # service is up. Only a 5xx is treated as the provider itself failing.
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
 
+type ProviderHealthLookup = Callable[[str], Awaitable[ProviderHealthSummary | None]]
+
+_SUMMARY_STATUS_MAP: Final[dict[ProviderHealthStatus, ConnectionStatus]] = {
+    ProviderHealthStatus.UP: ConnectionStatus.HEALTHY,
+    ProviderHealthStatus.DEGRADED: ConnectionStatus.DEGRADED,
+    ProviderHealthStatus.DOWN: ConnectionStatus.UNHEALTHY,
+}
+
 
 class LlmProviderHealthCheck:
-    """Reachability check for an LLM-provider connection.
+    """Health check for an LLM-provider connection.
 
-    Probes the connection's ``base_url`` with a GET and treats any
-    sub-500 response as ``HEALTHY`` (the endpoint is reachable; auth/path
-    errors do not mean the provider is down). A 5xx, a network error, or
-    an SSRF rejection is ``UNHEALTHY``. Providers that route through
-    litellm's default endpoints carry no ``base_url`` and report
-    ``UNKNOWN`` (there is nothing connection-local to probe).
+    The providers subsystem owns provider health: when a
+    :data:`ProviderHealthLookup` is bound (see
+    ``bind_provider_health_lookup`` in the prober module), the check
+    reports the provider health tracker's aggregated verdict -- the
+    same source the Providers screen shows -- so the two surfaces can
+    never disagree.
+
+    Only when the tracker has no signal (no calls or probes in its
+    24h window) does the check fall back to a connection-local
+    reachability probe of ``base_url``: any sub-500 response is
+    ``HEALTHY`` (auth/path errors still prove the service is up), a
+    5xx / network error / SSRF rejection is ``UNHEALTHY``, and a
+    connection with no ``base_url`` reports ``UNKNOWN``.
 
     Args:
         network_policy: SSRF policy applied to ``base_url`` before any
@@ -57,21 +74,59 @@ class LlmProviderHealthCheck:
             network_policy if network_policy is not None else NetworkPolicy()
         )
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._provider_health: ProviderHealthLookup | None = None
+
+    def bind_provider_health(self, lookup: ProviderHealthLookup) -> None:
+        """Bind the provider-health lookup used before any URL probe.
+
+        The lookup receives the CONNECTION name and returns the
+        tracker's summary for the backing provider (or ``None`` when
+        the connection does not map to a provider).
+        """
+        self._provider_health = lookup
+
+    def _report_from_summary(
+        self,
+        connection_name: str,
+        summary: ProviderHealthSummary,
+        status: ConnectionStatus,
+    ) -> HealthReport:
+        detail = (
+            f"{summary.error_rate_percent_24h:.1f}% error rate over "
+            f"{summary.calls_last_24h} calls (24h)"
+            if status is not ConnectionStatus.HEALTHY
+            else None
+        )
+        return HealthReport(
+            connection_name=connection_name,
+            status=status,
+            latency_ms=summary.avg_response_time_ms,
+            error_detail=detail,
+            checked_at=self._clock.now(),
+        )
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Probe the provider endpoint for reachability.
+        """Resolve provider health, preferring the provider tracker.
 
         Returns:
-            ``HEALTHY`` for a sub-500 response, ``UNHEALTHY`` for a 5xx /
-            network error / SSRF rejection, and ``UNKNOWN`` when the
-            connection has no ``base_url`` to probe.
+            The tracker-derived status when the providers subsystem has
+            a verdict; otherwise the reachability-probe result
+            (``HEALTHY`` for a sub-500 response, ``UNHEALTHY`` for a
+            5xx / network error / SSRF rejection, ``UNKNOWN`` when the
+            connection has no ``base_url``).
         """
+        if self._provider_health is not None:
+            summary = await self._provider_health(connection.name)
+            if summary is not None:
+                status = _SUMMARY_STATUS_MAP.get(summary.health_status)
+                if status is not None:
+                    return self._report_from_summary(connection.name, summary, status)
         if not connection.base_url:
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNKNOWN,
-                error_detail="Provider routes via the litellm default endpoint; "
-                "no base_url to probe",
+                error_detail="No provider calls recorded yet and no base_url "
+                "to probe; health is unknown until the provider is used",
                 checked_at=self._clock.now(),
             )
         validation = await validate_url_host(connection.base_url, self._network_policy)
