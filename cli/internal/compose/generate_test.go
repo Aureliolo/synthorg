@@ -189,6 +189,100 @@ func TestGenerateWithSandbox(t *testing.T) {
 	compareGolden(t, "compose_sandbox.yml", out)
 }
 
+func TestGenerateWithFineTuningGPU(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+		FineTuning:         true,
+		FineTuningVariant:  "gpu",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// The backend's fine-tune preflight probes http://fine-tune:15002,
+	// so the compose service name must be exactly "fine-tune".
+	assertContains(t, yaml, "\n  fine-tune:\n")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-fine-tune-gpu:latest")
+	// GPU variant reserves an NVIDIA device.
+	assertContains(t, yaml, "driver: nvidia")
+	// Source data stays read-only on the sidecar.
+	assertContains(t, yaml, "synthorg-data:/data:ro")
+	// The env pin for backend-spawned stage containers still renders.
+	assertContains(t, yaml, `SYNTHORG_FINE_TUNE_IMAGE: "ghcr.io/aureliolo/synthorg-fine-tune-gpu:latest"`)
+	// torch-inductor JIT needs an exec-capable /tmp.
+	if strings.Contains(yaml, "/tmp:noexec,nosuid,nodev,size=1g") {
+		t.Error("fine-tune /tmp must allow exec (torch-inductor JIT kernels)")
+	}
+}
+
+func TestGenerateWithFineTuningCPU(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+		FineTuning:         true,
+		FineTuningVariant:  "cpu",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "\n  fine-tune:\n")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-fine-tune-cpu:latest")
+	// CPU variant must not reserve a GPU.
+	if strings.Contains(yaml, "driver: nvidia") {
+		t.Error("cpu fine-tune variant must not reserve an nvidia device")
+	}
+}
+
+func TestGenerateWithoutFineTuningOmitsService(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		DockerSockGID:      -1,
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(string(out), "\n  fine-tune:\n") {
+		t.Error("fine-tune service must not render when FineTuning is disabled")
+	}
+}
+
 func TestGenerateWithSandboxAndDockerSockGID(t *testing.T) {
 	t.Parallel()
 	p := Params{

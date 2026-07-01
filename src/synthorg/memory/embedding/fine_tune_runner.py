@@ -272,6 +272,30 @@ def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
     logger.info(FINE_TUNE_HEALTH_SERVER_STOPPED, port=port)
 
 
+def _idle_until_terminated(health_server: http.server.HTTPServer | None) -> int:
+    """Serve health checks until SIGTERM/SIGINT (idle sidecar mode).
+
+    A compose-managed ``fine-tune`` service starts with no stage config
+    mounted; exiting would crashloop it under ``restart:
+    unless-stopped`` and fail the backend's preflight probe. Stay up,
+    keep ``/healthz`` green, and wait for work or shutdown.
+
+    Returns:
+        ``0`` after a clean shutdown signal.
+    """
+    stop = threading.Event()
+    prev_term = signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    prev_int = signal.signal(signal.SIGINT, lambda *_: stop.set())
+    print("IDLE: no stage config mounted; serving health checks", flush=True)  # noqa: T201
+    try:
+        stop.wait()
+    finally:
+        signal.signal(signal.SIGTERM, prev_term)
+        signal.signal(signal.SIGINT, prev_int)
+        _shutdown_health_server(health_server)
+    return 0
+
+
 def _run() -> int:
     """Execute the fine-tune stage and return an exit code.
 
@@ -279,6 +303,9 @@ def _run() -> int:
         Result of type ``int``.
     """
     health_server = _start_health_server()
+
+    if not _CONFIG_PATH.exists():
+        return _idle_until_terminated(health_server)
 
     config = _load_config()
     if config is None:
