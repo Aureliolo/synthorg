@@ -25,14 +25,7 @@ import type {
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types/org'
-import {
-  agentCapabilities,
-  agentModelId,
-  agentPersonalityLabel,
-  agentTraits,
-  toRuntimeStatus,
-} from '@/utils/agents'
-import { AgentCard } from '@/components/ui/agent-card'
+import { AgentConfigCard } from '@/components/agents/AgentConfigCard'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -71,17 +64,7 @@ function SortableAgentItem({ agent, onClick }: { agent: AgentConfig; onClick: ()
         onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit agent ${agent.name}`}
       >
-        <AgentCard
-          name={agent.name}
-          role={agent.role}
-          department={agent.department}
-          status={toRuntimeStatus(agent.status ?? 'active')}
-          model={agentModelId(agent)}
-          tier={agent.tier}
-          personality={agentPersonalityLabel(agent)}
-          traits={agentTraits(agent)}
-          capabilities={agentCapabilities(agent)}
-        />
+        <AgentConfigCard agent={agent} />
       </button>
     </div>
   )
@@ -234,18 +217,7 @@ function AgentsDndBoard({ config, agentsByDept, drag, onEditAgent }: AgentsDndBo
 
       <DragOverlay>
         {drag.activeAgent && (
-          <AgentCard
-            name={drag.activeAgent.name}
-            role={drag.activeAgent.role}
-            department={drag.activeAgent.department}
-            status={toRuntimeStatus(drag.activeAgent.status ?? 'active')}
-            model={agentModelId(drag.activeAgent)}
-            tier={drag.activeAgent.tier}
-            personality={agentPersonalityLabel(drag.activeAgent)}
-            traits={agentTraits(drag.activeAgent)}
-            capabilities={agentCapabilities(drag.activeAgent)}
-            className="shadow-lg"
-          />
+          <AgentConfigCard agent={drag.activeAgent} className="shadow-lg" />
         )}
       </DragOverlay>
     </DndContext>

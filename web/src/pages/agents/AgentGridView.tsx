@@ -1,17 +1,10 @@
 import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
-import { AgentCard } from '@/components/ui/agent-card'
+import { AgentConfigCard } from '@/components/agents/AgentConfigCard'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
-import {
-  agentCapabilities,
-  agentModelId,
-  agentPersonalityLabel,
-  agentTraits,
-  toRuntimeStatus,
-} from '@/utils/agents'
 import { formatRelativeTime } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import { cn } from '@/lib/utils'
@@ -63,16 +56,8 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
           to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(id))}
           className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded-lg"
         >
-          <AgentCard
-            name={agent.name}
-            role={agent.role}
-            department={agent.department}
-            status={toRuntimeStatus(agent.status ?? 'active')}
-            model={agentModelId(agent)}
-            tier={agent.tier}
-            personality={agentPersonalityLabel(agent)}
-            traits={agentTraits(agent)}
-            capabilities={agentCapabilities(agent)}
+          <AgentConfigCard
+            agent={agent}
             timestamp={agent.hiring_date ? formatRelativeTime(agent.hiring_date) : undefined}
             timestampIso={agent.hiring_date ?? undefined}
           />
