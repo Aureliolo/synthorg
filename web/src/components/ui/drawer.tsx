@@ -125,27 +125,33 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width 
           className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
           data-testid="drawer-overlay"
         />
-        <BaseDrawer.Popup
-          aria-label={explicitLabel}
-          className={cn(
-            'fixed inset-y-0 z-50 flex flex-col',
-            DRAWER_WIDTH_CLASS[width],
-            side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
-            'border-border bg-card shadow-[var(--so-shadow-card-hover)]',
-            // Slide transition: 200ms matches tweenDefault duration; the custom easing
-            // curve (0.32, 0.72, 0, 1) decelerates into position for a fluid slide feel.
-            'transition-[opacity,translate] duration-200 [transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
-            _drawerSlideClass(side),
-            className,
-          )}
-        >
-          {trimmedTitle && (
-            <DrawerHeader trimmedTitle={trimmedTitle} explicitLabel={explicitLabel} />
-          )}
-          <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-card', contentClassName)}>
-            {children}
-          </div>
-        </BaseDrawer.Popup>
+        {/* Viewport provides the swipe-gesture + touch-scroll-lock context the
+            Popup consumes; Base UI warns (and disables both) when it is omitted.
+            Left unstyled: the Popup is fixed-positioned, so the context, not the
+            viewport box, is what the Popup needs. */}
+        <BaseDrawer.Viewport>
+          <BaseDrawer.Popup
+            aria-label={explicitLabel}
+            className={cn(
+              'fixed inset-y-0 z-50 flex flex-col',
+              DRAWER_WIDTH_CLASS[width],
+              side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
+              'border-border bg-card shadow-[var(--so-shadow-card-hover)]',
+              // Slide transition: 200ms matches tweenDefault duration; the custom easing
+              // curve (0.32, 0.72, 0, 1) decelerates into position for a fluid slide feel.
+              'transition-[opacity,translate] duration-200 [transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
+              _drawerSlideClass(side),
+              className,
+            )}
+          >
+            {trimmedTitle && (
+              <DrawerHeader trimmedTitle={trimmedTitle} explicitLabel={explicitLabel} />
+            )}
+            <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-card', contentClassName)}>
+              {children}
+            </div>
+          </BaseDrawer.Popup>
+        </BaseDrawer.Viewport>
       </BaseDrawer.Portal>
     </BaseDrawer.Root>
   )

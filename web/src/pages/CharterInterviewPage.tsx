@@ -90,7 +90,7 @@ export default function CharterInterviewPage() {
           </Button>
         }
       />
-      <div className="grid gap-card-gap lg:grid-cols-2">
+      <div className="grid gap-grid-gap lg:grid-cols-2">
         <InterviewChat
           messages={messages}
           sending={sending}

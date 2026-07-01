@@ -31,28 +31,32 @@ export function ScalingMetrics({
   const burnRate = findSignal(signals, 'burn_rate_percent')
 
   return (
-    <StaggerGroup className="grid grid-cols-1 gap-card-gap sm:grid-cols-2 xl:grid-cols-4">
-      <StaggerItem>
+    <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 xl:grid-cols-4">
+      <StaggerItem className="h-full">
         <MetricCard
+          className="h-full"
           label="Active Strategies"
           value={activeStrategies}
           subText={`of ${strategies.length} total`}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <MetricCard
+          className="h-full"
           label="Pending Decisions"
           value={pendingDecisions}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <MetricCard
+          className="h-full"
           label="Avg Utilization"
           value={utilization !== null ? `${Math.round(utilization * 100)}%` : 'N/A'}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <MetricCard
+          className="h-full"
           label="Budget Burn"
           value={burnRate !== null ? `${Math.round(burnRate)}%` : 'N/A'}
         />

@@ -25,7 +25,7 @@ import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatLabel } from '@/utils/format'
 
 // ── Filter / Sort types ────────────────────────────────────
 
@@ -53,6 +53,41 @@ const STATUS_MAP: Record<AgentStatus, AgentRuntimeStatus> = {
 /** Map HR lifecycle AgentStatus to UI AgentRuntimeStatus. */
 export function toRuntimeStatus(status: AgentStatus): AgentRuntimeStatus {
   return STATUS_MAP[status]
+}
+
+// ── Config extraction (raw dict accessors) ─────────────────
+
+/** Best-effort model identifier from the agent's raw model config dict. */
+export function agentModelId(agent: DashboardAgentConfig): string | undefined {
+  const id = agent.model['model_id']
+  return typeof id === 'string' && id ? id : undefined
+}
+
+/** Human-readable personality label from the named preset, if any. */
+export function agentPersonalityLabel(agent: DashboardAgentConfig): string | undefined {
+  const preset = agent.personality_preset
+  return preset ? formatLabel(preset) : undefined
+}
+
+/** Personality trait words from the raw personality config, if present. */
+export function agentTraits(agent: DashboardAgentConfig): readonly string[] {
+  const raw = agent.personality['traits']
+  if (!Array.isArray(raw)) return []
+  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0)
+}
+
+/**
+ * Capability requirements the agent's model must satisfy, derived from the
+ * setup wizard's raw ``model_requirement`` flags. Absent requirement -> [].
+ */
+export function agentCapabilities(agent: DashboardAgentConfig): readonly string[] {
+  const req = agent.model_requirement
+  if (!req) return []
+  const caps: string[] = []
+  if (req['requires_tools'] === true) caps.push('tools')
+  if (req['requires_vision'] === true) caps.push('vision')
+  if (req['requires_reasoning'] === true) caps.push('reasoning')
+  return caps
 }
 
 // ── Filtering ──────────────────────────────────────────────

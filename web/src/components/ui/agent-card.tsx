@@ -14,6 +14,12 @@ export interface AgentCardProps {
   model?: string | undefined
   /** Resolved capability tier. */
   tier?: 'large' | 'medium' | 'small' | null | undefined
+  /** Human-readable personality preset label (e.g. "Visionary Leader"). */
+  personality?: string | undefined
+  /** Personality trait words. */
+  traits?: readonly string[] | undefined
+  /** Capability requirements (e.g. "tools", "vision"). */
+  capabilities?: readonly string[] | undefined
   currentTask?: string | undefined
   /** Human-readable (usually relative) timestamp text shown in the footer. */
   timestamp?: string | undefined
@@ -29,21 +35,73 @@ export interface AgentCardProps {
   flashStyle?: React.CSSProperties | undefined
 }
 
-export function AgentCard({
-  name,
-  role,
-  department,
-  status,
-  model,
-  tier,
-  currentTask,
+interface MetaItemData {
+  label: string
+  value: string
+  /** Render the value in a monospace font (model ids). */
+  mono?: boolean
+  /** Span both grid columns (long values like traits / current task). */
+  span?: boolean
+}
+
+/** Assemble the metadata items present for this agent, in display order. */
+function buildMetaItems(props: AgentCardProps): MetaItemData[] {
+  const items: MetaItemData[] = [{ label: 'Dept', value: props.department }]
+  if (props.model) items.push({ label: 'Model', value: props.model, mono: true })
+  if (props.personality) items.push({ label: 'Personality', value: props.personality })
+  if (props.capabilities?.length) {
+    items.push({ label: 'Capabilities', value: props.capabilities.join(', ') })
+  }
+  if (props.traits?.length) {
+    items.push({ label: 'Traits', value: props.traits.join(', '), span: true })
+  }
+  if (props.currentTask) items.push({ label: 'Task', value: props.currentTask, span: true })
+  return items
+}
+
+function MetaItem({ label, value, mono = false, span = false }: MetaItemData) {
+  return (
+    <div className={cn('flex min-w-0 items-baseline gap-1 text-xs', span && 'col-span-2')}>
+      <span className="shrink-0 text-muted-foreground">{label}:</span>
+      <span className={cn('truncate text-text-secondary', mono && 'font-mono')}>{value}</span>
+    </div>
+  )
+}
+
+function TierBadge({ tier }: { tier: 'large' | 'medium' | 'small' }) {
+  return (
+    <span className="shrink-0 self-start rounded-md border border-border bg-surface px-1.5 py-0.5 text-micro uppercase tracking-wide text-text-secondary">
+      {tier}
+    </span>
+  )
+}
+
+function CardFooterTime({
   timestamp,
   timestampIso,
-  className,
-  flashStyle,
-}: AgentCardProps) {
+}: {
+  timestamp: string
+  timestampIso?: string | undefined
+}) {
+  const label = timestampIso ? (
+    <time
+      dateTime={timestampIso}
+      title={formatDateTime(timestampIso)}
+      className="font-mono text-micro text-muted-foreground"
+    >
+      {timestamp}
+    </time>
+  ) : (
+    <span className="font-mono text-micro text-muted-foreground">{timestamp}</span>
+  )
+  return <div className="mt-1 text-right">{label}</div>
+}
+
+export function AgentCard(props: AgentCardProps) {
+  const { name, role, status, tier, timestamp, timestampIso, className, flashStyle } = props
   const nameId = useId()
   const roleId = useId()
+  const metaItems = buildMetaItems(props)
   return (
     <article
       aria-labelledby={role ? `${nameId} ${roleId}` : nameId}
@@ -55,8 +113,8 @@ export function AgentCard({
       )}
       style={flashStyle}
     >
-      {/* Header: avatar + name + status */}
-      <div className="flex items-center gap-2.5">
+      {/* Header: avatar + name + status + tier */}
+      <div className="flex items-start gap-2.5">
         <Avatar name={name} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -67,46 +125,17 @@ export function AgentCard({
           </div>
           <span id={roleId} className="text-xs text-text-secondary">{role}</span>
         </div>
+        {tier && <TierBadge tier={tier} />}
       </div>
 
-      {/* Body */}
-      <div className="mt-2.5 flex flex-col gap-1 border-t border-border pt-2.5">
-        <div className="flex items-center gap-1 text-xs">
-          <span className="text-muted-foreground">Dept:</span>
-          <span className="text-text-secondary">{department}</span>
-          {tier && (
-            <span className="ml-auto rounded-md border border-border bg-surface px-1.5 py-0.5 text-micro uppercase tracking-wide text-text-secondary">
-              {tier}
-            </span>
-          )}
+      {/* Body: two-column metadata grid */}
+      <div className="mt-2.5 border-t border-border pt-2.5">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          {metaItems.map((item) => (
+            <MetaItem key={item.label} {...item} />
+          ))}
         </div>
-        {model && (
-          <div className="flex items-center gap-1 text-xs">
-            <span className="text-muted-foreground">Model:</span>
-            <span className="truncate font-mono text-text-secondary">{model}</span>
-          </div>
-        )}
-        {currentTask && (
-          <div className="flex items-center gap-1 text-xs">
-            <span className="text-muted-foreground">Task:</span>
-            <span className="truncate text-text-secondary">{currentTask}</span>
-          </div>
-        )}
-        {timestamp && (
-          <div className="mt-0.5 text-right">
-            {timestampIso ? (
-              <time
-                dateTime={timestampIso}
-                title={formatDateTime(timestampIso)}
-                className="font-mono text-micro text-muted-foreground"
-              >
-                {timestamp}
-              </time>
-            ) : (
-              <span className="font-mono text-micro text-muted-foreground">{timestamp}</span>
-            )}
-          </div>
-        )}
+        {timestamp && <CardFooterTime timestamp={timestamp} timestampIso={timestampIso} />}
       </div>
     </article>
   )

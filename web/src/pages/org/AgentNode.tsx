@@ -43,7 +43,12 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
     <div
       className={cn(
         'group/agent relative rounded-lg border border-border bg-card p-card',
-        'min-w-36 max-w-44',
+        // Fixed width (not a min/max range): the org-chart layout aligns nodes
+        // by a constant width estimate, but React Flow draws edges from each
+        // node's true centre. A content-driven width makes siblings' centres
+        // drift, so a single parent->child edge picks up a horizontal jog.
+        // A uniform width keeps top-left alignment == centre alignment.
+        'w-44',
         'ring-1 transition-all duration-[var(--so-transition-default)]',
         'hover:shadow-[var(--so-shadow-card-hover)] hover:ring-2',
         STATUS_RING_CLASSES[statusColor] ?? 'ring-border',

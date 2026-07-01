@@ -13,7 +13,7 @@ import {
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   arrayMove,
 } from '@dnd-kit/sortable'
@@ -25,7 +25,13 @@ import type {
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types/org'
-import { toRuntimeStatus } from '@/utils/agents'
+import {
+  agentCapabilities,
+  agentModelId,
+  agentPersonalityLabel,
+  agentTraits,
+  toRuntimeStatus,
+} from '@/utils/agents'
 import { AgentCard } from '@/components/ui/agent-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -70,6 +76,11 @@ function SortableAgentItem({ agent, onClick }: { agent: AgentConfig; onClick: ()
           role={agent.role}
           department={agent.department}
           status={toRuntimeStatus(agent.status ?? 'active')}
+          model={agentModelId(agent)}
+          tier={agent.tier}
+          personality={agentPersonalityLabel(agent)}
+          traits={agentTraits(agent)}
+          capabilities={agentCapabilities(agent)}
         />
       </button>
     </div>
@@ -98,11 +109,8 @@ function DepartmentAgentsSection({
       {agents.length === 0 ? (
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
-        <SortableContext
-          items={agents.map((a) => a.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <StaggerGroup className="grid gap-grid-gap">
+        <SortableContext items={agents.map((a) => a.id)} strategy={rectSortingStrategy}>
+          <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1279px]:grid-cols-2 max-[1023px]:grid-cols-1">
             {agents.map((agent) => (
               <StaggerItem key={agent.id}>
                 <SortableAgentItem agent={agent} onClick={() => onEditAgent(agent)} />
@@ -231,6 +239,11 @@ function AgentsDndBoard({ config, agentsByDept, drag, onEditAgent }: AgentsDndBo
             role={drag.activeAgent.role}
             department={drag.activeAgent.department}
             status={toRuntimeStatus(drag.activeAgent.status ?? 'active')}
+            model={agentModelId(drag.activeAgent)}
+            tier={drag.activeAgent.tier}
+            personality={agentPersonalityLabel(drag.activeAgent)}
+            traits={agentTraits(drag.activeAgent)}
+            capabilities={agentCapabilities(drag.activeAgent)}
             className="shadow-lg"
           />
         )}

@@ -44,13 +44,13 @@ function OrgHealthSectionInner({ departments, overallHealth }: OrgHealthSectionP
           description="Set up your organization to see health metrics."
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {overallHealth !== null && (
             <div className="flex justify-center">
-              <ProgressGauge value={overallHealth} label="Overall" size="md" />
+              <ProgressGauge value={overallHealth} label="Overall" size="sm" />
             </div>
           )}
-          <StaggerGroup className="space-y-3">
+          <StaggerGroup className="space-y-1.5">
             {departments.map((dept) => (
               <StaggerItem key={dept.department_name}>
                 <DepartmentRow dept={dept} />

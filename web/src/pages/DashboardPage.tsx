@@ -1,5 +1,4 @@
 import { lazy, Suspense, useMemo } from 'react'
-import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -60,7 +59,6 @@ export default function DashboardPage() {
     orgHealthPercent,
     loading,
     error,
-    isRefetching,
   } = useDashboardData()
 
   const metricCards = useMemo(
@@ -78,16 +76,14 @@ export default function DashboardPage() {
     <div className="space-y-section-gap">
       {showGuidance && <PostSetupGuidanceCard onDismiss={dismissGuidance} />}
 
-      <ListHeader title="Overview" refreshing={isRefetching} />
-
       {error && (
         <ErrorBanner severity="error" title="Could not load dashboard" description={error} />
       )}
 
       <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {metricCards.map((card) => (
-          <StaggerItem key={card.label}>
-            <MetricCard {...card} />
+          <StaggerItem key={card.label} className="h-full">
+            <MetricCard {...card} className="h-full" />
           </StaggerItem>
         ))}
       </StaggerGroup>
