@@ -513,6 +513,9 @@ def _build_performance_tracker(
     from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
         CISignalQualityStrategy,
     )
+    from synthorg.hr.performance.collaboration_override_store import (  # noqa: PLC0415
+        CollaborationOverrideStore,
+    )
     from synthorg.hr.performance.composite_quality_strategy import (  # noqa: PLC0415
         CompositeQualityStrategy,
     )
@@ -528,6 +531,7 @@ def _build_performance_tracker(
 
     cfg = perf_config or PerformanceConfig()
     quality_override_store = QualityOverrideStore()
+    collaboration_override_store = CollaborationOverrideStore()
 
     llm_strategy = (
         _resolve_llm_judge_strategy(
@@ -550,5 +554,6 @@ def _build_performance_tracker(
     return PerformanceTracker(
         quality_strategy=composite,
         config=cfg,
+        override_store=collaboration_override_store,
         quality_override_store=quality_override_store,
     )

@@ -14358,7 +14358,8 @@ export type components = {
          * @description How the periodic model-refresh subsystem operates.
          *
          *     Attributes:
-         *         OFF: Disabled entirely (the safe default); nothing is scheduled.
+         *         OFF: Disabled entirely; nothing is scheduled. Also the fail-safe
+         *             fallback when the mode setting cannot be read.
          *         MANUAL_ONLY: No cadence; only the explicit refresh endpoint runs.
          *         DETECT_ONLY: Periodically probe and flag removed models stale,
          *             but never persist new models or emit recommendations.

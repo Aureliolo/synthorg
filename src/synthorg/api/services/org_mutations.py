@@ -343,7 +343,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """
         name = await self._get_str_safe("company", "company_name")
         autonomy = await self._get_str_safe("company", "autonomy_level")
-        budget = await self._get_str_safe("company", "total_monthly")
+        budget = await self._get_str_safe("budget", "total_monthly")
         comm = await self._get_str_safe("company", "communication_pattern")
         agents = await self._read_agents()
         depts = await self._read_departments()
@@ -416,7 +416,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         keys = (
             ("company", "company_name"),
             ("company", "autonomy_level"),
-            ("company", "total_monthly"),
+            ("budget", "total_monthly"),
             ("company", "communication_pattern"),
             ("company", "agents"),
             ("company", "departments"),
@@ -471,7 +471,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             items.append(("company", "autonomy_level", data.autonomy_level.value))
             updated["autonomy_level"] = data.autonomy_level.value
         if data.budget_monthly is not None:
-            items.append(("company", "total_monthly", str(data.budget_monthly)))
+            items.append(("budget", "total_monthly", str(data.budget_monthly)))
             updated["budget_monthly"] = data.budget_monthly
         if data.communication_pattern is not None:
             items.append(
