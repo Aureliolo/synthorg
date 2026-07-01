@@ -49,6 +49,9 @@ class ConnectionType(StrEnum):
     # Unlike GENERIC_HTTP it does not require a base_url: providers that route
     # through litellm's default endpoints have no base_url of their own.
     LLM_PROVIDER = "llm_provider"
+    # Backs a tunnel provider's auth token (minted from the dashboard tunnel
+    # card). No base_url: the tunnel target is the local API itself.
+    TUNNEL = "tunnel"
 
 
 class AuthMethod(StrEnum):

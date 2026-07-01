@@ -3,27 +3,67 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.integrations.tunnel.manager import TunnelManager
+from synthorg.integrations.tunnel.mcp_service import TunnelService
 
 if TYPE_CHECKING:
     # api.* eagerly imports the integrations slice this module wires; a
     # runtime import of api.construction_wiring / api.state forms a cycle.
     from synthorg.api.construction_wiring import ConstructionDeps
     from synthorg.api.state import AppState
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     """Populate the integrations slice from the auto-wired bundle."""
     integrations = deps.integrations
+    tunnel = integrations.tunnel_provider
+    if tunnel is not None:
+        _bind_tunnel_runtime(app_state, tunnel)
     app_state.swap_slice(
         IntegrationsStateSlice.model_construct(
             connection_catalog=integrations.connection_catalog,
             provider_credential_catalog=integrations.provider_credential_catalog,
             oauth_token_manager=integrations.oauth_token_manager,
             health_prober_service=integrations.health_prober_service,
-            tunnel_provider=integrations.tunnel_provider,
+            tunnel_provider=tunnel,
+            tunnel_service=TunnelService(provider=tunnel)
+            if tunnel is not None
+            else None,
             webhook_event_bridge=integrations.webhook_event_bridge,
             mcp_catalog_service=integrations.mcp_catalog_service,
             mcp_installations_repo=integrations.mcp_installations_repo,
         )
+    )
+
+
+def _bind_tunnel_runtime(app_state: AppState, manager: TunnelManager) -> None:
+    """Bind live settings + catalog lookups into the tunnel manager.
+
+    Both closures read the current app state on every call, so they
+    keep working across the two-phase boot (settings and persistence
+    come up after construction) and any later runtime re-wiring.
+    """
+
+    async def _selected_provider() -> str | None:
+        # Deferred: ``settings.state`` pulls heavy hubs into the
+        # cold-import graph; the lookup only runs at request time.
+        from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+        try:
+            resolver = config_resolver_of(app_state)
+        except ServiceUnavailableError:
+            # Settings not wired yet (early boot / no persistence);
+            # the manager falls back to its default provider.
+            return None
+        return await resolver.get_str("integrations", "tunnel_provider")
+
+    def _credential_catalog() -> ConnectionCatalog | None:
+        return app_state.slice(IntegrationsStateSlice).provider_credential_catalog
+
+    manager.bind_runtime(
+        selection_source=_selected_provider,
+        catalog_source=_credential_catalog,
     )

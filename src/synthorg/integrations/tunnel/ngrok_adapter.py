@@ -1,4 +1,5 @@
-"""ngrok tunnel adapter for local webhook development.
+# module-kind: adapter
+"""ngrok tunnel adapter.
 
 Wraps the ``pyngrok`` library to expose the local API server on a
 public URL for receiving webhooks.
@@ -6,18 +7,27 @@ public URL for receiving webhooks.
 ``pyngrok`` is a required runtime dependency (declared in
 ``pyproject.toml`` ``[project.dependencies]``); a missing import
 here would be a build / install bug, not a runtime configuration
-issue, so the import is unconditional. Operators who do not need
-the tunnel feature simply do not call the start endpoint.
+issue, so the import is unconditional.
+
+The auth token is resolved fresh at every ``start()``: the dashboard-
+managed credential (stored in the encrypted connection catalog and
+supplied via :meth:`NgrokAdapter.bind_credential_source`) wins, and
+the ``NGROK_AUTHTOKEN`` env var is the headless fallback. ngrok
+refuses every session without a token (ERR_NGROK_4018), so a missing
+token fails fast with an actionable message instead of spawning the
+agent binary.
 """
 
 import asyncio
 import os
+from collections.abc import Awaitable, Callable
 from typing import Final
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     NGROK_TUNNEL_STARTED,
@@ -27,45 +37,43 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
-_DEFAULT_PORT: Final[int] = 8000
+
+type TunnelCredentialSource = Callable[[], Awaitable[str | None]]
+
+MISSING_AUTH_MESSAGE: Final[str] = (
+    "ngrok requires a (free) account auth token and none is configured;"
+    " paste your token on the tunnel card (dashboard.ngrok.com ->"
+    " Your Authtoken)."
+)
 
 
 class NgrokAdapter:
     """ngrok tunnel provider.
 
-    Exposes the local API port on a public ngrok URL. ``pyngrok``
-    is a required runtime dependency; the import is unconditional
-    at module level.
-
-    All ngrok calls are blocking, so they are offloaded to a
-    worker thread via ``asyncio.to_thread`` to keep the event
-    loop responsive.
+    All ngrok calls are blocking, so they are offloaded to a worker
+    thread via ``asyncio.to_thread`` to keep the event loop responsive.
 
     Args:
-        auth_token_env: Environment variable holding the ngrok auth
-            token (optional; free tier works without a token for
-            limited use).
-        port: Local port to tunnel (default 8000).
+        auth_token_env: Environment variable holding the headless-
+            fallback ngrok auth token.
+        port: Local port to tunnel.
     """
 
     def __init__(
         self,
         *,
         auth_token_env: str = "NGROK_AUTHTOKEN",  # noqa: S107
-        port: int = _DEFAULT_PORT,
+        port: int,
     ) -> None:
         self._port = port
-        # The ngrok auth token is a bootstrap secret read from the
-        # process environment at construction time (the sanctioned
-        # init-time exception in the configuration-precedence policy:
-        # bootstrap secrets are env-only with no settings registry
-        # entry, since they have to be available before
-        # ``SettingsService`` itself can come up). Reading at
-        # ``__init__`` keeps the runtime ``start()`` path off the
-        # ``os.environ`` API and means rotating the token requires a
-        # fresh adapter instance, which matches how every other
-        # bootstrap-credential surface in this codebase behaves.
-        self._auth_token: str = os.environ.get(auth_token_env, "").strip()
+        # The env fallback is a bootstrap secret read from the process
+        # environment at construction time (the sanctioned init-time
+        # exception in the configuration-precedence policy: bootstrap
+        # secrets are env-only with no settings registry entry). The
+        # primary source is the dashboard-managed catalog credential
+        # bound below, resolved fresh per start().
+        self._env_token: str = os.environ.get(auth_token_env, "").strip()
+        self._credential_source: TunnelCredentialSource | None = None
         self._public_url: str | None = None
         self._tunnel: object | None = None
         # Per ``docs/reference/lifecycle-sync.md``: a dedicated
@@ -78,9 +86,62 @@ class NgrokAdapter:
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
     @property
-    def has_auth_token(self) -> bool:
-        """Whether the configured auth-token env var is set."""
-        return bool(self._auth_token)
+    def provider_id(self) -> str:
+        """Stable machine id (settings enum value)."""
+        return "ngrok"
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable provider name."""
+        return "ngrok"
+
+    @property
+    def credential_kind(self) -> TunnelCredentialKind:
+        """Authenticates with a pasted auth token."""
+        return TunnelCredentialKind.TOKEN
+
+    def bind_credential_source(self, source: TunnelCredentialSource) -> None:
+        """Bind the dashboard-managed token lookup (catalog-backed)."""
+        self._credential_source = source
+
+    async def availability(self) -> tuple[bool, str | None]:
+        """Pyngrok is a required dependency, so ngrok is always runnable.
+
+        Returns:
+            ``(True, None)``; the missing-token case is a credential
+            state, not an availability one.
+        """
+        return True, None
+
+    async def credential_configured(self) -> bool:
+        """Whether a token is resolvable (catalog first, env fallback).
+
+        Returns:
+            ``True`` when a non-empty token would be used at start.
+        """
+        return await self._resolve_token() is not None
+
+    async def _resolve_token(self) -> str | None:
+        """Resolve the auth token: dashboard credential, then env.
+
+        Returns:
+            The token, or ``None`` when neither source has one.
+        """
+        if self._credential_source is not None:
+            try:
+                stored = await self._credential_source()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="credential_lookup",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                stored = None
+            if stored:
+                return stored
+        return self._env_token or None
 
     async def start(self) -> str:
         """Start the ngrok tunnel.
@@ -96,55 +157,51 @@ class NgrokAdapter:
             The public URL of the active tunnel.
 
         Raises:
-            TunnelError: If the tunnel fails to start (auth rejected,
-                ngrok service down, etc.). ``pyngrok`` itself is a
-                required runtime dependency so an ImportError here is
-                a build / install bug rather than a runtime concern.
+            TunnelError: If no auth token is configured, or the tunnel
+                fails to start (auth rejected, ngrok service down,
+                etc.).
         """
         async with self._lifecycle_lock:
             # ``_public_url`` is the active-tunnel sentinel; it is set
             # in lock-step with ``_tunnel`` below and cleared together
             # in ``stop()``, so a non-None URL is the canonical
-            # "tunnel is up" check and avoids a second ``cast``/assert
-            # to satisfy the type narrowing.
+            # "tunnel is up" check.
             if self._public_url is not None:
                 # Idempotent reconnect path -- a legitimate caller
                 # observing an already-active tunnel is not a failure.
-                # Logging at WARNING with ``TUNNEL_ERROR`` would
-                # trigger tunnel-failure alerting on every retry.
                 logger.info(
                     TUNNEL_ALREADY_ACTIVE,
                     phase="start",
                     port=self._port,
                 )
                 return self._public_url
+            # Fail fast on the guaranteed-doomed case: ngrok refuses
+            # every session without an auth token (ERR_NGROK_4018), so
+            # spawning the agent would only download the binary, storm
+            # the log with critical-level ngrok errors, and return the
+            # same failure.
+            auth_token = await self._resolve_token()
+            if auth_token is None:
+                raise TunnelError(MISSING_AUTH_MESSAGE)
             # Build a per-call ``PyngrokConfig`` instead of mutating
             # ``conf.get_default().auth_token``. The default config is
             # process-global; mutating it from one adapter would
             # silently overwrite the auth token any other adapter or
-            # caller had previously set, and leaving a blank token in
-            # place would cause subsequent unauthenticated calls to
-            # silently reuse stale credentials. Per-call config keeps
-            # the token instance-local.
-            pyngrok_config = (
-                conf.PyngrokConfig(auth_token=self._auth_token)
-                if self._auth_token
-                else conf.PyngrokConfig()
-            )
+            # caller had previously set. Per-call config keeps the
+            # token instance-local.
+            pyngrok_config = conf.PyngrokConfig(auth_token=auth_token)
 
             # Initialise ``tunnel`` to ``None`` BEFORE the try block
             # so the cleanup branch below can reference it
-            # unconditionally without ``locals()`` introspection or
-            # ``UnboundLocalError`` if ``ngrok.connect`` itself raises.
-            # ``tunnel`` is held as ``object`` for the cleanup branch;
-            # ``connected`` keeps the untyped ``pyngrok`` handle (the
-            # library ships no stubs, so its return type is inferred
-            # ``Any``) just long enough to read ``public_url``.
+            # unconditionally without ``UnboundLocalError`` if
+            # ``ngrok.connect`` itself raises. ``connected`` keeps the
+            # untyped ``pyngrok`` handle (the library ships no stubs)
+            # just long enough to read ``public_url``.
             tunnel: object = None
             try:
                 connected = await asyncio.to_thread(
                     ngrok.connect,
-                    self._port,
+                    str(self._port),
                     "http",
                     pyngrok_config=pyngrok_config,
                 )
@@ -161,7 +218,7 @@ class NgrokAdapter:
                 public_url = str(connected.public_url)
             except Exception as exc:
                 reraise_critical(exc)
-                # ngrok auth token env var may be echoed in exception
+                # ngrok auth token may be echoed in exception
                 # messages; scrub + drop traceback.
                 safe_desc = safe_error_description(exc)
                 logger.warning(
@@ -174,12 +231,10 @@ class NgrokAdapter:
                 # so we don't orphan an open tunnel on the ngrok
                 # side. Failures here are logged but not raised --
                 # the caller already gets ``TunnelError``.
-                if tunnel is not None:
+                orphaned_url = getattr(tunnel, "public_url", None)
+                if isinstance(orphaned_url, str):
                     try:
-                        await asyncio.to_thread(
-                            ngrok.disconnect,
-                            getattr(tunnel, "public_url", None),
-                        )
+                        await asyncio.to_thread(ngrok.disconnect, orphaned_url)
                     except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(cleanup_exc)
                         logger.warning(
@@ -218,7 +273,7 @@ class NgrokAdapter:
         ``start()`` calls on this adapter instance.
         """
         async with self._lifecycle_lock:
-            if self._tunnel is None:
+            if self._tunnel is None or self._public_url is None:
                 return
             try:
                 await asyncio.to_thread(ngrok.disconnect, self._public_url)

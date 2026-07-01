@@ -140,6 +140,16 @@ TUNNEL_ALREADY_ACTIVE: Final[str] = "integrations.tunnel.already_active"
 # "the ngrok provider opened the upstream connection" without
 # double-counting metrics keyed on the global event.
 NGROK_TUNNEL_STARTED: Final[str] = "integrations.tunnel.ngrok.started"
+CLOUDFLARE_TUNNEL_STARTED: Final[str] = "integrations.tunnel.cloudflare.started"
+DEVTUNNELS_TUNNEL_STARTED: Final[str] = "integrations.tunnel.devtunnels.started"
+TUNNEL_BINARY_DOWNLOADED: Final[str] = "integrations.tunnel.binary_downloaded"
+TUNNEL_PROVIDER_SWITCHED: Final[str] = "integrations.tunnel.provider_switched"
+TUNNEL_CREDENTIAL_STORED: Final[str] = "integrations.tunnel.credential_stored"
+TUNNEL_CREDENTIAL_CLEARED: Final[str] = "integrations.tunnel.credential_cleared"
+DEVTUNNELS_LOGIN_STARTED: Final[str] = "integrations.tunnel.devtunnels.login_started"
+DEVTUNNELS_LOGIN_COMPLETED: Final[str] = (
+    "integrations.tunnel.devtunnels.login_completed"
+)
 
 # -- Webhook bridge ------------------------------------------------------
 

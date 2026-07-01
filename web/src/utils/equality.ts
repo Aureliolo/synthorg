@@ -1,5 +1,20 @@
 /** Structural equality for API payloads. */
 
+function arraysEqual(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+  return a.every((item, i) => deepEqual(item, b[i]))
+}
+
+function recordsEqual(a: object, b: object): boolean {
+  const aRecord = a as Record<string, unknown>
+  const bRecord = b as Record<string, unknown>
+  const aKeys = Object.keys(aRecord)
+  if (aKeys.length !== Object.keys(bRecord).length) return false
+  return aKeys.every(
+    (key) => Object.hasOwn(bRecord, key) && deepEqual(aRecord[key], bRecord[key]),
+  )
+}
+
 /**
  * Deep structural equality over JSON-shaped values (the result of
  * parsing an API response: plain objects, arrays, primitives).
@@ -14,15 +29,6 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
     return false
   }
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-    return a.every((item, i) => deepEqual(item, b[i]))
-  }
-  const aRecord = a as Record<string, unknown>
-  const bRecord = b as Record<string, unknown>
-  const aKeys = Object.keys(aRecord)
-  if (aKeys.length !== Object.keys(bRecord).length) return false
-  return aKeys.every(
-    (key) => Object.hasOwn(bRecord, key) && deepEqual(aRecord[key], bRecord[key]),
-  )
+  if (Array.isArray(a) || Array.isArray(b)) return arraysEqual(a, b)
+  return recordsEqual(a, b)
 }

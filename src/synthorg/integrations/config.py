@@ -239,13 +239,23 @@ class IntegrationHealthConfig(BaseModel):
 class TunnelConfig(BaseModel):
     """Tunnel configuration for local webhook development.
 
+    The active provider is the live ``integrations.tunnel_provider``
+    setting (DB > env > default), not static config; this model holds
+    only the bootstrap knobs that must exist before settings do.
+
     Attributes:
-        auth_token_env: Env var holding the ngrok auth token.
+        auth_token_env: Env var holding the ngrok auth token (headless
+            fallback; the dashboard-managed catalog credential wins).
+        cloudflared_download_enabled: Whether a missing ``cloudflared``
+            binary may be downloaded from the official Cloudflare
+            GitHub release at first start. Disable to require an
+            operator-installed binary on PATH.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     auth_token_env: NotBlankStr = "NGROK_AUTHTOKEN"  # noqa: S105
+    cloudflared_download_enabled: bool = True
 
 
 class McpCatalogConfig(BaseModel):

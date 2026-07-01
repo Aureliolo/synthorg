@@ -292,6 +292,20 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       },
     ],
   },
+  tunnel: {
+    label: 'Tunnel Credential',
+    description: 'Auth token backing a webhook tunnel provider, managed from the tunnel card.',
+    defaultAuthMethod: 'api_key',
+    topLevelFields: [],
+    credentialFields: [
+      {
+        key: 'auth_token',
+        label: 'Auth Token',
+        type: 'password',
+        required: true,
+      },
+    ],
+  },
 }
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])

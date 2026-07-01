@@ -1,8 +1,12 @@
-import { AlertTriangle, Copy, Info, Radio } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, Copy, ExternalLink, Info, KeyRound, Radio } from 'lucide-react'
+import type { TunnelProviderId, TunnelProviderStatus } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { cn } from '@/lib/utils'
@@ -21,43 +25,195 @@ function TunnelHeaderRow({ onInfo }: { onInfo: () => void }) {
   )
 }
 
+function TunnelProviderPicker({ tunnel }: { tunnel: TunnelCardState }) {
+  if (tunnel.providers.length === 0 || !tunnel.selectedProvider) return null
+  return (
+    <SegmentedControl
+      label="Tunnel provider"
+      size="sm"
+      options={tunnel.providers.map((p) => ({
+        value: p.provider_id,
+        label: p.display_name,
+      }))}
+      value={tunnel.selectedProvider}
+      onChange={(value) => tunnel.selectProvider(value as TunnelProviderId)}
+      disabled={tunnel.isRunning || tunnel.isTransitioning}
+    />
+  )
+}
+
 function TunnelStatusRow({ tunnel }: { tunnel: TunnelCardState }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         <StatusBadge status={tunnel.status.status} label pulse={tunnel.status.pulse} />
-        <span className="text-sm text-text-secondary">{tunnel.status.label}</span>
+        <span className="text-sm text-text-secondary">
+          {tunnel.status.label}
+          {tunnel.isRunning && tunnel.activeProvider ? ` via ${tunnel.activeProvider}` : ''}
+        </span>
       </div>
       <ToggleField
         label={tunnel.isRunning ? 'Stop tunnel' : 'Start tunnel'}
         checked={tunnel.isRunning}
         onChange={(next) => void tunnel.handleToggle(next)}
-        disabled={tunnel.isTransitioning || (tunnel.tokenMissing && !tunnel.isRunning)}
+        disabled={tunnel.isTransitioning || (!tunnel.isRunning && !tunnel.canStart)}
       />
     </div>
   )
 }
 
-function TunnelTokenNotice({ tokenMissing, isRunning }: { tokenMissing: boolean; isRunning: boolean }) {
-  if (!tokenMissing || isRunning) return null
+function ProviderHintNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-md bg-warning/10 p-card text-xs text-warning" role="note">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <p>
-        No ngrok auth token configured. ngrok requires a (free) account and auth token to start a
-        tunnel: anonymous tunnels are no longer supported. Sign up at{' '}
-        <a
-          href="https://dashboard.ngrok.com/get-started/your-authtoken"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          dashboard.ngrok.com
-        </a>
-        , copy your authtoken, and set <code className="font-mono">NGROK_AUTHTOKEN</code> on the
-        backend. Start is disabled until a token is present.
-      </p>
+      <div className="flex flex-col gap-2">{children}</div>
     </div>
+  )
+}
+
+function TokenCredentialSection({ tunnel, provider }: { tunnel: TunnelCardState; provider: TunnelProviderStatus }) {
+  const [editing, setEditing] = useState(false)
+  const [token, setToken] = useState('')
+  const showInput = editing || !provider.credential_configured
+
+  const save = async () => {
+    if (!token.trim()) return
+    const ok = await tunnel.saveCredential(token.trim())
+    if (ok) {
+      setToken('')
+      setEditing(false)
+    }
+  }
+
+  if (!showInput) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2">
+        <span className="flex items-center gap-2 text-xs text-text-secondary">
+          <KeyRound className="size-4" aria-hidden />
+          Auth token saved
+        </span>
+        <span className="flex items-center gap-1">
+          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)}>
+            Replace
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => void tunnel.clearCredential()}>
+            Remove
+          </Button>
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {!provider.credential_configured && (
+        <p className="text-xs text-text-secondary">
+          {provider.display_name} needs a (free) account auth token. Get one at{' '}
+          <a
+            href="https://dashboard.ngrok.com/get-started/your-authtoken"
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            dashboard.ngrok.com
+          </a>{' '}
+          and paste it below; it is stored encrypted on the backend.
+        </p>
+      )}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <InputField
+            label="Auth token"
+            type="password"
+            value={token}
+            onValueChange={setToken}
+            placeholder="Paste your auth token"
+            autoComplete="off"
+          />
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void save()}
+          disabled={!token.trim() || tunnel.savingCredential}
+        >
+          {tunnel.savingCredential ? 'Saving...' : 'Save token'}
+        </Button>
+        {editing && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DeviceLoginSection({ tunnel, provider }: { tunnel: TunnelCardState; provider: TunnelProviderStatus }) {
+  const prompt = tunnel.deviceLogin
+  if (provider.credential_configured) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-xs text-text-secondary">
+        <KeyRound className="size-4" aria-hidden />
+        Signed in with GitHub
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-text-secondary">
+          Dev Tunnels signs in with a GitHub device code; the login is kept by the devtunnel CLI.
+        </p>
+        <Button type="button" size="sm" onClick={tunnel.connectDevice}>
+          Connect
+        </Button>
+      </div>
+      {prompt && !prompt.already_logged_in && prompt.verification_uri && (
+        <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface p-card text-xs" role="status">
+          <span className="text-text-secondary">
+            Open the link and enter this code, then re-check status:
+          </span>
+          <span className="flex items-center gap-2">
+            <code className="rounded bg-surface-raised px-2 py-1 font-mono text-sm text-foreground">
+              {prompt.user_code}
+            </code>
+            <a
+              href={prompt.verification_uri}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 underline"
+            >
+              {prompt.verification_uri}
+              <ExternalLink className="size-3" aria-hidden />
+            </a>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TunnelCredentialSection({ tunnel }: { tunnel: TunnelCardState }) {
+  const provider = tunnel.selectedStatus
+  if (!provider || tunnel.isRunning) return null
+  if (!provider.available) {
+    return (
+      <ProviderHintNote>
+        <p>{provider.detail ?? `${provider.display_name} is not available on this host.`}</p>
+      </ProviderHintNote>
+    )
+  }
+  if (provider.credential_kind === 'token') {
+    return <TokenCredentialSection tunnel={tunnel} provider={provider} />
+  }
+  if (provider.credential_kind === 'device_login') {
+    return <DeviceLoginSection tunnel={tunnel} provider={provider} />
+  }
+  return (
+    <p className="text-xs text-text-muted">
+      No account needed: an ephemeral public URL is created when the tunnel starts.
+      {provider.detail ? ` ${provider.detail}` : ''}
+    </p>
   )
 }
 
@@ -134,12 +290,10 @@ function TunnelIntroDialog({ tunnel }: { tunnel: TunnelCardState }) {
         <section>
           <h3 className="font-semibold">What it does</h3>
           <p className="mt-1 text-text-secondary">
-            Starts an{' '}
-            <a href="https://ngrok.com" target="_blank" rel="noreferrer" className="underline">
-              ngrok
-            </a>{' '}
-            tunnel from a public <code className="font-mono">https://*.ngrok.app</code> URL to your local
-            backend on port 8000. Anyone with the URL can reach your backend (your auth + CSRF still apply).
+            Opens a tunnel from a public URL to your local backend. Providers: Cloudflare quick tunnel
+            (default, no account, random <code className="font-mono">*.trycloudflare.com</code> URL),
+            ngrok (auth token required), and GitHub Dev Tunnels (devtunnel CLI + GitHub sign-in).
+            Anyone with the URL can reach your backend (your auth + CSRF still apply).
           </p>
         </section>
         <section>
@@ -159,8 +313,7 @@ function TunnelIntroDialog({ tunnel }: { tunnel: TunnelCardState }) {
           <h3 className="font-semibold">Do NOT use it for</h3>
           <ul className="mt-1 list-disc pl-5 text-text-secondary">
             <li>
-              Production ingress, unless you have deliberately chosen ngrok as your edge and configured a
-              static domain + edge auth. The default tier exposes a random URL with no extra protection
+              Production ingress. Every provider here exposes an ephemeral URL with no extra protection
               beyond SynthOrg&apos;s own auth.
             </li>
             <li>
@@ -168,18 +321,11 @@ function TunnelIntroDialog({ tunnel }: { tunnel: TunnelCardState }) {
               stopping the tunnel.
             </li>
             <li>
-              Anything you would not want ngrok&apos;s edge servers to see in plaintext (TLS terminates at
-              the ngrok edge and is re-encrypted onward).
+              Anything you would not want the tunnel provider&apos;s edge servers to see in plaintext
+              (TLS terminates at their edge and is re-encrypted onward).
             </li>
           </ul>
         </section>
-        {tunnel.tokenMissing && (
-          <section className="rounded-md bg-warning/10 p-card text-xs text-warning">
-            <strong>Auth token required:</strong> ngrok no longer allows anonymous tunnels, so no tunnel
-            can start until an auth token is set. Sign up (free) at dashboard.ngrok.com, copy your
-            authtoken, and set <code className="font-mono">NGROK_AUTHTOKEN</code> on the backend.
-          </section>
-        )}
       </div>
     </ConfirmDialog>
   )
@@ -191,8 +337,9 @@ export function TunnelCard() {
     <SectionCard title="Webhook tunnel" icon={Radio}>
       <div className="flex flex-col gap-3">
         <TunnelHeaderRow onInfo={tunnel.openInfo} />
+        <TunnelProviderPicker tunnel={tunnel} />
         <TunnelStatusRow tunnel={tunnel} />
-        <TunnelTokenNotice tokenMissing={tunnel.tokenMissing} isRunning={tunnel.isRunning} />
+        <TunnelCredentialSection tunnel={tunnel} />
         <TunnelPublicUrl isRunning={tunnel.isRunning} publicUrl={tunnel.publicUrl} onCopy={() => void tunnel.copyUrl()} />
         <TunnelRunningNotices tunnel={tunnel} />
       </div>

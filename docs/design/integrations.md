@@ -16,7 +16,7 @@ providers, notification sinks, tools) and provides:
 - **Health Checks**: per-type connection health monitoring with background prober
 - **Rate Limiting**: tool-side rate limiter via `@with_connection_rate_limit`
 - **MCP Catalog**: bundled curated MCP server catalog with install flow
-- **Tunnel**: ngrok adapter for local webhook development
+- **Tunnel**: multi-provider webhook tunnel (Cloudflare quick tunnel default, ngrok, GitHub Dev Tunnels)
 
 ---
 
@@ -201,17 +201,28 @@ already persisted) and is logged as `MCP_BRIDGE_RELOAD_FAILED`.
 
 ## Tunnel
 
-ngrok adapter for local webhook development. The adapter is a standalone wrapper around pyngrok with no persistence, connections, or OAuth dependencies, so it is wired **unconditionally** (not gated by `integrations.enabled`) so the dashboard tunnel toggle is always functional. The adapter only starts a tunnel when the operator explicitly calls `/integrations/tunnel/start`; configuring an auth token via `NGROK_AUTHTOKEN` (or the env var named in `integrations.tunnel.auth_token_env`) unlocks paid-tier behaviour (stable URLs, higher rate caps).
+Multi-provider tunnel for local webhook development. A `TunnelManager` facade holds one adapter per provider and delegates start/stop/status to whichever the live `integrations.tunnel_provider` setting selects (resolved fresh at every start, so a Settings change applies without a restart). Starting while a different provider's tunnel is running stops that tunnel first: at most one tunnel is ever up.
 
-The `GET /integrations/tunnel/status` response includes `has_auth_token: bool` so the dashboard can show free-tier vs paid-tier hints without ever transmitting the token itself.
+Providers:
+
+- **Cloudflare quick tunnel** (default): accountless; runs `cloudflared tunnel --url` and scrapes the ephemeral `https://*.trycloudflare.com` URL. Binary resolution: `PATH`, then `~/.synthorg/bin`, then (unless `integrations.tunnel.cloudflared_download_enabled: false`) an HTTPS download of the official Cloudflare GitHub release asset.
+- **ngrok**: wraps pyngrok; requires an auth token (ERR_NGROK_4018 refuses anonymous sessions). The token is dashboard-managed: pasted on the tunnel card, stored in the encrypted connection catalog as a `tunnel-ngrok` connection (`ConnectionType.TUNNEL`), and resolved fresh at every start. The env var named in `integrations.tunnel.auth_token_env` (default `NGROK_AUTHTOKEN`) is the headless fallback only.
+- **GitHub Dev Tunnels**: drives the operator-installed `devtunnel` CLI (proprietary, never downloaded). The credential is a GitHub device-code login (`POST /device-login` returns the verification URL + one-time code; the CLI completes and stores the login itself).
+
+The manager is wired **unconditionally** (not gated by `integrations.enabled`) so the dashboard tunnel card is always functional; the tunneled port is the API's own resolved `api.server_port`. Credential storage requires connected persistence (the catalog); everything else works without it.
+
+`GET /integrations/tunnel/status` returns a `TunnelSnapshot`: the public URL, selected + active provider, and per-provider readiness (`available`, `credential_kind`, `credential_configured`, `detail`) so the dashboard renders the provider picker generically without ever transmitting a token.
 
 ### API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/integrations/tunnel/start` | Start tunnel |
-| `POST` | `/api/v1/integrations/tunnel/stop` | Stop tunnel |
-| `GET` | `/api/v1/integrations/tunnel/status` | Get tunnel URL and `has_auth_token` |
+| `POST` | `/api/v1/integrations/tunnel/start` | Start the selected provider's tunnel |
+| `POST` | `/api/v1/integrations/tunnel/stop` | Stop the running tunnel |
+| `GET` | `/api/v1/integrations/tunnel/status` | `TunnelSnapshot` (URL, selection, provider readiness) |
+| `PUT` | `/api/v1/integrations/tunnel/credential` | Store/rotate a token-kind provider's auth token |
+| `DELETE` | `/api/v1/integrations/tunnel/credential/{provider}` | Delete a stored auth token (idempotent) |
+| `POST` | `/api/v1/integrations/tunnel/device-login` | Begin a device-code login (Dev Tunnels) |
 
 ---
 
@@ -238,11 +249,12 @@ integrations:
     unhealthy_threshold: 3
   tunnel:
     auth_token_env: "NGROK_AUTHTOKEN"
+    cloudflared_download_enabled: true
   mcp_catalog:
     enabled: true
 ```
 
-`integrations.tunnel.auth_token_env` names the environment variable the adapter reads its auth token from. The default is `NGROK_AUTHTOKEN`; override only if you keep the token in a differently-named var.
+`integrations.tunnel.auth_token_env` names the environment variable holding the headless-fallback ngrok token (the dashboard-managed catalog credential always wins). `cloudflared_download_enabled: false` requires an operator-installed `cloudflared` on `PATH`. The active provider is the `integrations.tunnel_provider` **setting** (ENUM `cloudflare` / `ngrok` / `devtunnels`, default `cloudflare`; DB > env > default), not static YAML.
 
 ---
 

@@ -46,6 +46,7 @@ from synthorg.integrations.errors import (
     DuplicateConnectionError,
     InvalidConnectionAuthError,
 )
+from synthorg.integrations.tunnel.protocol import TunnelSnapshot
 from tests._shared import LoopAsyncClient, make_app_state
 
 
@@ -1108,31 +1109,89 @@ class TestMCPCatalogController:
         assert repo.list_items.await_args_list[1].kwargs["offset"] == _LIST_PAGE_SIZE
 
 
+def _tunnel_snapshot(
+    *,
+    public_url: str | None = None,
+    active_provider: str | None = None,
+) -> TunnelSnapshot:
+    from synthorg.integrations.tunnel.protocol import (
+        TunnelCredentialKind,
+        TunnelProviderStatus,
+    )
+
+    return TunnelSnapshot(
+        public_url=public_url,
+        selected_provider="cloudflare",
+        active_provider=active_provider,
+        providers=(
+            TunnelProviderStatus(
+                provider_id="cloudflare",
+                display_name="Cloudflare quick tunnel",
+                credential_kind=TunnelCredentialKind.NONE,
+                available=True,
+                credential_configured=True,
+            ),
+        ),
+    )
+
+
 @pytest.mark.integration
 class TestTunnelController:
-    async def test_start_returns_public_url(self) -> None:
+    async def test_start_returns_public_url_and_provider(self) -> None:
         from synthorg.api.controllers.tunnel import TunnelController
+        from synthorg.integrations.tunnel.manager import TunnelManager
 
-        tunnel = MagicMock()
+        tunnel = MagicMock(spec=TunnelManager)
         tunnel.start = AsyncMock(return_value="https://tunnel.example.com")
+        tunnel.snapshot = AsyncMock(
+            return_value=_tunnel_snapshot(
+                public_url="https://tunnel.example.com",
+                active_provider="cloudflare",
+            )
+        )
         state = State({"app_state": make_app_state(tunnel_provider=tunnel)})
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.start_tunnel.fn(ctrl, state=state)
-        assert response.data == {"public_url": "https://tunnel.example.com"}
+        assert response.data is not None
+        assert response.data.public_url == "https://tunnel.example.com"
+        assert response.data.provider == "cloudflare"
 
-    async def test_status_returns_current_url(self) -> None:
+    async def test_status_returns_snapshot(self) -> None:
         from synthorg.api.controllers.tunnel import TunnelController
+        from synthorg.integrations.tunnel.manager import TunnelManager
 
-        tunnel = MagicMock()
-        tunnel.get_url = AsyncMock(return_value="https://tunnel.example.com")
-        tunnel.has_auth_token = True
+        tunnel = MagicMock(spec=TunnelManager)
+        tunnel.snapshot = AsyncMock(
+            return_value=_tunnel_snapshot(
+                public_url="https://tunnel.example.com",
+                active_provider="cloudflare",
+            )
+        )
         state = State({"app_state": make_app_state(tunnel_provider=tunnel)})
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.get_status.fn(ctrl, state=state)
-        assert response.data == {
-            "public_url": "https://tunnel.example.com",
-            "has_auth_token": True,
-        }
+        assert response.data is not None
+        assert response.data.public_url == "https://tunnel.example.com"
+        assert response.data.selected_provider == "cloudflare"
+        assert response.data.providers[0].provider_id == "cloudflare"
+
+    async def test_put_credential_stores_token(self) -> None:
+        from synthorg.api.controllers.tunnel import (
+            TunnelController,
+            TunnelCredentialRequest,
+        )
+        from synthorg.integrations.tunnel.manager import TunnelManager
+
+        tunnel = MagicMock(spec=TunnelManager)
+        tunnel.store_token = AsyncMock(return_value=None)
+        state = State({"app_state": make_app_state(tunnel_provider=tunnel)})
+        ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
+        body = TunnelCredentialRequest.model_validate(
+            {"provider": "ngrok", "token": "tok-123"}
+        )
+        response = await ctrl.put_credential.fn(ctrl, state=state, data=body)
+        assert response.data is None
+        tunnel.store_token.assert_awaited_once_with("ngrok", "tok-123")
 
 
 @pytest.mark.integration

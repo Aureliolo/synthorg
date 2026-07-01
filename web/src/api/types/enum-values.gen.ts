@@ -290,6 +290,7 @@ export const CONNECTION_TYPE_VALUES = [
     'oauth_app',
     'a2a_peer',
     'llm_provider',
+    'tunnel',
 ] as const
 export type ConnectionType = (typeof CONNECTION_TYPE_VALUES)[number]
 
@@ -1070,6 +1071,13 @@ export const TREND_PERIOD_VALUES = [
     '90d',
 ] as const
 export type TrendPeriod = (typeof TREND_PERIOD_VALUES)[number]
+
+export const TUNNEL_CREDENTIAL_KIND_VALUES = [
+    'none',
+    'token',
+    'device_login',
+] as const
+export type TunnelCredentialKind = (typeof TUNNEL_CREDENTIAL_KIND_VALUES)[number]
 
 export const URGENCY_LEVEL_VALUES = [
     'critical',

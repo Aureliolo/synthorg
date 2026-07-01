@@ -39,7 +39,8 @@ def _summary(*, calls: int, error_rate: float) -> ProviderHealthSummary:
     return ProviderHealthSummary(
         calls_last_24h=calls,
         error_rate_percent_24h=error_rate,
-        avg_response_time_ms=120.0,
+        # The model forbids a latency figure when no calls were recorded.
+        avg_response_time_ms=120.0 if calls > 0 else None,
     )
 
 

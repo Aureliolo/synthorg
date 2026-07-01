@@ -4,6 +4,7 @@ export type {
   CatalogEntry,
   Connection,
   CreateConnectionRequest,
+  DeviceLoginPrompt,
   HealthReport,
   InitiateOAuthFlowRequest,
   InstallEntryRequest,
@@ -11,6 +12,9 @@ export type {
   OAuthInitiationResponse,
   OAuthTokenStatusResponse,
   RevealedSecretResponse,
+  TunnelProviderStatus,
+  TunnelSnapshot,
+  TunnelStartResponse,
   UpdateConnectionRequest,
 } from './dtos.gen'
 
@@ -53,14 +57,10 @@ export function connectionTypeUsesWebhookReceipts(
 }
 
 
-export interface TunnelStatus {
-  readonly public_url: string | null
-  /**
-   * Whether the backend has an ngrok auth token configured (via the
-   * NGROK_AUTHTOKEN env var). ngrok no longer permits anonymous
-   * tunnels (ERR_NGROK_4018), so when this is false no tunnel can
-   * start at all; the dashboard disables Start and surfaces a hint to
-   * configure a (free) account authtoken.
-   */
-  readonly has_auth_token: boolean
-}
+/**
+ * Tunnel provider ids the backend ships. Mirrors the
+ * ``integrations.tunnel_provider`` settings enum; the snapshot's
+ * ``providers`` list is the runtime source of truth, this union only
+ * types the write paths (provider selection, credential endpoints).
+ */
+export type TunnelProviderId = 'cloudflare' | 'ngrok' | 'devtunnels'

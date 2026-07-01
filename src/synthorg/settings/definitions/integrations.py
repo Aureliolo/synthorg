@@ -194,6 +194,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="tunnel_provider",
+        type=SettingType.ENUM,
+        default="cloudflare",
+        enum_values=("cloudflare", "ngrok", "devtunnels"),
+        description=(
+            "Which provider exposes the local API on a public URL for"
+            " webhook development. 'cloudflare' runs an accountless"
+            " quick tunnel (default); 'ngrok' needs an auth token"
+            " (paste it on the tunnel card); 'devtunnels' needs the"
+            " devtunnel CLI plus a GitHub device-code login. Resolved"
+            " fresh at every tunnel start, so a change applies without"
+            " a restart."
+        ),
+        group="Tunnel",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="github_api_url",
         type=SettingType.STRING,
         default="https://api.github.com",

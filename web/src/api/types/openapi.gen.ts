@@ -2254,6 +2254,57 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/integrations/tunnel/credential": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        /** Store a tunnel provider's auth token */
+        readonly put: operations["ApiV1IntegrationsTunnelCredentialPutCredential"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/integrations/tunnel/credential/{provider}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete a tunnel provider's stored auth token */
+        readonly delete: operations["ApiV1IntegrationsTunnelCredentialProviderDeleteCredential"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/integrations/tunnel/device-login": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Begin a provider's device-code login */
+        readonly post: operations["ApiV1IntegrationsTunnelDeviceLoginDeviceLogin"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/integrations/tunnel/start": {
         readonly parameters: {
             readonly query?: never;
@@ -2263,7 +2314,7 @@ export type paths = {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Start webhook tunnel */
+        /** Start the selected provider's tunnel */
         readonly post: operations["ApiV1IntegrationsTunnelStartStartTunnel"];
         readonly delete?: never;
         readonly options?: never;
@@ -2278,7 +2329,7 @@ export type paths = {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Get tunnel status */
+        /** Get tunnel status and provider readiness */
         readonly get: operations["ApiV1IntegrationsTunnelStatusGetStatus"];
         readonly put?: never;
         readonly post?: never;
@@ -2297,7 +2348,7 @@ export type paths = {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Stop webhook tunnel */
+        /** Stop the running tunnel */
         readonly post: operations["ApiV1IntegrationsTunnelStopStopTunnel"];
         readonly delete?: never;
         readonly options?: never;
@@ -6389,6 +6440,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[DeviceLoginPrompt] */
+        readonly ApiResponse_DeviceLoginPrompt_: {
+            readonly data: components["schemas"]["DeviceLoginPrompt"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[dict[str, int]] */
         readonly ApiResponse_dict_str_int_: {
             readonly data: {
@@ -6423,16 +6482,6 @@ export type components = {
         readonly ApiResponse_dict_str_Union_int_str_: {
             readonly data: {
                 readonly [key: string]: number | string;
-            } | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[dict[str, Union[str, bool, NoneType]]] */
-        readonly ApiResponse_dict_str_Union_str_bool_NoneType_: {
-            readonly data: {
-                readonly [key: string]: string | boolean | null;
             } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
@@ -7122,6 +7171,22 @@ export type components = {
         /** ApiResponse[TrendsResponse] */
         readonly ApiResponse_TrendsResponse_: {
             readonly data: components["schemas"]["TrendsResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[TunnelSnapshot] */
+        readonly ApiResponse_TunnelSnapshot_: {
+            readonly data: components["schemas"]["TunnelSnapshot"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[TunnelStartResponse] */
+        readonly ApiResponse_TunnelStartResponse_: {
+            readonly data: components["schemas"]["TunnelStartResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8207,7 +8272,7 @@ export type components = {
             readonly name: string;
             readonly npm_package: string | null;
             /** @enum {string|null} */
-            readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | null;
+            readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | "tunnel" | null;
             /** @default [] */
             readonly tags: readonly string[];
             /**
@@ -8771,7 +8836,7 @@ export type components = {
          * @description Supported external service connection types.
          * @enum {string}
          */
-        readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider";
+        readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | "tunnel";
         /**
          * ContentType
          * @description Content types available for training extraction.
@@ -9778,6 +9843,13 @@ export type components = {
              * @constant
              */
             readonly entry_kind: "dependency";
+        };
+        /** DeviceLoginPrompt */
+        readonly DeviceLoginPrompt: {
+            /** @default false */
+            readonly already_logged_in: boolean;
+            readonly user_code: string | null;
+            readonly verification_uri: string | null;
         };
         /** DiscoverModelsResponse */
         readonly DiscoverModelsResponse: {
@@ -16466,6 +16538,48 @@ export type components = {
             readonly level: components["schemas"]["ToolAccessLevel"];
             readonly score: number | null;
         };
+        /**
+         * TunnelCredentialKind
+         * @description How a tunnel provider authenticates.
+         *
+         *     ``NONE``: works anonymously (no account).
+         *     ``TOKEN``: an auth token pasted in the dashboard (stored in the
+         *     encrypted connection catalog; an env var is the headless fallback).
+         *     ``DEVICE_LOGIN``: an interactive device-code login owned by the
+         *     provider's own CLI.
+         * @enum {string}
+         */
+        readonly TunnelCredentialKind: "none" | "token" | "device_login";
+        /** TunnelCredentialRequest */
+        readonly TunnelCredentialRequest: {
+            readonly provider: string;
+            readonly token: string;
+        };
+        /** TunnelDeviceLoginRequest */
+        readonly TunnelDeviceLoginRequest: {
+            readonly provider: string;
+        };
+        /** TunnelProviderStatus */
+        readonly TunnelProviderStatus: {
+            readonly available: boolean;
+            readonly credential_configured: boolean;
+            readonly credential_kind: components["schemas"]["TunnelCredentialKind"];
+            readonly detail: string | null;
+            readonly display_name: string;
+            readonly provider_id: string;
+        };
+        /** TunnelSnapshot */
+        readonly TunnelSnapshot: {
+            readonly active_provider: string | null;
+            readonly providers: readonly components["schemas"]["TunnelProviderStatus"][];
+            readonly public_url: string | null;
+            readonly selected_provider: string;
+        };
+        /** TunnelStartResponse */
+        readonly TunnelStartResponse: {
+            readonly provider: string;
+            readonly public_url: string;
+        };
         /** UpdateAgentModelRequest */
         readonly UpdateAgentModelRequest: {
             /** @description Model identifier from the named provider. */
@@ -22621,6 +22735,97 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1IntegrationsTunnelCredentialPutCredential: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TunnelCredentialRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1IntegrationsTunnelCredentialProviderDeleteCredential: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly provider: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1IntegrationsTunnelDeviceLoginDeviceLogin: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TunnelDeviceLoginRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DeviceLoginPrompt_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1IntegrationsTunnelStartStartTunnel: {
         readonly parameters: {
             readonly query?: never;
@@ -22636,7 +22841,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TunnelStartResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22663,7 +22868,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Union_str_bool_NoneType_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TunnelSnapshot_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
