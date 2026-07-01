@@ -57,10 +57,10 @@ export interface TunnelStatus {
   readonly public_url: string | null
   /**
    * Whether the backend has an ngrok auth token configured (via the
-   * NGROK_AUTHTOKEN env var). When false, the tunnel runs on ngrok's
-   * free tier: random URLs, low bandwidth caps, short session limits.
-   * The dashboard surfaces a hint about setting the token so the
-   * operator can opt into the paid tier when they need static URLs.
+   * NGROK_AUTHTOKEN env var). ngrok no longer permits anonymous
+   * tunnels (ERR_NGROK_4018), so when this is false no tunnel can
+   * start at all; the dashboard disables Start and surfaces a hint to
+   * configure a (free) account authtoken.
    */
   readonly has_auth_token: boolean
 }

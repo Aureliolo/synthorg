@@ -32,7 +32,7 @@ function TunnelStatusRow({ tunnel }: { tunnel: TunnelCardState }) {
         label={tunnel.isRunning ? 'Stop tunnel' : 'Start tunnel'}
         checked={tunnel.isRunning}
         onChange={(next) => void tunnel.handleToggle(next)}
-        disabled={tunnel.isTransitioning}
+        disabled={tunnel.isTransitioning || (tunnel.tokenMissing && !tunnel.isRunning)}
       />
     </div>
   )
@@ -41,11 +41,11 @@ function TunnelStatusRow({ tunnel }: { tunnel: TunnelCardState }) {
 function TunnelTokenNotice({ tokenMissing, isRunning }: { tokenMissing: boolean; isRunning: boolean }) {
   if (!tokenMissing || isRunning) return null
   return (
-    <div className="flex items-start gap-2 rounded-md bg-info/10 p-card text-xs text-info" role="note">
-      <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+    <div className="flex items-start gap-2 rounded-md bg-warning/10 p-card text-xs text-warning" role="note">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
       <p>
-        No tunnel auth token detected. The tunnel will run on ngrok&apos;s free tier: random URL on
-        every start, short session window, bandwidth-capped. Sign up at{' '}
+        No ngrok auth token configured. ngrok requires a (free) account and auth token to start a
+        tunnel: anonymous tunnels are no longer supported. Sign up at{' '}
         <a
           href="https://dashboard.ngrok.com/get-started/your-authtoken"
           target="_blank"
@@ -53,9 +53,9 @@ function TunnelTokenNotice({ tokenMissing, isRunning }: { tokenMissing: boolean;
           className="underline"
         >
           dashboard.ngrok.com
-        </a>{' '}
-        and set the configured tunnel auth-token env var on the backend to get a stable URL and higher
-        limits.
+        </a>
+        , copy your authtoken, and set <code className="font-mono">NGROK_AUTHTOKEN</code> on the
+        backend. Start is disabled until a token is present.
       </p>
     </div>
   )
@@ -174,10 +174,10 @@ function TunnelIntroDialog({ tunnel }: { tunnel: TunnelCardState }) {
           </ul>
         </section>
         {tunnel.tokenMissing && (
-          <section className="rounded-md bg-info/10 p-card text-xs text-info">
-            <strong>Free tier:</strong> no tunnel auth token is configured, so the URL will rotate on every
-            start and the session is bandwidth-capped. Set the configured tunnel auth-token env var on the
-            backend for a stable URL and higher limits.
+          <section className="rounded-md bg-warning/10 p-card text-xs text-warning">
+            <strong>Auth token required:</strong> ngrok no longer allows anonymous tunnels, so no tunnel
+            can start until an auth token is set. Sign up (free) at dashboard.ngrok.com, copy your
+            authtoken, and set <code className="font-mono">NGROK_AUTHTOKEN</code> on the backend.
           </section>
         )}
       </div>

@@ -25,7 +25,7 @@ export interface TunnelState {
   /**
    * Whether the backend has an ngrok auth token configured. ``null``
    * until ``fetchStatus`` resolves; the UI uses that to skip the
-   * "free tier" hint during the loading window.
+   * auth-token-required hint during the loading window.
    */
   hasAuthToken: boolean | null
 

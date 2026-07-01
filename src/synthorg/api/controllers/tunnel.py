@@ -3,6 +3,8 @@
 Start/stop the local webhook tunnel for development.
 """
 
+from typing import Final
+
 from litestar import Controller, get, post
 from litestar.datastructures import State
 
@@ -20,6 +22,12 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+
+_MISSING_AUTH_MESSAGE: Final[str] = (
+    "No ngrok auth token configured. ngrok requires an account and auth token "
+    "to start a tunnel; set NGROK_AUTHTOKEN on the backend, then retry."
+)
+_UNAVAILABLE_MESSAGE: Final[str] = "Tunnel service is unavailable"
 
 
 class TunnelController(Controller):
@@ -49,6 +57,14 @@ class TunnelController(Controller):
             state["app_state"].slice(IntegrationsStateSlice).tunnel_provider,
             "Tunnel Provider",
         )
+        # Fail fast on the guaranteed-doomed case: ngrok refuses every
+        # session without an auth token (ERR_NGROK_4018), so spawning
+        # the agent would only download the binary, storm the log with
+        # critical-level ngrok errors, and return the same failure.
+        # ``has_auth_token`` is our own config state, so surfacing it
+        # here leaks no secret.
+        if not tunnel.has_auth_token:
+            raise ServiceUnavailableError(_MISSING_AUTH_MESSAGE)
         try:
             url = await tunnel.start()
         except TunnelError as exc:
@@ -59,11 +75,10 @@ class TunnelController(Controller):
                 error=safe_error_description(exc),
             )
             # The tunnel provider's exception text can carry ngrok
-            # URLs / auth-token fragments. Surface a stable generic
-            # message to the client; details land in the scrubbed
-            # log above.
-            client_msg = "Tunnel service is unavailable"
-            raise ServiceUnavailableError(client_msg) from exc
+            # URLs / auth-token fragments, so it is never echoed to the
+            # client: surface a stable generic message and let the
+            # scrubbed log above carry the detail.
+            raise ServiceUnavailableError(_UNAVAILABLE_MESSAGE) from exc
         logger.info(
             TUNNEL_STARTED,
             public_url=url,
@@ -101,8 +116,7 @@ class TunnelController(Controller):
                 error=safe_error_description(exc),
             )
             # Same client-facing redaction as ``start``.
-            client_msg = "Tunnel service is unavailable"
-            raise ServiceUnavailableError(client_msg) from exc
+            raise ServiceUnavailableError(_UNAVAILABLE_MESSAGE) from exc
         logger.info(TUNNEL_STOPPED)
         return ApiResponse(data=None)
 
