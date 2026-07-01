@@ -9,7 +9,7 @@ import {
 import type { RefreshStatusDTO, UpgradeRecommendationDTO } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 
 const log = createLogger('recommendations')
 
@@ -23,6 +23,13 @@ interface RecommendationsState {
   refreshing: boolean
   /** Id of the recommendation whose approve/reject is in flight. */
   decidingId: string | null
+  /**
+   * True when the periodic model-refresh feature is disabled server-side
+   * (``providers.model_refresh_mode = off``, the default). The endpoints
+   * return 503 in that state; it is a steady-state, not a load error, so
+   * consumers render a "disabled" hint rather than an error.
+   */
+  disabled: boolean
 
   fetchRecommendations: () => Promise<void>
   fetchStatus: () => Promise<void>
@@ -42,6 +49,7 @@ const INITIAL: Pick<
   | 'statusError'
   | 'refreshing'
   | 'decidingId'
+  | 'disabled'
 > = {
   recommendations: [],
   listLoading: false,
@@ -51,6 +59,16 @@ const INITIAL: Pick<
   statusError: null,
   refreshing: false,
   decidingId: null,
+  disabled: false,
+}
+
+/**
+ * A 503 from the model-refresh surface means the feature is disabled
+ * (default), not a failure. Distinguished so callers show a disabled hint
+ * instead of logging an error and toasting.
+ */
+function isFeatureDisabled(err: unknown): boolean {
+  return isAxiosError(err) && err.response?.status === 503
 }
 
 function dropById(
@@ -66,22 +84,35 @@ export const useRecommendationsStore = create<RecommendationsState>((set, get) =
   reset: () => set({ ...INITIAL }),
 
   fetchRecommendations: async () => {
+    // Feature is off (default): the endpoint only ever 503s, so once
+    // learned, skip re-probing on every mount. A page reload resets the
+    // store and re-checks, picking up a later enable.
+    if (get().disabled) return
     set({ listLoading: true, listError: null })
     try {
       const recommendations = await listModelRecommendations('pending')
-      set({ recommendations, listLoading: false })
+      set({ recommendations, listLoading: false, disabled: false })
     } catch (err) {
+      if (isFeatureDisabled(err)) {
+        set({ listLoading: false, disabled: true, recommendations: [] })
+        return
+      }
       log.error('fetchRecommendations:', getErrorMessage(err))
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },
 
   fetchStatus: async () => {
+    if (get().disabled) return
     set({ statusLoading: true, statusError: null })
     try {
       const status = await getRefreshStatus()
-      set({ status, statusLoading: false })
+      set({ status, statusLoading: false, disabled: false })
     } catch (err) {
+      if (isFeatureDisabled(err)) {
+        set({ statusLoading: false, disabled: true })
+        return
+      }
       log.error('fetchStatus:', getErrorMessage(err))
       set({ statusLoading: false, statusError: getErrorMessage(err) })
     }

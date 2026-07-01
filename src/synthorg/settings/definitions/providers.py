@@ -111,18 +111,21 @@ _r.register(
         namespace=SettingNamespace.PROVIDERS,
         key="model_refresh_mode",
         type=SettingType.ENUM,
-        default="off",
+        default="reconcile_recommend",
         # Mirrors synthorg.providers.management.refresh_config.RefreshMode;
         # kept literal here to avoid a definitions -> providers import cycle
         # (parity asserted by test_model_refresh_settings).
         enum_values=("off", "manual_only", "detect_only", "reconcile_recommend"),
         description=(
-            "Periodic model-refresh/reconcile mode. 'off' (the safe default)"
-            " schedules nothing; 'manual_only' runs only on the explicit"
-            " refresh endpoint; 'detect_only' periodically probes and flags"
-            " removed models stale; 'reconcile_recommend' also persists"
-            " refreshed metadata and feeds upgrade recommendations. Re-read"
-            " live each cycle, so changes apply without a restart."
+            "Periodic model-refresh/reconcile mode. 'reconcile_recommend'"
+            " (the default) periodically probes providers, persists refreshed"
+            " metadata, flags removed models stale, and feeds in-family"
+            " upgrade recommendations for review (auto-apply stays gated by"
+            " model_refresh_auto_apply_within_family). 'detect_only' probes"
+            " and flags stale models without emitting recommendations;"
+            " 'manual_only' runs only on the explicit refresh endpoint; 'off'"
+            " schedules nothing. Re-read live each cycle, so changes apply"
+            " without a restart."
         ),
         group="Model Refresh",
         level=SettingLevel.ADVANCED,
@@ -134,12 +137,13 @@ _r.register(
         namespace=SettingNamespace.PROVIDERS,
         key="model_refresh_interval_seconds",
         type=SettingType.FLOAT,
-        default="86400.0",
+        default="21600.0",
         description=(
             "Cadence in seconds between automatic model-refresh cycles when"
-            " the mode schedules a loop. Floored at the scheduler minimum."
-            " Re-read by the scheduler each tick (like the mode), so a"
-            " change applies on the next cycle without a restart."
+            " the mode schedules a loop (default 21600 = 6 hours). Floored at"
+            " the scheduler minimum. Re-read by the scheduler each tick (like"
+            " the mode), so a change applies on the next cycle without a"
+            " restart."
         ),
         group="Model Refresh",
         level=SettingLevel.ADVANCED,

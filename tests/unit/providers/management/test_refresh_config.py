@@ -19,10 +19,10 @@ pytestmark = pytest.mark.unit
 
 
 class TestModelRefreshConfig:
-    def test_defaults_are_off_safe(self) -> None:
+    def test_defaults_mirror_registered_settings(self) -> None:
         cfg = ModelRefreshConfig()
-        assert cfg.mode is RefreshMode.OFF
-        assert cfg.interval_seconds == 86_400.0
+        assert cfg.mode is RefreshMode.RECONCILE_RECOMMEND
+        assert cfg.interval_seconds == 21_600.0
         assert cfg.auto_apply_within_family is False
 
     def test_frozen(self) -> None:

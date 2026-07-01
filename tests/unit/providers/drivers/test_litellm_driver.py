@@ -977,19 +977,22 @@ class TestKeepAlive:
     """``keep_alive`` is an ollama-only completion kwarg."""
 
     async def test_keep_alive_sent_to_ollama(self) -> None:
-        config = make_provider_config().model_copy(update={"keep_alive": "5m"})
+        # An explicit provider value overrides the bounded default.
+        config = make_provider_config().model_copy(update={"keep_alive": "10m"})
         driver = LiteLLMDriver("ollama", config)
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = make_mock_response()
             await driver.complete(_user_message(), "medium")
-        assert m.call_args.kwargs["keep_alive"] == "5m"
+        assert m.call_args.kwargs["keep_alive"] == "10m"
 
-    async def test_keep_alive_omitted_when_unset(self) -> None:
+    async def test_keep_alive_defaults_to_bounded_when_unset(self) -> None:
+        # Unset must NOT defer to the server (which could pin forever);
+        # SynthOrg sends a bounded default so its models self-unload.
         driver = LiteLLMDriver("ollama", make_provider_config())
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = make_mock_response()
             await driver.complete(_user_message(), "medium")
-        assert "keep_alive" not in m.call_args.kwargs
+        assert m.call_args.kwargs["keep_alive"] == "5m"
 
     async def test_keep_alive_ignored_for_non_ollama(self) -> None:
         # A non-ollama provider must never receive keep_alive: it is not a

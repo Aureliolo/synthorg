@@ -94,6 +94,7 @@ export default function ModelRecommendationsPage() {
   const fetchRecommendations = useRecommendationsStore((s) => s.fetchRecommendations)
   const fetchStatus = useRecommendationsStore((s) => s.fetchStatus)
   const listError = useRecommendationsStore((s) => s.listError)
+  const disabled = useRecommendationsStore((s) => s.disabled)
 
   useEffect(() => {
     void fetchRecommendations()
@@ -103,16 +104,26 @@ export default function ModelRecommendationsPage() {
   return (
     <div className="space-y-section-gap">
       <ListHeader title="Model Recommendations" />
-      {listError != null && (
-        <ErrorBanner
-          severity="error"
-          title="Could not load recommendations"
-          description={listError}
-          onRetry={() => void fetchRecommendations()}
+      {disabled ? (
+        <EmptyState
+          icon={Sparkles}
+          title="Model refresh is disabled"
+          description="Periodic model-refresh is off by default. Enable it via the providers.model_refresh_mode setting to receive in-family upgrade recommendations."
         />
+      ) : (
+        <>
+          {listError != null && (
+            <ErrorBanner
+              severity="error"
+              title="Could not load recommendations"
+              description={listError}
+              onRetry={() => void fetchRecommendations()}
+            />
+          )}
+          <RefreshStatusBar />
+          <RecommendationsList />
+        </>
       )}
-      <RefreshStatusBar />
-      <RecommendationsList />
     </div>
   )
 }

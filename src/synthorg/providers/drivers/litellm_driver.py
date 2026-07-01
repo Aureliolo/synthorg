@@ -106,6 +106,14 @@ _CREDENTIAL_CACHE_TTL: Final[float] = 300.0
 most every ``_CREDENTIAL_CACHE_TTL`` seconds. Prevents pinning stale
 OAuth/rotating tokens for the lifetime of the driver."""
 
+
+_OLLAMA_DEFAULT_KEEP_ALIVE: Final[str] = "5m"
+"""Bounded ``keep_alive`` sent to ollama when a provider leaves it unset.
+Ensures models SynthOrg loads self-unload after idle rather than inheriting a
+possibly-unbounded server ``OLLAMA_KEEP_ALIVE`` (e.g. ``-1`` = forever). An
+operator who wants a different bound (or ``-1`` to pin) sets the provider's
+``keep_alive`` explicitly."""
+
 # ── Exception mapping table ──────────────────────────────────────
 
 _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...] = (
@@ -525,9 +533,15 @@ class LiteLLMDriver(BaseCompletionProvider):
             kwargs["api_base"] = self._config.base_url
         # Ollama keep_alive: only the ollama provider honours this option, so
         # gate on the routing key (sending it elsewhere would be an unknown
-        # kwarg). Unset leaves the ollama server's own OLLAMA_KEEP_ALIVE.
-        if self._routing_key == "ollama" and self._config.keep_alive is not None:
-            kwargs["keep_alive"] = self._config.keep_alive
+        # kwarg). An unset provider value falls back to a bounded default
+        # rather than the server's OLLAMA_KEEP_ALIVE, so SynthOrg never
+        # silently leaves a model pinned forever.
+        if self._routing_key == "ollama":
+            kwargs["keep_alive"] = (
+                self._config.keep_alive
+                if self._config.keep_alive is not None
+                else _OLLAMA_DEFAULT_KEEP_ALIVE
+            )
         return _apply_completion_config(kwargs, config)
 
     # ── Response mapping ─────────────────────────────────────────
