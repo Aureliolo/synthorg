@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { DollarSign } from 'lucide-react'
+import { CHART_INITIAL_DIMENSION, CHART_STROKE_HAIRLINE, CHART_STROKE_THIN } from '@/lib/charts'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -157,7 +158,7 @@ function BudgetReferenceLine({ budgetTotal }: { budgetTotal: number }) {
       y={budgetTotal}
       stroke="var(--so-danger)"
       strokeDasharray="var(--so-dash-medium)"
-      strokeWidth="var(--so-stroke-hairline)"
+      strokeWidth={CHART_STROKE_HAIRLINE}
       label={{
         value: 'Budget',
         position: 'right',
@@ -177,18 +178,7 @@ function BurnChartBody({
 }: BurnChartBodyProps) {
   return (
     <div className="h-48 w-full" data-testid="budget-burn-chart" role="img" aria-label="Budget spend over time chart">
-      {/*
-       * `initialDimension` is recharts' first-paint size for the
-       * chart, used before ResizeObserver fires with real
-       * measurements.  The library default is `{width: -1, height:
-       * -1}`, which fails its own `width > 0 && height > 0` sanity
-       * check and logs the "width(-1) height(-1) of chart should
-       * be greater than 0" warning on every first render.  A
-       * positive placeholder silences the warning without
-       * affecting layout -- recharts swaps to the real measured
-       * size on the next animation frame.
-       */}
-      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+      <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL_DIMENSION}>
         <AreaChart data={[...chartData]} margin={CHART_MARGIN}>
           <CartesianGrid
             strokeDasharray="var(--so-dash-compact)"
@@ -216,7 +206,7 @@ function BurnChartBody({
             x={todayLabel}
             stroke="var(--so-text-muted)"
             strokeDasharray="var(--so-dash-compact)"
-            strokeWidth="var(--so-stroke-hairline)"
+            strokeWidth={CHART_STROKE_HAIRLINE}
             label={{
               value: 'Today',
               position: 'top',
@@ -232,7 +222,7 @@ function BurnChartBody({
             dataKey="actual"
             stroke="var(--so-accent)"
             fill="url(#actualFill)"
-            strokeWidth="var(--so-stroke-thin)"
+            strokeWidth={CHART_STROKE_THIN}
             dot={false}
             connectNulls={false}
           />
@@ -242,7 +232,7 @@ function BurnChartBody({
               dataKey="projected"
               stroke="var(--so-warning)"
               fill="url(#forecastFill)"
-              strokeWidth="var(--so-stroke-thin)"
+              strokeWidth={CHART_STROKE_THIN}
               strokeDasharray="var(--so-dash-medium)"
               dot={false}
               connectNulls={false}
