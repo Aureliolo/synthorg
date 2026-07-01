@@ -17,6 +17,7 @@ import {
   type SegmentedControlOption,
 } from '@/components/ui/segmented-control'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import type { ChiefOfStaffFlags } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
 import { ChiefOfStaffChat } from './chat/ChiefOfStaffChat'
@@ -35,8 +36,15 @@ interface ModeDefinition {
   /** One-line answer to "who am I talking to and what happens". */
   readonly explainer: string
   readonly component: () => React.ReactNode
-  /** Whether the mode needs the Chief of Staff feature to be enabled. */
-  readonly needsChiefOfStaff: boolean
+  /**
+   * Config flag gating this mode, or ``null`` for always-available
+   * modes. The backend live-gates every request anyway, so an absent
+   * config fails OPEN: better to let the server answer with its
+   * specific 503 than to hide a working feature.
+   */
+  readonly flag: keyof ChiefOfStaffFlags | null
+  /** Settings key shown when the mode is switched off. */
+  readonly settingKey: string | null
 }
 
 const MODES: readonly ModeDefinition[] = [
@@ -48,7 +56,8 @@ const MODES: readonly ModeDefinition[] = [
     explainer:
       'Ask the Chief of Staff about anything in the organisation: signals, spend, proposals, agent performance. Read-only: nothing is changed.',
     component: () => <ChiefOfStaffChat />,
-    needsChiefOfStaff: true,
+    flag: 'chat_enabled',
+    settingKey: 'chief_of_staff.explain_chat_enabled',
   },
   {
     value: 'work',
@@ -58,7 +67,8 @@ const MODES: readonly ModeDefinition[] = [
     explainer:
       'Describe work in natural language. The Chief of Staff clarifies, then queues concrete work items for your approval before anything runs.',
     component: () => <RequestWorkChat />,
-    needsChiefOfStaff: true,
+    flag: 'propose_enabled',
+    settingKey: 'chief_of_staff.propose_enabled',
   },
   {
     value: 'group',
@@ -68,7 +78,8 @@ const MODES: readonly ModeDefinition[] = [
     explainer:
       'Talk with several agents in one conversation. Every participant sees the shared transcript and responds each round.',
     component: () => <GroupChat />,
-    needsChiefOfStaff: true,
+    flag: 'group_chat_enabled',
+    settingKey: 'chief_of_staff.group_chat_enabled',
   },
   {
     value: 'action',
@@ -78,7 +89,8 @@ const MODES: readonly ModeDefinition[] = [
     explainer:
       'Instruct one agent to act with its own tools. Sensitive actions park in the approval queue instead of running immediately.',
     component: () => <DirectActionChat />,
-    needsChiefOfStaff: true,
+    flag: 'direct_mcp_enabled',
+    settingKey: 'chief_of_staff.direct_mcp_enabled',
   },
   {
     value: 'project',
@@ -88,7 +100,8 @@ const MODES: readonly ModeDefinition[] = [
     explainer:
       'Pitch an idea to the CEO. It interviews you, drafts a project charter beside the conversation, and the approved charter becomes a project.',
     component: () => <ProjectInterview />,
-    needsChiefOfStaff: false,
+    flag: null,
+    settingKey: null,
   },
 ]
 
@@ -112,26 +125,34 @@ function ChatPageHeader() {
   )
 }
 
-function DisabledModeNotice() {
+function DisabledModeNotice({ settingKey }: { settingKey: string }) {
   return (
     <EmptyState
       icon={MessagesSquare}
-      title="Conversational interface disabled"
-      description="This mode is part of the Chief of Staff feature, which is switched off. Enable it under Settings > Chief of Staff to talk to your organisation here."
+      title="This conversation mode is switched off"
+      description={`Enable the ${settingKey} setting to use it. The other modes stay available.`}
     />
   )
 }
 
-function ModePanel({ mode, chiefOfStaffEnabled }: {
+function ModePanel({ mode, flags }: {
   mode: ModeDefinition
-  chiefOfStaffEnabled: boolean
+  flags: ChiefOfStaffFlags | undefined
 }) {
-  const blocked = mode.needsChiefOfStaff && !chiefOfStaffEnabled
+  // Fail open when the flag is unknown: the endpoints live-gate every
+  // request server-side, and a specific 503 beats wrongly hiding a
+  // working feature behind stale client state.
+  const blocked =
+    mode.flag !== null && flags !== undefined && !flags[mode.flag]
   return (
     <SectionCard title={mode.title} icon={mode.icon}>
       <div className="flex flex-col gap-section-gap">
         <p className="text-xs text-text-secondary">{mode.explainer}</p>
-        {blocked ? <DisabledModeNotice /> : mode.component()}
+        {blocked && mode.settingKey !== null ? (
+          <DisabledModeNotice settingKey={mode.settingKey} />
+        ) : (
+          mode.component()
+        )}
       </div>
     </SectionCard>
   )
@@ -149,10 +170,6 @@ export default function ChatPage() {
   }, [])
 
   const active = MODES.find((m) => m.value === mode) ?? MODES[0]!
-  // Gate on the Chief of Staff flag alone: the conversational endpoints
-  // are live-gated server-side per request, so a mode the backend still
-  // serves must not be blocked client-side by unrelated meta-loop state.
-  const chiefOfStaffEnabled = Boolean(config?.chief_of_staff_enabled)
 
   return (
     <div className="space-y-section-gap">
@@ -169,10 +186,10 @@ export default function ChatPage() {
           })
         }}
       />
-      {config === null && active.needsChiefOfStaff ? (
+      {config === null && active.flag !== null ? (
         <SkeletonCard className="h-64" />
       ) : (
-        <ModePanel mode={active} chiefOfStaffEnabled={chiefOfStaffEnabled} />
+        <ModePanel mode={active} flags={config?.chief_of_staff} />
       )}
     </div>
   )

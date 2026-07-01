@@ -113,9 +113,23 @@ export interface EvolutionAxisStat {
   count: number
 }
 
+/**
+ * Per-capability toggles for the conversational interface. These (not
+ * the umbrella ``chief_of_staff_enabled`` flag, which governs the
+ * meta-loop's chief-of-staff analysis role) are what the chat
+ * endpoints live-gate on per request.
+ */
+export interface ChiefOfStaffFlags {
+  chat_enabled: boolean
+  propose_enabled: boolean
+  group_chat_enabled: boolean
+  direct_mcp_enabled: boolean
+}
+
 export interface MetaConfig {
   enabled: boolean
   chief_of_staff_enabled: boolean
+  chief_of_staff?: ChiefOfStaffFlags
   config_tuning_enabled: boolean
   architecture_proposals_enabled: boolean
   prompt_tuning_enabled: boolean
