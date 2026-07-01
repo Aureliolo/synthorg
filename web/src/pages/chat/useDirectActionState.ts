@@ -26,7 +26,7 @@ export interface ActMessage {
   isError?: boolean
 }
 
-export interface MetaActState {
+export interface DirectActionState {
   activeAgents: readonly ActiveAgentSummary[]
   selectedAgentId: string | null
   messages: readonly ActMessage[]
@@ -39,7 +39,7 @@ export interface MetaActState {
   retryLast: (beforeMsgId?: number) => void
 }
 
-export function useMetaActState(): MetaActState {
+export function useDirectActionState(): DirectActionState {
   const activeAgents = useMetaStore((s) => s.activeAgents)
   const loading = useMetaStore((s) => s.actionLoading)
   const runAction = useMetaStore((s) => s.runAction)

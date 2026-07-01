@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { apiError, apiSuccess } from '@/mocks/handlers'
-import { MetaChat } from '@/pages/meta/MetaChat'
+import { ChiefOfStaffChat } from '@/pages/chat/ChiefOfStaffChat'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
 
@@ -12,9 +12,9 @@ beforeEach(() => {
   useMetaStore.setState({ chatLoading: false, error: null })
 })
 
-describe('MetaChat', () => {
+describe('ChiefOfStaffChat', () => {
   it('renders the empty state before any message', () => {
-    render(<MetaChat />)
+    render(<ChiefOfStaffChat />)
     expect(screen.getByText('Ask the Chief of Staff')).toBeInTheDocument()
   })
 
@@ -31,7 +31,7 @@ describe('MetaChat', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaChat />)
+    render(<ChiefOfStaffChat />)
 
     await user.type(screen.getByLabelText('Chat message'), 'how are signals?')
     await user.click(screen.getByRole('button', { name: 'Send message' }))
@@ -51,7 +51,7 @@ describe('MetaChat', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaChat />)
+    render(<ChiefOfStaffChat />)
 
     await user.type(screen.getByLabelText('Chat message'), 'anything')
     await user.click(screen.getByRole('button', { name: 'Send message' }))

@@ -2,11 +2,10 @@ import { useCallback, useState } from 'react'
 import type { CharterEditRequest } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { useCharterStore } from '@/stores/charter'
-import { CharterDraftCard } from './charter/CharterDraftCard'
-import { InterviewChat } from './charter/InterviewChat'
+import { CharterDraftCard } from './CharterDraftCard'
+import { InterviewChat } from './InterviewChat'
 
 function useCharterInterview() {
   const messages = useCharterStore((s) => s.messages)
@@ -61,7 +60,13 @@ function useCharterInterview() {
   }
 }
 
-export default function CharterInterviewPage() {
+/**
+ * The "New project" conversation mode: a guided CEO interview that
+ * turns an idea into an approvable project charter, with the live
+ * draft beside the transcript. Approved charters appear under
+ * Projects and in Approvals.
+ */
+export function ProjectInterview() {
   const {
     messages,
     sending,
@@ -77,19 +82,16 @@ export default function CharterInterviewPage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader
-        title="Project charters"
-        description="Interview the CEO to turn an idea into an approvable project charter."
-        primaryAction={
-          <Button
-            variant="outline"
-            onClick={resetInterview}
-            disabled={sending || mutating}
-          >
-            New interview
-          </Button>
-        }
-      />
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={resetInterview}
+          disabled={sending || mutating}
+        >
+          New interview
+        </Button>
+      </div>
       <div className="grid gap-grid-gap lg:grid-cols-2">
         <InterviewChat
           messages={messages}

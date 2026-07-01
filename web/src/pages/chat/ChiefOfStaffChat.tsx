@@ -2,13 +2,23 @@ import { MessageCircle } from 'lucide-react'
 
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
-import { useMetaChatState, type MetaChatMessage } from './useMetaChatState'
+import {
+  useChiefOfStaffChatState,
+  type ChiefOfStaffMessage,
+} from './useChiefOfStaffChatState'
+
+const EXAMPLE_PROMPTS: readonly string[] = [
+  'What is the organisation working on right now?',
+  'Which improvement proposals are pending my review?',
+  'Why did spend change over the last week?',
+]
 
 interface MessageBubbleProps {
-  msg: MetaChatMessage
+  msg: ChiefOfStaffMessage
   onRetry: () => void
 }
 
@@ -37,8 +47,8 @@ function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
   )
 }
 
-export function MetaChat() {
-  const ctrl = useMetaChatState()
+export function ChiefOfStaffChat() {
+  const ctrl = useChiefOfStaffChatState()
 
   if (ctrl.messages.length === 0 && !ctrl.chatLoading) {
     return (
@@ -47,6 +57,11 @@ export function MetaChat() {
           icon={MessageCircle}
           title="Ask the Chief of Staff"
           description="Ask questions about signals, proposals, or the improvement pipeline."
+        />
+        <ExamplePrompts
+          prompts={EXAMPLE_PROMPTS}
+          onSelect={ctrl.setInput}
+          disabled={ctrl.chatLoading}
         />
         <ChatInputArea
           value={ctrl.input}

@@ -2,21 +2,28 @@ import { ClipboardList } from 'lucide-react'
 
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
-import { useMetaProposeState, type MetaProposeMessage } from './useMetaProposeState'
+import { useRequestWorkState, type RequestWorkMessage } from './useRequestWorkState'
 
 const INPUT_LABEL = 'Work request'
 const INPUT_PLACEHOLDER = 'Describe work for the organisation...'
 
+const EXAMPLE_PROMPTS: readonly string[] = [
+  'Write a competitive analysis of our three closest competitors.',
+  'Draft a launch announcement for the new feature and have marketing review it.',
+  'Investigate why task throughput dropped this week and propose fixes.',
+]
+
 interface ProposeBubbleProps {
-  msg: MetaProposeMessage
+  msg: RequestWorkMessage
   onRetry: () => void
 }
 
-function ProposeReplyBubble({ msg }: { msg: MetaProposeMessage }) {
+function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
   const isAttributed = Boolean(msg.responderRole && msg.responderName)
   return (
     <div
@@ -55,8 +62,8 @@ function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
   return <ProposeReplyBubble msg={msg} />
 }
 
-export function MetaPropose() {
-  const ctrl = useMetaProposeState()
+export function RequestWorkChat() {
+  const ctrl = useRequestWorkState()
 
   if (ctrl.messages.length === 0 && !ctrl.proposeLoading) {
     return (
@@ -65,6 +72,11 @@ export function MetaPropose() {
           icon={ClipboardList}
           title="Request work"
           description="Describe work in natural language. The Chief of Staff clarifies, then queues concrete items for your approval; concern-routed turns are answered by the matching role agent."
+        />
+        <ExamplePrompts
+          prompts={EXAMPLE_PROMPTS}
+          onSelect={ctrl.setInput}
+          disabled={ctrl.proposeLoading}
         />
         <ChatInputArea
           value={ctrl.input}

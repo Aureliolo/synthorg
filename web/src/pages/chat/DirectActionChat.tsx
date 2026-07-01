@@ -5,12 +5,19 @@ import type { ActiveAgentSummary, ExecutedToolCall } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
-import { useMetaActState, type ActMessage } from './useMetaActState'
+import { useDirectActionState, type ActMessage } from './useDirectActionState'
 
 const INPUT_LABEL = 'Instruction'
+
+const EXAMPLE_PROMPTS: readonly string[] = [
+  'Summarise your open tasks and their status.',
+  'Create a task to review the latest report and assign it to yourself.',
+  'Check the health of your assigned project and flag any blockers.',
+]
 
 interface ToolCallRowProps {
   call: ExecutedToolCall
@@ -141,8 +148,8 @@ function AgentPicker({ agents, selectedId, disabled, onSelect }: AgentPickerProp
   )
 }
 
-export function MetaAct() {
-  const ctrl = useMetaActState()
+export function DirectActionChat() {
+  const ctrl = useDirectActionState()
   const sendDisabled = ctrl.loading || ctrl.selectedAgentId === null
 
   return (
@@ -159,6 +166,13 @@ export function MetaAct() {
           disabled={ctrl.loading}
           onSelect={ctrl.selectAgent}
         />
+        {ctrl.messages.length === 0 && (
+          <ExamplePrompts
+            prompts={EXAMPLE_PROMPTS}
+            onSelect={ctrl.setInput}
+            disabled={ctrl.loading}
+          />
+        )}
       </div>
 
       {ctrl.messages.length > 0 && (

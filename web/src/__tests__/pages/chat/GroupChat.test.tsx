@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { apiSuccess, pageEnvelope } from '@/mocks/handlers'
-import { MetaGroup } from '@/pages/meta/MetaGroup'
+import { GroupChat } from '@/pages/chat/GroupChat'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
 
@@ -78,10 +78,10 @@ beforeEach(() => {
   useMetaStore.setState({ groupChatLoading: false, error: null, activeAgents: [] })
 })
 
-describe('MetaGroup', () => {
+describe('GroupChat', () => {
   it('renders the start state with the active-agent picker', async () => {
     _useRoster()
-    render(<MetaGroup />)
+    render(<GroupChat />)
 
     expect(screen.getByText('Start a group chat')).toBeInTheDocument()
     await waitFor(() => {
@@ -95,7 +95,7 @@ describe('MetaGroup', () => {
   it('disables send until at least one agent is selected', async () => {
     _useRoster()
     const user = userEvent.setup()
-    render(<MetaGroup />)
+    render(<GroupChat />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
     )
@@ -117,7 +117,7 @@ describe('MetaGroup', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaGroup />)
+    render(<GroupChat />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
     )
@@ -164,7 +164,7 @@ describe('MetaGroup', () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
-        <MetaGroup />
+        <GroupChat />
       </MemoryRouter>,
     )
     await waitFor(() =>
@@ -219,7 +219,7 @@ describe('MetaGroup', () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
-        <MetaGroup />
+        <GroupChat />
       </MemoryRouter>,
     )
     await waitFor(() =>
@@ -256,7 +256,7 @@ describe('MetaGroup', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaGroup />)
+    render(<GroupChat />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
     )

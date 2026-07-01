@@ -10,7 +10,7 @@ import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
-import { useMetaGroupState, type GroupMessage } from './useMetaGroupState'
+import { useGroupChatState, type GroupMessage } from './useGroupChatState'
 
 const INPUT_LABEL = 'Message'
 
@@ -197,8 +197,8 @@ function RosterStrip({ roster }: RosterStripProps) {
   )
 }
 
-export function MetaGroup() {
-  const ctrl = useMetaGroupState()
+export function GroupChat() {
+  const ctrl = useGroupChatState()
   // Pre-start, sending is blocked until at least one agent is picked;
   // once the conversation exists the roster is authoritative.
   const sendDisabled =

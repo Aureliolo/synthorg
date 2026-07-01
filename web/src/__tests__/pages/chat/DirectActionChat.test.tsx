@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { apiSuccess, pageEnvelope } from '@/mocks/handlers'
-import { MetaAct } from '@/pages/meta/MetaAct'
+import { DirectActionChat } from '@/pages/chat/DirectActionChat'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
 
@@ -35,10 +35,10 @@ beforeEach(() => {
   useMetaStore.setState({ actionLoading: false, error: null, activeAgents: [] })
 })
 
-describe('MetaAct', () => {
+describe('DirectActionChat', () => {
   it('renders the empty state with the active-agent picker', async () => {
     _useRoster()
-    render(<MetaAct />)
+    render(<DirectActionChat />)
 
     expect(screen.getByText('Direct an agent to act')).toBeInTheDocument()
     await waitFor(() => {
@@ -50,7 +50,7 @@ describe('MetaAct', () => {
   it('disables send until an agent is selected', async () => {
     _useRoster()
     const user = userEvent.setup()
-    render(<MetaAct />)
+    render(<DirectActionChat />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Casey/ })).toBeInTheDocument(),
     )
@@ -84,7 +84,7 @@ describe('MetaAct', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaAct />)
+    render(<DirectActionChat />)
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Casey/ })).toBeInTheDocument(),
     )
@@ -127,7 +127,7 @@ describe('MetaAct', () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
-        <MetaAct />
+        <DirectActionChat />
       </MemoryRouter>,
     )
     await waitFor(() =>

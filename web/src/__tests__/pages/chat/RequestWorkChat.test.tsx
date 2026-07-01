@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { apiSuccess } from '@/mocks/handlers'
-import { MetaPropose } from '@/pages/meta/MetaPropose'
+import { RequestWorkChat } from '@/pages/chat/RequestWorkChat'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
 
@@ -12,9 +12,9 @@ beforeEach(() => {
   useMetaStore.setState({ proposeLoading: false, error: null })
 })
 
-describe('MetaPropose', () => {
+describe('RequestWorkChat', () => {
   it('renders the empty state before any turn', () => {
-    render(<MetaPropose />)
+    render(<RequestWorkChat />)
     expect(screen.getByText('Request work')).toBeInTheDocument()
   })
 
@@ -45,7 +45,7 @@ describe('MetaPropose', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaPropose />)
+    render(<RequestWorkChat />)
 
     await user.type(
       screen.getByLabelText('Work request'),
@@ -83,7 +83,7 @@ describe('MetaPropose', () => {
       ),
     )
     const user = userEvent.setup()
-    render(<MetaPropose />)
+    render(<RequestWorkChat />)
 
     await user.type(screen.getByLabelText('Work request'), 'do a thing')
     await user.click(screen.getByRole('button', { name: 'Send message' }))

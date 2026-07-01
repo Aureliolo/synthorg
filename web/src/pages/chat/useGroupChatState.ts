@@ -38,7 +38,7 @@ export interface GroupMessage {
   isError?: boolean
 }
 
-export interface MetaGroupState {
+export interface GroupChatState {
   activeAgents: readonly ActiveAgentSummary[]
   selectedIds: readonly string[]
   started: boolean
@@ -115,7 +115,7 @@ function useInviteResolution(
   return { resolvingInvites, resolveInvite }
 }
 
-export function useMetaGroupState(): MetaGroupState {
+export function useGroupChatState(): GroupChatState {
   const activeAgents = useMetaStore((s) => s.activeAgents)
   const loading = useMetaStore((s) => s.groupChatLoading)
   const converse = useMetaStore((s) => s.converseGroup)

@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useMetaStore } from '@/stores/meta'
 import { resolveScopedRetryContent } from './scoped-retry'
 
-export interface MetaChatMessage {
+export interface ChiefOfStaffMessage {
   id: number
   role: 'user' | 'assistant'
   content: string
@@ -13,8 +13,8 @@ export interface MetaChatMessage {
   isError?: boolean
 }
 
-export interface MetaChatState {
-  messages: readonly MetaChatMessage[]
+export interface ChiefOfStaffChatState {
+  messages: readonly ChiefOfStaffMessage[]
   input: string
   chatLoading: boolean
   scrollRef: React.RefObject<HTMLDivElement | null>
@@ -24,8 +24,8 @@ export interface MetaChatState {
   retryLast: (beforeMsgId?: number) => void
 }
 
-export function useMetaChatState(): MetaChatState {
-  const [messages, setMessages] = useState<MetaChatMessage[]>([])
+export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
+  const [messages, setMessages] = useState<ChiefOfStaffMessage[]>([])
   const [input, setInput] = useState('')
   const chatLoading = useMetaStore((s) => s.chatLoading)
   const sendChat = useMetaStore((s) => s.sendChat)
@@ -72,7 +72,7 @@ export function useMetaChatState(): MetaChatState {
 function buildAssistantMessage(
   response: Awaited<ReturnType<ReturnType<typeof useMetaStore.getState>['sendChat']>>,
   nextMsgId: () => number,
-): MetaChatMessage {
+): ChiefOfStaffMessage {
   if (response) {
     return {
       id: nextMsgId(),

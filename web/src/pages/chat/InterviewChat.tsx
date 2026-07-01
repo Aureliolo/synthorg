@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import type { InterviewMessage } from '@/stores/charter'
 import { Button } from '@/components/ui/button'
+import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
+
+const EXAMPLE_IDEAS: readonly string[] = [
+  'A weekly customer-feedback digest summarised for the whole team.',
+  'An internal tool that tracks competitor pricing changes.',
+  'A self-serve onboarding guide for new API customers.',
+]
 
 export interface InterviewChatProps {
   messages: readonly InterviewMessage[]
@@ -52,10 +59,17 @@ export function InterviewChat({
       <div className="space-y-4">
         <div className="space-y-3" aria-live="polite" aria-atomic="true">
           {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Describe your product idea in a sentence. The CEO will interview
-              you to build a project charter.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Describe your product idea in a sentence. The CEO will interview
+                you to build a project charter.
+              </p>
+              <ExamplePrompts
+                prompts={EXAMPLE_IDEAS}
+                onSelect={setDraft}
+                disabled={sending || conversationClosed}
+              />
+            </div>
           ) : (
             messages.map((message) => (
               <ChatBubble key={message.id} message={message} />

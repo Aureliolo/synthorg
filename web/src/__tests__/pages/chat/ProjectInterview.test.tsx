@@ -2,14 +2,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
-import CharterInterviewPage from '@/pages/CharterInterviewPage'
+import { ProjectInterview } from '@/pages/chat/ProjectInterview'
 import { useCharterStore } from '@/stores/charter'
 import { useToastStore } from '@/stores/toast'
 
 function renderPage() {
   return render(
     <MemoryRouter>
-      <CharterInterviewPage />
+      <ProjectInterview />
     </MemoryRouter>,
   )
 }
@@ -20,7 +20,7 @@ beforeEach(() => {
   useToastStore.getState().dismissAll()
 })
 
-describe('CharterInterviewPage', () => {
+describe('ProjectInterview', () => {
   it('shows the empty draft state before any interview turn', () => {
     renderPage()
     expect(screen.getByText('No charter yet')).toBeInTheDocument()

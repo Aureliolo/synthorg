@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, RouterProvider } from 'react-router'
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from './guards'
 import { ErrorTest, RouteError } from './RouteError'
 import { ROUTES } from './routes'
@@ -21,7 +21,7 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
 const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
-const CharterInterviewPage = lazy(() => import('@/pages/CharterInterviewPage'))
+const ChatPage = lazy(() => import('@/pages/ChatPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const ModelRecommendationsPage = lazy(() => import('@/pages/ModelRecommendationsPage'))
@@ -155,9 +155,12 @@ const appRoutes = [
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'scaling', element: <ScalingPage /> },
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
+              { path: ROUTES.CHAT.slice(1), element: <ChatPage /> },
+              // The charter interview moved into the Chat hub; keep old
+              // bookmarks working.
               {
-                path: ROUTES.CHARTERS.slice(1),
-                element: <CharterInterviewPage />,
+                path: 'meta/charters',
+                element: <Navigate to={`${ROUTES.CHAT}?mode=project`} replace />,
               },
               { path: 'agents', element: <AgentsPage /> },
               {

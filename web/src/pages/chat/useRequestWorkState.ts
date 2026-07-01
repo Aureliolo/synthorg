@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
-export interface MetaProposeMessage {
+export interface RequestWorkMessage {
   id: number
   role: 'user' | 'assistant'
   content: string
@@ -19,8 +19,8 @@ export interface MetaProposeMessage {
   isError?: boolean | undefined
 }
 
-export interface MetaProposeState {
-  messages: readonly MetaProposeMessage[]
+export interface RequestWorkState {
+  messages: readonly RequestWorkMessage[]
   input: string
   proposeLoading: boolean
   scrollRef: React.RefObject<HTMLDivElement | null>
@@ -29,8 +29,8 @@ export interface MetaProposeState {
   retryLast: () => void
 }
 
-export function useMetaProposeState(): MetaProposeState {
-  const [messages, setMessages] = useState<MetaProposeMessage[]>([])
+export function useRequestWorkState(): RequestWorkState {
+  const [messages, setMessages] = useState<RequestWorkMessage[]>([])
   const [input, setInput] = useState('')
   const proposeLoading = useMetaStore((s) => s.proposeLoading)
   const propose = useMetaStore((s) => s.proposeConversation)
@@ -71,7 +71,7 @@ export function useMetaProposeState(): MetaProposeState {
 }
 
 type Attribution = Pick<
-  MetaProposeMessage,
+  RequestWorkMessage,
   'responderRole' | 'responderName' | 'routedTopic'
 >
 
@@ -83,7 +83,7 @@ function toAttribution(result: ConversationalProposeResponse): Attribution {
   }
 }
 
-function buildFailureMessage(nextMsgId: () => number): MetaProposeMessage {
+function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
   return {
     id: nextMsgId(),
     role: 'assistant',
@@ -95,7 +95,7 @@ function buildFailureMessage(nextMsgId: () => number): MetaProposeMessage {
 function buildAssistantMessage(
   result: ConversationalProposeResponse | null,
   nextMsgId: () => number,
-): MetaProposeMessage {
+): RequestWorkMessage {
   if (!result) {
     return buildFailureMessage(nextMsgId)
   }
