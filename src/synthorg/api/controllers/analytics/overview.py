@@ -2,6 +2,7 @@
 """Analytics overview endpoint at /analytics/overview."""
 
 import asyncio
+import contextlib
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,11 @@ from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import analytics_read_service_of
+from synthorg.api.controllers.analytics._overview_trends import (
+    approvals_raised_per_day,
+    roster_size_per_day,
+    tasks_completed_per_day,
+)
 from synthorg.api.controllers.analytics._shared import (
     OverviewMetrics,
     _resolve_agent_counts,
@@ -20,22 +26,62 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.approval.state import approval_store_of
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import BucketSize, bucket_cost_records
 from synthorg.config.agent_schema import AgentConfig
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.hr.models import AgentLifecycleEvent
+from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.state import performance_tracker_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+
+
+async def _collect_trend_sources(
+    app_state: AppState,
+    now: datetime,
+) -> tuple[
+    tuple[TaskMetricRecord, ...],
+    tuple[AgentLifecycleEvent, ...],
+    tuple[ApprovalItem, ...],
+]:
+    """Fetch the sparkline sources, degrading each to empty on failure.
+
+    The card sparklines are decorative context; an unwired performance
+    tracker, persistence backend, or approval store must not take the
+    whole overview down with it.
+
+    Returns:
+        Task metric records, lifecycle events, and approval items for
+        the trailing 7-day window (each empty when its service is
+        unavailable).
+    """
+    since = now - timedelta(days=7)
+    metrics: tuple[TaskMetricRecord, ...] = ()
+    events: tuple[AgentLifecycleEvent, ...] = ()
+    approvals: tuple[ApprovalItem, ...] = ()
+    with contextlib.suppress(ServiceUnavailableError):
+        metrics = performance_tracker_of(app_state).get_task_metrics(since=since)
+    with contextlib.suppress(ServiceUnavailableError):
+        events = await persistence_of(app_state).lifecycle_events.list_events(
+            since=since,
+        )
+    with contextlib.suppress(ServiceUnavailableError):
+        approvals = await approval_store_of(app_state).list_items()
+    return metrics, events, approvals
 
 
 async def _assemble_overview(  # noqa: PLR0913
@@ -85,6 +131,7 @@ async def _assemble_overview(  # noqa: PLR0913
         len(agents),
         all_tasks=all_tasks,
     )
+    metrics, lifecycle_events, approvals = await _collect_trend_sources(app_state, now)
 
     logger.debug(
         ANALYTICS_OVERVIEW_QUERIED,
@@ -101,6 +148,9 @@ async def _assemble_overview(  # noqa: PLR0913
         budget_remaining=budget.remaining,
         budget_used_percent=budget.used_percent,
         cost_7d_trend=cost_7d,
+        tasks_7d_trend=tasks_completed_per_day(metrics, now),
+        agents_7d_trend=roster_size_per_day(len(agents), lifecycle_events, now),
+        review_7d_trend=approvals_raised_per_day(approvals, now),
         active_agents_count=active,
         idle_agents_count=idle,
         currency=currency,

@@ -42,6 +42,10 @@ const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
   'coordination.failed': 'coordination failed',
 }
 
+function sparkline(points: readonly TrendDataPoint[]): number[] | undefined {
+  return points.length >= 2 ? points.map((p) => p.value) : undefined
+}
+
 export function computeMetricCards(
   overview: OverviewMetrics,
   budget: BudgetConfig | null,
@@ -53,19 +57,18 @@ export function computeMetricCards(
       label: 'TASKS',
       value: overview.total_tasks,
       subText: `${overview.tasks_by_status['completed'] ?? 0} completed`,
+      sparklineData: sparkline(overview.tasks_7d_trend),
     },
     {
       label: 'ACTIVE AGENTS',
       value: overview.active_agents_count,
       subText: `${overview.idle_agents_count} idle`,
+      sparklineData: sparkline(overview.agents_7d_trend),
     },
     {
       label: 'SPEND',
       value: formatCurrency(overview.total_cost, overview.currency),
-      sparklineData:
-        overview.cost_7d_trend.length >= 2
-          ? overview.cost_7d_trend.map((p) => p.value)
-          : undefined,
+      sparklineData: sparkline(overview.cost_7d_trend),
       change: spendTrend,
       progress: budget
         ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
@@ -75,6 +78,7 @@ export function computeMetricCards(
     {
       label: 'IN REVIEW',
       value: overview.tasks_by_status['in_review'] ?? 0,
+      sparklineData: sparkline(overview.review_7d_trend),
     },
   ]
 }

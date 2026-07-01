@@ -12007,6 +12007,11 @@ export type components = {
         readonly OverviewMetrics: {
             /** @description Agents currently executing an in-progress task */
             readonly active_agents_count: number;
+            /**
+             * @description Daily roster size for the last 7 days
+             * @default []
+             */
+            readonly agents_7d_trend: readonly components["schemas"]["TrendDataPoint"][];
             /** @description Remaining budget in the configured currency */
             readonly budget_remaining: number;
             /** @description Percentage of monthly budget used (>100 = overrun) */
@@ -12020,6 +12025,16 @@ export type components = {
             readonly currency: string;
             /** @description Employed agents not currently executing a task */
             readonly idle_agents_count: number;
+            /**
+             * @description Daily approval requests raised for the last 7 days
+             * @default []
+             */
+            readonly review_7d_trend: readonly components["schemas"]["TrendDataPoint"][];
+            /**
+             * @description Daily task completions for the last 7 days
+             * @default []
+             */
+            readonly tasks_7d_trend: readonly components["schemas"]["TrendDataPoint"][];
             /** @description Task counts by status (keys are TaskStatus values) */
             readonly tasks_by_status: {
                 readonly [key: string]: number;
