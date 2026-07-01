@@ -26,6 +26,7 @@ from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.providers.defaults_config import ProviderModelDefaults
 from synthorg.providers.enums import AuthType
+from synthorg.providers.vram_guard_config import OllamaVramGuardConfig
 
 logger = get_logger(__name__)
 
@@ -149,8 +150,16 @@ class ProviderConfig(BaseModel):
         description=(
             "Ollama keep_alive: how long the server keeps a model loaded "
             "after a request (e.g. '5m', '0' to unload immediately, '-1' to "
-            "keep forever). Sent only to ollama providers; unset leaves the "
-            "ollama server's own default (OLLAMA_KEEP_ALIVE)."
+            "keep forever). Sent only to ollama providers; unset falls back "
+            "to the driver's bounded default (5m) rather than the ollama "
+            "server's OLLAMA_KEEP_ALIVE."
+        ),
+    )
+    vram_guard: OllamaVramGuardConfig = Field(
+        default_factory=OllamaVramGuardConfig,
+        description=(
+            "VRAM-aware model load/eviction guard for ollama providers "
+            "(ignored by other providers)."
         ),
     )
     oauth_token_url: NotBlankStr | None = Field(

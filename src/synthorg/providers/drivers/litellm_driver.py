@@ -87,6 +87,7 @@ from synthorg.providers.models import (
     StreamChunk,
     ToolDefinition,
 )
+from synthorg.providers.ollama_vram_guard import OllamaVramGuard
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 from synthorg.providers.resilience.retry import RetryHandler
 
@@ -183,6 +184,28 @@ class LiteLLMDriver(BaseCompletionProvider):
             MappingProxyType(self._build_model_lookup(config.models))
         )
         self._routing_key = config.litellm_provider or provider_name
+        # Built lazily (inside the event loop) on the first ollama call:
+        # the guard owns an asyncio lock, and drivers are constructed
+        # during synchronous app wiring.
+        self._vram_guard: OllamaVramGuard | None = None
+
+    async def _ensure_vram_capacity(self, model_id: str) -> None:
+        """Run the ollama VRAM guard before dispatch, when applicable."""
+        if (
+            self._routing_key != "ollama"
+            or self._config.base_url is None
+            or not self._config.vram_guard.enabled
+        ):
+            return
+        guard = self._vram_guard
+        if guard is None:
+            guard = OllamaVramGuard(
+                self._config.base_url,
+                self._config.vram_guard,
+                clock=self._clock,
+            )
+            self._vram_guard = guard
+        await guard.ensure_capacity(model_id)
 
     @override
     def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
@@ -258,6 +281,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         try:
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
+            await self._ensure_vram_capacity(model_config.id)
             litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
@@ -301,6 +325,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         try:
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
+            await self._ensure_vram_capacity(model_config.id)
             litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
