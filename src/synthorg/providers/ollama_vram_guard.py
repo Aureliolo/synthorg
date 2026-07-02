@@ -35,7 +35,7 @@ _HTTP_TIMEOUT_SECONDS: Final[float] = 5.0
 _MIB: Final[int] = 1024 * 1024
 
 
-class _LoadedModel(BaseModel):
+class _LoadedModel(BaseModel):  # lint-allow: frozen-extra-forbid -- external payload
     """One entry of ollama's ``/api/ps`` response.
 
     ``extra="ignore"``: the payload carries fields the guard does not
@@ -43,8 +43,7 @@ class _LoadedModel(BaseModel):
     more; rejecting them would break the guard on every upstream bump.
     """
 
-    # lint-allow: frozen-extra-forbid -- external API payload
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, extra="ignore", allow_inf_nan=False)
 
     name: str = ""
     model: str = ""

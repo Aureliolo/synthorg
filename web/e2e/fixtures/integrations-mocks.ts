@@ -70,6 +70,33 @@ interface TunnelState {
   publicUrl: string | null
 }
 
+const tunnelProviders = [
+  {
+    provider_id: 'cloudflare',
+    display_name: 'Cloudflare quick tunnel',
+    credential_kind: 'none',
+    available: true,
+    detail: null,
+    credential_configured: true,
+  },
+  {
+    provider_id: 'ngrok',
+    display_name: 'ngrok',
+    credential_kind: 'token',
+    available: true,
+    detail: null,
+    credential_configured: false,
+  },
+  {
+    provider_id: 'devtunnels',
+    display_name: 'GitHub Dev Tunnels',
+    credential_kind: 'device_login',
+    available: false,
+    detail: 'The devtunnel CLI is not installed.',
+    credential_configured: false,
+  },
+]
+
 export async function mockIntegrationRoutes(page: Page): Promise<void> {
   const tunnel: TunnelState = { publicUrl: null }
 
@@ -106,14 +133,35 @@ export async function mockIntegrationRoutes(page: Page): Promise<void> {
     }),
   )
   await page.route('**/api/v1/integrations/tunnel/status', (route) =>
-    route.fulfill({ json: apiSuccess({ public_url: tunnel.publicUrl }) }),
+    route.fulfill({
+      json: apiSuccess({
+        public_url: tunnel.publicUrl,
+        selected_provider: 'cloudflare',
+        active_provider: tunnel.publicUrl ? 'cloudflare' : null,
+        providers: tunnelProviders,
+      }),
+    }),
   )
   await page.route('**/api/v1/integrations/tunnel/start', (route) => {
-    tunnel.publicUrl = 'https://mock-tunnel.ngrok.io'
-    return route.fulfill({ json: apiSuccess({ public_url: tunnel.publicUrl }) })
+    tunnel.publicUrl = 'https://mock-tunnel.trycloudflare.com'
+    return route.fulfill({
+      json: apiSuccess({ public_url: tunnel.publicUrl, provider: 'cloudflare' }),
+    })
   })
   await page.route('**/api/v1/integrations/tunnel/stop', (route) => {
     tunnel.publicUrl = null
     return route.fulfill({ json: apiSuccess(null) })
   })
+  await page.route('**/api/v1/integrations/tunnel/credential', (route) =>
+    route.fulfill({ json: apiSuccess(null) }),
+  )
+  await page.route('**/api/v1/integrations/tunnel/device-login', (route) =>
+    route.fulfill({
+      json: apiSuccess({
+        verification_uri: 'https://github.com/login/device',
+        user_code: 'MOCK-CODE',
+        already_logged_in: false,
+      }),
+    }),
+  )
 }

@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathName
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.state import tunnel_manager_of
 from synthorg.integrations.tunnel.protocol import (
@@ -175,7 +176,7 @@ class TunnelController(Controller):
     async def delete_credential(
         self,
         state: State,
-        provider: str,
+        provider: PathName,
     ) -> ApiResponse[None]:
         """Delete a provider's stored token (idempotent).
 

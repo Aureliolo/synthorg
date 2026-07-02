@@ -4,6 +4,12 @@
 from typing import TYPE_CHECKING
 
 from synthorg.core.domain_errors import ServiceUnavailableError
+
+# Runtime import (not TYPE_CHECKING): the catalog-source closure below
+# annotates its return type with ConnectionCatalog, and typeguard
+# resolves that annotation at runtime when the manager's bind_runtime
+# checks the callable argument (PEP 649 __annotate__).
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.tunnel.manager import TunnelManager
 from synthorg.integrations.tunnel.mcp_service import TunnelService
@@ -13,7 +19,6 @@ if TYPE_CHECKING:
     # runtime import of api.construction_wiring / api.state forms a cycle.
     from synthorg.api.construction_wiring import ConstructionDeps
     from synthorg.api.state import AppState
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:

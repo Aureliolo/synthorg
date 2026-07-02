@@ -22771,6 +22771,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource name */
                 readonly provider: string;
             };
             readonly cookie?: never;

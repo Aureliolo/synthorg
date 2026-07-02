@@ -29,10 +29,19 @@ test.describe('Integrations dashboard', () => {
     const toggle = page.getByRole('switch', { name: /start tunnel/i })
     await expect(toggle).toBeVisible()
     await toggle.click()
-    await expect(page.getByText('mock-tunnel.ngrok.io')).toBeVisible()
+    await expect(page.getByText('mock-tunnel.trycloudflare.com')).toBeVisible()
     const stopToggle = page.getByRole('switch', { name: /stop tunnel/i })
     await stopToggle.click()
-    await expect(page.getByText('mock-tunnel.ngrok.io')).not.toBeVisible()
+    await expect(page.getByText('mock-tunnel.trycloudflare.com')).not.toBeVisible()
+  })
+
+  test('Tunnel provider picker shows credential states', async ({ page }) => {
+    await page.goto('/connections')
+    await waitForFonts(page)
+    await page.getByRole('radio', { name: 'ngrok' }).click()
+    await expect(page.getByLabel('Auth token')).toBeVisible()
+    await page.getByRole('radio', { name: 'GitHub Dev Tunnels' }).click()
+    await expect(page.getByText(/devtunnel CLI is not installed/i)).toBeVisible()
   })
 
   test('MCP Catalog browses and searches', async ({ page }) => {
