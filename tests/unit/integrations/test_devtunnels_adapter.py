@@ -184,6 +184,24 @@ class TestDeviceLogin:
         assert prompt.already_logged_in is False
         assert envs == [_expected_env(tmp_path)]
 
+    async def test_scrapes_prompt_with_colon_after_code(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Current CLI phrasing puts a colon between "code" and the code."""
+        _patch_binary(monkeypatch, present=True)
+        fake = FakePopen(
+            stdout_lines=[
+                "Browse to https://github.com/login/device"
+                " and enter the code: 783E-3CEF\n",
+            ],
+        )
+        _patch_spawn(monkeypatch, fake)
+        adapter = _adapter(tmp_path)
+        prompt = await adapter.begin_login()
+        assert prompt.verification_uri == "https://github.com/login/device"
+        assert prompt.user_code == "783E-3CEF"
+        assert prompt.already_logged_in is False
+
     async def test_clean_exit_without_prompt_means_already_logged_in(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
