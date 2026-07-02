@@ -15,10 +15,12 @@ the running loop's transport capabilities.
 """
 
 import asyncio
+import os
 import re
 import subprocess
 import sys
 import threading
+from collections.abc import Mapping
 from typing import IO, Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -30,8 +32,28 @@ logger = get_logger(__name__)
 _TERMINATE_GRACE_SECONDS: Final[float] = 10.0
 
 
-def spawn_cli(args: list[str]) -> subprocess.Popen[bytes]:
+def _merged_env(env: Mapping[str, str] | None) -> dict[str, str] | None:
+    """Layer *env* over the process environment.
+
+    ``subprocess`` ``env=`` replaces the child environment wholesale,
+    so a bare override dict would strip PATH and friends.
+
+    Returns:
+        The merged environment, or ``None`` to inherit unchanged.
+    """
+    if env is None:
+        return None
+    return {**os.environ, **env}
+
+
+def spawn_cli(
+    args: list[str], *, env: Mapping[str, str] | None = None
+) -> subprocess.Popen[bytes]:
     """Start a vendor CLI with piped stdout/stderr.
+
+    Args:
+        args: Binary path plus arguments.
+        env: Extra environment entries layered over ``os.environ``.
 
     Returns:
         The child process handle (byte streams; callers decode).
@@ -46,6 +68,7 @@ def spawn_cli(args: list[str]) -> subprocess.Popen[bytes]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         creationflags=creationflags,
+        env=_merged_env(env),
     )
 
 
@@ -138,8 +161,14 @@ async def run_cli(
     args: list[str],
     *,
     timeout_seconds: float,
+    env: Mapping[str, str] | None = None,
 ) -> tuple[int, str] | None:
     """Run a short-lived CLI command and capture its combined output.
+
+    Args:
+        args: Binary path plus arguments.
+        timeout_seconds: Kill-and-give-up budget for the child.
+        env: Extra environment entries layered over ``os.environ``.
 
     Returns:
         ``(returncode, text)``, or ``None`` on timeout (the child is
@@ -159,6 +188,7 @@ async def run_cli(
                 timeout=timeout_seconds,
                 check=False,
                 creationflags=creationflags,
+                env=_merged_env(env),
             )
         except subprocess.TimeoutExpired:
             return None

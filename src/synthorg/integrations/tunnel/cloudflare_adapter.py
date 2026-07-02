@@ -7,31 +7,34 @@ Quick tunnels need no Cloudflare account or credential, which makes
 this the safe default provider.
 
 Binary resolution order: an operator-installed ``cloudflared`` on
-``PATH``, then a previously downloaded copy under ``~/.synthorg/bin``,
-then (when downloads are enabled) a fresh download over HTTPS from the
-official Cloudflare GitHub release. Operators who forbid runtime
-downloads set ``integrations.tunnel.cloudflared_download_enabled:
-false`` and install the binary themselves.
+``PATH``, then a previously downloaded copy under the shared tunnel
+state dir's ``bin/``, then (when downloads are enabled) a fresh
+download over HTTPS from the official Cloudflare GitHub release.
+Operators who forbid runtime downloads set
+``integrations.tunnel.cloudflared_download_enabled: false`` and
+install the binary themselves.
 """
 
 import asyncio
-import contextlib
-import os
 import platform
 import re
 import shutil
-import stat
 import subprocess
 import sys
-import tarfile
-import tempfile
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Final
 
-import httpx
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.tunnel._binaries import (
+    MACHINE_TO_ARCH,
+    default_binary_dir,
+    default_state_dir,
+    download_binary,
+    extract_tgz_member,
+)
 from synthorg.integrations.tunnel._process import (
     spawn_cli,
     spawn_drain_thread,
@@ -43,7 +46,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     CLOUDFLARE_TUNNEL_STARTED,
     TUNNEL_ALREADY_ACTIVE,
-    TUNNEL_BINARY_DOWNLOADED,
     TUNNEL_ERROR,
     TUNNEL_STOPPED,
 )
@@ -54,23 +56,9 @@ _URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"https://[a-zA-Z0-9][a-zA-Z0-9-]*\.trycloudflare\.com"
 )
 _START_TIMEOUT_SECONDS: Final[float] = 60.0
-_DOWNLOAD_TIMEOUT_SECONDS: Final[float] = 180.0
 _RELEASE_BASE_URL: Final[str] = (
     "https://github.com/cloudflare/cloudflared/releases/latest/download/"
 )
-_EXECUTABLE_MODE: Final[int] = (
-    stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
-)
-
-_MACHINE_TO_ARCH: Final[dict[str, str]] = {
-    "x86_64": "amd64",
-    "amd64": "amd64",
-    "aarch64": "arm64",
-    "arm64": "arm64",
-    "armv7l": "arm",
-    "i386": "386",
-    "i686": "386",
-}
 
 
 def _release_asset_name() -> str | None:
@@ -80,7 +68,7 @@ def _release_asset_name() -> str | None:
         The asset filename, or ``None`` when Cloudflare publishes no
         binary for this platform.
     """
-    arch = _MACHINE_TO_ARCH.get(platform.machine().lower())
+    arch = MACHINE_TO_ARCH.get(platform.machine().lower())
     if arch is None:
         return None
     # ``platform.system()`` (not ``sys.platform``) so the non-host
@@ -91,16 +79,6 @@ def _release_asset_name() -> str | None:
     if system == "Darwin":
         return f"cloudflared-darwin-{arch}.tgz"
     return f"cloudflared-linux-{arch}"
-
-
-def default_binary_dir() -> Path:
-    """Directory for tunnel binaries downloaded at runtime.
-
-    Returns:
-        ``~/.synthorg/bin`` (the same home-dir convention as
-        ``~/.synthorg/config.yaml``).
-    """
-    return Path.home() / ".synthorg" / "bin"
 
 
 class CloudflareQuickTunnelAdapter:
@@ -123,7 +101,9 @@ class CloudflareQuickTunnelAdapter:
         self._port = port
         self._download_enabled = download_enabled
         self._binary_dir = (
-            binary_dir if binary_dir is not None else default_binary_dir()
+            binary_dir
+            if binary_dir is not None
+            else default_binary_dir(default_state_dir())
         )
         self._process: subprocess.Popen[bytes] | None = None
         self._public_url: str | None = None
@@ -304,69 +284,23 @@ class CloudflareQuickTunnelAdapter:
     def _download_binary(self, asset: str) -> Path:
         """Fetch the official release asset into the binary dir.
 
-        Runs in a worker thread (blocking I/O). Downloads to a temp
-        file in the target directory and renames into place so a
-        crashed download never leaves a half-written executable.
+        Runs in a worker thread (blocking I/O).
 
         Returns:
             Path to the executable binary.
         """
-        url = f"{_RELEASE_BASE_URL}{asset}"
-        self._binary_dir.mkdir(parents=True, exist_ok=True)
-        target_name = "cloudflared.exe" if sys.platform == "win32" else "cloudflared"
-        target = self._binary_dir / target_name
-        with httpx.Client(
-            timeout=_DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            payload = response.content
-        fd, tmp_name = tempfile.mkstemp(dir=self._binary_dir, prefix=".cloudflared-")
-        tmp_path = Path(tmp_name)
-        try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(payload)
-            if asset.endswith(".tgz"):
-                extracted = self._extract_tgz_member(tmp_path)
-                tmp_path.unlink(missing_ok=True)
-                tmp_path = extracted
-            if sys.platform != "win32":
-                tmp_path.chmod(_EXECUTABLE_MODE)
-            tmp_path.replace(target)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                tmp_path.unlink(missing_ok=True)
-            raise
-        logger.info(
-            TUNNEL_BINARY_DOWNLOADED,
-            binary="cloudflared",
-            asset=asset,
-            path=str(target),
-            size_bytes=len(payload),
-        )
-        return target
-
-    def _extract_tgz_member(self, archive: Path) -> Path:
-        """Extract the ``cloudflared`` member of the macOS ``.tgz`` asset.
-
-        Returns:
-            Path to the extracted binary (inside the binary dir).
-
-        Raises:
-            TunnelError: When the archive carries no such member.
-        """
-        with tarfile.open(archive, mode="r:gz") as tar:
-            member = next(
-                (m for m in tar.getmembers() if Path(m.name).name == "cloudflared"),
-                None,
+        extract: Callable[[Path], Path] | None = None
+        if asset.endswith(".tgz"):
+            extract = partial(
+                extract_tgz_member,
+                member_name="cloudflared",
+                target_dir=self._binary_dir,
             )
-            if member is None or not member.isfile():
-                msg = "cloudflared release archive contained no binary"
-                raise TunnelError(msg)
-            extracted = tar.extractfile(member)
-            if extracted is None:
-                msg = "cloudflared release archive member was unreadable"
-                raise TunnelError(msg)
-            out = self._binary_dir / ".cloudflared-extracted"
-            out.write_bytes(extracted.read())
-            return out
+        target_name = "cloudflared.exe" if sys.platform == "win32" else "cloudflared"
+        return download_binary(
+            url=f"{_RELEASE_BASE_URL}{asset}",
+            target_dir=self._binary_dir,
+            target_name=target_name,
+            binary_label="cloudflared",
+            extract=extract,
+        )
