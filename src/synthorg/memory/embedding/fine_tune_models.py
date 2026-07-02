@@ -32,6 +32,49 @@ class FineTuneDataSourceType(StrEnum):
     TRAJECTORY = "trajectory"
 
 
+class FineTuneExecutionConfig(BaseModel):
+    """Configuration for fine-tune pipeline execution backend.
+
+    All numeric fields must be finite (no NaN or Inf).
+
+    Attributes:
+        backend: Execution backend -- ``"in-process"`` (lazy torch
+            import inside the backend process) or ``"docker"``
+            (ephemeral one-shot container per torch-bound stage).
+        image: Container image for the ``"docker"`` backend.  Defaults
+            from the ``memory.fine_tune_image`` setting (seeded by the
+            CLI via ``SYNTHORG_FINE_TUNE_IMAGE``).  Required when
+            ``backend="docker"``, ignored for ``"in-process"``.
+        gpu_enabled: Request GPU passthrough on the container.  Only
+            applies to ``backend="docker"``; ignored for in-process.
+        memory_limit: Container memory limit (Docker format).
+        timeout_seconds: Maximum wall-clock time for a single stage.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    backend: Literal["in-process", "docker"] = "in-process"
+    image: NotBlankStr | None = None
+    gpu_enabled: bool = False
+    memory_limit: NotBlankStr = "8g"
+    timeout_seconds: float = Field(default=7200.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_docker_requires_image(self) -> Self:
+        """Ensure image is set when backend is docker.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        if self.backend == "docker" and not self.image:
+            msg = "image is required when backend='docker'"
+            raise ValueError(msg)
+        return self
+
+
 class FineTuneRequest(BaseModel):
     """Request to start a fine-tuning pipeline run.
 
@@ -47,6 +90,9 @@ class FineTuneRequest(BaseModel):
         top_k: Override hard negative count.
         batch_size: Override training batch size.
         validation_split: Fraction of data held out for evaluation.
+        execution: Execution backend override (``None`` = derived from
+            configuration: docker when a fine-tune image is set, else
+            in-process).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -104,6 +150,13 @@ class FineTuneRequest(BaseModel):
         gt=0.0,
         lt=1.0,
         description="Fraction of data held out for evaluation",
+    )
+    execution: FineTuneExecutionConfig | None = Field(
+        default=None,
+        description=(
+            "Execution backend override (None = derived: docker when a"
+            " fine-tune image is configured, else in-process)"
+        ),
     )
 
     @model_validator(mode="after")
@@ -288,6 +341,7 @@ class FineTuneRunConfig(BaseModel):
         top_k: Hard negatives per query.
         batch_size: Training batch size.
         validation_split: Fraction held out for evaluation.
+        execution: Effective execution backend baked in at run start.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -320,6 +374,13 @@ class FineTuneRunConfig(BaseModel):
         description=(
             "Word-boundary chunk size for stage-1 synthetic data generation."
             " Resolved from memory.fine_tune_chunk_size at run start."
+        ),
+    )
+    execution: FineTuneExecutionConfig | None = Field(
+        default=None,
+        description=(
+            "Effective execution backend baked in at run start"
+            " (resume and audit read the backend the run actually used)"
         ),
     )
 
@@ -530,45 +591,3 @@ class PreflightResult(BaseModel):
     def can_proceed(self) -> bool:
         """True if no checks have ``"fail"`` status."""
         return all(c.status != "fail" for c in self.checks)
-
-
-class FineTuneExecutionConfig(BaseModel):
-    """Configuration for fine-tune pipeline execution backend.
-
-    All numeric fields must be finite (no NaN or Inf).
-
-    Attributes:
-        backend: Execution backend -- ``"in-process"`` (default, lazy
-            torch import) or ``"docker"`` (dedicated container).
-        image: Container image for the ``"docker"`` backend.  Set by
-            the CLI via ``SYNTHORG_FINE_TUNE_IMAGE`` in the backend
-            container environment.  Required when ``backend="docker"``,
-            ignored for ``"in-process"``.
-        gpu_enabled: Request GPU passthrough on the container.  Only
-            applies to ``backend="docker"``; ignored for in-process.
-        memory_limit: Container memory limit (Docker format).
-        timeout_seconds: Maximum wall-clock time for a single stage.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    backend: Literal["in-process", "docker"] = "in-process"
-    image: NotBlankStr | None = None
-    gpu_enabled: bool = False
-    memory_limit: NotBlankStr = "8g"
-    timeout_seconds: float = Field(default=7200.0, gt=0)
-
-    @model_validator(mode="after")
-    def _validate_docker_requires_image(self) -> Self:
-        """Ensure image is set when backend is docker.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if self.backend == "docker" and not self.image:
-            msg = "image is required when backend='docker'"
-            raise ValueError(msg)
-        return self

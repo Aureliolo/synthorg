@@ -165,14 +165,24 @@ class TestFineTunePlan:
         assert request.batch_size == 64
         assert request.resume_run_id is None
 
-    def test_to_request_drops_execution_field(self) -> None:
-        """``execution`` is MCP-only; the runner request does not carry it."""
+    def test_to_request_preserves_execution_field(self) -> None:
+        """``execution`` reaches the orchestrator via the request."""
+        execution = FineTuneExecutionConfig(
+            backend="docker",
+            image=NotBlankStr("example.test/fine-tune:1"),
+            gpu_enabled=True,
+        )
         plan = FineTunePlan(
             source_dir=NotBlankStr("/data/org-docs"),
-            execution=FineTuneExecutionConfig(),
+            execution=execution,
         )
         request = plan.to_request()
-        assert not hasattr(request, "execution")
+        assert request.execution == execution
+
+    def test_to_request_execution_defaults_to_none(self) -> None:
+        """No explicit execution means derived-at-start (None on the wire)."""
+        plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
+        assert plan.to_request().execution is None
 
 
 class TestMemoryBackendUnsupportedError:
