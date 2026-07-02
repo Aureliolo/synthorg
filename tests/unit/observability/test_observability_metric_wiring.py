@@ -667,23 +667,20 @@ def test_record_audit_chain_verification_rejects_unknown_outcome() -> None:
 # -- VALID_SETTINGS_NAMESPACES parity ----------------------------------------
 
 
-def test_valid_settings_namespaces_matches_definitions_directory() -> None:
-    """Allowlist mirrors the closed set of files under settings/definitions/.
+def test_valid_settings_namespaces_matches_registered_definitions() -> None:
+    """Allowlist mirrors the closed set of registered setting namespaces.
 
-    Adding a new namespace file without updating the allowlist would
-    silently drop its mutations from the metric. Failing this test is the
-    intended forcing function.
+    The mutation metric's label value is the definition's namespace, not
+    the definitions filename (a namespace may span several modules, e.g.
+    memory + memory_fine_tune). Registering a new namespace without
+    updating the allowlist would silently drop its mutations from the
+    metric. Failing this test is the intended forcing function.
     """
-    import pkgutil
-
     from synthorg.observability.prometheus_labels import VALID_SETTINGS_NAMESPACES
-    from synthorg.settings import definitions as _settings_definitions
+    from synthorg.settings import definitions as _settings_definitions  # noqa: F401
+    from synthorg.settings.registry import get_registry
 
-    discovered = frozenset(
-        info.name
-        for info in pkgutil.iter_modules(_settings_definitions.__path__)
-        if not info.name.startswith("_")
-    )
+    discovered = frozenset(get_registry().namespaces())
     assert discovered == VALID_SETTINGS_NAMESPACES, (
         "VALID_SETTINGS_NAMESPACES drift: "
         f"missing={discovered - VALID_SETTINGS_NAMESPACES} "

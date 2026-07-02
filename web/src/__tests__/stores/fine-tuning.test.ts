@@ -53,6 +53,7 @@ const BASE_RUN: FineTuneRun = {
     batch_size: 8,
     chunk_size: 512,
     validation_split: 0.1,
+    execution: null,
   },
   started_at: '2026-04-28T08:00:00+00:00',
   updated_at: '2026-04-28T08:30:00+00:00',

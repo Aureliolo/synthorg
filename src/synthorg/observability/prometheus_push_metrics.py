@@ -345,7 +345,7 @@ class PushMetrics:
 
         # -- Settings mutations counter ------------------------------
         # Namespace label is bounded via ``VALID_SETTINGS_NAMESPACES``
-        # (mirrors filenames in ``settings/definitions/``). Action
+        # (mirrors the registered setting namespaces). Action
         # (set / set_many / delete / delete_namespace) is
         # intentionally NOT a label so the dashboard slices by
         # namespace only -- the operator-facing question is "which

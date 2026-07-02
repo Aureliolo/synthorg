@@ -31,7 +31,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
 )
-from synthorg.settings.definitions.memory import (
+from synthorg.settings.definitions.memory_fine_tune import (
     FINE_TUNE_DEFAULT_BATCH_SIZE,
     FINE_TUNE_MIN_DOCS_RECOMMENDED,
     FINE_TUNE_MIN_DOCS_REQUIRED,

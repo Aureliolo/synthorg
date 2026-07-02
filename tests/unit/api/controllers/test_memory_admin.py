@@ -19,7 +19,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
 )
-from synthorg.settings.definitions.memory import FINE_TUNE_DEFAULT_BATCH_SIZE
+from synthorg.settings.definitions.memory_fine_tune import FINE_TUNE_DEFAULT_BATCH_SIZE
 from tests._shared import make_app_state
 
 
@@ -540,7 +540,7 @@ class TestResolveFineTuneThresholds:
         from synthorg.api.controllers.memory._preflight import (
             _resolve_fine_tune_thresholds,
         )
-        from synthorg.settings.definitions.memory import (
+        from synthorg.settings.definitions.memory_fine_tune import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
             FINE_TUNE_MIN_DOCS_RECOMMENDED,
             FINE_TUNE_MIN_DOCS_REQUIRED,
@@ -596,7 +596,7 @@ class TestResolveFineTuneThresholds:
             _resolve_fine_tune_thresholds,
         )
         from synthorg.core.types import NotBlankStr
-        from synthorg.settings.definitions.memory import (
+        from synthorg.settings.definitions.memory_fine_tune import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
             FINE_TUNE_MIN_DOCS_RECOMMENDED,
             FINE_TUNE_MIN_DOCS_REQUIRED,
@@ -628,7 +628,7 @@ class TestResolveFineTuneThresholds:
         from synthorg.api.controllers.memory._preflight import (
             _resolve_fine_tune_thresholds,
         )
-        from synthorg.settings.definitions.memory import (
+        from synthorg.settings.definitions.memory_fine_tune import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
             FINE_TUNE_MIN_DOCS_RECOMMENDED,
             FINE_TUNE_MIN_DOCS_REQUIRED,
