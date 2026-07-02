@@ -8,7 +8,7 @@ of failed runs from the last completed stage.
 
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
 
@@ -18,15 +18,22 @@ from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneExecutionConfig,
     FineTuneRequest,
     FineTuneRun,
     FineTuneStatus,
 )
-from synthorg.memory.embedding.fine_tune_pipeline import run_fine_tune_stages
+from synthorg.memory.embedding.fine_tune_pipeline import (
+    StageExecutorFactory,
+    run_fine_tune_stages,
+)
 from synthorg.memory.embedding.fine_tune_query import QueryGenerator
 from synthorg.memory.embedding.fine_tune_run_helpers import (
     build_config,
     to_failed,
+)
+from synthorg.memory.embedding.fine_tune_stage_executor import (
+    InProcessStageExecutor,
 )
 from synthorg.memory.embedding.fine_tune_ws import (
     ChannelsPlugin,
@@ -94,6 +101,14 @@ class FineTuneOrchestrator:
         training_data_source: Optional real-trajectory data source. Required
             only when a run selects ``data_source=trajectory``; directory mode
             needs no source.
+        stage_executor_factory: Builds the executor the pipeline routes
+            torch-bound stages through, from the run's baked execution
+            config. ``None`` always executes in-process.
+        resolve_default_execution: Resolves the effective execution
+            config for a run that requested none (derived from the
+            configured fine-tune image + settings). ``None`` leaves the
+            run's execution unset, which the executor factory treats as
+            in-process.
     """
 
     def __init__(  # noqa: PLR0913 -- pluggable dependencies threaded for testability
@@ -106,6 +121,10 @@ class FineTuneOrchestrator:
         query_generator: QueryGenerator | None = None,
         training_data_source: TrainingDataSource | None = None,
         clock: Clock | None = None,
+        stage_executor_factory: StageExecutorFactory | None = None,
+        resolve_default_execution: (
+            Callable[[], Awaitable[FineTuneExecutionConfig]] | None
+        ) = None,
     ) -> None:
         self._run_repo = run_repo
         self._checkpoint_repo = checkpoint_repo
@@ -113,6 +132,12 @@ class FineTuneOrchestrator:
         self._channels_plugin = channels_plugin
         self._query_generator = query_generator
         self._training_data_source = training_data_source
+        self._stage_executor_factory: StageExecutorFactory = (
+            stage_executor_factory
+            if stage_executor_factory is not None
+            else lambda _execution: InProcessStageExecutor()
+        )
+        self._resolve_default_execution = resolve_default_execution
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
@@ -171,6 +196,12 @@ class FineTuneOrchestrator:
         config = build_config(request)
         if chunk_size is not None:
             config = config.model_copy(update={"chunk_size": chunk_size})
+        if config.execution is None and self._resolve_default_execution is not None:
+            # Bake the derived backend in before the first save so resume
+            # and audit read the backend the run actually used.
+            config = config.model_copy(
+                update={"execution": await self._resolve_default_execution()},
+            )
         now = datetime.now(UTC)
         run = FineTuneRun(
             id=uuid.uuid4(),
@@ -464,6 +495,7 @@ class FineTuneOrchestrator:
             enter_stage=self._enter_stage,
             complete_stage=self._complete_stage,
             make_progress_cb=self._make_progress_cb,
+            make_stage_executor=self._stage_executor_factory,
         )
 
     # -- Stage lifecycle helpers --------------------------------------

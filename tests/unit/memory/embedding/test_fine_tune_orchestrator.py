@@ -18,6 +18,7 @@ from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     EvalMetrics,
     FineTuneDataSourceType,
+    FineTuneExecutionConfig,
     FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
@@ -25,6 +26,9 @@ from synthorg.memory.embedding.fine_tune_models import (
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     _PROGRESS_THROTTLE_SEC,
     FineTuneOrchestrator,
+)
+from synthorg.memory.embedding.fine_tune_stage_executor import (
+    InProcessStageExecutor,
 )
 from synthorg.memory.embedding.training_sources import (
     QueryPassagePair,
@@ -148,6 +152,77 @@ class TestOrchestratorLifecycle:
                     FineTuneCancelledError,
                 ):
                     await orchestrator._current_task
+
+
+# -- Execution backend resolution -------------------------------------
+
+
+@pytest.mark.unit
+class TestExecutionResolution:
+    async def test_default_execution_baked_into_config(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+        tmp_path: Path,
+    ) -> None:
+        """A run without explicit execution persists the derived backend."""
+        derived = FineTuneExecutionConfig(
+            backend="docker",
+            image="example.test/fine-tune:1",
+        )
+
+        async def _resolve() -> FineTuneExecutionConfig:
+            return derived
+
+        seen_executions: list[FineTuneExecutionConfig | None] = []
+
+        def _factory(
+            execution: FineTuneExecutionConfig | None,
+        ) -> InProcessStageExecutor:
+            seen_executions.append(execution)
+            return InProcessStageExecutor()
+
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+            resolve_default_execution=_resolve,
+            stage_executor_factory=_factory,
+        )
+        with _mock_all_stages():
+            run = await orchestrator.start(_request(tmp_path))
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+        assert run.config.execution == derived
+        fetched = await run_repo.get(str(run.id))
+        assert fetched is not None
+        assert fetched.config.execution == derived
+        assert seen_executions == [derived]
+
+    async def test_explicit_execution_wins_over_default(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+        tmp_path: Path,
+    ) -> None:
+        explicit = FineTuneExecutionConfig(backend="in-process", timeout_seconds=60.0)
+
+        async def _resolve() -> FineTuneExecutionConfig:
+            msg = "default resolution must not run for an explicit request"
+            raise AssertionError(msg)
+
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+            resolve_default_execution=_resolve,
+        )
+        req = _request(tmp_path).model_copy(update={"execution": explicit})
+        with _mock_all_stages():
+            run = await orchestrator.start(req)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+        assert run.config.execution == explicit
 
 
 # -- Cancellation -----------------------------------------------------
@@ -447,11 +522,18 @@ _HARVESTED_PAIRS = (
 
 _PIPELINE = "synthorg.memory.embedding.fine_tune_pipeline"
 _HELPERS = "synthorg.memory.embedding.fine_tune_run_helpers"
+_FINE_TUNE = "synthorg.memory.embedding.fine_tune"
 
 
 @contextlib.contextmanager
 def _mock_stages_2_to_5() -> Iterator[None]:
-    """Mock stages 2-5, leaving stage 1 (data generation) real."""
+    """Mock stages 2-5, leaving stage 1 (data generation) real.
+
+    Stages 2-4 route through the executor seam, whose in-process
+    implementation lazily imports the stage functions from
+    ``fine_tune``; the eval metrics come back through the pipeline's
+    file read-back, which is patched instead of the filesystem.
+    """
 
     async def _mine(**kwargs: object) -> Path:
         return Path("training_triples.jsonl")
@@ -467,13 +549,17 @@ def _mock_stages_2_to_5() -> Iterator[None]:
             base_recall_at_10=0.6,
         )
 
+    async def _read_metrics(out_dir: str) -> EvalMetrics:
+        return await _eval()
+
     async def _deploy(**kwargs: object) -> str | None:
         return None
 
     with (
-        patch(f"{_PIPELINE}.mine_hard_negatives", side_effect=_mine),
-        patch(f"{_PIPELINE}.contrastive_fine_tune", side_effect=_train),
-        patch(f"{_PIPELINE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_FINE_TUNE}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{_FINE_TUNE}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{_FINE_TUNE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_PIPELINE}._read_eval_metrics", side_effect=_read_metrics),
         patch(f"{_PIPELINE}.deploy_checkpoint", side_effect=_deploy),
     ):
         yield
@@ -630,6 +716,9 @@ def _mock_all_stages(
             base_recall_at_10=0.6,
         )
 
+    async def _read_metrics(out_dir: str) -> EvalMetrics:
+        return await _eval()
+
     async def _deploy(**kwargs: object) -> str | None:
         if deploy_calls is not None:
             deploy_calls.append(str(kwargs.get("checkpoint_path", "")))
@@ -637,9 +726,10 @@ def _mock_all_stages(
 
     with (
         patch(f"{_HELPERS}.generate_training_data", side_effect=_gen_data),
-        patch(f"{_PIPELINE}.mine_hard_negatives", side_effect=_mine),
-        patch(f"{_PIPELINE}.contrastive_fine_tune", side_effect=_train),
-        patch(f"{_PIPELINE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_FINE_TUNE}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{_FINE_TUNE}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{_FINE_TUNE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_PIPELINE}._read_eval_metrics", side_effect=_read_metrics),
         patch(f"{_PIPELINE}.deploy_checkpoint", side_effect=_deploy),
     ):
         yield

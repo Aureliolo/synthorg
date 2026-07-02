@@ -20,13 +20,12 @@ from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
     ProgressCallback,
-    contrastive_fine_tune,
     deploy_checkpoint,
-    evaluate_checkpoint,
-    mine_hard_negatives,
 )
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
+    EvalMetrics,
+    FineTuneExecutionConfig,
     FineTuneRun,
 )
 from synthorg.memory.embedding.fine_tune_query import QueryGenerator
@@ -34,6 +33,12 @@ from synthorg.memory.embedding.fine_tune_run_helpers import (
     dir_size,
     generate_run_training_data,
 )
+from synthorg.memory.embedding.fine_tune_stage_dispatch import (
+    evaluating_stage_config,
+    mining_stage_config,
+    training_stage_config,
+)
+from synthorg.memory.embedding.fine_tune_stage_executor import StageExecutor
 from synthorg.memory.embedding.promotion import should_promote_checkpoint
 from synthorg.memory.embedding.training_sources import TrainingDataSource
 from synthorg.observability import get_logger
@@ -49,6 +54,23 @@ logger = get_logger(__name__)
 type EnterStageFn = Callable[[FineTuneRun, FineTuneStage], Awaitable[FineTuneRun]]
 type CompleteStageFn = Callable[[FineTuneRun, str], Awaitable[FineTuneRun]]
 type ProgressCbFactory = Callable[[FineTuneRun], ProgressCallback]
+type StageExecutorFactory = Callable[[FineTuneExecutionConfig | None], StageExecutor]
+
+
+async def _read_eval_metrics(out_dir: str) -> EvalMetrics:
+    """Read the metrics file the evaluation stage persisted.
+
+    Both executors write ``eval_metrics.json`` at a deterministic path
+    (in-process and in-container via the shared ``/data`` volume), so
+    reading it back is the one metrics channel that works across the
+    container boundary.
+
+    Returns:
+        Result of type ``EvalMetrics``.
+    """
+    metrics_path = Path(out_dir) / "eval_metrics.json"
+    raw = await asyncio.to_thread(metrics_path.read_text, encoding="utf-8")
+    return EvalMetrics.model_validate_json(raw)
 
 
 async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threaded explicitly
@@ -62,6 +84,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     enter_stage: EnterStageFn,
     complete_stage: CompleteStageFn,
     make_progress_cb: ProgressCbFactory,
+    make_stage_executor: StageExecutorFactory,
 ) -> FineTuneRun:
     """Run all stages, skipping completed ones (resume).
 
@@ -75,6 +98,10 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     # POSIX regardless of host platform.
     out_dir = str(PurePosixPath(cfg.output_dir) / "runs" / str(run.id))
     completed = set(run.stages_completed)
+    # Torch-bound stages (2-4) go through the executor; stage 1 holds
+    # DB/LLM handles and stage 5 touches settings + persistence, so both
+    # always run in-process regardless of the execution backend.
+    executor = make_stage_executor(cfg.execution)
 
     # Stage 1: Generate training data (directory scan or real-trajectory
     # harvest, selected by the run's data_source).
@@ -93,63 +120,66 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         train_path = Path(out_dir) / "training.jsonl"
         val_path = Path(out_dir) / "validation.jsonl"
 
+    # Stage outputs land at deterministic paths under ``out_dir`` (the
+    # resume branches always relied on this), which is what lets the
+    # executor seam skip return values entirely.
+    triples_path = Path(out_dir) / "training_triples.jsonl"
+    checkpoint_path = Path(out_dir) / "checkpoint"
+
     # Stage 2: Mine hard negatives.
     if "mining_negatives" not in completed:
         run = await enter_stage(run, FineTuneStage.MINING_NEGATIVES)
-        triples_path = await mine_hard_negatives(
-            training_data_path=str(train_path),
-            base_model=cfg.base_model,
-            output_dir=out_dir,
-            top_k=cfg.top_k,
+        await executor.run_stage(
+            stage=FineTuneStage.MINING_NEGATIVES,
+            config=mining_stage_config(
+                cfg, out_dir=out_dir, train_path=str(train_path)
+            ),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
         run = await complete_stage(run, "mining_negatives")
-    else:
-        triples_path = Path(out_dir) / "training_triples.jsonl"
 
     # Stage 3: Contrastive fine-tuning.
     if "training" not in completed:
         run = await enter_stage(run, FineTuneStage.TRAINING)
-        checkpoint_path = await contrastive_fine_tune(
-            training_data_path=str(triples_path),
-            base_model=cfg.base_model,
-            output_dir=out_dir,
-            epochs=cfg.epochs,
-            learning_rate=cfg.learning_rate,
-            temperature=cfg.temperature,
-            batch_size=cfg.batch_size,
+        await executor.run_stage(
+            stage=FineTuneStage.TRAINING,
+            config=training_stage_config(
+                cfg, out_dir=out_dir, triples_path=str(triples_path)
+            ),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
         run = await complete_stage(run, "training")
-    else:
-        checkpoint_path = Path(out_dir) / "checkpoint"
 
     # Stage 4: Evaluation. Re-run when deploy is still pending so the
     # promotion gate always has a fresh measured A/B (evaluation is cheap
     # relative to training); on a resume where deploy already finished the
     # metrics are unused.
+    eval_config = evaluating_stage_config(
+        cfg,
+        out_dir=out_dir,
+        checkpoint_path=str(checkpoint_path),
+        val_path=str(val_path),
+    )
     if "evaluating" not in completed:
         run = await enter_stage(run, FineTuneStage.EVALUATING)
-        eval_metrics = await evaluate_checkpoint(
-            checkpoint_path=str(checkpoint_path),
-            base_model=cfg.base_model,
-            validation_data_path=str(val_path),
-            output_dir=out_dir,
+        await executor.run_stage(
+            stage=FineTuneStage.EVALUATING,
+            config=eval_config,
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
+        eval_metrics = await _read_eval_metrics(out_dir)
         run = await complete_stage(run, "evaluating")
     elif "deploying" not in completed:
-        eval_metrics = await evaluate_checkpoint(
-            checkpoint_path=str(checkpoint_path),
-            base_model=cfg.base_model,
-            validation_data_path=str(val_path),
-            output_dir=out_dir,
+        await executor.run_stage(
+            stage=FineTuneStage.EVALUATING,
+            config=eval_config,
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
+        eval_metrics = await _read_eval_metrics(out_dir)
     else:
         eval_metrics = None
 
