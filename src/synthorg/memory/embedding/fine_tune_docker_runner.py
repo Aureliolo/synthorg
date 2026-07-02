@@ -40,6 +40,10 @@ from synthorg.memory.embedding.fine_tune_container_config import (
     build_stage_host_config,
     cache_env,
 )
+from synthorg.memory.embedding.fine_tune_container_logs import (
+    drain_probe_output,
+    stream_markers_until_exit,
+)
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.embedding.fine_tune_probe_result import (
     ProbeResult,
@@ -54,7 +58,6 @@ from synthorg.observability.events.fine_tune import (
     FINE_TUNE_CONTAINER_STARTED,
     FINE_TUNE_CONTAINER_TIMED_OUT,
     FINE_TUNE_DOCKER_CONNECT_RETRIED,
-    FINE_TUNE_MARKER_DISCARDED,
     FINE_TUNE_PROBE_FAILED,
     FINE_TUNE_PROBE_STARTED,
 )
@@ -63,9 +66,6 @@ logger = get_logger(__name__)
 
 STAGE_CONFIG_ENV: Final[str] = "SYNTHORG_FINE_TUNE_STAGE_CONFIG"
 PROBE_ENV: Final[str] = "SYNTHORG_FINE_TUNE_PROBE"
-
-_MARKER_PROGRESS: Final[str] = "PROGRESS:"
-_MARKER_ERROR: Final[str] = "ERROR:"
 
 # Poll cadence for the cancellation watcher between exit checks.
 _EXIT_POLL_SECONDS: Final[float] = 0.5
@@ -317,7 +317,7 @@ class FineTuneContainerRunner:
             return ProbeResult(ok=False, detail=detail)
         try:
             output = await asyncio.wait_for(
-                self._drain_probe_output(container),
+                drain_probe_output(container),
                 timeout=_PROBE_TIMEOUT_SECONDS,
             )
         except TimeoutError:
@@ -397,7 +397,7 @@ class FineTuneContainerRunner:
         """
         error_lines: list[str] = []
         exit_task = asyncio.create_task(
-            self._await_exit(container, progress_callback, error_lines),
+            stream_markers_until_exit(container, progress_callback, error_lines),
         )
         try:
             exit_code = await self._watch_until_exit(
@@ -487,78 +487,6 @@ class FineTuneContainerRunner:
             if done:
                 return exit_task.result()
 
-    async def _await_exit(
-        self,
-        container: aiodocker.containers.DockerContainer,
-        progress_callback: ProgressCallback | None,
-        error_lines: list[str],
-    ) -> int:
-        """Drain marker output, then return the container's exit code.
-
-        Returns:
-            Result of type ``int``.
-
-        Raises:
-            FineTuneStageExecutionError: When the log stream or the
-                exit wait fails mid-stage (daemon restart, connection
-                reset), so callers see the documented error type
-                instead of a raw transport exception.
-        """
-        # The log stream yields decoded transport chunks, not lines: one
-        # chunk can carry several lines and a line can span chunks, so
-        # marker parsing buffers and splits on newlines itself.
-        buffer = ""
-        try:
-            async for raw in container.log(stdout=True, stderr=True, follow=True):
-                buffer += raw
-                while "\n" in buffer:
-                    line, _, buffer = buffer.partition("\n")
-                    self._handle_marker_line(
-                        line.strip(), progress_callback, error_lines
-                    )
-            if buffer.strip():
-                self._handle_marker_line(buffer.strip(), progress_callback, error_lines)
-            result = await container.wait()
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                FINE_TUNE_CONTAINER_FAILED,
-                phase="log_stream",
-                container_id=container.id[:_SHORT_ID_LEN],
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = (
-                f"container log stream failed mid-stage: {safe_error_description(exc)}"
-            )
-            raise FineTuneStageExecutionError(msg) from exc
-        return int(result.get("StatusCode", -1))
-
-    @staticmethod
-    def _handle_marker_line(
-        line: str,
-        progress_callback: ProgressCallback | None,
-        error_lines: list[str],
-    ) -> None:
-        """Dispatch one stdout marker line from the stage container."""
-        if line.startswith(_MARKER_PROGRESS):
-            if progress_callback is None:
-                return
-            fraction_text = line.removeprefix(_MARKER_PROGRESS).strip()
-            try:
-                fraction = float(fraction_text)
-            except ValueError:
-                # A malformed fraction is log noise, not a failure.
-                logger.debug(
-                    FINE_TUNE_MARKER_DISCARDED,
-                    marker=_MARKER_PROGRESS,
-                    payload=fraction_text[:_SHORT_ID_LEN],
-                )
-                return
-            progress_callback(fraction)
-        elif line.startswith(_MARKER_ERROR):
-            error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
-
     @staticmethod
     async def _stop(container: aiodocker.containers.DockerContainer) -> None:
         """SIGTERM the container (runner cancels cooperatively), then SIGKILL.
@@ -611,20 +539,6 @@ class FineTuneContainerRunner:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-
-    async def _drain_probe_output(
-        self, container: aiodocker.containers.DockerContainer
-    ) -> str:
-        """Collect the probe container's full output until exit.
-
-        Returns:
-            Result of type ``str``.
-        """
-        lines = [
-            raw async for raw in container.log(stdout=True, stderr=True, follow=True)
-        ]
-        await container.wait()
-        return "".join(lines)
 
 
 def _is_retryable_daemon_error(exc: Exception) -> bool:
