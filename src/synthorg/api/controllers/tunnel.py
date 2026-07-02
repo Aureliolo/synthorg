@@ -10,6 +10,8 @@ description (``safe_error_description``), so the text is both safe
 and actionable (e.g. "paste your token on the tunnel card").
 """
 
+from typing import Final
+
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -31,8 +33,8 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_MAX_TOKEN_LEN = 512
-_MAX_PROVIDER_LEN = 64
+_MAX_TOKEN_LEN: Final[int] = 512
+_MAX_PROVIDER_LEN: Final[int] = 64
 
 
 class TunnelStartResponse(BaseModel):

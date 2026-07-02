@@ -11,6 +11,7 @@ requests. No series is synthesised from point-in-time state.
 from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.budget.trends import TrendDataPoint
 from synthorg.core.approval import ApprovalItem
@@ -18,7 +19,7 @@ from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 
-_WINDOW_DAYS = 7
+_WINDOW_DAYS: Final[int] = 7
 
 _ROSTER_ADDS = frozenset({LifecycleEventType.HIRED})
 _ROSTER_REMOVES = frozenset({LifecycleEventType.FIRED, LifecycleEventType.OFFBOARDED})
