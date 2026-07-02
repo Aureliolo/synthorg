@@ -6,6 +6,7 @@ audit events, and -- when an approval store is wired -- enqueues the
 request for human review.
 """
 
+from datetime import datetime
 from typing import override
 from uuid import uuid4
 
@@ -68,6 +69,7 @@ class _RecordingApprovalStore:
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        created_since: datetime | None = None,
     ) -> tuple[ApprovalItem, ...]:
         return tuple(self.added)
 

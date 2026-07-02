@@ -11,7 +11,7 @@ services:
     image: busybox:<TAG>-musl@sha256:<DIGEST>
     volumes:
       - synthorg-data:/data
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data"]
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory /data/tunnel; chown -R 65532:65532 /data"]
     cap_drop:
       - ALL
     cap_add:

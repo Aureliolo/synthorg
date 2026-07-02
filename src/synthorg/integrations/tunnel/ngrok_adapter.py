@@ -26,7 +26,7 @@ from typing import Final
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import TunnelError, TunnelStartFailedError
 from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -157,9 +157,9 @@ class NgrokAdapter:
             The public URL of the active tunnel.
 
         Raises:
-            TunnelError: If no auth token is configured, or the tunnel
-                fails to start (auth rejected, ngrok service down,
-                etc.).
+            TunnelError: If no auth token is configured.
+            TunnelStartFailedError: If the tunnel fails to start (auth
+                rejected, ngrok service down, etc.).
         """
         async with self._lifecycle_lock:
             # ``_public_url`` is the active-tunnel sentinel; it is set
@@ -244,7 +244,7 @@ class NgrokAdapter:
                             error=safe_error_description(cleanup_exc),
                         )
                 msg = f"Failed to start ngrok tunnel: {safe_desc}"
-                raise TunnelError(msg) from exc
+                raise TunnelStartFailedError(msg) from exc
 
             self._public_url = public_url
             self._tunnel = tunnel

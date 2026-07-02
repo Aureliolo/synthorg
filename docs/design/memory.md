@@ -321,9 +321,14 @@ emits structured markers on stdout that the launcher parses: `STAGE_START:` /
 pipeline in the orchestrator, and `ERROR:<message>` carries the failure detail. The shared
 data volume is mounted read-write at `/data` (training data in, checkpoints out
 under `/data/fine-tune/runs/<run_id>/`), so consecutive stages hand off through
-deterministic paths. Stage containers get GPU passthrough via Docker
-`DeviceRequests` when `gpu_enabled=True` (only meaningful for the GPU variant),
-a memory limit from `memory.fine_tune_memory_limit`, and a per-stage wall-clock
+deterministic paths. The volume name comes from `memory.fine_tune_data_volume`
+(default `synthorg-data`, the compose data volume; env override
+`SYNTHORG_FINE_TUNE_DATA_VOLUME`) and must be a Docker volume NAME, never a
+path. Stage containers get GPU passthrough via Docker
+`DeviceRequests` when `gpu_enabled=True` (only meaningful for the GPU variant;
+`memory.fine_tune_default_gpu` supplies the default for runs without an
+explicit execution config), a memory limit from `memory.fine_tune_memory_limit`,
+and a per-stage wall-clock
 timeout from `memory.fine_tune_stage_timeout_seconds`; cancellation stops the
 container (SIGTERM reaches the runner's cooperative token). When a run requests no
 explicit execution config the backend derives it: image configured means docker,

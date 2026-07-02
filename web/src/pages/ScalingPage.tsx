@@ -6,11 +6,6 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { ROUTES } from '@/router/routes'
 import { useScalingData } from '@/hooks/useScalingData'
-import { createLogger } from '@/lib/logger'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
-
-const log = createLogger('ScalingPage')
 
 import { DecisionHistory } from './scaling/DecisionHistory'
 import { PromotionCycleSection } from './scaling/PromotionCycleSection'
@@ -18,32 +13,6 @@ import { ScalingMetrics } from './scaling/ScalingMetrics'
 import { ScalingSkeleton } from './scaling/ScalingSkeleton'
 import { SignalGauges } from './scaling/SignalGauges'
 import { StrategyControls } from './scaling/StrategyControls'
-
-type EvaluateNow = ReturnType<typeof useScalingData>['evaluateNow']
-
-function evaluationResultToast(count: number): Parameters<ReturnType<typeof useToastStore.getState>['add']>[0] {
-  if (count > 0) {
-    return { variant: 'success', title: `Evaluation produced ${count} decision(s)` }
-  }
-  return { variant: 'info', title: 'Evaluation produced no decisions' }
-}
-
-function useEvaluateNow(evaluateNow: EvaluateNow): () => Promise<void> {
-  const addToast = useToastStore((s) => s.add)
-  return async () => {
-    try {
-      const results = await evaluateNow()
-      addToast(evaluationResultToast(results.length))
-    } catch (err) {
-      log.error('Evaluation failed', err)
-      addToast({
-        variant: 'error',
-        title: 'Could not evaluate scaling',
-        description: getErrorMessage(err),
-      })
-    }
-  }
-}
 
 export default function ScalingPage() {
   const {
@@ -58,8 +27,6 @@ export default function ScalingPage() {
     evaluateNow,
   } = useScalingData()
 
-  const handleEvaluateNow = useEvaluateNow(evaluateNow)
-
   if (loading && strategies.length === 0) {
     return <ScalingSkeleton />
   }
@@ -70,7 +37,13 @@ export default function ScalingPage() {
         title="Dynamic Scaling"
         refreshing={isRefetching}
         primaryAction={
-          <Button size="sm" onClick={handleEvaluateNow} disabled={evaluating}>
+          <Button
+            size="sm"
+            onClick={() => {
+              void evaluateNow()
+            }}
+            disabled={evaluating}
+          >
             {evaluating ? 'Evaluating...' : 'Evaluate Now'}
           </Button>
         }

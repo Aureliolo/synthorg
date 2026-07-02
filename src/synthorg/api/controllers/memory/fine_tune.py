@@ -8,11 +8,12 @@ from litestar.datastructures import State
 
 from synthorg.api.controllers.memory._preflight import (
     _PREFLIGHT_HARD_TIMEOUT_MARGIN_S,
+    _PROBE_REQUEST_CEILING_S,
     _recommend_batch_size,
     _resolve_fine_tune_thresholds,
     _run_preflight_checks,
     probe_fine_tune_image,
-    resolve_probe_gpu_default,
+    resolve_probe_target,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_roles
@@ -271,33 +272,31 @@ class MemoryFineTuneController(Controller):
         app_state: AppState = state.app_state
         settings_service = app_state.slice(SettingsStateSlice).settings_service
         thresholds = await _resolve_fine_tune_thresholds(settings_service)
-        # Backend-aware dependency probe, resolved BEFORE the walk's hard
-        # ceiling: a docker-backed run boots an ephemeral probe container
-        # (its own timeout, cached briefly) proving the image runs and
-        # sees the GPU; the in-process backend inspects local torch
-        # inside the check thread instead.
-        from synthorg.memory.embedding.fine_tune_image_resolution import (  # noqa: PLC0415
-            get_resolved_fine_tune_image,
-        )
-
-        execution = data.execution
-        probe_image = ""
-        probe_gpu = False
-        if execution is not None and execution.backend == "docker":
-            probe_image = execution.image or get_resolved_fine_tune_image()
-            probe_gpu = execution.gpu_enabled
-        elif execution is None:
-            probe_image = get_resolved_fine_tune_image()
-            probe_gpu = await resolve_probe_gpu_default(settings_service)
-        docker_probe = (
-            await probe_fine_tune_image(
-                image=probe_image,
-                gpu_enabled=probe_gpu,
-                clock=app_state.clock,
-            )
-            if probe_image
-            else None
-        )
+        # Backend-aware dependency probe under its own hard ceiling: a
+        # docker-backed run boots an ephemeral probe container (each
+        # inner Docker call is bounded, cached briefly) proving the
+        # image runs and sees the GPU; the in-process backend inspects
+        # local torch inside the check thread instead.
+        probe_image, probe_gpu = await resolve_probe_target(data, settings_service)
+        docker_probe = None
+        if probe_image:
+            try:
+                async with asyncio.timeout(_PROBE_REQUEST_CEILING_S):
+                    docker_probe = await probe_fine_tune_image(
+                        image=probe_image,
+                        gpu_enabled=probe_gpu,
+                        clock=app_state.clock,
+                    )
+            except TimeoutError as exc:
+                logger.warning(
+                    MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT,
+                    phase="probe",
+                    hard_ceiling_s=_PROBE_REQUEST_CEILING_S,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = "Preflight probe timed out"
+                raise ServiceUnavailableError(msg) from exc
         # The walk's in-thread monotonic deadline only starts counting
         # once the ``to_thread`` job is scheduled; a saturated default
         # executor could otherwise leave this request awaiting

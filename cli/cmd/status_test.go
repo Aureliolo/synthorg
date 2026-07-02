@@ -60,7 +60,7 @@ func TestRunStatusCheckProbesDespiteUnloadableConfig(t *testing.T) {
 	probedPort := 0
 	fetchHealth = func(_ context.Context, port int) ([]byte, int, error) {
 		probedPort = port
-		return nil, 0, &simpleError{msg: "connection refused"}
+		return nil, 0, errBackendUnreachable
 	}
 
 	dataDir := t.TempDir()

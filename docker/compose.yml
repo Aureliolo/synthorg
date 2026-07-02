@@ -59,7 +59,7 @@ services:
       - synthorg-data:/data
       - synthorg-pgdata:/pgdata
       - synthorg-nats-data:/nats-data
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data; chown -R 70:70 /pgdata; chmod 0700 /pgdata; chown -R 65532:65532 /nats-data"]
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory /data/tunnel; chown -R 65532:65532 /data; chown -R 70:70 /pgdata; chmod 0700 /pgdata; chown -R 65532:65532 /nats-data"]
     cap_drop:
       - ALL
     cap_add:
@@ -116,6 +116,7 @@ services:
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"
       SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
+      SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
     # Image sets USER 65532 in the Dockerfile; no compose override

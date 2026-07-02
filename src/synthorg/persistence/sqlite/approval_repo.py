@@ -187,6 +187,31 @@ async def _safe_rollback(
         )
 
 
+def _filter_clauses(
+    filter_spec: ApprovalFilterSpec,
+) -> tuple[list[str], list[object]]:
+    """WHERE clauses + bind params for a filter spec (query and count).
+
+    Returns:
+        Result of type ``tuple[list[str], list[object]]``.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    if filter_spec.status is not None:
+        clauses.append("status = ?")
+        params.append(filter_spec.status.value)
+    if filter_spec.risk_level is not None:
+        clauses.append("risk_level = ?")
+        params.append(filter_spec.risk_level.value)
+    if filter_spec.action_type is not None:
+        clauses.append("action_type = ?")
+        params.append(filter_spec.action_type)
+    if filter_spec.created_since is not None:
+        clauses.append("created_at >= ?")
+        params.append(format_iso_utc(filter_spec.created_since))
+    return clauses, params
+
+
 def _row_to_item(row: Row) -> ApprovalItem:
     """Convert a database row to an ApprovalItem.
 
@@ -643,17 +668,7 @@ class SQLiteApprovalRepository:
             event=API_APPROVAL_REPO_FAILED,
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.status is not None:
-            clauses.append("status = ?")
-            params.append(filter_spec.status.value)
-        if filter_spec.risk_level is not None:
-            clauses.append("risk_level = ?")
-            params.append(filter_spec.risk_level.value)
-        if filter_spec.action_type is not None:
-            clauses.append("action_type = ?")
-            params.append(filter_spec.action_type)
+        clauses, params = _filter_clauses(filter_spec)
         where = " AND ".join(clauses) if clauses else "1=1"
         params.extend([effective_limit, offset])
         sql = f"""
@@ -695,17 +710,7 @@ class SQLiteApprovalRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.status is not None:
-            clauses.append("status = ?")
-            params.append(filter_spec.status.value)
-        if filter_spec.risk_level is not None:
-            clauses.append("risk_level = ?")
-            params.append(filter_spec.risk_level.value)
-        if filter_spec.action_type is not None:
-            clauses.append("action_type = ?")
-            params.append(filter_spec.action_type)
+        clauses, params = _filter_clauses(filter_spec)
         where = " AND ".join(clauses) if clauses else "1=1"
         sql = f"""
             SELECT COUNT(*) FROM approvals WHERE {where}

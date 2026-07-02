@@ -16,6 +16,7 @@ install the binary themselves.
 """
 
 import asyncio
+import contextlib
 import platform
 import re
 import shutil
@@ -27,7 +28,11 @@ from pathlib import Path
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import (
+    TunnelDownloadError,
+    TunnelError,
+    TunnelStartFailedError,
+)
 from synthorg.integrations.tunnel._binaries import (
     MACHINE_TO_ARCH,
     default_binary_dir,
@@ -164,8 +169,9 @@ class CloudflareQuickTunnelAdapter:
             The ``https://*.trycloudflare.com`` URL.
 
         Raises:
-            TunnelError: When the binary cannot be resolved, the
-                process dies early, or no URL appears in time.
+            TunnelError: When the binary cannot be resolved.
+            TunnelStartFailedError: When the process dies early or no
+                URL appears in time.
         """
         async with self._lifecycle_lock:
             if self._public_url is not None:
@@ -204,24 +210,51 @@ class CloudflareQuickTunnelAdapter:
             logger.info(TUNNEL_STOPPED)
 
     async def get_url(self) -> str | None:
-        """Return the current public URL, or ``None`` if stopped."""
-        return self._public_url
+        """Return the current public URL, or ``None`` if stopped.
+
+        Checks the child process is still alive: a crashed vendor CLI
+        must not keep reporting a dead URL as live indefinitely.
+        """
+        async with self._lifecycle_lock:
+            process = self._process
+            if process is not None and process.poll() is not None:
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="liveness",
+                    returncode=process.returncode,
+                    note="cloudflared exited; clearing tunnel state",
+                )
+                self._process = None
+                self._public_url = None
+            return self._public_url
 
     async def _spawn_and_capture_url(self, binary: Path) -> str:
-        process = spawn_cli(
-            [
-                str(binary),
-                "tunnel",
-                "--url",
-                f"http://127.0.0.1:{self._port}",
-                "--no-autoupdate",
-            ]
-        )
+        try:
+            process = spawn_cli(
+                [
+                    str(binary),
+                    "tunnel",
+                    "--url",
+                    f"http://127.0.0.1:{self._port}",
+                    "--no-autoupdate",
+                ]
+            )
+        except OSError as exc:
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="spawn",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"cloudflared failed to start: {safe_error_description(exc)}"
+            raise TunnelStartFailedError(msg) from exc
         # cloudflared logs the assigned URL on stderr.
         if process.stderr is None or process.stdout is None:
-            await terminate_process(process)
+            # Suppress teardown noise so the original failure propagates.
+            with contextlib.suppress(OSError):
+                await terminate_process(process)
             msg = "cloudflared subprocess pipes were not created"
-            raise TunnelError(msg)
+            raise TunnelStartFailedError(msg)
         spawn_drain_thread(process.stdout, name="cloudflared-stdout")
         url = await wait_for_pattern(
             process.stderr,
@@ -229,14 +262,15 @@ class CloudflareQuickTunnelAdapter:
             timeout_seconds=_START_TIMEOUT_SECONDS,
         )
         if url is None:
-            await terminate_process(process)
+            with contextlib.suppress(OSError):
+                await terminate_process(process)
             rc = process.returncode
             logger.warning(TUNNEL_ERROR, phase="start", returncode=rc)
             msg = (
                 "cloudflared produced no quick-tunnel URL within "
                 f"{_START_TIMEOUT_SECONDS:.0f}s (exit code {rc})"
             )
-            raise TunnelError(msg)
+            raise TunnelStartFailedError(msg)
         self._process = process
         spawn_drain_thread(process.stderr, name="cloudflared-stderr")
         return url
@@ -279,7 +313,7 @@ class CloudflareQuickTunnelAdapter:
                 error=safe_error_description(exc),
             )
             msg = f"Failed to download cloudflared: {safe_error_description(exc)}"
-            raise TunnelError(msg) from exc
+            raise TunnelDownloadError(msg) from exc
 
     def _download_binary(self, asset: str) -> Path:
         """Fetch the official release asset into the binary dir.

@@ -56,6 +56,9 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
     from synthorg.memory.embedding.training_sources import (  # noqa: PLC0415
         TrajectoryTrainingDataSource,
     )
+    from synthorg.memory.errors import (  # noqa: PLC0415
+        FineTuneStageExecutionError,
+    )
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
     from synthorg.observability.events.memory import (  # noqa: PLC0415
         MEMORY_FINE_TUNE_WIRING_FAILED,
@@ -178,33 +181,68 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         container_runner = FineTuneContainerRunner(clock=app_state.clock)
 
         async def _resolve_default_execution() -> FineTuneExecutionConfig:
-            return resolve_execution_config(
-                None,
-                fine_tune_image=get_resolved_fine_tune_image(),
-                default_gpu=await resolver.get_bool(
-                    SettingNamespace.MEMORY, "fine_tune_default_gpu"
-                ),
-                default_memory_limit=await resolver.get_str(
-                    SettingNamespace.MEMORY, "fine_tune_memory_limit"
-                ),
-                default_timeout_seconds=await resolver.get_float(
-                    SettingNamespace.MEMORY, "fine_tune_stage_timeout_seconds"
-                ),
-            )
+            # Runs at run-start time, long after the boot best-effort
+            # block: a malformed setting here must surface as the typed
+            # stage error the orchestrator's failure path expects, not
+            # an anonymous raw exception.
+            try:
+                return resolve_execution_config(
+                    None,
+                    fine_tune_image=get_resolved_fine_tune_image(),
+                    default_gpu=await resolver.get_bool(
+                        SettingNamespace.MEMORY, "fine_tune_default_gpu"
+                    ),
+                    default_memory_limit=await resolver.get_str(
+                        SettingNamespace.MEMORY, "fine_tune_memory_limit"
+                    ),
+                    default_timeout_seconds=await resolver.get_float(
+                        SettingNamespace.MEMORY, "fine_tune_stage_timeout_seconds"
+                    ),
+                )
+            except Exception as exc:
+                reraise_critical(exc)
+                logger.warning(
+                    MEMORY_FINE_TUNE_WIRING_FAILED,
+                    service="fine_tune_orchestrator",
+                    operation="resolve_default_execution",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = (
+                    "could not resolve the default fine-tune execution"
+                    f" config from settings: {safe_error_description(exc)}"
+                )
+                raise FineTuneStageExecutionError(msg) from exc
 
         async def _make_stage_executor(
             execution: FineTuneExecutionConfig | None,
         ) -> StageExecutor:
-            if execution is not None and execution.backend == "docker":
-                data_volume = await resolver.get_str(
-                    SettingNamespace.MEMORY, "fine_tune_data_volume"
+            try:
+                if execution is not None and execution.backend == "docker":
+                    data_volume = await resolver.get_str(
+                        SettingNamespace.MEMORY, "fine_tune_data_volume"
+                    )
+                    return DockerStageExecutor(
+                        execution=execution,
+                        runner=container_runner,
+                        data_volume=data_volume,
+                    )
+                return InProcessStageExecutor()
+            except Exception as exc:
+                reraise_critical(exc)
+                logger.warning(
+                    MEMORY_FINE_TUNE_WIRING_FAILED,
+                    service="fine_tune_orchestrator",
+                    operation="make_stage_executor",
+                    backend=execution.backend if execution is not None else None,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                return DockerStageExecutor(
-                    execution=execution,
-                    runner=container_runner,
-                    data_volume=data_volume,
+                msg = (
+                    "could not build the fine-tune stage executor:"
+                    f" {safe_error_description(exc)}"
                 )
-            return InProcessStageExecutor()
+                raise FineTuneStageExecutionError(msg) from exc
 
         orchestrator = FineTuneOrchestrator(
             run_repo=run_repo,

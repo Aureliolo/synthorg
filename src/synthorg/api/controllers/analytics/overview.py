@@ -2,7 +2,6 @@
 """Analytics overview endpoint at /analytics/overview."""
 
 import asyncio
-import contextlib
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -50,6 +49,18 @@ from synthorg.settings.state import config_resolver_of
 logger = get_logger(__name__)
 
 
+def _log_trend_source_unavailable(source: str) -> None:
+    """Log a degraded trend source.
+
+    Keeps a flat-zero sparkline distinguishable from genuine zero activity.
+    """
+    logger.debug(
+        ANALYTICS_OVERVIEW_QUERIED,
+        source=source,
+        note="trend source unavailable; sparkline degrades to empty",
+    )
+
+
 async def _collect_trend_sources(
     app_state: AppState,
     now: datetime,
@@ -73,14 +84,20 @@ async def _collect_trend_sources(
     metrics: tuple[TaskMetricRecord, ...] = ()
     events: tuple[AgentLifecycleEvent, ...] = ()
     approvals: tuple[ApprovalItem, ...] = ()
-    with contextlib.suppress(ServiceUnavailableError):
+    try:
         metrics = performance_tracker_of(app_state).get_task_metrics(since=since)
-    with contextlib.suppress(ServiceUnavailableError):
+    except ServiceUnavailableError:
+        _log_trend_source_unavailable("performance_tracker")
+    try:
         events = await persistence_of(app_state).lifecycle_events.list_events(
             since=since,
         )
-    with contextlib.suppress(ServiceUnavailableError):
-        approvals = await approval_store_of(app_state).list_items()
+    except ServiceUnavailableError:
+        _log_trend_source_unavailable("lifecycle_events")
+    try:
+        approvals = await approval_store_of(app_state).list_items(created_since=since)
+    except ServiceUnavailableError:
+        _log_trend_source_unavailable("approval_store")
     return metrics, events, approvals
 
 

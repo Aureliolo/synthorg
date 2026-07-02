@@ -81,6 +81,9 @@ class OllamaVramGuard:
         # deciding evictions from the same snapshot would both evict.
         # lint-allow: loop-bound-init -- built lazily inside the event loop.
         self._lock = asyncio.Lock()
+        # Shared across guard runs: the guard fires before every ollama
+        # completion, so a per-call client would re-handshake each time.
+        self._client: httpx.AsyncClient | None = None
 
     async def ensure_capacity(self, model_id: str) -> None:
         """Make room for ``model_id`` before it is loaded, best-effort."""
@@ -91,13 +94,30 @@ class OllamaVramGuard:
                 await self._ensure_capacity_locked(model_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING: the guard is a safety feature; a persistent
+            # failure silently disables spill protection.
+            logger.warning(
                 PROVIDER_OLLAMA_VRAM_GUARD_FAILED,
                 base_url=self._base_url,
                 model=model_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    async def aclose(self) -> None:
+        """Release the shared HTTP client."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+
+    def _http(self) -> httpx.AsyncClient:
+        """Lazily-created shared HTTP client (used under the guard lock).
+
+        Returns:
+            Result of type ``httpx.AsyncClient``.
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
+        return self._client
 
     async def _ensure_capacity_locked(self, model_id: str) -> None:
         loaded = await self._loaded_models()
@@ -124,12 +144,25 @@ class OllamaVramGuard:
         if need <= 0:
             return
         used_by_others = sum(m.size_vram for m in others)
-        # Soonest-expiring first: ollama's expires_at is last-use plus
-        # keep_alive, so ascending order approximates least recently used.
-        for candidate in sorted(others, key=lambda m: m.expires_at):
+        for candidate in sorted(others, key=_lru_key):
             if used_by_others + need <= budget:
                 break
-            await self._evict(candidate)
+            # Per-candidate isolation: one flaky eviction must not
+            # abort the rest of the loop (the next candidate may still
+            # free enough VRAM).
+            try:
+                await self._evict(candidate)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    PROVIDER_OLLAMA_VRAM_GUARD_FAILED,
+                    base_url=self._base_url,
+                    model=candidate.name or candidate.model,
+                    operation="evict",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
             used_by_others -= candidate.size_vram
 
     async def _evict_reactive(
@@ -140,14 +173,13 @@ class OllamaVramGuard:
         """Without a VRAM budget, evict one LRU model on an observed spill."""
         if not any(m.spilled for m in loaded) or not others:
             return
-        lru = min(others, key=lambda m: m.expires_at)
+        lru = min(others, key=_lru_key)
         await self._evict(lru)
 
     async def _loaded_models(self) -> list[_LoadedModel]:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            resp = await client.get(f"{self._base_url}/api/ps")
-            resp.raise_for_status()
-            payload = resp.json()
+        resp = await self._http().get(f"{self._base_url}/api/ps")
+        resp.raise_for_status()
+        payload = resp.json()
         entries = payload.get("models") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
             return []
@@ -159,10 +191,9 @@ class OllamaVramGuard:
         Returns:
             The model's size in bytes, or 0 when unknown.
         """
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            resp = await client.get(f"{self._base_url}/api/tags")
-            resp.raise_for_status()
-            payload = resp.json()
+        resp = await self._http().get(f"{self._base_url}/api/tags")
+        resp.raise_for_status()
+        payload = resp.json()
         entries = payload.get("models") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
             return 0
@@ -178,12 +209,11 @@ class OllamaVramGuard:
 
     async def _evict(self, model: _LoadedModel) -> None:
         name = model.name or model.model
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                f"{self._base_url}/api/generate",
-                json={"model": name, "keep_alive": 0},
-            )
-            resp.raise_for_status()
+        resp = await self._http().post(
+            f"{self._base_url}/api/generate",
+            json={"model": name, "keep_alive": 0},
+        )
+        resp.raise_for_status()
         logger.info(
             PROVIDER_OLLAMA_MODEL_EVICTED,
             base_url=self._base_url,
@@ -191,6 +221,21 @@ class OllamaVramGuard:
             size_vram=model.size_vram,
             spilled=model.spilled,
         )
+
+
+def _lru_key(model: _LoadedModel) -> tuple[bool, str]:
+    """Ascending sort key approximating least-recently-used.
+
+    Ollama's ``expires_at`` is last-use plus keep-alive, so soonest
+    expiry ~= least recently used. A blank ``expires_at`` (pinned
+    ``keep_alive: -1`` or an unknown payload shape) sorts LAST so a
+    deliberately-pinned model is the final eviction candidate, never
+    the first.
+
+    Returns:
+        Result of type ``tuple[bool, str]``.
+    """
+    return (model.expires_at == "", model.expires_at)
 
 
 def _names_match(candidate: object, model_id: str) -> bool:

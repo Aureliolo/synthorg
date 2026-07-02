@@ -21,20 +21,27 @@ marked FAILED and stay resumable) and stop-then-force-remove teardown.
 """
 
 import asyncio
-import contextlib
 import json
 import re
-from typing import Final, cast
+from typing import Final, Self, cast
 
 import aiodocker
 import aiodocker.containers
 from aiodocker.types import JSONObject
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage, ProgressCallback
+from synthorg.memory.embedding.fine_tune_container_config import (
+    PROBE_CACHE_DIR,
+    STAGE_CACHE_DIR,
+    build_probe_host_config,
+    build_stage_host_config,
+    cache_env,
+)
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.errors import FineTuneCancelledError, FineTuneStageExecutionError
 from synthorg.observability import get_logger, safe_error_description
@@ -44,11 +51,12 @@ from synthorg.observability.events.fine_tune import (
     FINE_TUNE_CONTAINER_FAILED,
     FINE_TUNE_CONTAINER_STARTED,
     FINE_TUNE_CONTAINER_TIMED_OUT,
+    FINE_TUNE_DOCKER_CONNECT_RETRIED,
+    FINE_TUNE_MARKER_DISCARDED,
     FINE_TUNE_PROBE_FAILED,
     FINE_TUNE_PROBE_OK,
     FINE_TUNE_PROBE_STARTED,
 )
-from synthorg.tools.sandbox._memory_limit import parse_memory_limit
 
 logger = get_logger(__name__)
 
@@ -61,17 +69,18 @@ _PROBE_LINE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^PROBE_(?:OK|FAIL)\b.*$", re.MULTILINE
 )
 
-# All GPUs visible to the daemon; per-GPU selection is a deployment
-# concern (NVIDIA_VISIBLE_DEVICES on the daemon / compose level).
-_GPU_COUNT_ALL: Final[int] = -1
-_PIDS_LIMIT: Final[int] = 256
 # Poll cadence for the cancellation watcher between exit checks.
 _EXIT_POLL_SECONDS: Final[float] = 0.5
 # Grace Docker gives the runner's SIGTERM handler before SIGKILL.
 _STOP_GRACE_SECONDS: Final[int] = 10
 _PROBE_TIMEOUT_SECONDS: Final[float] = 120.0
-_PROBE_MEMORY_LIMIT: Final[str] = "4g"
 _SHORT_ID_LEN: Final[int] = 12
+# Ceiling on individual Docker API calls (version/create/start) so a
+# hung daemon can never wedge a run below the stage deadline.
+_DOCKER_API_TIMEOUT_SECONDS: Final[float] = 30.0
+_CONNECT_RETRY_ATTEMPTS: Final[int] = 3
+_CONNECT_RETRY_BASE_SECONDS: Final[float] = 0.5
+_CONNECT_RETRY_CAP_SECONDS: Final[float] = 2.0
 
 LABEL_MANAGED: Final[str] = "synthorg.managed"
 LABEL_COMPONENT: Final[str] = "synthorg.component"
@@ -88,14 +97,33 @@ class ProbeResult(BaseModel):
         gpu: GPU device name the container saw, or ``None``.
         vram_gb: Total VRAM in GiB, or ``None`` when no GPU.
         detail: Human-readable outcome line for the preflight report.
+        gpu_error: Failure detail when the dependencies imported but
+            the GPU inspection itself raised; distinguishes "detection
+            broke" from a genuine CPU-only host.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ok: bool
     gpu: str | None = None
-    vram_gb: float | None = None
+    vram_gb: float | None = Field(default=None, ge=0)
     detail: str
+    gpu_error: str | None = None
+
+    @model_validator(mode="after")
+    def _failed_probe_carries_no_hardware(self) -> Self:
+        """A failed probe cannot report GPU readings.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When ``ok=False`` carries gpu/vram values.
+        """
+        if not self.ok and (self.gpu is not None or self.vram_gb is not None):
+            msg = "a failed probe cannot carry gpu/vram readings"
+            raise ValueError(msg)
+        return self
 
 
 def parse_probe_line(line: str) -> ProbeResult:
@@ -121,7 +149,7 @@ def parse_probe_line(line: str) -> ProbeResult:
                 vram = None
         return ProbeResult(ok=True, gpu=gpu, vram_gb=vram, detail=text)
     reason = text.removeprefix("PROBE_FAIL").strip() or "probe failed"
-    return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=reason)
+    return ProbeResult(ok=False, detail=reason)
 
 
 class FineTuneContainerRunner:
@@ -191,37 +219,27 @@ class FineTuneContainerRunner:
             FineTuneStageExecutionError: On non-zero exit, timeout, or a
                 launch failure.
         """
-        container_config = {
+        container_config: dict[str, object] = {
             "Image": execution.image,
-            "Env": [f"{STAGE_CONFIG_ENV}={json.dumps(config)}"],
+            "Env": [
+                f"{STAGE_CONFIG_ENV}={json.dumps(config)}",
+                *cache_env(STAGE_CACHE_DIR),
+            ],
             "Labels": {
                 LABEL_MANAGED: "true",
                 LABEL_COMPONENT: COMPONENT_FINE_TUNE,
                 LABEL_RUN_ID: run_id,
                 LABEL_STAGE: stage.value,
             },
-            "HostConfig": _build_host_config(execution, data_volume),
+            "HostConfig": build_stage_host_config(execution, data_volume),
         }
-        try:
-            container = await docker.containers.create(
-                config=cast("JSONObject", container_config),
-            )
-            await container.start()
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                FINE_TUNE_CONTAINER_FAILED,
-                run_id=run_id,
-                stage=stage.value,
-                phase="launch",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = (
-                f"could not launch the {stage.value} stage container"
-                f" (image {execution.image}): {safe_error_description(exc)}"
-            )
-            raise FineTuneStageExecutionError(msg) from exc
+        container = await self._create_and_start(
+            docker,
+            container_config,
+            run_id=run_id,
+            stage=stage.value,
+            image=execution.image,
+        )
         logger.info(
             FINE_TUNE_CONTAINER_STARTED,
             run_id=run_id,
@@ -242,6 +260,75 @@ class FineTuneContainerRunner:
         finally:
             await self._remove(container, run_id=run_id, stage=stage.value)
 
+    async def _create_and_start(
+        self,
+        docker: aiodocker.Docker,
+        container_config: dict[str, object],
+        *,
+        run_id: str,
+        stage: str,
+        image: str | None,
+    ) -> aiodocker.containers.DockerContainer:
+        """Create and start one container, never leaking a created one.
+
+        Returns:
+            The running container.
+
+        Raises:
+            FineTuneStageExecutionError: On a create/start failure or a
+                Docker API call exceeding its ceiling; a container that
+                was created but failed to start is removed first.
+        """
+        try:
+            container = await asyncio.wait_for(
+                docker.containers.create(config=cast("JSONObject", container_config)),
+                timeout=_DOCKER_API_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            raise self._launch_failure(
+                exc, run_id=run_id, stage=stage, image=image
+            ) from exc
+        try:
+            await asyncio.wait_for(
+                container.start(), timeout=_DOCKER_API_TIMEOUT_SECONDS
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            await self._remove(container, run_id=run_id, stage=stage)
+            raise self._launch_failure(
+                exc, run_id=run_id, stage=stage, image=image
+            ) from exc
+        return container
+
+    @staticmethod
+    def _launch_failure(
+        exc: Exception,
+        *,
+        run_id: str,
+        stage: str,
+        image: str | None,
+    ) -> FineTuneStageExecutionError:
+        """Log a launch failure and build its typed error.
+
+        Returns:
+            The error for the caller to raise (keeps the raise at the
+            call site so the traceback points at the failing phase).
+        """
+        logger.warning(
+            FINE_TUNE_CONTAINER_FAILED,
+            run_id=run_id,
+            stage=stage,
+            phase="launch",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = (
+            f"could not launch the {stage} stage container"
+            f" (image {image}): {safe_error_description(exc)}"
+        )
+        return FineTuneStageExecutionError(msg)
+
     async def probe(self, *, image: str, gpu_enabled: bool) -> ProbeResult:
         """Boot a probe container and report dependency/GPU readiness.
 
@@ -253,7 +340,9 @@ class FineTuneContainerRunner:
         try:
             docker = await self._connect()
         except FineTuneStageExecutionError as exc:
-            return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=str(exc))
+            detail = str(exc)
+            logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
+            return ProbeResult(ok=False, detail=detail)
         try:
             return await self._probe_with_client(
                 docker, image=image, gpu_enabled=gpu_enabled
@@ -273,33 +362,25 @@ class FineTuneContainerRunner:
         Returns:
             Result of type ``ProbeResult``.
         """
-        host_config: dict[str, object] = {
-            "Memory": parse_memory_limit(_PROBE_MEMORY_LIMIT),
-            "PidsLimit": _PIDS_LIMIT,
-        }
-        if gpu_enabled:
-            host_config["DeviceRequests"] = _gpu_device_requests()
-        container_config = {
+        container_config: dict[str, object] = {
             "Image": image,
-            "Env": [f"{PROBE_ENV}=1"],
+            "Env": [f"{PROBE_ENV}=1", *cache_env(PROBE_CACHE_DIR)],
             "Labels": {
                 LABEL_MANAGED: "true",
                 LABEL_COMPONENT: COMPONENT_FINE_TUNE,
                 LABEL_STAGE: "probe",
             },
-            "HostConfig": host_config,
+            "HostConfig": build_probe_host_config(gpu_enabled=gpu_enabled),
         }
         try:
-            container = await docker.containers.create(
-                config=cast("JSONObject", container_config),
+            container = await self._create_and_start(
+                docker, container_config, run_id="probe", stage="probe", image=image
             )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            detail = f"probe container creation failed: {safe_error_description(exc)}"
+        except FineTuneStageExecutionError as exc:
+            detail = str(exc)
             logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
-            return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=detail)
+            return ProbeResult(ok=False, detail=detail)
         try:
-            await container.start()
             output = await asyncio.wait_for(
                 self._drain_probe_output(container),
                 timeout=_PROBE_TIMEOUT_SECONDS,
@@ -307,19 +388,28 @@ class FineTuneContainerRunner:
         except TimeoutError:
             detail = f"probe timed out after {_PROBE_TIMEOUT_SECONDS:.0f}s"
             logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
-            return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=detail)
+            return ProbeResult(ok=False, detail=detail)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             detail = f"probe failed to run: {safe_error_description(exc)}"
             logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
-            return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=detail)
+            return ProbeResult(ok=False, detail=detail)
         finally:
             await self._remove(container, run_id="probe", stage="probe")
+        return self._parse_probe_output(output, image=image)
+
+    @staticmethod
+    def _parse_probe_output(output: str, *, image: str) -> ProbeResult:
+        """Extract and log the probe verdict from the container output.
+
+        Returns:
+            Result of type ``ProbeResult``.
+        """
         match = _PROBE_LINE_PATTERN.search(output)
         if match is None:
             detail = "probe produced no PROBE_OK/PROBE_FAIL line"
             logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
-            return ProbeResult(ok=False, gpu=None, vram_gb=None, detail=detail)
+            return ProbeResult(ok=False, detail=detail)
         result = parse_probe_line(match.group(0))
         if result.ok:
             logger.info(
@@ -338,6 +428,10 @@ class FineTuneContainerRunner:
     async def _connect() -> aiodocker.Docker:
         """Open a Docker client and verify the daemon answers.
 
+        The version probe gets a bounded retry (a momentary daemon blip
+        must not kill a multi-hour run outright) and a per-call ceiling
+        (a hung daemon must not wedge the caller forever).
+
         Returns:
             An ``aiodocker.Docker`` client the caller must close.
 
@@ -345,11 +439,28 @@ class FineTuneContainerRunner:
             FineTuneStageExecutionError: If the daemon is unavailable.
         """
         client = aiodocker.Docker()
+        retry = GeneralRetryHandler(
+            retryable=_is_retryable_daemon_error,
+            max_attempts=_CONNECT_RETRY_ATTEMPTS,
+            base=_CONNECT_RETRY_BASE_SECONDS,
+            cap=_CONNECT_RETRY_CAP_SECONDS,
+            event=FINE_TUNE_DOCKER_CONNECT_RETRIED,
+        )
         try:
-            await client.version()
+            await retry.execute(
+                lambda: asyncio.wait_for(
+                    client.version(), timeout=_DOCKER_API_TIMEOUT_SECONDS
+                )
+            )
         except Exception as exc:
             reraise_critical(exc)
             await client.close()
+            logger.warning(
+                FINE_TUNE_CONTAINER_FAILED,
+                phase="connect",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = (
                 "Docker daemon unavailable for fine-tune stage"
                 f" containers: {safe_error_description(exc)}"
@@ -389,9 +500,11 @@ class FineTuneContainerRunner:
         except BaseException:
             if not exit_task.done():
                 exit_task.cancel()
-                # Absorb the reaped task's outcome so it cannot mask the
-                # in-flight cancellation/timeout error being raised.
-                await asyncio.gather(exit_task, return_exceptions=True)
+            # Absorb the reaped task's outcome unconditionally (a task
+            # that already finished with an exception would otherwise
+            # surface as "exception was never retrieved" noise) so it
+            # cannot mask the in-flight cancellation/timeout error.
+            await asyncio.gather(exit_task, return_exceptions=True)
             raise
         if exit_code != 0:
             detail = "; ".join(error_lines) if error_lines else "no ERROR marker"
@@ -473,20 +586,56 @@ class FineTuneContainerRunner:
 
         Returns:
             Result of type ``int``.
+
+        Raises:
+            FineTuneStageExecutionError: When the log stream or the
+                exit wait fails mid-stage (daemon restart, connection
+                reset), so callers see the documented error type
+                instead of a raw transport exception.
         """
-        async for raw in container.log(stdout=True, stderr=True, follow=True):
-            line = raw.strip()
-            if line.startswith(_MARKER_PROGRESS):
-                if progress_callback is not None:
-                    with contextlib.suppress(ValueError):
-                        # A malformed fraction is log noise, not a failure.
-                        progress_callback(
-                            float(line.removeprefix(_MARKER_PROGRESS).strip())
-                        )
-            elif line.startswith(_MARKER_ERROR):
-                error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
-        result = await container.wait()
+        try:
+            async for raw in container.log(stdout=True, stderr=True, follow=True):
+                self._handle_marker_line(raw.strip(), progress_callback, error_lines)
+            result = await container.wait()
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                FINE_TUNE_CONTAINER_FAILED,
+                phase="log_stream",
+                container_id=container.id[:_SHORT_ID_LEN],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = (
+                f"container log stream failed mid-stage: {safe_error_description(exc)}"
+            )
+            raise FineTuneStageExecutionError(msg) from exc
         return int(result.get("StatusCode", -1))
+
+    @staticmethod
+    def _handle_marker_line(
+        line: str,
+        progress_callback: ProgressCallback | None,
+        error_lines: list[str],
+    ) -> None:
+        """Dispatch one stdout marker line from the stage container."""
+        if line.startswith(_MARKER_PROGRESS):
+            if progress_callback is None:
+                return
+            fraction_text = line.removeprefix(_MARKER_PROGRESS).strip()
+            try:
+                fraction = float(fraction_text)
+            except ValueError:
+                # A malformed fraction is log noise, not a failure.
+                logger.debug(
+                    FINE_TUNE_MARKER_DISCARDED,
+                    marker=_MARKER_PROGRESS,
+                    payload=fraction_text[:_SHORT_ID_LEN],
+                )
+                return
+            progress_callback(fraction)
+        elif line.startswith(_MARKER_ERROR):
+            error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
 
     @staticmethod
     async def _stop(container: aiodocker.containers.DockerContainer) -> None:
@@ -538,35 +687,10 @@ class FineTuneContainerRunner:
         return "".join(lines)
 
 
-def _build_host_config(
-    execution: FineTuneExecutionConfig,
-    data_volume: str,
-) -> dict[str, object]:
-    """Build the HostConfig for a stage container.
+def _is_retryable_daemon_error(exc: Exception) -> bool:
+    """Whether a daemon version-probe failure is worth another attempt.
 
     Returns:
-        Result of type ``dict[str, object]``.
+        ``True`` for everything except critical exhaustion errors.
     """
-    host_config: dict[str, object] = {
-        "Binds": [f"{data_volume}:/data:rw"],
-        "Memory": parse_memory_limit(execution.memory_limit),
-        "PidsLimit": _PIDS_LIMIT,
-    }
-    if execution.gpu_enabled:
-        host_config["DeviceRequests"] = _gpu_device_requests()
-    return host_config
-
-
-def _gpu_device_requests() -> list[dict[str, object]]:
-    """Docker DeviceRequests granting all NVIDIA GPUs.
-
-    Returns:
-        Result of type ``list[dict[str, object]]``.
-    """
-    return [
-        {
-            "Driver": "nvidia",
-            "Count": _GPU_COUNT_ALL,
-            "Capabilities": [["gpu"]],
-        }
-    ]
+    return not isinstance(exc, MemoryError | RecursionError)

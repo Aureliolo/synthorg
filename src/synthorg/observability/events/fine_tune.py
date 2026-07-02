@@ -8,6 +8,7 @@ lifecycle is queryable independently of the memory subsystem.
 
 from typing import Final
 
+FINE_TUNE_STAGE_FAILED: Final[str] = "fine_tune.stage.failed"
 FINE_TUNE_CONTAINER_STARTED: Final[str] = "fine_tune.container.started"
 FINE_TUNE_CONTAINER_COMPLETED: Final[str] = "fine_tune.container.completed"
 FINE_TUNE_CONTAINER_FAILED: Final[str] = "fine_tune.container.failed"
@@ -16,3 +17,5 @@ FINE_TUNE_CONTAINER_TIMED_OUT: Final[str] = "fine_tune.container.timed_out"
 FINE_TUNE_PROBE_STARTED: Final[str] = "fine_tune.probe.started"
 FINE_TUNE_PROBE_OK: Final[str] = "fine_tune.probe.ok"
 FINE_TUNE_PROBE_FAILED: Final[str] = "fine_tune.probe.failed"
+FINE_TUNE_DOCKER_CONNECT_RETRIED: Final[str] = "fine_tune.docker.connect_retried"
+FINE_TUNE_MARKER_DISCARDED: Final[str] = "fine_tune.container.marker_discarded"

@@ -743,13 +743,7 @@ class TestDiscoverModelsTrustedUrl:
                 assert "Host" not in (call.kwargs.get("headers") or {})
 
     async def test_trusted_url_logs_ssrf_bypass(self) -> None:
-        """trust_url=True logs the SSRF bypass event."""
-        from synthorg.providers import discovery as discovery_module
-
-        # The audit entry is deduped per (preset, url) for the process
-        # lifetime; another test hitting the same trusted endpoint
-        # would otherwise consume this test's expected log line.
-        discovery_module._SSRF_BYPASS_LOGGED.clear()
+        """trust_url=True logs the SSRF bypass event on every request."""
         response = _mock_response(
             {"data": [{"id": "test-model-001"}]},
         )

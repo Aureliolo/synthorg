@@ -10,7 +10,7 @@ requests. No series is synthesised from point-in-time state.
 
 from collections import Counter
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Final
 
 from synthorg.budget.trends import TrendDataPoint
@@ -97,7 +97,7 @@ def roster_size_per_day(
         Seven daily roster-size buckets, oldest first.
     """
     days = _day_starts(now)
-    net_by_day: Counter[object] = Counter()
+    net_by_day: Counter[date] = Counter()
     for event in events:
         day = event.timestamp.astimezone(days[0].tzinfo).date()
         if event.event_type in _ROSTER_ADDS:

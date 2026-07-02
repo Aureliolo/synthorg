@@ -396,7 +396,9 @@ class TestProbeCache:
 class TestDeleteMemoryEntryEndpoint:
     """Direct-method coverage for ``MemoryAdminController.delete_memory_entry``."""
 
-    async def test_returns_ok_when_backend_deletes_entry(self) -> None:
+    async def test_returns_ok_when_backend_deletes_entry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -421,17 +423,13 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            response = await controller.delete_memory_entry.fn(
-                controller,
-                state=State({"app_state": make_app_state()}),
-                agent_id="agent-1",
-                memory_id="mem-1",
-            )
-        finally:
-            memory_module.build_memory_service = original_build
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        response = await controller.delete_memory_entry.fn(
+            controller,
+            state=State({"app_state": make_app_state()}),
+            agent_id="agent-1",
+            memory_id="mem-1",
+        )
 
         assert response.data is None
         fake_service.delete_memory_entry.assert_awaited_once_with(
@@ -439,7 +437,9 @@ class TestDeleteMemoryEntryEndpoint:
             "mem-1",
         )
 
-    async def test_raises_404_when_backend_returns_false(self) -> None:
+    async def test_raises_404_when_backend_returns_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -464,24 +464,22 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            with pytest.raises(NotFoundError):
-                await controller.delete_memory_entry.fn(
-                    controller,
-                    state=State({"app_state": make_app_state()}),
-                    agent_id="agent-1",
-                    memory_id="missing",
-                )
-            fake_service.delete_memory_entry.assert_awaited_once_with(
-                "agent-1",
-                "missing",
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        with pytest.raises(NotFoundError):
+            await controller.delete_memory_entry.fn(
+                controller,
+                state=State({"app_state": make_app_state()}),
+                agent_id="agent-1",
+                memory_id="missing",
             )
-        finally:
-            memory_module.build_memory_service = original_build
+        fake_service.delete_memory_entry.assert_awaited_once_with(
+            "agent-1",
+            "missing",
+        )
 
-    async def test_raises_501_when_backend_unsupported(self) -> None:
+    async def test_raises_501_when_backend_unsupported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -510,22 +508,18 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            with pytest.raises(FeatureNotImplementedError) as exc_info:
-                await controller.delete_memory_entry.fn(
-                    controller,
-                    state=State({"app_state": make_app_state()}),
-                    agent_id="agent-1",
-                    memory_id="mem-1",
-                )
-            fake_service.delete_memory_entry.assert_awaited_once_with(
-                "agent-1",
-                "mem-1",
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        with pytest.raises(FeatureNotImplementedError) as exc_info:
+            await controller.delete_memory_entry.fn(
+                controller,
+                state=State({"app_state": make_app_state()}),
+                agent_id="agent-1",
+                memory_id="mem-1",
             )
-        finally:
-            memory_module.build_memory_service = original_build
+        fake_service.delete_memory_entry.assert_awaited_once_with(
+            "agent-1",
+            "mem-1",
+        )
         assert exc_info.value.status_code == 501
 
 
@@ -803,7 +797,9 @@ class TestCheckDocumentsBoundaries:
 class TestListCheckpointsEndpoint:
     """Direct-method coverage for ``MemoryAdminController.list_checkpoints``."""
 
-    async def test_no_cursor_starts_at_offset_zero(self) -> None:
+    async def test_no_cursor_starts_at_offset_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -831,23 +827,21 @@ class TestListCheckpointsEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
-            response = await controller.list_checkpoints.fn(
-                controller,
-                state=State({"app_state": app_state}),
-                cursor=None,
-                limit=50,
-            )
-        finally:
-            memory_module.build_memory_service = original_build
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
+        response = await controller.list_checkpoints.fn(
+            controller,
+            state=State({"app_state": app_state}),
+            cursor=None,
+            limit=50,
+        )
 
         assert response.data == ()
         list_mock.assert_awaited_once_with(limit=50, offset=0)
 
-    async def test_with_cursor_decodes_to_offset(self) -> None:
+    async def test_with_cursor_decodes_to_offset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -877,22 +871,17 @@ class TestListCheckpointsEndpoint:
         secret = CursorSecret.ephemeral()
         cursor = encode_cursor(10, secret=secret)
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            await controller.list_checkpoints.fn(
-                controller,
-                state=State({"app_state": make_app_state(cursor_secret=secret)}),
-                cursor=cursor,
-                limit=50,
-            )
-        finally:
-            memory_module.build_memory_service = original_build
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        await controller.list_checkpoints.fn(
+            controller,
+            state=State({"app_state": make_app_state(cursor_secret=secret)}),
+            cursor=cursor,
+            limit=50,
+        )
 
         list_mock.assert_awaited_once_with(limit=50, offset=10)
 
     async def test_tampered_cursor_raises(self) -> None:
-
         from litestar.datastructures import State
 
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
@@ -912,7 +901,9 @@ class TestListCheckpointsEndpoint:
 class TestListRunsEndpoint:
     """Direct-method coverage for ``MemoryAdminController.list_runs``."""
 
-    async def test_no_cursor_starts_at_offset_zero(self) -> None:
+    async def test_no_cursor_starts_at_offset_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -940,23 +931,21 @@ class TestListRunsEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
-            response = await controller.list_runs.fn(
-                controller,
-                state=State({"app_state": app_state}),
-                cursor=None,
-                limit=50,
-            )
-        finally:
-            memory_module.build_memory_service = original_build
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
+        response = await controller.list_runs.fn(
+            controller,
+            state=State({"app_state": app_state}),
+            cursor=None,
+            limit=50,
+        )
 
         assert response.data == ()
         list_mock.assert_awaited_once_with(limit=50, offset=0)
 
-    async def test_with_cursor_decodes_to_offset(self) -> None:
+    async def test_with_cursor_decodes_to_offset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -986,22 +975,17 @@ class TestListRunsEndpoint:
         secret = CursorSecret.ephemeral()
         cursor = encode_cursor(15, secret=secret)
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module.build_memory_service
-        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
-        try:
-            await controller.list_runs.fn(
-                controller,
-                state=State({"app_state": make_app_state(cursor_secret=secret)}),
-                cursor=cursor,
-                limit=50,
-            )
-        finally:
-            memory_module.build_memory_service = original_build
+        monkeypatch.setattr(memory_module, "build_memory_service", _fake_build)
+        await controller.list_runs.fn(
+            controller,
+            state=State({"app_state": make_app_state(cursor_secret=secret)}),
+            cursor=cursor,
+            limit=50,
+        )
 
         list_mock.assert_awaited_once_with(limit=50, offset=15)
 
     async def test_tampered_cursor_raises(self) -> None:
-
         from litestar.datastructures import State
 
         from synthorg.api.cursor import CursorSecret, InvalidCursorError

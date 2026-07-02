@@ -4,10 +4,11 @@
 --
 -- SQLite cannot ALTER an existing CHECK constraint, so the table is
 -- rebuilt (create-new, copy, drop, rename) and its index recreated.
--- oauth_states and webhook_receipts reference connections(name) by
--- table name; yoyo's migration connection runs with SQLite's default
--- foreign_keys=OFF, so the drop/rename never fires their cascades and
--- the FK definitions bind to the renamed table.
+-- oauth_states, webhook_receipts, and mcp_installations reference
+-- connections(name) by table name; yoyo's migration connection runs
+-- with SQLite's default foreign_keys=OFF, so the drop/rename never
+-- fires their cascades and the FK definitions bind to the renamed
+-- table.
 
 CREATE TABLE connections_new (
     name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(name) > 0),

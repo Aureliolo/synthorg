@@ -7,6 +7,7 @@ no caller needs to know the concrete ``ApprovalStore`` lives in
 ``synthorg.api.approval_store``.
 """
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -59,6 +60,7 @@ class ApprovalStoreProtocol(Protocol):
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        created_since: datetime | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters."""
         ...

@@ -6,6 +6,7 @@ from typing import Final
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -116,11 +117,32 @@ class LlmProviderHealthCheck:
             connection has no ``base_url``).
         """
         if self._provider_health is not None:
-            summary = await self._provider_health(connection.name)
+            # Local handling with distinct context: a tracker-lookup
+            # failure must degrade to the reachability probe below,
+            # not collapse into the caller's coarse outer log.
+            try:
+                summary = await self._provider_health(connection.name)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    HEALTH_CHECK_FAILED,
+                    connection_name=connection.name,
+                    reason="provider_health_lookup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                summary = None
             if summary is not None:
                 status = _SUMMARY_STATUS_MAP.get(summary.health_status)
                 if status is not None:
                     return self._report_from_summary(connection.name, summary, status)
+                logger.debug(
+                    HEALTH_CHECK_FAILED,
+                    connection_name=connection.name,
+                    reason="unmapped_provider_health_status",
+                    health_status=summary.health_status.value,
+                    note="falling through to the reachability probe",
+                )
         if not connection.base_url:
             return HealthReport(
                 connection_name=connection.name,

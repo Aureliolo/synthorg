@@ -10,6 +10,7 @@ per stage, CLI-managed installs).
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage, ProgressCallback
 from synthorg.memory.embedding.fine_tune_docker_runner import (
@@ -17,7 +18,14 @@ from synthorg.memory.embedding.fine_tune_docker_runner import (
 )
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.embedding.fine_tune_stage_dispatch import dispatch_stage
-from synthorg.memory.errors import FineTuneStageExecutionError
+from synthorg.memory.errors import (
+    FineTuneCancelledError,
+    FineTuneStageExecutionError,
+)
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.fine_tune import FINE_TUNE_STAGE_FAILED
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable
@@ -50,17 +58,42 @@ class InProcessStageExecutor:
         *,
         stage: FineTuneStage,
         config: dict[str, object],
-        run_id: str,  # noqa: ARG002 -- protocol shape; labels are docker-only
+        run_id: str,
         progress_callback: ProgressCallback | None,
         cancellation: CancellationToken | None,
     ) -> None:
-        """Run *stage* via the shared dispatch (lazy torch import)."""
-        await dispatch_stage(
-            stage,
-            config,
-            cancellation,
-            progress_callback=progress_callback,
-        )
+        """Run *stage* via the shared dispatch (lazy torch import).
+
+        Raises:
+            FineTuneCancelledError: When cancellation fired mid-stage.
+            FineTuneStageExecutionError: When the stage failed. Raw
+                stage exceptions (torch, I/O, data) are wrapped so
+                callers see the protocol's documented error contract
+                from both backends.
+        """
+        try:
+            await dispatch_stage(
+                stage,
+                config,
+                cancellation,
+                progress_callback=progress_callback,
+            )
+        except FineTuneCancelledError, FineTuneStageExecutionError:
+            raise
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                FINE_TUNE_STAGE_FAILED,
+                run_id=run_id,
+                stage=stage.value,
+                backend="in-process",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = (
+                f"stage {stage.value} failed in-process: {safe_error_description(exc)}"
+            )
+            raise FineTuneStageExecutionError(msg) from exc
 
 
 class DockerStageExecutor:
@@ -82,9 +115,12 @@ class DockerStageExecutor:
         runner: FineTuneContainerRunner,
         data_volume: str,
     ) -> None:
-        if execution.backend != "docker" or not execution.image:
-            msg = "DockerStageExecutor requires backend='docker' with an image"
-            raise FineTuneStageExecutionError(msg)
+        # A wiring bug, not a runtime stage failure -- so ValueError, not
+        # the domain error. The model validator already guarantees a
+        # docker backend carries a non-empty image.
+        if execution.backend != "docker":
+            msg = "DockerStageExecutor requires backend='docker'"
+            raise ValueError(msg)
         self._execution = execution
         self._runner = runner
         self._data_volume = data_volume

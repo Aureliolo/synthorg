@@ -336,11 +336,14 @@ _r.register(
             "Named Docker volume mounted rw at /data inside ephemeral"
             " fine-tune stage containers (training data in, checkpoints"
             " out). Matches the compose data volume in CLI installs."
+            " Must be a Docker volume NAME: a path here would become a"
+            " host bind-mount, so the pattern rejects '/', '\\' and ':'."
             " Resolved per run start, so a change applies without a"
             " restart."
         ),
         group="Fine-Tune",
         level=SettingLevel.ADVANCED,
         env_var_override="SYNTHORG_FINE_TUNE_DATA_VOLUME",
+        validator_pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$",
     )
 )

@@ -359,6 +359,30 @@ class TestTunnelUnconditionalWiring:
         with pytest.raises(ValueError, match="path traversal"):
             _resolve_tunnel_state_dir()
 
+    def test_hostile_state_dir_degrades_wiring_to_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end: a traversal env value must not abort startup.
+
+        ``_wire_tunnel_provider`` is best-effort; the hostile value is
+        rejected inside the try block and the tunnel card degrades to
+        unavailable rather than the whole boot failing.
+        """
+        from synthorg.api.integrations_wiring import _wire_tunnel_provider
+
+        monkeypatch.setenv("SYNTHORG_TUNNEL_STATE_DIR", "/data/../etc")
+        config = RootConfig(company_name="test")
+        with structlog.testing.capture_logs() as captured:
+            provider = _wire_tunnel_provider(config)
+        assert provider is None
+        degrade_logs = [
+            e
+            for e in captured
+            if e.get("service") == "tunnel_provider"
+            and e.get("error_type") == "ValueError"
+        ]
+        assert len(degrade_logs) == 1
+
 
 def _persistent_store() -> ApprovalStore:
     """Build an ApprovalStore whose ``has_persistent_repo`` is ``True``.
@@ -440,8 +464,8 @@ class _NoFineTuneBackend(FakePersistenceBackend):
     fake reproduces that so the wiring hook's skip path is exercised.
     """
 
-    @override
     @property
+    @override
     def fine_tune_runs(self) -> Never:
         msg = "backend does not support fine-tuning"
         raise NotImplementedError(msg)

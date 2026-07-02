@@ -137,6 +137,17 @@ class FineTuneOrchestrator:
             Callable[[], Awaitable[FineTuneExecutionConfig]] | None
         ) = None,
     ) -> None:
+        if (stage_executor_factory is None) != (resolve_default_execution is None):
+            # Wiring exactly one silently defeats docker execution: a
+            # factory without default resolution never sees a docker
+            # config for unset requests, and default resolution without
+            # a factory bakes a backend nothing can route.
+            msg = (
+                "stage_executor_factory and resolve_default_execution"
+                " must be provided together (or both omitted for"
+                " in-process execution)"
+            )
+            raise ValueError(msg)
         self._run_repo = run_repo
         self._checkpoint_repo = checkpoint_repo
         self._settings_service = settings_service
@@ -404,77 +415,18 @@ class FineTuneOrchestrator:
                 run_id=str(run.id),
                 stage=run.stage.value,
             )
-            try:
-                await self._mark_failed(
-                    self._current_run or run,
-                    "cancelled by user",
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                # Update in-memory state even if DB fails. Mirror
-                # ``_mark_failed`` so the snapshot has the same terminal
-                # shape (progress cleared, timestamps stamped) instead
-                # of a stale stage with leftover progress data.
-                # Base on the latest snapshot (``self._current_run``)
-                # rather than the entry-state ``run`` so a cancellation
-                # mid-pipeline does not regress ``stages_completed`` or
-                # the current stage if a later stage already updated
-                # the in-memory snapshot.
-                base = self._current_run or run
-                self._current_run = to_failed(
-                    base,
-                    "cancelled by user",
-                    now=datetime.now(UTC),
-                )
-                logger.warning(
-                    MEMORY_FINE_TUNE_FAILED,
-                    run_id=str(run.id),
-                    note="failed_to_persist_cancellation_state",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            self._schedule_ws(
-                "memory.fine_tune.failed",
-                self._current_run or run,
+            await self._fail_terminally(
+                run,
+                "cancelled by user",
+                persist_stage="persist_cancellation_state",
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
-            try:
-                await self._mark_failed(self._current_run or run, safe_error)
-            except Exception as persist_exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(persist_exc)
-                # Persisting the FAILED state can itself fail (DB outage,
-                # disk full, etc.). Log the persistence failure with full
-                # context, then synthesise the same fully-terminal state
-                # ``_mark_failed`` would have produced (stage, progress
-                # cleared, error, updated_at, completed_at) on top of the
-                # most recent in-memory ``self._current_run`` so
-                # ``get_status`` and the WS event don't return a FAILED
-                # run with stale progress or missing terminal timestamps.
-                now = datetime.now(UTC)
-                # The MemoryError/RecursionError carve-out above
-                # means persist_exc is guaranteed non-catastrophic
-                # at this point, so we deliberately omit
-                # ``exc_info=True``: the sanitised structured fields
-                # are the only thing that should land in the log
-                # record on this path. ``noqa: TRY400`` because
-                # ``logger.exception`` would auto-attach a traceback
-                # whose frame-locals can carry credentials.
-                log_exception_redacted(
-                    logger,
-                    MEMORY_FINE_TUNE_FAILED,
-                    persist_exc,
-                    run_id=str(run.id),
-                    stage="persist_failed_state",
-                    underlying_error_type=type(exc).__name__,
-                    underlying_error=safe_error,
-                )
-                base = self._current_run or run
-                self._current_run = to_failed(base, safe_error, now=now)
-            self._schedule_ws(
-                "memory.fine_tune.failed",
-                self._current_run or run,
+            await self._fail_terminally(
+                run,
+                safe_error,
+                persist_stage="persist_failed_state",
             )
             logger.warning(
                 MEMORY_FINE_TUNE_FAILED,
@@ -482,6 +434,43 @@ class FineTuneOrchestrator:
                 error_type=type(exc).__name__,
                 error=safe_error,
             )
+
+    async def _fail_terminally(
+        self,
+        run: FineTuneRun,
+        error: str,
+        *,
+        persist_stage: str,
+    ) -> None:
+        """Persist the FAILED terminal state and emit the WS event.
+
+        Persisting can itself fail (DB outage, disk full). In that case
+        log the persistence failure with full context, then synthesise
+        the same fully-terminal state ``_mark_failed`` would have
+        produced (stage, progress cleared, error, timestamps) on top of
+        the most recent in-memory ``self._current_run`` -- not the
+        entry-state ``run`` -- so ``get_status`` and the WS event don't
+        return a FAILED run with stale progress, missing terminal
+        timestamps, or regressed ``stages_completed``.
+        """
+        try:
+            await self._mark_failed(self._current_run or run, error)
+        except Exception as persist_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(persist_exc)
+            log_exception_redacted(
+                logger,
+                MEMORY_FINE_TUNE_FAILED,
+                persist_exc,
+                run_id=str(run.id),
+                stage=persist_stage,
+                underlying_error=error,
+            )
+            base = self._current_run or run
+            self._current_run = to_failed(base, error, now=datetime.now(UTC))
+        self._schedule_ws(
+            "memory.fine_tune.failed",
+            self._current_run or run,
+        )
 
     async def _run_stages(
         self,

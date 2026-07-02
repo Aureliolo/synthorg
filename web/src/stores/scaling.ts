@@ -39,7 +39,8 @@ interface ScalingState {
   fetchStrategies: () => Promise<void>
   fetchDecisions: () => Promise<void>
   fetchSignals: () => Promise<void>
-  evaluateNow: () => Promise<ScalingDecisionResponse[]>
+  /** Trigger an evaluation and refetch. Returns null on failure (store owns error UX). */
+  evaluateNow: () => Promise<readonly ScalingDecisionResponse[] | null>
   /** Enable/disable a strategy and refetch. Returns false on failure. */
   setStrategyEnabled: (name: string, enabled: boolean) => Promise<boolean>
   /** Persist a new strategy priority order and refetch. Returns false on failure. */
@@ -92,10 +93,14 @@ async function fetchDecisionsImpl(set: ScSet): Promise<void> {
   try {
     const result = await getScalingDecisions({ limit: 50 })
     if (epoch !== wsRefreshEpoch) return
-    set({ decisions: result.data, totalDecisions: result.data.length })
+    set({ decisions: result.data, totalDecisions: result.data.length, error: null })
   } catch (err) {
     if (epoch !== wsRefreshEpoch) return
     log.error('Failed to fetch decisions', err)
+    // List read: surface via error state (post-initial poll failures
+    // would otherwise be invisible), then rethrow for the WS refresh
+    // bookkeeping.
+    set({ error: getErrorMessage(err) })
     throw err
   }
 }
@@ -109,6 +114,7 @@ async function fetchSignalsImpl(set: ScSet): Promise<void> {
   } catch (err) {
     if (epoch !== wsRefreshEpoch) return
     log.error('Failed to fetch signals', err)
+    set({ error: getErrorMessage(err) })
     throw err
   }
 }
@@ -204,10 +210,10 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   fetchStrategies: async () => {
     try {
       const strategies = await getScalingStrategies()
-      set({ strategies })
+      set({ strategies, error: null })
     } catch (err) {
       log.error('Failed to fetch strategies', err)
-      throw err
+      set({ error: getErrorMessage(err) })
     }
   },
   fetchDecisions: () => fetchDecisionsImpl(set),
@@ -219,11 +225,24 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       const decisions = await triggerScalingEvaluation()
       await get().fetchAll()
       set({ evaluating: false })
+      useToastStore.getState().add(
+        decisions.length > 0
+          ? {
+              variant: 'success',
+              title: `Evaluation produced ${String(decisions.length)} decision(s)`,
+            }
+          : { variant: 'info', title: 'Evaluation produced no decisions' },
+      )
       return decisions
     } catch (err) {
       log.error('Failed to trigger evaluation', err)
       set({ evaluating: false, error: getErrorMessage(err) })
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Could not evaluate scaling'),
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 

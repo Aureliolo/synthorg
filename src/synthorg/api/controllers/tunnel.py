@@ -47,8 +47,8 @@ class TunnelStartResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    public_url: str
-    provider: str
+    public_url: NotBlankStr
+    provider: NotBlankStr
 
 
 class TunnelCredentialRequest(BaseModel):

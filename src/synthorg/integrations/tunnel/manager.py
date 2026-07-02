@@ -268,19 +268,34 @@ class TunnelManager:
         return value
 
     async def _status_of(self, adapter: TunnelAdapter) -> TunnelProviderStatus:
+        # Separate probes so the log names which check failed, and an
+        # availability failure does not clobber the credential answer.
         try:
             available, detail = await adapter.availability()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="status",
+                check="availability",
+                provider=adapter.provider_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            available, detail = False, "Availability probe failed."
+        try:
             credential = await adapter.credential_configured()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TUNNEL_ERROR,
                 phase="status",
+                check="credential_configured",
                 provider=adapter.provider_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            available, detail, credential = False, "Status probe failed.", False
+            credential = False
         return TunnelProviderStatus(
             provider_id=adapter.provider_id,
             display_name=adapter.display_name,

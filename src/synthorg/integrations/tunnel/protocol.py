@@ -15,6 +15,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.types import NotBlankStr
+
 
 class TunnelCredentialKind(StrEnum):
     """How a tunnel provider authenticates.
@@ -49,8 +51,8 @@ class TunnelProviderStatus(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    provider_id: str
-    display_name: str
+    provider_id: NotBlankStr
+    display_name: NotBlankStr
     credential_kind: TunnelCredentialKind
     available: bool
     detail: str | None = None
@@ -72,8 +74,8 @@ class TunnelSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     public_url: str | None = None
-    selected_provider: str
-    active_provider: str | None = None
+    selected_provider: NotBlankStr
+    active_provider: NotBlankStr | None = None
     providers: tuple[TunnelProviderStatus, ...]
 
 

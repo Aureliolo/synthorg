@@ -37,6 +37,26 @@ _EXECUTION = FineTuneExecutionConfig(
     timeout_seconds=300.0,
 )
 
+# Sandbox-grade baseline every fine-tune container must carry; spelled
+# out literally so a hardening regression fails the whole-dict asserts.
+_HARDENING: dict[str, object] = {
+    "CapDrop": ["ALL"],
+    "SecurityOpt": ["no-new-privileges"],
+    "ReadonlyRootfs": True,
+    "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=1g"},  # noqa: S108 -- container path
+    "PidsLimit": 256,
+}
+_STAGE_CACHE_ENV = [
+    "HF_HOME=/data/fine-tune/cache/hf",
+    "TORCH_HOME=/data/fine-tune/cache/torch",
+    "XDG_CACHE_HOME=/data/fine-tune/cache/xdg",
+]
+_PROBE_CACHE_ENV = [
+    "HF_HOME=/tmp/hf",
+    "TORCH_HOME=/tmp/torch",
+    "XDG_CACHE_HOME=/tmp/xdg",
+]
+
 
 class FakeContainer(aiodocker.containers.DockerContainer):
     """In-memory container double (skips the real ``__init__``)."""
@@ -212,7 +232,8 @@ class TestRunStage:
         assert config["Image"] == "example.test/fine-tune:1"
         assert config["Env"] == [
             f"{STAGE_CONFIG_ENV}="
-            + json.dumps({"stage": "training", "output_dir": "/data/fine-tune"})
+            + json.dumps({"stage": "training", "output_dir": "/data/fine-tune"}),
+            *_STAGE_CACHE_ENV,
         ]
         assert config["Labels"] == {
             "synthorg.managed": "true",
@@ -221,9 +242,9 @@ class TestRunStage:
             "synthorg.fine_tune.stage": "training",
         }
         assert config["HostConfig"] == {
+            **_HARDENING,
             "Binds": ["synthorg-data:/data:rw"],
             "Memory": 2 * 1024**3,
-            "PidsLimit": 256,
         }
 
     async def test_gpu_enabled_requests_devices(
@@ -238,9 +259,9 @@ class TestRunStage:
         )
 
         assert containers.created_configs[0]["HostConfig"] == {
+            **_HARDENING,
             "Binds": ["synthorg-data:/data:rw"],
             "Memory": 2 * 1024**3,
-            "PidsLimit": 256,
             "DeviceRequests": [
                 {"Driver": "nvidia", "Count": -1, "Capabilities": [["gpu"]]}
             ],
@@ -302,6 +323,57 @@ class TestRunStage:
             await _run(_runner_with(monkeypatch, docker))
         assert docker.closed is True
 
+    async def test_daemon_unavailable_propagates_typed_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed daemon connect surfaces as the typed stage error."""
+        runner = FineTuneContainerRunner()
+
+        async def _connect() -> aiodocker.Docker:
+            msg = "could not reach the Docker daemon"
+            raise FineTuneStageExecutionError(msg)
+
+        monkeypatch.setattr(FineTuneContainerRunner, "_connect", staticmethod(_connect))
+        with pytest.raises(FineTuneStageExecutionError, match="Docker daemon"):
+            await _run(runner)
+
+
+class TestCleanupContracts:
+    """``_stop`` / ``_remove`` are best-effort and never raise."""
+
+    async def test_stop_swallows_daemon_errors(self) -> None:
+        class ExplodingStopContainer(FakeContainer):
+            @override
+            async def stop(
+                self,
+                *,
+                t: int | None = None,
+                signal: str | None = None,
+                timeout: object = None,
+            ) -> None:
+                msg = "daemon gone"
+                raise RuntimeError(msg)
+
+        await FineTuneContainerRunner._stop(ExplodingStopContainer())
+
+    async def test_remove_swallows_daemon_errors(self) -> None:
+        class ExplodingDeleteContainer(FakeContainer):
+            @override
+            async def delete(
+                self,
+                *,
+                force: bool = False,
+                v: bool = False,
+                link: bool = False,
+                timeout: object = None,
+            ) -> None:
+                msg = "daemon gone"
+                raise RuntimeError(msg)
+
+        await FineTuneContainerRunner._remove(
+            ExplodingDeleteContainer(), run_id="run-1", stage="training"
+        )
+
 
 class TestProbe:
     async def test_probe_ok_with_gpu(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,10 +390,10 @@ class TestProbe:
         assert result.vram_gb == 24.0
         assert container.deleted is True
         config = containers.created_configs[0]
-        assert config["Env"] == [f"{PROBE_ENV}=1"]
+        assert config["Env"] == [f"{PROBE_ENV}=1", *_PROBE_CACHE_ENV]
         assert config["HostConfig"] == {
+            **_HARDENING,
             "Memory": 4 * 1024**3,
-            "PidsLimit": 256,
             "DeviceRequests": [
                 {"Driver": "nvidia", "Count": -1, "Capabilities": [["gpu"]]}
             ],
@@ -356,7 +428,7 @@ class TestProbe:
         result = await runner.probe(image="example.test/fine-tune:1", gpu_enabled=False)
 
         assert result.ok is False
-        assert "creation failed" in result.detail
+        assert "could not launch" in result.detail
 
 
 class TestParseProbeLine:
@@ -387,7 +459,7 @@ class TestDockerStageExecutor:
         assert isinstance(executor, StageExecutor)
 
     def test_rejects_non_docker_execution(self) -> None:
-        with pytest.raises(FineTuneStageExecutionError, match="backend='docker'"):
+        with pytest.raises(ValueError, match="backend='docker'"):
             DockerStageExecutor(
                 execution=FineTuneExecutionConfig(backend="in-process"),
                 runner=FineTuneContainerRunner(),
@@ -414,9 +486,9 @@ class TestDockerStageExecutor:
 
         config = containers.created_configs[0]
         assert config["HostConfig"] == {
+            **_HARDENING,
             "Binds": ["custom-volume:/data:rw"],
             "Memory": 2 * 1024**3,
-            "PidsLimit": 256,
         }
         assert config["Labels"] == {
             "synthorg.managed": "true",

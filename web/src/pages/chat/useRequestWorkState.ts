@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from 'react'
 import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
+import { resolveScopedRetryContent } from './scoped-retry'
+
 export interface RequestWorkMessage {
   id: number
   role: 'user' | 'assistant'
@@ -26,7 +28,7 @@ export interface RequestWorkState {
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
-  retryLast: () => void
+  retryBefore: (beforeMsgId: number) => void
 }
 
 export function useRequestWorkState(): RequestWorkState {
@@ -57,17 +59,26 @@ export function useRequestWorkState(): RequestWorkState {
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
-    if (!message) return
+    // Guard before clearing: Enter during an in-flight propose must
+    // not wipe the composed text (sendMessage would drop it anyway).
+    if (!message || proposeLoading) return
     setInput('')
     void sendMessage(message)
-  }, [input, sendMessage])
+  }, [input, proposeLoading, sendMessage])
 
-  const retryLast = useCallback(() => {
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastUser) void sendMessage(lastUser.content)
-  }, [messages, sendMessage])
+  const retryBefore = useCallback(
+    (beforeMsgId: number) => {
+      const content = resolveScopedRetryContent(
+        messages,
+        beforeMsgId,
+        (m) => m.role === 'user',
+      )
+      if (content !== null) void sendMessage(content)
+    },
+    [messages, sendMessage],
+  )
 
-  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend, retryLast }
+  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend, retryBefore }
 }
 
 type Attribution = Pick<

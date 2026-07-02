@@ -16,7 +16,9 @@ logger = get_logger(__name__)
 def parse_memory_limit(limit: str) -> int:
     """Parse a Docker memory limit string to bytes.
 
-    Supports suffixes ``k``, ``m``, ``g`` (case-insensitive).
+    Supports suffixes ``b``, ``k``, ``m``, ``g`` (case-insensitive),
+    matching the grammar the memory-limit settings advertise and
+    validate (``'512b'``, ``'64k'``, ``'64m'``, ``'8G'``).
 
     Args:
         limit: Memory limit string (e.g. ``"512m"``).
@@ -36,7 +38,7 @@ def parse_memory_limit(limit: str) -> int:
             error_type=ValueError.__name__,
         )
         raise ValueError(msg)
-    multipliers = {"k": 1024, "m": 1024**2, "g": 1024**3}
+    multipliers = {"b": 1, "k": 1024, "m": 1024**2, "g": 1024**3}
     try:
         if limit_lower[-1] in multipliers:
             result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]

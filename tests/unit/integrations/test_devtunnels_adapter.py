@@ -1,17 +1,24 @@
 """Tests for the GitHub Dev Tunnels adapter."""
 
+import io
 import os
 import platform
 import shutil
 import stat
 import subprocess
 import sys
+import threading
 from collections.abc import Mapping
 from pathlib import Path
+from typing import override
 
 import pytest
 
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import (
+    TunnelDownloadError,
+    TunnelError,
+    TunnelStartFailedError,
+)
 from synthorg.integrations.tunnel import devtunnels_adapter
 from synthorg.integrations.tunnel.devtunnels_adapter import DevTunnelsAdapter
 from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
@@ -194,6 +201,63 @@ class TestDeviceLogin:
         with pytest.raises(TunnelError, match="download is disabled"):
             await adapter.begin_login()
 
+    async def test_login_in_progress_rejects_second_login(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A live login process blocks a second one against the same HOME."""
+        _patch_binary(monkeypatch, present=True)
+        fake = FakePopen(
+            stdout_lines=[
+                "open https://github.com/login/device and enter the code"
+                " ABCD-1234 to authenticate.\n",
+            ],
+            hang_until_kill=True,
+        )
+        _patch_spawn(monkeypatch, fake)
+        adapter = _adapter(tmp_path)
+        prompt = await adapter.begin_login()
+        assert prompt.already_logged_in is False
+        with pytest.raises(TunnelError, match="already in progress"):
+            await adapter.begin_login()
+
+    async def test_login_prompt_timeout_raises_start_failed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A CLI that never prints the prompt fails within the timeout."""
+        _patch_binary(monkeypatch, present=True)
+        monkeypatch.setattr(devtunnels_adapter, "_LOGIN_PROMPT_TIMEOUT_SECONDS", 0.05)
+        release = threading.Event()
+
+        class _BlockingStream(io.BytesIO):
+            @override
+            def readline(self, size: int | None = -1, /) -> bytes:
+                release.wait(timeout=5.0)
+                return b""
+
+        fake = FakePopen()
+        fake.stdout = _BlockingStream()
+        _patch_spawn(monkeypatch, fake)
+        adapter = _adapter(tmp_path)
+        try:
+            with pytest.raises(TunnelStartFailedError, match="no device-code prompt"):
+                await adapter.begin_login()
+        finally:
+            # Unblock the scanning worker thread so it exits cleanly.
+            release.set()
+        assert adapter._login_pending is False
+
+    async def test_login_nonzero_exit_raises(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=True)
+        fake = FakePopen(stdout_lines=["something went wrong\n"], returncode=2)
+        _patch_spawn(monkeypatch, fake)
+        adapter = _adapter(tmp_path)
+        with pytest.raises(TunnelError, match=r"exit code 2"):
+            await adapter.begin_login()
+        # The reservation is released so the operator can retry.
+        assert adapter._login_pending is False
+
 
 class TestStart:
     async def test_start_requires_login(
@@ -223,6 +287,87 @@ class TestStart:
         assert envs == [_expected_env(tmp_path)]
         await adapter.stop()
         assert host.terminated is True
+
+    async def test_start_is_idempotent_while_active(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=True)
+        _patch_user_show(monkeypatch, returncode=0, text="Logged in as octocat.\n")
+        host = FakePopen(
+            stdout_lines=["https://abc123-3001.euw.devtunnels.ms\n"],
+        )
+        envs = _patch_spawn(monkeypatch, host)
+        adapter = _adapter(tmp_path)
+        first = await adapter.start()
+        second = await adapter.start()
+        assert first == second
+        # No second spawn happened for the idempotent start.
+        assert len(envs) == 1
+
+    async def test_no_url_in_time_raises_start_failed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A host process that never prints a URL fails the start."""
+        _patch_binary(monkeypatch, present=True)
+        _patch_user_show(monkeypatch, returncode=0, text="Logged in as octocat.\n")
+        host = FakePopen(stdout_lines=["no url here\n"], returncode=1)
+        _patch_spawn(monkeypatch, host)
+        adapter = _adapter(tmp_path)
+        with pytest.raises(TunnelStartFailedError, match="no tunnel URL"):
+            await adapter.start()
+        assert await adapter.get_url() is None
+
+    async def test_get_url_clears_state_when_process_died(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=True)
+        _patch_user_show(monkeypatch, returncode=0, text="Logged in as octocat.\n")
+        host = FakePopen(
+            stdout_lines=["https://abc123-3001.euw.devtunnels.ms\n"],
+        )
+        _patch_spawn(monkeypatch, host)
+        adapter = _adapter(tmp_path)
+        await adapter.start()
+        # Simulate the vendor CLI crashing after a successful start.
+        host._rc = 1
+        assert await adapter.get_url() is None
+
+
+class TestCredentialCheckDegradation:
+    async def test_run_cli_error_reports_unconfigured(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=True)
+
+        async def _run(
+            _args: list[str],
+            *,
+            timeout_seconds: float,
+            env: Mapping[str, str] | None = None,
+        ) -> tuple[int, str] | None:
+            msg = "broken binary"
+            raise OSError(msg)
+
+        monkeypatch.setattr(devtunnels_adapter, "run_cli", _run)
+        adapter = _adapter(tmp_path)
+        assert await adapter.credential_configured() is False
+
+    async def test_run_cli_timeout_reports_unconfigured(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=True)
+
+        async def _run(
+            _args: list[str],
+            *,
+            timeout_seconds: float,
+            env: Mapping[str, str] | None = None,
+        ) -> tuple[int, str] | None:
+            return None
+
+        monkeypatch.setattr(devtunnels_adapter, "run_cli", _run)
+        adapter = _adapter(tmp_path)
+        assert await adapter.credential_configured() is False
 
 
 class TestConfinedEnv:
@@ -326,3 +471,19 @@ class TestDownload:
         existing.write_bytes(b"")
         adapter = _adapter(tmp_path)
         assert await adapter._ensure_binary() == existing
+
+    async def test_download_failure_translates_to_download_error(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _patch_binary(monkeypatch, present=False)
+        monkeypatch.setattr(platform, "system", lambda: "Linux")
+        monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+        def _fake_download(**_kwargs: object) -> Path:
+            msg = "connection reset"
+            raise OSError(msg)
+
+        monkeypatch.setattr(devtunnels_adapter, "download_binary", _fake_download)
+        adapter = _adapter(tmp_path)
+        with pytest.raises(TunnelDownloadError, match="Failed to download devtunnel"):
+            await adapter._ensure_binary()

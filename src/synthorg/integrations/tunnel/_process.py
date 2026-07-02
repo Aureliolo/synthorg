@@ -127,7 +127,9 @@ def spawn_drain_thread(stream: IO[bytes], *, name: str) -> threading.Thread:
                 pass
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING: a dead drain leaves the pipe filling, which is
+            # exactly the wedge this thread exists to prevent.
+            logger.warning(
                 TUNNEL_ERROR,
                 phase="drain",
                 stream=name,

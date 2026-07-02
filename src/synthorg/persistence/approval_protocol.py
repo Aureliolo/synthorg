@@ -52,6 +52,7 @@ class ApprovalFilterSpec(BaseModel):
     status: ApprovalStatus | None = Field(default=None)
     risk_level: ApprovalRiskLevel | None = Field(default=None)
     action_type: NotBlankStr | None = Field(default=None)
+    created_since: datetime | None = Field(default=None)
 
 
 @runtime_checkable

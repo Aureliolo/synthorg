@@ -150,6 +150,61 @@ class TestPredictiveMode:
         await guard.ensure_capacity("target")
         assert _evicted_models(respx_mock) == []
 
+    async def test_pinned_blank_expiry_is_last_eviction_candidate(
+        self, respx_mock: respx.MockRouter
+    ) -> None:
+        """A blank ``expires_at`` (pinned model) must not evict first."""
+        _mock_ps(
+            respx_mock,
+            [
+                _loaded("pinned:latest", size_gib=6, expires_at=""),
+                _loaded("old:latest", size_gib=6, expires_at="2026-07-01T09:00:00Z"),
+            ],
+        )
+        respx_mock.get(f"{_BASE}/api/tags").mock(
+            return_value=httpx.Response(
+                200,
+                json={"models": [{"name": "target:latest", "size": 4 * _GIB}]},
+            ),
+        )
+        respx_mock.post(f"{_BASE}/api/generate").mock(
+            return_value=httpx.Response(200, json={"done": True}),
+        )
+        guard = OllamaVramGuard(_BASE, self._config(total_gib=10))
+        await guard.ensure_capacity("target")
+        # 6 + 6 + 4 > 10: one eviction suffices; the timestamped model
+        # goes, the pinned blank-expiry model survives.
+        assert _evicted_models(respx_mock) == ["old:latest"]
+
+    async def test_failed_eviction_moves_to_next_candidate(
+        self, respx_mock: respx.MockRouter
+    ) -> None:
+        """One flaky eviction must not abort the rest of the loop."""
+        _mock_ps(
+            respx_mock,
+            [
+                _loaded("a:latest", size_gib=6, expires_at="2026-07-01T09:00:00Z"),
+                _loaded("b:latest", size_gib=6, expires_at="2026-07-01T10:00:00Z"),
+            ],
+        )
+        respx_mock.get(f"{_BASE}/api/tags").mock(
+            return_value=httpx.Response(
+                200,
+                json={"models": [{"name": "target:latest", "size": 10 * _GIB}]},
+            ),
+        )
+        respx_mock.post(f"{_BASE}/api/generate").mock(
+            side_effect=[
+                httpx.Response(500, json={"error": "busy"}),
+                httpx.Response(200, json={"done": True}),
+            ],
+        )
+        guard = OllamaVramGuard(_BASE, self._config(total_gib=10))
+        await guard.ensure_capacity("target")
+        # The failed eviction of ``a`` frees nothing, so the loop
+        # continues to ``b`` instead of aborting.
+        assert _evicted_models(respx_mock) == ["a:latest", "b:latest"]
+
 
 class TestFailureIsolation:
     async def test_unreachable_host_never_raises(

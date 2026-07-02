@@ -42,6 +42,7 @@ methods.
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |
 | `generic_http` | `base_url`, `token` / `api_key` | `HEAD base_url` |
 | `oauth_app` | `client_id`, `client_secret`, `auth_url`, `token_url` | N/A |
+| `tunnel` | `auth_token` | N/A |
 
 ### Secret Storage
 
@@ -269,7 +270,7 @@ catalog at runtime instead of using embedded `api_key` / OAuth fields.
 
 ## MCP Service Facades
 
-The integrations domain exposes five service facades on `AppState` for
+The integrations domain exposes six service facades on `AppState` for
 MCP handler shims:
 
 | Facade | Module | Tools shimmed |
@@ -279,6 +280,7 @@ MCP handler shims:
 | `OntologyFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_ontology_list_entities`/`_get_entity`/`_get_relationships`/`_search` |
 | `MCPCatalogFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_mcp_catalog_list`/`_search`/`_get`/`_install`/`_uninstall` |
 | `OAuthFacadeService` | `synthorg.integrations.mcp_services` | `synthorg_oauth_list_providers`/`_configure_provider`/`_remove_provider` |
+| `TunnelService` | `synthorg.integrations.tunnel.mcp_service` | `synthorg_tunnel_get_status`/`_connect` |
 
 All destructive operations (`_delete`, `_deactivate`, `_uninstall`,
 `_remove_provider`) route through `require_admin_guardrails()` and

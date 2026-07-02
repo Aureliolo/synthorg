@@ -10,9 +10,10 @@ Binary resolution order mirrors cloudflared: an operator-installed
 ``devtunnel`` on ``PATH``, then a previously downloaded copy under the
 shared tunnel state dir's ``bin/``, then (when downloads are enabled)
 a fresh download over HTTPS from Microsoft's fixed
-``aka.ms/TunnelsCliDownload`` asset URLs. The CLI's licence forbids
-redistribution, not a runtime download by the operator's own
-deployment. Operators who forbid runtime downloads set
+``aka.ms/TunnelsCliDownload`` asset URLs. The assets sit at public
+Microsoft URLs and are fetched at runtime by the operator's own
+deployment; SynthOrg never redistributes the CLI itself. Operators who
+forbid runtime downloads set
 ``integrations.tunnel.devtunnel_download_enabled: false`` and install
 the binary themselves.
 
@@ -32,6 +33,7 @@ works on the Windows ``SelectorEventLoop`` the API server pins.
 """
 
 import asyncio
+import contextlib
 import platform
 import re
 import shutil
@@ -44,7 +46,11 @@ from pathlib import Path
 from typing import IO, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import (
+    TunnelDownloadError,
+    TunnelError,
+    TunnelStartFailedError,
+)
 from synthorg.integrations.tunnel._binaries import (
     MACHINE_TO_ARCH,
     default_binary_dir,
@@ -159,6 +165,11 @@ class DevTunnelsAdapter:
         self._process: subprocess.Popen[bytes] | None = None
         self._public_url: str | None = None
         self._login_process: subprocess.Popen[bytes] | None = None
+        # Synchronous re-entrancy reservation for ``begin_login``: the
+        # slot is taken before the first await (binary resolution can
+        # download for 30s+), so a double-click cannot spawn two logins
+        # against the same HOME.
+        self._login_pending: bool = False
         # Serialises start/stop (single-tunnel invariant); the login
         # flow runs outside the lock because it never touches the
         # tunnel process. Eager init: stop() must be safe before start().
@@ -213,7 +224,10 @@ class DevTunnelsAdapter:
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING (matching the manager's best-effort probes): a
+            # broken binary must stay distinguishable from a clean
+            # "not logged in".
+            logger.warning(
                 TUNNEL_ERROR,
                 phase="credential_check",
                 error_type=type(exc).__name__,
@@ -238,32 +252,52 @@ class DevTunnelsAdapter:
             CLI needed no fresh login).
 
         Raises:
-            TunnelError: When the CLI cannot be resolved or prints no
-                usable device-code prompt.
+            TunnelError: When a login is already in progress or the CLI
+                cannot be resolved.
+            TunnelStartFailedError: When the CLI fails to spawn or
+                prints no usable device-code prompt.
         """
-        binary = await self._ensure_binary()
         active = self._login_process
-        if active is not None and active.poll() is None:
+        if self._login_pending or (active is not None and active.poll() is None):
             msg = "A device login is already in progress; complete it first."
             raise TunnelError(msg)
-        process = spawn_cli(
-            [str(binary), "user", "login", "-g", "-d"],
-            env=self._confined_env(),
-        )
-        if process.stdout is None:
-            await terminate_process(process)
-            msg = "devtunnel subprocess pipe was not created"
-            raise TunnelError(msg)
-        if process.stderr is not None:
-            spawn_drain_thread(process.stderr, name="devtunnel-login-stderr")
-        prompt = await self._scrape_login_prompt(process)
-        if prompt.already_logged_in:
-            logger.info(DEVTUNNELS_LOGIN_COMPLETED, note="already logged in")
+        self._login_pending = True
+        try:
+            binary = await self._ensure_binary()
+            try:
+                process = spawn_cli(
+                    [str(binary), "user", "login", "-g", "-d"],
+                    env=self._confined_env(),
+                )
+            except OSError as exc:
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="login_spawn",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = f"devtunnel failed to start: {safe_error_description(exc)}"
+                raise TunnelStartFailedError(msg) from exc
+            if process.stdout is None:
+                # Suppress teardown noise so the original failure propagates.
+                with contextlib.suppress(OSError):
+                    await terminate_process(process)
+                msg = "devtunnel subprocess pipe was not created"
+                raise TunnelStartFailedError(msg)
+            if process.stderr is not None:
+                spawn_drain_thread(process.stderr, name="devtunnel-login-stderr")
+            prompt = await self._scrape_login_prompt(process)
+            if prompt.already_logged_in:
+                logger.info(DEVTUNNELS_LOGIN_COMPLETED, note="already logged in")
+                return prompt
+            logger.info(
+                DEVTUNNELS_LOGIN_STARTED, verification_uri=prompt.verification_uri
+            )
+            self._login_process = process
+            self._watch_login(process)
             return prompt
-        logger.info(DEVTUNNELS_LOGIN_STARTED, verification_uri=prompt.verification_uri)
-        self._login_process = process
-        self._watch_login(process)
-        return prompt
+        finally:
+            self._login_pending = False
 
     async def start(self) -> str:
         """Host the tunnel and return its public URL.
@@ -274,8 +308,9 @@ class DevTunnelsAdapter:
             The ``https://*.devtunnels.ms`` URL.
 
         Raises:
-            TunnelError: When the CLI cannot be resolved, the login is
-                absent, or no URL appears in time.
+            TunnelError: When the CLI cannot be resolved or the login
+                is absent.
+            TunnelStartFailedError: When no URL appears in time.
         """
         async with self._lifecycle_lock:
             if self._public_url is not None:
@@ -320,18 +355,45 @@ class DevTunnelsAdapter:
             logger.info(TUNNEL_STOPPED)
 
     async def get_url(self) -> str | None:
-        """Return the current public URL, or ``None`` if stopped."""
-        return self._public_url
+        """Return the current public URL, or ``None`` if stopped.
+
+        Checks the child process is still alive: a crashed vendor CLI
+        must not keep reporting a dead URL as live indefinitely.
+        """
+        async with self._lifecycle_lock:
+            process = self._process
+            if process is not None and process.poll() is not None:
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="liveness",
+                    returncode=process.returncode,
+                    note="devtunnel exited; clearing tunnel state",
+                )
+                self._process = None
+                self._public_url = None
+            return self._public_url
 
     async def _spawn_and_capture_url(self, binary: Path) -> str:
-        process = spawn_cli(
-            [str(binary), "host", "-p", str(self._port), "--allow-anonymous"],
-            env=self._confined_env(),
-        )
+        try:
+            process = spawn_cli(
+                [str(binary), "host", "-p", str(self._port), "--allow-anonymous"],
+                env=self._confined_env(),
+            )
+        except OSError as exc:
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="spawn",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"devtunnel failed to start: {safe_error_description(exc)}"
+            raise TunnelStartFailedError(msg) from exc
         if process.stdout is None or process.stderr is None:
-            await terminate_process(process)
+            # Suppress teardown noise so the original failure propagates.
+            with contextlib.suppress(OSError):
+                await terminate_process(process)
             msg = "devtunnel subprocess pipes were not created"
-            raise TunnelError(msg)
+            raise TunnelStartFailedError(msg)
         spawn_drain_thread(process.stderr, name="devtunnel-stderr")
         url = await wait_for_pattern(
             process.stdout,
@@ -339,14 +401,15 @@ class DevTunnelsAdapter:
             timeout_seconds=_START_TIMEOUT_SECONDS,
         )
         if url is None:
-            await terminate_process(process)
+            with contextlib.suppress(OSError):
+                await terminate_process(process)
             rc = process.returncode
             logger.warning(TUNNEL_ERROR, phase="start", returncode=rc)
             msg = (
                 "devtunnel produced no tunnel URL within "
                 f"{_START_TIMEOUT_SECONDS:.0f}s (exit code {rc})"
             )
-            raise TunnelError(msg)
+            raise TunnelStartFailedError(msg)
         self._process = process
         spawn_drain_thread(process.stdout, name="devtunnel-stdout")
         return url
@@ -400,7 +463,7 @@ class DevTunnelsAdapter:
                 error=safe_error_description(exc),
             )
             msg = f"Failed to download devtunnel: {safe_error_description(exc)}"
-            raise TunnelError(msg) from exc
+            raise TunnelDownloadError(msg) from exc
 
     def _download_binary(self, segment: str, kind: str) -> Path:
         """Fetch the official asset into the binary dir.
@@ -436,8 +499,9 @@ class DevTunnelsAdapter:
             exited cleanly without prompting.
 
         Raises:
-            TunnelError: When the CLI exits non-zero or the prompt
-                never appears.
+            TunnelError: When the CLI exits non-zero.
+            TunnelStartFailedError: When the prompt never appears in
+                time.
         """
         stdout = process.stdout
         if stdout is None:  # pragma: no cover -- guarded by caller
@@ -472,9 +536,10 @@ class DevTunnelsAdapter:
                 timeout=_LOGIN_PROMPT_TIMEOUT_SECONDS,
             )
         except TimeoutError:
-            await terminate_process(process)
+            with contextlib.suppress(OSError):
+                await terminate_process(process)
             msg = "devtunnel printed no device-code prompt; try again."
-            raise TunnelError(msg) from None
+            raise TunnelStartFailedError(msg) from None
         if isinstance(outcome, DeviceLoginPrompt):
             return outcome
         if outcome == 0:

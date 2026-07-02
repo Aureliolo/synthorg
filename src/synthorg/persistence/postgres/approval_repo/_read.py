@@ -50,6 +50,9 @@ def _filter_clauses(
     if filter_spec.action_type is not None:
         clauses.append("action_type = %s")
         params.append(filter_spec.action_type)
+    if filter_spec.created_since is not None:
+        clauses.append("created_at >= %s")
+        params.append(filter_spec.created_since)
     where_sql = " AND ".join(clauses) if clauses else "TRUE"
     return where_sql, params
 

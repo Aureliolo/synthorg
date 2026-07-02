@@ -273,8 +273,9 @@ class _InMemoryApprovalStore:
         status: object = None,
         risk_level: object = None,
         action_type: object = None,
+        created_since: object = None,
     ) -> tuple[ApprovalItem, ...]:
-        del status, risk_level, action_type
+        del status, risk_level, action_type, created_since
         return tuple(self.items.values())
 
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:

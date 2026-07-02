@@ -59,12 +59,23 @@ const RunRow = memo(function RunRow({ run }: { run: FineTuneRun }) {
       <td className="py-2 pr-4 text-xs text-text-secondary">
         {countActiveStagesCompleted(run.stages_completed)}/{ACTIVE_STAGES.size}
       </td>
+      <td className="py-2 pr-4 text-xs text-text-secondary">
+        {formatBackend(run)}
+      </td>
       <td className="py-2 font-mono text-xs text-text-secondary">
         {run.config.source_dir}
       </td>
     </tr>
   )
 })
+
+/**
+ * Read-only audit indicator of the execution backend a run actually used
+ * (baked into the run config at start; never chosen in the UI).
+ */
+function formatBackend(run: FineTuneRun): string {
+  return run.config.execution?.backend === 'docker' ? 'Docker' : 'In-process'
+}
 
 export function RunHistoryTable() {
   const runs = useFineTuningStore((s) => s.runs)
@@ -89,6 +100,7 @@ export function RunHistoryTable() {
               <th className="pb-2 pr-4">Duration</th>
               <th className="pb-2 pr-4">Status</th>
               <th className="pb-2 pr-4">Stages</th>
+              <th className="pb-2 pr-4">Backend</th>
               <th className="pb-2">Source</th>
             </tr>
           </thead>

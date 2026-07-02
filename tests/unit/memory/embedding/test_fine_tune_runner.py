@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune_runner import (
     _load_config,
     _make_progress_printer,
@@ -140,6 +141,40 @@ class TestRun:
         with patch(_DISPATCH, mock_dispatch), pytest.raises(RecursionError):
             _run()
 
+    def test_sigterm_handler_cancels_token_and_is_restored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SIGTERM (docker stop) fires the cooperative token, and the
+        previous handler is reinstated after the run."""
+        import signal
+
+        _set_config(monkeypatch, {"stage": "training"})
+        previous = signal.getsignal(signal.SIGTERM)
+        tokens: list[object] = []
+
+        async def _capture(
+            _stage: object,
+            _config: object,
+            token: object,
+            *,
+            progress_callback: object,
+        ) -> None:
+            del progress_callback
+            tokens.append(token)
+            # Fire the installed handler exactly as the signal module
+            # would on a real SIGTERM delivery.
+            handler = signal.getsignal(signal.SIGTERM)
+            assert callable(handler)
+            handler(signal.SIGTERM, None)
+
+        with patch(_DISPATCH, _capture):
+            assert _run() == 0
+        assert len(tokens) == 1
+        token = tokens[0]
+        assert isinstance(token, CancellationToken)
+        assert token.is_cancelled is True
+        assert signal.getsignal(signal.SIGTERM) == previous
+
 
 class TestProbeMode:
     """``SYNTHORG_FINE_TUNE_PROBE=1`` readiness probe."""
@@ -222,3 +257,34 @@ class TestProbeMode:
         ):
             assert _run() == 0
         assert "PROBE_OK gpu=none vram_gb=0.0" in capsys.readouterr().out
+
+    def test_probe_fail_when_cuda_inspection_breaks(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A broken CUDA runtime yields PROBE_FAIL, not a crash."""
+        monkeypatch.setenv(_PROBE_ENV, "1")
+
+        class _Cuda:
+            @staticmethod
+            def is_available() -> bool:
+                msg = "driver mismatch"
+                raise RuntimeError(msg)
+
+        class _Torch:
+            cuda = _Cuda()
+
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_torch",
+                return_value=_Torch(),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=object(),
+            ),
+        ):
+            assert _run() == 1
+        out = capsys.readouterr().out
+        assert "PROBE_FAIL CUDA inspection failed" in out

@@ -9,8 +9,9 @@ atomic download-and-rename, and archive-member extraction.
 There is deliberately no checksum verification: both vendors publish
 assets at fixed HTTPS constants on their own CDNs and ship no detached
 checksum verifiable without trusting the same origin, so TLS plus the
-pinned URL is the integrity boundary. No user input ever reaches the
-URL, so there is no SSRF surface.
+pinned URL is the integrity boundary. Revisit if either vendor starts
+shipping independently-verifiable checksums or signatures. No user
+input ever reaches the URL, so there is no SSRF surface.
 """
 
 import contextlib
@@ -22,13 +23,16 @@ import tempfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final
+from typing import Final, NoReturn
 
 import httpx
 
-from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.errors import TunnelDownloadError
 from synthorg.observability import get_logger
-from synthorg.observability.events.integrations import TUNNEL_BINARY_DOWNLOADED
+from synthorg.observability.events.integrations import (
+    TUNNEL_BINARY_DOWNLOADED,
+    TUNNEL_ERROR,
+)
 
 logger = get_logger(__name__)
 
@@ -137,6 +141,16 @@ def download_binary(
     return target
 
 
+def _fail_extraction(*, operation: str, archive: Path, msg: str) -> NoReturn:
+    """Log and raise a member-extraction failure with consistent structure.
+
+    Raises:
+        TunnelDownloadError: Always.
+    """
+    logger.warning(TUNNEL_ERROR, operation=operation, archive=str(archive), error=msg)
+    raise TunnelDownloadError(msg)
+
+
 def extract_tgz_member(archive: Path, *, member_name: str, target_dir: Path) -> Path:
     """Extract the named file member of a ``.tgz`` release asset.
 
@@ -144,7 +158,7 @@ def extract_tgz_member(archive: Path, *, member_name: str, target_dir: Path) -> 
         Path to the extracted file (inside *target_dir*).
 
     Raises:
-        TunnelError: When the archive carries no such member.
+        TunnelDownloadError: When the archive carries no such member.
     """
     with tarfile.open(archive, mode="r:gz") as tar:
         member = next(
@@ -153,11 +167,11 @@ def extract_tgz_member(archive: Path, *, member_name: str, target_dir: Path) -> 
         )
         if member is None or not member.isfile():
             msg = f"{member_name} release archive contained no binary"
-            raise TunnelError(msg)
+            _fail_extraction(operation="extract_tgz", archive=archive, msg=msg)
         extracted = tar.extractfile(member)
         if extracted is None:
             msg = f"{member_name} release archive member was unreadable"
-            raise TunnelError(msg)
+            _fail_extraction(operation="extract_tgz", archive=archive, msg=msg)
         out = target_dir / f".{member_name}-extracted"
         out.write_bytes(extracted.read())
         return out
@@ -174,7 +188,7 @@ def extract_zip_member(archive: Path, *, member_name: str, target_dir: Path) -> 
         Path to the extracted file (inside *target_dir*).
 
     Raises:
-        TunnelError: When the archive carries no such member.
+        TunnelDownloadError: When the archive carries no such member.
     """
     with zipfile.ZipFile(archive) as bundle:
         info = next(
@@ -187,7 +201,7 @@ def extract_zip_member(archive: Path, *, member_name: str, target_dir: Path) -> 
         )
         if info is None:
             msg = f"{member_name} release archive contained no binary"
-            raise TunnelError(msg)
+            _fail_extraction(operation="extract_zip", archive=archive, msg=msg)
         out = target_dir / f".{member_name}-extracted"
         with bundle.open(info) as handle:
             out.write_bytes(handle.read())

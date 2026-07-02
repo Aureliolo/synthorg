@@ -320,7 +320,23 @@ class ConnectionRateLimitError(IntegrationError):
 
 
 class TunnelError(IntegrationError):
-    """An error occurred starting or operating the tunnel."""
+    """An error occurred starting or operating the tunnel.
+
+    Deterministic by default (missing token, unsupported platform,
+    unknown provider); the transient leaf subclasses below mark the
+    failures a retry can plausibly fix.
+    """
+
+
+class TunnelStartFailedError(TunnelError):
+    """The vendor CLI failed to spawn, connect, or yield a public URL."""
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+
+
+class TunnelDownloadError(TunnelError):
+    """Fetching or unpacking the vendor CLI release asset failed."""
 
     is_retryable = True
     retryable: ClassVar[bool] = True

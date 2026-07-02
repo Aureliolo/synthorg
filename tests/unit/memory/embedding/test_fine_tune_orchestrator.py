@@ -211,10 +211,16 @@ class TestExecutionResolution:
             msg = "default resolution must not run for an explicit request"
             raise AssertionError(msg)
 
+        async def _factory(
+            _execution: FineTuneExecutionConfig | None,
+        ) -> InProcessStageExecutor:
+            return InProcessStageExecutor()
+
         orchestrator = FineTuneOrchestrator(
             run_repo=run_repo,
             checkpoint_repo=cp_repo,
             resolve_default_execution=_resolve,
+            stage_executor_factory=_factory,
         )
         req = _request(tmp_path).model_copy(update={"execution": explicit})
         with _mock_all_stages():

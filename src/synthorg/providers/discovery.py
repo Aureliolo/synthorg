@@ -46,10 +46,6 @@ logger = get_logger(__name__)
 
 _DISCOVERY_TIMEOUT_SECONDS: Final[float] = 10.0
 
-# Distinct (preset, redacted-url) pairs whose SSRF-bypass audit entry
-# has already been emitted this process (see ``_fetch_json_trusted``).
-_SSRF_BYPASS_LOGGED: Final[set[tuple[str | None, str]]] = set()
-
 _ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 
 # Private, loopback, link-local, and reserved networks.
@@ -452,17 +448,14 @@ async def _fetch_json_trusted(
         Parsed JSON dict, or ``None`` on any failure.
     """
     safe_url = _redact_url(url)
-    # One audit entry per distinct trusted URL, not per request: model
-    # discovery re-probes the same preset endpoints every refresh cycle
-    # and per-request repeats drown the log without adding signal.
-    dedupe_key = (preset_name, safe_url)
-    if dedupe_key not in _SSRF_BYPASS_LOGGED:
-        _SSRF_BYPASS_LOGGED.add(dedupe_key)
-        logger.warning(
-            PROVIDER_DISCOVERY_SSRF_BYPASSED,
-            preset=preset_name,
-            url=safe_url,
-        )
+    # Every occurrence is logged (SEC-1 audit trail): a bypass that
+    # keeps happening must stay visible, not go dark after the first
+    # hit. Volume is bounded by the discovery refresh cadence.
+    logger.warning(
+        PROVIDER_DISCOVERY_SSRF_BYPASSED,
+        preset=preset_name,
+        url=safe_url,
+    )
     return await _safe_fetch(
         _do_fetch_json(url, headers, preset_name=preset_name, body=body),
         preset_name,

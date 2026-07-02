@@ -64,7 +64,7 @@ services:
 {{- if distributedEnabled}}
       - synthorg-nats-data:/nats-data
 {{- end}}
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data{{if postgresEnabled}}; chown -R 70:70 /pgdata; chmod 0700 /pgdata{{end}}{{if distributedEnabled}}; chown -R 65532:65532 /nats-data{{end}}"]
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory /data/tunnel; chown -R 65532:65532 /data{{if postgresEnabled}}; chown -R 70:70 /pgdata; chmod 0700 /pgdata{{end}}{{if distributedEnabled}}; chown -R 65532:65532 /nats-data{{end}}"]
     cap_drop:
       - ALL
     cap_add:

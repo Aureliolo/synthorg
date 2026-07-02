@@ -153,6 +153,24 @@ class TestSnapshot:
         by_id = {p.provider_id: p for p in snapshot.providers}
         assert by_id["cloudflare"].available is True
         assert by_id["ngrok"].available is False
+        assert by_id["ngrok"].detail == "Availability probe failed."
+        # The credential probe runs independently, so an availability
+        # failure does not clobber its answer.
+        assert by_id["ngrok"].credential_configured is True
+
+    async def test_degrades_credential_on_probe_failure(self) -> None:
+        class ExplodingCredentialAdapter(FakeAdapter):
+            @override
+            async def credential_configured(self) -> bool:
+                msg = "credential probe blew up"
+                raise RuntimeError(msg)
+
+        manager = _manager(
+            FakeAdapter("cloudflare"), ExplodingCredentialAdapter("ngrok")
+        )
+        snapshot = await manager.snapshot()
+        by_id = {p.provider_id: p for p in snapshot.providers}
+        assert by_id["ngrok"].available is True
         assert by_id["ngrok"].credential_configured is False
 
 

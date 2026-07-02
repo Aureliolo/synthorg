@@ -127,10 +127,16 @@ MEMORY_FINE_TUNE_QUERY_LLM_FALLBACK: Final[str] = "memory.fine_tune.query_llm_fa
 MEMORY_FINE_TUNE_QUERY_GENERATION_ERROR: Final[str] = (
     "memory.fine_tune.query_generation_error"
 )
+MEMORY_FINE_TUNE_PREFLIGHT_CHECK_DEGRADED: Final[str] = (
+    "memory.fine_tune.preflight_check_degraded"
+)
 MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT: Final[str] = (
     "memory.fine_tune.preflight_timed_out"
 )
 MEMORY_FINE_TUNE_EVAL_COMPLETED: Final[str] = "memory.fine_tune.eval_completed"
+MEMORY_FINE_TUNE_EVAL_METRICS_UNREADABLE: Final[str] = (
+    "memory.fine_tune.eval_metrics_unreadable"
+)
 MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED: Final[str] = (
     "memory.fine_tune.backup_read_skipped"
 )
