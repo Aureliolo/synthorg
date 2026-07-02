@@ -376,12 +376,17 @@ async def _dispatch_stage(
     # Lazy imports -- only load ML deps when actually running a stage.
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
         _DEFAULT_CHUNK_SIZE_WORDS,
-        contrastive_fine_tune,
         deploy_checkpoint,
-        evaluate_checkpoint,
         generate_training_data,
-        mine_hard_negatives,
     )
+    from synthorg.memory.embedding.fine_tune_stage_dispatch import (  # noqa: PLC0415
+        CONTAINER_STAGES,
+        dispatch_stage,
+    )
+
+    if stage in CONTAINER_STAGES:
+        await dispatch_stage(stage, config, token)
+        return
 
     match stage:
         case FineTuneStage.GENERATING_DATA:
@@ -391,28 +396,6 @@ async def _dispatch_stage(
                 chunk_size=int(
                     str(config.get("chunk_size", _DEFAULT_CHUNK_SIZE_WORDS))
                 ),
-                cancellation=token,
-            )
-        case FineTuneStage.MINING_NEGATIVES:
-            await mine_hard_negatives(
-                training_data_path=str(config["training_data_path"]),
-                base_model=str(config["base_model"]),
-                output_dir=str(config["output_dir"]),
-                cancellation=token,
-            )
-        case FineTuneStage.TRAINING:
-            await contrastive_fine_tune(
-                training_data_path=str(config["training_data_path"]),
-                base_model=str(config["base_model"]),
-                output_dir=str(config["output_dir"]),
-                cancellation=token,
-            )
-        case FineTuneStage.EVALUATING:
-            await evaluate_checkpoint(
-                checkpoint_path=str(config["checkpoint_path"]),
-                base_model=str(config["base_model"]),
-                validation_data_path=str(config["validation_data_path"]),
-                output_dir=str(config["output_dir"]),
                 cancellation=token,
             )
         case FineTuneStage.DEPLOYING:
