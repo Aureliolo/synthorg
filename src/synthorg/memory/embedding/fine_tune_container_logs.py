@@ -20,6 +20,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.fine_tune import (
     FINE_TUNE_CONTAINER_FAILED,
     FINE_TUNE_MARKER_DISCARDED,
+    FINE_TUNE_PROGRESS_CALLBACK_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -101,7 +102,7 @@ def handle_marker_line(
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
-                FINE_TUNE_MARKER_DISCARDED,
+                FINE_TUNE_PROGRESS_CALLBACK_FAILED,
                 marker=_MARKER_PROGRESS,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
