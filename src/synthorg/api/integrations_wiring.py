@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.api._tunnel_wiring import (
+    bind_tunnel_connection_health,
+    wire_tunnel_provider,
+)
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -121,116 +125,6 @@ def _wire_mcp_installations_repo(
             error=safe_error_description(exc),
         )
     return None
-
-
-def _resolve_tunnel_state_dir() -> Path | None:
-    """Resolve ``integrations.tunnel_state_dir`` (env-seeded, boot-only).
-
-    Returns:
-        The state-dir path, or ``None`` when unset (adapters fall back
-        to ``~/.synthorg``).
-
-    Raises:
-        ValueError: When the value carries a ``..`` traversal component.
-    """
-    from pathlib import PurePath  # noqa: PLC0415
-
-    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-        resolve_init_value,
-    )
-    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-
-    raw = str(
-        resolve_init_value(SettingNamespace.INTEGRATIONS, "tunnel_state_dir").value
-    )
-    if ".." in PurePath(raw).parts:
-        msg = (
-            f"SYNTHORG_TUNNEL_STATE_DIR contains '..' path traversal component: {raw!r}"
-        )
-        raise ValueError(msg)
-    return Path(raw) if raw else None
-
-
-def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
-    """Wire the multi-provider tunnel manager (no persistence dep).
-
-    Best-effort: a missing adapter module or constructor failure must
-    not abort app startup. The dashboard's tunnel card simply degrades
-    to "unavailable" when this returns ``None``. The tunneled port is
-    the API's own resolved serving port (``api.server_port``), so
-    every provider exposes the address the server actually listens on.
-    The state dir (``integrations.tunnel_state_dir``, env
-    ``SYNTHORG_TUNNEL_STATE_DIR``) roots downloaded binaries and the
-    devtunnel login home; a ``..`` component is rejected so the env
-    var cannot traverse out of its mount.
-
-    Returns:
-        The ``TunnelManager`` value when present, ``None`` otherwise.
-    """
-    try:
-        from synthorg.integrations.tunnel.factory import (  # noqa: PLC0415
-            build_tunnel_manager,
-        )
-        from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-            resolve_init_value,
-        )
-        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-        from synthorg.settings.mirrors import parse_int  # noqa: PLC0415
-
-        port = int(
-            resolve_init_value(
-                SettingNamespace.API,
-                "server_port",
-                parse=parse_int,
-            ).value
-        )
-        provider = build_tunnel_manager(
-            effective_config.integrations.tunnel,
-            port=port,
-            state_dir=_resolve_tunnel_state_dir(),
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="tunnel_provider",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="tunnel provider auto-wire failed (non-fatal)",
-        )
-        return None
-    logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
-    return provider
-
-
-def _bind_tunnel_connection_health(manager: TunnelManager | None) -> None:
-    """Route tunnel-connection health through the tunnel manager.
-
-    The Connections screen must report the same verdict as the tunnel
-    card, so the tunnel connection checker resolves readiness from the
-    manager; connections outside the ``tunnel-<provider>`` convention
-    (and every connection when no manager is wired) resolve to ``None``
-    and report ``UNKNOWN``.
-    """
-    if manager is None:
-        return
-    from synthorg.integrations.health.prober import (  # noqa: PLC0415
-        bind_tunnel_status_lookup,
-    )
-    from synthorg.integrations.tunnel.manager import (  # noqa: PLC0415
-        tunnel_provider_id_for_connection,
-    )
-    from synthorg.integrations.tunnel.protocol import (  # noqa: PLC0415
-        TunnelProviderStatus,
-    )
-
-    async def _lookup(connection_name: str) -> TunnelProviderStatus | None:
-        provider_id = tunnel_provider_id_for_connection(connection_name)
-        if provider_id is None:
-            return None
-        return await manager.provider_status(provider_id)
-
-    bind_tunnel_status_lookup(_lookup)
 
 
 def _resolve_secret_db_path(
@@ -352,7 +246,7 @@ def auto_wire_integrations(  # noqa: PLR0913
     # Wired unconditionally (no persistence / OAuth deps) so the
     # dashboard toggle works even when the rest of integrations are
     # disabled.
-    bundle.tunnel_provider = _wire_tunnel_provider(effective_config)
+    bundle.tunnel_provider = wire_tunnel_provider(effective_config)
 
     # The credential catalog is built whenever persistence is connected,
     # independent of ``integrations.enabled``: LLM provider authentication
@@ -450,7 +344,7 @@ def auto_wire_integrations(  # noqa: PLR0913
 
         bundle.connection_catalog = catalog
         bind_health_check_catalog(catalog)
-        _bind_tunnel_connection_health(bundle.tunnel_provider)
+        bind_tunnel_connection_health(bundle.tunnel_provider)
         # Resolve the operator-configured GitHub API base URL (env > default;
         # the same ``integrations.github_api_url`` setting that backs the
         # code-mod client) and inject it into the import-time health checker
