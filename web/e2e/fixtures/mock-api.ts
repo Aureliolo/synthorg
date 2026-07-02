@@ -178,6 +178,62 @@ export async function mockApiRoutes(page: Page) {
             { timestamp: '2026-03-28T00:00:00Z', value: 12.9 },
             { timestamp: '2026-03-29T00:00:00Z', value: 13.4 },
           ],
+          tasks_7d_trend: [
+            { timestamp: '2026-03-23T00:00:00Z', value: 2 },
+            { timestamp: '2026-03-24T00:00:00Z', value: 4 },
+            { timestamp: '2026-03-25T00:00:00Z', value: 3 },
+            { timestamp: '2026-03-26T00:00:00Z', value: 5 },
+            { timestamp: '2026-03-27T00:00:00Z', value: 4 },
+            { timestamp: '2026-03-28T00:00:00Z', value: 3 },
+            { timestamp: '2026-03-29T00:00:00Z', value: 3 },
+          ],
+          agents_7d_trend: [
+            { timestamp: '2026-03-23T00:00:00Z', value: 4 },
+            { timestamp: '2026-03-24T00:00:00Z', value: 4 },
+            { timestamp: '2026-03-25T00:00:00Z', value: 5 },
+            { timestamp: '2026-03-26T00:00:00Z', value: 5 },
+            { timestamp: '2026-03-27T00:00:00Z', value: 6 },
+            { timestamp: '2026-03-28T00:00:00Z', value: 5 },
+            { timestamp: '2026-03-29T00:00:00Z', value: 5 },
+          ],
+          review_7d_trend: [
+            { timestamp: '2026-03-23T00:00:00Z', value: 1 },
+            { timestamp: '2026-03-24T00:00:00Z', value: 2 },
+            { timestamp: '2026-03-25T00:00:00Z', value: 2 },
+            { timestamp: '2026-03-26T00:00:00Z', value: 3 },
+            { timestamp: '2026-03-27T00:00:00Z', value: 2 },
+            { timestamp: '2026-03-28T00:00:00Z', value: 3 },
+            { timestamp: '2026-03-29T00:00:00Z', value: 3 },
+          ],
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
+  // Tunnel status. The catch-all's ``data: []`` envelope is the wrong
+  // shape for ``TunnelSnapshot`` (an object with a mandatory
+  // ``providers`` array); the tunnel store would write ``undefined``
+  // into ``providers`` and crash the Connections page's TunnelCard.
+  await page.route('**/api/v1/integrations/tunnel/status', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          public_url: null,
+          selected_provider: 'cloudflare',
+          active_provider: null,
+          providers: [
+            {
+              provider_id: 'cloudflare',
+              display_name: 'Cloudflare quick tunnel',
+              credential_kind: 'none',
+              available: true,
+              detail: null,
+              credential_configured: true,
+            },
+          ],
         },
         error: null,
         error_detail: null,

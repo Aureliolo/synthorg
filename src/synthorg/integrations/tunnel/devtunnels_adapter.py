@@ -427,7 +427,8 @@ class DevTunnelsAdapter:
             self._home_dir.mkdir(parents=True, exist_ok=True)
             self._home_dir.chmod(stat.S_IRWXU)
             return {"HOME": str(self._home_dir)}
-        return None
+        else:  # noqa: RET505 -- both platform branches must be if/else arms: mypy prunes a dead platform *branch* silently but flags trailing code as unreachable
+            return None
 
     def _locate_binary(self) -> Path | None:
         found = shutil.which(_BINARY_NAME)

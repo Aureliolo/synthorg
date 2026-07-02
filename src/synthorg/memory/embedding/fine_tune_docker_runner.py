@@ -504,9 +504,20 @@ class FineTuneContainerRunner:
                 reset), so callers see the documented error type
                 instead of a raw transport exception.
         """
+        # The log stream yields decoded transport chunks, not lines: one
+        # chunk can carry several lines and a line can span chunks, so
+        # marker parsing buffers and splits on newlines itself.
+        buffer = ""
         try:
             async for raw in container.log(stdout=True, stderr=True, follow=True):
-                self._handle_marker_line(raw.strip(), progress_callback, error_lines)
+                buffer += raw
+                while "\n" in buffer:
+                    line, _, buffer = buffer.partition("\n")
+                    self._handle_marker_line(
+                        line.strip(), progress_callback, error_lines
+                    )
+            if buffer.strip():
+                self._handle_marker_line(buffer.strip(), progress_callback, error_lines)
             result = await container.wait()
         except Exception as exc:
             reraise_critical(exc)

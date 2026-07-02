@@ -33,6 +33,7 @@ from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
@@ -299,16 +300,18 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
         def _held_preflight_checks(
             *_args: object, **_kwargs: object
-        ) -> tuple[object, ...]:
+        ) -> tuple[list[object], ProbeResult]:
             # ``to_thread`` runs this synchronously on a worker, so
             # ``threading.Event`` is the right primitive here.
             # Signal entry (the holder has the permit), then park on
             # ``release`` until the test releases explicitly.  Both
             # events carry a bounded timeout so a wiring bug never
-            # wedges the suite.
+            # wedges the suite.  The handler unpacks
+            # ``checks, probe`` from this return value, so the shape
+            # must track the production helper's 2-tuple.
             entered.set()
             release.wait(_HOLD_TIMEOUT_SECONDS)
-            return ()
+            return [], ProbeResult(ok=True, detail="held probe")
 
         def _held_batch_size(*_args: object, **_kwargs: object) -> int:
             # Accept and ignore any kwargs the production helper grows

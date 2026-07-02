@@ -5,10 +5,13 @@ import { mockIntegrationRoutes } from '../fixtures/integrations-mocks'
 test.describe('Integrations dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
-    await mockIntegrationRoutes(page)
     // mockApiRoutes stubs `GET /auth/me` to a non-401, keeping the app
     // authenticated (HttpOnly-cookie auth) so it never redirects to login.
+    // It must be registered FIRST: Playwright matches routes LIFO, so the
+    // integration-specific stubs below only win over mockApiRoutes'
+    // ``**/api/v1/**`` catch-all when they are registered after it.
     await mockApiRoutes(page)
+    await mockIntegrationRoutes(page)
   })
 
   test('Connections page loads with connections and health', async ({ page }) => {
@@ -29,10 +32,21 @@ test.describe('Integrations dashboard', () => {
     const toggle = page.getByRole('switch', { name: /start tunnel/i })
     await expect(toggle).toBeVisible()
     await toggle.click()
-    await expect(page.getByText('mock-tunnel.trycloudflare.com')).toBeVisible()
+    // First enable shows the tunnel-intro explainer (the backend-owned
+    // acknowledgement flag starts false); confirming starts the tunnel.
+    // ConfirmDialog renders a Base UI AlertDialog (role=alertdialog).
+    await expect(
+      page.getByRole('alertdialog', { name: /about the webhook tunnel/i }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: /I understand, start tunnel/i }).click()
+    // Scope to the main region: the started-tunnel toast repeats the URL.
+    const mainUrl = page
+      .getByLabel('Main content')
+      .getByText('mock-tunnel.trycloudflare.com')
+    await expect(mainUrl).toBeVisible()
     const stopToggle = page.getByRole('switch', { name: /stop tunnel/i })
     await stopToggle.click()
-    await expect(page.getByText('mock-tunnel.trycloudflare.com')).not.toBeVisible()
+    await expect(mainUrl).not.toBeVisible()
   })
 
   test('Tunnel provider picker shows credential states', async ({ page }) => {
@@ -48,15 +62,22 @@ test.describe('Integrations dashboard', () => {
     await page.goto('/integrations/mcp-catalog')
     await waitForFonts(page)
     await expect(page.getByRole('heading', { name: 'MCP Catalog' })).toBeVisible()
-    await expect(page.getByText('Filesystem')).toBeVisible()
-    await expect(page.getByText('GitHub')).toBeVisible()
+    // Card locators go through the accessible button name: bare
+    // getByText('Filesystem') is ambiguous (name, description, and tag
+    // chip all contain the word) and trips strict mode.
+    await expect(page.getByRole('button', { name: 'View Filesystem' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'View GitHub' })).toBeVisible()
 
-    await page.getByRole('searchbox', { name: /search mcp catalog/i }).fill('github')
+    // The catalog search is an InputField labelled "Search" (a plain
+    // textbox, not role=searchbox).
+    await page.getByRole('textbox', { name: 'Search' }).fill('github')
     // The catalog store debounces search by 200ms; wait for
     // Filesystem to actually disappear instead of asserting
     // immediately (otherwise the test is flaky on fast machines).
-    await page.getByText('Filesystem').waitFor({ state: 'hidden' })
-    await expect(page.getByText('GitHub')).toBeVisible()
+    await page
+      .getByRole('button', { name: 'View Filesystem' })
+      .waitFor({ state: 'hidden' })
+    await expect(page.getByRole('button', { name: 'View GitHub' })).toBeVisible()
   })
 
   test('Create connection flow opens the form and picks a type', async ({ page }) => {

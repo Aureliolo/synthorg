@@ -78,7 +78,8 @@ def _expected_env(tmp_path: Path) -> Mapping[str, str] | None:
     """The confined env the adapter passes on this host platform."""
     if sys.platform != "win32":
         return {"HOME": str(tmp_path / "home")}
-    return None
+    else:  # noqa: RET505 -- both platform branches must be if/else arms: mypy prunes a dead platform *branch* silently but flags trailing code as unreachable
+        return None
 
 
 class TestIdentity:

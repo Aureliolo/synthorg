@@ -267,6 +267,32 @@ class TestRunStage:
             ],
         }
 
+    async def test_markers_split_and_batched_across_chunks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The log stream yields transport chunks, not lines.
+
+        A marker split across two chunks and two markers delivered in
+        one chunk must both parse; a final unterminated line must also
+        be flushed at stream end.
+        """
+        container = FakeContainer(
+            log_lines=[
+                "PROGRESS:0.2",
+                "5\nPROGRESS:0.50\nERROR: half ",
+                "the corpus is empty\nPROGRESS:0.75",
+            ],
+            exit_code=1,
+        )
+        docker = FakeDocker(FakeContainers(container))
+        progress: list[float] = []
+
+        with pytest.raises(
+            FineTuneStageExecutionError, match="half the corpus is empty"
+        ):
+            await _run(_runner_with(monkeypatch, docker), progress=progress)
+        assert progress == [0.25, 0.50, 0.75]
+
     async def test_nonzero_exit_raises_with_error_marker(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

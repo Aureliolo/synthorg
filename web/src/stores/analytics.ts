@@ -106,15 +106,27 @@ async function fetchDashboardDataImpl(set: AnSet): Promise<void> {
       return
     }
     const departmentHealths = await fetchDepartmentHealths()
-    set({
-      overview: results.overview,
-      forecast: results.forecast,
-      budgetConfig: results.budgetConfig,
-      departmentHealths,
-      orgHealthPercent: computeOrgHealth(departmentHealths),
-      activities: results.activitiesData,
-      loading: false,
-      error: null,
+    set((state) => {
+      // WS events pushed while this fetch was in flight are newer than
+      // the fetched snapshot; overwriting would silently drop them from
+      // the live feed. Keep them ahead of the fetched history.
+      const fetchedIds = new Set(results.activitiesData.map((a) => a.id))
+      const liveDuringFetch = state.activities.filter(
+        (a) => !fetchedIds.has(a.id),
+      )
+      return {
+        overview: results.overview,
+        forecast: results.forecast,
+        budgetConfig: results.budgetConfig,
+        departmentHealths,
+        orgHealthPercent: computeOrgHealth(departmentHealths),
+        activities: [...liveDuringFetch, ...results.activitiesData].slice(
+          0,
+          MAX_ACTIVITIES,
+        ),
+        loading: false,
+        error: null,
+      }
     })
   } catch (err) {
     set({ loading: false, error: getErrorMessage(err) })

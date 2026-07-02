@@ -85,7 +85,12 @@ module.exports = [
   {
     name: 'vendor-ui gzipped',
     path: 'dist/assets/vendor-ui-*.js',
-    limit: '90 KB',
+    // Raised from 90 KB for the webhook-tunnel + chat consolidation
+    // surfaces: the shared drawer ships @base-ui/react's Drawer
+    // primitive and the tunnel / chat / sparkline UI pulls additional
+    // lucide icons into this tree-shaken chunk (93.48 KB gzipped at
+    // re-baseline; ceiling = current * 1.10).
+    limit: '103 KB',
     gzip: true,
   },
   {
