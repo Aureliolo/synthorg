@@ -12,6 +12,7 @@ declares that surface so ``mypy`` type-checks the mixin in isolation.
 """
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -96,6 +97,7 @@ class ApprovalExpirationMixin:
         status: ApprovalStatus | None,
         risk_level: ApprovalRiskLevel | None,
         action_type: NotBlankStr | None,
+        created_since: datetime | None,
     ) -> tuple[ApprovalItem, ...]:
         """Cache-only list path (no repository wired).
 
@@ -115,6 +117,8 @@ class ApprovalExpirationMixin:
             if risk_level is not None and checked.risk_level != risk_level:
                 continue
             if action_type is not None and checked.action_type != action_type:
+                continue
+            if created_since is not None and checked.created_at < created_since:
                 continue
             checked_items.append(checked)
         return tuple(checked_items)

@@ -26,6 +26,12 @@ export const metaHandlers = [
       successFor<typeof getMetaConfig>({
         enabled: false,
         chief_of_staff_enabled: false,
+        chief_of_staff: {
+          chat_enabled: true,
+          propose_enabled: true,
+          group_chat_enabled: true,
+          direct_mcp_enabled: false,
+        },
         config_tuning_enabled: false,
         architecture_proposals_enabled: false,
         prompt_tuning_enabled: false,

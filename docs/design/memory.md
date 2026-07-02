@@ -295,29 +295,51 @@ checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
 provider must serve the fine-tuned model under this identifier.
 
 **Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
-pipeline stage runs inside an ephemeral `synthorg-fine-tune-gpu` (default) or
-`synthorg-fine-tune-cpu` container spawned by the backend via the Docker API. Both
-variants ship the same Python runner and accept the same stage-config contract; they
-differ only in the bundled torch build (CUDA ~4 GB download / ~7 GB on disk vs CPU ~1.7 GB) and whether GPU
-passthrough is usable. The variant is selected at `synthorg init` time (fresh installs)
-or via `synthorg config set fine_tuning_variant gpu|cpu` (post-init, preserves data)
-and persisted as `fine_tuning_variant` in `config.json`. The backend consumes
-`SYNTHORG_FINE_TUNE_IMAGE` verbatim as a full image reference (including registry,
-repository, and either a `:tag` or a digest-pinned `@sha256:...`); in a CLI-managed
-install the rendered `compose.yml` writes the verified digest-pinned ref into this
-env var automatically. Operators running a hand-managed `compose.yml` without the
-CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the backend directly; tag-based refs work
-for quick evaluation, but production deployments should pin a digest so the backend
-spawns the exact attested image. See [Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
-for the BYO snippet. The container reads stage configuration
-from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
-structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The
-runner and markers are implemented; orchestrator consumption of these markers
-from container logs for progress reporting is not yet wired.
-Source data is mounted at `/data` (read-only), checkpoints written to `/checkpoints`
-(read-write). GPU passthrough is available via `gpu_enabled=True` (only meaningful
-for the GPU variant). The in-process fallback (`backend="in-process"`) is preserved
-for non-Docker deployments where torch is installed directly.
+torch-bound pipeline stage (hard-negative mining, training, evaluation) runs inside an
+ephemeral one-shot `synthorg-fine-tune-gpu` (default) or `synthorg-fine-tune-cpu`
+container spawned by the backend via the Docker API and removed on exit. Data
+generation (which holds DB/LLM handles) and deploy/promotion (which touch settings +
+persistence) always run in-process regardless of backend. Both image variants ship
+the same Python runner and accept the same stage-config contract; they differ only in
+the bundled torch build (CUDA ~4 GB download / ~7 GB on disk vs CPU ~1.7 GB) and
+whether GPU passthrough is usable. The variant is selected at `synthorg init` time
+(fresh installs) or via `synthorg config set fine_tuning_variant gpu|cpu` (post-init,
+preserves data) and persisted as `fine_tuning_variant` in `config.json`. The backend
+consumes `SYNTHORG_FINE_TUNE_IMAGE` verbatim as a full image reference (including
+registry, repository, and either a `:tag` or a digest-pinned `@sha256:...`); in a
+CLI-managed install the rendered `compose.yml` writes the verified digest-pinned ref
+into this env var automatically (surfaced as the `memory.fine_tune_image` setting,
+resolved DB > env > default at boot). Operators running a hand-managed `compose.yml`
+without the CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the backend directly; tag-based
+refs work for quick evaluation, but production deployments should pin a digest so
+the backend spawns the exact attested image. See
+[Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
+for the BYO snippet. The container reads its flat stage configuration from the
+`SYNTHORG_FINE_TUNE_STAGE_CONFIG` env var (inline JSON injected by the launcher) and
+emits structured markers on stdout that the launcher parses: `STAGE_START:` /
+`STAGE_COMPLETE:` bracket the run, `PROGRESS:<fraction>` drives the WS progress
+pipeline in the orchestrator, and `ERROR:<message>` carries the failure detail. The shared
+data volume is mounted read-write at `/data` (training data in, checkpoints out
+under `/data/fine-tune/runs/<run_id>/`), so consecutive stages hand off through
+deterministic paths. The volume name comes from `memory.fine_tune_data_volume`
+(default `synthorg-data`, the compose data volume; env override
+`SYNTHORG_FINE_TUNE_DATA_VOLUME`) and must be a Docker volume NAME, never a
+path. Stage containers get GPU passthrough via Docker
+`DeviceRequests` when `gpu_enabled=True` (only meaningful for the GPU variant;
+`memory.fine_tune_default_gpu` supplies the default for runs without an
+explicit execution config), a memory limit from `memory.fine_tune_memory_limit`,
+and a per-stage wall-clock
+timeout from `memory.fine_tune_stage_timeout_seconds`; cancellation stops the
+container (SIGTERM reaches the runner's cooperative token). When a run requests no
+explicit execution config the backend derives it: image configured means docker,
+no image means in-process (bare-metal installs with the torch extras installed
+directly), and the effective config is baked into the persisted run for resume and
+audit. Preflight boots the same image with `SYNTHORG_FINE_TUNE_PROBE=1`, which
+prints one `PROBE_OK gpu=<name|none> vram_gb=<x>` / `PROBE_FAIL <reason>` line
+proving the image runs and sees the GPU before a long training run starts (cached
+briefly so dashboard polls do not spawn probe containers per request). There is no
+standing fine-tune compose service; containers exist only while a stage or probe
+runs.
 
 ```python
 class EmbeddingFineTuneConfig(BaseModel):

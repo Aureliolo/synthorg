@@ -33,12 +33,16 @@ export interface GroupResult {
   groupHeight: number
 }
 
-export const DEFAULT_NODE_WIDTH = 160
+// Matches the fixed `w-44` (176px) agent-card width in AgentNode so the
+// layout estimate equals the rendered width and sibling edge centres align.
+export const DEFAULT_NODE_WIDTH = 176
 export const DEFAULT_NODE_HEIGHT = 80
 export const DEFAULT_GROUP_PADDING = 16
 
-// Fixed header pieces on every dept card (inner padding + title row + bottom margin)
-const HEADER_BASE = 48
+// Fixed header pieces on every dept card (inner padding + title row + bottom
+// margin). The bottom margin leaves a small breathing gap between the stats
+// (Active / Cost) row and the first agent card below it.
+const HEADER_BASE = 56
 // Department stats pill row (Active / Cost) rendered on every populated,
 // expanded dept card. One StatPill row is ~22 px plus the header's
 // space-y-1.5 (6 px) gap above it. Not gated by a view toggle, so it is

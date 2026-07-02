@@ -35,10 +35,14 @@ export async function installWebSocketHarness(page: Page): Promise<void> {
     }
     interface SynthorgWindow {
       __synthorgWsLatest: StubWebSocket | null
+      __synthorgWsSubscribedChannels: string[]
+      __synthorgWsInjectedFrames: { channel: string; data: string }[]
     }
     const win = window as unknown as SynthorgWindow
 
     win.__synthorgWsLatest = null
+    win.__synthorgWsSubscribedChannels = []
+    win.__synthorgWsInjectedFrames = []
 
     class HarnessWebSocket extends EventTarget {
       readonly url: string
@@ -71,9 +75,56 @@ export async function installWebSocketHarness(page: Page): Promise<void> {
         })
       }
 
-      send(_data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
-        // No-op: the dashboard does not need to round-trip pings in
-        // tests, and harness-injected events arrive via injectEvent.
+      send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+        // The dashboard does not need to round-trip pings in tests
+        // (harness-injected events arrive via injectEvent), but the
+        // subscribe frames the SPA sends are recorded: handler
+        // registration happens in the same synchronous block as the
+        // ``subscribe`` send, so an observed subscribe frame is the
+        // readiness signal ``injectEvent`` waits on before pushing.
+        if (typeof data !== 'string') return
+        try {
+          const frame = JSON.parse(data) as {
+            action?: unknown
+            channels?: unknown
+          }
+          if (frame.action === 'subscribe' && Array.isArray(frame.channels)) {
+            const channels = frame.channels.filter(
+              (c): c is string => typeof c === 'string',
+            )
+            for (const channel of channels) {
+              if (!win.__synthorgWsSubscribedChannels.includes(channel)) {
+                win.__synthorgWsSubscribedChannels.push(channel)
+              }
+            }
+            // Sticky redelivery: the SPA registers channel handlers in
+            // the same synchronous block that sends this subscribe
+            // frame (subscribe first, ``onChannelEvent`` right after),
+            // so a frame injected before THIS subscriber attached was
+            // silently dropped by the dispatcher. Replay buffered
+            // frames for the newly-subscribed channels on a microtask
+            // (after the registration statements have run). Handlers
+            // attached earlier see the frame twice; specs assert with
+            // ``.first()`` / idempotent state, so duplicates are safe,
+            // while dropped frames are not.
+            const replayable = win.__synthorgWsInjectedFrames.filter((f) =>
+              channels.includes(f.channel),
+            )
+            if (replayable.length > 0) {
+              queueMicrotask(() => {
+                const ws = win.__synthorgWsLatest
+                if (ws == null) return
+                for (const f of replayable) {
+                  const evt = new MessageEvent('message', { data: f.data })
+                  ws.onmessage?.call(ws as unknown as WebSocket, evt)
+                  ws.dispatchEvent(evt)
+                }
+              })
+            }
+          }
+        } catch {
+          // Non-JSON frames (none today) carry no subscription state.
+        }
       }
 
       close(): void {
@@ -105,18 +156,27 @@ export async function injectEvent(
   event: Record<string, unknown>,
 ): Promise<void> {
   // The SPA opens its WebSocket asynchronously (it first fetches an
-  // auth ws-ticket), so a goto() does not guarantee the stub exists by
-  // the time a test injects. Wait for the constructor to register the
-  // stub before pushing, so callers never race the connection.
-  await page.waitForFunction(() => {
-    const ws = (
-      window as unknown as { __synthorgWsLatest?: WebSocket | null }
-    ).__synthorgWsLatest
-    return ws !== undefined && ws !== null
-  })
+  // auth ws-ticket) and registers its channel handlers later still
+  // (a React effect subscribes after connect resolves), so a goto()
+  // guarantees neither the stub nor the dispatch chain. An event
+  // injected before ``onChannelEvent`` ran is silently dropped by the
+  // dispatcher. The subscribe frame is sent in the same synchronous
+  // block that registers the handlers, so wait until the SPA has
+  // subscribed to this event's channel before pushing.
+  const channel = typeof event['channel'] === 'string' ? event['channel'] : null
+  await page.waitForFunction((wanted) => {
+    const win = window as unknown as {
+      __synthorgWsLatest?: WebSocket | null
+      __synthorgWsSubscribedChannels?: string[]
+    }
+    if (win.__synthorgWsLatest == null) return false
+    if (wanted === null) return true
+    return win.__synthorgWsSubscribedChannels?.includes(wanted) ?? false
+  }, channel)
   await page.evaluate((payload) => {
     interface SynthorgWindow {
       __synthorgWsLatest?: WebSocket | null
+      __synthorgWsInjectedFrames?: { channel: string; data: string }[]
     }
     const win = window as unknown as SynthorgWindow
     const ws = win.__synthorgWsLatest
@@ -124,6 +184,11 @@ export async function injectEvent(
       throw new Error('No WebSocket stub registered; call installWebSocketHarness first')
     }
     const data = JSON.stringify(payload)
+    // Buffer for sticky redelivery to handlers that register after this
+    // injection (see the subscribe-frame replay in the harness stub).
+    if (typeof payload['channel'] === 'string') {
+      win.__synthorgWsInjectedFrames?.push({ channel: payload['channel'], data })
+    }
     const evt = new MessageEvent('message', { data })
     ws.onmessage?.call(ws, evt)
     ws.dispatchEvent(evt)

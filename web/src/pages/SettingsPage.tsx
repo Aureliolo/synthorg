@@ -1,6 +1,40 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Link } from 'react-router'
-import { Brain, Eye, Globe, HardDrive, Network, RefreshCw, Settings, Shield, Wallet } from 'lucide-react'
+import {
+  Activity,
+  Bell,
+  BookOpen,
+  Bot,
+  Boxes,
+  Brain,
+  Briefcase,
+  Building2,
+  Cpu,
+  Eye,
+  FlaskConical,
+  Gauge,
+  Globe,
+  HardDrive,
+  LayoutDashboard,
+  MessagesSquare,
+  Monitor,
+  Network,
+  Palette,
+  Plug,
+  RefreshCw,
+  ScrollText,
+  Settings,
+  Shield,
+  Target,
+  TestTubes,
+  TrendingUp,
+  Users,
+  Wallet,
+  Waypoints,
+  Webhook,
+  Workflow,
+  Wrench,
+} from 'lucide-react'
 import type { SettingNamespace } from '@/api/types/settings'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -46,12 +80,36 @@ function SettingsActionCard({ to, title, description }: { to: string; title: str
 
 const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   api: <Globe className="size-4" />,
+  client: <Monitor className="size-4" />,
+  company: <Building2 className="size-4" />,
   memory: <Brain className="size-4" />,
   budget: <Wallet className="size-4" />,
   security: <Shield className="size-4" />,
   coordination: <Network className="size-4" />,
+  objectives: <Target className="size-4" />,
   observability: <Eye className="size-4" />,
+  cockpit: <Gauge className="size-4" />,
+  telemetry: <Activity className="size-4" />,
   backup: <HardDrive className="size-4" />,
+  engine: <Cpu className="size-4" />,
+  research: <FlaskConical className="size-4" />,
+  knowledge: <BookOpen className="size-4" />,
+  communication: <MessagesSquare className="size-4" />,
+  a2a: <Waypoints className="size-4" />,
+  integrations: <Plug className="size-4" />,
+  meta: <Bot className="size-4" />,
+  self_improvement: <TrendingUp className="size-4" />,
+  chief_of_staff: <Briefcase className="size-4" />,
+  charter: <ScrollText className="size-4" />,
+  notifications: <Bell className="size-4" />,
+  simulations: <TestTubes className="size-4" />,
+  tools: <Wrench className="size-4" />,
+  external_api: <Webhook className="size-4" />,
+  hr: <Users className="size-4" />,
+  workers: <Boxes className="size-4" />,
+  appearance: <Palette className="size-4" />,
+  org_chart: <Workflow className="size-4" />,
+  dashboard: <LayoutDashboard className="size-4" />,
 }
 
 function getFooterAction(ns: SettingNamespace): React.ReactNode {

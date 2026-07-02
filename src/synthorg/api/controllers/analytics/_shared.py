@@ -51,6 +51,9 @@ class OverviewMetrics(BaseModel):
         budget_used_percent: Percentage of monthly budget used.
             Values above 100.0 indicate budget overrun.
         cost_7d_trend: Daily spend sparkline for the last 7 days.
+        tasks_7d_trend: Daily task completions for the last 7 days.
+        agents_7d_trend: Daily roster size for the last 7 days.
+        review_7d_trend: Daily approval requests raised for the last 7 days.
         active_agents_count: Agents currently executing an in-progress task.
         idle_agents_count: Employed agents not currently executing a task.
         currency: ISO 4217 currency code.
@@ -83,6 +86,18 @@ class OverviewMetrics(BaseModel):
     )
     cost_7d_trend: tuple[TrendDataPoint, ...] = Field(
         description="Daily spend sparkline for the last 7 days",
+    )
+    tasks_7d_trend: tuple[TrendDataPoint, ...] = Field(
+        default=(),
+        description="Daily task completions for the last 7 days",
+    )
+    agents_7d_trend: tuple[TrendDataPoint, ...] = Field(
+        default=(),
+        description="Daily roster size for the last 7 days",
+    )
+    review_7d_trend: tuple[TrendDataPoint, ...] = Field(
+        default=(),
+        description="Daily approval requests raised for the last 7 days",
     )
     active_agents_count: int = Field(
         ge=0,

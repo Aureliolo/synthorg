@@ -11,7 +11,7 @@ services:
     image: busybox:<TAG>-musl@sha256:<DIGEST>
     volumes:
       - synthorg-data:/data
-    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data"]
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory /data/tunnel; chown -R 65532:65532 /data"]
     cap_drop:
       - ALL
     cap_add:
@@ -54,6 +54,7 @@ services:
       SYNTHORG_MEMORY_BACKEND: "mem0"
       SYNTHORG_BUS_BACKEND: "internal"
       SYNTHORG_LOG_DIR: "/data/logs"
+      SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY_ENABLED: "false"
       SYNTHORG_LOG_LEVEL: "info"

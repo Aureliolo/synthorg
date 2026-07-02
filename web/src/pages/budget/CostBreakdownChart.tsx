@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { PieChart, Pie, ResponsiveContainer, Tooltip } from 'recharts'
+import { CHART_INITIAL_DIMENSION } from '@/lib/charts'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -52,10 +53,7 @@ function CostDonut({ breakdown, legendSlices, currency }: CostDonutProps) {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="aspect-square w-full md:aspect-[2/1] lg:aspect-[3/1]" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
-        {/* `initialDimension` silences recharts' first-paint
-            "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
-            for the full explanation. */}
-        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+        <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL_DIMENSION}>
           <PieChart>
             <Pie
               data={breakdown.map((slice) => ({ ...slice, fill: slice.color }))}

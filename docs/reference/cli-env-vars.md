@@ -27,6 +27,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_AUTO_RESTART` | CLI | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY_ENABLED` | CLI | Enable anonymous project telemetry (true / false) |
 | `SYNTHORG_FINE_TUNE_IMAGE` | CLI -> compose | Fine-tune container image ref read by the backend. The CLI writes the variant-specific verified image (`synthorg-fine-tune-gpu` or `synthorg-fine-tune-cpu`) into the generated `compose.yml`, chosen via `synthorg init` and persisted as `fine_tuning_variant` in `config.json`. The CLI does not read this var at runtime; manual operator overrides bypass CLI signature / provenance verification and are not supported. |
+| `SYNTHORG_TUNNEL_STATE_DIR` | CLI -> compose | Tunnel runtime state root read by the backend (downloaded provider binaries, the confined login home for the `devtunnel` CLI). The generated `compose.yml` sets `/data/tunnel` unconditionally so tunnel state survives container recreation; the CLI does not read this var at runtime. |
 | `SYNTHORG_REGISTRY_HOST` | CLI | Override default container registry hostname (disables verification when set) |
 | `SYNTHORG_IMAGE_REPO_PREFIX` | CLI | Override default image repository prefix (disables verification when set) |
 | `SYNTHORG_DHI_REGISTRY` | CLI | Override Docker Hardened Images registry (disables verification when set) |
@@ -54,8 +55,6 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_UPDATE_HEALTH_TIMEOUT` | CLI | Timeout for the Docker API calls the `update` flow makes to inspect the current install (duration, default `15s`) |
 | `SYNTHORG_COMPLETION_PROBE_TIMEOUT` | CLI | Timeout for the one-shot shell-profile probe run by `synthorg completion install` (duration, default `5s`) |
 | `SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT` | CLI | Per-port TCP dial timeout in the `synthorg doctor` port-reachability check (duration, default `1s`) |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | container | Fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. Listed here for operator visibility. |
-| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | container | Hostname the main container probes for the fine-tune sidecar health endpoint (default `fine-tune`, the compose service name). Read directly by the fine-tune Python runner; constrained to a hostname / IP literal shape. Override when the sidecar service is renamed or externally hosted. |
 
 ## Hardcoded network literals (audit rationale)
 

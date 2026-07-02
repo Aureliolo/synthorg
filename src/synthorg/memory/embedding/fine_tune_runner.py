@@ -1,302 +1,168 @@
 """Fine-tune pipeline container entrypoint.
 
-Reads stage configuration from ``/etc/fine-tune/config.json``, executes
-the requested pipeline stage, and emits structured progress markers on
-stdout for the orchestrator to parse.
+Reads the flat stage configuration from the
+``SYNTHORG_FINE_TUNE_STAGE_CONFIG`` env var (inline JSON injected by
+the backend's ephemeral container launcher), executes the requested
+torch-bound stage via the shared dispatch, and emits structured
+markers on stdout/stderr for the launcher to parse:
+``STAGE_START:<stage>`` / ``STAGE_COMPLETE:<stage>`` bracket the run,
+``PROGRESS:<fraction>`` drives the orchestrator's WS progress
+pipeline, and ``ERROR:<message>`` carries the failure detail.
+
+With ``SYNTHORG_FINE_TUNE_PROBE=1`` the runner instead performs a
+dependency/GPU readiness probe: it imports the ML stack, inspects CUDA,
+prints one ``PROBE_OK gpu=<name|none> vram_gb=<x>`` or
+``PROBE_FAIL <reason>`` line, and exits (the preflight endpoint boots
+an ephemeral probe container around this mode).
 
 Designed to run as ``python -m synthorg.memory.embedding.fine_tune_runner``
-inside the ``synthorg-fine-tune-gpu`` (default) or ``synthorg-fine-tune-cpu``
-container. Both ship the same Python entry point; they differ only in the
-bundled torch build (CUDA vs CPU).
+inside the ``synthorg-fine-tune-gpu`` (default) or
+``synthorg-fine-tune-cpu`` container. Both ship the same Python entry
+point; they differ only in the bundled torch build (CUDA vs CPU).
 
-Uses ``print()`` for structured stdout/stderr markers that the
-orchestrator parses from Docker container logs -- this is an entrypoint
-script, not application library code.
+Uses ``print()`` for the structured markers -- this is an entrypoint
+script whose stdout IS the wire protocol, not application library code.
 """
 
 import asyncio
-import http.server
 import json
 import os
-import re
 import signal
 import sys
-import threading
-import time
-from pathlib import Path
-from typing import Final, override
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-    safe_error_description,
-)
-from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
-from synthorg.observability.events.fine_tune import (
-    FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
-    FINE_TUNE_HEALTH_SERVER_STARTED,
-    FINE_TUNE_HEALTH_SERVER_STOPPED,
-)
+from synthorg.observability import safe_error_description
 
-logger = get_logger(__name__)
-
-_CONFIG_PATH = Path("/etc/fine-tune/config.json")
-
-_DEFAULT_HEALTH_PORT: Final[int] = 15002
-_HEALTH_PORT_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
-_DEFAULT_HEALTH_HOST: Final[str] = "fine-tune"
-_HEALTH_HOST_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_HOST"
-_MIN_TCP_PORT: Final[int] = 1
-_MAX_TCP_PORT: Final[int] = 65535
-_MAX_LOGGED_ENV_CHARS: Final[int] = 64
-# A health-probe host is only ever a compose service name, a DNS
-# hostname, an IPv4 literal, or a bracketed IPv6 literal. Constraining
-# the operator-supplied override to that shape before it reaches the
-# probe URL keeps a stray scheme / path / credential / whitespace out of
-# the request target (defence against an SSRF-shaped misconfiguration).
-_HEALTH_HOST_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\A(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:]+\])\Z",
-)
-
-
-def resolve_health_host() -> str:
-    """Resolve the fine-tune sidecar host the main container probes.
-
-    Reads ``SYNTHORG_FINE_TUNE_HEALTH_HOST``; falls back to
-    :data:`_DEFAULT_HEALTH_HOST` (the compose service name) when unset
-    or blank. Symmetric with :func:`resolve_health_port` so an operator
-    who renames the sidecar service overrides both host and port the
-    same way.
-
-    Returns:
-        The sidecar hostname (never blank).
-    """
-    raw = os.environ.get(_HEALTH_HOST_ENV_VAR)
-    if raw is None:
-        return _DEFAULT_HEALTH_HOST
-    if not raw.strip():
-        # Set-but-blank is an operator config mistake: log it (symmetric
-        # with resolve_health_port's CONFIG_VALIDATION_FAILED) rather than
-        # silently probing the default host under a misconfigured override.
-        logger.warning(
-            CONFIG_VALIDATION_FAILED,
-            env_var=_HEALTH_HOST_ENV_VAR,
-            reason="blank-after-strip",
-        )
-        return _DEFAULT_HEALTH_HOST
-    host = raw.strip()
-    if _HEALTH_HOST_PATTERN.match(host) is None:
-        # A malformed override (embedded scheme, path, credentials, or
-        # whitespace) would let the probe URL point somewhere other than
-        # the sidecar healthz endpoint; reject it and fall back to the
-        # default service name rather than honour an SSRF-shaped value.
-        logger.warning(
-            CONFIG_VALIDATION_FAILED,
-            env_var=_HEALTH_HOST_ENV_VAR,
-            reason="invalid-hostname",
-        )
-        return _DEFAULT_HEALTH_HOST
-    return host
-
-
-def resolve_health_port() -> int:
-    """Resolve the HTTP health server port from env or default.
-
-    Reads ``SYNTHORG_FINE_TUNE_HEALTH_PORT``; falls back to
-    :data:`_DEFAULT_HEALTH_PORT` when unset. A malformed or
-    out-of-range value is a startup-time container config error;
-    log ``CONFIG_VALIDATION_FAILED`` and raise :class:`ValueError` so
-    the orchestrator sees a fast, loud failure instead of the
-    container silently binding the wrong port.
-
-    Returns:
-        Result of type ``int``.
-
-    Raises:
-        ValueError: If an argument fails domain validation.
-    """
-    raw = os.environ.get(_HEALTH_PORT_ENV_VAR)
-    if raw is None:
-        return _DEFAULT_HEALTH_PORT
-    # Truncate untrusted env input before logging to cap log line size
-    # against pathological values pasted into container configuration.
-    safe_raw = raw[:_MAX_LOGGED_ENV_CHARS]
-    try:
-        port = int(raw)
-    except ValueError as exc:
-        log_exception_redacted(
-            logger,
-            CONFIG_VALIDATION_FAILED,
-            exc,
-            env_var=_HEALTH_PORT_ENV_VAR,
-            value=safe_raw,
-            reason="not-an-integer",
-        )
-        msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
-        raise ValueError(msg) from exc
-    if not (_MIN_TCP_PORT <= port <= _MAX_TCP_PORT):
-        logger.error(
-            CONFIG_VALIDATION_FAILED,
-            env_var=_HEALTH_PORT_ENV_VAR,
-            value=safe_raw,
-            reason="out-of-range",
-            min_port=_MIN_TCP_PORT,
-            max_port=_MAX_TCP_PORT,
-        )
-        msg = (
-            f"{_HEALTH_PORT_ENV_VAR}={port} out of range "
-            f"[{_MIN_TCP_PORT}, {_MAX_TCP_PORT}]"
-        )
-        raise ValueError(msg)
-    return port
-
-
-# Stage functions have different signatures; the runner dispatches by
-# reading stage-specific keys from the config JSON.  Every consumed key
-# is string-valued, coerced via ``str()`` at the call site.
-_EXECUTABLE_STAGES: frozenset[FineTuneStage] = frozenset(
-    {
-        FineTuneStage.GENERATING_DATA,
-        FineTuneStage.MINING_NEGATIVES,
-        FineTuneStage.TRAINING,
-        FineTuneStage.EVALUATING,
-        FineTuneStage.DEPLOYING,
-    }
-)
+_STAGE_CONFIG_ENV: Final[str] = "SYNTHORG_FINE_TUNE_STAGE_CONFIG"
+_PROBE_ENV: Final[str] = "SYNTHORG_FINE_TUNE_PROBE"
+_BYTES_PER_GIB: Final[int] = 1024**3
+# Progress marker throttle: only emit when the fraction moved at least
+# this much, so a chatty stage cannot flood the log stream the launcher
+# parses.
+_PROGRESS_EMIT_STEP: Final[float] = 0.01
 
 
 def _load_config() -> dict[str, object] | None:
-    """Load and validate the stage config JSON.
+    """Load and validate the stage config from the inline env var.
 
     Returns:
         Parsed config dict, or ``None`` on failure.
     """
-    if not _CONFIG_PATH.exists():
+    raw = os.environ.get(_STAGE_CONFIG_ENV)
+    if raw is None or not raw.strip():
         print(  # noqa: T201
-            f"ERROR: config file not found at {_CONFIG_PATH}",
+            f"ERROR: {_STAGE_CONFIG_ENV} is not set; the launcher injects"
+            " the stage config as inline JSON",
             file=sys.stderr,
         )
         return None
-
     try:
-        raw = _CONFIG_PATH.read_text(encoding="utf-8")
         config = json.loads(raw)
-    except (OSError, UnicodeDecodeError) as exc:
-        error_desc = safe_error_description(exc)
-        print(  # noqa: T201
-            f"ERROR: unable to read config file {_CONFIG_PATH}: {error_desc}",
-            file=sys.stderr,
-        )
-        return None
     except json.JSONDecodeError as exc:
         print(f"ERROR: invalid config JSON: {exc.msg}", file=sys.stderr)  # noqa: T201
         return None
-
     if not isinstance(config, dict):
         print("ERROR: config must be a JSON object", file=sys.stderr)  # noqa: T201
         return None
     return config
 
 
-class _HealthHandler(http.server.BaseHTTPRequestHandler):
-    """Minimal health check handler for the fine-tune container."""
-
-    _start_time: float = 0.0  # Set by _start_health_server before serving.
-
-    def do_GET(self) -> None:
-        """Do GET."""
-        if self.path == "/healthz":
-            body = json.dumps(
-                {
-                    # Aligns with the main API ``/healthz`` liveness body,
-                    # which reports ``"ok"`` (Docker's own State.Health
-                    # vocabulary stays "healthy" -- that is the engine's, not
-                    # this app-level HTTP surface).
-                    "status": "ok",
-                    # lint-allow: clock-seam -- stdlib BaseHTTPRequestHandler
-                    # subprocess health server; no clock-injection seam
-                    "uptime_seconds": int(time.monotonic() - self._start_time),
-                }
-            )
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body.encode())
-        else:
-            self.send_error(404)
-
-    @override
-    def log_message(self, format: str, *args: object) -> None:
-        """Log message."""
-        # Suppress access logs.
-
-
-def _start_health_server() -> http.server.HTTPServer | None:
-    """Start an HTTP health server on a daemon thread.
+def _make_progress_printer() -> _ProgressPrinter:
+    """Build the throttled ``PROGRESS:`` marker emitter.
 
     Returns:
-        The server instance, or ``None`` if the port is unavailable.
+        Result of type ``_ProgressPrinter``.
     """
-    port = resolve_health_port()
+    return _ProgressPrinter()
+
+
+class _ProgressPrinter:
+    """Emits ``PROGRESS:<fraction>`` markers, throttled by step size."""
+
+    def __init__(self) -> None:
+        self._last_emitted = -1.0
+
+    def __call__(self, fraction: float) -> None:
+        """Print the marker when the fraction moved enough (or hit 1.0)."""
+        if fraction >= 1.0 or fraction - self._last_emitted >= _PROGRESS_EMIT_STEP:
+            self._last_emitted = fraction
+            print(f"PROGRESS:{fraction:.4f}", flush=True)  # noqa: T201
+
+
+def _run_probe() -> int:
+    """Report dependency/GPU readiness with one parseable output line.
+
+    Returns:
+        ``0`` on ``PROBE_OK``, ``1`` on ``PROBE_FAIL``.
+    """
+    from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
+        _import_sentence_transformers,
+        _import_torch,
+    )
+
     try:
-        # Bind 0.0.0.0 deliberately: this health server runs inside the
-        # fine-tune subprocess/container and must be reachable from the
-        # orchestrator on the container network, not just loopback.
-        server = http.server.HTTPServer(("0.0.0.0", port), _HealthHandler)  # noqa: S104
-    except OSError:
-        logger.warning(
-            FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
-            port=port,
-            reason="Health server could not bind; continuing without health endpoint",
+        torch = _import_torch()
+        _import_sentence_transformers()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        print(  # noqa: T201
+            f"PROBE_FAIL ML dependencies failed to import:"
+            f" {safe_error_description(exc)}",
+            flush=True,
         )
-        return None
-    # lint-allow: clock-seam -- stdlib HTTPServer instantiates the
-    # handler; no clock-injection seam in the fine-tune subprocess
-    _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-    logger.info(FINE_TUNE_HEALTH_SERVER_STARTED, port=port)
-    return server
-
-
-def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
-    """Shut down and close the health server if it was started."""
-    if server is None:
-        return
-    port = server.server_port
-    server.shutdown()
-    server.server_close()
-    logger.info(FINE_TUNE_HEALTH_SERVER_STOPPED, port=port)
+        return 1
+    gpu = "none"
+    vram_gb = 0.0
+    try:
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            gpu = str(props.name)
+            vram_gb = props.total_memory / _BYTES_PER_GIB
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        print(  # noqa: T201
+            f"PROBE_FAIL CUDA inspection failed: {safe_error_description(exc)}",
+            flush=True,
+        )
+        return 1
+    print(f"PROBE_OK gpu={gpu} vram_gb={vram_gb:.1f}", flush=True)  # noqa: T201
+    return 0
 
 
 def _run() -> int:
-    """Execute the fine-tune stage and return an exit code.
+    """Execute the fine-tune stage (or probe) and return an exit code.
 
     Returns:
         Result of type ``int``.
     """
-    health_server = _start_health_server()
+    if os.environ.get(_PROBE_ENV, "").strip() == "1":
+        return _run_probe()
 
     config = _load_config()
     if config is None:
-        _shutdown_health_server(health_server)
         return 1
 
     stage_name = config.get("stage", "")
-
     try:
         stage = FineTuneStage(str(stage_name))
     except ValueError:
         print(f"ERROR: unknown stage {stage_name!r}", file=sys.stderr)  # noqa: T201
-        _shutdown_health_server(health_server)
         return 1
 
-    if stage not in _EXECUTABLE_STAGES:
-        print(f"ERROR: stage {stage_name!r} is not executable", file=sys.stderr)  # noqa: T201
-        _shutdown_health_server(health_server)
+    # Lazy import so the probe path never pulls the dispatch machinery.
+    from synthorg.memory.embedding.fine_tune_stage_dispatch import (  # noqa: PLC0415
+        CONTAINER_STAGES,
+        dispatch_stage,
+    )
+
+    if stage not in CONTAINER_STAGES:
+        print(  # noqa: T201
+            f"ERROR: stage {stage_name!r} is not container-executable",
+            file=sys.stderr,
+        )
         return 1
 
     # Cooperative cancellation via SIGTERM (docker stop).
@@ -306,7 +172,14 @@ def _run() -> int:
     try:
         print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
         try:
-            asyncio.run(_dispatch_stage(stage, config, token))
+            asyncio.run(
+                dispatch_stage(
+                    stage,
+                    config,
+                    token,
+                    progress_callback=_make_progress_printer(),
+                )
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             print(  # noqa: T201
@@ -319,70 +192,6 @@ def _run() -> int:
         return 0
     finally:
         signal.signal(signal.SIGTERM, prev_handler)
-        _shutdown_health_server(health_server)
-
-
-async def _dispatch_stage(
-    stage: FineTuneStage,
-    config: dict[str, object],
-    token: CancellationToken,
-) -> None:
-    """Dispatch a stage call with the correct kwargs from config JSON.
-
-    Args:
-        stage: The pipeline stage to execute.
-        config: Configuration dictionary with stage-specific keys.
-        token: Cancellation token for SIGTERM handling.
-
-    Raises:
-        KeyError: If required config keys are missing for the stage.
-    """
-    # Lazy imports -- only load ML deps when actually running a stage.
-    from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
-        _DEFAULT_CHUNK_SIZE_WORDS,
-        contrastive_fine_tune,
-        deploy_checkpoint,
-        evaluate_checkpoint,
-        generate_training_data,
-        mine_hard_negatives,
-    )
-
-    match stage:
-        case FineTuneStage.GENERATING_DATA:
-            await generate_training_data(
-                source_dir=str(config["source_dir"]),
-                output_dir=str(config["output_dir"]),
-                chunk_size=int(
-                    str(config.get("chunk_size", _DEFAULT_CHUNK_SIZE_WORDS))
-                ),
-                cancellation=token,
-            )
-        case FineTuneStage.MINING_NEGATIVES:
-            await mine_hard_negatives(
-                training_data_path=str(config["training_data_path"]),
-                base_model=str(config["base_model"]),
-                output_dir=str(config["output_dir"]),
-                cancellation=token,
-            )
-        case FineTuneStage.TRAINING:
-            await contrastive_fine_tune(
-                training_data_path=str(config["training_data_path"]),
-                base_model=str(config["base_model"]),
-                output_dir=str(config["output_dir"]),
-                cancellation=token,
-            )
-        case FineTuneStage.EVALUATING:
-            await evaluate_checkpoint(
-                checkpoint_path=str(config["checkpoint_path"]),
-                base_model=str(config["base_model"]),
-                validation_data_path=str(config["validation_data_path"]),
-                output_dir=str(config["output_dir"]),
-                cancellation=token,
-            )
-        case FineTuneStage.DEPLOYING:
-            await deploy_checkpoint(
-                checkpoint_path=str(config["checkpoint_path"]),
-            )
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { LineChart as LineChartIcon } from 'lucide-react'
+import { CHART_INITIAL_DIMENSION, CHART_STROKE_HAIRLINE, CHART_STROKE_THIN } from '@/lib/charts'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatDateOnly, formatDateTime } from '@/utils/format'
@@ -96,7 +97,7 @@ function RegressionMarkers({ chartData }: { chartData: readonly ChartDatum[] }) 
             r={REGRESSION_DOT_RADIUS}
             fill="var(--so-danger)"
             stroke="var(--so-surface)"
-            strokeWidth="var(--so-stroke-thin)"
+            strokeWidth={CHART_STROKE_THIN}
           />
         ))}
     </>
@@ -111,7 +112,7 @@ function ChartBody({ chartData, ceiling }: { chartData: readonly ChartDatum[]; c
       role="img"
       aria-label="Benchmark score across recorded runs"
     >
-      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+      <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL_DIMENSION}>
         <AreaChart data={[...chartData]} margin={CHART_MARGIN}>
           <CartesianGrid strokeDasharray="var(--so-dash-compact)" stroke="var(--so-border)" vertical={false} />
           <XAxis
@@ -134,7 +135,7 @@ function ChartBody({ chartData, ceiling }: { chartData: readonly ChartDatum[]; c
             y={ceiling}
             stroke="var(--so-text-muted)"
             strokeDasharray="var(--so-dash-medium)"
-            strokeWidth="var(--so-stroke-hairline)"
+            strokeWidth={CHART_STROKE_HAIRLINE}
             label={{
               value: 'Max',
               position: 'right',
@@ -148,7 +149,7 @@ function ChartBody({ chartData, ceiling }: { chartData: readonly ChartDatum[]; c
             dataKey="score"
             stroke="var(--so-accent)"
             fill="url(#benchmarkScoreFill)"
-            strokeWidth="var(--so-stroke-thin)"
+            strokeWidth={CHART_STROKE_THIN}
             dot={{ r: 3, fill: 'var(--so-accent)' }}
             connectNulls={false}
           />

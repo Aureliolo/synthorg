@@ -15,13 +15,15 @@ from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 
 pytestmark = pytest.mark.unit
 
+_TEST_PORT = 3001
+
 
 class _FakeTunnel:
     def __init__(self, public_url: str = "https://fake.ngrok.io") -> None:
         self.public_url = public_url
 
 
-def _fake_connect(_port: int, _proto: str, **_kwargs: object) -> _FakeTunnel:
+def _fake_connect(_port: str, _proto: str, **_kwargs: object) -> _FakeTunnel:
     # The real ngrok.connect now receives ``pyngrok_config=`` as a
     # keyword arg from the adapter; accept and ignore it in the fake.
     return _FakeTunnel()
@@ -31,12 +33,23 @@ def _fake_disconnect(_url: object) -> None:
     return None
 
 
+def _adapter() -> NgrokAdapter:
+    """Adapter with a bound token so start() reaches ngrok.connect."""
+    adapter = NgrokAdapter(port=_TEST_PORT)
+
+    async def _token() -> str | None:
+        return "test-token"
+
+    adapter.bind_credential_source(_token)
+    return adapter
+
+
 class TestNgrokAdapterLifecycle:
     """Adapter must serialise concurrent start / stop calls."""
 
     async def test_double_start_is_idempotent(self) -> None:
         """A second start() while active returns the existing URL."""
-        adapter = NgrokAdapter()
+        adapter = _adapter()
         connect_calls: list[int] = []
 
         def _counting_connect(*args: object, **kwargs: object) -> _FakeTunnel:
@@ -65,7 +78,7 @@ class TestNgrokAdapterLifecycle:
 
     async def test_concurrent_starts_yield_one_tunnel(self) -> None:
         """Two simultaneous start() calls connect once and return the same URL."""
-        adapter = NgrokAdapter()
+        adapter = _adapter()
         connect_calls: list[int] = []
 
         def _counting_connect(*args: object, **kwargs: object) -> _FakeTunnel:
@@ -91,7 +104,7 @@ class TestNgrokAdapterLifecycle:
 
     async def test_stop_without_start_is_noop(self) -> None:
         """stop() before any start() returns cleanly without disconnecting."""
-        adapter = NgrokAdapter()
+        adapter = _adapter()
         # Use a strict ``MagicMock`` so we can prove ngrok.disconnect
         # was never invoked. The previous swallowing fake silently
         # absorbed any accidental call, hiding a regression where

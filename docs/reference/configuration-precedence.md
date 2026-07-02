@@ -182,6 +182,9 @@ that exact name instead. Settings currently using overrides:
 | `workers/executor_http_timeout_seconds` | `SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS` |
 | `tools/sandbox_image` | `SYNTHORG_SANDBOX_IMAGE` |
 | `tools/sidecar_image` | `SYNTHORG_SIDECAR_IMAGE` |
+| `memory/fine_tune_image` | `SYNTHORG_FINE_TUNE_IMAGE` |
+| `memory/fine_tune_data_volume` | `SYNTHORG_FINE_TUNE_DATA_VOLUME` |
+| `integrations/tunnel_state_dir` | `SYNTHORG_TUNNEL_STATE_DIR` |
 
 When `env_var_override` is set, the auto-derived name is **not**
 consulted: only the override. This keeps the operator surface clean:

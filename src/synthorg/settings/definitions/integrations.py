@@ -194,6 +194,53 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="tunnel_provider",
+        type=SettingType.ENUM,
+        default="cloudflare",
+        enum_values=("cloudflare", "ngrok", "devtunnels"),
+        description=(
+            "Which provider exposes the local API on a public URL for"
+            " webhook development. 'cloudflare' runs an accountless"
+            " quick tunnel (default); 'ngrok' needs an auth token"
+            " (paste it on the tunnel card); 'devtunnels' needs the"
+            " devtunnel CLI plus a GitHub device-code login. Resolved"
+            " fresh at every tunnel start, so a change applies without"
+            " a restart."
+        ),
+        group="Tunnel",
+    )
+)
+
+_r.register(
+    # lint-allow: restart-required -- resolved once at boot into the tunnel
+    # manager's state-dir paths (downloaded binaries + the devtunnel CLI's
+    # confined HOME); the adapters cache these at construction, so a mid-run
+    # DB write would silently drift from the directories actually in use.
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="tunnel_state_dir",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Root directory for tunnel runtime state (downloaded provider"
+            " binaries under bin/, the devtunnel CLI's confined login home"
+            " under devtunnels-home/). Sourced from the"
+            " SYNTHORG_TUNNEL_STATE_DIR env var at process start; the"
+            " CLI-generated compose sets /data/tunnel so state survives"
+            " container recreation. Empty means the bare-metal default"
+            " ~/.synthorg."
+        ),
+        group="Tunnel",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_TUNNEL_STATE_DIR",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="github_api_url",
         type=SettingType.STRING,
         default="https://api.github.com",

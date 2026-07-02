@@ -24,7 +24,7 @@ def test_model_refresh_mode_registered() -> None:
     defn = get_registry().get("providers", "model_refresh_mode")
     assert defn is not None
     assert defn.type is SettingType.ENUM
-    assert defn.default == "off"
+    assert defn.default == "reconcile_recommend"
     assert defn.enum_values == REFRESH_MODE_VALUES
 
 
@@ -32,7 +32,7 @@ def test_model_refresh_interval_registered() -> None:
     defn = get_registry().get("providers", "model_refresh_interval_seconds")
     assert defn is not None
     assert defn.type is SettingType.FLOAT
-    assert defn.default == "86400.0"
+    assert defn.default == "21600.0"
     assert defn.min_value == 60.0
     assert defn.max_value == 604800.0
 

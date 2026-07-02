@@ -117,6 +117,7 @@ def auto_wire_phase1(  # noqa: PLR0913
     if provider_health_tracker is None:
         provider_health_tracker = ProviderHealthTracker()
         logger.info(API_SERVICE_AUTO_WIRED, service="provider_health_tracker")
+    _bind_connection_health_to_tracker(provider_health_tracker)
 
     if persistence is None:
         logger.warning(
@@ -139,6 +140,31 @@ def auto_wire_phase1(  # noqa: PLR0913
         distributed_dispatcher=distributed_dispatcher,
         distributed_backend_services=distributed_backend_services,
     )
+
+
+def _bind_connection_health_to_tracker(tracker: ProviderHealthTracker) -> None:
+    """Route provider-connection health through the provider tracker.
+
+    The Connections screen must report the same provider verdict as the
+    Providers screen, so the LLM-provider connection checker resolves
+    health from this tracker; connections outside the ``provider-<name>``
+    convention resolve to ``None`` and keep the reachability probe.
+    """
+    from synthorg.integrations.health.prober import (  # noqa: PLC0415
+        bind_provider_health_lookup,
+    )
+    from synthorg.providers.health import ProviderHealthSummary  # noqa: PLC0415
+    from synthorg.providers.management._credential_helpers import (  # noqa: PLC0415
+        provider_name_for_connection,
+    )
+
+    async def _lookup(connection_name: str) -> ProviderHealthSummary | None:
+        provider_name = provider_name_for_connection(connection_name)
+        if provider_name is None:
+            return None
+        return await tracker.get_summary(provider_name)
+
+    bind_provider_health_lookup(_lookup)
 
 
 def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:

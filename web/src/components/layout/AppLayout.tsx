@@ -9,6 +9,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   MessageSquare,
+  MessagesSquare,
   Palette,
   Settings,
   ShieldCheck,
@@ -197,6 +198,7 @@ function _buildGlobalNavCommands(
 ): CommandItem[] {
   return [
     { id: 'nav-dashboard', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate(ROUTES.DASHBOARD), group: 'Navigation' },
+    { id: 'nav-chat', label: 'Chat', icon: MessagesSquare, action: () => navigate(ROUTES.CHAT), group: 'Navigation', keywords: ['chat', 'chief of staff', 'talk', 'converse', 'charter', 'project'] },
     { id: 'nav-org', label: 'Org Chart', icon: GitBranch, action: () => navigate(ROUTES.ORG), group: 'Navigation' },
     { id: 'nav-tasks', label: 'Tasks', icon: KanbanSquare, action: () => navigate(ROUTES.TASKS), group: 'Navigation' },
     { id: 'nav-budget', label: 'Budget', icon: DollarSign, action: () => navigate(ROUTES.BUDGET), group: 'Navigation' },

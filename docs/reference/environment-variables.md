@@ -40,6 +40,7 @@ into three categories:
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
 | `SYNTHORG_LOG_DIR` | unset | `observability/log_directory` (read-only) | Log output directory. Path-traversal rejected at boot. |
+| `SYNTHORG_TUNNEL_STATE_DIR` | unset | `integrations/tunnel_state_dir` (read-only) | Tunnel runtime state root (downloaded provider binaries, the confined login home for the `devtunnel` CLI). The CLI-generated compose sets `/data/tunnel`; unset means `~/.synthorg`. Path-traversal rejected at boot. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` | n/a | Filesystem artifact storage root. Must be absolute and free of `..` components. |
 | `SYNTHORG_MEMORY_DIR` | `/data/memory` | n/a | On-disk memory backend root for the local Mem0 backend. Falls back to `/data/memory` (with a warning) when unset or invalid. |
 | `SYNTHORG_CONFIG_PATH` | `company.yaml` | n/a | Path to the company YAML config used by the backup factory. |
@@ -50,9 +51,8 @@ into three categories:
 |---|---|---|
 | `SYNTHORG_SANDBOX_IMAGE` | `ghcr.io/aureliolo/synthorg-sandbox:v<release>` | Sandbox container image (version-pinned to the running release); CLI sets the digest-pinned variant after cosign verification. |
 | `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:v<release>` | Sidecar (network-proxy) container image (version-pinned to the running release). |
-| `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
-| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | `fine-tune` | Hostname the main container probes for the fine-tune sidecar health endpoint (defaults to the compose service name). Override when the sidecar is renamed or externally hosted. |
+| `SYNTHORG_FINE_TUNE_IMAGE` | unset | Image for ephemeral fine-tune stage containers (CLI publishes `-gpu` and `-cpu` variants); env seed for the `memory.fine_tune_image` setting. Unset means fine-tune runs execute in-process. |
+| `SYNTHORG_FINE_TUNE_DATA_VOLUME` | `synthorg-data` | Named Docker volume mounted read-write at `/data` inside ephemeral fine-tune stage containers; env override for the hot `memory.fine_tune_data_volume` setting. Must be a volume NAME, never a path (a path would become a host bind-mount). |
 
 ## Telemetry (restart required)
 

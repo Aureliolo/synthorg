@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence } from 'motion/react'
-import { FolderKanban, Plus, Trash2 } from 'lucide-react'
+import { Link } from 'react-router'
+import { FolderKanban, MessagesSquare, Plus, Trash2 } from 'lucide-react'
+import { ROUTES } from '@/router/routes'
 import { useProjectsData } from '@/hooks/useProjectsData'
 import { useProjectsStore } from '@/stores/projects'
 import { Button } from '@/components/ui/button'
@@ -180,10 +182,18 @@ function ProjectsHeader({
       count={filteredCount}
       countLabel={filteredCount === totalCount ? undefined : `${filteredCount} of ${totalCount}`}
       primaryAction={
-        <Button size="sm" onClick={onCreate}>
-          <Plus aria-hidden="true" />
-          New project
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`${ROUTES.CHAT}?mode=project`}>
+              <MessagesSquare aria-hidden="true" />
+              Draft with CEO
+            </Link>
+          </Button>
+          <Button size="sm" onClick={onCreate}>
+            <Plus aria-hidden="true" />
+            New project
+          </Button>
+        </div>
       }
     />
   )

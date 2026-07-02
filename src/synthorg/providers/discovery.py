@@ -448,6 +448,9 @@ async def _fetch_json_trusted(
         Parsed JSON dict, or ``None`` on any failure.
     """
     safe_url = _redact_url(url)
+    # Every occurrence is logged: the security audit trail must show a
+    # bypass that keeps happening, not go dark after the first hit.
+    # Volume is bounded by the discovery refresh cadence.
     logger.warning(
         PROVIDER_DISCOVERY_SSRF_BYPASSED,
         preset=preset_name,

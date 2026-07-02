@@ -36,8 +36,8 @@ from synthorg.integrations.oauth.state_service import (
 from synthorg.integrations.oauth.token_manager import (
     OAuthTokenManager,
 )
+from synthorg.integrations.tunnel.manager import TunnelManager
 from synthorg.integrations.tunnel.mcp_service import TunnelService
-from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.integrations.webhooks.activity_service import WebhookActivityService
 from synthorg.integrations.webhooks.receipt_service import WebhookReceiptService
 from synthorg.integrations.webhooks.replay_protection import ReplayProtector
@@ -67,7 +67,7 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     oauth_state_service: OAuthStateService | None = None
     webhook_event_bridge: WebhookEventBridge | None = None
     webhook_service: WebhookService | None = None
-    tunnel_provider: TunnelProvider | None = None
+    tunnel_provider: TunnelManager | None = None
     tunnel_service: TunnelService | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None
@@ -116,6 +116,17 @@ def connection_service_of(app_state: AppStateSliceMixin) -> ConnectionService:
     return require_service(
         app_state.slice(IntegrationsStateSlice).connection_service,
         "Connection Service",
+    )
+
+
+def tunnel_manager_of(app_state: AppStateSliceMixin) -> TunnelManager:
+    """Resolve the tunnel manager from its slice, or raise 503.
+
+    Returns:
+        The wired tunnel manager.
+    """
+    return require_service(
+        app_state.slice(IntegrationsStateSlice).tunnel_provider, "Tunnel Provider"
     )
 
 

@@ -80,6 +80,21 @@ export const LongTaskName: Story = {
   },
 }
 
+export const FullProfile: Story = {
+  args: {
+    name: 'Zita Sedliak',
+    role: 'CEO',
+    department: 'Executive',
+    status: 'active',
+    model: 'example-large-001',
+    tier: 'large',
+    personality: 'Visionary Leader',
+    traits: ['strategic', 'decisive', 'inspiring'],
+    capabilities: ['tools', 'reasoning'],
+    timestamp: '2m ago',
+  },
+}
+
 export const AgentGrid: Story = {
   args: { name: 'Alice Smith', role: 'Engineer', department: 'Engineering', status: 'active' },
   render: () => (

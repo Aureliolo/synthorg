@@ -23,7 +23,10 @@ from synthorg.integrations.health.checks.generic_http import (
     GenericHttpHealthCheck,
 )
 from synthorg.integrations.health.checks.github import GitHubHealthCheck
-from synthorg.integrations.health.checks.llm_provider import LlmProviderHealthCheck
+from synthorg.integrations.health.checks.llm_provider import (
+    LlmProviderHealthCheck,
+    ProviderHealthLookup,
+)
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
 from synthorg.integrations.health.protocol import ConnectionHealthCheck
@@ -75,6 +78,20 @@ def bind_health_check_catalog(catalog: ConnectionCatalog) -> None:
         bind = getattr(checker, "bind_catalog", None)
         if callable(bind):
             bind(catalog)
+
+
+def bind_provider_health_lookup(lookup: ProviderHealthLookup) -> None:
+    """Bind the provider-health lookup into the LLM-provider checker.
+
+    The providers subsystem owns provider health; this hands the
+    import-time checker a resolver onto the live
+    ``ProviderHealthTracker`` so the Connections screen reports the
+    same verdict as the Providers screen.
+    """
+    checker = _CHECK_REGISTRY.get(ConnectionType.LLM_PROVIDER)
+    bind = getattr(checker, "bind_provider_health", None)
+    if callable(bind):
+        bind(lookup)
 
 
 def bind_github_default_api_url(default_api_url: str) -> None:

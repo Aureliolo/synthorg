@@ -16,6 +16,9 @@ const mockOverview: OverviewMetrics = {
   budget_remaining: 58,
   budget_used_percent: 42,
   cost_7d_trend: [],
+  tasks_7d_trend: [],
+  agents_7d_trend: [],
+  review_7d_trend: [],
   active_agents_count: 3,
   idle_agents_count: 2,
   currency: DEFAULT_CURRENCY,
@@ -445,6 +448,13 @@ describe('pushActivity', () => {
 })
 
 describe('updateFromWsEvent', () => {
+  beforeEach(() => {
+    // Each test owns a fresh throttle window: a prior test's
+    // ``budget.record_added`` would otherwise suppress this one's
+    // WS-triggered overview refetch for 10s.
+    useBudgetStore.setState({ activities: [], lastWsOverviewRefreshAt: 0 })
+  })
+
   it('converts event to activity and pushes it', () => {
     const event: WsEvent = {
       event_type: 'budget.record_added',
@@ -475,6 +485,28 @@ describe('updateFromWsEvent', () => {
     useBudgetStore.getState().updateFromWsEvent(event)
     await vi.waitFor(() => {
       expect(overviewCalls).toBeGreaterThan(0)
+    })
+  })
+
+  it('throttles overview refetches within the 10s window', async () => {
+    let overviewCalls = 0
+    server.use(
+      http.get('/api/v1/analytics/overview', () => {
+        overviewCalls += 1
+        return HttpResponse.json(apiSuccess(mockOverview))
+      }),
+    )
+    const event: WsEvent = {
+      event_type: 'budget.record_added',
+      channel: 'budget',
+      timestamp: '2026-03-20T10:00:00Z',
+      payload: { agent_name: 'CFO Bot' },
+    }
+    useBudgetStore.getState().updateFromWsEvent(event)
+    useBudgetStore.getState().updateFromWsEvent(event)
+    useBudgetStore.getState().updateFromWsEvent(event)
+    await vi.waitFor(() => {
+      expect(overviewCalls).toBe(1)
     })
   })
 })

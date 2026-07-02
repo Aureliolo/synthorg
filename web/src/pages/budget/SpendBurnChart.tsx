@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { TrendingUp } from 'lucide-react'
+import { CHART_INITIAL_DIMENSION, CHART_STROKE_HAIRLINE, CHART_STROKE_THIN } from '@/lib/charts'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -137,7 +138,7 @@ function BudgetReferenceLine({ budgetTotal }: { budgetTotal: number }) {
       y={budgetTotal}
       stroke="var(--so-danger)"
       strokeDasharray="var(--so-dash-medium)"
-      strokeWidth="var(--so-stroke-hairline)"
+      strokeWidth={CHART_STROKE_HAIRLINE}
       label={{
         value: 'Budget',
         position: 'right',
@@ -162,7 +163,7 @@ function AlertReferenceLines({
         y={(budgetTotal * alerts.warn_at) / 100}
         stroke="var(--so-warning)"
         strokeDasharray="var(--so-dash-medium)"
-        strokeWidth="var(--so-stroke-hairline)"
+        strokeWidth={CHART_STROKE_HAIRLINE}
         label={{
           value: `Warn (${alerts.warn_at}%)`,
           position: 'right',
@@ -174,7 +175,7 @@ function AlertReferenceLines({
         y={(budgetTotal * alerts.critical_at) / 100}
         stroke="var(--so-danger)"
         strokeDasharray="var(--so-dash-tight)"
-        strokeWidth="var(--so-stroke-hairline)"
+        strokeWidth={CHART_STROKE_HAIRLINE}
         label={{
           value: `Critical (${alerts.critical_at}%)`,
           position: 'right',
@@ -220,10 +221,7 @@ function SpendBurnBody({
 }: SpendBurnBodyProps) {
   return (
     <div className="h-80 w-full" data-testid="spend-burn-chart" role="img" aria-label="Spend over time chart">
-      {/* `initialDimension` silences recharts' first-paint
-          "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
-          for the full explanation. */}
-      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+      <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL_DIMENSION}>
         <AreaChart data={[...chartData]} margin={CHART_MARGIN}>
           <CartesianGrid
             strokeDasharray="var(--so-dash-compact)"
@@ -252,7 +250,7 @@ function SpendBurnBody({
             x={todayLabel}
             stroke="var(--so-text-muted)"
             strokeDasharray="var(--so-dash-compact)"
-            strokeWidth="var(--so-stroke-hairline)"
+            strokeWidth={CHART_STROKE_HAIRLINE}
             label={{
               value: 'Today',
               position: 'top',
@@ -268,7 +266,7 @@ function SpendBurnBody({
             dataKey="actual"
             stroke="var(--so-accent)"
             fill="url(#spendActualFill)"
-            strokeWidth="var(--so-stroke-thin)"
+            strokeWidth={CHART_STROKE_THIN}
             dot={false}
             connectNulls={false}
           />
@@ -278,7 +276,7 @@ function SpendBurnBody({
               dataKey="projected"
               stroke="var(--so-warning)"
               fill="url(#spendForecastFill)"
-              strokeWidth="var(--so-stroke-thin)"
+              strokeWidth={CHART_STROKE_THIN}
               strokeDasharray="var(--so-dash-medium)"
               dot={false}
               connectNulls={false}

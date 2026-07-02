@@ -12,6 +12,11 @@ from synthorg.api.controllers.memory._preflight import (
     _resolve_fine_tune_thresholds,
     _run_preflight_checks,
 )
+from synthorg.api.controllers.memory._preflight_probe import (
+    _PROBE_REQUEST_CEILING_S,
+    probe_fine_tune_image,
+    resolve_probe_target,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_roles
 from synthorg.api.path_params import PathId
@@ -269,20 +274,31 @@ class MemoryFineTuneController(Controller):
         app_state: AppState = state.app_state
         settings_service = app_state.slice(SettingsStateSlice).settings_service
         thresholds = await _resolve_fine_tune_thresholds(settings_service)
-        # Resolve the sidecar health endpoint at the boundary and inject it
-        # into the (pure) preflight checks rather than reading the env deep in
-        # the probe helper. A malformed port means the sidecar never bound, so
-        # the probe is skipped (treated as unhealthy).
-        from synthorg.memory.embedding.fine_tune_runner import (  # noqa: PLC0415
-            resolve_health_host,
-            resolve_health_port,
-        )
-
-        sidecar_host = resolve_health_host()
-        try:
-            sidecar_port: int | None = resolve_health_port()
-        except ValueError:
-            sidecar_port = None
+        # Backend-aware dependency probe under its own hard ceiling: a
+        # docker-backed run boots an ephemeral probe container (each
+        # inner Docker call is bounded, cached briefly) proving the
+        # image runs and sees the GPU; the in-process backend inspects
+        # local torch inside the check thread instead.
+        probe_image, probe_gpu = await resolve_probe_target(data, settings_service)
+        docker_probe = None
+        if probe_image:
+            try:
+                async with asyncio.timeout(_PROBE_REQUEST_CEILING_S):
+                    docker_probe = await probe_fine_tune_image(
+                        image=probe_image,
+                        gpu_enabled=probe_gpu,
+                        clock=app_state.clock,
+                    )
+            except TimeoutError as exc:
+                logger.warning(
+                    MEMORY_FINE_TUNE_PREFLIGHT_TIMED_OUT,
+                    phase="probe",
+                    hard_ceiling_s=_PROBE_REQUEST_CEILING_S,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = "Preflight probe timed out"
+                raise ServiceUnavailableError(msg) from exc
         # The walk's in-thread monotonic deadline only starts counting
         # once the ``to_thread`` job is scheduled; a saturated default
         # executor could otherwise leave this request awaiting
@@ -293,30 +309,15 @@ class MemoryFineTuneController(Controller):
             thresholds.preflight_walk_timeout_s + _PREFLIGHT_HARD_TIMEOUT_MARGIN_S
         )
         try:
-            async with (
-                asyncio.timeout(hard_ceiling),
-                asyncio.TaskGroup() as tg,
-            ):
-                checks_task = tg.create_task(
-                    asyncio.to_thread(
-                        _run_preflight_checks,
-                        data,
-                        min_required=thresholds.min_docs_required,
-                        min_recommended=thresholds.min_docs_recommended,
-                        max_depth=thresholds.preflight_max_depth,
-                        walk_timeout_s=thresholds.preflight_walk_timeout_s,
-                        sidecar_host=sidecar_host,
-                        sidecar_port=sidecar_port,
-                    ),
-                )
-                batch_task = tg.create_task(
-                    asyncio.to_thread(
-                        _recommend_batch_size,
-                        default_batch_size=thresholds.default_batch_size,
-                        vram_table=(
-                            app_state.bridge_config.memory.fine_tune_vram_batch_table
-                        ),
-                    ),
+            async with asyncio.timeout(hard_ceiling):
+                checks, probe = await asyncio.to_thread(
+                    _run_preflight_checks,
+                    data,
+                    min_required=thresholds.min_docs_required,
+                    min_recommended=thresholds.min_docs_recommended,
+                    max_depth=thresholds.preflight_max_depth,
+                    walk_timeout_s=thresholds.preflight_walk_timeout_s,
+                    docker_probe=docker_probe,
                 )
         except TimeoutError as exc:
             logger.warning(
@@ -328,8 +329,15 @@ class MemoryFineTuneController(Controller):
             )
             msg = "Preflight validation timed out"
             raise ServiceUnavailableError(msg) from exc
-        checks = list(checks_task.result())
-        batch_size = batch_task.result()
+        batch_size = (
+            _recommend_batch_size(
+                vram_gb=probe.vram_gb,
+                default_batch_size=thresholds.default_batch_size,
+                vram_table=(app_state.bridge_config.memory.fine_tune_vram_batch_table),
+            )
+            if probe.ok
+            else None
+        )
         result = PreflightResult(
             checks=tuple(checks),
             recommended_batch_size=batch_size,

@@ -5,6 +5,7 @@ import { getBudgetConfig } from '@/api/endpoints/budget'
 import { listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
 import { listActivities } from '@/api/endpoints/activities'
 import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
+import { deepEqual } from '@/utils/equality'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -105,15 +106,27 @@ async function fetchDashboardDataImpl(set: AnSet): Promise<void> {
       return
     }
     const departmentHealths = await fetchDepartmentHealths()
-    set({
-      overview: results.overview,
-      forecast: results.forecast,
-      budgetConfig: results.budgetConfig,
-      departmentHealths,
-      orgHealthPercent: computeOrgHealth(departmentHealths),
-      activities: results.activitiesData,
-      loading: false,
-      error: null,
+    set((state) => {
+      // WS events pushed while this fetch was in flight are newer than
+      // the fetched snapshot; overwriting would silently drop them from
+      // the live feed. Keep them ahead of the fetched history.
+      const fetchedIds = new Set(results.activitiesData.map((a) => a.id))
+      const liveDuringFetch = state.activities.filter(
+        (a) => !fetchedIds.has(a.id),
+      )
+      return {
+        overview: results.overview,
+        forecast: results.forecast,
+        budgetConfig: results.budgetConfig,
+        departmentHealths,
+        orgHealthPercent: computeOrgHealth(departmentHealths),
+        activities: [...liveDuringFetch, ...results.activitiesData].slice(
+          0,
+          MAX_ACTIVITIES,
+        ),
+        loading: false,
+        error: null,
+      }
     })
   } catch (err) {
     set({ loading: false, error: getErrorMessage(err) })
@@ -135,7 +148,12 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   fetchOverview: async () => {
     try {
       const overview = await getOverviewMetrics()
-      set({ overview })
+      // Unchanged data keeps the existing reference so subscribers
+      // (charts, gauges, status bar) skip a full re-render wave on
+      // every idle poll tick.
+      if (!deepEqual(overview, get().overview)) {
+        set({ overview })
+      }
     } catch (err) {
       log.warn(
         'Failed to refresh overview (polling):',

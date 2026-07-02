@@ -262,13 +262,10 @@ class FineTunePlan(BaseModel):
     def to_request(self) -> FineTuneRequest:
         """Build the internal runner request.
 
-        The runner does not know about ``execution`` (it is routed via
-        a separate path inside the orchestrator), so only the shared
-        tuning fields are forwarded here. Copying field-by-field keeps
-        validation contracts explicit; a generic ``model_dump``
-        round-trip would silently fill any new fields on
-        ``FineTuneRequest`` with ``None`` and break the runner's
-        invariants.
+        Copying field-by-field keeps validation contracts explicit; a
+        generic ``model_dump`` round-trip would silently fill any new
+        fields on ``FineTuneRequest`` with ``None`` and break the
+        runner's invariants.
 
         Returns:
             Result of type ``FineTuneRequest``.
@@ -285,6 +282,7 @@ class FineTunePlan(BaseModel):
             top_k=self.top_k,
             batch_size=self.batch_size,
             validation_split=self.validation_split,
+            execution=self.execution,
         )
 
 

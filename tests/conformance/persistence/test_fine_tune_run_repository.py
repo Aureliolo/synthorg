@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneExecutionConfig,
     FineTuneRun,
     FineTuneRunConfig,
 )
@@ -350,3 +351,26 @@ class TestFineTuneRunRepository:
         fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.config == cfg
+
+    async def test_save_run_preserves_execution_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The baked execution backend must survive persistence so resume
+        # and audit see the backend the run actually used.
+        cfg = _cfg().model_copy(
+            update={
+                "execution": FineTuneExecutionConfig(
+                    backend="docker",
+                    image="example.test/fine-tune:1",
+                    gpu_enabled=True,
+                    memory_limit="12g",
+                    timeout_seconds=3600.0,
+                ),
+            },
+        )
+        run = _run(config=cfg)
+        await backend.fine_tune_runs.save(run)
+
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
+        assert fetched is not None
+        assert fetched.config.execution == cfg.execution

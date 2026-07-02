@@ -1,11 +1,10 @@
 import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
-import { AgentCard } from '@/components/ui/agent-card'
+import { AgentConfigCard } from '@/components/agents/AgentConfigCard'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
-import { toRuntimeStatus } from '@/utils/agents'
 import { formatRelativeTime } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import { cn } from '@/lib/utils'
@@ -27,12 +26,6 @@ interface AgentGridViewProps {
 
 function agentKey(agent: AgentConfig): string {
   return agent.id
-}
-
-/** Best-effort model identifier from the agent's raw model config dict. */
-function agentModelId(agent: AgentConfig): string | undefined {
-  const id = agent.model['model_id']
-  return typeof id === 'string' && id ? id : undefined
 }
 
 interface AgentGridItemProps {
@@ -63,13 +56,8 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
           to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(id))}
           className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded-lg"
         >
-          <AgentCard
-            name={agent.name}
-            role={agent.role}
-            department={agent.department}
-            status={toRuntimeStatus(agent.status ?? 'active')}
-            model={agentModelId(agent)}
-            tier={agent.tier}
+          <AgentConfigCard
+            agent={agent}
             timestamp={agent.hiring_date ? formatRelativeTime(agent.hiring_date) : undefined}
             timestampIso={agent.hiring_date ?? undefined}
           />

@@ -36,6 +36,7 @@ first's in-flight marker.
 
 import asyncio
 from collections.abc import Callable
+from datetime import datetime
 
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -281,6 +282,7 @@ class ApprovalStore(ApprovalExpirationMixin):
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: NotBlankStr | None = None,
+        created_since: datetime | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
@@ -294,6 +296,9 @@ class ApprovalStore(ApprovalExpirationMixin):
             status: Filter by approval status.
             risk_level: Filter by risk level.
             action_type: Filter by action type.
+            created_since: Only items created at or after this instant
+                (pushed down to the repo, keeping windowed reads like
+                the analytics trend off the full-table scan path).
 
         Returns:
             Tuple of matching approval items.
@@ -303,12 +308,14 @@ class ApprovalStore(ApprovalExpirationMixin):
                 status=status,
                 risk_level=risk_level,
                 action_type=action_type,
+                created_since=created_since,
             )
         async with self._lock:
             return await self._list_from_cache_locked(
                 status=status,
                 risk_level=risk_level,
                 action_type=action_type,
+                created_since=created_since,
             )
 
     async def _list_from_repo(
@@ -317,6 +324,7 @@ class ApprovalStore(ApprovalExpirationMixin):
         status: ApprovalStatus | None,
         risk_level: ApprovalRiskLevel | None,
         action_type: NotBlankStr | None,
+        created_since: datetime | None,
     ) -> tuple[ApprovalItem, ...]:
         """Repo-backed list path with batched expiry persistence.
 
@@ -404,10 +412,14 @@ class ApprovalStore(ApprovalExpirationMixin):
         while True:
             # Repo I/O outside the store lock so concurrent get() /
             # save() callers are never blocked by a long scan.
+            # ``created_since`` pushes down unconditionally: creation
+            # time is immutable, so it cannot shrink the result set
+            # under the iterator the way a PENDING status filter can.
             filter_spec = ApprovalFilterSpec(
                 status=repo_status,
                 risk_level=risk_level,
                 action_type=action_type,
+                created_since=created_since,
             )
             page = await self._repo.query(
                 filter_spec,
@@ -475,6 +487,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                 if (status is None or item.status == status)
                 and (risk_level is None or item.risk_level == risk_level)
                 and (action_type is None or item.action_type == action_type)
+                and (created_since is None or item.created_at >= created_since)
             ]
             # Refresh the entire page slice in the cache (not just the
             # EXPIRED transitions) so stale non-expired siblings can't

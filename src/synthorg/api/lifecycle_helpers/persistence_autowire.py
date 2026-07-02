@@ -145,6 +145,49 @@ async def _wire_workflow_rollback_service(
         )
 
 
+async def _wire_workflow_service(
+    app_state: AppState,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Wire the base ``WorkflowService`` onto ``EngineStateSlice``.
+
+    ``workflow_service_of`` (meta-apply wiring + the MCP workflow-definition
+    handlers) resolves this slice; without the wire it raised
+    ``ServiceUnavailableError: Workflow Service not configured``. The REST
+    workflow controllers build their own per-request instance, so only the
+    engine-level consumers depended on this slice being populated.
+    """
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        return
+    if (
+        app_state.slice(EngineStateSlice).workflow_service is not None
+        or not hasattr(persistence, "workflow_definitions")
+        or not hasattr(persistence, "workflow_versions")
+    ):
+        return
+    try:
+        from synthorg.engine.workflow.service import WorkflowService  # noqa: PLC0415
+        from synthorg.versioning import VersioningService  # noqa: PLC0415
+
+        app_state.wire(
+            EngineStateSlice,
+            workflow_service=WorkflowService(
+                definition_repo=persistence.workflow_definitions,
+                version_repo=persistence.workflow_versions,
+                versioning_service=VersioningService(persistence.workflow_versions),
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="workflow_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="workflow_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 async def _wire_workflow_version_service(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -314,6 +357,7 @@ async def wire_persistence_services(
     await _wire_oauth_state_service(app_state, persistence)
     await _wire_training_plan_service(app_state, persistence)
     await _wire_workflow_rollback_service(app_state, persistence)
+    await _wire_workflow_service(app_state, persistence)
     await _wire_workflow_version_service(app_state, persistence)
     await _wire_agent_version_service(app_state, persistence)
     await _wire_subworkflow_service(app_state, persistence)

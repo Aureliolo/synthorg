@@ -24,7 +24,7 @@ from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
-_DEFAULT_REFRESH_INTERVAL_SECONDS: Final[float] = 86_400.0
+_DEFAULT_REFRESH_INTERVAL_SECONDS: Final[float] = 21_600.0
 _MIN_REFRESH_INTERVAL_SECONDS: Final[float] = 60.0
 _MAX_REFRESH_INTERVAL_SECONDS: Final[float] = 604_800.0
 
@@ -38,7 +38,8 @@ class RefreshMode(StrEnum):
     """How the periodic model-refresh subsystem operates.
 
     Attributes:
-        OFF: Disabled entirely (the safe default); nothing is scheduled.
+        OFF: Disabled entirely; nothing is scheduled. Also the fail-safe
+            fallback when the mode setting cannot be read.
         MANUAL_ONLY: No cadence; only the explicit refresh endpoint runs.
         DETECT_ONLY: Periodically probe and flag removed models stale,
             but never persist new models or emit recommendations.
@@ -70,7 +71,7 @@ class ModelRefreshConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    mode: RefreshMode = RefreshMode.OFF
+    mode: RefreshMode = RefreshMode.RECONCILE_RECOMMEND
     interval_seconds: float = Field(
         default=_DEFAULT_REFRESH_INTERVAL_SECONDS,
         ge=_MIN_REFRESH_INTERVAL_SECONDS,
@@ -126,10 +127,10 @@ async def _resolve_interval_seconds(resolver: ConfigResolver) -> float:
 async def load_model_refresh_config(resolver: ConfigResolver) -> ModelRefreshConfig:
     """Assemble a :class:`ModelRefreshConfig` from the registered settings.
 
-    Each read fails safe to its field default (off mode, daily cadence,
-    no auto-apply); an out-of-range stored interval is rejected by the
-    field bounds and also falls back to the default, so a bad setting can
-    never abort wiring or 500 the status endpoint.
+    A read that raises fails safe (mode -> OFF, interval -> the 6-hourly
+    default, no auto-apply); an out-of-range stored interval is rejected by
+    the field bounds and also falls back to the default, so a bad setting
+    can never abort wiring or 500 the status endpoint.
 
     Returns:
         A frozen config view assembled from the registered settings.

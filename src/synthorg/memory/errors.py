@@ -83,6 +83,15 @@ class FineTuneCancelledError(MemoryError):
     """Raised when a fine-tuning pipeline run is cancelled."""
 
 
+class FineTuneStageExecutionError(MemoryError):
+    """Raised when a torch-bound pipeline stage fails to execute.
+
+    Covers both execution backends: an in-process stage function that
+    raised, and an ephemeral stage container that exited non-zero,
+    timed out, or could not be launched.
+    """
+
+
 class FineTuneDataSourceError(MemoryError):
     """Raised when the selected finetune training-data source is unavailable.
 

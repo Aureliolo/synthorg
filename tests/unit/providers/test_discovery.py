@@ -743,7 +743,7 @@ class TestDiscoverModelsTrustedUrl:
                 assert "Host" not in (call.kwargs.get("headers") or {})
 
     async def test_trusted_url_logs_ssrf_bypass(self) -> None:
-        """trust_url=True logs the SSRF bypass event."""
+        """trust_url=True logs the SSRF bypass event on every request."""
         response = _mock_response(
             {"data": [{"id": "test-model-001"}]},
         )

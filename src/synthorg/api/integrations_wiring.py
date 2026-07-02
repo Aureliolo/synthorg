@@ -19,7 +19,7 @@ from synthorg.integrations.health.prober import HealthProberService
 from synthorg.integrations.mcp_catalog.installations import McpInstallationRepository
 from synthorg.integrations.mcp_catalog.service import CatalogService
 from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-from synthorg.integrations.tunnel.protocol import TunnelProvider
+from synthorg.integrations.tunnel.manager import TunnelManager
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -45,7 +45,7 @@ class IntegrationsBundle:
     provider_credential_catalog: ConnectionCatalog | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
-    tunnel_provider: TunnelProvider | None = None
+    tunnel_provider: TunnelManager | None = None
     webhook_event_bridge: WebhookEventBridge | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None
@@ -123,22 +123,72 @@ def _wire_mcp_installations_repo(
     return None
 
 
-def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
-    """Wire the tunnel adapter unconditionally (no persistence dep).
-
-    Best-effort: a missing adapter module or constructor failure must
-    not abort app startup. The dashboard's tunnel toggle simply
-    degrades to "unavailable" when this returns ``None``.
+def _resolve_tunnel_state_dir() -> Path | None:
+    """Resolve ``integrations.tunnel_state_dir`` (env-seeded, boot-only).
 
     Returns:
-        The ``TunnelProvider`` value when present, ``None`` otherwise.
+        The state-dir path, or ``None`` when unset (adapters fall back
+        to ``~/.synthorg``).
+
+    Raises:
+        ValueError: When the value carries a ``..`` traversal component.
+    """
+    from pathlib import PurePath  # noqa: PLC0415
+
+    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+        resolve_init_value,
+    )
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    raw = str(
+        resolve_init_value(SettingNamespace.INTEGRATIONS, "tunnel_state_dir").value
+    )
+    if ".." in PurePath(raw).parts:
+        msg = (
+            f"SYNTHORG_TUNNEL_STATE_DIR contains '..' path traversal component: {raw!r}"
+        )
+        raise ValueError(msg)
+    return Path(raw) if raw else None
+
+
+def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
+    """Wire the multi-provider tunnel manager (no persistence dep).
+
+    Best-effort: a missing adapter module or constructor failure must
+    not abort app startup. The dashboard's tunnel card simply degrades
+    to "unavailable" when this returns ``None``. The tunneled port is
+    the API's own resolved serving port (``api.server_port``), so
+    every provider exposes the address the server actually listens on.
+    The state dir (``integrations.tunnel_state_dir``, env
+    ``SYNTHORG_TUNNEL_STATE_DIR``) roots downloaded binaries and the
+    devtunnel login home; a ``..`` component is rejected so the env
+    var cannot traverse out of its mount.
+
+    Returns:
+        The ``TunnelManager`` value when present, ``None`` otherwise.
     """
     try:
-        from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
-            NgrokAdapter,
+        from synthorg.integrations.tunnel.factory import (  # noqa: PLC0415
+            build_tunnel_manager,
         )
+        from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+            resolve_init_value,
+        )
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+        from synthorg.settings.mirrors import parse_int  # noqa: PLC0415
 
-        provider = NgrokAdapter(auth_token_env=auth_token_env)
+        port = int(
+            resolve_init_value(
+                SettingNamespace.API,
+                "server_port",
+                parse=parse_int,
+            ).value
+        )
+        provider = build_tunnel_manager(
+            effective_config.integrations.tunnel,
+            port=port,
+            state_dir=_resolve_tunnel_state_dir(),
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -272,9 +322,7 @@ def auto_wire_integrations(  # noqa: PLR0913
     # Wired unconditionally (no persistence / OAuth deps) so the
     # dashboard toggle works even when the rest of integrations are
     # disabled.
-    bundle.tunnel_provider = _wire_tunnel_provider(
-        effective_config.integrations.tunnel.auth_token_env,
-    )
+    bundle.tunnel_provider = _wire_tunnel_provider(effective_config)
 
     # The credential catalog is built whenever persistence is connected,
     # independent of ``integrations.enabled``: LLM provider authentication

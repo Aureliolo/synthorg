@@ -4,6 +4,11 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { useTunnelStore } from '@/stores/tunnel'
 import type { TunnelPhase } from '@/stores/tunnel'
+import type {
+  DeviceLoginPrompt,
+  TunnelProviderId,
+  TunnelProviderStatus,
+} from '@/api/types/integrations'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { getCsrfToken } from '@/utils/csrf'
 import { sanitizeForLog } from '@/utils/logging'
@@ -73,10 +78,17 @@ export interface TunnelCardState {
   publicUrl: string | null
   error: string | null
   autoStop: boolean
-  tokenMissing: boolean
   isRunning: boolean
   isTransitioning: boolean
   status: (typeof PHASE_STATUS)[TunnelPhase]
+  providers: readonly TunnelProviderStatus[]
+  selectedProvider: string | null
+  selectedStatus: TunnelProviderStatus | null
+  activeProvider: string | null
+  deviceLogin: DeviceLoginPrompt | null
+  savingCredential: boolean
+  /** Whether Start is actionable for the selected provider. */
+  canStart: boolean
   introOpen: boolean
   introMode: 'info' | 'enable'
   setIntroOpen: (open: boolean) => void
@@ -85,45 +97,72 @@ export interface TunnelCardState {
   handleToggle: (next: boolean) => Promise<void>
   handleIntroConfirm: () => Promise<void>
   copyUrl: () => Promise<void>
+  selectProvider: (provider: TunnelProviderId) => void
+  saveCredential: (token: string) => Promise<boolean>
+  clearCredential: () => Promise<boolean>
+  connectDevice: () => void
 }
 
-export function useTunnelCard(): TunnelCardState {
-  const { phase, publicUrl, error, autoStop, hasAuthToken } = useTunnelData()
-  const setAutoStop = useTunnelStore((s) => s.setAutoStop)
-  const start = useTunnelStore((s) => s.start)
-  const stop = useTunnelStore((s) => s.stop)
+interface ProviderActions {
+  selectProvider: (provider: TunnelProviderId) => void
+  saveCredential: (token: string) => Promise<boolean>
+  clearCredential: () => Promise<boolean>
+  connectDevice: () => void
+}
+
+function useProviderActions(selectedProvider: string | null): ProviderActions {
+  const selectProvider = useCallback((provider: TunnelProviderId) => {
+    void useTunnelStore.getState().selectProvider(provider)
+  }, [])
+
+  const saveCredential = useCallback(
+    async (token: string) => {
+      if (!selectedProvider) return false
+      return useTunnelStore.getState().saveCredential(selectedProvider, token)
+    },
+    [selectedProvider],
+  )
+
+  const clearCredential = useCallback(async () => {
+    if (!selectedProvider) return false
+    return useTunnelStore.getState().clearCredential(selectedProvider)
+  }, [selectedProvider])
+
+  const connectDevice = useCallback(() => {
+    if (!selectedProvider) return
+    void useTunnelStore.getState().beginDeviceLogin(selectedProvider)
+  }, [selectedProvider])
+
+  return { selectProvider, saveCredential, clearCredential, connectDevice }
+}
+
+interface IntroState {
+  introOpen: boolean
+  introMode: 'info' | 'enable'
+  setIntroOpen: (open: boolean) => void
+  openInfo: () => void
+  requestEnable: () => void
+}
+
+function useIntroDialog(): IntroState {
   const [introOpen, setIntroOpen] = useState(false)
   // Distinguishes the toggle path (confirm starts the tunnel) from the
   // Info button (confirm is a plain close); without it, opening the
   // explainer and confirming would expose the local backend by accident.
   const [introMode, setIntroMode] = useState<'info' | 'enable'>('info')
+  const openInfo = useCallback(() => {
+    setIntroMode('info')
+    setIntroOpen(true)
+  }, [])
+  const requestEnable = useCallback(() => {
+    setIntroMode('enable')
+    setIntroOpen(true)
+  }, [])
+  return { introOpen, introMode, setIntroOpen, openInfo, requestEnable }
+}
 
-  const isRunning = phase === 'on'
-  const isTransitioning = phase === 'enabling' || phase === 'disabling'
-  useTunnelAutoStopOnUnload(autoStop, isRunning)
-
-  const handleToggle = useCallback(
-    async (next: boolean) => {
-      if (!next) {
-        await stop()
-        return
-      }
-      if (!useDashboardPrefs.getState().tunnelIntroAcknowledged) {
-        setIntroMode('enable')
-        setIntroOpen(true)
-        return
-      }
-      await start()
-    },
-    [stop, start],
-  )
-
-  const handleIntroConfirm = useCallback(async () => {
-    useDashboardPrefs.getState().acknowledgeTunnelIntro()
-    await start()
-  }, [start])
-
-  const copyUrl = useCallback(async () => {
+function useCopyUrl(publicUrl: string | null): () => Promise<void> {
+  return useCallback(async () => {
     if (!publicUrl) return
     try {
       await navigator.clipboard.writeText(publicUrl)
@@ -137,28 +176,82 @@ export function useTunnelCard(): TunnelCardState {
       })
     }
   }, [publicUrl])
+}
 
-  const openInfo = useCallback(() => {
-    setIntroMode('info')
-    setIntroOpen(true)
-  }, [])
+export function useTunnelCard(): TunnelCardState {
+  const {
+    phase,
+    publicUrl,
+    error,
+    autoStop,
+    providers,
+    selectedProvider,
+    activeProvider,
+    deviceLogin,
+  } = useTunnelData()
+  const setAutoStop = useTunnelStore((s) => s.setAutoStop)
+  const start = useTunnelStore((s) => s.start)
+  const stop = useTunnelStore((s) => s.stop)
+  const savingCredential = useTunnelStore((s) => s.savingCredential)
+  const intro = useIntroDialog()
+  const actions = useProviderActions(selectedProvider)
+
+  const isRunning = phase === 'on'
+  const isTransitioning = phase === 'enabling' || phase === 'disabling'
+  useTunnelAutoStopOnUnload(autoStop, isRunning)
+
+  const selectedStatus =
+    providers.find((p) => p.provider_id === selectedProvider) ?? null
+  const canStart =
+    selectedStatus !== null &&
+    selectedStatus.available &&
+    selectedStatus.credential_configured
+
+  const handleToggle = useCallback(
+    async (next: boolean) => {
+      if (!next) {
+        await stop()
+        return
+      }
+      if (!useDashboardPrefs.getState().tunnelIntroAcknowledged) {
+        intro.requestEnable()
+        return
+      }
+      await start()
+    },
+    [stop, start, intro],
+  )
+
+  const handleIntroConfirm = useCallback(async () => {
+    useDashboardPrefs.getState().acknowledgeTunnelIntro()
+    await start()
+  }, [start])
+
+  const copyUrl = useCopyUrl(publicUrl)
 
   return {
     phase,
     publicUrl,
     error,
     autoStop,
-    tokenMissing: hasAuthToken === false,
     isRunning,
     isTransitioning,
     status: PHASE_STATUS[phase],
-    introOpen,
-    introMode,
-    setIntroOpen,
-    openInfo,
+    providers,
+    selectedProvider,
+    selectedStatus,
+    activeProvider,
+    deviceLogin,
+    savingCredential,
+    canStart,
+    introOpen: intro.introOpen,
+    introMode: intro.introMode,
+    setIntroOpen: intro.setIntroOpen,
+    openInfo: intro.openInfo,
     setAutoStop,
     handleToggle,
     handleIntroConfirm,
     copyUrl,
+    ...actions,
   }
 }

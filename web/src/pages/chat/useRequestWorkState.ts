@@ -1,0 +1,139 @@
+import { useCallback, useRef, useState } from 'react'
+
+import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
+import { useMetaStore } from '@/stores/meta'
+
+import { resolveScopedRetryContent } from './scoped-retry'
+
+export interface RequestWorkMessage {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  /** Role of the routed agent that answered, when concern-routed. */
+  responderRole?: string | undefined
+  /** Display name of the routed agent, when concern-routed. */
+  responderName?: string | undefined
+  /** Concern topic that selected the role, when routed. */
+  routedTopic?: string | undefined
+  /** Titles of parked work items, on the "proposed" branch. */
+  proposals?: readonly string[] | undefined
+  /** Renders as a distinct error notice (not a normal assistant reply). */
+  isError?: boolean | undefined
+}
+
+export interface RequestWorkState {
+  messages: readonly RequestWorkMessage[]
+  input: string
+  proposeLoading: boolean
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  setInput: (value: string) => void
+  triggerSend: () => void
+  retryBefore: (beforeMsgId: number) => void
+}
+
+export function useRequestWorkState(): RequestWorkState {
+  const [messages, setMessages] = useState<RequestWorkMessage[]>([])
+  const [input, setInput] = useState('')
+  const proposeLoading = useMetaStore((s) => s.proposeLoading)
+  const propose = useMetaStore((s) => s.proposeConversation)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const msgIdRef = useRef(0)
+  const conversationIdRef = useRef<string | undefined>(undefined)
+
+  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
+
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!message || proposeLoading) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextMsgId(), role: 'user', content: message },
+      ])
+      const result = await propose(message, conversationIdRef.current)
+      if (result) conversationIdRef.current = result.conversation_id
+      setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
+      scrollToBottom(scrollRef)
+    },
+    [proposeLoading, propose, nextMsgId],
+  )
+
+  const triggerSend = useCallback(() => {
+    const message = input.trim()
+    // Guard before clearing: Enter during an in-flight propose must
+    // not wipe the composed text (sendMessage would drop it anyway).
+    if (!message || proposeLoading) return
+    setInput('')
+    void sendMessage(message)
+  }, [input, proposeLoading, sendMessage])
+
+  const retryBefore = useCallback(
+    (beforeMsgId: number) => {
+      const content = resolveScopedRetryContent(
+        messages,
+        beforeMsgId,
+        (m) => m.role === 'user',
+      )
+      if (content !== null) void sendMessage(content)
+    },
+    [messages, sendMessage],
+  )
+
+  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend, retryBefore }
+}
+
+type Attribution = Pick<
+  RequestWorkMessage,
+  'responderRole' | 'responderName' | 'routedTopic'
+>
+
+function toAttribution(result: ConversationalProposeResponse): Attribution {
+  return {
+    ...(result.responder_role != null && { responderRole: result.responder_role }),
+    ...(result.responder_name != null && { responderName: result.responder_name }),
+    ...(result.routed_topic != null && { routedTopic: result.routed_topic }),
+  }
+}
+
+function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
+  return {
+    id: nextMsgId(),
+    role: 'assistant',
+    content: 'The assistant could not respond. Please try again.',
+    isError: true,
+  }
+}
+
+function buildAssistantMessage(
+  result: ConversationalProposeResponse | null,
+  nextMsgId: () => number,
+): RequestWorkMessage {
+  if (!result) {
+    return buildFailureMessage(nextMsgId)
+  }
+  if (result.status === 'needs_clarification') {
+    return {
+      id: nextMsgId(),
+      role: 'assistant',
+      content: result.clarifying_question ?? 'Could you clarify?',
+      ...toAttribution(result),
+    }
+  }
+  const titles = result.proposals.map((p) => p.title)
+  const plural = titles.length === 1 ? '' : 's'
+  return {
+    id: nextMsgId(),
+    role: 'assistant',
+    content: `Queued ${titles.length} work item${plural} for your approval.`,
+    proposals: titles,
+    ...toAttribution(result),
+  }
+}
+
+function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
+  requestAnimationFrame(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: 'smooth',
+    })
+  })
+}

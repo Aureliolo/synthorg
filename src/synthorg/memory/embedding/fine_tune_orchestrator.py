@@ -8,7 +8,7 @@ of failed runs from the last completed stage.
 
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
 
@@ -18,15 +18,22 @@ from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneExecutionConfig,
     FineTuneRequest,
     FineTuneRun,
     FineTuneStatus,
 )
-from synthorg.memory.embedding.fine_tune_pipeline import run_fine_tune_stages
+from synthorg.memory.embedding.fine_tune_pipeline import (
+    StageExecutorFactory,
+    run_fine_tune_stages,
+)
 from synthorg.memory.embedding.fine_tune_query import QueryGenerator
 from synthorg.memory.embedding.fine_tune_run_helpers import (
     build_config,
     to_failed,
+)
+from synthorg.memory.embedding.fine_tune_stage_executor import (
+    InProcessStageExecutor,
 )
 from synthorg.memory.embedding.fine_tune_ws import (
     ChannelsPlugin,
@@ -59,6 +66,17 @@ _PROGRESS_THROTTLE_SEC: Final[float] = 1.0
 # How long ``cancel`` waits for the in-flight pipeline task to stop before
 # returning anyway (recovery marks any still-active run FAILED on next boot).
 _CANCEL_TIMEOUT_SEC: Final[float] = 30.0
+
+
+async def _in_process_stage_executor(
+    _execution: FineTuneExecutionConfig | None,
+) -> InProcessStageExecutor:
+    """Default factory: always execute torch-bound stages in-process.
+
+    Returns:
+        Result of type ``InProcessStageExecutor``.
+    """
+    return InProcessStageExecutor()
 
 
 def _validate_resumable(run: FineTuneRun | None, run_id: str) -> FineTuneRun:
@@ -94,6 +112,14 @@ class FineTuneOrchestrator:
         training_data_source: Optional real-trajectory data source. Required
             only when a run selects ``data_source=trajectory``; directory mode
             needs no source.
+        stage_executor_factory: Builds the executor the pipeline routes
+            torch-bound stages through, from the run's baked execution
+            config. ``None`` always executes in-process.
+        resolve_default_execution: Resolves the effective execution
+            config for a run that requested none (derived from the
+            configured fine-tune image + settings). ``None`` leaves the
+            run's execution unset, which the executor factory treats as
+            in-process.
     """
 
     def __init__(  # noqa: PLR0913 -- pluggable dependencies threaded for testability
@@ -106,13 +132,34 @@ class FineTuneOrchestrator:
         query_generator: QueryGenerator | None = None,
         training_data_source: TrainingDataSource | None = None,
         clock: Clock | None = None,
+        stage_executor_factory: StageExecutorFactory | None = None,
+        resolve_default_execution: (
+            Callable[[], Awaitable[FineTuneExecutionConfig]] | None
+        ) = None,
     ) -> None:
+        if (stage_executor_factory is None) != (resolve_default_execution is None):
+            # Wiring exactly one silently defeats docker execution: a
+            # factory without default resolution never sees a docker
+            # config for unset requests, and default resolution without
+            # a factory bakes a backend nothing can route.
+            msg = (
+                "stage_executor_factory and resolve_default_execution"
+                " must be provided together (or both omitted for"
+                " in-process execution)"
+            )
+            raise ValueError(msg)
         self._run_repo = run_repo
         self._checkpoint_repo = checkpoint_repo
         self._settings_service = settings_service
         self._channels_plugin = channels_plugin
         self._query_generator = query_generator
         self._training_data_source = training_data_source
+        self._stage_executor_factory: StageExecutorFactory = (
+            stage_executor_factory
+            if stage_executor_factory is not None
+            else _in_process_stage_executor
+        )
+        self._resolve_default_execution = resolve_default_execution
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
@@ -171,6 +218,12 @@ class FineTuneOrchestrator:
         config = build_config(request)
         if chunk_size is not None:
             config = config.model_copy(update={"chunk_size": chunk_size})
+        if config.execution is None and self._resolve_default_execution is not None:
+            # Bake the derived backend in before the first save so resume
+            # and audit read the backend the run actually used.
+            config = config.model_copy(
+                update={"execution": await self._resolve_default_execution()},
+            )
         now = datetime.now(UTC)
         run = FineTuneRun(
             id=uuid.uuid4(),
@@ -362,77 +415,18 @@ class FineTuneOrchestrator:
                 run_id=str(run.id),
                 stage=run.stage.value,
             )
-            try:
-                await self._mark_failed(
-                    self._current_run or run,
-                    "cancelled by user",
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                # Update in-memory state even if DB fails. Mirror
-                # ``_mark_failed`` so the snapshot has the same terminal
-                # shape (progress cleared, timestamps stamped) instead
-                # of a stale stage with leftover progress data.
-                # Base on the latest snapshot (``self._current_run``)
-                # rather than the entry-state ``run`` so a cancellation
-                # mid-pipeline does not regress ``stages_completed`` or
-                # the current stage if a later stage already updated
-                # the in-memory snapshot.
-                base = self._current_run or run
-                self._current_run = to_failed(
-                    base,
-                    "cancelled by user",
-                    now=datetime.now(UTC),
-                )
-                logger.warning(
-                    MEMORY_FINE_TUNE_FAILED,
-                    run_id=str(run.id),
-                    note="failed_to_persist_cancellation_state",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            self._schedule_ws(
-                "memory.fine_tune.failed",
-                self._current_run or run,
+            await self._fail_terminally(
+                run,
+                "cancelled by user",
+                persist_stage="persist_cancellation_state",
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
-            try:
-                await self._mark_failed(self._current_run or run, safe_error)
-            except Exception as persist_exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(persist_exc)
-                # Persisting the FAILED state can itself fail (DB outage,
-                # disk full, etc.). Log the persistence failure with full
-                # context, then synthesise the same fully-terminal state
-                # ``_mark_failed`` would have produced (stage, progress
-                # cleared, error, updated_at, completed_at) on top of the
-                # most recent in-memory ``self._current_run`` so
-                # ``get_status`` and the WS event don't return a FAILED
-                # run with stale progress or missing terminal timestamps.
-                now = datetime.now(UTC)
-                # The MemoryError/RecursionError carve-out above
-                # means persist_exc is guaranteed non-catastrophic
-                # at this point, so we deliberately omit
-                # ``exc_info=True``: the sanitised structured fields
-                # are the only thing that should land in the log
-                # record on this path. ``noqa: TRY400`` because
-                # ``logger.exception`` would auto-attach a traceback
-                # whose frame-locals can carry credentials.
-                log_exception_redacted(
-                    logger,
-                    MEMORY_FINE_TUNE_FAILED,
-                    persist_exc,
-                    run_id=str(run.id),
-                    stage="persist_failed_state",
-                    underlying_error_type=type(exc).__name__,
-                    underlying_error=safe_error,
-                )
-                base = self._current_run or run
-                self._current_run = to_failed(base, safe_error, now=now)
-            self._schedule_ws(
-                "memory.fine_tune.failed",
-                self._current_run or run,
+            await self._fail_terminally(
+                run,
+                safe_error,
+                persist_stage="persist_failed_state",
             )
             logger.warning(
                 MEMORY_FINE_TUNE_FAILED,
@@ -440,6 +434,43 @@ class FineTuneOrchestrator:
                 error_type=type(exc).__name__,
                 error=safe_error,
             )
+
+    async def _fail_terminally(
+        self,
+        run: FineTuneRun,
+        error: str,
+        *,
+        persist_stage: str,
+    ) -> None:
+        """Persist the FAILED terminal state and emit the WS event.
+
+        Persisting can itself fail (DB outage, disk full). In that case
+        log the persistence failure with full context, then synthesise
+        the same fully-terminal state ``_mark_failed`` would have
+        produced (stage, progress cleared, error, timestamps) on top of
+        the most recent in-memory ``self._current_run`` -- not the
+        entry-state ``run`` -- so ``get_status`` and the WS event don't
+        return a FAILED run with stale progress, missing terminal
+        timestamps, or regressed ``stages_completed``.
+        """
+        try:
+            await self._mark_failed(self._current_run or run, error)
+        except Exception as persist_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(persist_exc)
+            log_exception_redacted(
+                logger,
+                MEMORY_FINE_TUNE_FAILED,
+                persist_exc,
+                run_id=str(run.id),
+                stage=persist_stage,
+                underlying_error=error,
+            )
+            base = self._current_run or run
+            self._current_run = to_failed(base, error, now=datetime.now(UTC))
+        self._schedule_ws(
+            "memory.fine_tune.failed",
+            self._current_run or run,
+        )
 
     async def _run_stages(
         self,
@@ -464,6 +495,7 @@ class FineTuneOrchestrator:
             enter_stage=self._enter_stage,
             complete_stage=self._complete_stage,
             make_progress_cb=self._make_progress_cb,
+            make_stage_executor=self._stage_executor_factory,
         )
 
     # -- Stage lifecycle helpers --------------------------------------

@@ -33,6 +33,7 @@ from synthorg.integrations.connections.types.oauth_app import (
 )
 from synthorg.integrations.connections.types.slack import SlackAuthenticator
 from synthorg.integrations.connections.types.smtp import SmtpAuthenticator
+from synthorg.integrations.connections.types.tunnel import TunnelAuthenticator
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.integrations import (
     CONNECTION_AUTHENTICATOR_MISSING,
@@ -54,6 +55,7 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
             ConnectionType.OAUTH_APP: OAuthAppAuthenticator(),
             ConnectionType.A2A_PEER: A2APeerAuthenticator(),
             ConnectionType.LLM_PROVIDER: LLMProviderAuthenticator(),
+            ConnectionType.TUNNEL: TunnelAuthenticator(),
         },
     )
 )

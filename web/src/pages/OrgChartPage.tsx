@@ -1,5 +1,5 @@
-import { ReactFlowProvider } from '@xyflow/react'
-import { GitBranch, Loader2 } from 'lucide-react'
+import { ReactFlowProvider, type Edge, type Node } from '@xyflow/react'
+import { GitBranch, Loader2, MessagesSquare } from 'lucide-react'
 import { Link } from 'react-router'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -30,6 +30,30 @@ function OrgChartTransitionIndicator({ commLoading, transitioning, viewMode }: T
   )
 }
 
+// Stable identities so the empty branch never feeds React Flow a fresh
+// array each render.
+const EMPTY_NODES: Node[] = []
+const EMPTY_EDGES: Edge[] = []
+
+/** Communication view has meaning only once agents exchange messages;
+ * without any links the force layout is just a scattered node cloud, so we
+ * show an explanatory empty state on a clean canvas instead. */
+function deriveCommunicationEmpty(ctrl: ReturnType<typeof useOrgChartController>): boolean {
+  const isForce = ctrl.viewMode === 'force'
+  const hasCommEdges = ctrl.renderedEdges.some((e) => e.type === 'communication')
+  return isForce && !ctrl.data.commLoading && !ctrl.view.transitioning && !hasCommEdges
+}
+
+function CommunicationEmptyState() {
+  return (
+    <EmptyState
+      icon={MessagesSquare}
+      title="No communication activity yet"
+      description="This view maps message volume between agents: who talks to whom, with busier pairs drawn closer together. Once your agents start collaborating, the graph fills in here."
+    />
+  )
+}
+
 function OrgChartInner() {
   const ctrl = useOrgChartController()
   const { data } = ctrl
@@ -49,6 +73,12 @@ function OrgChartInner() {
     )
   }
 
+  return <OrgChartBody ctrl={ctrl} />
+}
+
+function OrgChartBody({ ctrl }: { ctrl: ReturnType<typeof useOrgChartController> }) {
+  const { data } = ctrl
+  const communicationEmpty = deriveCommunicationEmpty(ctrl)
   return (
     <div className="flex h-full flex-col">
       <OrgChartBanners
@@ -80,8 +110,8 @@ function OrgChartInner() {
 
       <OrgChartCanvas
         flowWrapperRef={ctrl.png.flowWrapperRef}
-        renderedNodes={ctrl.renderedNodes}
-        renderedEdges={ctrl.renderedEdges}
+        renderedNodes={communicationEmpty ? EMPTY_NODES : ctrl.renderedNodes}
+        renderedEdges={communicationEmpty ? EMPTY_EDGES : ctrl.renderedEdges}
         selection={ctrl.selection}
         onEdgeMouseEnter={ctrl.edge.onEdgeMouseEnter}
         onEdgeMouseLeave={ctrl.edge.onEdgeMouseLeave}
@@ -92,6 +122,7 @@ function OrgChartInner() {
         dragEnabled={ctrl.dragEnabled}
         showMinimap={ctrl.showMinimap}
         filterOverlay={ctrl.filterOverlay}
+        emptyOverlay={communicationEmpty ? <CommunicationEmptyState /> : null}
         announcement={ctrl.announcement}
       />
 

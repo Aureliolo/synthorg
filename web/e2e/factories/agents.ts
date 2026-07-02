@@ -15,6 +15,11 @@ export interface MockAgent {
   current_task_id: string | null
   /** Raw model config dict, mirroring the wire ``AgentConfig.model``. */
   model: Record<string, unknown>
+  /** Raw personality config dict, mirroring ``AgentConfig.personality``. */
+  personality: Record<string, unknown>
+  /** Raw model requirement dict, mirroring ``AgentConfig.model_requirement``. */
+  model_requirement: Record<string, unknown>
+  personality_preset: string | null
   tier: 'large' | 'medium' | 'small' | null
 }
 
@@ -28,6 +33,9 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     level: 'mid',
     current_task_id: null,
     model: { model_id: 'example-medium-001' },
+    personality: { traits: ['pragmatic', 'thorough'] },
+    model_requirement: { requires_tools: true },
+    personality_preset: 'balanced',
     tier: 'medium',
     ...overrides,
   }

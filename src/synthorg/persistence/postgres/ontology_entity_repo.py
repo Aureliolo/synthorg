@@ -175,7 +175,11 @@ class PostgresOntologyEntityRepository:
                 )
         except self._unique_violation as exc:
             msg = f"Entity '{entity.name}' already exists"
-            logger.warning(
+            # DEBUG, not WARNING: a duplicate insert is an expected
+            # idempotent skip for the bootstrap seeder (which runs
+            # every boot); the typed error carries the signal and
+            # callers that consider it unexpected log at their level.
+            logger.debug(
                 ONTOLOGY_ENTITY_DUPLICATE,
                 entity_name=entity.name,
                 error_type=type(exc).__name__,

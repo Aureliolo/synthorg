@@ -87,6 +87,9 @@ export interface OrgChartCanvasProps {
   dragEnabled: boolean
   showMinimap: boolean
   filterOverlay: React.ReactNode
+  /** Centered overlay shown when the current view has nothing to render
+   * (e.g. Communication mode with no message activity yet). */
+  emptyOverlay?: React.ReactNode
   announcement: { id: number; text: string } | null
 }
 
@@ -105,6 +108,7 @@ export function OrgChartCanvas({
   dragEnabled,
   showMinimap,
   filterOverlay,
+  emptyOverlay,
   announcement,
 }: OrgChartCanvasProps) {
   return (
@@ -142,6 +146,14 @@ export function OrgChartCanvas({
       </ReactFlow>
 
       {filterOverlay}
+
+      {emptyOverlay != null ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          <div className="pointer-events-auto max-w-md rounded-lg border border-border bg-card/95 p-card shadow-[var(--so-shadow-card-hover)] backdrop-blur">
+            {emptyOverlay}
+          </div>
+        </div>
+      ) : null}
 
       <LiveRegion politeness="assertive" className="sr-only">
         {announcement ? <span key={announcement.id}>{announcement.text}</span> : null}

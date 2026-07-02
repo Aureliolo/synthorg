@@ -150,17 +150,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,
-        key="budget",
-        type=SettingType.FLOAT,
-        default=None,
-        description="Monthly company budget in the configured currency.",
-        group="General",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMPANY,
         key="model_tier_profile",
         type=SettingType.ENUM,
         default="balanced",

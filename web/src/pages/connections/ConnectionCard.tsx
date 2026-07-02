@@ -94,7 +94,18 @@ function ConnectionCardMeta({
           </>
         )}
       </div>
-      {report?.error_detail && <p className="line-clamp-2 text-xs text-danger">{report.error_detail}</p>}
+      {report?.error_detail && (
+        <p
+          className={cn(
+            'line-clamp-2 text-xs',
+            // UNKNOWN carries an informational note (e.g. "no base_url to
+            // probe"), not a failure; only UNHEALTHY is an actual error.
+            report.status === 'unhealthy' ? 'text-danger' : 'text-text-muted',
+          )}
+        >
+          {report.error_detail}
+        </p>
+      )}
       {/* Cross-link into the receipt inspector pre-selected on this
           connection (receipts are scoped per-connection there). Only
           webhook-emitting connection types receive receipts, so the link is

@@ -18,6 +18,7 @@ from synthorg.memory.embedding.fine_tune import (
 )
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneDataSourceType,
+    FineTuneExecutionConfig,
     FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
@@ -115,6 +116,41 @@ def to_failed(run: FineTuneRun, error: str, *, now: datetime) -> FineTuneRun:
             "updated_at": now,
             "completed_at": now,
         },
+    )
+
+
+def resolve_execution_config(
+    requested: FineTuneExecutionConfig | None,
+    *,
+    fine_tune_image: str,
+    default_gpu: bool,
+    default_memory_limit: str,
+    default_timeout_seconds: float,
+) -> FineTuneExecutionConfig:
+    """Resolve the effective execution backend for a run.
+
+    An explicit request wins verbatim. Otherwise the backend is derived
+    from configuration alone: a configured fine-tune image (Docker
+    installs with ``fine_tuning=true``) means ephemeral containers;
+    no image means in-process (bare-metal installs with the torch
+    extras).
+
+    Returns:
+        The effective, fully-populated execution config.
+    """
+    if requested is not None:
+        return requested
+    if fine_tune_image:
+        return FineTuneExecutionConfig(
+            backend="docker",
+            image=fine_tune_image,
+            gpu_enabled=default_gpu,
+            memory_limit=default_memory_limit,
+            timeout_seconds=default_timeout_seconds,
+        )
+    return FineTuneExecutionConfig(
+        backend="in-process",
+        timeout_seconds=default_timeout_seconds,
     )
 
 

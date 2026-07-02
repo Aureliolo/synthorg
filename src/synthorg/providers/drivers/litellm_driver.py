@@ -87,6 +87,7 @@ from synthorg.providers.models import (
     StreamChunk,
     ToolDefinition,
 )
+from synthorg.providers.ollama_vram_guard import OllamaVramGuard
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 from synthorg.providers.resilience.retry import RetryHandler
 
@@ -105,6 +106,14 @@ _CREDENTIAL_CACHE_TTL: Final[float] = 300.0
 """Cached credentials from the connection catalog are refreshed at
 most every ``_CREDENTIAL_CACHE_TTL`` seconds. Prevents pinning stale
 OAuth/rotating tokens for the lifetime of the driver."""
+
+
+_OLLAMA_DEFAULT_KEEP_ALIVE: Final[str] = "5m"
+"""Bounded ``keep_alive`` sent to ollama when a provider leaves it unset.
+Ensures models SynthOrg loads self-unload after idle rather than inheriting a
+possibly-unbounded server ``OLLAMA_KEEP_ALIVE`` (e.g. ``-1`` = forever). An
+operator who wants a different bound (or ``-1`` to pin) sets the provider's
+``keep_alive`` explicitly."""
 
 # ── Exception mapping table ──────────────────────────────────────
 
@@ -175,6 +184,28 @@ class LiteLLMDriver(BaseCompletionProvider):
             MappingProxyType(self._build_model_lookup(config.models))
         )
         self._routing_key = config.litellm_provider or provider_name
+        # Built lazily (inside the event loop) on the first ollama call:
+        # the guard owns an asyncio lock, and drivers are constructed
+        # during synchronous app wiring.
+        self._vram_guard: OllamaVramGuard | None = None
+
+    async def _ensure_vram_capacity(self, model_id: str) -> None:
+        """Run the ollama VRAM guard before dispatch, when applicable."""
+        if (
+            self._routing_key != "ollama"
+            or self._config.base_url is None
+            or not self._config.vram_guard.enabled
+        ):
+            return
+        guard = self._vram_guard
+        if guard is None:
+            guard = OllamaVramGuard(
+                self._config.base_url,
+                self._config.vram_guard,
+                clock=self._clock,
+            )
+            self._vram_guard = guard
+        await guard.ensure_capacity(model_id)
 
     @override
     def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
@@ -250,6 +281,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         try:
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
+            await self._ensure_vram_capacity(model_config.id)
             litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
@@ -293,6 +325,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         try:
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
+            await self._ensure_vram_capacity(model_config.id)
             litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
@@ -525,9 +558,15 @@ class LiteLLMDriver(BaseCompletionProvider):
             kwargs["api_base"] = self._config.base_url
         # Ollama keep_alive: only the ollama provider honours this option, so
         # gate on the routing key (sending it elsewhere would be an unknown
-        # kwarg). Unset leaves the ollama server's own OLLAMA_KEEP_ALIVE.
-        if self._routing_key == "ollama" and self._config.keep_alive is not None:
-            kwargs["keep_alive"] = self._config.keep_alive
+        # kwarg). An unset provider value falls back to a bounded default
+        # rather than the server's OLLAMA_KEEP_ALIVE, so SynthOrg never
+        # silently leaves a model pinned forever.
+        if self._routing_key == "ollama":
+            kwargs["keep_alive"] = (
+                self._config.keep_alive
+                if self._config.keep_alive is not None
+                else _OLLAMA_DEFAULT_KEEP_ALIVE
+            )
         return _apply_completion_config(kwargs, config)
 
     # ── Response mapping ─────────────────────────────────────────

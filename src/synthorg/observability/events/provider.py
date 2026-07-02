@@ -242,3 +242,7 @@ PROVIDER_MODEL_UPGRADE_REJECTED: Final[str] = "provider.model.upgrade_rejected"
 PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED: Final[str] = (
     "provider.model.upgrade_reassign_failed"
 )
+
+# ── Ollama VRAM guard ────────────────────────────────────────
+PROVIDER_OLLAMA_MODEL_EVICTED: Final[str] = "provider.ollama.model_evicted"
+PROVIDER_OLLAMA_VRAM_GUARD_FAILED: Final[str] = "provider.ollama.vram_guard_failed"

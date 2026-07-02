@@ -9,6 +9,7 @@ import { getBudgetConfig, listCostRecords } from '@/api/endpoints/budget'
 import { listActivities } from '@/api/endpoints/activities'
 import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
+import { deepEqual } from '@/utils/equality'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
@@ -32,6 +33,9 @@ const log = createLogger('budget')
 
 const MAX_BUDGET_ACTIVITIES = 30
 
+/** Minimum spacing between WS-triggered overview refetches (see ``lastWsOverviewRefreshAt``). */
+const WS_OVERVIEW_REFRESH_MIN_INTERVAL_MS = 10_000
+
 /** Maps display aggregation granularity to the trends API time-range. */
 const PERIOD_TO_API = {
   hourly: '7d',
@@ -54,6 +58,14 @@ interface BudgetState {
   aggregationPeriod: AggregationPeriod
   loading: boolean
   error: string | null
+  /**
+   * Timestamp of the last WS-triggered overview refresh. During an
+   * agent burst every LLM call emits ``budget.record_added``; an
+   * unthrottled refetch per event blows the ``analytics.overview``
+   * rate limit (429). The 30s poll guarantees eventual freshness, so
+   * skipped trailing events are safe.
+   */
+  lastWsOverviewRefreshAt: number
 
   fetchBudgetData: () => Promise<void>
   fetchOverview: () => Promise<void>
@@ -241,13 +253,18 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
   aggregationPeriod: 'daily',
   loading: false,
   error: null,
+  lastWsOverviewRefreshAt: 0,
 
   fetchBudgetData: () => fetchBudgetDataImpl(set),
 
   fetchOverview: async () => {
     try {
       const overview = await getOverviewMetrics()
-      set({ overview })
+      // Unchanged data keeps the existing reference so subscribers
+      // skip a full re-render wave on every idle poll tick.
+      if (!deepEqual(overview, get().overview)) {
+        set({ overview })
+      }
     } catch (err) {
       log.warn('Failed to refresh overview (polling):', sanitizeForLog(err))
     }
@@ -276,7 +293,11 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const item = wsEventToActivityItem(event)
       get().pushActivity(item)
       if (eventType === 'budget.record_added') {
-        void get().fetchOverview()
+        const now = Date.now()
+        if (now - get().lastWsOverviewRefreshAt >= WS_OVERVIEW_REFRESH_MIN_INTERVAL_MS) {
+          set({ lastWsOverviewRefreshAt: now })
+          void get().fetchOverview()
+        }
       }
     } catch (err) {
       // WS-controlled fields go through sanitizeForLog before

@@ -386,5 +386,8 @@ async def persist_company_settings(
     await settings_svc.set("company", "currency", fields.currency or "")
     await settings_svc.set("company", "model_tier_profile", fields.model_tier_profile)
     if fields.budget is not None:
-        await settings_svc.set("company", "budget", str(fields.budget))
+        # Single source of truth: the budget the enforcer reads is
+        # ``budget/total_monthly``. The wizard writes it directly so the
+        # operator's setup budget actually caps spend.
+        await settings_svc.set("budget", "total_monthly", str(fields.budget))
     await settings_svc.set("company", "company_name", fields.company_name)

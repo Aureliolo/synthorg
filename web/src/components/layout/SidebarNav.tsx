@@ -2,7 +2,6 @@ import {
   Activity,
   BookOpen,
   Briefcase,
-  ClipboardList,
   Cpu,
   DollarSign,
   FileText,
@@ -17,6 +16,7 @@ import {
   LineChart,
   LibraryBig,
   MessageSquare,
+  MessagesSquare,
   Orbit,
   Package,
   Plug,
@@ -47,13 +47,13 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
       <SidebarSection collapsed={collapsed}>
         <SidebarNavGroup>
           <SidebarNavItem to={ROUTES.DASHBOARD} icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
+          <SidebarNavItem to={ROUTES.CHAT} icon={MessagesSquare} label="Chat" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MISSION_CONTROL} icon={Radio} label="Mission Control" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ORG} icon={GitBranch} label="Org Chart" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ROLES} icon={Briefcase} label="Roles" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.TASKS} icon={KanbanSquare} label="Task Board" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.REPORTS} icon={FileText} label="Reports" collapsed={collapsed} />
-          <SidebarNavItem to={ROUTES.CHARTERS} icon={ClipboardList} label="Charters" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={0} />
           <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.META} icon={Orbit} label="Meta Loop" collapsed={collapsed} end />

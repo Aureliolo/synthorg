@@ -13,7 +13,7 @@ import {
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   arrayMove,
 } from '@dnd-kit/sortable'
@@ -25,8 +25,7 @@ import type {
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types/org'
-import { toRuntimeStatus } from '@/utils/agents'
-import { AgentCard } from '@/components/ui/agent-card'
+import { AgentConfigCard } from '@/components/agents/AgentConfigCard'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -65,12 +64,7 @@ function SortableAgentItem({ agent, onClick }: { agent: AgentConfig; onClick: ()
         onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit agent ${agent.name}`}
       >
-        <AgentCard
-          name={agent.name}
-          role={agent.role}
-          department={agent.department}
-          status={toRuntimeStatus(agent.status ?? 'active')}
-        />
+        <AgentConfigCard agent={agent} />
       </button>
     </div>
   )
@@ -98,11 +92,8 @@ function DepartmentAgentsSection({
       {agents.length === 0 ? (
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
-        <SortableContext
-          items={agents.map((a) => a.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <StaggerGroup className="grid gap-grid-gap">
+        <SortableContext items={agents.map((a) => a.id)} strategy={rectSortingStrategy}>
+          <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1279px]:grid-cols-2 max-[1023px]:grid-cols-1">
             {agents.map((agent) => (
               <StaggerItem key={agent.id}>
                 <SortableAgentItem agent={agent} onClick={() => onEditAgent(agent)} />
@@ -226,13 +217,7 @@ function AgentsDndBoard({ config, agentsByDept, drag, onEditAgent }: AgentsDndBo
 
       <DragOverlay>
         {drag.activeAgent && (
-          <AgentCard
-            name={drag.activeAgent.name}
-            role={drag.activeAgent.role}
-            department={drag.activeAgent.department}
-            status={toRuntimeStatus(drag.activeAgent.status ?? 'active')}
-            className="shadow-lg"
-          />
+          <AgentConfigCard agent={drag.activeAgent} className="shadow-lg" />
         )}
       </DragOverlay>
     </DndContext>

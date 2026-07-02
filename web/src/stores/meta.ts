@@ -185,6 +185,15 @@ async function runFetchAll(set: MetaSet): Promise<void> {
   })
 }
 
+async function runFetchConfig(set: MetaSet): Promise<void> {
+  try {
+    set({ config: await getMetaConfig() })
+  } catch (err) {
+    log.error('Failed to fetch meta config', sanitizeForLog(err))
+    set({ error: getErrorMessage(err) })
+  }
+}
+
 async function runFetchProposals(set: MetaSet): Promise<void> {
   set({ error: null })
   try {
@@ -257,6 +266,8 @@ interface MetaState {
 
   // Actions
   fetchAll: () => Promise<void>
+  /** Light config-only fetch for surfaces that gate on flags alone. */
+  fetchConfig: () => Promise<void>
   fetchProposals: () => Promise<void>
   fetchSignals: () => Promise<void>
   fetchActiveAgents: () => Promise<void>
@@ -293,6 +304,7 @@ export const useMetaStore = create<MetaState>((set) => ({
   actionLoading: false,
 
   fetchAll: () => runFetchAll(set),
+  fetchConfig: () => runFetchConfig(set),
   fetchProposals: () => runFetchProposals(set),
   fetchSignals: () => runFetchSignals(set),
   fetchActiveAgents: () => runFetchActiveAgents(set),

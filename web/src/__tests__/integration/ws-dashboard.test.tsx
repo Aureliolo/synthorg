@@ -36,6 +36,9 @@ describe('WS Dashboard Integration', () => {
         cost_7d_trend: [
           { timestamp: '2026-03-29T00:00:00Z', value: 42.17 },
         ],
+        tasks_7d_trend: [],
+        agents_7d_trend: [],
+        review_7d_trend: [],
       },
       activities: [],
       loading: false,

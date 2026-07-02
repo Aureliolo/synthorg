@@ -96,8 +96,12 @@ describe('CapabilitiesStep', () => {
   it('renders the Models section with the per-feature model pickers', async () => {
     server.use(chiefOfStaffOn())
     renderWithRouter(<CapabilitiesStep />)
-    await waitFor(() =>
-      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+    // The Models section renders after several settings fetches
+    // resolve; the default 1s waitFor flakes under heavy parallel
+    // test load (same accommodation as the lazy chart sections).
+    await waitFor(
+      () => expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+      { timeout: 5000 },
     )
     expect(screen.getByLabelText('Embedding model')).toBeInTheDocument()
     expect(screen.getByLabelText('Chief of Staff model')).toBeInTheDocument()

@@ -1,13 +1,9 @@
 import {
   Brain,
-  ClipboardList,
   Dna,
   FlaskConical,
-  MessageCircle,
   Settings2,
   Shield,
-  Users,
-  Zap,
 } from 'lucide-react'
 
 import { EmptyState } from '@/components/ui/empty-state'
@@ -20,10 +16,6 @@ import { useMetaData } from '@/hooks/useMetaData'
 
 import { ExperimentExplorer } from './meta/ExperimentExplorer'
 import { MetaABTestView } from './meta/MetaABTestView'
-import { MetaAct } from './meta/MetaAct'
-import { MetaChat } from './meta/MetaChat'
-import { MetaGroup } from './meta/MetaGroup'
-import { MetaPropose } from './meta/MetaPropose'
 import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaEvolutionView } from './meta/MetaEvolutionView'
@@ -49,24 +41,20 @@ export default function MetaPage() {
   if (mode === 'loading') return <MetaLoadingSkeleton />
   if (mode === 'error') {
     return (
-      <div className="mx-auto max-w-7xl p-card">
-        <EmptyState
-          icon={Brain}
-          title="Failed to Load"
-          description={`Could not load meta-loop data: ${data.error}`}
-        />
-      </div>
+      <EmptyState
+        icon={Brain}
+        title="Failed to Load"
+        description={`Could not load meta-loop data: ${data.error}`}
+      />
     )
   }
   if (mode === 'disabled') {
     return (
-      <div className="mx-auto max-w-7xl p-card">
-        <EmptyState
-          icon={Brain}
-          title="Self-Improvement Disabled"
-          description="Enable the self-improvement meta-loop in your company configuration to see improvement proposals, org signals, and rollout status."
-        />
-      </div>
+      <EmptyState
+        icon={Brain}
+        title="Self-Improvement Disabled"
+        description="Enable the self-improvement meta-loop in your company configuration to see improvement proposals, org signals, and rollout status."
+      />
     )
   }
   return <MetaPageReady data={data} />
@@ -77,13 +65,12 @@ interface MetaPageReadyProps {
 }
 
 function MetaPageReady({ data }: MetaPageReadyProps) {
-  const { config, proposals, abTests, evolutionSummary, evolutionAxes, signals } =
-    data
+  const { proposals, abTests, evolutionSummary, evolutionAxes, signals } = data
   const pendingCount = proposals.filter((p) => p.status === 'pending').length
   const activeRollouts = proposals.filter((p) => p.status === 'approved').length
   return (
     <ErrorBoundary level="page">
-      <div className="mx-auto max-w-7xl space-y-section-gap p-card">
+      <div className="space-y-section-gap">
         <MetaPageHeader />
         <WsConnectionBanner description="Meta-loop signals may be stale until the connection recovers." />
         <MetaMetricsRow
@@ -111,22 +98,6 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
         <SectionCard title="Improvement Proposals" icon={Brain}>
           <MetaProposalList proposals={proposals} />
         </SectionCard>
-        {config?.chief_of_staff_enabled && (
-          <>
-            <SectionCard title="Chief of Staff" icon={MessageCircle}>
-              <MetaChat />
-            </SectionCard>
-            <SectionCard title="Conversational Intake" icon={ClipboardList}>
-              <MetaPropose />
-            </SectionCard>
-            <SectionCard title="Group Chat" icon={Users}>
-              <MetaGroup />
-            </SectionCard>
-            <SectionCard title="Direct Action" icon={Zap}>
-              <MetaAct />
-            </SectionCard>
-          </>
-        )}
       </div>
     </ErrorBoundary>
   )
@@ -134,7 +105,7 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
 
 function MetaLoadingSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl space-y-section-gap p-card">
+    <div className="space-y-section-gap">
       <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
         <SkeletonMetric />
         <SkeletonMetric />
