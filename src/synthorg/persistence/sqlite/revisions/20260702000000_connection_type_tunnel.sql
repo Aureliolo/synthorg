@@ -47,7 +47,40 @@ CREATE TABLE connections_new (
     updated_at TEXT NOT NULL
 );
 
-INSERT INTO connections_new SELECT * FROM connections;
+INSERT INTO connections_new (
+    name,
+    connection_type,
+    auth_method,
+    base_url,
+    secret_refs_json,
+    rate_limit_rpm,
+    rate_limit_concurrent,
+    health_check_enabled,
+    health_status,
+    last_health_check_at,
+    metadata_json,
+    webhook_receipt_retention_days,
+    sensitive,
+    created_at,
+    updated_at
+)
+SELECT
+    name,
+    connection_type,
+    auth_method,
+    base_url,
+    secret_refs_json,
+    rate_limit_rpm,
+    rate_limit_concurrent,
+    health_check_enabled,
+    health_status,
+    last_health_check_at,
+    metadata_json,
+    webhook_receipt_retention_days,
+    sensitive,
+    created_at,
+    updated_at
+FROM connections;
 
 DROP TABLE connections;
 

@@ -21,7 +21,7 @@ class OllamaVramGuardConfig(BaseModel):
         enabled: Master switch for the guard.
         total_vram_mb: Total GPU memory available to ollama, in MiB.
             When positive, the guard predicts whether the target model
-            fits before loading and evicts pre-emptively. When 0 the
+            fits before loading and evicts ahead of time. When 0 the
             guard runs in reactive mode: it evicts only when the
             ollama runtime already reports a loaded model spilled to
             CPU (``size_vram < size``).

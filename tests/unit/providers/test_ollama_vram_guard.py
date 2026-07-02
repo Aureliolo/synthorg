@@ -106,7 +106,7 @@ class TestReactiveMode:
 
 
 class TestPredictiveMode:
-    """total_vram_mb>0: evict pre-emptively when the target cannot fit."""
+    """total_vram_mb>0: evict ahead of time when the target cannot fit."""
 
     def _config(self, total_gib: int) -> OllamaVramGuardConfig:
         return OllamaVramGuardConfig(
