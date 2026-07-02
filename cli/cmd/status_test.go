@@ -46,12 +46,22 @@ func TestRunStatusValidatesIntervalBeforeCheck(t *testing.T) {
 func TestRunStatusCheckProbesDespiteUnloadableConfig(t *testing.T) {
 	// --check is a scripted probe that must still run when the config cannot
 	// be loaded: a corrupt config.json should fall back to the default port
-	// and attempt the probe (yielding an unreachable exit, since no backend
-	// is up in the test), NOT abort with a "loading config" error.
+	// and attempt the probe, NOT abort with a "loading config" error. The
+	// probe is stubbed so the outcome never depends on whether a backend
+	// happens to be listening on the default port of the machine running
+	// the tests.
 	prevInterval, prevCheck := statusInterval, statusCheck
 	t.Cleanup(func() { statusInterval, statusCheck = prevInterval, prevCheck })
 	statusInterval = "2s"
 	statusCheck = true
+
+	prevFetch := fetchHealth
+	t.Cleanup(func() { fetchHealth = prevFetch })
+	probedPort := 0
+	fetchHealth = func(_ context.Context, port int) ([]byte, int, error) {
+		probedPort = port
+		return nil, 0, &simpleError{msg: "connection refused"}
+	}
 
 	dataDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{ not json"), 0o600); err != nil {
@@ -59,10 +69,13 @@ func TestRunStatusCheckProbesDespiteUnloadableConfig(t *testing.T) {
 	}
 	err := runStatus(statusTestCmd(t, dataDir), nil)
 	if err == nil {
-		t.Fatal("expected a probe error (no backend running), got nil")
+		t.Fatal("expected the stubbed probe error to propagate, got nil")
 	}
 	if strings.Contains(err.Error(), "loading config") {
 		t.Errorf("--check aborted on config load instead of falling back: %v", err)
+	}
+	if want := config.DefaultState().BackendPort; probedPort != want {
+		t.Errorf("probed port %d, want default %d", probedPort, want)
 	}
 }
 
