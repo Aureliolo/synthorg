@@ -68,6 +68,14 @@ const mockCatalog = [
 
 interface TunnelState {
   publicUrl: string | null
+  /** Provider the next start uses; tracks the select-provider setting PUT. */
+  provider: string
+}
+
+const TUNNEL_MOCK_URLS: Record<string, string> = {
+  cloudflare: 'https://mock-tunnel.trycloudflare.com',
+  ngrok: 'https://mock-tunnel.ngrok-free.app',
+  devtunnels: 'https://mock-tunnel.devtunnels.ms',
 }
 
 const tunnelProviders = [
@@ -98,7 +106,28 @@ const tunnelProviders = [
 ]
 
 export async function mockIntegrationRoutes(page: Page): Promise<void> {
-  const tunnel: TunnelState = { publicUrl: null }
+  const tunnel: TunnelState = { publicUrl: null, provider: 'cloudflare' }
+
+  // Provider selection persists via the settings API; track it so the
+  // status / start mocks reflect the provider a test actually picked.
+  await page.route(
+    '**/api/v1/settings/integrations/tunnel_provider',
+    async (route) => {
+      if (route.request().method() === 'PUT') {
+        const body = route.request().postDataJSON() as { value?: unknown }
+        if (typeof body.value === 'string' && body.value) {
+          tunnel.provider = body.value
+        }
+      }
+      await route.fulfill({
+        json: apiSuccess({
+          namespace: 'integrations',
+          key: 'tunnel_provider',
+          value: tunnel.provider,
+        }),
+      })
+    },
+  )
 
   // Broad ``connections**`` so the paginated list request
   // (``/connections?limit=50``) matches too; the narrower health route
@@ -159,16 +188,17 @@ export async function mockIntegrationRoutes(page: Page): Promise<void> {
     route.fulfill({
       json: apiSuccess({
         public_url: tunnel.publicUrl,
-        selected_provider: 'cloudflare',
-        active_provider: tunnel.publicUrl ? 'cloudflare' : null,
+        selected_provider: tunnel.provider,
+        active_provider: tunnel.publicUrl ? tunnel.provider : null,
         providers: tunnelProviders,
       }),
     }),
   )
   await page.route('**/api/v1/integrations/tunnel/start', (route) => {
-    tunnel.publicUrl = 'https://mock-tunnel.trycloudflare.com'
+    tunnel.publicUrl =
+      TUNNEL_MOCK_URLS[tunnel.provider] ?? TUNNEL_MOCK_URLS['cloudflare'] ?? null
     return route.fulfill({
-      json: apiSuccess({ public_url: tunnel.publicUrl, provider: 'cloudflare' }),
+      json: apiSuccess({ public_url: tunnel.publicUrl, provider: tunnel.provider }),
     })
   })
   await page.route('**/api/v1/integrations/tunnel/stop', (route) => {

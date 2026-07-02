@@ -561,9 +561,19 @@ class FineTuneContainerRunner:
 
     @staticmethod
     async def _stop(container: aiodocker.containers.DockerContainer) -> None:
-        """SIGTERM the container (runner cancels cooperatively), then SIGKILL."""
+        """SIGTERM the container (runner cancels cooperatively), then SIGKILL.
+
+        ``t=`` only bounds the daemon's graceful-shutdown window, not the
+        HTTP request itself, so the call carries its own client-side
+        ceiling (grace window plus the per-call API budget); a stalled
+        daemon degrades to a logged warning instead of a hung cleanup,
+        and the reconciliation sweep reaps anything left behind.
+        """
         try:
-            await container.stop(t=_STOP_GRACE_SECONDS)
+            await asyncio.wait_for(
+                container.stop(t=_STOP_GRACE_SECONDS),
+                timeout=_STOP_GRACE_SECONDS + _DOCKER_API_TIMEOUT_SECONDS,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -580,9 +590,17 @@ class FineTuneContainerRunner:
         run_id: str,
         stage: str,
     ) -> None:
-        """Force-remove the container; never leak an ephemeral stage."""
+        """Force-remove the container; never leak an ephemeral stage.
+
+        Client-side ceiling for the same reason as ``_stop``: a stalled
+        daemon must not wedge the ``finally`` path of a run, and the
+        reconciliation sweep covers a container the timeout abandoned.
+        """
         try:
-            await container.delete(force=True)
+            await asyncio.wait_for(
+                container.delete(force=True),
+                timeout=_DOCKER_API_TIMEOUT_SECONDS,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
