@@ -1,12 +1,30 @@
 # module-kind: adapter
 """GitHub Dev Tunnels adapter (Microsoft ``devtunnel`` CLI).
 
-Drives the operator-installed ``devtunnel`` CLI: a GitHub device-code
-login (`devtunnel user login -g -d`) establishes the credential the
-CLI keeps in its own store, and ``devtunnel host`` exposes the local
-API port on a ``*.devtunnels.ms`` URL. The CLI is proprietary and not
-redistributable, so the adapter never downloads it; availability means
-the binary is on ``PATH``.
+Drives the ``devtunnel`` CLI: a GitHub device-code login
+(``devtunnel user login -g -d``) establishes the credential the CLI
+keeps in its own store, and ``devtunnel host`` exposes the local API
+port on a ``*.devtunnels.ms`` URL.
+
+Binary resolution order mirrors cloudflared: an operator-installed
+``devtunnel`` on ``PATH``, then a previously downloaded copy under the
+shared tunnel state dir's ``bin/``, then (when downloads are enabled)
+a fresh download over HTTPS from Microsoft's fixed
+``aka.ms/TunnelsCliDownload`` asset URLs. The CLI's licence forbids
+redistribution, not a runtime download by the operator's own
+deployment. Operators who forbid runtime downloads set
+``integrations.tunnel.devtunnel_download_enabled: false`` and install
+the binary themselves.
+
+Microsoft offers no credential-injection API (every token-minting
+command requires an already-logged-in CLI), so unlike ngrok's token in
+the encrypted connection catalog the login cache is owned by the CLI
+itself. On POSIX the adapter confines that cache by overriding
+``HOME`` to a private owner-only directory under the tunnel state dir,
+which puts the credential on persistent storage so it survives
+container recreation. On Windows the login lives in the per-account
+credential manager, not under ``%USERPROFILE%``, so there is nothing
+to confine.
 
 Subprocesses go through the ``_process`` helpers (``subprocess.Popen``
 + worker threads), never asyncio's subprocess API, so the adapter
@@ -14,14 +32,27 @@ works on the Windows ``SelectorEventLoop`` the API server pins.
 """
 
 import asyncio
+import platform
 import re
 import shutil
+import stat
 import subprocess
+import sys
 import threading
+from functools import partial
+from pathlib import Path
 from typing import IO, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.tunnel._binaries import (
+    MACHINE_TO_ARCH,
+    default_binary_dir,
+    default_devtunnels_home_dir,
+    default_state_dir,
+    download_binary,
+    extract_zip_member,
+)
 from synthorg.integrations.tunnel._process import (
     run_cli,
     spawn_cli,
@@ -47,9 +78,23 @@ logger = get_logger(__name__)
 
 _BINARY_NAME: Final[str] = "devtunnel"
 _INSTALL_HINT: Final[str] = (
-    "The devtunnel CLI is not installed; get it from"
-    " https://aka.ms/TunnelsCliDownload and ensure it is on PATH."
+    "The devtunnel CLI is not installed and automatic download is"
+    " disabled; get it from https://aka.ms/TunnelsCliDownload and"
+    " ensure it is on PATH."
 )
+_NO_BUILD_MSG: Final[str] = "No official devtunnel build exists for this platform."
+_DOWNLOAD_BASE_URL: Final[str] = "https://aka.ms/TunnelsCliDownload/"
+# Microsoft's fixed asset URL segments: bare binaries for Windows and
+# Linux, zip archives for macOS. Segment names use x64/arm64, so the
+# shared amd64/arm64 arch table maps onto them here.
+_ASSET_SEGMENTS: Final[dict[tuple[str, str], tuple[str, str]]] = {
+    ("Windows", "amd64"): ("win-x64", "binary"),
+    ("Windows", "arm64"): ("win-arm64", "binary"),
+    ("Linux", "amd64"): ("linux-x64", "binary"),
+    ("Linux", "arm64"): ("linux-arm64", "binary"),
+    ("Darwin", "amd64"): ("osx-x64-zip", "zip"),
+    ("Darwin", "arm64"): ("osx-arm64-zip", "zip"),
+}
 _START_TIMEOUT_SECONDS: Final[float] = 60.0
 _LOGIN_PROMPT_TIMEOUT_SECONDS: Final[float] = 30.0
 _STATUS_TIMEOUT_SECONDS: Final[float] = 15.0
@@ -65,15 +110,52 @@ _VERIFICATION_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 
 
+def _asset_segment() -> tuple[str, str] | None:
+    """Official download asset for this OS/architecture.
+
+    Returns:
+        ``(url_segment, kind)`` where kind is ``binary`` or ``zip``,
+        or ``None`` when Microsoft publishes no build for this
+        platform.
+    """
+    arch = MACHINE_TO_ARCH.get(platform.machine().lower())
+    if arch is None:
+        return None
+    return _ASSET_SEGMENTS.get((platform.system(), arch))
+
+
 class DevTunnelsAdapter:
     """GitHub Dev Tunnels provider via the ``devtunnel`` CLI.
 
     Args:
         port: Local API port to expose.
+        download_enabled: Whether a missing binary may be fetched from
+            Microsoft's fixed asset URLs at first use.
+        binary_dir: Where downloaded binaries live (test seam).
+        home_dir: Private ``HOME`` confining the CLI's login cache on
+            POSIX (test seam).
     """
 
-    def __init__(self, *, port: int) -> None:
+    def __init__(
+        self,
+        *,
+        port: int,
+        download_enabled: bool = True,
+        binary_dir: Path | None = None,
+        home_dir: Path | None = None,
+    ) -> None:
         self._port = port
+        self._download_enabled = download_enabled
+        self._binary_dir = (
+            binary_dir
+            if binary_dir is not None
+            else default_binary_dir(default_state_dir())
+        )
+        self._home_dir = (
+            home_dir
+            if home_dir is not None
+            else default_devtunnels_home_dir(default_state_dir())
+        )
         self._process: subprocess.Popen[bytes] | None = None
         self._public_url: str | None = None
         self._login_process: subprocess.Popen[bytes] | None = None
@@ -98,29 +180,36 @@ class DevTunnelsAdapter:
         return TunnelCredentialKind.DEVICE_LOGIN
 
     async def availability(self) -> tuple[bool, str | None]:
-        """Whether the ``devtunnel`` CLI is on PATH.
+        """Whether a devtunnel binary is present or fetchable.
 
         Returns:
             ``(available, detail)`` per the adapter contract.
         """
-        binary = await asyncio.to_thread(shutil.which, _BINARY_NAME)
-        if binary is None:
-            return False, _INSTALL_HINT
-        return True, None
+        if await asyncio.to_thread(self._locate_binary) is not None:
+            return True, None
+        if _asset_segment() is None:
+            return False, _NO_BUILD_MSG
+        if self._download_enabled:
+            return True, "devtunnel will be downloaded on first start."
+        return False, _INSTALL_HINT
 
     async def credential_configured(self) -> bool:
         """Whether the CLI reports a logged-in user.
 
+        Never downloads: a read-only status check must not carry the
+        download side effect, so a missing binary just means "no login".
+
         Returns:
             ``True`` when ``devtunnel user show`` reports a login.
         """
-        binary = await asyncio.to_thread(shutil.which, _BINARY_NAME)
+        binary = await asyncio.to_thread(self._locate_binary)
         if binary is None:
             return False
         try:
             result = await run_cli(
-                [binary, "user", "show"],
+                [str(binary), "user", "show"],
                 timeout_seconds=_STATUS_TIMEOUT_SECONDS,
+                env=self._confined_env(),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -149,17 +238,18 @@ class DevTunnelsAdapter:
             CLI needed no fresh login).
 
         Raises:
-            TunnelError: When the CLI is missing or prints no usable
-                device-code prompt.
+            TunnelError: When the CLI cannot be resolved or prints no
+                usable device-code prompt.
         """
-        binary = await asyncio.to_thread(shutil.which, _BINARY_NAME)
-        if binary is None:
-            raise TunnelError(_INSTALL_HINT)
+        binary = await self._ensure_binary()
         active = self._login_process
         if active is not None and active.poll() is None:
             msg = "A device login is already in progress; complete it first."
             raise TunnelError(msg)
-        process = spawn_cli([binary, "user", "login", "-g", "-d"])
+        process = spawn_cli(
+            [str(binary), "user", "login", "-g", "-d"],
+            env=self._confined_env(),
+        )
         if process.stdout is None:
             await terminate_process(process)
             msg = "devtunnel subprocess pipe was not created"
@@ -184,16 +274,14 @@ class DevTunnelsAdapter:
             The ``https://*.devtunnels.ms`` URL.
 
         Raises:
-            TunnelError: When the CLI is missing, the login is absent,
-                or no URL appears in time.
+            TunnelError: When the CLI cannot be resolved, the login is
+                absent, or no URL appears in time.
         """
         async with self._lifecycle_lock:
             if self._public_url is not None:
                 logger.info(TUNNEL_ALREADY_ACTIVE, phase="start", port=self._port)
                 return self._public_url
-            binary = await asyncio.to_thread(shutil.which, _BINARY_NAME)
-            if binary is None:
-                raise TunnelError(_INSTALL_HINT)
+            binary = await self._ensure_binary()
             if not await self.credential_configured():
                 msg = (
                     "Dev Tunnels requires a GitHub login; use Connect on the"
@@ -235,9 +323,10 @@ class DevTunnelsAdapter:
         """Return the current public URL, or ``None`` if stopped."""
         return self._public_url
 
-    async def _spawn_and_capture_url(self, binary: str) -> str:
+    async def _spawn_and_capture_url(self, binary: Path) -> str:
         process = spawn_cli(
-            [binary, "host", "-p", str(self._port), "--allow-anonymous"]
+            [str(binary), "host", "-p", str(self._port), "--allow-anonymous"],
+            env=self._confined_env(),
         )
         if process.stdout is None or process.stderr is None:
             await terminate_process(process)
@@ -261,6 +350,81 @@ class DevTunnelsAdapter:
         self._process = process
         spawn_drain_thread(process.stdout, name="devtunnel-stdout")
         return url
+
+    def _confined_env(self) -> dict[str, str] | None:
+        """Environment overrides confining the CLI's login cache.
+
+        Returns:
+            ``{"HOME": <private dir>}`` on POSIX (created owner-only so
+            the token file is unreadable to other users), or ``None``
+            on Windows, where the login lives in the per-account
+            credential manager rather than under ``%USERPROFILE%``.
+        """
+        if sys.platform != "win32":
+            self._home_dir.mkdir(parents=True, exist_ok=True)
+            self._home_dir.chmod(stat.S_IRWXU)
+            return {"HOME": str(self._home_dir)}
+        return None
+
+    def _locate_binary(self) -> Path | None:
+        found = shutil.which(_BINARY_NAME)
+        if found:
+            return Path(found)
+        name = "devtunnel.exe" if sys.platform == "win32" else "devtunnel"
+        candidate = self._binary_dir / name
+        if candidate.is_file():
+            return candidate
+        return None
+
+    async def _ensure_binary(self) -> Path:
+        binary = await asyncio.to_thread(self._locate_binary)
+        if binary is not None:
+            return binary
+        if not self._download_enabled:
+            raise TunnelError(_INSTALL_HINT)
+        asset = _asset_segment()
+        if asset is None:
+            raise TunnelError(_NO_BUILD_MSG)
+        segment, kind = asset
+        try:
+            return await asyncio.to_thread(self._download_binary, segment, kind)
+        except TunnelError:
+            raise
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="download",
+                asset=segment,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Failed to download devtunnel: {safe_error_description(exc)}"
+            raise TunnelError(msg) from exc
+
+    def _download_binary(self, segment: str, kind: str) -> Path:
+        """Fetch the official asset into the binary dir.
+
+        Runs in a worker thread (blocking I/O).
+
+        Returns:
+            Path to the executable binary.
+        """
+        extract = None
+        if kind == "zip":
+            extract = partial(
+                extract_zip_member,
+                member_name=_BINARY_NAME,
+                target_dir=self._binary_dir,
+            )
+        target_name = "devtunnel.exe" if sys.platform == "win32" else "devtunnel"
+        return download_binary(
+            url=f"{_DOWNLOAD_BASE_URL}{segment}",
+            target_dir=self._binary_dir,
+            target_name=target_name,
+            binary_label=_BINARY_NAME,
+            extract=extract,
+        )
 
     async def _scrape_login_prompt(
         self, process: subprocess.Popen[bytes]

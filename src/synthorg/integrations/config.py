@@ -250,12 +250,17 @@ class TunnelConfig(BaseModel):
             binary may be downloaded from the official Cloudflare
             GitHub release at first start. Disable to require an
             operator-installed binary on PATH.
+        devtunnel_download_enabled: Whether a missing ``devtunnel``
+            binary may be downloaded from Microsoft's fixed asset URLs
+            at first use. Disable to require an operator-installed
+            binary on PATH.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     auth_token_env: NotBlankStr = "NGROK_AUTHTOKEN"  # noqa: S105
     cloudflared_download_enabled: bool = True
+    devtunnel_download_enabled: bool = True
 
 
 class McpCatalogConfig(BaseModel):

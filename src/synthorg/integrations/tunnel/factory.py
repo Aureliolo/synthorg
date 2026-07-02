@@ -15,6 +15,7 @@ from pathlib import Path
 from synthorg.integrations.config import TunnelConfig
 from synthorg.integrations.tunnel._binaries import (
     default_binary_dir,
+    default_devtunnels_home_dir,
     default_state_dir,
 )
 from synthorg.integrations.tunnel.cloudflare_adapter import (
@@ -51,6 +52,11 @@ def build_tunnel_manager(
                 binary_dir=binary_dir,
             ),
             NgrokAdapter(auth_token_env=config.auth_token_env, port=port),
-            DevTunnelsAdapter(port=port),
+            DevTunnelsAdapter(
+                port=port,
+                download_enabled=config.devtunnel_download_enabled,
+                binary_dir=binary_dir,
+                home_dir=default_devtunnels_home_dir(resolved_state_dir),
+            ),
         ),
     )

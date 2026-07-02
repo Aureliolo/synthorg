@@ -205,11 +205,13 @@ Multi-provider tunnel for local webhook development. A `TunnelManager` facade ho
 
 Providers:
 
-- **Cloudflare quick tunnel** (default): needs no account; runs `cloudflared tunnel --url` and scrapes the ephemeral `https://*.trycloudflare.com` URL. Binary resolution: `PATH`, then `~/.synthorg/bin`, then (unless `integrations.tunnel.cloudflared_download_enabled: false`) an HTTPS download of the official Cloudflare GitHub release asset.
+- **Cloudflare quick tunnel** (default): needs no account; runs `cloudflared tunnel --url` and scrapes the ephemeral `https://*.trycloudflare.com` URL. Binary resolution: `PATH`, then the shared tunnel state dir's `bin/`, then (unless `integrations.tunnel.cloudflared_download_enabled: false`) an HTTPS download of the official Cloudflare GitHub release asset.
 - **ngrok**: wraps pyngrok; requires an auth token (ERR_NGROK_4018 refuses anonymous sessions). The token is dashboard-managed: pasted on the tunnel card, stored in the encrypted connection catalog as a `tunnel-ngrok` connection (`ConnectionType.TUNNEL`), and resolved fresh at every start. The env var named in `integrations.tunnel.auth_token_env` (default `NGROK_AUTHTOKEN`) is the headless fallback only.
-- **GitHub Dev Tunnels**: drives the operator-installed `devtunnel` CLI (proprietary, never downloaded). The credential is a GitHub device-code login (`POST /device-login` returns the verification URL + one-time code; the CLI completes and stores the login itself).
+- **GitHub Dev Tunnels**: drives the `devtunnel` CLI, resolved like cloudflared (`PATH`, then the state dir's `bin/`, then, unless `devtunnel_download_enabled: false`, an HTTPS download from Microsoft's fixed `aka.ms/TunnelsCliDownload/*` asset URLs; the licence forbids redistribution, not a runtime download by the operator's own deployment). The credential is a GitHub device-code login (`POST /device-login` returns the verification URL + one-time code; the CLI completes and stores the login itself). Microsoft offers no credential-injection API (every token-minting command requires an already-logged-in CLI), so unlike the ngrok token the login cannot live in the encrypted catalog; on POSIX the adapter instead confines the CLI's own login cache by overriding `HOME` to a private owner-only `devtunnels-home/` under the state dir.
 
 The manager is wired **unconditionally** (not gated by `integrations.enabled`) so the dashboard tunnel card is always functional; the tunneled port is the API's own resolved `api.server_port`. Credential storage requires connected persistence (the catalog); everything else works without it.
+
+All tunnel runtime state roots at the tunnel state dir: `SYNTHORG_TUNNEL_STATE_DIR` (registry key `integrations/tunnel_state_dir`, read-only post-init, `..` components rejected at boot), defaulting to `~/.synthorg` bare-metal. The CLI-generated compose sets `/data/tunnel`, so downloaded binaries and the devtunnel login survive container recreation even though the backend rootfs is read-only and has no `HOME`.
 
 `GET /integrations/tunnel/status` returns a `TunnelSnapshot`: the public URL, selected + active provider, and per-provider readiness (`available`, `credential_kind`, `credential_configured`, `detail`) so the dashboard renders the provider picker generically without ever transmitting a token.
 
@@ -250,11 +252,12 @@ integrations:
   tunnel:
     auth_token_env: "NGROK_AUTHTOKEN"
     cloudflared_download_enabled: true
+    devtunnel_download_enabled: true
   mcp_catalog:
     enabled: true
 ```
 
-`integrations.tunnel.auth_token_env` names the environment variable holding the headless-fallback ngrok token (the dashboard-managed catalog credential always wins). `cloudflared_download_enabled: false` requires an operator-installed `cloudflared` on `PATH`. The active provider is the `integrations.tunnel_provider` **setting** (ENUM `cloudflare` / `ngrok` / `devtunnels`, default `cloudflare`; DB > env > default), not static YAML.
+`integrations.tunnel.auth_token_env` names the environment variable holding the headless-fallback ngrok token (the dashboard-managed catalog credential always wins). `cloudflared_download_enabled: false` / `devtunnel_download_enabled: false` require the respective operator-installed binary on `PATH`. The tunnel state dir is env-only (`SYNTHORG_TUNNEL_STATE_DIR`), not YAML. The active provider is the `integrations.tunnel_provider` **setting** (ENUM `cloudflare` / `ngrok` / `devtunnels`, default `cloudflare`; DB > env > default), not static YAML.
 
 ---
 
