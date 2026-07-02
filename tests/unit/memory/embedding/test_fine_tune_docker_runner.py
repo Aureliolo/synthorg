@@ -293,6 +293,40 @@ class TestRunStage:
             await _run(_runner_with(monkeypatch, docker), progress=progress)
         assert progress == [0.25, 0.50, 0.75]
 
+    async def test_raising_progress_callback_does_not_abort_stage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A buggy callback is an application error, not a stream failure.
+
+        The stage must complete (and later markers must still parse)
+        instead of surfacing a mislabelled
+        ``FineTuneStageExecutionError('container log stream failed...')``.
+        """
+        container = FakeContainer(
+            log_lines=["PROGRESS:0.25\n", "PROGRESS:0.75\n"],
+        )
+        docker = FakeDocker(FakeContainers(container))
+        seen: list[float] = []
+
+        def _cb(value: float) -> None:
+            seen.append(value)
+            if value == 0.25:
+                msg = "WS progress pipeline bug"
+                raise RuntimeError(msg)
+
+        runner = _runner_with(monkeypatch, docker)
+        await runner.run_stage(
+            stage=FineTuneStage.TRAINING,
+            config={"stage": "training", "output_dir": "/data/fine-tune"},
+            execution=_EXECUTION,
+            data_volume="synthorg-data",
+            run_id="run-1",
+            progress_callback=_cb,
+            cancellation=None,
+        )
+        assert seen == [0.25, 0.75]
+        assert container.deleted is True
+
     async def test_nonzero_exit_raises_with_error_marker(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

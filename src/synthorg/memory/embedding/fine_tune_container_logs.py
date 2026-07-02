@@ -92,7 +92,20 @@ def handle_marker_line(
                 payload=fraction_text[:_SHORT_ID_LEN],
             )
             return
-        progress_callback(fraction)
+        # A raising callback is an application bug (e.g. in the WS
+        # progress pipeline), not a Docker transport failure: contain it
+        # here so it is neither folded into the caller's stream-failure
+        # error path nor allowed to abort the stage supervision.
+        try:
+            progress_callback(fraction)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                FINE_TUNE_MARKER_DISCARDED,
+                marker=_MARKER_PROGRESS,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     elif line.startswith(_MARKER_ERROR):
         error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
 
