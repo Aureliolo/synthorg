@@ -203,6 +203,36 @@ def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
     return provider
 
 
+def _bind_tunnel_connection_health(manager: TunnelManager | None) -> None:
+    """Route tunnel-connection health through the tunnel manager.
+
+    The Connections screen must report the same verdict as the tunnel
+    card, so the tunnel connection checker resolves readiness from the
+    manager; connections outside the ``tunnel-<provider>`` convention
+    (and every connection when no manager is wired) resolve to ``None``
+    and report ``UNKNOWN``.
+    """
+    if manager is None:
+        return
+    from synthorg.integrations.health.prober import (  # noqa: PLC0415
+        bind_tunnel_status_lookup,
+    )
+    from synthorg.integrations.tunnel.manager import (  # noqa: PLC0415
+        tunnel_provider_id_for_connection,
+    )
+    from synthorg.integrations.tunnel.protocol import (  # noqa: PLC0415
+        TunnelProviderStatus,
+    )
+
+    async def _lookup(connection_name: str) -> TunnelProviderStatus | None:
+        provider_id = tunnel_provider_id_for_connection(connection_name)
+        if provider_id is None:
+            return None
+        return await manager.provider_status(provider_id)
+
+    bind_tunnel_status_lookup(_lookup)
+
+
 def _resolve_secret_db_path(
     persistence: PersistenceBackend,
     *,
@@ -420,6 +450,7 @@ def auto_wire_integrations(  # noqa: PLR0913
 
         bundle.connection_catalog = catalog
         bind_health_check_catalog(catalog)
+        _bind_tunnel_connection_health(bundle.tunnel_provider)
         # Resolve the operator-configured GitHub API base URL (env > default;
         # the same ``integrations.github_api_url`` setting that backs the
         # code-mod client) and inject it into the import-time health checker

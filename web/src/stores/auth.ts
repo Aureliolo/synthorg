@@ -122,9 +122,18 @@ async function fetchUserImpl(
 
 function handleUnauthorizedImpl(
   set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
 ): void {
   if (unauthorizedRedirectInFlight) return
   unauthorizedRedirectInFlight = true
+  if (IS_DEV_AUTH_BYPASS) {
+    // Dev bypass: re-mint the password-free admin session in place.
+    // Bouncing a developer to the login screen on cookie expiry would
+    // dead-end (there is no password to type), and doing nothing left
+    // the websocket and every API call permanently 401ing.
+    void _recoverDevSession(set, get)
+    return
+  }
   set({ authStatus: 'unauthenticated', user: null })
   import('@/stores/websocket')
     .then(({ useWebSocketStore }) => {
@@ -133,10 +142,37 @@ function handleUnauthorizedImpl(
     .catch(() => {
       // Best-effort -- import may fail during HMR or teardown.
     })
+  _redirectToLogin()
+}
+
+function _redirectToLogin(): void {
   const currentPath = window.location.pathname
   if (currentPath !== '/login' && currentPath !== '/setup') {
     window.location.href = '/login'
   }
+}
+
+/**
+ * Re-establish an expired dev-bypass session without a page bounce.
+ * On success the websocket transport is retried explicitly: its own
+ * reconnect loop stops on an auth-failed ticket exchange, so the fresh
+ * cookie alone would not revive it. On failure (endpoint off, no admin
+ * account) this falls back to the normal login screen.
+ */
+async function _recoverDevSession(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<void> {
+  const recovered = await _tryDevAutoLogin(set, get)
+  if (recovered) {
+    import('@/stores/websocket')
+      .then(({ useWebSocketStore }) => useWebSocketStore.getState().retry())
+      .catch(() => {
+        // Best-effort -- import may fail during HMR or teardown.
+      })
+    return
+  }
+  _redirectToLogin()
 }
 
 // A genuine network error during the bootstrap session check (the backend
@@ -174,6 +210,21 @@ function _classifyCheckError(
 // account) returns false so the caller shows the login screen -- admin
 // creation is never skipped.
 async function _tryDevAutoLogin(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<boolean> {
+  // Shared in-flight promise: the bootstrap session check and the 401
+  // interceptor can both request an auto-login in the same tick; a
+  // second concurrent devLogin would mint a redundant session.
+  devAutoLoginPromise ??= _tryDevAutoLoginOnce(set, get).finally(() => {
+    devAutoLoginPromise = null
+  })
+  return devAutoLoginPromise
+}
+
+let devAutoLoginPromise: Promise<boolean> | null = null
+
+async function _tryDevAutoLoginOnce(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
 ): Promise<boolean> {
@@ -317,7 +368,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ loading: false })
     }
   },
-  handleUnauthorized: () => handleUnauthorizedImpl(set),
+  handleUnauthorized: () => handleUnauthorizedImpl(set, get),
   checkSession: () => checkSessionImpl(set, get),
 }))
 

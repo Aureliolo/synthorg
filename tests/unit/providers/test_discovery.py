@@ -743,7 +743,7 @@ class TestDiscoverModelsTrustedUrl:
                 assert "Host" not in (call.kwargs.get("headers") or {})
 
     async def test_trusted_url_logs_ssrf_bypass(self) -> None:
-        """trust_url=True logs the SSRF bypass event on every request."""
+        """trust_url=True logs the SSRF bypass event for the pass."""
         response = _mock_response(
             {"data": [{"id": "test-model-001"}]},
         )
@@ -773,3 +773,59 @@ class TestDiscoverModelsTrustedUrl:
             preset="lm-studio",
             url="http://localhost:1234/v1/models",
         )
+
+    async def test_ssrf_bypass_warns_once_per_origin_per_pass(self) -> None:
+        """Repeat same-origin fetches within a pass demote to debug.
+
+        One discovery pass fans out several fetches against the same
+        origin (listing + capability probes); only the first warns, but
+        a second pass warns again so a recurring bypass stays visible.
+        """
+        from synthorg.observability.events.provider import (
+            PROVIDER_DISCOVERY_SSRF_BYPASSED,
+        )
+
+        response = _mock_response(
+            {"data": [{"id": "test-model-001"}]},
+        )
+        with (
+            patch(
+                "synthorg.providers.discovery.httpx.AsyncClient",
+            ) as mock_cls,
+            patch(
+                "synthorg.providers.discovery.logger",
+            ) as mock_logger,
+        ):
+            mock_cls.return_value = _mock_client(response)
+
+            await discover_models(
+                "http://localhost:1234/v1",
+                "lm-studio",
+                trust_url=True,
+            )
+            first_pass_warnings = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
+            ]
+            await discover_models(
+                "http://localhost:1234/v1",
+                "lm-studio",
+                trust_url=True,
+            )
+
+        all_warnings = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
+        ]
+        assert len(first_pass_warnings) == 1
+        assert len(all_warnings) == 2
+        # The listing + /api/version probe share the origin, so the
+        # extra fetch of each pass lands on the debug channel.
+        debug_events = [
+            call
+            for call in mock_logger.debug.call_args_list
+            if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
+        ]
+        assert debug_events

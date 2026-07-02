@@ -13,8 +13,14 @@ vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: true }))
 
 // handleUnauthorized dynamically imports the websocket store; stub it so the
 // chain does not leak past the test body (active-handle gate).
+const { wsDisconnectSpy, wsRetrySpy } = vi.hoisted(() => ({
+  wsDisconnectSpy: vi.fn(),
+  wsRetrySpy: vi.fn(),
+}))
 vi.mock('@/stores/websocket', () => ({
-  useWebSocketStore: { getState: () => ({ disconnect: vi.fn() }) },
+  useWebSocketStore: {
+    getState: () => ({ disconnect: wsDisconnectSpy, retry: wsRetrySpy }),
+  },
 }))
 
 const ADMIN: UserInfoResponse = {
@@ -30,6 +36,8 @@ describe('auth store dev bypass auto-login', () => {
   beforeEach(() => {
     _resetUnauthorizedRedirectGuardForTests()
     useAuthStore.setState({ authStatus: 'unknown', user: null })
+    wsDisconnectSpy.mockClear()
+    wsRetrySpy.mockClear()
   })
 
   it('auto-logs-in as the admin via /auth/dev-login when no session exists', async () => {
@@ -50,6 +58,29 @@ describe('auth store dev bypass auto-login', () => {
 
     expect(useAuthStore.getState().authStatus).toBe('authenticated')
     expect(useAuthStore.getState().user?.username).toBe('admin')
+  })
+
+  it('re-mints an expired session in place via handleUnauthorized', async () => {
+    // A mid-session 401 (cookie expiry) must not bounce a dev to the
+    // login screen: the session is re-minted password-free and the
+    // websocket transport (which stops on an auth-failed ticket) is
+    // retried explicitly.
+    server.use(
+      http.post('/api/v1/auth/dev-login', () =>
+        HttpResponse.json(apiSuccess({ expires_in: 86400, must_change_password: false })),
+      ),
+      http.get('/api/v1/auth/me', () => HttpResponse.json(apiSuccess(ADMIN))),
+    )
+    useAuthStore.setState({ authStatus: 'authenticated', user: ADMIN })
+
+    useAuthStore.getState().handleUnauthorized()
+
+    await vi.waitFor(() => {
+      expect(wsRetrySpy).toHaveBeenCalledTimes(1)
+    })
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+    expect(useAuthStore.getState().user?.username).toBe('admin')
+    expect(wsDisconnectSpy).not.toHaveBeenCalled()
   })
 
   it('shows the login screen when /auth/dev-login is disabled (404)', async () => {

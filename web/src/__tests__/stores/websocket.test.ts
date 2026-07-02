@@ -636,6 +636,19 @@ describe('websocket store', () => {
       await vi.advanceTimersByTimeAsync(5000)
       expect(MockWebSocket.instances.length).toBe(instancesBefore)
     })
+
+    it('surfaces reconnectExhausted on ticket 401', async () => {
+      // Recovery is externally driven (auth store redirect or dev-bypass
+      // re-login + retry); the exhausted flag keeps the Retry affordance
+      // visible if neither happens.
+      ticketState.mode = { kind: 'http_401', message: 'Unauthorized' }
+
+      await expect(
+        useWebSocketStore.getState().connect(),
+      ).rejects.toThrow(/status code 401|Unauthorized/)
+
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
+    })
   })
 
   describe('first-message auth', () => {

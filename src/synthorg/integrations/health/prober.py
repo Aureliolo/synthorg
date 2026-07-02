@@ -29,6 +29,10 @@ from synthorg.integrations.health.checks.llm_provider import (
 )
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
+from synthorg.integrations.health.checks.tunnel import (
+    TunnelHealthCheck,
+    TunnelStatusLookup,
+)
 from synthorg.integrations.health.protocol import ConnectionHealthCheck
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -53,6 +57,7 @@ _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] 
                 ConnectionType.DATABASE: DatabaseHealthCheck(),
                 ConnectionType.GENERIC_HTTP: GenericHttpHealthCheck(),
                 ConnectionType.LLM_PROVIDER: LlmProviderHealthCheck(),
+                ConnectionType.TUNNEL: TunnelHealthCheck(),
             }
         )
     )
@@ -90,6 +95,19 @@ def bind_provider_health_lookup(lookup: ProviderHealthLookup) -> None:
     """
     checker = _CHECK_REGISTRY.get(ConnectionType.LLM_PROVIDER)
     bind = getattr(checker, "bind_provider_health", None)
+    if callable(bind):
+        bind(lookup)
+
+
+def bind_tunnel_status_lookup(lookup: TunnelStatusLookup) -> None:
+    """Bind the tunnel-manager status lookup into the tunnel checker.
+
+    The tunnel manager owns provider readiness; this hands the
+    import-time checker a resolver onto the live ``TunnelManager`` so
+    the Connections screen reports the same verdict as the tunnel card.
+    """
+    checker = _CHECK_REGISTRY.get(ConnectionType.TUNNEL)
+    bind = getattr(checker, "bind_tunnel_status_lookup", None)
     if callable(bind):
         bind(lookup)
 

@@ -9,7 +9,6 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { createLogger } from '@/lib/logger'
-import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
 import {
   IDEMPOTENCY_KEY_HEADER,
@@ -247,11 +246,14 @@ function _isRetryable429(error: ApiAxiosError): boolean {
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: ApiAxiosError) => {
-    if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
+    if (error.response?.status === 401) {
       // The server clears the session cookie via Set-Cookie: Max-Age=0.
       // We only need to sync the Zustand auth state. Routed through the
       // leaf `unauthorized-handler` module so the client has no static
-      // dependency on the auth store.
+      // dependency on the auth store. The auth store decides what a 401
+      // means (redirect to login, or a password-free re-login under the
+      // dev bypass); swallowing it here would leave an expired dev
+      // session permanently broken.
       notifyUnauthorized()
     }
     // Transparent retry for 429 responses when the backend surfaces a
