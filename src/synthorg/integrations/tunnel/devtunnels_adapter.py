@@ -7,19 +7,25 @@ CLI keeps in its own store, and ``devtunnel host`` exposes the local
 API port on a ``*.devtunnels.ms`` URL. The CLI is proprietary and not
 redistributable, so the adapter never downloads it; availability means
 the binary is on ``PATH``.
+
+Subprocesses go through the ``_process`` helpers (``subprocess.Popen``
++ worker threads), never asyncio's subprocess API, so the adapter
+works on the Windows ``SelectorEventLoop`` the API server pins.
 """
 
 import asyncio
 import re
 import shutil
-from asyncio.subprocess import Process
-from typing import Final
+import subprocess
+import threading
+from typing import IO, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
 from synthorg.integrations.tunnel._process import (
-    spawn_drain_task,
-    stream_limit_bytes,
+    run_cli,
+    spawn_cli,
+    spawn_drain_thread,
     terminate_process,
     wait_for_pattern,
 )
@@ -68,10 +74,9 @@ class DevTunnelsAdapter:
 
     def __init__(self, *, port: int) -> None:
         self._port = port
-        self._process: Process | None = None
-        self._drain_tasks: list[asyncio.Task[None]] = []
+        self._process: subprocess.Popen[bytes] | None = None
         self._public_url: str | None = None
-        self._login_task: asyncio.Task[None] | None = None
+        self._login_process: subprocess.Popen[bytes] | None = None
         # Serialises start/stop (single-tunnel invariant); the login
         # flow runs outside the lock because it never touches the
         # tunnel process. Eager init: stop() must be safe before start().
@@ -113,18 +118,10 @@ class DevTunnelsAdapter:
         if binary is None:
             return False
         try:
-            process = await asyncio.create_subprocess_exec(
-                binary,
-                "user",
-                "show",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+            result = await run_cli(
+                [binary, "user", "show"],
+                timeout_seconds=_STATUS_TIMEOUT_SECONDS,
             )
-            raw, _ = await asyncio.wait_for(
-                process.communicate(), timeout=_STATUS_TIMEOUT_SECONDS
-            )
-        except TimeoutError:
-            return False
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.debug(
@@ -134,8 +131,10 @@ class DevTunnelsAdapter:
                 error=safe_error_description(exc),
             )
             return False
-        text = raw.decode("utf-8", errors="replace").lower()
-        return process.returncode == 0 and "not logged in" not in text
+        if result is None:
+            return False
+        returncode, text = result
+        return returncode == 0 and "not logged in" not in text.lower()
 
     async def begin_login(self) -> DeviceLoginPrompt:
         """Kick off the GitHub device-code login.
@@ -156,31 +155,24 @@ class DevTunnelsAdapter:
         binary = await asyncio.to_thread(shutil.which, _BINARY_NAME)
         if binary is None:
             raise TunnelError(_INSTALL_HINT)
-        if self._login_task is not None and not self._login_task.done():
+        active = self._login_process
+        if active is not None and active.poll() is None:
             msg = "A device login is already in progress; complete it first."
             raise TunnelError(msg)
-        process = await asyncio.create_subprocess_exec(
-            binary,
-            "user",
-            "login",
-            "-g",
-            "-d",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            limit=stream_limit_bytes(),
-        )
+        process = spawn_cli([binary, "user", "login", "-g", "-d"])
         if process.stdout is None:
             await terminate_process(process)
             msg = "devtunnel subprocess pipe was not created"
             raise TunnelError(msg)
+        if process.stderr is not None:
+            spawn_drain_thread(process.stderr, name="devtunnel-login-stderr")
         prompt = await self._scrape_login_prompt(process)
         if prompt.already_logged_in:
             logger.info(DEVTUNNELS_LOGIN_COMPLETED, note="already logged in")
             return prompt
         logger.info(DEVTUNNELS_LOGIN_STARTED, verification_uri=prompt.verification_uri)
-        self._login_task = asyncio.get_running_loop().create_task(
-            self._await_login(process), name="devtunnels-login"
-        )
+        self._login_process = process
+        self._watch_login(process)
         return prompt
 
     async def start(self) -> str:
@@ -234,9 +226,7 @@ class DevTunnelsAdapter:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-            for task in self._drain_tasks:
-                task.cancel()
-            self._drain_tasks = []
+            # Drain threads exit on their own at pipe EOF.
             self._process = None
             self._public_url = None
             logger.info(TUNNEL_STOPPED)
@@ -246,28 +236,20 @@ class DevTunnelsAdapter:
         return self._public_url
 
     async def _spawn_and_capture_url(self, binary: str) -> str:
-        process = await asyncio.create_subprocess_exec(
-            binary,
-            "host",
-            "-p",
-            str(self._port),
-            "--allow-anonymous",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=stream_limit_bytes(),
+        process = spawn_cli(
+            [binary, "host", "-p", str(self._port), "--allow-anonymous"]
         )
         if process.stdout is None or process.stderr is None:
             await terminate_process(process)
             msg = "devtunnel subprocess pipes were not created"
             raise TunnelError(msg)
-        stderr_drain = spawn_drain_task(process.stderr, name="devtunnel-stderr")
+        spawn_drain_thread(process.stderr, name="devtunnel-stderr")
         url = await wait_for_pattern(
             process.stdout,
             _HOST_URL_PATTERN,
             timeout_seconds=_START_TIMEOUT_SECONDS,
         )
         if url is None:
-            stderr_drain.cancel()
             await terminate_process(process)
             rc = process.returncode
             logger.warning(TUNNEL_ERROR, phase="start", returncode=rc)
@@ -277,13 +259,12 @@ class DevTunnelsAdapter:
             )
             raise TunnelError(msg)
         self._process = process
-        self._drain_tasks = [
-            stderr_drain,
-            spawn_drain_task(process.stdout, name="devtunnel-stdout"),
-        ]
+        spawn_drain_thread(process.stdout, name="devtunnel-stdout")
         return url
 
-    async def _scrape_login_prompt(self, process: Process) -> DeviceLoginPrompt:
+    async def _scrape_login_prompt(
+        self, process: subprocess.Popen[bytes]
+    ) -> DeviceLoginPrompt:
         """Read login output until the device-code prompt (or exit) appears.
 
         Returns:
@@ -298,67 +279,74 @@ class DevTunnelsAdapter:
         if stdout is None:  # pragma: no cover -- guarded by caller
             msg = "devtunnel subprocess pipe was not created"
             raise TunnelError(msg)
-        verification_uri: str | None = None
-        user_code: str | None = None
-        deadline = asyncio.get_running_loop().time() + _LOGIN_PROMPT_TIMEOUT_SECONDS
 
-        while verification_uri is None or user_code is None:
-            remaining = deadline - asyncio.get_running_loop().time()
-            if remaining <= 0:
-                break
-            try:
-                line = await asyncio.wait_for(stdout.readline(), timeout=remaining)
-            except TimeoutError:
-                break
-            if not line:
-                await process.wait()
-                if process.returncode == 0:
-                    return DeviceLoginPrompt(already_logged_in=True)
-                logger.warning(
-                    TUNNEL_ERROR, phase="login", returncode=process.returncode
-                )
-                msg = f"devtunnel login failed (exit code {process.returncode})"
-                raise TunnelError(msg)
-            text = line.decode("utf-8", errors="replace")
-            url_match = _VERIFICATION_URL_PATTERN.search(text)
-            if url_match is not None:
-                verification_uri = url_match.group(0).rstrip(".,;")
-            code_match = _DEVICE_CODE_PATTERN.search(text)
-            if code_match is not None:
-                user_code = code_match.group(1)
+        def _scan() -> DeviceLoginPrompt | int:
+            """Blocking scan (worker thread).
 
-        if verification_uri is None or user_code is None:
+            Returns:
+                The scraped prompt, or the CLI's exit code at EOF.
+            """
+            verification_uri: str | None = None
+            user_code: str | None = None
+            for raw in iter(stdout.readline, b""):
+                text = raw.decode("utf-8", errors="replace")
+                url_match = _VERIFICATION_URL_PATTERN.search(text)
+                if url_match is not None:
+                    verification_uri = url_match.group(0).rstrip(".,;")
+                code_match = _DEVICE_CODE_PATTERN.search(text)
+                if code_match is not None:
+                    user_code = code_match.group(1)
+                if verification_uri is not None and user_code is not None:
+                    return DeviceLoginPrompt(
+                        verification_uri=verification_uri, user_code=user_code
+                    )
+            return process.wait()
+
+        try:
+            outcome = await asyncio.wait_for(
+                asyncio.to_thread(_scan),
+                timeout=_LOGIN_PROMPT_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
             await terminate_process(process)
             msg = "devtunnel printed no device-code prompt; try again."
-            raise TunnelError(msg)
-        return DeviceLoginPrompt(verification_uri=verification_uri, user_code=user_code)
+            raise TunnelError(msg) from None
+        if isinstance(outcome, DeviceLoginPrompt):
+            return outcome
+        if outcome == 0:
+            return DeviceLoginPrompt(already_logged_in=True)
+        logger.warning(TUNNEL_ERROR, phase="login", returncode=outcome)
+        msg = f"devtunnel login failed (exit code {outcome})"
+        raise TunnelError(msg)
 
-    async def _await_login(self, process: Process) -> None:
-        """Drain the login process to completion and log the outcome.
-
-        Raises:
-            asyncio.CancelledError: Propagated after terminating the
-                child so a cancelled login never orphans the process.
-        """
+    def _watch_login(self, process: subprocess.Popen[bytes]) -> None:
+        """Drain the login process to completion and log the outcome."""
         stdout = process.stdout
-        try:
-            if stdout is not None:
-                while await stdout.readline():
-                    pass
-            await process.wait()
-        except asyncio.CancelledError:
-            await terminate_process(process)
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                TUNNEL_ERROR,
-                phase="login",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        if process.returncode == 0:
-            logger.info(DEVTUNNELS_LOGIN_COMPLETED)
-        else:
-            logger.warning(TUNNEL_ERROR, phase="login", returncode=process.returncode)
+
+        def _await_login() -> None:
+            try:
+                if stdout is not None:
+                    self._drain_stream(stdout)
+                returncode = process.wait()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    TUNNEL_ERROR,
+                    phase="login",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return
+            if returncode == 0:
+                logger.info(DEVTUNNELS_LOGIN_COMPLETED)
+            else:
+                logger.warning(TUNNEL_ERROR, phase="login", returncode=returncode)
+
+        threading.Thread(
+            target=_await_login, name="devtunnels-login", daemon=True
+        ).start()
+
+    @staticmethod
+    def _drain_stream(stream: IO[bytes]) -> None:
+        for _ in iter(stream.readline, b""):
+            pass

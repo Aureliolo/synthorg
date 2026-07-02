@@ -1,6 +1,7 @@
 """Tests for fine-tune pipeline container entrypoint."""
 
 import json
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,6 +11,7 @@ import pytest
 from synthorg.memory.embedding.fine_tune_runner import (
     _DEFAULT_HEALTH_HOST,
     _DEFAULT_HEALTH_PORT,
+    _idle_until_terminated,
     _load_config,
     _run,
     resolve_health_host,
@@ -187,12 +189,26 @@ class TestRun:
         ):
             _run()
 
-    def test_missing_config_returns_1(self, tmp_path: Path) -> None:
-        with patch(
-            "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
-            tmp_path / "nonexistent.json",
+    def test_missing_config_idles_instead_of_exiting(self, tmp_path: Path) -> None:
+        """A config-less sidecar serves health checks; it must not crashloop."""
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",
+                tmp_path / "nonexistent.json",
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._idle_until_terminated",
+                return_value=0,
+            ) as idle,
         ):
-            assert _run() == 1
+            assert _run() == 0
+        idle.assert_called_once()
+
+    def test_idle_exits_cleanly_on_stop_signal(self) -> None:
+        """The idle loop returns 0 once its shutdown latch is set."""
+        stop = threading.Event()
+        stop.set()
+        assert _idle_until_terminated(None, stop) == 0
 
     def test_unknown_stage_returns_1(self, tmp_path: Path) -> None:
         config_file = tmp_path / "config.json"

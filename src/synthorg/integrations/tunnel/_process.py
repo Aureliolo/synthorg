@@ -3,16 +3,23 @@
 
 The Cloudflare and Dev Tunnels adapters both spawn a long-running
 vendor CLI and scrape its output for the public URL. This module
-holds the stream helpers they share: wait-for-pattern with timeout,
+holds the helpers they share: spawn, wait-for-pattern with timeout,
 background drain (so a full pipe never blocks the child), and
 graceful terminate-then-kill.
+
+Deliberately built on ``subprocess.Popen`` + worker threads rather
+than ``asyncio``'s subprocess API: the Windows ``SelectorEventLoop``
+(which the API server pins for psycopg's async pool) has no subprocess
+support (``NotImplementedError``), so the tunnel must not depend on
+the running loop's transport capabilities.
 """
 
 import asyncio
-import contextlib
 import re
-from asyncio.subprocess import Process
-from typing import Final
+import subprocess
+import sys
+import threading
+from typing import IO, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -21,60 +28,80 @@ from synthorg.observability.events.integrations import TUNNEL_ERROR
 logger = get_logger(__name__)
 
 _TERMINATE_GRACE_SECONDS: Final[float] = 10.0
-_LINE_LIMIT_BYTES: Final[int] = 64 * 1024
+
+
+def spawn_cli(args: list[str]) -> subprocess.Popen[bytes]:
+    """Start a vendor CLI with piped stdout/stderr.
+
+    Returns:
+        The child process handle (byte streams; callers decode).
+    """
+    creationflags = 0
+    if sys.platform == "win32":
+        # Never flash a console window for the child on Windows.
+        creationflags = subprocess.CREATE_NO_WINDOW
+    return subprocess.Popen(  # noqa: S603 -- fixed binary + args, shell=False
+        args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=creationflags,
+    )
+
+
+def _scan_for_pattern(stream: IO[bytes], pattern: re.Pattern[str]) -> str | None:
+    """Blocking line scan; runs in a worker thread.
+
+    Returns:
+        The first regex match (group 0), or ``None`` at EOF.
+    """
+    for raw in iter(stream.readline, b""):
+        match = pattern.search(raw.decode("utf-8", errors="replace"))
+        if match is not None:
+            return match.group(0)
+    return None
 
 
 async def wait_for_pattern(
-    stream: asyncio.StreamReader,
+    stream: IO[bytes],
     pattern: re.Pattern[str],
     *,
     timeout_seconds: float,
 ) -> str | None:
     """Read lines until *pattern* matches, or the stream/timeout ends.
 
+    On timeout the scanning thread is left blocked on ``readline``;
+    the caller terminates the child, which closes the pipe and lets
+    the thread exit. Never abandon the process without terminating it.
+
     Returns:
         The first regex match (group 0), or ``None`` when the stream
         closed or the timeout elapsed without a match.
     """
-
-    async def _scan() -> str | None:
-        while True:
-            line = await stream.readline()
-            if not line:
-                return None
-            text = line.decode("utf-8", errors="replace")
-            match = pattern.search(text)
-            if match is not None:
-                return match.group(0)
-
     try:
-        return await asyncio.wait_for(_scan(), timeout=timeout_seconds)
+        return await asyncio.wait_for(
+            asyncio.to_thread(_scan_for_pattern, stream, pattern),
+            timeout=timeout_seconds,
+        )
     except TimeoutError:
         return None
 
 
-def spawn_drain_task(
-    stream: asyncio.StreamReader,
-    *,
-    name: str,
-) -> asyncio.Task[None]:
+def spawn_drain_thread(stream: IO[bytes], *, name: str) -> threading.Thread:
     """Keep reading (and discarding) a child's output in the background.
 
     Without a reader the OS pipe buffer fills and the child blocks on
-    its next write, wedging the tunnel mid-session.
+    its next write, wedging the tunnel mid-session. The daemon thread
+    exits at pipe EOF (child exit / terminate).
 
     Returns:
-        The drain task; cancel it after the process exits.
+        The started drain thread.
     """
 
-    async def _drain() -> None:
+    def _drain() -> None:
         try:
-            while True:
-                line = await stream.readline()
-                if not line:
-                    return
-        except asyncio.CancelledError:
-            raise
+            for _ in iter(stream.readline, b""):
+                pass
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.debug(
@@ -85,28 +112,59 @@ def spawn_drain_task(
                 error=safe_error_description(exc),
             )
 
-    return asyncio.get_running_loop().create_task(_drain(), name=f"tunnel-drain-{name}")
+    thread = threading.Thread(target=_drain, name=f"tunnel-drain-{name}", daemon=True)
+    thread.start()
+    return thread
 
 
-async def terminate_process(process: Process) -> None:
-    """Terminate a child gracefully, escalating to kill after a grace period."""
-    if process.returncode is not None:
+def _terminate_blocking(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a child, escalating to kill after a grace period."""
+    if process.poll() is not None:
         return
-    with contextlib.suppress(ProcessLookupError):
-        process.terminate()
+    process.terminate()
     try:
-        await asyncio.wait_for(process.wait(), timeout=_TERMINATE_GRACE_SECONDS)
-    except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-        await process.wait()
+        process.wait(timeout=_TERMINATE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
 
 
-def stream_limit_bytes() -> int:
-    """Line-buffer limit for tunnel CLI subprocess pipes.
+async def terminate_process(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a child gracefully without blocking the event loop."""
+    await asyncio.to_thread(_terminate_blocking, process)
+
+
+async def run_cli(
+    args: list[str],
+    *,
+    timeout_seconds: float,
+) -> tuple[int, str] | None:
+    """Run a short-lived CLI command and capture its combined output.
 
     Returns:
-        The per-line byte cap (vendor CLIs emit short lines; the cap
-        only guards against a pathological unbroken stream).
+        ``(returncode, text)``, or ``None`` on timeout (the child is
+        killed first).
     """
-    return _LINE_LIMIT_BYTES
+
+    def _run() -> tuple[int, str] | None:
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NO_WINDOW
+        try:
+            completed = subprocess.run(  # noqa: S603 -- fixed binary + args, shell=False
+                args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=timeout_seconds,
+                check=False,
+                creationflags=creationflags,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        return (
+            completed.returncode,
+            completed.stdout.decode("utf-8", errors="replace"),
+        )
+
+    return await asyncio.to_thread(_run)

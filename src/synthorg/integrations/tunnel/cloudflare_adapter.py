@@ -21,10 +21,10 @@ import platform
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
-from asyncio.subprocess import Process
 from pathlib import Path
 from typing import Final
 
@@ -33,8 +33,8 @@ import httpx
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
 from synthorg.integrations.tunnel._process import (
-    spawn_drain_task,
-    stream_limit_bytes,
+    spawn_cli,
+    spawn_drain_thread,
     terminate_process,
     wait_for_pattern,
 )
@@ -125,8 +125,7 @@ class CloudflareQuickTunnelAdapter:
         self._binary_dir = (
             binary_dir if binary_dir is not None else default_binary_dir()
         )
-        self._process: Process | None = None
-        self._drain_tasks: list[asyncio.Task[None]] = []
+        self._process: subprocess.Popen[bytes] | None = None
         self._public_url: str | None = None
         # Serialises start/stop; the adapter owns no background loop
         # beyond the child process, so the lock alone upholds the
@@ -219,9 +218,7 @@ class CloudflareQuickTunnelAdapter:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-            for task in self._drain_tasks:
-                task.cancel()
-            self._drain_tasks = []
+            # Drain threads exit on their own at pipe EOF.
             self._process = None
             self._public_url = None
             logger.info(TUNNEL_STOPPED)
@@ -231,29 +228,27 @@ class CloudflareQuickTunnelAdapter:
         return self._public_url
 
     async def _spawn_and_capture_url(self, binary: Path) -> str:
-        process = await asyncio.create_subprocess_exec(
-            str(binary),
-            "tunnel",
-            "--url",
-            f"http://127.0.0.1:{self._port}",
-            "--no-autoupdate",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=stream_limit_bytes(),
+        process = spawn_cli(
+            [
+                str(binary),
+                "tunnel",
+                "--url",
+                f"http://127.0.0.1:{self._port}",
+                "--no-autoupdate",
+            ]
         )
         # cloudflared logs the assigned URL on stderr.
         if process.stderr is None or process.stdout is None:
             await terminate_process(process)
             msg = "cloudflared subprocess pipes were not created"
             raise TunnelError(msg)
-        stdout_drain = spawn_drain_task(process.stdout, name="cloudflared-stdout")
+        spawn_drain_thread(process.stdout, name="cloudflared-stdout")
         url = await wait_for_pattern(
             process.stderr,
             _URL_PATTERN,
             timeout_seconds=_START_TIMEOUT_SECONDS,
         )
         if url is None:
-            stdout_drain.cancel()
             await terminate_process(process)
             rc = process.returncode
             logger.warning(TUNNEL_ERROR, phase="start", returncode=rc)
@@ -263,10 +258,7 @@ class CloudflareQuickTunnelAdapter:
             )
             raise TunnelError(msg)
         self._process = process
-        self._drain_tasks = [
-            stdout_drain,
-            spawn_drain_task(process.stderr, name="cloudflared-stderr"),
-        ]
+        spawn_drain_thread(process.stderr, name="cloudflared-stderr")
         return url
 
     def _locate_binary(self) -> Path | None:

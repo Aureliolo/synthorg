@@ -1,76 +1,32 @@
 """Tests for the GitHub Dev Tunnels adapter."""
 
-import asyncio
 import shutil
-from asyncio.subprocess import Process
-from typing import override
+import subprocess
 
 import pytest
 
 from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.tunnel import devtunnels_adapter
 from synthorg.integrations.tunnel.devtunnels_adapter import DevTunnelsAdapter
 from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
+from tests.unit.integrations.tunnel_process_fakes import FakePopen
 
 pytestmark = pytest.mark.unit
 
 
-class _FakeProcess(Process):
-    """``Process`` stand-in for CLI-output scraping.
-
-    Subclasses the real ``Process`` (without calling its ``__init__``,
-    which needs a live transport) so typeguard's isinstance check at
-    the adapter's subprocess boundaries passes.
-    """
-
-    def __init__(
-        self,
-        stdout_lines: list[str],
-        *,
-        returncode: int | None = None,
-        keep_open: bool = False,
-    ) -> None:
-        self.stdout = asyncio.StreamReader()
-        for line in stdout_lines:
-            self.stdout.feed_data(line.encode("utf-8"))
-        if not keep_open:
-            self.stdout.feed_eof()
-        self.stderr = asyncio.StreamReader()
-        self.stderr.feed_eof()
-        self._rc = returncode
-        self.terminated = False
-
-    @property
-    @override
-    def returncode(self) -> int | None:
-        return self._rc
-
-    @override
-    def terminate(self) -> None:
-        self.terminated = True
-        self._rc = 0
-        if self.stdout is not None:
-            self.stdout.feed_eof()
-
-    @override
-    def kill(self) -> None:
-        self._rc = -9
-
-    @override
-    async def wait(self) -> int:
-        self._rc = self._rc if self._rc is not None else 0
-        return self._rc
-
-    @override
-    async def communicate(
-        self,
-        input: bytes | bytearray | memoryview[int] | None = None,
-    ) -> tuple[bytes, bytes]:
-        data = await self.stdout.read() if self.stdout is not None else b""
-        return data, b""
-
-
 def _patch_binary(monkeypatch: pytest.MonkeyPatch, *, present: bool) -> None:
     monkeypatch.setattr(shutil, "which", lambda _name: "devtunnel" if present else None)
+
+
+def _patch_user_show(
+    monkeypatch: pytest.MonkeyPatch, *, returncode: int, text: str
+) -> None:
+    async def _run(
+        _args: list[str], *, timeout_seconds: float
+    ) -> tuple[int, str] | None:
+        return returncode, text
+
+    monkeypatch.setattr(devtunnels_adapter, "run_cli", _run)
 
 
 class TestIdentity:
@@ -104,12 +60,7 @@ class TestCredentialCheck:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_binary(monkeypatch, present=True)
-        fake = _FakeProcess(["Not logged in.\n"], returncode=0)
-
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
-            return fake
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        _patch_user_show(monkeypatch, returncode=0, text="Not logged in.\n")
         adapter = DevTunnelsAdapter(port=3001)
         assert await adapter.credential_configured() is False
 
@@ -117,12 +68,9 @@ class TestCredentialCheck:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_binary(monkeypatch, present=True)
-        fake = _FakeProcess(["Logged in as octocat using GitHub.\n"], returncode=0)
-
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
-            return fake
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        _patch_user_show(
+            monkeypatch, returncode=0, text="Logged in as octocat using GitHub.\n"
+        )
         adapter = DevTunnelsAdapter(port=3001)
         assert await adapter.credential_configured() is True
 
@@ -132,40 +80,34 @@ class TestDeviceLogin:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_binary(monkeypatch, present=True)
-        fake = _FakeProcess(
-            [
+        fake = FakePopen(
+            stdout_lines=[
                 "To sign in, use a web browser to open the page"
                 " https://github.com/login/device and enter the code"
                 " ABCD-1234 to authenticate.\n",
             ],
-            keep_open=True,
         )
 
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
+        def _spawn(_args: list[str]) -> subprocess.Popen[bytes]:
             return fake
 
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        monkeypatch.setattr(devtunnels_adapter, "spawn_cli", _spawn)
         adapter = DevTunnelsAdapter(port=3001)
         prompt = await adapter.begin_login()
         assert prompt.verification_uri == "https://github.com/login/device"
         assert prompt.user_code == "ABCD-1234"
         assert prompt.already_logged_in is False
-        # Complete the background drain so no task leaks.
-        fake.terminate()
-        login_task = adapter._login_task
-        assert login_task is not None
-        await login_task
 
     async def test_clean_exit_without_prompt_means_already_logged_in(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_binary(monkeypatch, present=True)
-        fake = _FakeProcess(["Logged in as octocat.\n"], returncode=0)
+        fake = FakePopen(stdout_lines=["Logged in as octocat.\n"], returncode=0)
 
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
+        def _spawn(_args: list[str]) -> subprocess.Popen[bytes]:
             return fake
 
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        monkeypatch.setattr(devtunnels_adapter, "spawn_cli", _spawn)
         adapter = DevTunnelsAdapter(port=3001)
         prompt = await adapter.begin_login()
         assert prompt.already_logged_in is True
@@ -180,12 +122,7 @@ class TestDeviceLogin:
 class TestStart:
     async def test_start_requires_login(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_binary(monkeypatch, present=True)
-        fake = _FakeProcess(["Not logged in.\n"], returncode=0)
-
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
-            return fake
-
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        _patch_user_show(monkeypatch, returncode=0, text="Not logged in.\n")
         adapter = DevTunnelsAdapter(port=3001)
         with pytest.raises(TunnelError, match="GitHub login"):
             await adapter.start()
@@ -194,20 +131,18 @@ class TestStart:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_binary(monkeypatch, present=True)
-        status = _FakeProcess(["Logged in as octocat.\n"], returncode=0)
-        host = _FakeProcess(
-            [
+        _patch_user_show(monkeypatch, returncode=0, text="Logged in as octocat.\n")
+        host = FakePopen(
+            stdout_lines=[
                 "Hosting port: 3001\n",
                 "Connect via browser: https://abc123-3001.euw.devtunnels.ms\n",
             ],
-            keep_open=True,
         )
-        spawned: list[_FakeProcess] = [status, host]
 
-        async def _spawn(*_args: object, **_kwargs: object) -> _FakeProcess:
-            return spawned.pop(0)
+        def _spawn(_args: list[str]) -> subprocess.Popen[bytes]:
+            return host
 
-        monkeypatch.setattr(asyncio, "create_subprocess_exec", _spawn)
+        monkeypatch.setattr(devtunnels_adapter, "spawn_cli", _spawn)
         adapter = DevTunnelsAdapter(port=3001)
         url = await adapter.start()
         assert url == "https://abc123-3001.euw.devtunnels.ms"

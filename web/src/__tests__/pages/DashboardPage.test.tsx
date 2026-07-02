@@ -107,9 +107,11 @@ describe('DashboardPage', () => {
     hookReturn = { ...defaultHookReturn }
   })
 
-  it('renders page heading', () => {
+  // The page renders no redundant heading of its own (AppLayout owns
+  // the page title); the metric-card grid is the page's identity.
+  it('renders the metric-card grid', () => {
     renderDashboard()
-    expect(screen.getByText('Overview')).toBeInTheDocument()
+    expect(screen.getAllByTestId('metric-value').length).toBeGreaterThan(0)
   })
 
   it('renders loading skeleton when loading with no data', () => {
@@ -163,7 +165,7 @@ describe('DashboardPage', () => {
     hookReturn = { ...defaultHookReturn, loading: true }
     renderDashboard()
     // Should show the page, not the skeleton
-    expect(screen.getByText('Overview')).toBeInTheDocument()
+    expect(screen.getByText('Org Health')).toBeInTheDocument()
     expect(screen.queryByLabelText('Loading dashboard')).not.toBeInTheDocument()
   })
 
