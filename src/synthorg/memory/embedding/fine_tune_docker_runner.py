@@ -27,6 +27,7 @@ import re
 from typing import Final, cast
 
 import aiodocker
+import aiodocker.containers
 from aiodocker.types import JSONObject
 from pydantic import BaseModel, ConfigDict
 
@@ -431,6 +432,8 @@ class FineTuneContainerRunner:
             FineTuneStageExecutionError: On timeout.
         """
         deadline = self._clock.monotonic() + execution.timeout_seconds
+        # lint-allow: long-running-loop-kill-switch -- bounded supervision:
+        # each turn checks cancellation + deadline; ends at container exit.
         while True:
             if cancellation is not None and cancellation.is_cancelled:
                 logger.info(

@@ -317,8 +317,8 @@ the backend spawns the exact attested image. See
 for the BYO snippet. The container reads its flat stage configuration from the
 `SYNTHORG_FINE_TUNE_STAGE_CONFIG` env var (inline JSON injected by the launcher) and
 emits structured markers on stdout that the launcher parses: `STAGE_START:` /
-`STAGE_COMPLETE:` bracket the run, `PROGRESS:<fraction>` drives the orchestrator's
-WS progress pipeline, and `ERROR:<message>` carries the failure detail. The shared
+`STAGE_COMPLETE:` bracket the run, `PROGRESS:<fraction>` drives the WS progress
+pipeline in the orchestrator, and `ERROR:<message>` carries the failure detail. The shared
 data volume is mounted read-write at `/data` (training data in, checkpoints out
 under `/data/fine-tune/runs/<run_id>/`), so consecutive stages hand off through
 deterministic paths. Stage containers get GPU passthrough via Docker
