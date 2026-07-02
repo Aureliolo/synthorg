@@ -140,6 +140,39 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
             setter(stripped or None)
 
 
+async def _apply_fine_tune_image_cache(app_state: AppState) -> None:
+    """Populate the fine-tune image-resolution cache from settings.
+
+    Same shape as :func:`_apply_sandbox_image_cache`; the cache has no
+    fallback constant because an empty value is meaningful (no image
+    configured derives the in-process execution backend).
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
+    from synthorg.memory.embedding.fine_tune_image_resolution import (  # noqa: PLC0415
+        set_resolved_fine_tune_image,
+    )
+
+    try:
+        image_value = await config_resolver_of(app_state).get_str(
+            SettingNamespace.MEMORY.value, "fine_tune_image"
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        set_resolved_fine_tune_image(None)
+        logger.warning(
+            API_APP_STARTUP,
+            setting="memory.fine_tune_image",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    else:
+        set_resolved_fine_tune_image(image_value)
+
+
 async def _apply_notification_dispatcher_config(
     app_state: AppState,
     effective_config: RootConfig | None,
@@ -611,6 +644,7 @@ async def _apply_bridge_config(
     await _apply_auth_token_bytes(app_state)
     await _apply_timeout_enforcement(app_state)
     await _apply_sandbox_image_cache(app_state)
+    await _apply_fine_tune_image_cache(app_state)
     _wire_resolver_dependents(app_state)
     await _apply_audit_chain_signing_timeout(app_state)
     await _apply_http_log_handler_config(app_state)

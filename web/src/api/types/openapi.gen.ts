@@ -10488,6 +10488,21 @@ export type components = {
          * @enum {string}
          */
         readonly FineTuneDataSourceType: "directory" | "trajectory";
+        /** FineTuneExecutionConfig */
+        readonly FineTuneExecutionConfig: {
+            /**
+             * @default in-process
+             * @enum {string}
+             */
+            readonly backend: "in-process" | "docker";
+            /** @default false */
+            readonly gpu_enabled: boolean;
+            readonly image: string | null;
+            /** @default 8g */
+            readonly memory_limit: string;
+            /** @default 7200 */
+            readonly timeout_seconds: number;
+        };
         /** FineTuneRequest */
         readonly FineTuneRequest: {
             /** @description Base model to fine-tune (None = active model) */
@@ -10497,6 +10512,8 @@ export type components = {
             readonly data_source?: components["schemas"]["FineTuneDataSourceType"];
             /** @description Override training epochs */
             readonly epochs?: number | null;
+            /** @description Execution backend override (None = derived: docker when a fine-tune image is configured, else in-process) */
+            readonly execution?: components["schemas"]["FineTuneExecutionConfig"] | null;
             /** @description Override learning rate */
             readonly learning_rate?: number | null;
             /** @description Checkpoint output directory (None = default) */
@@ -10571,6 +10588,8 @@ export type components = {
              * @default 3
              */
             readonly epochs: number;
+            /** @description Effective execution backend baked in at run start (resume and audit read the backend the run actually used) */
+            readonly execution: components["schemas"]["FineTuneExecutionConfig"] | null;
             /**
              * @description Learning rate
              * @default 0.00001

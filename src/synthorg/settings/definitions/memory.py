@@ -374,3 +374,101 @@ _r.register(
         max_value=100_000,
     )
 )
+
+_r.register(
+    # lint-allow: restart-required -- resolved once at boot into the
+    # fine-tune image cache; the CLI changes the image only by recreating
+    # the backend container, so a mid-run DB write would silently drift
+    # from the value ephemeral stage containers actually use.
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_image",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Container image for ephemeral fine-tune stage containers."
+            " Resolution precedence at backend startup: DB override >"
+            " SYNTHORG_FINE_TUNE_IMAGE env var (injected by the CLI when"
+            " fine_tuning=true) > registered code default. Empty means no"
+            " image is configured and fine-tune runs execute in-process"
+            " (bare-metal installs with the torch extras)."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_FINE_TUNE_IMAGE",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_default_gpu",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Request GPU passthrough on ephemeral fine-tune stage"
+            " containers when the run does not specify an execution"
+            " config. Resolved per run start, so a change applies"
+            " without a restart."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_stage_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="7200.0",
+        description=(
+            "Maximum wall-clock time for a single fine-tune pipeline"
+            " stage (both in-process and containerised). Resolved per"
+            " run start, so a change applies without a restart."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86_400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_memory_limit",
+        type=SettingType.STRING,
+        default="8g",
+        description=(
+            "Memory limit for ephemeral fine-tune stage containers, as a"
+            " Docker size string ('512b', '64k', '64m', '8G'; leading"
+            " digit non-zero). Resolved per run start, so a change"
+            " applies without a restart."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_data_volume",
+        type=SettingType.STRING,
+        default="synthorg-data",
+        description=(
+            "Named Docker volume mounted rw at /data inside ephemeral"
+            " fine-tune stage containers (training data in, checkpoints"
+            " out). Matches the compose data volume in CLI installs."
+            " Resolved per run start, so a change applies without a"
+            " restart."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        env_var_override="SYNTHORG_FINE_TUNE_DATA_VOLUME",
+    )
+)
