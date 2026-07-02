@@ -184,8 +184,10 @@ class DockerSandboxExecMixin:
             """Untrack container."""
             ...
 
+        # Static in the lifecycle mixin; the stubs must match, or the
+        # checker flags an instance-method/staticmethod override clash.
+        @staticmethod
         async def _remove_container(
-            self,
             docker: aiodocker.Docker,
             container_id: str,
         ) -> bool:
@@ -196,8 +198,8 @@ class DockerSandboxExecMixin:
             """
             ...
 
+        @staticmethod
         async def _stop_container(
-            self,
             docker: aiodocker.Docker,
             container_id: str,
         ) -> None:

@@ -166,6 +166,7 @@ class TestMemoryAdminControllerExists:
         assert MemoryAdminController.path == "/admin/memory"
 
     def test_tags(self) -> None:
+        assert MemoryAdminController.tags is not None
         assert "admin" in MemoryAdminController.tags
         assert "memory" in MemoryAdminController.tags
 
