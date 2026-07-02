@@ -62,16 +62,12 @@ type statusSnapshot struct {
 	parseFailures       int
 	servicesFilterEmpty bool
 
-	healthFetched     bool
-	healthErr         error
-	healthStatusCode  int
-	healthBody        []byte
-	healthEnvelopeOK  bool
-	healthData        healthResponse
-	persistenceWired  bool
-	messageBusWired   bool
-	expectsPersistent bool
-	expectsMessageBus bool
+	healthFetched    bool
+	healthErr        error
+	healthStatusCode int
+	healthBody       []byte
+	healthEnvelopeOK bool
+	healthData       healthResponse
 }
 
 // statusLevel encodes the overall verdict for the top banner. Order
@@ -99,8 +95,6 @@ type statusVerdict struct {
 func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string, state config.State) statusSnapshot {
 	snap := statusSnapshot{
 		servicesFilterEmpty: statusServices == "",
-		expectsPersistent:   state.PersistenceBackend != "",
-		expectsMessageBus:   state.BusBackend == "nats",
 	}
 
 	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json")
@@ -127,8 +121,6 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 	if json.Unmarshal(body, &envelope) == nil && envelope.Data.Status != "" {
 		snap.healthEnvelopeOK = true
 		snap.healthData = envelope.Data
-		snap.persistenceWired = envelope.Data.Persistence != nil
-		snap.messageBusWired = envelope.Data.MessageBus != nil
 	}
 	return snap
 }
@@ -136,7 +128,7 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 // computeVerdict turns a snapshot into the banner verdict. The order of
 // checks below dictates which message wins when multiple signals fail
 // at once: backend reachability first (everything depends on it), then
-// per-container failures, then the half-up persistence/bus signals.
+// per-container failures, then the readiness outcome.
 func computeVerdict(snap statusSnapshot) statusVerdict {
 	v := statusVerdict{level: statusLevelOK}
 	v.absorbContainerVerdict(snap)
@@ -194,54 +186,30 @@ func countContainerStates(snap statusSnapshot) (unhealthy, restarting, total int
 	return unhealthy, restarting, total
 }
 
-// absorbHealthVerdict folds the backend `/healthz` envelope and the
-// half-up persistence/bus signals into v.
+// absorbHealthVerdict folds the /readyz envelope (reach, parseability,
+// readiness outcome) into v. The probe is deliberately topology-free
+// (the per-component breakdown lives behind authentication on
+// GET /health), so its binary outcome already covers every configured
+// dependency: persistence, message bus, and providers.
 func (v *statusVerdict) absorbHealthVerdict(snap statusSnapshot) {
-	if v.absorbHealthEnvelope(snap) {
-		return
-	}
-	v.absorbWiringVerdict(snap)
-}
-
-// absorbHealthEnvelope handles the /healthz envelope itself (reach,
-// parseability, status field). Returns true when the envelope is
-// terminal-bad (caller should NOT continue with wiring checks).
-func (v *statusVerdict) absorbHealthEnvelope(snap statusSnapshot) bool {
 	switch {
 	case snap.healthErr != nil:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend unreachable: %v", snap.healthErr))
 		v.hints = append(v.hints, "Confirm backend is up: synthorg logs backend")
-		return true
+		return
 	case !snap.healthEnvelopeOK:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend returned unparseable health (HTTP %d)", snap.healthStatusCode))
 		v.hints = append(v.hints, "Backend may be starting or misconfigured: synthorg logs backend")
-		return true
+		return
 	}
 	if snap.healthStatusCode < 200 || snap.healthStatusCode >= 300 || snap.healthData.Status != "ok" {
 		v.level = statusLevelCritical
-		v.issues = append(v.issues, fmt.Sprintf("backend reports status=%q (HTTP %d)", snap.healthData.Status, snap.healthStatusCode))
-		v.hints = append(v.hints, "Run 'synthorg doctor' for diagnostics")
-	}
-	return false
-}
-
-// absorbWiringVerdict handles persistence and message-bus wiring
-// signals: persistence not wired is Critical (controllers 503), message
-// bus not wired is Degraded.
-func (v *statusVerdict) absorbWiringVerdict(snap statusSnapshot) {
-	if snap.expectsPersistent && !snap.persistenceWired {
-		v.level = statusLevelCritical
-		v.issues = append(v.issues, "persistence backend not wired (controllers will return 503)")
-		v.hints = append(v.hints, "Backend env or DB URL is wrong: check synthorg logs backend for 'persistence' warnings")
-	}
-	if snap.expectsMessageBus && !snap.messageBusWired {
-		if v.level < statusLevelDegraded {
-			v.level = statusLevelDegraded
-		}
-		v.issues = append(v.issues, "message bus not connected")
-		v.hints = append(v.hints, "Check NATS container if distributed bus mode is enabled: synthorg logs nats")
+		v.issues = append(v.issues, fmt.Sprintf(
+			"backend not ready (status=%q, HTTP %d): a configured dependency (persistence / message bus / providers) failed its health probe",
+			snap.healthData.Status, snap.healthStatusCode))
+		v.hints = append(v.hints, "Check 'synthorg logs backend' for the failing component's health-check warning")
 	}
 }
 
@@ -271,14 +239,15 @@ func filterAllowsService(service string) bool {
 	return false
 }
 
-// healthResponse holds the parsed health check JSON.
+// healthResponse holds the parsed /readyz payload. The unauthenticated
+// probe is topology-free by design: status is "ok" only when every
+// configured dependency (persistence / message bus / providers) passed
+// its health check, and the per-component breakdown is only available
+// behind authentication on GET /health.
 type healthResponse struct {
-	Status      string  `json:"status"`
-	Version     string  `json:"version"`
-	Persistence any     `json:"persistence"`
-	MessageBus  any     `json:"message_bus"`
-	Telemetry   string  `json:"telemetry"`
-	Uptime      float64 `json:"uptime_seconds"`
+	Status  string  `json:"status"`
+	Version string  `json:"version"`
+	Uptime  float64 `json:"uptime_seconds"`
 }
 
 // fetchHealth is a package var so tests can stub the probe instead of

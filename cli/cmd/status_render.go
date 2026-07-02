@@ -164,25 +164,14 @@ func renderTopBanner(out *ui.UI, snap statusSnapshot) {
 	out.Blank()
 }
 
-// renderHealthSection prints the backend health summary (with an
-// explicit red persistence line when the backend is half-up). Pulled up
+// renderHealthSection prints the backend health summary. Pulled up
 // above the container table so the highest-signal information leads.
 func renderHealthSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 	if jsonOut {
 		renderHealthSectionJSON(out, snap)
 		return
 	}
-	if !renderHealthSectionBackend(out, snap) {
-		return
-	}
-	renderHealthSectionPersistence(out, snap)
-	hr := snap.healthData
-	if hr.MessageBus != nil {
-		out.KeyValue("Message bus", fmt.Sprintf("%v", hr.MessageBus))
-	}
-	if hr.Telemetry != "" {
-		out.KeyValue("Telemetry", hr.Telemetry)
-	}
+	renderHealthSectionBackend(out, snap)
 	out.Blank()
 }
 
@@ -196,42 +185,31 @@ func renderHealthSectionJSON(out *ui.UI, snap statusSnapshot) {
 	}
 }
 
-// renderHealthSectionBackend prints the top-level backend reachability
-// line. Returns true if the section should continue (envelope parsed)
-// or false if the caller should stop here.
-func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) bool {
+// renderHealthSectionBackend prints the backend reachability and
+// readiness line. A ready backend implies every configured dependency
+// (persistence / message bus / providers) passed its health probe; the
+// unauthenticated /readyz payload carries no per-component breakdown.
+func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) {
 	if snap.healthErr != nil {
 		out.Error(fmt.Sprintf("Backend unreachable: %v", snap.healthErr))
 		out.HintError("Run 'synthorg logs backend' to see why.")
-		return false
+		return
 	}
 	if !snap.healthEnvelopeOK {
 		out.Warn(fmt.Sprintf("Backend health: unparseable response (HTTP %d)", snap.healthStatusCode))
-		return false
+		return
 	}
 	hr := snap.healthData
 	if snap.healthStatusCode >= 200 && snap.healthStatusCode < 300 && hr.Status == "ok" {
-		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %s)", hr.Version, formatUptime(hr.Uptime)))
-		return true
+		out.Success(fmt.Sprintf(
+			"Backend healthy (v%s, uptime %s) -- all configured dependencies passing",
+			hr.Version, formatUptime(hr.Uptime)))
+		return
 	}
-	out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", snap.healthStatusCode))
-	out.HintError("Run 'synthorg doctor' for diagnostics.")
-	return true
-}
-
-// renderHealthSectionPersistence prints the persistence-wiring line,
-// emitting an explicit "NOT WIRED" error when the backend is half-up.
-func renderHealthSectionPersistence(out *ui.UI, snap statusSnapshot) {
-	hr := snap.healthData
-	switch {
-	case snap.expectsPersistent && !snap.persistenceWired:
-		out.Error("Persistence: NOT WIRED -- controllers depending on persistence will return 503")
-		out.HintError("Check 'synthorg logs backend' for the auto_wire warning that names the missing env var.")
-	case hr.Persistence != nil:
-		out.KeyValue("Persistence", fmt.Sprintf("%v", hr.Persistence))
-	default:
-		out.KeyValue("Persistence", "not configured")
-	}
+	out.Error(fmt.Sprintf(
+		"Backend not ready (HTTP %d) -- a configured dependency (persistence / message bus / providers) is failing its health probe",
+		snap.healthStatusCode))
+	out.HintError("Check 'synthorg logs backend' for the failing component's health-check warning.")
 }
 
 // renderContainersSection prints the per-container table with health
