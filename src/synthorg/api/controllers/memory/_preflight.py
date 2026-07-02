@@ -1,17 +1,26 @@
 # module-kind: code
 """Fine-tune preflight thresholds, checks, and batch-size recommendation.
 
-Pure helper module for the memory fine-tune controller: resolves
+Helper module for the memory fine-tune controller: resolves
 operator-tunable thresholds, runs the (sync, thread-offloaded) document /
 GPU / dependency / disk preflight checks, and recommends a batch size from
-detected VRAM. No Litestar surface; the controller imports these.
+detected VRAM. Dependency and GPU state come from one ``ProbeResult``
+regardless of execution backend: the docker path boots an ephemeral probe
+container (cached briefly so a dashboard poll does not spawn containers
+per request), the in-process path inspects the local torch install. No
+Litestar surface; the controller imports these.
 """
 
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.embedding.fine_tune_docker_runner import (
+    FineTuneContainerRunner,
+    ProbeResult,
+)
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     PreflightCheck,
@@ -20,7 +29,6 @@ from synthorg.memory.embedding.fine_tune_run_helpers import build_config
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
-    MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
 )
 from synthorg.settings.definitions.memory import (
@@ -41,6 +49,100 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
     (16.0, 64),
     (8.0, 32),
 )
+
+_BYTES_PER_GIB: Final[int] = 1024**3
+
+# Probe results are cached briefly so an open fine-tune dashboard page
+# polling preflight does not boot a probe container per request; short
+# enough that pulling a fixed image or attaching a GPU shows up on the
+# next poll.
+_PROBE_TTL_SECONDS: Final[float] = 60.0
+_probe_cache: dict[tuple[str, bool], tuple[float, ProbeResult]] = {}
+
+
+async def probe_fine_tune_image(
+    *,
+    image: str,
+    gpu_enabled: bool,
+    clock: Clock,
+) -> ProbeResult:
+    """Probe the fine-tune image via an ephemeral container, with a TTL cache.
+
+    Returns:
+        Result of type ``ProbeResult``.
+    """
+    key = (image, gpu_enabled)
+    cached = _probe_cache.get(key)
+    if cached is not None and clock.monotonic() - cached[0] < _PROBE_TTL_SECONDS:
+        return cached[1]
+    result = await FineTuneContainerRunner(clock=clock).probe(
+        image=image,
+        gpu_enabled=gpu_enabled,
+    )
+    _probe_cache[key] = (clock.monotonic(), result)
+    return result
+
+
+async def resolve_probe_gpu_default(
+    settings_service: SettingsService | None,
+) -> bool:
+    """Resolve ``memory.fine_tune_default_gpu`` with an offline fallback.
+
+    Returns:
+        Result of type ``bool``.
+    """
+    if settings_service is None:
+        return False
+    try:
+        entry = await settings_service.get("memory", "fine_tune_default_gpu")
+    except SettingNotFoundError:
+        return False
+    return str(entry.value).strip().lower() == "true"
+
+
+def _local_probe() -> ProbeResult:
+    """Inspect the local torch install (in-process execution backend).
+
+    Returns:
+        The same ``ProbeResult`` shape the container probe produces, so
+        every downstream check is backend-agnostic.
+    """
+    from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
+        _import_sentence_transformers,
+        _import_torch,
+    )
+
+    try:
+        torch = _import_torch()
+        _import_sentence_transformers()
+    except (ImportError, FineTuneDependencyError) as exc:
+        return ProbeResult(ok=False, detail=safe_error_description(exc))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        return ProbeResult(
+            ok=False,
+            detail=f"dependency check failed: {safe_error_description(exc)}",
+        )
+    gpu: str | None = None
+    vram_gb: float | None = None
+    try:
+        if torch.cuda.is_available():
+            props = torch.cuda.get_device_properties(0)
+            gpu = str(props.name)
+            vram_gb = props.total_memory / _BYTES_PER_GIB
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        return ProbeResult(
+            ok=True,
+            detail=f"GPU detection error: {safe_error_description(exc)}",
+        )
+    return ProbeResult(
+        ok=True,
+        gpu=gpu,
+        vram_gb=vram_gb,
+        detail="ML dependencies installed",
+    )
+
 
 # Scheduling slack added on top of ``preflight_walk_timeout_s`` for the
 # hard request ceiling. The in-thread monotonic deadline already bounds
@@ -158,16 +260,15 @@ async def _resolve_fine_tune_thresholds(
     )
 
 
-def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injected sidecar coords
+def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injected probe
     request: FineTuneRequest,
     *,
     min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,
     min_recommended: int = FINE_TUNE_MIN_DOCS_RECOMMENDED,
     max_depth: int = FINE_TUNE_PREFLIGHT_MAX_DEPTH,
     walk_timeout_s: float = FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
-    sidecar_host: str = "",
-    sidecar_port: int | None = None,
-) -> list[PreflightCheck]:
+    docker_probe: ProbeResult | None = None,
+) -> tuple[list[PreflightCheck], ProbeResult]:
     """Run all pre-flight validation checks.
 
     Args:
@@ -183,19 +284,19 @@ def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injecte
             the same fallback contract as ``min_required``.
         max_depth: Directory recursion cap for the document scan.
         walk_timeout_s: Wall-clock deadline for the document scan.
-        sidecar_host: Fine-tune sidecar host, resolved once at the API
-            boundary; empty disables the sidecar health probe.
-        sidecar_port: Fine-tune sidecar port; ``None`` disables the
-            sidecar health probe.
+        docker_probe: Ephemeral-container probe outcome for a
+            docker-backed run, resolved (and cached) at the controller
+            boundary; ``None`` means the in-process backend, whose
+            local torch install is inspected here instead.
 
     Returns:
-        List of the declared element type.
+        The checks plus the effective probe (the batch-size
+        recommendation derives from its VRAM reading).
     """
+    probe = docker_probe if docker_probe is not None else _local_probe()
     checks: list[PreflightCheck] = []
-    checks.append(
-        _check_dependencies(sidecar_host=sidecar_host, sidecar_port=sidecar_port)
-    )
-    checks.append(_check_gpu())
+    checks.append(_check_dependencies(probe, containerised=docker_probe is not None))
+    checks.append(_check_gpu(probe))
     # The document scan applies only to directory mode; trajectory mode
     # sources from persisted org history, so there is no source dir to walk.
     if request.source_dir is not None:
@@ -213,7 +314,7 @@ def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injecte
     # (request override, else the run default) so trajectory mode -- which has
     # no ``source_dir`` to fall back on -- is still covered.
     checks.append(_check_disk_space(build_config(request).output_dir))
-    return checks
+    return checks, probe
 
 
 def _check_documents(
@@ -307,170 +408,81 @@ def _check_documents(
     )
 
 
-_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S: Final[float] = 1.5
-_HTTP_STATUS_OK_MIN: Final[int] = 200
-_HTTP_STATUS_OK_MAX_EXCLUSIVE: Final[int] = 300
-
-
-def _check_fine_tune_sidecar_health(host: str, port: int | None) -> bool:
-    """Best-effort probe of the fine-tune sidecar's HTTP health endpoint.
-
-    In a Docker-orchestrated install the heavy ML deps (torch +
-    sentence-transformers) live exclusively inside the
-    ``synthorg-fine-tune-{gpu,cpu}`` sidecar container; the main backend
-    container intentionally does NOT bundle them.  Pip-only deployments
-    install the extras directly into the same process.  This helper
-    covers the Docker case: when the sidecar answers its health probe,
-    the deps are reachable even though ``import torch`` would fail
-    locally.  Any error (DNS miss, refused connection, non-200, timeout)
-    is swallowed so the caller falls back to the in-process import.
-
-    The probe host and port are injected by the controller boundary
-    (resolved from ``SYNTHORG_FINE_TUNE_HEALTH_HOST`` /
-    ``SYNTHORG_FINE_TUNE_HEALTH_PORT`` there) so this helper stays a pure
-    function with no request-time environment access.
-
-    Args:
-        host: Resolved sidecar health host.
-        port: Resolved sidecar health port, or ``None`` when unset or
-            malformed -- the sidecar then never bound, so the probe
-            reports failure.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    import urllib.error  # noqa: PLC0415
-    import urllib.request  # noqa: PLC0415
-
-    if port is None or not host:
-        return False
-    url = f"http://{host}:{port}/healthz"
-
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(  # noqa: S310
-            req,
-            timeout=_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S,
-        ) as resp:
-            status: int = resp.status
-            return _HTTP_STATUS_OK_MIN <= status < _HTTP_STATUS_OK_MAX_EXCLUSIVE
-    except urllib.error.URLError, TimeoutError, OSError:
-        return False
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        return False
-
-
 def _check_dependencies(
-    *, sidecar_host: str = "", sidecar_port: int | None = None
+    probe: ProbeResult,
+    *,
+    containerised: bool,
 ) -> PreflightCheck:
     """Check whether fine-tuning ML dependencies are reachable.
 
-    Two-stage check: an in-process import covers pip installs that
-    bundle the extras locally; an HTTP probe of the fine-tune sidecar
-    container covers the Docker orchestration case where torch +
-    sentence-transformers live exclusively in the sidecar image.
-    Either path succeeding is enough to call the dependencies
-    available -- a Docker-orchestrated install ships the ML extras only
-    in the sidecar, so the in-process import alone would under-report.
-
     Args:
-        sidecar_host: Injected sidecar health host (resolved at the
-            controller boundary). Empty / ``None`` port skips the probe.
-        sidecar_port: Injected sidecar health port, or ``None``.
+        probe: Effective probe outcome; for a docker-backed run the
+            ephemeral container proved the image boots and its ML stack
+            imports, for in-process it reflects the local install.
+        containerised: Whether the probe came from a container (message
+            wording only).
 
     Returns:
         ``PreflightCheck`` instance.
     """
-    try:
-        from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
-            _import_sentence_transformers,
-            _import_torch,
+    if probe.ok:
+        message = (
+            "ML dependencies available via ephemeral fine-tune probe"
+            if containerised
+            else "ML dependencies installed"
         )
-
-        _import_torch()
-        _import_sentence_transformers()
-    except (ImportError, FineTuneDependencyError) as exc:
-        # In-process imports failed; this is the expected path for the
-        # Docker orchestration where ML deps live in a sidecar.  Probe
-        # the sidecar's HTTP health endpoint before declaring failure.
-        if _check_fine_tune_sidecar_health(sidecar_host, sidecar_port):
-            return PreflightCheck(
-                name="dependencies",
-                status="pass",
-                message="ML dependencies available via fine-tune sidecar",
-            )
-        return PreflightCheck(
-            name="dependencies",
-            status="fail",
-            message="Missing ML dependencies",
-            detail=safe_error_description(exc),
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        return PreflightCheck(
-            name="dependencies",
-            status="fail",
-            message=f"Dependency check failed: {type(exc).__name__}",
-            detail=safe_error_description(exc),
-        )
+        return PreflightCheck(name="dependencies", status="pass", message=message)
     return PreflightCheck(
         name="dependencies",
-        status="pass",
-        message="ML dependencies installed",
+        status="fail",
+        message=(
+            "Fine-tune image probe failed"
+            if containerised
+            else "Missing ML dependencies"
+        ),
+        detail=probe.detail,
     )
 
 
-def _check_gpu() -> PreflightCheck:
-    """Best-effort GPU availability check.
+def _check_gpu(probe: ProbeResult) -> PreflightCheck:
+    """GPU availability check from the effective probe.
 
     Returns:
         ``PreflightCheck`` instance.
     """
-    from synthorg.memory.embedding.fine_tune import _import_torch  # noqa: PLC0415
-
-    try:
-        torch = _import_torch()
-
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            vram_gb = props.total_memory / (1024**3)
-            return PreflightCheck(
-                name="gpu",
-                status="pass",
-                message=f"GPU available: {props.name}",
-                detail=f"VRAM: {vram_gb:.1f} GB",
-            )
+    if not probe.ok:
         return PreflightCheck(
             name="gpu",
             status="warn",
-            message="No GPU detected -- training will be slow",
-            detail="CPU-only mode",
+            message="Cannot detect GPU (dependency probe failed)",
+            detail=probe.detail,
         )
-    except FineTuneDependencyError:
+    if probe.gpu is not None:
+        detail = f"VRAM: {probe.vram_gb:.1f} GB" if probe.vram_gb is not None else None
         return PreflightCheck(
             name="gpu",
-            status="warn",
-            message="Cannot detect GPU (torch not installed)",
+            status="pass",
+            message=f"GPU available: {probe.gpu}",
+            detail=detail,
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        return PreflightCheck(
-            name="gpu",
-            status="warn",
-            message=f"GPU detection error: {type(exc).__name__}",
-            detail=safe_error_description(exc),
-        )
+    return PreflightCheck(
+        name="gpu",
+        status="warn",
+        message="No GPU detected -- training will be slow",
+        detail="CPU-only mode",
+    )
 
 
 def _recommend_batch_size(
     *,
+    vram_gb: float | None,
     default_batch_size: int = FINE_TUNE_DEFAULT_BATCH_SIZE,
     vram_table: tuple[tuple[float, int], ...] = _BATCH_SIZE_BY_VRAM_GB,
-) -> int | None:
-    """Recommend batch size based on available VRAM.
+) -> int:
+    """Recommend batch size from the probed VRAM reading.
 
     Args:
+        vram_gb: VRAM the effective probe saw; ``None`` means CPU-only.
         default_batch_size: Fallback returned when the VRAM tier
             table does not produce a match (CPU-only or sub-threshold
             GPU). Resolved from the
@@ -484,40 +496,14 @@ def _recommend_batch_size(
             the module constant is the offline/standalone fallback.
 
     Returns:
-        The ``int`` value when present, ``None`` otherwise.
-
-    Raises:
-        MemoryError: Raised on the corresponding failure path.
-        RecursionError: Raised on the corresponding failure path.
+        Result of type ``int``.
     """
-    from synthorg.memory.embedding.fine_tune import _import_torch  # noqa: PLC0415
-
-    try:
-        torch = _import_torch()
-
-        if not torch.cuda.is_available():
-            return default_batch_size
-        props = torch.cuda.get_device_properties(0)
-        vram_gb = props.total_memory / (1024**3)
-        for threshold_gb, batch_size in vram_table:
-            if vram_gb >= threshold_gb:
-                return batch_size
-        return default_batch_size  # noqa: TRY300
-    except MemoryError, RecursionError:
-        raise
-    except FineTuneDependencyError:
-        # torch is optional -- absence is expected on CPU-only installs.
-        return None
-    except Exception as exc:  # noqa: BLE001 -- best-effort probe: log and continue
-        # Drop ``exc_info=True``.  The full traceback bypasses
-        # ``safe_error_description`` and can leak environment paths /
-        # backend metadata; the redacted form is sufficient for triage.
-        logger.warning(
-            MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
+    if vram_gb is None:
+        return default_batch_size
+    for threshold_gb, batch_size in vram_table:
+        if vram_gb >= threshold_gb:
+            return batch_size
+    return default_batch_size
 
 
 def _check_disk_space(source_dir: str) -> PreflightCheck:

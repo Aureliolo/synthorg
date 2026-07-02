@@ -1,7 +1,5 @@
 """Tests for MemoryAdminController endpoints."""
 
-from unittest.mock import MagicMock
-
 import pytest
 from pydantic import ValidationError
 
@@ -176,31 +174,9 @@ class TestMemoryAdminControllerExists:
 class TestRecommendBatchSize:
     """Per-tier coverage for the VRAM -> batch-size lookup."""
 
-    def test_fallback_on_missing_torch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Missing torch returns None, never raises."""
-        import builtins
-
-        real_import = builtins.__import__
-
-        def _fake_import(
-            name: str,
-            *args: object,
-            **kwargs: object,
-        ) -> object:
-            if name == "torch":
-                msg = "no torch"
-                raise ImportError(msg)
-            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
-
-        monkeypatch.setattr(builtins, "__import__", _fake_import)
-        assert _recommend_batch_size() is None
-
-    def test_cpu_only_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No CUDA -> default CPU batch size."""
-        fake_torch = MagicMock()
-        fake_torch.cuda.is_available.return_value = False
-        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-        assert _recommend_batch_size() == FINE_TUNE_DEFAULT_BATCH_SIZE
+    def test_cpu_only_fallback(self) -> None:
+        """No VRAM reading (CPU-only probe) -> default batch size."""
+        assert _recommend_batch_size(vram_gb=None) == FINE_TUNE_DEFAULT_BATCH_SIZE
 
     @pytest.mark.parametrize(
         ("vram_gb", "expected"),
@@ -216,17 +192,10 @@ class TestRecommendBatchSize:
     )
     def test_vram_tier_returns_expected_batch_size(
         self,
-        monkeypatch: pytest.MonkeyPatch,
         vram_gb: int,
         expected: int,
     ) -> None:
-        fake_torch = MagicMock()
-        fake_torch.cuda.is_available.return_value = True
-        props = MagicMock()
-        props.total_memory = vram_gb * (1024**3)
-        fake_torch.cuda.get_device_properties.return_value = props
-        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-        assert _recommend_batch_size() == expected
+        assert _recommend_batch_size(vram_gb=float(vram_gb)) == expected
 
     def test_vram_table_is_descending(self) -> None:
         """Invariant: VRAM thresholds must be in strictly descending order."""
@@ -234,10 +203,7 @@ class TestRecommendBatchSize:
         assert thresholds == sorted(thresholds, reverse=True)
         assert len(thresholds) == len(set(thresholds))
 
-    def test_custom_vram_table_is_honoured(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    def test_custom_vram_table_is_honoured(self) -> None:
         """An operator-tuned VRAM table (from the memory bridge) wins.
 
         ``run_preflight`` passes
@@ -245,290 +211,184 @@ class TestRecommendBatchSize:
         this proves the bridge value reaches the lookup and overrides
         the module-constant tiers.
         """
-        fake_torch = MagicMock()
-        fake_torch.cuda.is_available.return_value = True
-        props = MagicMock()
-        props.total_memory = 20 * (1024**3)
-        fake_torch.cuda.get_device_properties.return_value = props
-        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-
         # Default tiers would map 20 GB -> 64; an operator table with a
         # 20 GB row mapping to 256 must win.
         custom = ((20.0, 256), (8.0, 32))
-        assert _recommend_batch_size(vram_table=custom) == 256
-
-    def test_unexpected_exception_is_logged_and_returns_none(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Unexpected errors in torch probing log a WARNING and return None.
-
-        Guards the generic ``except Exception`` branch that reports via
-        :data:`MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED`.
-        """
-        from synthorg.api.controllers.memory import _preflight as memory_module
-        from synthorg.observability.events.memory import (
-            MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
-        )
-
-        fake_torch = MagicMock()
-        fake_torch.cuda.is_available.return_value = True
-        fake_torch.cuda.get_device_properties.side_effect = RuntimeError(
-            "CUDA driver unavailable",
-        )
-        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
-
-        warning_mock = MagicMock()
-        # Direct setattr + try/finally delattr -- ``memory_module.logger``
-        # is a ``BoundLoggerLazyProxy`` whose ``warning`` attribute is
-        # served via ``__getattr__`` and is NOT in the instance
-        # ``__dict__``. ``monkeypatch.setattr`` would snapshot
-        # ``getattr(proxy, "warning")`` (a bound method on a current
-        # ``BoundLogger``) and restore that snapshot at teardown,
-        # permanently caching it into ``__dict__`` and shadowing
-        # ``__getattr__``; later ``capture_logs()`` calls cannot
-        # then reach the cached method's stale processor list.
-        proxy = memory_module.logger
-        proxy.warning = warning_mock
-        try:
-            result = _recommend_batch_size()
-
-            assert result is None
-            warning_mock.assert_called_once()
-            args, kwargs = warning_mock.call_args
-            assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
-            assert kwargs.get("error_type") == "RuntimeError"
-            assert "CUDA driver unavailable" in kwargs.get("error", "")
-            # ``exc_info`` is intentionally NOT set: passing the
-            # exception chain to structlog appends the full traceback,
-            # which bypasses the ``safe_error_description`` scrub and
-            # can leak attacker-uncontrollable but operator-sensitive
-            # detail (filesystem paths, fine-tune backend metadata,
-            # CUDA driver versions). The assertion locks that exclusion
-            # in place so a future refactor can't quietly add the
-            # traceback.
-            assert "exc_info" not in kwargs
-        finally:
-            from contextlib import suppress
-
-            with suppress(AttributeError):
-                del proxy.warning
-
-
-class _FakeHttpResponse:
-    """Minimal stand-in for the context-manager returned by ``urlopen``.
-
-    Only ``status`` is read by ``_check_fine_tune_sidecar_health``; the
-    helper wraps the call in ``with urllib.request.urlopen(...) as resp:``
-    so the fake must also be a context manager. Spec'd as a concrete
-    class so the mock-spec ratchet stays at zero.
-    """
-
-    def __init__(self, status: int) -> None:
-        self.status = status
-
-    def __enter__(self) -> _FakeHttpResponse:
-        return self
-
-    def __exit__(self, *_exc_info: object) -> None:
-        return None
+        assert _recommend_batch_size(vram_gb=20.0, vram_table=custom) == 256
 
 
 @pytest.mark.unit
-class TestCheckFineTuneSidecarHealth:
-    """Cover the urllib-based fine-tune sidecar health probe.
+class TestProbeDrivenChecks:
+    """Dependency/GPU checks derive from the effective ProbeResult."""
 
-    The probe is wrapped in a broad try/except so callers fall back to
-    the in-process import path on any failure (DNS miss, refused
-    connection, non-2xx response, timeout, unexpected). These tests pin
-    the four branches: 2xx -> True, non-2xx -> False, expected exceptions
-    -> False, unexpected exception -> False.
-    """
+    def test_dependencies_pass_containerised(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_dependencies
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
 
-    def test_returns_true_on_2xx_response(
+        check = _check_dependencies(
+            ProbeResult(ok=True, detail="PROBE_OK gpu=none vram_gb=0"),
+            containerised=True,
+        )
+        assert check.status == "pass"
+        assert "ephemeral fine-tune probe" in check.message
+
+    def test_dependencies_fail_carries_probe_detail(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_dependencies
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+
+        check = _check_dependencies(
+            ProbeResult(ok=False, detail="torch import failed"),
+            containerised=True,
+        )
+        assert check.status == "fail"
+        assert check.detail == "torch import failed"
+
+    def test_dependencies_in_process_wording(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_dependencies
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+
+        check = _check_dependencies(
+            ProbeResult(ok=True, detail="ML dependencies installed"),
+            containerised=False,
+        )
+        assert check.status == "pass"
+        assert check.message == "ML dependencies installed"
+
+    def test_gpu_pass_with_vram_detail(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_gpu
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+
+        check = _check_gpu(
+            ProbeResult(ok=True, gpu="Example GPU 90", vram_gb=24.0, detail="ok")
+        )
+        assert check.status == "pass"
+        assert "Example GPU 90" in check.message
+        assert check.detail == "VRAM: 24.0 GB"
+
+    def test_gpu_warn_when_cpu_only(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_gpu
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+
+        check = _check_gpu(ProbeResult(ok=True, detail="ok"))
+        assert check.status == "warn"
+        assert "No GPU detected" in check.message
+
+    def test_gpu_warn_when_probe_failed(self) -> None:
+        from synthorg.api.controllers.memory._preflight import _check_gpu
+        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+
+        check = _check_gpu(ProbeResult(ok=False, detail="no image"))
+        assert check.status == "warn"
+        assert "Cannot detect GPU" in check.message
+
+    def test_local_probe_reports_missing_deps(self) -> None:
+        """Without the torch extras the local probe is honestly not ok."""
+        from synthorg.api.controllers.memory._preflight import _local_probe
+
+        probe = _local_probe()
+        assert probe.ok is False
+        assert probe.gpu is None
+
+
+@pytest.mark.unit
+class TestProbeCache:
+    """``probe_fine_tune_image`` caches per (image, gpu) with a TTL."""
+
+    async def test_second_call_within_ttl_hits_cache(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A 200 OK response flips the probe to ``True``."""
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
+        from synthorg.api.controllers.memory import _preflight
+        from synthorg.memory.embedding.fine_tune_docker_runner import (
+            FineTuneContainerRunner,
+            ProbeResult,
         )
+        from tests._shared.fake_clock import FakeClock
 
-        def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
-            return _FakeHttpResponse(status=200)
+        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        calls: list[str] = []
 
-        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is True
+        async def _fake_probe(
+            self: FineTuneContainerRunner, *, image: str, gpu_enabled: bool
+        ) -> ProbeResult:
+            calls.append(image)
+            return ProbeResult(ok=True, detail="ok")
 
-    def test_returns_false_on_5xx_response(
+        monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
+        clock = FakeClock()
+
+        first = await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
+        )
+        clock.advance(10.0)
+        second = await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
+        )
+        assert first == second
+        assert calls == ["example.test/fine-tune:1"]
+
+    async def test_expired_ttl_reprobes(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A 503 Service Unavailable response stays at ``False``."""
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
+        from synthorg.api.controllers.memory import _preflight
+        from synthorg.memory.embedding.fine_tune_docker_runner import (
+            FineTuneContainerRunner,
+            ProbeResult,
         )
+        from tests._shared.fake_clock import FakeClock
 
-        def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
-            return _FakeHttpResponse(status=503)
+        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        calls: list[str] = []
 
-        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
+        async def _fake_probe(
+            self: FineTuneContainerRunner, *, image: str, gpu_enabled: bool
+        ) -> ProbeResult:
+            calls.append(image)
+            return ProbeResult(ok=True, detail="ok")
 
-    def test_returns_false_on_urlerror(
+        monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
+        clock = FakeClock()
+
+        await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
+        )
+        clock.advance(120.0)
+        await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
+        )
+        assert len(calls) == 2
+
+    async def test_gpu_flag_is_part_of_the_key(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Network errors are swallowed; the probe returns ``False``."""
-        import urllib.error
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
+        from synthorg.api.controllers.memory import _preflight
+        from synthorg.memory.embedding.fine_tune_docker_runner import (
+            FineTuneContainerRunner,
+            ProbeResult,
         )
+        from tests._shared.fake_clock import FakeClock
 
-        def raise_url_error(*_args: object, **_kwargs: object) -> object:
-            msg = "connection refused"
-            raise urllib.error.URLError(msg)
+        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        calls: list[bool] = []
 
-        monkeypatch.setattr(urllib.request, "urlopen", raise_url_error)
-        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
+        async def _fake_probe(
+            self: FineTuneContainerRunner, *, image: str, gpu_enabled: bool
+        ) -> ProbeResult:
+            calls.append(gpu_enabled)
+            return ProbeResult(ok=True, detail="ok")
 
-    def test_returns_false_on_timeout(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """A request that times out returns ``False`` rather than raising."""
-        import urllib.request
+        monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
+        clock = FakeClock()
 
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
+        await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
-
-        def raise_timeout(*_args: object, **_kwargs: object) -> object:
-            msg = "probe timed out"
-            raise TimeoutError(msg)
-
-        monkeypatch.setattr(urllib.request, "urlopen", raise_timeout)
-        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
-
-    def test_returns_false_on_unexpected_exception(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Any other exception lands in the catch-all, returning ``False``."""
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
+        await _preflight.probe_fine_tune_image(
+            image="example.test/fine-tune:1", gpu_enabled=True, clock=clock
         )
-
-        def raise_runtime(*_args: object, **_kwargs: object) -> object:
-            msg = "unexpected probe failure"
-            raise RuntimeError(msg)
-
-        monkeypatch.setattr(urllib.request, "urlopen", raise_runtime)
-        assert _check_fine_tune_sidecar_health("fine-tune", 15002) is False
-
-    def test_uses_injected_health_port(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """The probe URL honours the injected host + port.
-
-        Regression: the probe previously hardcoded port 15002, so an
-        operator override made it a false negative on every Docker
-        install that rebinds the sidecar health port. The host/port are
-        now resolved at the controller boundary and injected here.
-        """
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
-        )
-
-        captured: dict[str, str] = {}
-
-        def fake_urlopen(
-            req: urllib.request.Request,
-            *_args: object,
-            **_kwargs: object,
-        ) -> _FakeHttpResponse:
-            captured["url"] = req.full_url
-            return _FakeHttpResponse(status=200)
-
-        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-        assert _check_fine_tune_sidecar_health("fine-tune", 23456) is True
-        assert captured["url"] == "http://fine-tune:23456/healthz"
-
-    def test_returns_false_on_unresolved_health_port(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """A ``None`` port (unset / malformed at the boundary) skips the probe.
-
-        The sidecar itself would have refused to bind a malformed port, so
-        a successful probe is impossible; the boundary resolves it to
-        ``None`` and the helper returns ``False`` without attempting a
-        request.
-        """
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
-        )
-
-        def fail_urlopen(*_args: object, **_kwargs: object) -> object:
-            msg = "urlopen must not be called with an unresolved port"
-            raise AssertionError(msg)
-
-        monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
-        assert _check_fine_tune_sidecar_health("fine-tune", None) is False
-
-    def test_reraises_memory_error(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``MemoryError`` is re-raised, never swallowed by the catch-all.
-
-        The helper has an explicit ``except MemoryError, RecursionError:
-        raise`` clause before the broad ``except Exception``; a system
-        error must propagate so the process is not left limping.
-        """
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
-        )
-
-        def raise_memory_error(*_args: object, **_kwargs: object) -> object:
-            raise MemoryError
-
-        monkeypatch.setattr(urllib.request, "urlopen", raise_memory_error)
-        with pytest.raises(MemoryError):
-            _check_fine_tune_sidecar_health("fine-tune", 15002)
-
-    def test_reraises_recursion_error(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``RecursionError`` propagates rather than being swallowed."""
-        import urllib.request
-
-        from synthorg.api.controllers.memory._preflight import (
-            _check_fine_tune_sidecar_health,
-        )
-
-        def raise_recursion_error(*_args: object, **_kwargs: object) -> object:
-            raise RecursionError
-
-        monkeypatch.setattr(urllib.request, "urlopen", raise_recursion_error)
-        with pytest.raises(RecursionError):
-            _check_fine_tune_sidecar_health("fine-tune", 15002)
+        assert calls == [False, True]
 
 
 @pytest.mark.unit

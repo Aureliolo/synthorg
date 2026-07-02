@@ -86,17 +86,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER 10003
 
-# No network exposure -- fine-tuning is a batch job.
-# Config is mounted at /etc/fine-tune/config.json by the orchestrator.
-# Source data is mounted at /data (read-only).
-# Checkpoints written to /checkpoints (read-write).
-
-# The runner starts an HTTP health server on the port resolved by
-# ``synthorg.memory.embedding.fine_tune_runner._resolve_health_port``
-# (env ``SYNTHORG_FINE_TUNE_HEALTH_PORT``, default ``15002``). The
-# probe reads the same env var so an operator override stays in sync
-# with the actual listener.
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-    CMD ["/app/.venv/bin/python", "-c", "import os,urllib.request,sys\np=int(os.environ.get('SYNTHORG_FINE_TUNE_HEALTH_PORT','15002'))\nif not 1<=p<=65535: raise ValueError('SYNTHORG_FINE_TUNE_HEALTH_PORT out of range [1, 65535]')\nr=urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz',timeout=2)\nsys.exit(0 if r.status==200 else 1)"]
+# One-shot batch container spawned per torch-bound stage by the backend
+# via the Docker API. No ports, no HEALTHCHECK: the launcher supervises
+# via exit code + structured stdout markers.
+# Stage config arrives as inline JSON in SYNTHORG_FINE_TUNE_STAGE_CONFIG;
+# the shared data volume is mounted read-write at /data (training data
+# in, checkpoints out under /data/fine-tune). SYNTHORG_FINE_TUNE_PROBE=1
+# runs the dependency/GPU readiness probe instead of a stage.
 
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "synthorg.memory.embedding.fine_tune_runner"]

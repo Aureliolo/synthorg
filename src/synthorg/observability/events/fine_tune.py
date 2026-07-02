@@ -16,7 +16,3 @@ FINE_TUNE_CONTAINER_TIMED_OUT: Final[str] = "fine_tune.container.timed_out"
 FINE_TUNE_PROBE_STARTED: Final[str] = "fine_tune.probe.started"
 FINE_TUNE_PROBE_OK: Final[str] = "fine_tune.probe.ok"
 FINE_TUNE_PROBE_FAILED: Final[str] = "fine_tune.probe.failed"
-
-FINE_TUNE_HEALTH_SERVER_STARTED: Final[str] = "fine_tune.health_server.started"
-FINE_TUNE_HEALTH_SERVER_STOPPED: Final[str] = "fine_tune.health_server.stopped"
-FINE_TUNE_HEALTH_SERVER_BIND_FAILED: Final[str] = "fine_tune.health_server.bind_failed"
