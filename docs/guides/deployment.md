@@ -104,7 +104,6 @@ These environment variables are read by the code but were previously undocumente
 | `SYNTHORG_TRACE_SAMPLING_RATIO` | `1.0` | Trace sampling ratio (0.0 = none, 1.0 = every request). |
 | `SYNTHORG_CONFIG_PATH` | `company.yaml` | Path to the company configuration YAML file. Relative paths resolve against the working directory. |
 | `SYNTHORG_WORKERS` | from config | Number of concurrent workers for the distributed task queue. Only consulted when the worker process is launched via `python -m synthorg.workers`. |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | HTTP health check port exposed by the embedding fine-tune sidecar container. Adjust only if the default collides with another service. |
 
 ### Settings-registry env vars
 
@@ -258,28 +257,17 @@ Fine-tuning also requires the sandbox to be enabled (`sandbox=true`). The backen
 
 === "Docker Compose (manual / BYO)"
 
-    In a hand-managed `compose.yml`, wire the fine-tune image into the backend's environment and declare the service. The canonical snippet lives in the commented-out `fine-tune:` block at the bottom of [`docker/compose.yml`](https://github.com/Aureliolo/synthorg/blob/main/docker/compose.yml); uncomment and pick a variant:
+    In a hand-managed `compose.yml`, wire the fine-tune image into the backend's environment. There is no standing fine-tune service: the backend spawns an ephemeral one-shot container per torch-bound stage (and an on-demand readiness probe) from this image and removes it on exit.
 
     ```yaml
     services:
       backend:
         environment:
-          # Backend reads this on demand to spawn fine-tune containers via
-          # the Docker API. Point at a digest-pinned ref for reproducibility.
+          # Backend reads this on demand to spawn ephemeral fine-tune
+          # stage containers via the Docker API. Point at a digest-pinned
+          # ref for reproducibility.
           SYNTHORG_FINE_TUNE_IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-gpu:${SYNTHORG_IMAGE_TAG:-latest}
-      fine-tune:
-        image: ghcr.io/aureliolo/synthorg-fine-tune-gpu:${SYNTHORG_IMAGE_TAG:-latest}
-        # For CPU-only hosts, swap to: ghcr.io/aureliolo/synthorg-fine-tune-cpu
-        volumes:
-          - synthorg-data:/data:ro
-        depends_on:
-          backend:
-            condition: service_healthy
-        user: "10003:10003"
-        group_add: ["65532"]
-        security_opt: [no-new-privileges:true]
-        cap_drop: [ALL]
-        read_only: true
+          # For CPU-only hosts, swap to: ghcr.io/aureliolo/synthorg-fine-tune-cpu
     ```
 
     Image signatures can be verified out-of-band with `cosign verify` and SLSA provenance with `gh attestation verify oci://...`; the CLI-generated compose pins digests automatically. See [Image Verification](#image-verification) below.

@@ -212,19 +212,11 @@ func TestGenerateWithFineTuningGPU(t *testing.T) {
 	}
 	yaml := string(out)
 
-	// The backend's fine-tune preflight probes http://fine-tune:15002,
-	// so the compose service name must be exactly "fine-tune".
-	assertContains(t, yaml, "\n  fine-tune:\n")
-	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-fine-tune-gpu:latest")
-	// GPU variant reserves an NVIDIA device.
-	assertContains(t, yaml, "driver: nvidia")
-	// Source data stays read-only on the sidecar.
-	assertContains(t, yaml, "synthorg-data:/data:ro")
-	// The env pin for backend-spawned stage containers still renders.
+	// No standing service: the backend spawns ephemeral stage containers
+	// on demand from the pinned image in this env var.
 	assertContains(t, yaml, `SYNTHORG_FINE_TUNE_IMAGE: "ghcr.io/aureliolo/synthorg-fine-tune-gpu:latest"`)
-	// torch-inductor JIT needs an exec-capable /tmp.
-	if strings.Contains(yaml, "/tmp:noexec,nosuid,nodev,size=1g") {
-		t.Error("fine-tune /tmp must allow exec (torch-inductor JIT kernels)")
+	if strings.Contains(yaml, "\n  fine-tune:\n") {
+		t.Error("fine-tune must not render as a compose service (ephemeral spawn only)")
 	}
 }
 
@@ -251,15 +243,13 @@ func TestGenerateWithFineTuningCPU(t *testing.T) {
 	}
 	yaml := string(out)
 
-	assertContains(t, yaml, "\n  fine-tune:\n")
-	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-fine-tune-cpu:latest")
-	// CPU variant must not reserve a GPU.
-	if strings.Contains(yaml, "driver: nvidia") {
-		t.Error("cpu fine-tune variant must not reserve an nvidia device")
-	}
+	// The cpu-variant image reaches the backend env pin for ephemeral
+	// stage containers.
+	assertContains(t, yaml, `SYNTHORG_FINE_TUNE_IMAGE: "ghcr.io/aureliolo/synthorg-fine-tune-cpu:latest"`)
+
 }
 
-func TestGenerateWithoutFineTuningOmitsService(t *testing.T) {
+func TestGenerateWithoutFineTuningOmitsImageEnv(t *testing.T) {
 	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
@@ -278,8 +268,8 @@ func TestGenerateWithoutFineTuningOmitsService(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if strings.Contains(string(out), "\n  fine-tune:\n") {
-		t.Error("fine-tune service must not render when FineTuning is disabled")
+	if strings.Contains(string(out), "SYNTHORG_FINE_TUNE_IMAGE") {
+		t.Error("SYNTHORG_FINE_TUNE_IMAGE must not render when FineTuning is disabled")
 	}
 }
 

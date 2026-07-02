@@ -54,8 +54,6 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_UPDATE_HEALTH_TIMEOUT` | CLI | Timeout for the Docker API calls the `update` flow makes to inspect the current install (duration, default `15s`) |
 | `SYNTHORG_COMPLETION_PROBE_TIMEOUT` | CLI | Timeout for the one-shot shell-profile probe run by `synthorg completion install` (duration, default `5s`) |
 | `SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT` | CLI | Per-port TCP dial timeout in the `synthorg doctor` port-reachability check (duration, default `1s`) |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | container | Fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. Listed here for operator visibility. |
-| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | container | Hostname the main container probes for the fine-tune sidecar health endpoint (default `fine-tune`, the compose service name). Read directly by the fine-tune Python runner; constrained to a hostname / IP literal shape. Override when the sidecar service is renamed or externally hosted. |
 
 ## Hardcoded network literals (audit rationale)
 

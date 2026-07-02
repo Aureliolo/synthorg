@@ -238,58 +238,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-{{- if .FineTuning}}
-
-  # Embedding fine-tune sidecar. Serves /healthz on 15002 (probed by
-  # the backend's fine-tune preflight via the service name) and idles
-  # until a stage job is dispatched. Runs as UID 10003 -- a dedicated
-  # non-root user isolated from sandbox (10001), sidecar (10002), and
-  # backend (65532); group_add grants read access to group-readable
-  # files the backend (65532) writes on the shared volume.
-  fine-tune:
-    image: {{digestPin (printf "fine-tune-%s" .FineTuningVariant) (printf "%s/%sfine-tune-%s" .RegistryHost .ImageRepoPrefix .FineTuningVariant) .ImageTag}}
-    volumes:
-      - synthorg-data:/data:ro
-    depends_on:
-      data-init:
-        condition: service_completed_successfully
-      backend:
-        condition: service_healthy
-    group_add:
-      - "65532"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      # read_only rootfs + /data mounted :ro leaves nowhere for the
-      # stdlib tempfile / library scratch writes the training stages
-      # make. No noexec: torch-inductor JIT caches and dlopens compiled
-      # kernels from /tmp. mode=1777 because a bare tmpfs defaults to
-      # 0755 root-owned, which the non-root training user cannot write.
-      - /tmp:nosuid,nodev,size=1g,mode=1777
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: "4.0"
-          pids: 512
-{{- if eq .FineTuningVariant "gpu"}}
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-{{- end}}
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    # Healthcheck defined in Dockerfile -- do not override here.
-{{- end}}
 {{- if distributedEnabled}}
 
   # DHI NATS: distroless, runs as nonroot (65532). No in-container

@@ -220,18 +220,14 @@ services:
   # `docker ps` added a container for zero dependency value -- nothing
   # in compose ever consumed the sidecar's `service_healthy` state.
 
-  # Fine-tuning sidecar (~4 GB GPU variant / ~1.7 GB CPU-only).
-  #
-  # Enable by applying one of the overlays:
-  #   docker compose -f docker/compose.yml \
-  #     -f docker/compose.fine-tuning-gpu.yml up  # NVIDIA GPU + driver required
-  #   docker compose -f docker/compose.yml \
-  #     -f docker/compose.fine-tuning-cpu.yml up  # slower, runs anywhere
-  #
-  # Each overlay defines the full fine-tune service with its image
-  # reference, security, and resource limits. The image tags are
-  # digest-pinned by Renovate (see the 'renovate:' comments in the
-  # overlay files) so operators stay on a known-verified image.
+  # Fine-tuning (~4 GB GPU image / ~1.7 GB CPU-only) has no standing
+  # service: the backend spawns an ephemeral one-shot container per
+  # torch-bound pipeline stage via the Docker API and removes it on
+  # exit. Enable by setting the image on the backend's environment:
+  #   SYNTHORG_FINE_TUNE_IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-gpu:<tag>
+  # (or synthorg-fine-tune-cpu for hosts without an NVIDIA GPU). The
+  # CLI-generated compose.yml writes a sigstore-verified digest-pinned
+  # reference into this env var automatically when fine_tuning=true.
 
 networks:
   default:

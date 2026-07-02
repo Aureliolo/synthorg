@@ -50,9 +50,7 @@ into three categories:
 |---|---|---|
 | `SYNTHORG_SANDBOX_IMAGE` | `ghcr.io/aureliolo/synthorg-sandbox:v<release>` | Sandbox container image (version-pinned to the running release); CLI sets the digest-pinned variant after cosign verification. |
 | `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:v<release>` | Sidecar (network-proxy) container image (version-pinned to the running release). |
-| `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
-| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
-| `SYNTHORG_FINE_TUNE_HEALTH_HOST` | `fine-tune` | Hostname the main container probes for the fine-tune sidecar health endpoint (defaults to the compose service name). Override when the sidecar is renamed or externally hosted. |
+| `SYNTHORG_FINE_TUNE_IMAGE` | unset | Image for ephemeral fine-tune stage containers (CLI publishes `-gpu` and `-cpu` variants); env seed for the `memory.fine_tune_image` setting. Unset means fine-tune runs execute in-process. |
 
 ## Telemetry (restart required)
 
