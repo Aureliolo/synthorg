@@ -31,6 +31,7 @@ class TestInProcessStageExecutor:
             await InProcessStageExecutor().run_stage(
                 stage=FineTuneStage.TRAINING,
                 config=config,
+                run_id="run-1",
                 progress_callback=None,
                 cancellation=None,
             )

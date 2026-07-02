@@ -68,6 +68,17 @@ _PROGRESS_THROTTLE_SEC: Final[float] = 1.0
 _CANCEL_TIMEOUT_SEC: Final[float] = 30.0
 
 
+async def _in_process_stage_executor(
+    _execution: FineTuneExecutionConfig | None,
+) -> InProcessStageExecutor:
+    """Default factory: always execute torch-bound stages in-process.
+
+    Returns:
+        Result of type ``InProcessStageExecutor``.
+    """
+    return InProcessStageExecutor()
+
+
 def _validate_resumable(run: FineTuneRun | None, run_id: str) -> FineTuneRun:
     """Return *run* when it exists and is resumable, else raise.
 
@@ -135,7 +146,7 @@ class FineTuneOrchestrator:
         self._stage_executor_factory: StageExecutorFactory = (
             stage_executor_factory
             if stage_executor_factory is not None
-            else lambda _execution: InProcessStageExecutor()
+            else _in_process_stage_executor
         )
         self._resolve_default_execution = resolve_default_execution
         self._clock: Clock = clock if clock is not None else SystemClock()

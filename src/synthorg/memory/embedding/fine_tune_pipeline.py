@@ -54,7 +54,10 @@ logger = get_logger(__name__)
 type EnterStageFn = Callable[[FineTuneRun, FineTuneStage], Awaitable[FineTuneRun]]
 type CompleteStageFn = Callable[[FineTuneRun, str], Awaitable[FineTuneRun]]
 type ProgressCbFactory = Callable[[FineTuneRun], ProgressCallback]
-type StageExecutorFactory = Callable[[FineTuneExecutionConfig | None], StageExecutor]
+# Async so the wiring can resolve hot settings (data volume) per run.
+type StageExecutorFactory = Callable[
+    [FineTuneExecutionConfig | None], Awaitable[StageExecutor]
+]
 
 
 async def _read_eval_metrics(out_dir: str) -> EvalMetrics:
@@ -101,7 +104,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     # Torch-bound stages (2-4) go through the executor; stage 1 holds
     # DB/LLM handles and stage 5 touches settings + persistence, so both
     # always run in-process regardless of the execution backend.
-    executor = make_stage_executor(cfg.execution)
+    executor = await make_stage_executor(cfg.execution)
 
     # Stage 1: Generate training data (directory scan or real-trajectory
     # harvest, selected by the run's data_source).
@@ -134,6 +137,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
             config=mining_stage_config(
                 cfg, out_dir=out_dir, train_path=str(train_path)
             ),
+            run_id=str(run.id),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
@@ -147,6 +151,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
             config=training_stage_config(
                 cfg, out_dir=out_dir, triples_path=str(triples_path)
             ),
+            run_id=str(run.id),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
@@ -167,6 +172,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         await executor.run_stage(
             stage=FineTuneStage.EVALUATING,
             config=eval_config,
+            run_id=str(run.id),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )
@@ -176,6 +182,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         await executor.run_stage(
             stage=FineTuneStage.EVALUATING,
             config=eval_config,
+            run_id=str(run.id),
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )

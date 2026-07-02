@@ -176,7 +176,7 @@ class TestExecutionResolution:
 
         seen_executions: list[FineTuneExecutionConfig | None] = []
 
-        def _factory(
+        async def _factory(
             execution: FineTuneExecutionConfig | None,
         ) -> InProcessStageExecutor:
             seen_executions.append(execution)
