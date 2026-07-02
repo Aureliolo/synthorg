@@ -13,10 +13,10 @@ from types import SimpleNamespace
 import pytest
 from litestar.datastructures import State
 
-from synthorg.api.controllers.memory import _preflight
+from synthorg.api.controllers.memory import _preflight_probe
 from synthorg.api.controllers.memory import fine_tune as fine_tune_module
-from synthorg.api.controllers.memory._preflight import (
-    _check_disk_space,
+from synthorg.api.controllers.memory._preflight import _check_disk_space
+from synthorg.api.controllers.memory._preflight_probe import (
     resolve_probe_gpu_default,
     resolve_probe_target,
 )
@@ -24,12 +24,12 @@ from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.memory.embedding.fine_tune_docker_runner import (
     FineTuneContainerRunner,
-    ProbeResult,
 )
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneExecutionConfig,
     FineTuneRequest,
 )
+from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
@@ -111,7 +111,7 @@ class TestFailedProbeCaching:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A broken daemon is probed once per TTL, not once per poll."""
-        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        monkeypatch.setattr(_preflight_probe, "_probe_cache", {})
         calls: list[str] = []
 
         async def _fake_probe(
@@ -123,11 +123,11 @@ class TestFailedProbeCaching:
         monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
         clock = FakeClock()
 
-        first = await _preflight.probe_fine_tune_image(
+        first = await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         clock.advance(10.0)
-        second = await _preflight.probe_fine_tune_image(
+        second = await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         assert first.ok is False

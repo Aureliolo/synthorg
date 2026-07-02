@@ -8,10 +8,12 @@ from litestar.datastructures import State
 
 from synthorg.api.controllers.memory._preflight import (
     _PREFLIGHT_HARD_TIMEOUT_MARGIN_S,
-    _PROBE_REQUEST_CEILING_S,
     _recommend_batch_size,
     _resolve_fine_tune_thresholds,
     _run_preflight_checks,
+)
+from synthorg.api.controllers.memory._preflight_probe import (
+    _PROBE_REQUEST_CEILING_S,
     probe_fine_tune_image,
     resolve_probe_target,
 )

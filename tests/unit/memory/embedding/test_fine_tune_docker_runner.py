@@ -15,9 +15,9 @@ from synthorg.memory.embedding.fine_tune_docker_runner import (
     PROBE_ENV,
     STAGE_CONFIG_ENV,
     FineTuneContainerRunner,
-    parse_probe_line,
 )
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
+from synthorg.memory.embedding.fine_tune_probe_result import parse_probe_line
 from synthorg.memory.embedding.fine_tune_stage_executor import (
     DockerStageExecutor,
     StageExecutor,

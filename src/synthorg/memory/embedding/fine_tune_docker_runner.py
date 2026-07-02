@@ -22,13 +22,11 @@ marked FAILED and stay resumable) and stop-then-force-remove teardown.
 
 import asyncio
 import json
-import re
-from typing import Final, Self, cast
+from typing import Final, cast
 
 import aiodocker
 import aiodocker.containers
 from aiodocker.types import JSONObject
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -43,6 +41,10 @@ from synthorg.memory.embedding.fine_tune_container_config import (
     cache_env,
 )
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
+from synthorg.memory.embedding.fine_tune_probe_result import (
+    ProbeResult,
+    parse_probe_output,
+)
 from synthorg.memory.errors import FineTuneCancelledError, FineTuneStageExecutionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.fine_tune import (
@@ -54,7 +56,6 @@ from synthorg.observability.events.fine_tune import (
     FINE_TUNE_DOCKER_CONNECT_RETRIED,
     FINE_TUNE_MARKER_DISCARDED,
     FINE_TUNE_PROBE_FAILED,
-    FINE_TUNE_PROBE_OK,
     FINE_TUNE_PROBE_STARTED,
 )
 
@@ -65,9 +66,6 @@ PROBE_ENV: Final[str] = "SYNTHORG_FINE_TUNE_PROBE"
 
 _MARKER_PROGRESS: Final[str] = "PROGRESS:"
 _MARKER_ERROR: Final[str] = "ERROR:"
-_PROBE_LINE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^PROBE_(?:OK|FAIL)\b.*$", re.MULTILINE
-)
 
 # Poll cadence for the cancellation watcher between exit checks.
 _EXIT_POLL_SECONDS: Final[float] = 0.5
@@ -87,69 +85,6 @@ LABEL_COMPONENT: Final[str] = "synthorg.component"
 COMPONENT_FINE_TUNE: Final[str] = "fine-tune"
 LABEL_RUN_ID: Final[str] = "synthorg.fine_tune.run_id"
 LABEL_STAGE: Final[str] = "synthorg.fine_tune.stage"
-
-
-class ProbeResult(BaseModel):
-    """Outcome of an ephemeral fine-tune image probe.
-
-    Attributes:
-        ok: Whether the image booted and its dependencies imported.
-        gpu: GPU device name the container saw, or ``None``.
-        vram_gb: Total VRAM in GiB, or ``None`` when no GPU.
-        detail: Human-readable outcome line for the preflight report.
-        gpu_error: Failure detail when the dependencies imported but
-            the GPU inspection itself raised; distinguishes "detection
-            broke" from a genuine CPU-only host.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    ok: bool
-    gpu: str | None = None
-    vram_gb: float | None = Field(default=None, ge=0)
-    detail: str
-    gpu_error: str | None = None
-
-    @model_validator(mode="after")
-    def _failed_probe_carries_no_hardware(self) -> Self:
-        """A failed probe cannot report GPU readings.
-
-        Returns:
-            The validated instance.
-
-        Raises:
-            ValueError: When ``ok=False`` carries gpu/vram values.
-        """
-        if not self.ok and (self.gpu is not None or self.vram_gb is not None):
-            msg = "a failed probe cannot carry gpu/vram readings"
-            raise ValueError(msg)
-        return self
-
-
-def parse_probe_line(line: str) -> ProbeResult:
-    """Parse the runner's ``PROBE_OK`` / ``PROBE_FAIL`` output line.
-
-    Returns:
-        Result of type ``ProbeResult``.
-    """
-    text = line.strip()
-    if text.startswith("PROBE_OK"):
-        gpu: str | None = None
-        vram: float | None = None
-        rest = text.removeprefix("PROBE_OK").strip()
-        if " vram_gb=" in rest:
-            gpu_part, _, vram_part = rest.rpartition(" vram_gb=")
-            gpu_value = gpu_part.removeprefix("gpu=").strip()
-            gpu = None if gpu_value in {"", "none"} else gpu_value
-            try:
-                vram = float(vram_part)
-            except ValueError:
-                vram = None
-            if gpu is None:
-                vram = None
-        return ProbeResult(ok=True, gpu=gpu, vram_gb=vram, detail=text)
-    reason = text.removeprefix("PROBE_FAIL").strip() or "probe failed"
-    return ProbeResult(ok=False, detail=reason)
 
 
 class FineTuneContainerRunner:
@@ -396,31 +331,7 @@ class FineTuneContainerRunner:
             return ProbeResult(ok=False, detail=detail)
         finally:
             await self._remove(container, run_id="probe", stage="probe")
-        return self._parse_probe_output(output, image=image)
-
-    @staticmethod
-    def _parse_probe_output(output: str, *, image: str) -> ProbeResult:
-        """Extract and log the probe verdict from the container output.
-
-        Returns:
-            Result of type ``ProbeResult``.
-        """
-        match = _PROBE_LINE_PATTERN.search(output)
-        if match is None:
-            detail = "probe produced no PROBE_OK/PROBE_FAIL line"
-            logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=detail)
-            return ProbeResult(ok=False, detail=detail)
-        result = parse_probe_line(match.group(0))
-        if result.ok:
-            logger.info(
-                FINE_TUNE_PROBE_OK,
-                image=image,
-                gpu=result.gpu,
-                vram_gb=result.vram_gb,
-            )
-        else:
-            logger.warning(FINE_TUNE_PROBE_FAILED, image=image, detail=result.detail)
-        return result
+        return parse_probe_output(output, image=image)
 
     # -- Internals ------------------------------------------------------
 

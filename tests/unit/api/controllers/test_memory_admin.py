@@ -224,7 +224,7 @@ class TestProbeDrivenChecks:
 
     def test_dependencies_pass_containerised(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_dependencies
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_dependencies(
             ProbeResult(ok=True, detail="PROBE_OK gpu=none vram_gb=0"),
@@ -235,7 +235,7 @@ class TestProbeDrivenChecks:
 
     def test_dependencies_fail_carries_probe_detail(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_dependencies
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_dependencies(
             ProbeResult(ok=False, detail="torch import failed"),
@@ -246,7 +246,7 @@ class TestProbeDrivenChecks:
 
     def test_dependencies_in_process_wording(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_dependencies
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_dependencies(
             ProbeResult(ok=True, detail="ML dependencies installed"),
@@ -257,7 +257,7 @@ class TestProbeDrivenChecks:
 
     def test_gpu_pass_with_vram_detail(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_gpu
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_gpu(
             ProbeResult(ok=True, gpu="Example GPU 90", vram_gb=24.0, detail="ok")
@@ -268,7 +268,7 @@ class TestProbeDrivenChecks:
 
     def test_gpu_warn_when_cpu_only(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_gpu
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_gpu(ProbeResult(ok=True, detail="ok"))
         assert check.status == "warn"
@@ -276,7 +276,7 @@ class TestProbeDrivenChecks:
 
     def test_gpu_warn_when_probe_failed(self) -> None:
         from synthorg.api.controllers.memory._preflight import _check_gpu
-        from synthorg.memory.embedding.fine_tune_docker_runner import ProbeResult
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 
         check = _check_gpu(ProbeResult(ok=False, detail="no image"))
         assert check.status == "warn"
@@ -284,9 +284,9 @@ class TestProbeDrivenChecks:
 
     def test_local_probe_reports_missing_deps(self) -> None:
         """Without the torch extras the local probe is honestly not ok."""
-        from synthorg.api.controllers.memory._preflight import _local_probe
+        from synthorg.api.controllers.memory._preflight_probe import local_probe
 
-        probe = _local_probe()
+        probe = local_probe()
         assert probe.ok is False
         assert probe.gpu is None
 
@@ -299,14 +299,14 @@ class TestProbeCache:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.controllers.memory import _preflight
+        from synthorg.api.controllers.memory import _preflight_probe
         from synthorg.memory.embedding.fine_tune_docker_runner import (
             FineTuneContainerRunner,
-            ProbeResult,
         )
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
         from tests._shared.fake_clock import FakeClock
 
-        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        monkeypatch.setattr(_preflight_probe, "_probe_cache", {})
         calls: list[str] = []
 
         async def _fake_probe(
@@ -318,11 +318,11 @@ class TestProbeCache:
         monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
         clock = FakeClock()
 
-        first = await _preflight.probe_fine_tune_image(
+        first = await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         clock.advance(10.0)
-        second = await _preflight.probe_fine_tune_image(
+        second = await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         assert first == second
@@ -332,14 +332,14 @@ class TestProbeCache:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.controllers.memory import _preflight
+        from synthorg.api.controllers.memory import _preflight_probe
         from synthorg.memory.embedding.fine_tune_docker_runner import (
             FineTuneContainerRunner,
-            ProbeResult,
         )
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
         from tests._shared.fake_clock import FakeClock
 
-        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        monkeypatch.setattr(_preflight_probe, "_probe_cache", {})
         calls: list[str] = []
 
         async def _fake_probe(
@@ -351,11 +351,11 @@ class TestProbeCache:
         monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
         clock = FakeClock()
 
-        await _preflight.probe_fine_tune_image(
+        await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         clock.advance(120.0)
-        await _preflight.probe_fine_tune_image(
+        await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
         assert len(calls) == 2
@@ -364,14 +364,14 @@ class TestProbeCache:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.controllers.memory import _preflight
+        from synthorg.api.controllers.memory import _preflight_probe
         from synthorg.memory.embedding.fine_tune_docker_runner import (
             FineTuneContainerRunner,
-            ProbeResult,
         )
+        from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
         from tests._shared.fake_clock import FakeClock
 
-        monkeypatch.setattr(_preflight, "_probe_cache", {})
+        monkeypatch.setattr(_preflight_probe, "_probe_cache", {})
         calls: list[bool] = []
 
         async def _fake_probe(
@@ -383,10 +383,10 @@ class TestProbeCache:
         monkeypatch.setattr(FineTuneContainerRunner, "probe", _fake_probe)
         clock = FakeClock()
 
-        await _preflight.probe_fine_tune_image(
+        await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=False, clock=clock
         )
-        await _preflight.probe_fine_tune_image(
+        await _preflight_probe.probe_fine_tune_image(
             image="example.test/fine-tune:1", gpu_enabled=True, clock=clock
         )
         assert calls == [False, True]
