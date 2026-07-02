@@ -49,6 +49,7 @@ services:
       SYNTHORG_MEMORY_BACKEND: "mem0"
       SYNTHORG_BUS_BACKEND: "internal"
       SYNTHORG_LOG_DIR: "/data/logs"
+      SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY_ENABLED: "false"
       SYNTHORG_LOG_LEVEL: "info"

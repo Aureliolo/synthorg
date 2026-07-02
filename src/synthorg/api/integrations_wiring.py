@@ -123,6 +123,34 @@ def _wire_mcp_installations_repo(
     return None
 
 
+def _resolve_tunnel_state_dir() -> Path | None:
+    """Resolve ``integrations.tunnel_state_dir`` (env-seeded, boot-only).
+
+    Returns:
+        The state-dir path, or ``None`` when unset (adapters fall back
+        to ``~/.synthorg``).
+
+    Raises:
+        ValueError: When the value carries a ``..`` traversal component.
+    """
+    from pathlib import PurePath  # noqa: PLC0415
+
+    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+        resolve_init_value,
+    )
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    raw = str(
+        resolve_init_value(SettingNamespace.INTEGRATIONS, "tunnel_state_dir").value
+    )
+    if ".." in PurePath(raw).parts:
+        msg = (
+            f"SYNTHORG_TUNNEL_STATE_DIR contains '..' path traversal component: {raw!r}"
+        )
+        raise ValueError(msg)
+    return Path(raw) if raw else None
+
+
 def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
     """Wire the multi-provider tunnel manager (no persistence dep).
 
@@ -131,6 +159,10 @@ def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
     to "unavailable" when this returns ``None``. The tunneled port is
     the API's own resolved serving port (``api.server_port``), so
     every provider exposes the address the server actually listens on.
+    The state dir (``integrations.tunnel_state_dir``, env
+    ``SYNTHORG_TUNNEL_STATE_DIR``) roots downloaded binaries and the
+    devtunnel login home; a ``..`` component is rejected so the env
+    var cannot traverse out of its mount.
 
     Returns:
         The ``TunnelManager`` value when present, ``None`` otherwise.
@@ -155,6 +187,7 @@ def _wire_tunnel_provider(effective_config: RootConfig) -> TunnelManager | None:
         provider = build_tunnel_manager(
             effective_config.integrations.tunnel,
             port=port,
+            state_dir=_resolve_tunnel_state_dir(),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

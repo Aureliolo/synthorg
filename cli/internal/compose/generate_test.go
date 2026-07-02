@@ -98,6 +98,11 @@ func TestGenerateDefault(t *testing.T) {
 	// is the bug this block guards against regressing.
 	assertContains(t, yaml, "http://127.0.0.1:8080/healthz")
 
+	// Unconditional: tunnel binaries and the devtunnel login home live
+	// on the data volume so they survive container recreation (the
+	// backend rootfs is read-only and has no HOME).
+	assertContains(t, yaml, `SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"`)
+
 	compareGolden(t, "compose_default.yml", out)
 }
 

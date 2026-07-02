@@ -126,6 +126,7 @@ services:
       SYNTHORG_NATS_URL: {{yamlStr .NATSURL}}
 {{- end}}
       SYNTHORG_LOG_DIR: "/data/logs"
+      SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY_ENABLED: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}

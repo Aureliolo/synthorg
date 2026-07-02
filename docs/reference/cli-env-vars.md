@@ -27,6 +27,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_AUTO_RESTART` | CLI | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY_ENABLED` | CLI | Enable anonymous project telemetry (true / false) |
 | `SYNTHORG_FINE_TUNE_IMAGE` | CLI -> compose | Fine-tune container image ref read by the backend. The CLI writes the variant-specific verified image (`synthorg-fine-tune-gpu` or `synthorg-fine-tune-cpu`) into the generated `compose.yml`, chosen via `synthorg init` and persisted as `fine_tuning_variant` in `config.json`. The CLI does not read this var at runtime; manual operator overrides bypass CLI signature / provenance verification and are not supported. |
+| `SYNTHORG_TUNNEL_STATE_DIR` | CLI -> compose | Tunnel runtime state root read by the backend (downloaded provider binaries, the devtunnel CLI's confined login home). The generated `compose.yml` sets `/data/tunnel` unconditionally so tunnel state survives container recreation; the CLI does not read this var at runtime. |
 | `SYNTHORG_REGISTRY_HOST` | CLI | Override default container registry hostname (disables verification when set) |
 | `SYNTHORG_IMAGE_REPO_PREFIX` | CLI | Override default image repository prefix (disables verification when set) |
 | `SYNTHORG_DHI_REGISTRY` | CLI | Override Docker Hardened Images registry (disables verification when set) |
