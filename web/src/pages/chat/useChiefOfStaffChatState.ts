@@ -24,7 +24,11 @@ export interface ChiefOfStaffChatState {
   triggerSend: () => void
   /** Re-send the user message before the clicked error bubble's id. */
   retryLast: (beforeMsgId?: number) => void
-  /** Optional proposal/alert this conversation's next question scopes to. */
+  /**
+   * Optional proposal/alert the conversation is scoped to. Persists
+   * across turns (every question is scoped) until explicitly cleared
+   * via `setScope(null)` -- not a one-shot "next question only" scope.
+   */
   scope: ChatScopeValue | null
   setScope: (value: ChatScopeValue | null) => void
   scopeableProposals: readonly ProposalSummary[]
@@ -33,9 +37,7 @@ export interface ChiefOfStaffChatState {
 
 function toChatScope(value: ChatScopeValue | null): ChatScope | undefined {
   if (!value) return undefined
-  return value.kind === 'proposal'
-    ? { proposalId: value.id }
-    : { alertId: value.id }
+  return { kind: value.kind, id: value.id }
 }
 
 export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
@@ -54,9 +56,7 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   useEffect(() => {
     if (proposals.length === 0) void fetchProposals()
     if (alerts.length === 0) void fetchAlerts()
-    // Fetch once on mount; the guards prevent a refetch loop once populated.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [proposals.length, alerts.length, fetchProposals, fetchAlerts])
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 

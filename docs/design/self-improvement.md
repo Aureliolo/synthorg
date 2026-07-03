@@ -146,7 +146,7 @@ src/synthorg/meta/
     learning.py        -- EMA + Bayesian confidence adjusters
     inflection.py      -- OrgInflectionDetector (snapshot comparison)
     monitor.py         -- OrgInflectionMonitor (async background loop)
-    alerts.py          -- ProactiveAlertService + LoggingAlertSink
+    alerts.py          -- ProactiveAlertService + LoggingAlertSink + PersistentAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
     propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
     _intake_parking.py -- Conversational-intake parking + steering execution helpers
@@ -306,7 +306,9 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 ### Interactive endpoints
 
-- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
+- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header. An `alert_id` or `proposal_id` on the request scopes the answer: `alert_id` resolves through the durable alert repository and routes to `explain_alert`; `proposal_id` resolves the parked `ApprovalItem` and folds its title/description/metadata into the free-form answer (not `explain_proposal`, which needs a full `ImprovementProposal` that doesn't survive into the approval queue). Alert takes priority when both are set; a stale/unresolvable id or an unwired dependency falls back to the plain free-form path.
+
+- **`GET /meta/alerts`** (durable org-alert log): cursor-paginated, newest-first, with optional `severity`/`alert_type` filters. Backs the dashboard's alert list and the `alert_id` chat-scoping lookup above. Degrades to an empty page (not a 503) when the alert repository is unwired.
 
 - **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; the builder requires a registered LLM provider and a connected persistence backend (503 otherwise). The work pipeline is consulted only at approval-decision time, so its absence surfaces as a 503 from Flow 0 when an approved item is executed, not at endpoint build. When `routing_enabled` is on, a concern router (`routing.py`) classifies each turn to the best-fit role agent (CFO for budget, CEO for strategy, and so on, most senior holder of a tied role) so the turn answers in that agent's persona; an uncertain classification falls back to the generic Chief of Staff. A `routing_strategy` of `keyword` uses a static keyword map (operator-overridable via `routing_keyword_rules`) with no extra LLM call.
 
@@ -328,6 +330,8 @@ self_improvement:
   code_modification_enabled: false  # Framework code changes (opt-in)
   tool_creation_enabled: false      # Self-extending toolkit (opt-in)
   chief_of_staff:
+    # Explain-only chat (POST /meta/chat).
+    chat_snapshot_window_days: 7              # Trailing signal window, live-resolved per request
     # Clarify-and-propose (POST /meta/chat/propose). All opt-in.
     propose_enabled: false                   # Master switch
     propose_model: example-small-001         # LLM model id

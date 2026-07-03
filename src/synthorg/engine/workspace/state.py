@@ -53,6 +53,13 @@ def agent_workspace_root_of(app_state: AppStateSliceMixin) -> Path:
     it via ``PathValidator``, which refuses a missing directory, and no
     deployment step pre-creates it on the data volume.
 
+    Deliberately synchronous, not ``await asyncio.to_thread(...)``: every
+    call site is a sync DI-style factory invoked during boot wiring or a
+    rare admin-triggered reinit (never a per-request hot path), and
+    ``mkdir(exist_ok=True)`` on an already-existing local directory is a
+    sub-millisecond stat, not a stall worth an async cascade through
+    those factories' call graphs.
+
     Returns:
         The agent workspace root directory (existing).
     """

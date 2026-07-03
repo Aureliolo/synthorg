@@ -100,7 +100,7 @@ async def _check_blocked_address(hostname: str) -> SsrfCheckResult:
     else:
         return _check_ip_blocked(addr, hostname)
 
-    # Resolve hostname and check all returned addresses.
+    # Resolve hostname and check its first resolvable address.
     return await asyncio.to_thread(_check_resolved_hostname, hostname)
 
 
@@ -117,6 +117,11 @@ def _check_ip_blocked(
     Returns:
         Check result with error or the safe IP string.
     """
+    # Unwrap an IPv4-mapped IPv6 address (e.g. ``::ffff:127.0.0.1``) before
+    # the blocklist check below: Python's ``in`` on an ``IPv4Network``
+    # returns False for an address still in IPv6 form (version mismatch),
+    # so without unwrapping this loopback/private address would match
+    # none of the IPv4Network entries below and bypass the blocklist.
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
         addr = addr.ipv4_mapped
     for network in _BLOCKED_NETWORKS:
@@ -129,7 +134,13 @@ def _check_ip_blocked(
 
 
 def _check_resolved_hostname(hostname: str) -> SsrfCheckResult:
-    """Resolve a hostname and check all addresses against blocked networks.
+    """Resolve a hostname and check its first resolvable address.
+
+    Stops at the first entry ``getaddrinfo`` returns that parses as an
+    IP (blocked or safe); a second DNS record is never inspected. Not a
+    rebinding gap: the caller pins the outgoing connection to the exact
+    address this returns via ``build_pinned_url``, so a resolver that
+    later returns a different address is never reached.
 
     Args:
         hostname: DNS hostname to resolve.

@@ -175,7 +175,7 @@ describe('sendChat', () => {
       }),
     )
 
-    await useMetaStore.getState().sendChat('why?', { proposalId: 'prop-1' })
+    await useMetaStore.getState().sendChat('why?', { kind: 'proposal', id: 'prop-1' })
 
     expect(requestBodies[0]).toEqual({
       question: 'why?',
@@ -195,7 +195,7 @@ describe('sendChat', () => {
       }),
     )
 
-    await useMetaStore.getState().sendChat('why?', { alertId: 'alert-1' })
+    await useMetaStore.getState().sendChat('why?', { kind: 'alert', id: 'alert-1' })
 
     expect(requestBodies[0]).toEqual({
       question: 'why?',

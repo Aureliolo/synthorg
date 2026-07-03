@@ -371,7 +371,7 @@ def _format_scoped_proposal(item: ApprovalItem) -> str:
     source rule), not the full ``ImprovementProposal``.
 
     Returns:
-        Resulting string.
+        Formatted context lines describing the scoped proposal.
     """
     lines = [
         "The user's question is scoped to this pending proposal:",

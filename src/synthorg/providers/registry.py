@@ -161,6 +161,12 @@ class ProviderRegistry:
         """
         names = self.list_providers()
         if not names:
+            logger.error(
+                PROVIDER_DRIVER_NOT_REGISTERED,
+                name=None,
+                available=["(none)"],
+                model=model,
+            )
             msg = "No providers registered"
             raise DriverNotRegisteredError(msg, context={"model": model})
         for name in names:

@@ -156,6 +156,13 @@ Per-type health check implementations with a background `HealthProberService`.
   a 5xx / network error / SSRF rejection is `UNHEALTHY`, and a connection
   with no `base_url` (litellm-routed cloud provider) is `UNKNOWN`. The probe
   is SSRF-validated and DNS-pinned before any request.
+- **`TUNNEL`** (`TunnelHealthCheck`): resolves the same availability +
+  credential verdict the dashboard's tunnel card shows, via a
+  `TunnelStatusLookup` bound to the tunnel manager at startup
+  (`bind_tunnel_status_lookup`). `HEALTHY` when the backing provider is
+  available with its credential in place; `UNHEALTHY` when either is
+  missing or the status lookup itself fails; `UNKNOWN` when no manager is
+  bound yet or the connection maps to no known tunnel provider.
 
 ---
 

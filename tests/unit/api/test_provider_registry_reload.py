@@ -1,9 +1,9 @@
 """Boot-time provider-registry reload from persisted configs.
 
 A restarted, already-set-up deployment must come back with its
-DB-persisted providers live; only ``/setup/complete`` and provider
-mutations used to rebuild the registry, so every restart booted into
-empty-company mode with all provider-gated features unwired.
+DB-persisted providers live. Only ``/setup/complete`` and provider
+mutations rebuild the registry, so without this boot-time reload every
+provider-gated feature stays unwired after a restart.
 """
 
 import pytest

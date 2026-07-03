@@ -174,15 +174,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     async def _reload_provider_registry() -> None:
         # A restarted, already-set-up deployment must boot with its
-        # DB-persisted providers live: agents are re-bootstrapped at boot
-        # but the registry was only ever rebuilt by ``/setup/complete``
-        # or a provider mutation, leaving every provider-gated feature
+        # DB-persisted providers live: agents are re-bootstrapped at boot,
+        # but only ``/setup/complete`` and provider mutations rebuild the
+        # registry, so without this reload every provider-gated feature
         # (task execution, chief-of-staff chat, charter, research, ...)
-        # silently unwired after a restart. Rebinds the closure variable
-        # so every later hook (runtime services, feature wiring,
-        # toolsmith, eval loop) sees the reloaded registry. Best-effort:
-        # a corrupt persisted config degrades to the empty-company boot
-        # (fixable via the dashboard) rather than blocking startup.
+        # stays unwired after a restart. Rebinds the closure variable so
+        # every later hook (runtime services, feature wiring, toolsmith,
+        # eval loop) sees the reloaded registry. Best-effort: a corrupt
+        # persisted config degrades to the empty-company boot (fixable
+        # via the dashboard) rather than blocking startup.
         nonlocal provider_registry
         try:
             reloaded = await reload_persisted_provider_registry(app_state)

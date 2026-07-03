@@ -62,7 +62,6 @@ type statusSnapshot struct {
 	parseFailures       int
 	servicesFilterEmpty bool
 
-	healthFetched    bool
 	healthErr        error
 	healthStatusCode int
 	healthBody       []byte
@@ -107,7 +106,6 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 	}
 
 	body, code, fetchErr := fetchHealth(ctx, state.BackendPort)
-	snap.healthFetched = true
 	snap.healthStatusCode = code
 	snap.healthBody = body
 	if fetchErr != nil {
@@ -204,13 +202,24 @@ func (v *statusVerdict) absorbHealthVerdict(snap statusSnapshot) {
 		v.hints = append(v.hints, "Backend may be starting or misconfigured: synthorg logs backend")
 		return
 	}
-	if snap.healthStatusCode < 200 || snap.healthStatusCode >= 300 || snap.healthData.Status != "ok" {
+	if !snap.isReady() {
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf(
 			"backend not ready (status=%q, HTTP %d): a configured dependency (persistence / message bus / providers) failed its health probe",
 			snap.healthData.Status, snap.healthStatusCode))
 		v.hints = append(v.hints, "Check 'synthorg logs backend' for the failing component's health-check warning")
 	}
+}
+
+// isReady reports whether the /readyz probe indicates every configured
+// dependency (persistence / message bus / providers) is passing its
+// health check. Shared by the banner (absorbHealthVerdict), the human
+// health section (renderHealthSectionBackend), and the --json health
+// section (renderHealthSectionJSON) so the three can never disagree.
+func (snap statusSnapshot) isReady() bool {
+	return snap.healthErr == nil && snap.healthEnvelopeOK &&
+		snap.healthStatusCode >= 200 && snap.healthStatusCode < 300 &&
+		snap.healthData.Status == "ok"
 }
 
 func (v *statusVerdict) finaliseSummary() {

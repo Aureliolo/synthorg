@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.meta.chief_of_staff.alerts import (
     LoggingAlertSink,
@@ -13,6 +14,10 @@ from synthorg.meta.chief_of_staff.alerts import (
 )
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
 from synthorg.meta.models import RuleSeverity
+from synthorg.observability.events.chief_of_staff import (
+    COS_ALERT_EMITTED,
+    COS_ALERT_PERSIST_FAILED,
+)
 from synthorg.persistence.alert_protocol import AlertRepository
 from tests._shared import mock_of
 
@@ -155,7 +160,7 @@ class TestPersistentAlertSink:
         await sink.on_alert(alert)
         repo.append.assert_awaited_once_with(alert)
 
-    async def test_swallows_append_failure(self) -> None:
+    async def test_logs_and_reraises_append_failure(self) -> None:
         repo = mock_of[AlertRepository](
             append=AsyncMock(side_effect=RuntimeError("db down"))
         )
@@ -167,6 +172,33 @@ class TestPersistentAlertSink:
             affected_domains=("budget",),
             emitted_at=_NOW,
         )
-        # Must not raise: ProactiveAlertService's fan-out already isolates
-        # sink failures, so a persistence outage cannot take the tick down.
-        await sink.on_alert(alert)
+        # Must re-raise: ProactiveAlertService's fan-out is the isolation
+        # boundary (it records this sink in failed_sinks), so a swallow
+        # here would inflate the delivered count past the actual outcome.
+        with capture_logs() as caplog, pytest.raises(RuntimeError, match="db down"):
+            await sink.on_alert(alert)
+
+        events = [r for r in caplog if r.get("event") == COS_ALERT_PERSIST_FAILED]
+        assert events, "expected COS_ALERT_PERSIST_FAILED to be logged"
+        assert events[0].get("log_level") == "error"
+        assert events[0].get("error_type") == "RuntimeError"
+
+    async def test_fan_out_counts_persist_failure_as_undelivered(self) -> None:
+        repo = mock_of[AlertRepository](
+            append=AsyncMock(side_effect=RuntimeError("db down"))
+        )
+        service = ProactiveAlertService(
+            alert_sinks=(PersistentAlertSink(repo),),
+            severity_threshold=RuleSeverity.INFO,
+        )
+        with capture_logs() as caplog:
+            await service.on_inflection(_make_inflection())
+
+        emitted = [
+            r
+            for r in caplog
+            if r.get("event") == COS_ALERT_EMITTED and "delivered" in r
+        ]
+        assert emitted, "expected the fan-out summary log"
+        assert emitted[-1]["delivered"] == 0
+        assert emitted[-1]["failed"] == 1

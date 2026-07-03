@@ -146,6 +146,38 @@ describe('ChiefOfStaffChat', () => {
       })
     })
 
+    it('scopes the chat request to the selected alert', async () => {
+      let capturedBody: Record<string, unknown> | null = null
+      server.use(
+        http.post('/api/v1/meta/chat', async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>
+          return HttpResponse.json(
+            apiSuccess({ answer: 'Explained.', sources: [], confidence: 0.8 }),
+          )
+        }),
+      )
+      const user = userEvent.setup()
+      render(<ChiefOfStaffChat />)
+
+      const picker = await screen.findByLabelText(
+        'Scope to a proposal or alert (optional)',
+      )
+      await user.selectOptions(picker, 'alert:alert-1')
+      expect(screen.getByText(/Scoped to:/)).toBeInTheDocument()
+      expect(screen.getByText('Quality dropped sharply')).toBeInTheDocument()
+
+      await user.type(screen.getByLabelText('Chat message'), 'why?')
+      await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+      await waitFor(() => {
+        expect(capturedBody).not.toBeNull()
+      })
+      expect(capturedBody).toMatchObject({
+        proposal_id: null,
+        alert_id: 'alert-1',
+      })
+    })
+
     it('clears the scope when the chip close button is clicked', async () => {
       const user = userEvent.setup()
       render(<ChiefOfStaffChat />)

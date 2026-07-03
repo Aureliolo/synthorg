@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +82,7 @@ func TestRunStatusCheckProbesDespiteUnloadableConfig(t *testing.T) {
 }
 
 func TestImageTag(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  string
@@ -93,6 +96,7 @@ func TestImageTag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			if got := imageTag(tt.input); got != tt.want {
 				t.Errorf("imageTag(%q) = %q, want %q", tt.input, got, tt.want)
 			}
@@ -101,12 +105,14 @@ func TestImageTag(t *testing.T) {
 }
 
 func TestFilterStatsByName(t *testing.T) {
+	t.Parallel()
 	const header = "NAME              CPU %   MEM USAGE / LIMIT   MEM %"
 	backendRow := "synthorg-backend  1.2%    100MiB / 2GiB       5%"
 	natsRow := "synthorg-nats     0.3%    20MiB / 2GiB        1%"
 	strayRow := "unrelated-box     0.5%    50MiB / 2GiB        2%"
 
 	t.Run("keeps header plus matching rows, drops strangers", func(t *testing.T) {
+		t.Parallel()
 		statsOut := strings.Join([]string{header, backendRow, strayRow, natsRow}, "\n") + "\n"
 		names := map[string]struct{}{"synthorg-backend": {}, "synthorg-nats": {}}
 		got := filterStatsByName(statsOut, names)
@@ -117,6 +123,7 @@ func TestFilterStatsByName(t *testing.T) {
 	})
 
 	t.Run("returns empty when no data row matches", func(t *testing.T) {
+		t.Parallel()
 		statsOut := strings.Join([]string{header, strayRow}, "\n") + "\n"
 		names := map[string]struct{}{"synthorg-backend": {}}
 		if got := filterStatsByName(statsOut, names); got != "" {
@@ -125,6 +132,7 @@ func TestFilterStatsByName(t *testing.T) {
 	})
 
 	t.Run("returns empty on empty input", func(t *testing.T) {
+		t.Parallel()
 		if got := filterStatsByName("", map[string]struct{}{"x": {}}); got != "" {
 			t.Errorf("expected empty result, got %q", got)
 		}
@@ -132,6 +140,7 @@ func TestFilterStatsByName(t *testing.T) {
 }
 
 func TestHealthIcon(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		state  string
 		health string
@@ -155,6 +164,7 @@ func TestHealthIcon(t *testing.T) {
 			name = "empty/empty"
 		}
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if got := healthIcon(tt.state, tt.health); got != tt.want {
 				t.Errorf("healthIcon(%q, %q) = %q, want %q", tt.state, tt.health, got, tt.want)
 			}
@@ -163,6 +173,7 @@ func TestHealthIcon(t *testing.T) {
 }
 
 func TestParseContainerJSON(t *testing.T) {
+	t.Parallel()
 	input := `{"Name":"a","Service":"backend","State":"running","Health":"healthy","Image":"img:1.0"}
 {"Name":"b","Service":"web","State":"running","Health":"","Image":"img:1.0"}
 invalid json line
@@ -180,6 +191,7 @@ invalid json line
 }
 
 func TestParseContainerJSON_Array(t *testing.T) {
+	t.Parallel()
 	input := `[{"Name":"a","Service":"backend","State":"running","Health":"healthy","Image":"img:1.0"},{"Name":"b","Service":"web","State":"running","Health":"","Image":"img:1.0"}]`
 	containers, failures := parseContainerJSON(input)
 	if len(containers) != 2 {
@@ -223,7 +235,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "web", State: "running"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -238,7 +249,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "backend", State: "running", Health: "unhealthy"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -253,7 +263,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "nats", State: "restarting"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -268,7 +277,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "backend", State: "running", Health: "healthy"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthErr:           errBackendUnreachable,
 			},
 			wantLevel:    statusLevelCritical,
@@ -281,7 +289,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "backend", State: "running", Health: "healthy"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    503,
 				healthEnvelopeOK:    true,
 				healthData:          healthResponse{Status: "unavailable", Version: "0.0.1"},
@@ -294,7 +301,6 @@ func TestComputeVerdict(t *testing.T) {
 			snap: statusSnapshot{
 				containers:          nil,
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -309,7 +315,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "backend", State: "running", Health: "healthy"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthEnvelopeOK:    false,
 				healthStatusCode:    502,
 			},
@@ -324,7 +329,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "nats", State: "restarting"},
 				},
 				servicesFilterEmpty: true,
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -338,7 +342,6 @@ func TestComputeVerdict(t *testing.T) {
 					{Service: "backend", State: "running", Health: "healthy"},
 				},
 				servicesFilterEmpty: false, // user passed --services=missing
-				healthFetched:       true,
 				healthStatusCode:    200,
 				healthEnvelopeOK:    true,
 				healthData:          okHealth,
@@ -382,10 +385,12 @@ func TestFilterAllowsService(t *testing.T) {
 		{"backend-extra", "backend", false},   // no prefix matching
 	}
 	for _, tc := range cases {
-		statusServices = tc.filter
-		if got := filterAllowsService(tc.svc); got != tc.want {
-			t.Errorf("filter=%q svc=%q -> %v, want %v", tc.filter, tc.svc, got, tc.want)
-		}
+		t.Run(tc.filter+"/"+tc.svc, func(t *testing.T) {
+			statusServices = tc.filter
+			if got := filterAllowsService(tc.svc); got != tc.want {
+				t.Errorf("filter=%q svc=%q -> %v, want %v", tc.filter, tc.svc, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -413,6 +418,7 @@ func stringsContainsCI(haystack, needle string) bool {
 }
 
 func TestFormatUptime(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		seconds float64
 		want    string
@@ -427,8 +433,242 @@ func TestFormatUptime(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
 			if got := formatUptime(tt.seconds); got != tt.want {
 				t.Errorf("formatUptime(%v) = %q, want %q", tt.seconds, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderHealthSectionJSON locks down that --json health output is a
+// single well-formed JSON document, not a label line plus a raw byte
+// dump. A regression here silently breaks every scripted consumer that
+// decodes `synthorg status --json`.
+func TestRenderHealthSectionJSON(t *testing.T) {
+	t.Parallel()
+	okHealth := healthResponse{Status: "ok", Version: "1.2.3", Uptime: 90}
+
+	tests := []struct {
+		name      string
+		snap      statusSnapshot
+		wantReady bool
+	}{
+		{
+			name: "ready",
+			snap: statusSnapshot{
+				healthStatusCode: 200,
+				healthEnvelopeOK: true,
+				healthData:       okHealth,
+				healthBody:       []byte(`{"data":{"status":"ok","version":"1.2.3","uptime_seconds":90}}`),
+			},
+			wantReady: true,
+		},
+		{
+			name: "unreachable",
+			snap: statusSnapshot{
+				healthErr: errBackendUnreachable,
+			},
+			wantReady: false,
+		},
+		{
+			name: "unparseable",
+			snap: statusSnapshot{
+				healthStatusCode: 502,
+				healthBody:       []byte("<html>bad gateway</html>"),
+			},
+			wantReady: false,
+		},
+		{
+			name: "not ready",
+			snap: statusSnapshot{
+				healthStatusCode: 503,
+				healthEnvelopeOK: true,
+				healthData:       healthResponse{Status: "unavailable"},
+				healthBody:       []byte(`{"data":{"status":"unavailable"}}`),
+			},
+			wantReady: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			out := ui.NewUI(&buf)
+			renderHealthSectionJSON(out, tc.snap)
+
+			var decoded healthSectionJSON
+			if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+				t.Fatalf("--json health output is not valid JSON: %v\noutput: %s", err, buf.String())
+			}
+			if decoded.Ready != tc.wantReady {
+				t.Errorf("ready = %v, want %v (output: %s)", decoded.Ready, tc.wantReady, buf.String())
+			}
+			if tc.snap.healthErr != nil && decoded.Error == "" {
+				t.Errorf("expected a non-empty error field, got %s", buf.String())
+			}
+		})
+	}
+}
+
+// TestRenderContainersSectionJSON locks down that a container-query
+// failure survives into --json output instead of rendering as an
+// indistinguishable empty array (the #1 finding this test guards).
+func TestRenderContainersSectionJSON(t *testing.T) {
+	t.Parallel()
+	oldServices := statusServices
+	t.Cleanup(func() { statusServices = oldServices })
+	statusServices = ""
+
+	tests := []struct {
+		name      string
+		snap      statusSnapshot
+		wantErr   bool
+		wantCount int
+	}{
+		{
+			name: "containers present, no error",
+			snap: statusSnapshot{
+				containers: []containerInfo{{Name: "a", Service: "backend"}},
+			},
+			wantErr:   false,
+			wantCount: 1,
+		},
+		{
+			name: "container query failed",
+			snap: statusSnapshot{
+				containerErr: errBackendUnreachable,
+			},
+			wantErr:   true,
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			out := ui.NewUI(&buf)
+			renderContainersSection(out, tc.snap, true)
+
+			var decoded struct {
+				Containers []containerInfo `json:"containers"`
+				Error      string          `json:"error"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+				t.Fatalf("--json containers output is not valid JSON: %v\noutput: %s", err, buf.String())
+			}
+			if tc.wantErr && decoded.Error == "" {
+				t.Errorf("expected the container query error to survive into JSON, got %s", buf.String())
+			}
+			if !tc.wantErr && decoded.Error != "" {
+				t.Errorf("unexpected error in JSON: %q", decoded.Error)
+			}
+			if len(decoded.Containers) != tc.wantCount {
+				t.Errorf("containers count = %d, want %d", len(decoded.Containers), tc.wantCount)
+			}
+		})
+	}
+}
+
+// TestRenderHealthSectionBackend covers the human-readable health line
+// for each reachability/readiness outcome.
+func TestRenderHealthSectionBackend(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		snap       statusSnapshot
+		wantSubstr string
+	}{
+		{
+			name:       "unreachable",
+			snap:       statusSnapshot{healthErr: errBackendUnreachable},
+			wantSubstr: "unreachable",
+		},
+		{
+			name:       "unparseable",
+			snap:       statusSnapshot{healthStatusCode: 502},
+			wantSubstr: "unparseable",
+		},
+		{
+			name: "ready",
+			snap: statusSnapshot{
+				healthStatusCode: 200,
+				healthEnvelopeOK: true,
+				healthData:       healthResponse{Status: "ok", Version: "1.2.3"},
+			},
+			wantSubstr: "healthy",
+		},
+		{
+			name: "not ready",
+			snap: statusSnapshot{
+				healthStatusCode: 503,
+				healthEnvelopeOK: true,
+				healthData:       healthResponse{Status: "unavailable"},
+			},
+			wantSubstr: "not ready",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			out := ui.NewUI(&buf)
+			renderHealthSectionBackend(out, tc.snap)
+			if !strings.Contains(strings.ToLower(buf.String()), tc.wantSubstr) {
+				t.Errorf("output %q does not contain %q", buf.String(), tc.wantSubstr)
+			}
+		})
+	}
+}
+
+// TestRenderTopBanner covers the OK/degraded/critical banner shapes.
+func TestRenderTopBanner(t *testing.T) {
+	t.Parallel()
+	okHealth := healthResponse{Status: "ok"}
+
+	tests := []struct {
+		name       string
+		snap       statusSnapshot
+		wantSubstr string
+	}{
+		{
+			name: "all green collapses to a single success line",
+			snap: statusSnapshot{
+				containers:          []containerInfo{{Service: "backend", State: "running", Health: "healthy"}},
+				servicesFilterEmpty: true,
+				healthStatusCode:    200,
+				healthEnvelopeOK:    true,
+				healthData:          okHealth,
+			},
+			wantSubstr: "operational",
+		},
+		{
+			name: "unhealthy container renders the critical box",
+			snap: statusSnapshot{
+				containers:          []containerInfo{{Service: "backend", State: "running", Health: "unhealthy"}},
+				servicesFilterEmpty: true,
+				healthStatusCode:    200,
+				healthEnvelopeOK:    true,
+				healthData:          okHealth,
+			},
+			wantSubstr: "CRITICAL",
+		},
+	}
+
+	oldServices := statusServices
+	t.Cleanup(func() { statusServices = oldServices })
+	statusServices = ""
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			out := ui.NewUI(&buf)
+			renderTopBanner(out, tc.snap)
+			if !strings.Contains(buf.String(), tc.wantSubstr) {
+				t.Errorf("output %q does not contain %q", buf.String(), tc.wantSubstr)
 			}
 		})
 	}

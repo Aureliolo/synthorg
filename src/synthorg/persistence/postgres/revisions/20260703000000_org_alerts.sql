@@ -1,8 +1,6 @@
 -- Durable org-alert log: backs the /meta/alerts read endpoint and the
 -- alert_id resolution the /meta/chat handler needs to answer a question
--- scoped to a specific alert. Previously alerts were only logged and
--- dropped (LoggingAlertSink), so there was nothing to list or resolve
--- by id.
+-- scoped to a specific alert.
 
 CREATE TABLE org_alerts (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),

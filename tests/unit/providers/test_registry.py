@@ -207,8 +207,16 @@ class TestRegistryResolveForModel:
             registry.resolve_for_model("model-x")
 
     def test_empty_registry_raises(self) -> None:
-        with pytest.raises(DriverNotRegisteredError):
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(DriverNotRegisteredError),
+        ):
             ProviderRegistry({}).resolve_for_model("model-a")
+
+        # Mirrors get()'s identical-condition logging: an empty registry
+        # must not raise silently.
+        errors = [r for r in cap if r.get("log_level") == "error"]
+        assert any(r.get("event") == PROVIDER_DRIVER_NOT_REGISTERED for r in errors)
 
 
 # ── __contains__ / __len__ ───────────────────────────────────────

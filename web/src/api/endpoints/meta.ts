@@ -188,18 +188,30 @@ export async function listProposals(): Promise<ProposalSummary[]> {
   return paginateAll<ProposalSummary>(fetchProposalsPage)
 }
 
+export interface AlertListFilter {
+  severity?: AlertSeverity
+  alertType?: AlertType
+}
+
 async function fetchAlertsPage(
   cursor: string | null,
+  filter?: AlertListFilter,
 ): Promise<PaginatedResult<AlertSummary>> {
   const response = await apiClient.get<PaginatedResponse<AlertSummary>>(
     `${BASE}/alerts`,
-    { params: _pageParams(cursor) },
+    {
+      params: {
+        ..._pageParams(cursor),
+        ...(filter?.severity ? { severity: filter.severity } : {}),
+        ...(filter?.alertType ? { alert_type: filter.alertType } : {}),
+      },
+    },
   )
   return unwrapPaginated<AlertSummary>(response)
 }
 
-export async function listAlerts(): Promise<AlertSummary[]> {
-  return paginateAll<AlertSummary>(fetchAlertsPage)
+export async function listAlerts(filter?: AlertListFilter): Promise<AlertSummary[]> {
+  return paginateAll<AlertSummary>((cursor) => fetchAlertsPage(cursor, filter))
 }
 
 export async function getSignals(): Promise<SignalsResponse> {
@@ -348,10 +360,13 @@ export async function postChatAct(
   return unwrap(response)
 }
 
-export interface ChatScope {
-  proposalId?: string
-  alertId?: string
-}
+// A discriminated union, not two independent optionals: the picker UI
+// (ChatScopeValue) can only ever produce "scoped to one proposal" or
+// "scoped to one alert", never both, so the wire-adjacent type should
+// make that illegal state unrepresentable too.
+export type ChatScope =
+  | { kind: 'proposal'; id: string }
+  | { kind: 'alert'; id: string }
 
 export async function postChat(
   question: string,
@@ -369,8 +384,8 @@ export async function postChat(
   // replays of the same key as a no-op, so the retry is safe.
   const body: ChatRequest = {
     question: trimmed,
-    proposal_id: scope?.proposalId ?? null,
-    alert_id: scope?.alertId ?? null,
+    proposal_id: scope?.kind === 'proposal' ? scope.id : null,
+    alert_id: scope?.kind === 'alert' ? scope.id : null,
   }
   const response = await apiClient.post<ApiResponse<ChatResponse>>(
     `${BASE}/chat`,

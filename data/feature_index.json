@@ -843,7 +843,12 @@
         "OrgInflectionMonitor",
         "build_analytics_collector",
         "SelfImprovementService",
-        "build_rollback_executor"
+        "build_rollback_executor",
+        "_wire_alert_repo",
+        "SQLiteAlertRepository",
+        "PostgresAlertRepository",
+        "PersistentAlertSink",
+        "resolve_chat_answer"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -1332,6 +1337,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-03T13:34:35.315690Z",
+  "generated_at": "2026-07-03T22:29:21.738009Z",
   "schema_version": 1
 }

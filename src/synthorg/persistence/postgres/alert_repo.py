@@ -20,6 +20,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.meta.chief_of_staff.models import Alert
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.alert import (
+    PERSISTENCE_ALERT_PURGE_FAILED,
     PERSISTENCE_ALERT_QUERIED,
     PERSISTENCE_ALERT_QUERY_FAILED,
     PERSISTENCE_ALERT_SAVE_FAILED,
@@ -89,7 +90,7 @@ class PostgresAlertRepository:
                 )
                 await conn.commit()
         except psycopg.Error as exc:
-            self._raise_query_error("save alert", exc)
+            self._raise_query_error("save alert", PERSISTENCE_ALERT_SAVE_FAILED, exc)
 
     async def query(
         self,
@@ -128,7 +129,7 @@ class PostgresAlertRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            self._raise_query_error("query alerts", exc)
+            self._raise_query_error("query alerts", PERSISTENCE_ALERT_QUERY_FAILED, exc)
         alerts = tuple(row_to_alert(row) for row in rows)
         logger.debug(PERSISTENCE_ALERT_QUERIED, count=len(alerts))
         return alerts
@@ -151,7 +152,9 @@ class PostgresAlertRepository:
                 await cur.execute(sql, (str(alert_id),))
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            self._raise_query_error("fetch alert by id", exc)
+            self._raise_query_error(
+                "fetch alert by id", PERSISTENCE_ALERT_QUERY_FAILED, exc
+            )
         return row_to_alert(row) if row is not None else None
 
     async def purge_before(self, threshold: datetime) -> int:
@@ -175,15 +178,12 @@ class PostgresAlertRepository:
                 deleted = cur.rowcount
                 await conn.commit()
         except psycopg.Error as exc:
-            self._raise_query_error("purge alerts", exc)
+            self._raise_query_error("purge alerts", PERSISTENCE_ALERT_PURGE_FAILED, exc)
         return deleted
 
-    def _raise_query_error(self, operation: str, exc: Exception) -> NoReturn:
-        event = (
-            PERSISTENCE_ALERT_SAVE_FAILED
-            if operation.startswith("save")
-            else PERSISTENCE_ALERT_QUERY_FAILED
-        )
+    def _raise_query_error(
+        self, operation: str, event: str, exc: Exception
+    ) -> NoReturn:
         logger.warning(
             event,
             operation=operation,

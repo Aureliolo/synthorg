@@ -108,6 +108,11 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_analytics_collector",
         "SelfImprovementService",
         "build_rollback_executor",
+        "_wire_alert_repo",
+        "SQLiteAlertRepository",
+        "PostgresAlertRepository",
+        "PersistentAlertSink",
+        "resolve_chat_answer",
     ),
     depends_on=(),
 )

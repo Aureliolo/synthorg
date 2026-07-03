@@ -45,8 +45,7 @@ class TestSelectProvider:
         """No provider pinned: resolve by which driver actually serves the model.
 
         Two providers registered, each serving a different model, proves
-        selection is model-aware rather than "whichever sorts first" --
-        the historical bug this resolver replaces.
+        selection is model-aware rather than "whichever sorts first".
         """
         matching = mock_of[BaseCompletionProvider](
             serves_model=lambda m: m == "model-b"
@@ -54,6 +53,18 @@ class TestSelectProvider:
         other = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-a")
         registry = ProviderRegistry({"provider-a": other, "provider-b": matching})
         assert _select_provider(registry, "", "model-b") is matching
+
+    def test_unpinned_no_provider_serves_model_returns_none(self) -> None:
+        """Two providers registered, neither serves the requested model.
+
+        ``resolve_feature_provider`` must degrade to ``None`` (feature
+        stays unwired) rather than crash wiring, and must not silently
+        pick a provider that will reject the model at request time.
+        """
+        first = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-a")
+        second = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-b")
+        registry = ProviderRegistry({"provider-a": first, "provider-b": second})
+        assert _select_provider(registry, "", "model-c") is None
 
     def test_no_registry_returns_none(self) -> None:
         assert _select_provider(None, "example-provider", "model-x") is None

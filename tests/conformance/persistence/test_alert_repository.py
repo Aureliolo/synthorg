@@ -132,14 +132,23 @@ class TestAlertAppendQuery:
     async def test_window_filter(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
         for index in range(4):
-            await repo.append(_alert(emitted_at=_NOW + timedelta(hours=index)))
+            await repo.append(
+                _alert(
+                    description=f"alert-{index}",
+                    emitted_at=_NOW + timedelta(hours=index),
+                )
+            )
         window = await repo.query(
             AlertFilterSpec(
                 since=_NOW + timedelta(hours=1),
                 until=_NOW + timedelta(hours=3),
             )
         )
-        assert len(window) == 2
+        # since is inclusive, until is exclusive: hour-1 and hour-2 match,
+        # hour-0 (before since) and hour-3 (at until) do not. Asserting the
+        # specific descriptions (not just the count) catches a boundary bug
+        # that happens to return 2 items but the wrong 2.
+        assert [str(a.description) for a in window] == ["alert-2", "alert-1"]
 
 
 class TestAlertGetById:

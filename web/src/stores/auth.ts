@@ -45,7 +45,7 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<UserInfoResponse>
   fetchSessions: (scope?: 'own' | 'all') => Promise<void>
   revokeSession: (sessionId: string) => Promise<boolean>
-  handleUnauthorized: () => void
+  handleUnauthorized: (options?: { intentional?: boolean }) => void
   checkSession: () => Promise<void>
 }
 
@@ -123,14 +123,17 @@ async function fetchUserImpl(
 function handleUnauthorizedImpl(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
+  options?: { intentional?: boolean },
 ): void {
   if (unauthorizedRedirectInFlight) return
   unauthorizedRedirectInFlight = true
-  if (IS_DEV_AUTH_BYPASS) {
+  if (IS_DEV_AUTH_BYPASS && !options?.intentional) {
     // Dev bypass: re-mint the password-free admin session in place.
     // Bouncing a developer to the login screen on cookie expiry would
     // dead-end (there is no password to type), and doing nothing left
-    // the websocket and every API call permanently 401ing.
+    // the websocket and every API call permanently 401ing. Skipped for
+    // an intentional logout (below): re-auto-logging-in there would make
+    // the Logout button a silent no-op.
     void _recoverDevSession(set, get)
     return
   }
@@ -348,7 +351,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     } catch (err) {
       log.warn('Logout API call failed:', getErrorMessage(err))
     }
-    get().handleUnauthorized()
+    get().handleUnauthorized({ intentional: true })
   },
   fetchUser: () => fetchUserImpl(set, get),
   fetchSessions: (scope = 'own') => fetchSessionsImpl(set, scope),
@@ -368,7 +371,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ loading: false })
     }
   },
-  handleUnauthorized: () => handleUnauthorizedImpl(set, get),
+  handleUnauthorized: (options) => handleUnauthorizedImpl(set, get, options),
   checkSession: () => checkSessionImpl(set, get),
 }))
 

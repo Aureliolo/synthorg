@@ -46,13 +46,13 @@ from synthorg.providers.url_utils import redact_url as _redact_url
 
 logger = get_logger(__name__)
 
-# Per-discovery-pass dedup for the SSRF-bypass audit warning. One
-# Ollama pass probes ``/api/show`` once per model, which used to emit
-# dozens of identical warnings; the warning now fires once per origin
-# per pass (keyed on origin alone -- enrichment probes hit the same
-# host under ``preset_name=None``) and later hits demote to debug. A
-# fresh set per pass keeps the audit intent: a recurring bypass warns
-# again on every pass instead of going dark after the first hit.
+# Per-discovery-pass dedup for the SSRF-bypass audit warning: one Ollama
+# pass probes ``/api/show`` once per model, so a naive per-request
+# warning would emit one line per model against the same origin. Warns
+# once per origin per pass (keyed on origin alone -- enrichment probes
+# hit the same host under ``preset_name=None``); repeat hits within the
+# pass demote to debug. A fresh set per pass keeps a recurring bypass
+# visible on the next pass instead of going dark after the first hit.
 _BYPASS_WARNED_ORIGINS: ContextVar[set[str] | None] = ContextVar(
     "discovery_bypass_warned_origins",
     default=None,

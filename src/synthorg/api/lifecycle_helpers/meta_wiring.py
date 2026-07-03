@@ -20,6 +20,30 @@ from synthorg.persistence.experiment_protocol import ExperimentRepository
 logger = get_logger(__name__)
 
 
+def _log_persistence_absent(
+    app_state: AppState, *, service: str, degrades_to: str
+) -> None:
+    """Log the persistence-absent wiring skip at the right severity.
+
+    Mirrors ``health.py``'s ``_probe_persistence`` distinction: a
+    deliberately persistence-less run (``persistence_expected`` False)
+    logs INFO, but a backend that was configured and still failed to
+    connect (``persistence_expected`` True) logs WARNING -- collapsing
+    the two into one INFO would silently hide a real boot-time outage
+    behind the same message a benign dev run produces.
+    """
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    expected = app_state.slice(PersistenceStateSlice).persistence_expected
+    log = logger.warning if expected else logger.info
+    state_note = "expected but absent" if expected else "absent"
+    log(
+        API_APP_STARTUP,
+        service=service,
+        note=f"persistence {state_note}; {degrades_to}",
+    )
+
+
 async def _wire_analytics_service(app_state: AppState) -> None:
     """Wire the analytics read-view once the signals facade exists.
 
@@ -111,10 +135,10 @@ async def _wire_experiment_service(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).experiment_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
+        _log_persistence_absent(
+            app_state,
             service="experiment_service",
-            note="persistence absent; in-memory fallback stands in",
+            degrades_to="in-memory fallback stands in",
         )
         return
     try:
@@ -188,10 +212,10 @@ async def _wire_ab_test_repo(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).ab_test_repo is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
+        _log_persistence_absent(
+            app_state,
             service="ab_test_repo",
-            note="persistence absent; A/B-test endpoints degrade to empty",
+            degrades_to="A/B-test endpoints degrade to empty",
         )
         return
     try:
@@ -266,10 +290,10 @@ async def _wire_alert_repo(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).alert_repo is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
+        _log_persistence_absent(
+            app_state,
             service="alert_repo",
-            note="persistence absent; alerts endpoint degrades to empty",
+            degrades_to="alerts endpoint degrades to empty",
         )
         return
     try:

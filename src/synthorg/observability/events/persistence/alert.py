@@ -9,6 +9,7 @@ from typing import Final
 PERSISTENCE_ALERT_SAVE_FAILED: Final[str] = "persistence.alert.save_failed"
 PERSISTENCE_ALERT_QUERIED: Final[str] = "persistence.alert.queried"
 PERSISTENCE_ALERT_QUERY_FAILED: Final[str] = "persistence.alert.query_failed"
+PERSISTENCE_ALERT_PURGE_FAILED: Final[str] = "persistence.alert.purge_failed"
 PERSISTENCE_ALERT_DESERIALIZE_FAILED: Final[str] = (
     "persistence.alert.deserialize_failed"
 )

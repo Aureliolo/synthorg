@@ -23,7 +23,10 @@ from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
 from synthorg.meta.signal_models import OrgSignalSnapshot
 from synthorg.meta.state import alert_repo_of
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_CHAT_SCOPE_NOT_FOUND
+from synthorg.observability.events.meta import (
+    META_CHAT_DEPENDENCY_UNAVAILABLE,
+    META_CHAT_SCOPE_NOT_FOUND,
+)
 
 logger = get_logger(__name__)
 
@@ -41,28 +44,40 @@ async def resolve_chat_answer(
     """
     if query.alert_id is not None:
         alert_repo = alert_repo_of(app_state)
-        if alert_repo is not None:
+        if alert_repo is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="alert_repo",
+                scope="alert_id",
+            )
+        else:
             alert = await alert_repo.get_by_id(query.alert_id)
             if alert is not None:
                 return await chat_backend.explain_alert(alert, snapshot)
-        logger.warning(
-            META_CHAT_SCOPE_NOT_FOUND,
-            scope="alert_id",
-            value=str(query.alert_id),
-        )
+            logger.warning(
+                META_CHAT_SCOPE_NOT_FOUND,
+                scope="alert_id",
+                value=str(query.alert_id),
+            )
         return await chat_backend.ask(query, snapshot)
 
     if query.proposal_id is not None:
         store = app_state.slice(ApprovalStateSlice).store
-        if store is not None:
+        if store is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="approval_store",
+                scope="proposal_id",
+            )
+        else:
             item = await store.get(NotBlankStr(str(query.proposal_id)))
             if item is not None:
                 return await chat_backend.ask(query, snapshot, scoped_proposal=item)
-        logger.warning(
-            META_CHAT_SCOPE_NOT_FOUND,
-            scope="proposal_id",
-            value=str(query.proposal_id),
-        )
+            logger.warning(
+                META_CHAT_SCOPE_NOT_FOUND,
+                scope="proposal_id",
+                value=str(query.proposal_id),
+            )
         return await chat_backend.ask(query, snapshot)
 
     return await chat_backend.ask(query, snapshot)

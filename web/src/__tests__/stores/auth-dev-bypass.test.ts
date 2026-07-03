@@ -32,12 +32,36 @@ const ADMIN: UserInfoResponse = {
   scoped_departments: [],
 }
 
+// Prevent actual navigation; only the intentional-logout test below
+// exercises the redirect path (every other test in this file re-mints
+// a session and never reaches it).
+const originalLocation = window.location
+beforeAll(() => {
+  Object.defineProperty(window, 'location', {
+    writable: true,
+    value: {
+      ...(originalLocation as unknown as Record<string, unknown>),
+      href: 'http://localhost/dashboard',
+      origin: 'http://localhost',
+      pathname: '/dashboard',
+    },
+  })
+})
+afterAll(() => {
+  Object.defineProperty(window, 'location', {
+    writable: true,
+    value: originalLocation,
+  })
+})
+
 describe('auth store dev bypass auto-login', () => {
   beforeEach(() => {
     _resetUnauthorizedRedirectGuardForTests()
     useAuthStore.setState({ authStatus: 'unknown', user: null })
     wsDisconnectSpy.mockClear()
     wsRetrySpy.mockClear()
+    window.location.pathname = '/dashboard'
+    window.location.href = 'http://localhost/dashboard'
   })
 
   it('auto-logs-in as the admin via /auth/dev-login when no session exists', async () => {
@@ -92,5 +116,33 @@ describe('auth store dev bypass auto-login', () => {
     await useAuthStore.getState().checkSession()
 
     expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+  })
+
+  it('logout does not auto-recover a session, even under dev bypass', async () => {
+    // An explicit Logout must actually log the user out. Without the
+    // `intentional` flag, handleUnauthorized's dev-bypass branch would
+    // silently re-mint the same admin session, making the Logout button
+    // a no-op.
+    let devLoginCalls = 0
+    server.use(
+      http.post('/api/v1/auth/logout', () => HttpResponse.json(apiSuccess(null))),
+      http.post('/api/v1/auth/dev-login', () => {
+        devLoginCalls += 1
+        return HttpResponse.json(
+          apiSuccess({ expires_in: 86400, must_change_password: false }),
+        )
+      }),
+    )
+    useAuthStore.setState({ authStatus: 'authenticated', user: ADMIN })
+
+    await useAuthStore.getState().logout()
+
+    expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    expect(useAuthStore.getState().user).toBeNull()
+    expect(devLoginCalls).toBe(0)
+    await vi.waitFor(() => {
+      expect(wsDisconnectSpy).toHaveBeenCalledTimes(1)
+    })
+    expect(wsRetrySpy).not.toHaveBeenCalled()
   })
 })

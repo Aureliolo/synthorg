@@ -83,6 +83,7 @@ var tunableSpecs = map[string]tunableSpec{
 	"update_health_timeout":    durationTunable("update_health_timeout", config.DefaultUpdateHealthTimeout, EnvUpdateHealthTimeout, func(s *config.State) *string { return &s.UpdateHealthTimeout }),
 	"completion_probe_timeout": durationTunable("completion_probe_timeout", config.DefaultCompletionProbeTimeout, EnvCompletionProbeTimeout, func(s *config.State) *string { return &s.CompletionProbeTimeout }),
 	"diagnostics_dial_timeout": durationTunable("diagnostics_dial_timeout", config.DefaultDiagnosticsDialTimeout, EnvDiagnosticsDialTimeout, func(s *config.State) *string { return &s.DiagnosticsDialTimeout }),
+	"status_docker_timeout":    durationTunable("status_docker_timeout", config.DefaultStatusDockerTimeout, EnvStatusDockerTimeout, func(s *config.State) *string { return &s.StatusDockerTimeout }),
 	"image_pull_attempts": {
 		set: func(s *config.State, v string) error {
 			return setIntInRange(v, "image_pull_attempts", 1, config.MaxImagePullAttempts, &s.ImagePullAttempts)

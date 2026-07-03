@@ -121,9 +121,9 @@ class TestMetaChat:
             # ``proposal_id`` / ``alert_id`` or swap the ``ask()`` args
             # and the payload-only checks above would still pass.
             signals_mock.get_org_snapshot.assert_awaited_once()
-            # ``since`` is required (keyword-only) on the service; calling
-            # bare crashed with a TypeError once the chat backend actually
-            # wired. Pin the trailing-window shape without pinning wall time.
+            # ``since`` is a required keyword-only arg on the service, so
+            # the assertion must pin the trailing-window shape without
+            # pinning wall time.
             since = signals_mock.get_org_snapshot.await_args.kwargs["since"]
             window = app_state.clock.now() - since
             assert timedelta(days=6) < window < timedelta(days=8)

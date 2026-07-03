@@ -1,12 +1,10 @@
 """Tests for the ``GET /meta/proposals`` read endpoint.
 
-Regression coverage for a filter bug: the handler used to filter on
-``action_type.startswith("meta.")``, but neither live producer emits
-that prefix (the manual MCP-tool-driven submission path uses
-``PROPOSAL_ACTION_TYPE`` verbatim; the automated self-improvement-cycle
-guard uses ``PROPOSAL_GUARD_ACTION_TYPE_PREFIX``-prefixed, altitude-
-suffixed values), so the endpoint always returned an empty page
-regardless of what proposals existed.
+Covers both live proposal producers: the manual MCP-tool-driven
+submission path (``action_type == PROPOSAL_ACTION_TYPE``) and the
+automated self-improvement-cycle guard (``action_type`` prefixed with
+``PROPOSAL_GUARD_ACTION_TYPE_PREFIX``, altitude-suffixed). Unrelated
+action types must not appear in the listing.
 """
 
 from datetime import UTC, datetime

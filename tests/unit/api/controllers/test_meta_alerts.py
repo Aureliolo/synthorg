@@ -7,7 +7,7 @@ than 503-ing.
 """
 
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 
@@ -124,15 +124,73 @@ class TestListAlerts:
         finally:
             app_state.swap_slice(original)
 
-    async def test_unresolvable_alert_id_is_absent_from_repo(
+    async def test_wired_but_empty_repo_returns_empty_page(
         self, async_test_client: LoopAsyncClient
     ) -> None:
+        """A repo with no matching rows returns an empty page over HTTP.
+
+        Distinct from ``test_empty_page_when_repo_absent``: here the repo
+        IS wired (the success path through ``alert_repo_of``), it simply
+        has no rows -- as opposed to the accessor returning ``None``.
+        """
         app_state = async_test_client.app.state.app_state
         original = app_state.slice(MetaStateSlice)
         app_state.wire(MetaStateSlice, alert_repo=_FakeAlertRepo(()))
         try:
-            repo = app_state.slice(MetaStateSlice).alert_repo
-            assert repo is not None
-            assert await repo.get_by_id(uuid4()) is None
+            resp = await async_test_client.get(_BASE, headers=_HEADERS)
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["data"] == []
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_alert_type_filter_over_http(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The ``alert_type`` query filter, exercised over HTTP (not just
+        through the fake repo's own filter logic)."""
+        inflection_alert = _alert(alert_type="inflection")
+        threshold_alert = _alert(alert_type="threshold")
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            alert_repo=_FakeAlertRepo((inflection_alert, threshold_alert)),
+        )
+        try:
+            resp = await async_test_client.get(
+                _BASE, headers=_HEADERS, params={"alert_type": "threshold"}
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert len(body["data"]) == 1
+            assert body["data"][0]["alert_type"] == "threshold"
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_combined_severity_and_alert_type_filter_over_http(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """``severity`` and ``alert_type`` combined narrow to their
+        intersection, not just each filter applied alone."""
+        match = _alert(severity=RuleSeverity.CRITICAL, alert_type="threshold")
+        wrong_severity = _alert(severity=RuleSeverity.INFO, alert_type="threshold")
+        wrong_type = _alert(severity=RuleSeverity.CRITICAL, alert_type="inflection")
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            alert_repo=_FakeAlertRepo((match, wrong_severity, wrong_type)),
+        )
+        try:
+            resp = await async_test_client.get(
+                _BASE,
+                headers=_HEADERS,
+                params={"severity": "critical", "alert_type": "threshold"},
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert len(body["data"]) == 1
+            assert body["data"][0]["id"] == str(match.id)
         finally:
             app_state.swap_slice(original)

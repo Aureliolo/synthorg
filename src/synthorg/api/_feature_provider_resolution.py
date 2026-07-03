@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 def resolve_feature_provider(
     provider_registry: ProviderRegistry,
-    model: object,
+    model: str,
     *,
     feature: str,
 ) -> BaseCompletionProvider | None:
@@ -45,13 +45,13 @@ def resolve_feature_provider(
     )
 
     try:
-        name, driver = provider_registry.resolve_for_model(str(model))
+        name, driver = provider_registry.resolve_for_model(model)
     except (DriverNotRegisteredError, ModelNotFoundError) as exc:
         logger.warning(
             API_APP_STARTUP,
             note="feature provider resolution failed; feature stays unwired",
             feature=feature,
-            model=str(model),
+            model=model,
             available=list(provider_registry.list_providers()),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -62,6 +62,6 @@ def resolve_feature_provider(
         note="feature provider resolved",
         feature=feature,
         provider=name,
-        model=str(model),
+        model=model,
     )
     return driver

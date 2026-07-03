@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import type { AlertSummary, ProposalSummary } from '@/api/endpoints/meta'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,15 @@ export function ChatScopePicker({
   onChange,
   disabled,
 }: ChatScopePickerProps) {
+  const clearButtonRef = useRef<HTMLButtonElement>(null)
+
+  // Move focus to the clear affordance when the picker swaps to the
+  // chip on selection, so keyboard/screen-reader users don't lose their
+  // position (the picker they were just on is unmounted).
+  useEffect(() => {
+    if (value) clearButtonRef.current?.focus()
+  }, [value])
+
   const groups: SelectOptionGroup[] = [
     {
       label: 'Proposals',
@@ -66,10 +76,10 @@ export function ChatScopePicker({
           Scoped to: <span className="font-medium text-foreground">{value.label}</span>
         </span>
         <Button
+          ref={clearButtonRef}
           type="button"
           variant="ghost"
-          size="sm"
-          className="h-auto p-0.5"
+          size="icon-xs"
           disabled={disabled}
           onClick={() => onChange(null)}
           aria-label="Clear chat scope"

@@ -158,21 +158,26 @@ class PersistentAlertSink:
         self._repo = repo
 
     async def on_alert(self, alert: Alert) -> None:
-        """Persist the alert, logging and swallowing a write failure.
+        """Persist the alert, logging then re-raising a write failure.
 
-        ``ProactiveAlertService``'s fan-out already isolates sink
-        failures from each other (a ``TaskGroup`` per-sink try/except
-        records ``failed_sinks`` and never re-raises), so this only
-        needs to emit the specific persistence-failure event; re-raising
-        would double-log against that generic path.
+        Re-raising (rather than swallowing here) lets
+        ``ProactiveAlertService``'s fan-out record this sink in
+        ``failed_sinks``, so the ``delivered``/``failed`` counts it
+        logs reflect the actual persist outcome instead of counting a
+        silently-dropped alert as delivered.
 
         Args:
             alert: The alert to persist.
+
+        Raises:
+            Exception: Whatever the repository's ``append`` raises,
+                after logging the persistence-specific failure event.
         """
         try:
             await self._repo.append(alert)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
                 logger, COS_ALERT_PERSIST_FAILED, exc, alert_id=str(alert.id)
             )
+            raise
