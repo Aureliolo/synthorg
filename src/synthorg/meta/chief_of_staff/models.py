@@ -217,13 +217,20 @@ class Alert(BaseModel):
 class ChatQuery(BaseModel):
     """Input to the Chief of Staff chat interface.
 
-    ``question`` is always required. ``proposal_id`` routes to
-    proposal explanation; ``alert_id`` routes to alert explanation;
-    a bare ``question`` triggers free-form signal Q&A.
+    ``question`` is always required. ``alert_id``, when it resolves to
+    a persisted alert, routes to dedicated alert explanation.
+    ``proposal_id`` cannot route to dedicated proposal explanation (a
+    full ``ImprovementProposal`` is not reconstructable from the
+    approval queue an approved/pending proposal survives into); when
+    it resolves to an approval-queue item, that item's title,
+    description, and metadata are folded into the free-form answer's
+    context instead. A bare ``question``, or an id that does not
+    resolve, triggers plain free-form signal Q&A. Alert takes priority
+    when both ids are set.
 
     Attributes:
         question: User's natural language question (required).
-        proposal_id: Proposal to explain (optional).
+        proposal_id: Approval-queue item to fold into context (optional).
         alert_id: Alert to explain (optional).
     """
 

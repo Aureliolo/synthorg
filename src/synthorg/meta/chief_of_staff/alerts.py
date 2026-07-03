@@ -15,8 +15,10 @@ from synthorg.meta.models import RuleSeverity
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.chief_of_staff import (
     COS_ALERT_EMITTED,
+    COS_ALERT_PERSIST_FAILED,
     COS_ALERT_SUPPRESSED,
 )
+from synthorg.persistence.alert_protocol import AlertRepository
 
 logger = get_logger(__name__)
 
@@ -140,3 +142,37 @@ class LoggingAlertSink:
             description=alert.description,
             domains=list(alert.affected_domains),
         )
+
+
+class PersistentAlertSink:
+    """Alert sink that durably persists alerts.
+
+    Backs the ``/meta/alerts`` read endpoint and ``alert_id``
+    chat-routing resolution.
+
+    Args:
+        repo: The durable alert repository to append to.
+    """
+
+    def __init__(self, repo: AlertRepository) -> None:
+        self._repo = repo
+
+    async def on_alert(self, alert: Alert) -> None:
+        """Persist the alert, logging and swallowing a write failure.
+
+        ``ProactiveAlertService``'s fan-out already isolates sink
+        failures from each other (a ``TaskGroup`` per-sink try/except
+        records ``failed_sinks`` and never re-raises), so this only
+        needs to emit the specific persistence-failure event; re-raising
+        would double-log against that generic path.
+
+        Args:
+            alert: The alert to persist.
+        """
+        try:
+            await self._repo.append(alert)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger, COS_ALERT_PERSIST_FAILED, exc, alert_id=str(alert.id)
+            )

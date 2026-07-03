@@ -824,6 +824,7 @@
       "controllers": [
         "MetaController",
         "MetaEvolutionController",
+        "MetaAlertsController",
         "ConversationalController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -876,6 +877,7 @@
         "signals_service",
         "experiment_service",
         "ab_test_repo",
+        "alert_repo",
         "self_improvement_service",
         "reports_service",
         "analytics_service",
@@ -1330,6 +1332,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-03T05:49:37.381477Z",
+  "generated_at": "2026-07-03T13:34:35.315690Z",
   "schema_version": 1
 }

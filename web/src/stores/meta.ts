@@ -6,13 +6,16 @@ import {
   getMetaConfig,
   getSignals,
   listABTests,
+  listAlerts,
   listProposals,
   postChat,
   postChatAct,
   postChatGroup,
   postChatPropose,
   type AbTestRecord,
+  type AlertSummary,
   type ChatResponse,
+  type ChatScope,
   type ConversationalProposeResponse,
   type EvolutionAxisStat,
   type EvolutionSummary,
@@ -204,6 +207,16 @@ async function runFetchProposals(set: MetaSet): Promise<void> {
   }
 }
 
+async function runFetchAlerts(set: MetaSet): Promise<void> {
+  set({ error: null })
+  try {
+    set({ alerts: await listAlerts() })
+  } catch (err) {
+    log.error('Failed to fetch alerts', sanitizeForLog(err))
+    set({ error: getErrorMessage(err) })
+  }
+}
+
 async function runFetchSignals(set: MetaSet): Promise<void> {
   set({ error: null })
   try {
@@ -227,10 +240,11 @@ async function runFetchActiveAgents(set: MetaSet): Promise<void> {
 async function runSendChat(
   set: MetaSet,
   question: string,
+  scope?: ChatScope,
 ): Promise<ChatResponse | null> {
   set({ chatLoading: true, error: null })
   try {
-    return await postChat(question)
+    return await postChat(question, scope)
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('Chat request failed', sanitizeForLog(err))
@@ -250,6 +264,7 @@ interface MetaState {
   // Data
   config: MetaConfig | null
   proposals: readonly ProposalSummary[]
+  alerts: readonly AlertSummary[]
   abTests: readonly AbTestRecord[]
   evolutionSummary: EvolutionSummary | null
   evolutionAxes: readonly EvolutionAxisStat[]
@@ -269,9 +284,10 @@ interface MetaState {
   /** Light config-only fetch for surfaces that gate on flags alone. */
   fetchConfig: () => Promise<void>
   fetchProposals: () => Promise<void>
+  fetchAlerts: () => Promise<void>
   fetchSignals: () => Promise<void>
   fetchActiveAgents: () => Promise<void>
-  sendChat: (question: string) => Promise<ChatResponse | null>
+  sendChat: (question: string, scope?: ChatScope) => Promise<ChatResponse | null>
   proposeConversation: (
     message: string,
     conversationId?: string,
@@ -291,6 +307,7 @@ interface MetaState {
 export const useMetaStore = create<MetaState>((set) => ({
   config: null,
   proposals: [],
+  alerts: [],
   abTests: [],
   evolutionSummary: null,
   evolutionAxes: [],
@@ -306,9 +323,11 @@ export const useMetaStore = create<MetaState>((set) => ({
   fetchAll: () => runFetchAll(set),
   fetchConfig: () => runFetchConfig(set),
   fetchProposals: () => runFetchProposals(set),
+  fetchAlerts: () => runFetchAlerts(set),
   fetchSignals: () => runFetchSignals(set),
   fetchActiveAgents: () => runFetchActiveAgents(set),
-  sendChat: (question: string) => runSendChat(set, question),
+  sendChat: (question: string, scope?: ChatScope) =>
+    runSendChat(set, question, scope),
   proposeConversation: (message: string, conversationId?: string) =>
     runProposeConversation(set, message, conversationId),
   converseGroup: (

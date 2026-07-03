@@ -11,6 +11,7 @@ from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
+from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
@@ -31,9 +32,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
+from synthorg.meta.guards.approval_gate import PROPOSAL_GUARD_ACTION_TYPE_PREFIX
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.meta.rollout.ab_models import AbTestRecord
+from synthorg.meta.signals.service import PROPOSAL_ACTION_TYPE
 from synthorg.meta.state import (
     MetaStateSlice,
     ab_test_repo_of,
@@ -310,7 +313,10 @@ class MetaController(Controller):
     ) -> PaginatedResponse[dict[str, object]]:
         """List improvement proposals from the approval store.
 
-        Returns proposals where action_type starts with ``meta.``.
+        Returns proposals from either producer: the manual, MCP-tool-driven
+        submission path (``action_type == PROPOSAL_ACTION_TYPE``) and the
+        automated self-improvement-cycle path (``action_type`` prefixed
+        with ``PROPOSAL_GUARD_ACTION_TYPE_PREFIX``, altitude-suffixed).
 
         Args:
             state: Application state.
@@ -338,7 +344,8 @@ class MetaController(Controller):
                 "created_at": item.created_at.isoformat(),
             }
             for item in all_items
-            if item.action_type.startswith("meta.")
+            if item.action_type == PROPOSAL_ACTION_TYPE
+            or item.action_type.startswith(PROPOSAL_GUARD_ACTION_TYPE_PREFIX)
         )
         logger.debug(META_PROPOSAL_LISTED, count=len(proposals))
         page, meta = paginate_cursor(
@@ -399,9 +406,11 @@ class MetaController(Controller):
         """Ask the Chief of Staff a question.
 
         Routes to the ChiefOfStaffChat backend for LLM-powered
-        explanations of signals and proposals.  Returns 503 when the
-        chat backend is not configured (``chief_of_staff.chat_enabled``
-        is False or no LLM provider is registered).
+        explanations of signals and proposals (see
+        ``resolve_chat_answer`` for how ``proposal_id``/``alert_id``
+        scoping is resolved). Returns 503 when the chat backend is not
+        configured (``chief_of_staff.chat_enabled`` is False or no LLM
+        provider is registered).
 
         Args:
             data: Chat request with question text.
@@ -452,7 +461,7 @@ class MetaController(Controller):
             proposal_id=data.proposal_id,
             alert_id=data.alert_id,
         )
-        result = await chat_backend.ask(query, snapshot)
+        result = await resolve_chat_answer(app_state, chat_backend, query, snapshot)
         return ApiResponse[dict[str, object]](
             data={
                 "answer": result.answer,

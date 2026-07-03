@@ -1,15 +1,20 @@
-"""Unit tests for ProactiveAlertService and LoggingAlertSink."""
+"""Unit tests for ProactiveAlertService, LoggingAlertSink, and
+PersistentAlertSink."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.meta.chief_of_staff.alerts import (
     LoggingAlertSink,
+    PersistentAlertSink,
     ProactiveAlertService,
 )
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
 from synthorg.meta.models import RuleSeverity
+from synthorg.persistence.alert_protocol import AlertRepository
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -131,4 +136,37 @@ class TestLoggingAlertSink:
             affected_domains=("performance",),
             emitted_at=_NOW,
         )
+        await sink.on_alert(alert)
+
+
+class TestPersistentAlertSink:
+    """PersistentAlertSink tests."""
+
+    async def test_appends_alert_to_repo(self) -> None:
+        repo = mock_of[AlertRepository](append=AsyncMock(return_value=None))
+        sink = PersistentAlertSink(repo)
+        alert = Alert(
+            severity=RuleSeverity.WARNING,
+            alert_type="inflection",
+            description="Test alert",
+            affected_domains=("budget",),
+            emitted_at=_NOW,
+        )
+        await sink.on_alert(alert)
+        repo.append.assert_awaited_once_with(alert)
+
+    async def test_swallows_append_failure(self) -> None:
+        repo = mock_of[AlertRepository](
+            append=AsyncMock(side_effect=RuntimeError("db down"))
+        )
+        sink = PersistentAlertSink(repo)
+        alert = Alert(
+            severity=RuleSeverity.WARNING,
+            alert_type="inflection",
+            description="Test alert",
+            affected_domains=("budget",),
+            emitted_at=_NOW,
+        )
+        # Must not raise: ProactiveAlertService's fan-out already isolates
+        # sink failures, so a persistence outage cannot take the tick down.
         await sink.on_alert(alert)

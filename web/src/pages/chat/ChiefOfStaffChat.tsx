@@ -6,6 +6,7 @@ import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatScopePicker } from './ChatScopePicker'
 import {
   useChiefOfStaffChatState,
   type ChiefOfStaffMessage,
@@ -52,7 +53,7 @@ export function ChiefOfStaffChat() {
 
   if (ctrl.messages.length === 0 && !ctrl.chatLoading) {
     return (
-      <div className="space-y-section-gap">
+      <div className="mx-auto max-w-3xl space-y-section-gap">
         <EmptyState
           icon={MessageCircle}
           title="Ask the Chief of Staff"
@@ -61,6 +62,13 @@ export function ChiefOfStaffChat() {
         <ExamplePrompts
           prompts={EXAMPLE_PROMPTS}
           onSelect={ctrl.setInput}
+          disabled={ctrl.chatLoading}
+        />
+        <ChatScopePicker
+          proposals={ctrl.scopeableProposals}
+          alerts={ctrl.scopeableAlerts}
+          value={ctrl.scope}
+          onChange={ctrl.setScope}
           disabled={ctrl.chatLoading}
         />
         <ChatInputArea
@@ -76,7 +84,7 @@ export function ChiefOfStaffChat() {
   }
 
   return (
-    <div className="flex flex-col gap-section-gap">
+    <div className="mx-auto flex max-w-3xl flex-col gap-section-gap">
       <div
         ref={ctrl.scrollRef}
         role="log"
@@ -93,6 +101,13 @@ export function ChiefOfStaffChat() {
         )}
       </div>
 
+      <ChatScopePicker
+        proposals={ctrl.scopeableProposals}
+        alerts={ctrl.scopeableAlerts}
+        value={ctrl.scope}
+        onChange={ctrl.setScope}
+        disabled={ctrl.chatLoading}
+      />
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}

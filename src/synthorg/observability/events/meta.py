@@ -194,6 +194,12 @@ META_TOOLSMITH_ALLOWLIST_REQUIRED: Final[str] = "meta.toolsmith.allowlist_requir
 # ``ServiceUnavailableError`` propagates and the response surfaces 503.
 META_CHAT_DEPENDENCY_UNAVAILABLE: Final[str] = "meta.chat.dependency_unavailable"
 
+# Emitted at WARNING when ``POST /meta/chat`` carries a ``proposal_id`` or
+# ``alert_id`` that does not resolve to an existing record (stale/deleted
+# reference). The turn still answers via the unscoped free-form path
+# rather than failing the request.
+META_CHAT_SCOPE_NOT_FOUND: Final[str] = "meta.chat.scope_not_found"
+
 # -- Learning-curve endpoint -----------------------------------------------
 
 # Emitted at DEBUG when ``GET /learning/curve`` serves the benchmark

@@ -14,6 +14,7 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.ab_test_protocol import AbTestRepository
+from synthorg.persistence.alert_protocol import AlertRepository
 from synthorg.persistence.experiment_protocol import ExperimentRepository
 
 logger = get_logger(__name__)
@@ -241,6 +242,84 @@ def _build_ab_test_repo(app_state: AppState) -> AbTestRepository:
         )
 
         return PostgresAbTestRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
+
+
+async def _wire_alert_repo(app_state: AppState) -> None:
+    """Wire the durable alert repository at boot.
+
+    Best-effort + idempotent. Builds the per-backend
+    :class:`AlertRepository` over the connected persistence layer and
+    installs it on ``MetaStateSlice`` so the ``/meta/alerts`` endpoint
+    serves real alert records and ``build_org_inflection_monitor`` has a
+    durable sink to fan alerts into. Called before
+    ``_wire_org_inflection_monitor`` so the monitor's persistent sink can
+    be wired in the same pass. When persistence is absent the hook skips
+    and the endpoint degrades to an empty page.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    if app_state.slice(MetaStateSlice).alert_repo is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="alert_repo",
+            note="persistence absent; alerts endpoint degrades to empty",
+        )
+        return
+    try:
+        repo = _build_alert_repo(app_state)
+        app_state.wire(MetaStateSlice, alert_repo=repo)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="alert_repo",
+            note="alert repo wiring failed; endpoint degrades to empty",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(API_APP_STARTUP, service="alert_repo", note="wired (durable)")
+
+
+def _build_alert_repo(app_state: AppState) -> AlertRepository:
+    """Build the per-backend durable alert repository.
+
+    Returns:
+        The SQLite or Postgres ``AlertRepository`` over the connected
+        persistence layer.
+    """
+    from synthorg.persistence.backend_dispatch import build_for_backend  # noqa: PLC0415
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+
+    def _build_sqlite() -> AlertRepository:
+        from synthorg.persistence.sqlite.alert_repo import (  # noqa: PLC0415
+            SQLiteAlertRepository,
+        )
+
+        return SQLiteAlertRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
+        )
+
+    def _build_postgres() -> AlertRepository:
+        from synthorg.persistence.postgres.alert_repo import (  # noqa: PLC0415
+            PostgresAlertRepository,
+        )
+
+        return PostgresAlertRepository(postgres_pool(persistence))
 
     return build_for_backend(
         persistence, sqlite=_build_sqlite, postgres=_build_postgres

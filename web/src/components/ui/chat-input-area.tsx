@@ -35,7 +35,7 @@ export function ChatInputArea({
     [onSend],
   )
   return (
-    <div className={cn('flex gap-2', className)}>
+    <div className={cn('flex items-end gap-2', className)}>
       <div className="flex-1">
         <InputField
           label={label}

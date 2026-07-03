@@ -1,0 +1,71 @@
+"""Routes a ``/meta/chat`` question by which scoping id is present.
+
+Sibling of ``meta.py``: keeps the routing decision (dedicated alert
+explanation vs. proposal-scoped free-form vs. plain free-form) out of
+the controller handler so that module stays under its size-budget tier.
+
+``alert_id`` routes to :meth:`ChiefOfStaffChat.explain_alert` when it
+resolves to a persisted alert. ``proposal_id`` cannot route to
+:meth:`ChiefOfStaffChat.explain_proposal`: a full ``ImprovementProposal``
+is not reconstructable from the approval-queue item a proposal survives
+into (rationale / rollback plan / change tuples don't survive the
+park), so a resolved item's title/description/metadata are instead
+folded into the free-form answer via ``ask(..., scoped_proposal=...)``.
+A stale/unresolvable id, or no id at all, falls back to (or stays on)
+the plain free-form path. Alert takes priority when both ids are set.
+"""
+
+from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
+from synthorg.meta.signal_models import OrgSignalSnapshot
+from synthorg.meta.state import alert_repo_of
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import META_CHAT_SCOPE_NOT_FOUND
+
+logger = get_logger(__name__)
+
+
+async def resolve_chat_answer(
+    app_state: AppState,
+    chat_backend: ChiefOfStaffChat,
+    query: ChatQuery,
+    snapshot: OrgSignalSnapshot,
+) -> ChatResponse:
+    """Answer a chat question, routing by whichever scoping id is set.
+
+    Returns:
+        The chat response from whichever path was taken.
+    """
+    if query.alert_id is not None:
+        alert_repo = alert_repo_of(app_state)
+        if alert_repo is not None:
+            alert = await alert_repo.get_by_id(query.alert_id)
+            if alert is not None:
+                return await chat_backend.explain_alert(alert, snapshot)
+        logger.warning(
+            META_CHAT_SCOPE_NOT_FOUND,
+            scope="alert_id",
+            value=str(query.alert_id),
+        )
+        return await chat_backend.ask(query, snapshot)
+
+    if query.proposal_id is not None:
+        store = app_state.slice(ApprovalStateSlice).store
+        if store is not None:
+            item = await store.get(NotBlankStr(str(query.proposal_id)))
+            if item is not None:
+                return await chat_backend.ask(query, snapshot, scoped_proposal=item)
+        logger.warning(
+            META_CHAT_SCOPE_NOT_FOUND,
+            scope="proposal_id",
+            value=str(query.proposal_id),
+        )
+        return await chat_backend.ask(query, snapshot)
+
+    return await chat_backend.ask(query, snapshot)
+
+
+__all__ = ["resolve_chat_answer"]

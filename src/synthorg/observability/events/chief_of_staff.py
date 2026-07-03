@@ -33,6 +33,7 @@ COS_INFLECTION_CHECK_FAILED: Final[str] = "chief_of_staff.inflection.check_faile
 
 COS_ALERT_EMITTED: Final[str] = "chief_of_staff.alert.emitted"
 COS_ALERT_SUPPRESSED: Final[str] = "chief_of_staff.alert.suppressed"
+COS_ALERT_PERSIST_FAILED: Final[str] = "chief_of_staff.alert.persist_failed"
 COS_MONITOR_STARTED: Final[str] = "chief_of_staff.monitor.started"
 COS_MONITOR_STOPPED: Final[str] = "chief_of_staff.monitor.stopped"
 COS_MONITOR_LOOP_DIED: Final[str] = "chief_of_staff.monitor.loop_died"

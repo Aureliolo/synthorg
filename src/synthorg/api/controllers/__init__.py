@@ -85,6 +85,7 @@ from synthorg.api.controllers.memory.entries import MemoryEntriesController
 from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
+from synthorg.api.controllers.meta_alerts import MetaAlertsController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.meta_evolution import MetaEvolutionController
 from synthorg.api.controllers.metrics import MetricsController
@@ -287,6 +288,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     TrainingController,
     MetaController,
     MetaEvolutionController,
+    MetaAlertsController,
     ConversationalController,
     MetaAnalyticsController,
     LearningController,
@@ -399,6 +401,7 @@ __all__ = [
     "MemoryEntriesController",
     "MemoryFineTuneController",
     "MessageController",
+    "MetaAlertsController",
     "MetaAnalyticsController",
     "MetaController",
     "MetaEvolutionController",

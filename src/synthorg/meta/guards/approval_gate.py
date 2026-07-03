@@ -31,6 +31,14 @@ from synthorg.observability.events.meta import (
 
 logger = get_logger(__name__)
 
+PROPOSAL_GUARD_ACTION_TYPE_PREFIX: Final[str] = "proposal:"
+"""Discriminator prefix used on approval items the automated
+self-improvement-cycle guard registers (altitude-suffixed, e.g.
+``"proposal:architecture"``). The manual, MCP-tool-driven submission
+path (``meta.signals.service.PROPOSAL_ACTION_TYPE``) uses a different,
+unsuffixed discriminator; ``GET /meta/proposals`` matches both.
+"""
+
 _ALTITUDE_RISK: dict[ProposalAltitude, ApprovalRiskLevel] = {
     ProposalAltitude.CONFIG_TUNING: ApprovalRiskLevel.MEDIUM,
     ProposalAltitude.ARCHITECTURE: ApprovalRiskLevel.HIGH,
@@ -131,7 +139,7 @@ class ApprovalGateGuard:
         )
         item = ApprovalItem(
             id=UUID(approval_id),
-            action_type=f"proposal:{proposal.altitude.value}",
+            action_type=f"{PROPOSAL_GUARD_ACTION_TYPE_PREFIX}{proposal.altitude.value}",
             title=proposal.title,
             description=proposal.description,
             requested_by="meta_improvement_service",
