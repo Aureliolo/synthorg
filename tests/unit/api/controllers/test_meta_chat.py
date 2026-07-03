@@ -1,5 +1,6 @@
 """Tests for the ``POST /meta/chat`` endpoint."""
 
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -119,7 +120,13 @@ class TestMetaChat:
             # Without these the controller could silently drop
             # ``proposal_id`` / ``alert_id`` or swap the ``ask()`` args
             # and the payload-only checks above would still pass.
-            signals_mock.get_org_snapshot.assert_awaited_once_with()
+            signals_mock.get_org_snapshot.assert_awaited_once()
+            # ``since`` is required (keyword-only) on the service; calling
+            # bare crashed with a TypeError once the chat backend actually
+            # wired. Pin the trailing-window shape without pinning wall time.
+            since = signals_mock.get_org_snapshot.await_args.kwargs["since"]
+            window = app_state.clock.now() - since
+            assert timedelta(days=6) < window < timedelta(days=8)
             chat_mock.ask.assert_awaited_once()
             asked_query, asked_snapshot = chat_mock.ask.await_args.args
             assert isinstance(asked_query, ChatQuery)
@@ -173,6 +180,48 @@ class TestMetaChat:
                 )
             else:
                 await settings.delete("chief_of_staff", "explain_chat_enabled")
+            app_state.swap_slice(original_slice)
+
+    async def test_snapshot_window_is_live_configurable(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """chief_of_staff.chat_snapshot_window_days applies with no restart."""
+        from synthorg.settings.state import settings_service_of
+
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="ok", sources=(), confidence=0.5
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        app_state = async_test_client.app.state.app_state
+        settings = settings_service_of(app_state)
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+        )
+        prior = await settings.get("chief_of_staff", "chat_snapshot_window_days")
+        try:
+            await settings.set("chief_of_staff", "chat_snapshot_window_days", "3")
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={"question": "How are we doing?"},
+            )
+            assert resp.status_code == 200
+            since = signals_mock.get_org_snapshot.await_args.kwargs["since"]
+            window = app_state.clock.now() - since
+            assert timedelta(days=2) < window < timedelta(days=4)
+        finally:
+            if prior.source is SettingSource.DATABASE:
+                await settings.set(
+                    "chief_of_staff", "chat_snapshot_window_days", prior.value
+                )
+            else:
+                await settings.delete("chief_of_staff", "chat_snapshot_window_days")
             app_state.swap_slice(original_slice)
 
     async def test_returns_503_when_signals_service_missing(

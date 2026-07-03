@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
+from synthorg.api._feature_provider_resolution import resolve_feature_provider
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
@@ -135,14 +136,14 @@ def _resolve_llm_judge_strategy(
             )
             return None
     else:
-        available = provider_registry.list_providers()
-        if not available:
-            logger.warning(
-                API_APP_STARTUP,
-                note="No providers available, LLM judge disabled",
-            )
+        resolved = resolve_feature_provider(
+            provider_registry,
+            cfg.quality_judge_model,
+            feature="quality_llm_judge",
+        )
+        if resolved is None:
             return None
-        provider_driver = provider_registry.get(available[0])
+        provider_driver = resolved
 
     from synthorg.hr.performance.llm_judge_quality_strategy import (  # noqa: PLC0415
         LlmJudgeQualityStrategy,
@@ -176,9 +177,8 @@ def build_chief_of_staff_chat(
       opt-in default), or
     - no LLM provider is registered (degenerate test/anonymous boots).
 
-    The provider is picked by the same convention as the LLM quality
-    judge: the first registered provider, since the chat model name in
-    config is provider-agnostic.
+    The provider is resolved by the configured chat model (the model
+    name in config is provider-agnostic).
 
     Returns:
         The ``ChiefOfStaffChat`` value when present, ``None`` otherwise.
@@ -188,19 +188,16 @@ def build_chief_of_staff_chat(
     if not chief_of_staff_config.chat_enabled:
         return None
 
-    available = provider_registry.list_providers()
-    if not available:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Chief of Staff chat enabled but no providers registered",
-        )
+    provider = resolve_feature_provider(
+        provider_registry,
+        chief_of_staff_config.chat_model,
+        feature="chief_of_staff_chat",
+    )
+    if provider is None:
         return None
-
-    provider = provider_registry.get(available[0])
     logger.info(
         API_APP_STARTUP,
         note="Chief of Staff chat configured",
-        provider=available[0],
         chat_model=str(chief_of_staff_config.chat_model),
     )
     return ChiefOfStaffChat(
@@ -234,9 +231,9 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     - the conversational repositories could not be built (persistence
       absent / not connected).
 
-    The provider is the first registered one (same convention as the
-    explain-only chat backend); the propose model name in config is
-    provider-agnostic. *provider_registry* is always forwarded to the
+    The provider is resolved by the configured propose model (the model
+    name in config is provider-agnostic). *provider_registry* is always
+    forwarded to the
     proposer; *role_router* does not gate that forwarding, it only
     changes how the registry is used: when a router is supplied (concern
     routing) a routed turn is answered by the matched role agent on its
@@ -258,19 +255,16 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
             note="Chief of Staff propose enabled but persistence unavailable",
         )
         return None
-    available = provider_registry.list_providers()
-    if not available:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Chief of Staff propose enabled but no providers registered",
-        )
+    provider = resolve_feature_provider(
+        provider_registry,
+        chief_of_staff_config.propose_model,
+        feature="chief_of_staff_propose",
+    )
+    if provider is None:
         return None
-
-    provider = provider_registry.get(available[0])
     logger.info(
         API_APP_STARTUP,
         note="Chief of Staff propose configured",
-        provider=available[0],
         propose_model=str(chief_of_staff_config.propose_model),
     )
     return ChiefOfStaffProposer(

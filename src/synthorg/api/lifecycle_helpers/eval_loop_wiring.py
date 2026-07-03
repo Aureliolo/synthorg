@@ -77,12 +77,13 @@ def _resolve_hr_str(key: str) -> str:
 def _select_provider(
     provider_registry: ProviderRegistry | None,
     requested: str,
+    model: str,
 ) -> CompletionProvider | None:
-    """Pick the requested provider, else the first available one.
+    """Pick the requested provider, else the one serving *model*.
 
     A pinned-but-absent ``requested`` provider resolves to ``None`` (the
-    caller then degrades to the deterministic strategy); the first-available
-    fallback applies only when no provider is pinned.
+    caller then degrades to the deterministic strategy); the model-based
+    resolution applies only when no provider is pinned.
 
     Returns:
         A completion provider, or ``None`` when none can be resolved.
@@ -103,9 +104,11 @@ def _select_provider(
             requested_provider=requested,
         )
         return None
-    # No provider pinned: use the first available one.
-    available = provider_registry.list_providers()
-    return provider_registry.get(available[0]) if available else None
+    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
+        resolve_feature_provider,
+    )
+
+    return resolve_feature_provider(provider_registry, model, feature="eval_loop")
 
 
 async def _resolve_eval_loop_modes(
@@ -181,7 +184,7 @@ def _build_pattern_strategies(
             note="llm strategy requested but eval_loop_llm_model unset; deterministic",
         )
         return (None, None)
-    provider = _select_provider(provider_registry, provider_name)
+    provider = _select_provider(provider_registry, provider_name, model)
     if provider is None:
         logger.warning(
             API_APP_STARTUP,

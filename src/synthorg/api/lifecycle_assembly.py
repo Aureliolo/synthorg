@@ -28,6 +28,9 @@ from synthorg.api.lifecycle_helpers.feature_lifecycle import (
     build_feature_lifecycle_runner,
 )
 from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
+from synthorg.api.lifecycle_helpers.provider_registry_reload import (
+    reload_persisted_provider_registry,
+)
 from synthorg.api.lifecycle_helpers.startup_steps import (
     install_runtime_services,
     resolve_runtime_security_settings,
@@ -169,6 +172,33 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)
 
+    async def _reload_provider_registry() -> None:
+        # A restarted, already-set-up deployment must boot with its
+        # DB-persisted providers live: agents are re-bootstrapped at boot
+        # but the registry was only ever rebuilt by ``/setup/complete``
+        # or a provider mutation, leaving every provider-gated feature
+        # (task execution, chief-of-staff chat, charter, research, ...)
+        # silently unwired after a restart. Rebinds the closure variable
+        # so every later hook (runtime services, feature wiring,
+        # toolsmith, eval loop) sees the reloaded registry. Best-effort:
+        # a corrupt persisted config degrades to the empty-company boot
+        # (fixable via the dashboard) rather than blocking startup.
+        nonlocal provider_registry
+        try:
+            reloaded = await reload_persisted_provider_registry(app_state)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="provider_registry",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="persisted provider reload failed; booting empty-company",
+            )
+            return
+        if reloaded is not None:
+            provider_registry = reloaded
+
     async def _wire_features() -> None:
         await wire_features_on_startup(
             app_state,
@@ -188,6 +218,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # services parse providers: migrate any embedded api_key into the
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
+        _reload_provider_registry,
         # Build the durable evolution-outcome store BEFORE runtime services
         # so the engine evolution loop reads it as its outcome sink, and
         # before signals wiring so the aggregator shares the same store.

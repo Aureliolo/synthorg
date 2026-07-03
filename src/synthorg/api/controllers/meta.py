@@ -11,6 +11,7 @@ from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
+from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import (
@@ -443,7 +444,9 @@ class MetaController(Controller):
             )
             msg = "SignalsService is not configured; cannot build a snapshot."
             raise ServiceUnavailableError(msg)
-        snapshot = await signals_service.get_org_snapshot()
+        snapshot = await signals_service.get_org_snapshot(
+            since=app_state.clock.now() - await resolve_chat_snapshot_window(app_state),
+        )
         query = ChatQuery(
             question=data.question,
             proposal_id=data.proposal_id,

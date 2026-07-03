@@ -99,6 +99,20 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         """Return the stable label used for keying and metrics."""
         return self._provider_name
 
+    @override
+    def serves_model(self, model: str) -> bool:
+        """Delegate the model-catalogue check to the wrapped driver.
+
+        Pure-replay mode has no inner driver; recorded outcomes are
+        keyed by request, not catalogue, so any model id is accepted.
+
+        Returns:
+            The inner driver's verdict, or ``True`` in replay mode.
+        """
+        if self._inner is None:
+            return True
+        return self._inner.serves_model(model)
+
     def _require_inner(self) -> BaseCompletionProvider:
         """Return the inner driver or fail loudly (record-mode only).
 
