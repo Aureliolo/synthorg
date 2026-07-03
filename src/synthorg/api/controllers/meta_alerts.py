@@ -7,7 +7,7 @@ evolution outcomes); when persistence is absent the repo is unwired
 and the endpoint degrades to an empty result rather than 503-ing.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -27,7 +27,7 @@ from synthorg.meta.models import RuleSeverity
 from synthorg.meta.state import alert_repo_of
 from synthorg.persistence.alert_protocol import AlertFilterSpec
 
-_DEFAULT_PAGE_SIZE = 50
+_DEFAULT_PAGE_SIZE: Final[int] = 50
 
 SeverityFilter = Annotated[
     RuleSeverity | None,
