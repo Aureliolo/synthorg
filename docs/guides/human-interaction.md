@@ -67,6 +67,13 @@ API -> CLI
 | `/api/v1/artifacts` | Artifact listing, creation, retrieval, deletion with binary content upload/download |
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
+| `POST /api/v1/meta/chat` | Chief of Staff explain-only chat (read-only answers; optional `alert_id`/`proposal_id` scoping). Rate-limited `meta.chat` (5/60s/user); optional `Idempotency-Key` for server-side idempotent replay |
+| `POST /api/v1/meta/chat/propose` | Clarify-and-propose: one clarifying question or concrete `WorkItem`s parked behind approval. Carries `routing_reason` + (when routed) responder attribution. Opt-in `chief_of_staff.propose_enabled`; rate-limited `meta.chat.propose`; optional `Idempotency-Key` |
+| `POST /api/v1/meta/chat/group` | Multi-agent group chat (round-robin, per-round token + input budgets, `participants_skipped`/`truncated_reason`, human-gated invites). Opt-in `chief_of_staff.group_chat_enabled`; rate-limited `meta.chat.group`; optional `Idempotency-Key` |
+| `POST /api/v1/meta/chat/act` | Direct MCP acting under trust (governed tool invoker + `ApprovalGate`; sensitive actions park). Fail-closed without `SecurityConfig`. Opt-in `chief_of_staff.direct_mcp_enabled` (live-gated per request); rate-limited `meta.chat.act`; optional `Idempotency-Key`. `conversation_id` is opaque correlation metadata only (never persisted/validated) |
+| `GET /api/v1/meta/chat/conversations`, `GET /api/v1/meta/chat/conversations/{id}` | Resume: owner-scoped, cursor-paginated conversation list + a conversation's turns (foreign/unknown id → 404). Backs reloading a prior chat/propose/group transcript |
+| `POST /api/v1/meta/charters/interview` | CEO charter interview (the "New project" mode): iterative interview that drafts a `ProjectCharter` for review and approval |
+| `GET /api/v1/agents/active` | Active-agent roster (stable UUIDs, names, roles); backs the group-chat participant picker and the direct-acting agent picker |
 | `/api/v1/analytics` | `GET /overview` (metrics summary), `GET /trends?period=7d\|30d\|90d` (bucketed time-series), `GET /forecast?horizon_days=1..90` (budget projection) |
 | `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (spending, performance, task completion, risk trends) |
 | `/api/v1/settings` | Runtime-editable configuration (<!--RS:settings_namespaces-->34<!--/RS--> namespaces), schema discovery |
