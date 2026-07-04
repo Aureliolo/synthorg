@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
 import { ChatScopePicker } from './ChatScopePicker'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import {
   useChiefOfStaffChatState,
   type ChiefOfStaffMessage,
@@ -103,11 +104,7 @@ export function ChiefOfStaffChat() {
         {ctrl.messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
         ))}
-        {ctrl.chatLoading && (
-          <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-            Thinking...
-          </div>
-        )}
+        {ctrl.chatLoading && <ChatThinkingIndicator label="Thinking" />}
       </div>
 
       {scopePicker}

@@ -10,6 +10,7 @@ import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useDirectActionState, type ActMessage } from './useDirectActionState'
 
 const INPUT_LABEL = 'Instruction'
@@ -188,11 +189,7 @@ export function DirectActionChat() {
           {ctrl.messages.map((msg) => (
             <ActBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
           ))}
-          {ctrl.loading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-              The agent is acting...
-            </div>
-          )}
+          {ctrl.loading && <ChatThinkingIndicator label="The agent is acting" />}
         </div>
       )}
 

@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useRequestWorkState, type RequestWorkMessage } from './useRequestWorkState'
 
 const INPUT_LABEL = 'Work request'
@@ -133,11 +134,7 @@ export function RequestWorkChat() {
             }}
           />
         ))}
-        {ctrl.proposeLoading && (
-          <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-            Working on it...
-          </div>
-        )}
+        {ctrl.proposeLoading && <ChatThinkingIndicator label="Working on it" />}
       </div>
 
       {ctrl.conversationClosed && (

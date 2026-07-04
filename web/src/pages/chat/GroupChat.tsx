@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useGroupChatState, type GroupMessage } from './useGroupChatState'
 
 const INPUT_LABEL = 'Message'
@@ -249,11 +250,7 @@ export function GroupChat() {
               onRetry={() => ctrl.retryLast(msg.id)}
             />
           ))}
-          {ctrl.loading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-              Agents are responding...
-            </div>
-          )}
+          {ctrl.loading && <ChatThinkingIndicator label="Agents are responding" />}
         </div>
       )}
 
