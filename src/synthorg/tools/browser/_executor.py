@@ -1,3 +1,4 @@
+# module-kind: integration
 """Browser executor entry point shipped into the sandbox container.
 
 The :class:`BrowserTool` copies this file into the project workspace
@@ -53,14 +54,32 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from playwright.async_api import Page
+from playwright.async_api import BrowserContext, Page, VirtualCredential
 
 if TYPE_CHECKING:
     # The executor is copied into and run inside the sandbox container, where
     # ``synthorg`` is not installed, so this import must never execute at
     # runtime. Signature annotations referencing these names are quoted so the
     # sub-3.14 sandbox interpreter never evaluates them at function definition.
-    from synthorg.tools.browser._executor_types import BrowserPayload, Violation
+    from synthorg.tools.browser._executor_types import (
+        BrowserPayload,
+        StoragePayload,
+        Violation,
+        WebAuthnCredentialPayload,
+        WebAuthnPayload,
+    )
+
+_STORAGE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {"storage_get", "storage_set", "storage_remove", "storage_clear"},
+)
+_WEBAUTHN_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "webauthn_install",
+        "webauthn_create_credential",
+        "webauthn_list_credentials",
+        "webauthn_delete_credential",
+    },
+)
 
 _DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
 _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
@@ -345,6 +364,124 @@ async def _accessibility(
     }
 
 
+async def _storage_get(page: Page, payload: "BrowserPayload") -> "StoragePayload":
+    """Read one item, or all items, from the page's WebStorage.
+
+    Returns:
+        The storage type plus the matching key/value pairs.
+    """
+    storage_type = payload.get("storage_type") or "local"
+    storage = page.session_storage if storage_type == "session" else page.local_storage
+    key = payload.get("storage_key")
+    if key:
+        value = await storage.get_item(key)
+        items = {key: value} if value is not None else {}
+    else:
+        items = {item["name"]: item["value"] for item in await storage.items()}
+    return {"storage_type": storage_type, "items": items}
+
+
+async def _storage_set(page: Page, payload: "BrowserPayload") -> "StoragePayload":
+    """Write one item to the page's WebStorage.
+
+    Returns:
+        The storage type plus the written key/value pair.
+    """
+    storage_type = payload.get("storage_type") or "local"
+    storage = page.session_storage if storage_type == "session" else page.local_storage
+    key = payload["storage_key"]
+    value = payload["storage_value"]
+    await storage.set_item(key, value)
+    return {"storage_type": storage_type, "items": {key: value}}
+
+
+async def _storage_remove(page: Page, payload: "BrowserPayload") -> "StoragePayload":
+    """Remove one item from the page's WebStorage.
+
+    Returns:
+        The storage type with an empty items mapping.
+    """
+    storage_type = payload.get("storage_type") or "local"
+    storage = page.session_storage if storage_type == "session" else page.local_storage
+    await storage.remove_item(payload["storage_key"])
+    return {"storage_type": storage_type, "items": {}}
+
+
+async def _storage_clear(page: Page, payload: "BrowserPayload") -> "StoragePayload":
+    """Clear all items from the page's WebStorage.
+
+    Returns:
+        The storage type with an empty items mapping.
+    """
+    storage_type = payload.get("storage_type") or "local"
+    storage = page.session_storage if storage_type == "session" else page.local_storage
+    await storage.clear()
+    return {"storage_type": storage_type, "items": {}}
+
+
+_STORAGE_HANDLERS = {
+    "storage_get": _storage_get,
+    "storage_set": _storage_set,
+    "storage_remove": _storage_remove,
+    "storage_clear": _storage_clear,
+}
+
+
+def _credential_to_payload(
+    cred: VirtualCredential,
+) -> "WebAuthnCredentialPayload":
+    """Normalize a Playwright ``VirtualCredential`` to the host-side JSON shape.
+
+    Playwright returns camelCase keys (``rpId``, ``userHandle``, ...); the
+    host-side model expects snake_case.
+
+    Returns:
+        The credential in snake_case field form.
+    """
+    return {
+        "id": cred["id"],
+        "rp_id": cred["rpId"],
+        "user_handle": cred["userHandle"],
+        "private_key": cred["privateKey"],
+        "public_key": cred["publicKey"],
+    }
+
+
+async def _webauthn(
+    context: BrowserContext,
+    payload: "BrowserPayload",
+) -> "WebAuthnPayload":
+    """Run one WebAuthn virtual-authenticator operation.
+
+    Each call installs a fresh virtual authenticator on ``context`` --
+    the sandbox launches a new browser per executor invocation, so no
+    authenticator state persists across separate tool calls; every
+    webauthn_* operation is self-contained within its own call.
+
+    Returns:
+        The credentials produced or returned by this operation.
+
+    Raises:
+        KeyError: If a required payload field is missing for this operation.
+    """
+    operation = payload["operation"]
+    await context.credentials.install()
+    if operation == "webauthn_install":
+        return {"credentials": []}
+    if operation == "webauthn_create_credential":
+        cred = await context.credentials.create(
+            rp_id=payload["webauthn_rp_id"],
+            user_handle=payload.get("webauthn_user_handle"),
+        )
+        return {"credentials": [_credential_to_payload(cred)]}
+    if operation == "webauthn_list_credentials":
+        creds = await context.credentials.get(rp_id=payload.get("webauthn_rp_id"))
+        return {"credentials": [_credential_to_payload(c) for c in creds]}
+    # webauthn_delete_credential
+    await context.credentials.delete(id=payload["webauthn_credential_id"])
+    return {"credentials": []}
+
+
 async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
     # Playwright is only available inside the sandbox image where this
     # script executes; importing lazily keeps the executor importable
@@ -390,27 +527,42 @@ async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
             context = await browser.new_context(
                 viewport={"width": width, "height": height},
             )
-            page = await context.new_page()
             try:
-                navigation = await _navigate(page, payload)
-                screenshot_result: dict[str, object] | None = None
-                a11y_result: dict[str, object] | None = None
-                if operation in {"capture", "screenshot"}:
-                    if not payload.get("screenshot_path"):
-                        raise ValueError(
-                            "screenshot_path required for capture / screenshot",
+                if operation in _WEBAUTHN_OPERATIONS:
+                    # WebAuthn virtual-authenticator operations are a CDP-level
+                    # concept scoped to the browser context, independent of
+                    # any specific page -- no navigation is needed.
+                    webauthn_result = await _webauthn(context, payload)
+                    return {"status": "ok", "webauthn": webauthn_result}
+                page = await context.new_page()
+                try:
+                    navigation = await _navigate(page, payload)
+                    screenshot_result: dict[str, object] | None = None
+                    a11y_result: dict[str, object] | None = None
+                    storage_result: "StoragePayload | None" = None
+                    if operation in {"capture", "screenshot"}:
+                        if not payload.get("screenshot_path"):
+                            raise ValueError(
+                                "screenshot_path required for capture / screenshot",
+                            )
+                        screenshot_result = await _screenshot(page, payload)
+                    if operation in {"capture", "accessibility_scan"}:
+                        a11y_result = await _accessibility(page, payload)
+                    if operation in _STORAGE_OPERATIONS:
+                        storage_result = await _STORAGE_HANDLERS[operation](
+                            page,
+                            payload,
                         )
-                    screenshot_result = await _screenshot(page, payload)
-                if operation in {"capture", "accessibility_scan"}:
-                    a11y_result = await _accessibility(page, payload)
-                return {
-                    "status": "ok",
-                    "navigation": navigation,
-                    "screenshot": screenshot_result,
-                    "accessibility": a11y_result,
-                }
+                    return {
+                        "status": "ok",
+                        "navigation": navigation,
+                        "screenshot": screenshot_result,
+                        "accessibility": a11y_result,
+                        "storage": storage_result,
+                    }
+                finally:
+                    await page.close()
             finally:
-                await page.close()
                 await context.close()
         finally:
             await browser.close()

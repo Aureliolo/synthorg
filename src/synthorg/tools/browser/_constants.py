@@ -52,7 +52,7 @@ BASELINE_META_FILENAME: Final[str] = ".meta.json"
 DIFF_HEATMAP_SUFFIX: Final[str] = "_diff.png"
 
 BROWSER_IMAGE_PIN_DEFAULT: Final[str] = (
-    "mcr.microsoft.com/playwright/python:v1.60.0-jammy"
+    "mcr.microsoft.com/playwright/python:v1.61.0-jammy"
 )
 CONTAINER_WORKSPACE_ROOT: Final[str] = "/workspace"
 

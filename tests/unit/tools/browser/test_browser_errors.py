@@ -13,6 +13,8 @@ from synthorg.tools.browser.errors import (
     BrowserNavigationError,
     BrowserScreenshotError,
     BrowserStartCommandError,
+    BrowserStorageError,
+    BrowserWebAuthnError,
 )
 from synthorg.tools.errors import ToolError
 
@@ -28,6 +30,8 @@ _ALL_ERRORS = (
     BrowserDiffError,
     BrowserStartCommandError,
     BrowserArgumentError,
+    BrowserStorageError,
+    BrowserWebAuthnError,
 )
 
 

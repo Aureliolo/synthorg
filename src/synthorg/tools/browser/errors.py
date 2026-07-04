@@ -82,3 +82,15 @@ class BrowserArgumentError(BrowserDomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_PARAMETER_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Browser tool arguments invalid"
+
+
+class BrowserStorageError(BrowserDomainError):
+    """WebStorage (localStorage / sessionStorage) read or write failed."""
+
+    default_message: ClassVar[str] = "Browser storage operation failed"
+
+
+class BrowserWebAuthnError(BrowserDomainError):
+    """A WebAuthn virtual-authenticator operation failed."""
+
+    default_message: ClassVar[str] = "Browser WebAuthn operation failed"

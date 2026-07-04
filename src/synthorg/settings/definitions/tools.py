@@ -382,7 +382,7 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="browser_image_pin",
         type=SettingType.STRING,
-        default="mcr.microsoft.com/playwright/python:v1.60.0-jammy",
+        default="mcr.microsoft.com/playwright/python:v1.61.0-jammy",
         description=(
             "Container image used by the browser sandbox backend. Must"
             " contain Python 3, Playwright Python, and Chromium ready"

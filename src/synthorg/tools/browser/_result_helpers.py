@@ -25,6 +25,8 @@ from synthorg.tools.browser.errors import (
     BrowserNavigationError,
     BrowserScreenshotError,
     BrowserStartCommandError,
+    BrowserStorageError,
+    BrowserWebAuthnError,
 )
 
 
@@ -68,6 +70,8 @@ _EXECUTOR_ERROR_MAP: Final[dict[str, type[BrowserDomainError]]] = {
     "BrowserBaselineNotFoundError": BrowserBaselineNotFoundError,
     "BrowserStartCommandError": BrowserStartCommandError,
     "BrowserArgumentError": BrowserArgumentError,
+    "BrowserStorageError": BrowserStorageError,
+    "BrowserWebAuthnError": BrowserWebAuthnError,
     # ``asyncio.wait_for`` raises TimeoutError when the executor's
     # launch budget is exceeded; navigation timeouts come back as
     # PlaywrightTimeoutError from page.goto.

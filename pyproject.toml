@@ -699,6 +699,9 @@ ignore_names = [
     # import as unused even though mypy needs it.
     "BrowserPayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
     "Violation",       # tools/browser/_executor.py (TYPE_CHECKING-only)
+    "StoragePayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
+    "WebAuthnCredentialPayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
+    "WebAuthnPayload", # tools/browser/_executor.py (TYPE_CHECKING-only)
 ]
 
 # ---------------------------------------------------------------------------

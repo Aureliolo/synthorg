@@ -35,11 +35,37 @@ BrowserMode = Literal[
     "diff",
     "accessibility_scan",
     "spec",
+    "storage_get",
+    "storage_set",
+    "storage_remove",
+    "storage_clear",
+    "webauthn_install",
+    "webauthn_create_credential",
+    "webauthn_list_credentials",
+    "webauthn_delete_credential",
 ]
 
 A11yImpact = Literal["minor", "moderate", "serious", "critical"]
 
 WaitCondition = Literal["load", "domcontentloaded", "networkidle"]
+
+StorageType = Literal["local", "session"]
+
+# Modes that open a page and therefore require url or path. WebAuthn modes
+# operate on the browser context's virtual authenticator (a CDP-level
+# concept independent of any specific page) and are exempt.
+_MODES_REQUIRING_TARGET: frozenset[str] = frozenset(
+    {
+        "navigate",
+        "screenshot",
+        "accessibility_scan",
+        "spec",
+        "storage_get",
+        "storage_set",
+        "storage_remove",
+        "storage_clear",
+    },
+)
 
 
 class BrowserToolArgs(BaseModel):
@@ -56,7 +82,10 @@ class BrowserToolArgs(BaseModel):
 
     mode: BrowserMode = Field(
         description=(
-            "Operation: navigate, screenshot, diff, accessibility_scan, or spec."
+            "Operation: navigate, screenshot, diff, accessibility_scan, spec, "
+            "storage_get, storage_set, storage_remove, storage_clear, "
+            "webauthn_install, webauthn_create_credential, "
+            "webauthn_list_credentials, or webauthn_delete_credential."
         ),
     )
 
@@ -160,6 +189,42 @@ class BrowserToolArgs(BaseModel):
         description="Timeout for start_command in seconds.",
     )
 
+    storage_type: StorageType = Field(
+        default="local",
+        description=(
+            "Which WebStorage to use: 'local' (localStorage) or "
+            "'session' (sessionStorage). Applies to storage_* modes."
+        ),
+    )
+    storage_key: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Storage item key. Required for storage_set and storage_remove; "
+            "optional for storage_get (omit to fetch all items)."
+        ),
+    )
+    storage_value: str | None = Field(
+        default=None,
+        description="Storage item value. Required for storage_set.",
+    )
+
+    webauthn_rp_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Relying-party id for the virtual credential. Required for "
+            "webauthn_create_credential; optional filter for "
+            "webauthn_list_credentials."
+        ),
+    )
+    webauthn_user_handle: str | None = Field(
+        default=None,
+        description="Optional user handle for webauthn_create_credential.",
+    )
+    webauthn_credential_id: NotBlankStr | None = Field(
+        default=None,
+        description="Credential id. Required for webauthn_delete_credential.",
+    )
+
     @model_validator(mode="after")
     def _validate_per_mode_fields(self) -> Self:
         """Enforce the per-mode required-field invariants.
@@ -172,7 +237,7 @@ class BrowserToolArgs(BaseModel):
         """
         _ = A11Y_IMPACT_LEVELS  # taxonomy reference for future widening
         if (
-            self.mode in {"navigate", "screenshot", "accessibility_scan", "spec"}
+            self.mode in _MODES_REQUIRING_TARGET
             and self.url is None
             and self.path is None
         ):
@@ -186,5 +251,20 @@ class BrowserToolArgs(BaseModel):
             raise ValueError(msg)
         if (self.viewport_width is None) != (self.viewport_height is None):
             msg = "viewport_width and viewport_height must be set together"
+            raise ValueError(msg)
+        if self.mode in {"storage_set", "storage_remove"} and self.storage_key is None:
+            msg = f"{self.mode!r} mode requires storage_key"
+            raise ValueError(msg)
+        if self.mode == "storage_set" and self.storage_value is None:
+            msg = "storage_set mode requires storage_value"
+            raise ValueError(msg)
+        if self.mode == "webauthn_create_credential" and self.webauthn_rp_id is None:
+            msg = "webauthn_create_credential mode requires webauthn_rp_id"
+            raise ValueError(msg)
+        if (
+            self.mode == "webauthn_delete_credential"
+            and self.webauthn_credential_id is None
+        ):
+            msg = "webauthn_delete_credential mode requires webauthn_credential_id"
             raise ValueError(msg)
         return self

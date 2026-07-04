@@ -25,6 +25,12 @@ class BrowserPayload(TypedDict):
     axe_script_path: NotRequired[str]
     min_impact: NotRequired[str]
     axe_version: NotRequired[str]
+    storage_type: NotRequired[Literal["local", "session"]]
+    storage_key: NotRequired[str]
+    storage_value: NotRequired[str]
+    webauthn_rp_id: NotRequired[str]
+    webauthn_user_handle: NotRequired[str]
+    webauthn_credential_id: NotRequired[str]
 
 
 class Violation(TypedDict):
@@ -35,3 +41,26 @@ class Violation(TypedDict):
     description: str
     help_url: str | None
     affected_nodes: int
+
+
+class StoragePayload(TypedDict):
+    """WebStorage read/write result (in-container JSON shape)."""
+
+    storage_type: Literal["local", "session"]
+    items: dict[str, str]
+
+
+class WebAuthnCredentialPayload(TypedDict):
+    """A single virtual WebAuthn credential (in-container JSON shape)."""
+
+    id: str
+    rp_id: str
+    user_handle: str
+    private_key: str
+    public_key: str
+
+
+class WebAuthnPayload(TypedDict):
+    """WebAuthn operation result (in-container JSON shape)."""
+
+    credentials: list[WebAuthnCredentialPayload]
