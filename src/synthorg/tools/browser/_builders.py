@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger
 from synthorg.observability.events.browser import (
+    BROWSER_A11Y_SCAN_FAILED,
     BROWSER_SCREENSHOT_FAILED,
     BROWSER_STORAGE_FAILED,
     BROWSER_WEBAUTHN_FAILED,
@@ -33,6 +34,7 @@ from synthorg.tools.browser._models import (
 )
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser.errors import (
+    BrowserAccessibilityError,
     BrowserScreenshotError,
     BrowserStorageError,
     BrowserWebAuthnError,
@@ -193,6 +195,10 @@ class _BrowserBuilderMixin:
 
         Returns:
             Result of type ``A11yScanResult``.
+
+        Raises:
+            BrowserAccessibilityError: If the executor returned a malformed
+                accessibility payload.
         """
         a11y_payload: _A11yPayload = payload.get("accessibility") or {}
         if not a11y_payload:
@@ -206,12 +212,20 @@ class _BrowserBuilderMixin:
                 axe_version=AXE_VERSION_PIN,
                 passed=True,
             )
-        violations = tuple(
-            A11yViolation.model_validate(v) for v in a11y_payload.get("violations", [])
-        )
-        warnings = tuple(
-            A11yViolation.model_validate(v) for v in a11y_payload.get("warnings", [])
-        )
+        try:
+            violations = tuple(
+                A11yViolation.model_validate(v)
+                for v in a11y_payload.get("violations", [])
+            )
+            warnings = tuple(
+                A11yViolation.model_validate(v)
+                for v in a11y_payload.get("warnings", [])
+            )
+        except ValidationError as exc:
+            logger.warning(BROWSER_A11Y_SCAN_FAILED, reason="invalid_a11y_payload")
+            raise BrowserAccessibilityError(
+                "Executor returned an invalid accessibility payload"
+            ) from exc
         return A11yScanResult(
             url=str(a11y_payload.get("url", url)),
             min_impact=a11y_payload.get("min_impact", args.min_impact),

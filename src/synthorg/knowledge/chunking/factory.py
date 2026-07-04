@@ -145,15 +145,17 @@ async def chunk_raw_document(
         return unit.content_kind, pieces
 
     # A child failure surfaces from the TaskGroup as an ExceptionGroup.
-    # Collapse it to a single leaf so the ingest caller's type-based
-    # dispatch (bare KnowledgeError / critical MemoryError / RecursionError)
-    # still matches: a single handler prevents a mixed-failure batch from
-    # re-escaping as a group, and a critical leaf is surfaced ahead of any
-    # sibling ordinary error so it is never downgraded.
+    # Catch the group directly (not ``except*``) and collapse it to a
+    # single leaf so the ingest caller's type-based dispatch (bare
+    # KnowledgeError / critical MemoryError / RecursionError) still
+    # matches. A plain ``except`` re-raises the chosen leaf as-is; an
+    # ``except*`` block would re-wrap a BaseException leaf (e.g. a
+    # cancellation) it did not itself match. A critical leaf is surfaced
+    # ahead of any sibling ordinary error so it is never downgraded.
     try:
         async with asyncio.TaskGroup() as tg:
             tasks = [tg.create_task(_chunk_one(unit)) for unit in raw.units]
-    except* Exception as eg:
+    except BaseExceptionGroup as eg:
         leaves = _flatten_exc(eg)
         for leaf in leaves:
             reraise_critical(leaf)

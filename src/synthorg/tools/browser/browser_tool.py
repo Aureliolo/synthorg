@@ -302,6 +302,10 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
 
     async def cleanup(self) -> None:
         """Release sandbox resources tied to this tool's owner."""
+        # Drop the per-owner session lock so the registry does not grow
+        # unbounded across the (unique-per-instance) owner ids. Cleanup is
+        # the owner's end of life, so no further same-owner run can race it.
+        _SESSION_STATE_LOCKS.pop(self._owner_id, None)
         try:
             await self._sandbox.release_owner(self._owner_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
