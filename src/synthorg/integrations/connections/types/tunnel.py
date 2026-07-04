@@ -3,6 +3,12 @@
 Backs a tunnel provider's auth token, minted by the tunnel manager
 when the operator pastes a token on the dashboard tunnel card. No
 ``base_url``: the tunnel target is the local API itself.
+
+A device-login provider (e.g. Dev Tunnels) stores no token: it seeds a
+no-secret ``tunnel-<provider>`` row so it still appears in the Connections
+list, health-checked through the tunnel status lookup. An empty credential
+set is therefore a valid tunnel connection; a supplied ``auth_token`` is
+still validated strictly.
 """
 
 from synthorg.integrations.connections.models import ConnectionType
@@ -32,21 +38,32 @@ class TunnelAuthenticator:
     ) -> None:
         """Validate credential fields.
 
+        An empty credential set is the no-secret device-login connection
+        and is accepted. When ``auth_token`` is supplied it must be a
+        non-blank string.
+
         Raises:
-            InvalidConnectionAuthError: If ``auth_token`` is missing,
-                non-string, or blank.
+            InvalidConnectionAuthError: If ``auth_token`` is present but
+                non-string or blank.
         """
+        if not credentials:
+            return
         auth_token = credentials.get("auth_token")
         if not isinstance(auth_token, str) or not auth_token.strip():
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
                 connection_type=ConnectionType.TUNNEL.value,
                 field="auth_token",
-                error="missing, non-string, or blank",
+                error="non-string or blank",
             )
-            msg = "Tunnel connection requires an 'auth_token' field"
+            msg = "Tunnel connection 'auth_token' must be a non-blank string"
             raise InvalidConnectionAuthError(msg)
 
     def required_fields(self) -> tuple[str, ...]:
-        """Return required credential field names."""
-        return ("auth_token",)
+        """Return required credential field names.
+
+        Empty: a token-backed tunnel supplies ``auth_token`` and a
+        device-login tunnel supplies nothing, so no field is universally
+        required.
+        """
+        return ()
