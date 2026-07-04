@@ -1,4 +1,4 @@
-"""Unit tests for the typed turn-sequence conflict (BE#1).
+"""Unit tests for the typed turn-sequence conflict.
 
 An exhausted ``(conversation_id, sequence)`` race must surface as a
 retryable 409 ``TurnSequenceConflictError`` rather than the generic

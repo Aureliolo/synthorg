@@ -348,6 +348,11 @@ class PostgresConversationTurnRepository:
                 violations (FK / CHECK).
             QueryError: On other database errors.
         """
+        # See docs/reference/retry-patterns.md: Pattern C/CAS. This is a
+        # constraint-branch resequence on the (conversation_id, sequence)
+        # uniqueness race, not a transient-I/O backoff; it stays in the
+        # repository and must not move to GeneralRetryHandler.
+        #
         # Unlike the SQLite sibling, which holds one serialising write
         # lock (``_write_context``) across the whole read-then-insert,
         # each Postgres attempt below takes a fresh pool connection for
@@ -445,7 +450,9 @@ class PostgresConversationTurnRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(msg, constraint=constraint) from exc
+                raise ConstraintViolationError(
+                    msg, constraint=constraint, sqlstate=exc.sqlstate
+                ) from exc
             except psycopg.Error as exc:
                 msg = f"Failed to append turn {current.id!r}"
                 logger.warning(

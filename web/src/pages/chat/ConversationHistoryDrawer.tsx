@@ -87,7 +87,10 @@ export function ConversationHistoryDrawer({
           setWork({
             messages: hydrateWorkMessages(turns),
             conversationId: conversation.id,
-            closed: false,
+            // Carry the real terminal state: resuming a closed conversation
+            // must show it closed, not present an enabled input whose next
+            // send fails ConversationClosedError.
+            closed: conversation.status === 'closed',
           })
         }
         onResume(mode)

@@ -38,8 +38,12 @@ export function useSendChiefOfStaff(
   return useCallback(
     async (question: string, idempotencyKey?: string) => {
       if (!question || blocked) return
-      // Mint the key once per logical turn; a manual retry reuses it so a
-      // turn that actually succeeded server-side is deduped, not re-run.
+      // Mint the key once per logical turn and store it on the user turn so
+      // a manual retry of the buffered scoped path reuses it (a turn that
+      // succeeded server-side is deduped, not re-run). The unscoped
+      // streaming path below ignores it: a token stream cannot be replayed
+      // from cache, so streaming and idempotency are mutually exclusive and
+      // a streamed retry genuinely re-runs.
       const key = idempotencyKey ?? crypto.randomUUID()
       setStaff((s) => ({
         messages: [

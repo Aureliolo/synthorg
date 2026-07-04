@@ -42,6 +42,10 @@ from synthorg.meta.chief_of_staff.group_models import GroupConverseArgs
 from synthorg.meta.chief_of_staff.resume_service import (
     ConversationalResumeService,
 )
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
@@ -190,6 +194,8 @@ def _consent_app_state(
             proposal_repo=mock_of[ConversationalProposalRepository](),
             invite_repo=invite_repo,
             participant_repo=participant_repo,
+            conversation_repo=mock_of[ConversationRepository](),
+            turn_repo=mock_of[ConversationTurnRepository](),
         ),
     )
 

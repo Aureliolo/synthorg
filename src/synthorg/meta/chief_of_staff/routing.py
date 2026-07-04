@@ -389,11 +389,18 @@ class LlmConcernRouter:
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Routing is best-effort: any classifier failure degrades to the
+            # generic responder rather than propagating. Preserve the
+            # provider-error classification (error_type) plus any backoff
+            # hint (retry_after) so a repeated rate-limit driving the
+            # fallback stays diagnosable instead of collapsing to an
+            # untyped signal.
             logger.warning(
                 COS_ROUTING_FALLBACK,
                 detail="classify_call_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                retry_after=getattr(exc, "retry_after", None),
             )
             return RoutingReason.CLASSIFY_CALL_FAILED
         raw = (response.content or "").strip()

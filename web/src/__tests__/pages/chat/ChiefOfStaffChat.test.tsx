@@ -90,7 +90,7 @@ describe('ChiefOfStaffChat', () => {
     await user.type(screen.getByLabelText('Chat message'), 'stream please')
     await user.click(screen.getByRole('button', { name: 'Send message' }))
     await waitFor(() => {
-      expect(screen.getByText(/Partial/)).toBeInTheDocument()
+      expect(screen.getByText('Partial')).toBeInTheDocument()
     })
 
     await user.click(screen.getByRole('button', { name: /stop/i }))

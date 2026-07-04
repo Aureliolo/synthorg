@@ -1,6 +1,7 @@
 import { ClipboardList } from 'lucide-react'
 import { Link } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
@@ -40,6 +41,7 @@ function ApprovalLink({ id, label }: { id: string; label: string }) {
 }
 
 function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
+  if (msg.role !== 'assistant') return null
   const proposals = msg.proposals ?? []
   const steering = msg.steering ?? []
   if (proposals.length === 0 && steering.length === 0) return null
@@ -56,7 +58,6 @@ function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
 }
 
 function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
-  const isAttributed = hasAttribution(msg.responderName, msg.responderRole)
   return (
     <div
       className={cn(
@@ -66,19 +67,20 @@ function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
       <QueuedApprovals msg={msg} />
-      {isAttributed && (
-        <ResponderAttribution
-          name={msg.responderName ?? ''}
-          role={msg.responderRole ?? ''}
-          topic={msg.routedTopic}
-        />
-      )}
+      {msg.role === 'assistant' &&
+        hasAttribution(msg.responderName, msg.responderRole) && (
+          <ResponderAttribution
+            name={msg.responderName ?? ''}
+            role={msg.responderRole ?? ''}
+            topic={msg.routedTopic}
+          />
+        )}
     </div>
   )
 }
 
 function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
-  if (msg.isError === true) {
+  if (msg.role === 'assistant' && msg.isError === true) {
     return (
       <div className="mr-8">
         <ChatErrorNotice message={msg.content} onRetry={onRetry} />
@@ -138,10 +140,14 @@ export function RequestWorkChat() {
       </div>
 
       {ctrl.conversationClosed && (
-        <p role="status" className="text-xs text-text-secondary">
-          This request-work conversation is closed. Start a new message to
-          open another.
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p role="status" className="text-xs text-text-secondary">
+            This request-work conversation is closed.
+          </p>
+          <Button variant="outline" size="sm" onClick={ctrl.startNew}>
+            Start new conversation
+          </Button>
+        </div>
       )}
 
       <ChatInputArea

@@ -24,11 +24,17 @@ interface GroupBubbleProps {
   onRetry?: () => void
 }
 
+interface InviteBubbleProps {
+  msg: Extract<GroupMessage, { kind: 'invite' }>
+  resolvingInvites: ReadonlySet<string>
+  onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
+}
+
 function InviteBubble({
   msg,
   resolvingInvites,
   onResolveInvite,
-}: GroupBubbleProps) {
+}: InviteBubbleProps) {
   const target = msg.targetRole
     ? `${msg.targetName} (${msg.targetRole})`
     : msg.targetName
@@ -79,7 +85,13 @@ function InviteBubble({
   )
 }
 
-function NoticeBubble({ msg, onRetry }: { msg: GroupMessage; onRetry?: (() => void) | undefined }) {
+function NoticeBubble({
+  msg,
+  onRetry,
+}: {
+  msg: Extract<GroupMessage, { kind: 'notice' }>
+  onRetry?: (() => void) | undefined
+}) {
   if (msg.isError === true && onRetry) {
     return (
       <div className="mx-4">
@@ -108,7 +120,6 @@ function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupB
     )
   }
   const isHuman = msg.kind === 'human'
-  const isAttributed = hasAttribution(msg.agentName, msg.role)
   return (
     <div
       className={cn(
@@ -117,7 +128,7 @@ function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupB
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      {isAttributed && (
+      {msg.kind === 'agent' && hasAttribution(msg.agentName, msg.role) && (
         <ResponderAttribution name={msg.agentName ?? ''} role={msg.role ?? ''} />
       )}
     </div>
@@ -186,6 +197,9 @@ interface RosterStripProps {
 }
 
 function RosterStrip({ roster }: RosterStripProps) {
+  // A resumed group conversation starts with an empty roster (it repopulates
+  // on the next round), so render nothing rather than an empty strip.
+  if (roster.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
       {roster.map((p) => {

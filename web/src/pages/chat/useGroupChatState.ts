@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { ActiveAgentSummary, ConversationParticipant, GroupConverseResult } from '@/api/types'
+import type {
+  ActiveAgentSummary,
+  ConversationParticipant,
+  GroupChatTruncationReason,
+  GroupConverseResult,
+} from '@/api/types'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
@@ -30,14 +35,16 @@ export interface GroupChatState {
   resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
 
-const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
+// Keyed by the generated enum so a new (or renamed) truncation reason fails
+// the build here until it gets a copy line, rather than silently falling back.
+const TRUNCATION_NOTICE = {
   token_budget_exhausted:
     'Round stopped early: the per-round token budget was exhausted before every agent could respond.',
   max_total_turns_reached:
     'Round stopped early: the conversation reached its total-turn limit.',
   input_budget_exhausted:
     'Round stopped early: the conversation history grew too large to fit the remaining round budget.',
-}
+} satisfies Record<GroupChatTruncationReason, string>
 
 const TRUNCATION_FALLBACK =
   'The round stopped early for an unspecified reason. You can start a new round.'
@@ -249,10 +256,15 @@ function buildRoundMessages(result: GroupConverseResult | null): GroupMessage[] 
     role: c.participant_role,
   }))
   if (result.truncated_reason) {
+    // Widen the lookup so a backend that is briefly ahead of this build (a
+    // reason not yet in the map) still degrades to the fallback copy.
+    const notice: string | undefined = (
+      TRUNCATION_NOTICE as Record<string, string | undefined>
+    )[result.truncated_reason]
     bubbles.push({
       id: nextMessageId(),
       kind: 'notice',
-      content: TRUNCATION_NOTICE[result.truncated_reason] ?? TRUNCATION_FALLBACK,
+      content: notice ?? TRUNCATION_FALLBACK,
     })
   }
   if (result.participants_skipped.length > 0) {

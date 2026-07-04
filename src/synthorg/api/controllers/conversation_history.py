@@ -25,17 +25,48 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId
+from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
+from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.errors import ConversationNotFoundError
-from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
-from synthorg.persistence.conversational_factory import (
-    build_conversational_repositories,
+from synthorg.meta.state import MetaStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_CHAT_CONVERSATION_ACCESS_DENIED,
+    META_CHAT_DEPENDENCY_UNAVAILABLE,
 )
-from synthorg.persistence.state import persistence_of
+
+logger = get_logger(__name__)
 
 _DEFAULT_PAGE_SIZE: Final[int] = 50
+
+
+def _require_resume_service(app_state: AppState) -> ConversationalResumeService:
+    """Resolve the conversational resume facade, or 503.
+
+    Returns:
+        The wired resume service.
+
+    Raises:
+        ServiceUnavailableError: When persistence cannot back the
+            conversation stores, so the drawer cannot list or resume.
+    """
+    service = app_state.slice(MetaStateSlice).conversational_resume_service
+    if service is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="conversational_resume_service",
+            hint="Conversational persistence must be wired during startup.",
+        )
+        msg = (
+            "Conversation history is not configured; the durable "
+            "conversation stores are unavailable."
+        )
+        raise ServiceUnavailableError(msg)
+    return service
 
 
 def _conversation_to_dict(conversation: Conversation) -> dict[str, object]:
@@ -96,21 +127,23 @@ class ConversationHistoryController(Controller):
             limit: Page size.
 
         Returns:
-            Paginated conversation summaries scoped to the caller; an
-            empty page when the durable stores are unavailable.
+            Paginated conversation summaries scoped to the caller.
+
+        Raises:
+            ServiceUnavailableError: When the durable conversation
+                stores are not configured (503, not an empty 200 that a
+                caller could misread as "no history").
         """
         app_state = state.app_state
         actor = require_actor()
+        service = _require_resume_service(app_state)
         secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        repos = build_conversational_repositories(persistence_of(app_state))
-        conversations: tuple[Conversation, ...] = ()
-        if repos is not None:
-            conversations = await repos.conversation_repo.list_items(
-                created_by=NotBlankStr(actor.actor_id),
-                limit=limit + 1,
-                offset=offset,
-            )
+        conversations = await service.owner_conversations(
+            created_by=NotBlankStr(actor.actor_id),
+            limit=limit + 1,
+            offset=offset,
+        )
         meta = encode_countless_seek_meta(
             offset=offset,
             fetched_rows=len(conversations),
@@ -140,21 +173,26 @@ class ConversationHistoryController(Controller):
             Paginated turns for the conversation.
 
         Raises:
+            ServiceUnavailableError: When the durable conversation
+                stores are not configured (503).
             ConversationNotFoundError: When the conversation does not
                 exist or is not the caller's (404 either way).
         """
         app_state = state.app_state
         actor = require_actor()
-        repos = build_conversational_repositories(persistence_of(app_state))
-        if repos is None:
-            raise ConversationNotFoundError(conversation_id=conversation_id)
-        conversation = await repos.conversation_repo.get(NotBlankStr(conversation_id))
+        service = _require_resume_service(app_state)
+        conversation = await service.get_conversation(NotBlankStr(conversation_id))
         if conversation is None or conversation.created_by != actor.actor_id:
+            logger.warning(
+                META_CHAT_CONVERSATION_ACCESS_DENIED,
+                conversation_id=conversation_id,
+                reason="missing" if conversation is None else "not_owner",
+            )
             raise ConversationNotFoundError(conversation_id=conversation_id)
         secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        turns = await repos.turn_repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr(conversation_id)),
+        turns = await service.conversation_turns(
+            conversation_id=NotBlankStr(conversation_id),
             limit=limit + 1,
             offset=offset,
         )

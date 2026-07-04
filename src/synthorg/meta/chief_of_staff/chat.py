@@ -6,7 +6,8 @@ free-form signal questions. Uses ``CompletionProvider`` for
 LLM calls (retry + rate limiting handled by the provider).
 """
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncGenerator
 from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -57,6 +58,7 @@ from synthorg.observability.events.chief_of_staff import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
+from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.enums import SettingNamespace
@@ -246,7 +248,7 @@ class ChiefOfStaffChat:
         self,
         query: ChatQuery,
         snapshot: OrgSignalSnapshot,
-    ) -> AsyncIterator[ChatAnswerDelta | ChatAnswerComplete]:
+    ) -> AsyncGenerator[ChatAnswerDelta | ChatAnswerComplete]:
         """Stream a free-form answer token-by-token, then a terminal event.
 
         The streamed path mirrors :meth:`ask`'s free-form prompt (proposal
@@ -254,13 +256,18 @@ class ChiefOfStaffChat:
         produce short structured answers where streaming buys nothing). It
         yields a :class:`ChatAnswerDelta` per content chunk in arrival
         order, then one :class:`ChatAnswerComplete` carrying the assembled
-        answer under the same ``sources`` / ``confidence`` contract as the
-        buffered response.
+        answer. The free-form path attributes no ``sources`` and computes
+        no ``confidence``, so the terminal event carries the empty-sources /
+        default-confidence defaults (the buffered free-form ``ask`` behaves
+        identically; only the scoped deep-explain paths populate them).
 
         Yields:
             Zero or more deltas, then exactly one terminal complete event.
 
         Raises:
+            ProviderTimeoutError: When the provider stalls past
+                ``agent_call_timeout_seconds`` opening the stream or
+                between two content chunks (retryable 504).
             Exception: Propagated from the provider stream (criticals
                 re-raised; others redacted-logged before re-raise).
         """
@@ -271,6 +278,7 @@ class ChiefOfStaffChat:
         )
         user = await self._build_query_user(query, snapshot, scoped_proposal=None)
         messages, config, model = await self._prepare_messages(CHAT_QUERY_SYSTEM, user)
+        timeout = self._config.agent_call_timeout_seconds
         parts: list[str] = []
         try:
             async with cost_recording_scope(
@@ -280,14 +288,31 @@ class ChiefOfStaffChat:
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                stream = await self._provider.stream(messages, model, config=config)
-                async for chunk in stream:
+                stream = await asyncio.wait_for(
+                    self._provider.stream(messages, model, config=config),
+                    timeout=timeout,
+                )
+                # Per-chunk (inter-token) timeout, not one bound on the whole
+                # stream: a slow-but-live provider must not trip, only a stall.
+                # lint-allow: long-running-loop-kill-switch -- bounded by StopAsyncIteration; the per-chunk asyncio.wait_for trips on a stall and aclosing cancels the generator on client disconnect  # noqa: E501
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(anext(stream), timeout=timeout)
+                    except StopAsyncIteration:
+                        break
                     if (
                         chunk.event_type == StreamEventType.CONTENT_DELTA
                         and chunk.content
                     ):
                         parts.append(chunk.content)
                         yield ChatAnswerDelta(delta=chunk.content)
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, not a
+            # DomainError: type it so the client sees a retryable 504 rather
+            # than an opaque in-stream fault while the stream stays open.
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            msg = "Chief of Staff chat stream timed out"
+            raise ProviderTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)
@@ -396,6 +421,8 @@ class ChiefOfStaffChat:
             Wrapped ChatResponse.
 
         Raises:
+            ProviderTimeoutError: When the provider call exceeds
+                ``agent_call_timeout_seconds`` (retryable 504).
             Exception: Raised on the corresponding failure path.
         """
         messages, config, model = await self._prepare_messages(system, user)
@@ -407,11 +434,21 @@ class ChiefOfStaffChat:
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
-                    messages,
-                    model,
-                    config=config,
+                response = await asyncio.wait_for(
+                    self._provider.complete(
+                        messages,
+                        model,
+                        config=config,
+                    ),
+                    timeout=self._config.agent_call_timeout_seconds,
                 )
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, not a
+            # DomainError: type it so the client sees a retryable 504 rather
+            # than an opaque 500.
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            msg = "Chief of Staff chat call timed out"
+            raise ProviderTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)

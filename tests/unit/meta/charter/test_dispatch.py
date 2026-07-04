@@ -8,6 +8,7 @@ import pytest
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -29,6 +30,7 @@ from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 from synthorg.persistence.project_protocol import ProjectRepository
 from tests._shared import FakeClock, as_uuid, sid
+from tests._shared.conversation_fakes import FakeConversationRepo
 
 pytestmark = pytest.mark.unit
 
@@ -240,33 +242,29 @@ class SimpleResult:
         self.is_success = is_success
 
 
-class _FakeConversationRepo:
+class _FakeConversationRepo(FakeConversationRepo):
+    """Spy over the shared double: records every conversation it closes.
+
+    Subclasses the canonical fake so the repository-protocol surface stays
+    in sync automatically; only ``transition_if`` is overridden to record
+    the close and always report success (the dispatch tests assert the
+    dispatcher attempted the close, not the persistence outcome).
+    """
+
     def __init__(self) -> None:
+        super().__init__()
         self.closed: list[str] = []
 
+    @override
     async def transition_if(
         self,
         entity_id: str,
-        from_state: object = None,
-        to_state: object = None,
+        from_state: ConversationStatus,
+        to_state: ConversationStatus,
         **updates: object,
     ) -> bool:
         self.closed.append(entity_id)
         return True
-
-    async def save(self, entity: object) -> None:
-        raise NotImplementedError
-
-    async def get(self, entity_id: str) -> object:
-        raise NotImplementedError
-
-    async def delete(self, entity_id: str) -> bool:
-        raise NotImplementedError
-
-    async def list_items(
-        self, *, created_by: str | None = None, limit: int = 0, offset: int = 0
-    ) -> tuple[object, ...]:
-        raise NotImplementedError
 
 
 def _dispatcher(
@@ -524,8 +522,8 @@ class TestApprove:
             async def transition_if(
                 self,
                 entity_id: str,
-                from_state: object = None,
-                to_state: object = None,
+                from_state: ConversationStatus,
+                to_state: ConversationStatus,
                 **updates: object,
             ) -> bool:
                 # Simulate already-closed: transition returns False.

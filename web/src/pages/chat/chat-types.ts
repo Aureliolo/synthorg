@@ -1,19 +1,32 @@
 import type { ExecutedToolCall } from '@/api/types'
 
-/** One rendered turn in the Chief of Staff explain-only transcript. */
-export interface ChiefOfStaffMessage {
+/**
+ * A user turn on a role-tagged surface. Carries the idempotency key minted
+ * when it was sent (used by the buffered path; the unscoped streaming
+ * Chief-of-Staff path carries no key, so a streamed retry re-runs).
+ */
+interface UserTurn {
   id: number
-  role: 'user' | 'assistant'
+  role: 'user'
+  content: string
+  idempotencyKey?: string | undefined
+}
+
+/** An assistant reply in the Chief of Staff explain-only transcript. */
+interface ChiefOfStaffAssistantMessage {
+  id: number
+  role: 'assistant'
   content: string
   sources?: string[]
   confidence?: number
-  /** Idempotency key minted when this user turn was sent; a retry reuses it. */
-  idempotencyKey?: string | undefined
-  /** True while an assistant reply is still receiving streamed tokens. */
+  /** True while the reply is still receiving streamed tokens. */
   isStreaming?: boolean
   /** Renders as a distinct error notice (not a normal assistant reply). */
   isError?: boolean
 }
+
+/** One rendered turn in the Chief of Staff explain-only transcript. */
+export type ChiefOfStaffMessage = UserTurn | ChiefOfStaffAssistantMessage
 
 /** A parked work item, with its approval id for a deep link. */
 export interface RequestWorkProposal {
@@ -27,10 +40,10 @@ export interface RequestWorkSteering {
   approvalId: string
 }
 
-/** One rendered turn in the clarify-and-propose transcript. */
-export interface RequestWorkMessage {
+/** An assistant reply in the clarify-and-propose transcript. */
+interface RequestWorkAssistantMessage {
   id: number
-  role: 'user' | 'assistant'
+  role: 'assistant'
   content: string
   /** Role of the routed agent that answered, when concern-routed. */
   responderRole?: string | undefined
@@ -42,63 +55,95 @@ export interface RequestWorkMessage {
   proposals?: readonly RequestWorkProposal[] | undefined
   /** Parked steering directives, on the "proposed" branch. */
   steering?: readonly RequestWorkSteering[] | undefined
-  /** Idempotency key minted when this user turn was sent; a retry reuses it. */
-  idempotencyKey?: string | undefined
   /** Renders as a distinct error notice (not a normal assistant reply). */
   isError?: boolean | undefined
 }
 
-/** One rendered turn in the multi-agent group transcript. */
-export interface GroupMessage {
+/** One rendered turn in the clarify-and-propose transcript. */
+export type RequestWorkMessage = UserTurn | RequestWorkAssistantMessage
+
+/** The operator's turn in the multi-agent group transcript. */
+interface GroupHumanMessage {
   id: number
-  /** ``human`` = the operator's turn, ``agent`` = an attributed
-   *  contribution, ``notice`` = a system line (truncation / failure),
-   *  ``invite`` = an agent-initiated invite awaiting human consent. */
-  kind: 'human' | 'agent' | 'notice' | 'invite'
-  /** Bubble body. For ``invite`` bubbles this is the stated reason. */
+  kind: 'human'
   content: string
-  /** Attributed agent name, on ``agent`` bubbles. */
-  agentName?: string | undefined
-  /** Attributed agent role, on ``agent`` bubbles. */
-  role?: string | undefined
-  /** Inviting agent's name, on ``invite`` bubbles. */
-  requestedByName?: string | undefined
-  /** Invite target's name, on ``invite`` bubbles. */
-  targetName?: string | undefined
-  /** Invite target's role, on ``invite`` bubbles (``undefined`` when the
-   *  target was named directly rather than by role). */
-  targetRole?: string | undefined
-  /** Backing approval id, on ``invite`` bubbles: the in-context
-   *  Approve/Reject buttons resolve this approval. */
-  approvalId?: string | undefined
-  /** Set once the operator resolves an ``invite`` in context. The
-   *  invited agent joins on the next round after ``approved``. */
-  resolved?: 'approved' | 'declined'
-  /** Idempotency key minted when this human turn was sent; a retry reuses it. */
   idempotencyKey?: string | undefined
+}
+
+/** An attributed agent contribution in the group transcript. */
+interface GroupAgentMessage {
+  id: number
+  kind: 'agent'
+  content: string
+  agentName?: string | undefined
+  role?: string | undefined
+}
+
+/** A system line (truncation / per-agent failure) in the group transcript. */
+interface GroupNoticeMessage {
+  id: number
+  kind: 'notice'
+  content: string
+  /** Renders the notice as a distinct error state with a Try-again. */
+  isError?: boolean
+}
+
+/** An agent-initiated invite awaiting human consent. */
+interface GroupInviteMessage {
+  id: number
+  kind: 'invite'
+  /** The stated reason for the invite. */
+  content: string
+  /** Inviting agent's name. */
+  requestedByName?: string | undefined
+  /** Invite target's name. */
+  targetName?: string | undefined
+  /** Invite target's role (``undefined`` when named directly, not by role). */
+  targetRole?: string | undefined
+  /** Backing approval id: the in-context Approve/Reject buttons resolve it. */
+  approvalId?: string | undefined
+  /** Set once the operator resolves the invite; the agent joins next round. */
+  resolved?: 'approved' | 'declined'
+}
+
+/** One rendered turn in the multi-agent group transcript. */
+export type GroupMessage =
+  | GroupHumanMessage
+  | GroupAgentMessage
+  | GroupNoticeMessage
+  | GroupInviteMessage
+
+/** The operator's instruction in the direct-action transcript. */
+interface ActHumanMessage {
+  id: number
+  kind: 'human'
+  content: string
+  idempotencyKey?: string | undefined
+}
+
+/** The agent's outcome (executed tools + message, or a parked approval). */
+interface ActActionMessage {
+  id: number
+  kind: 'action'
+  content: string
+  /** Acting agent's name. */
+  agentName?: string | undefined
+  /** Acting agent's role (resolved from the roster). */
+  agentRole?: string | undefined
+  /** Tools the action executed. */
+  toolCalls?: readonly ExecutedToolCall[] | undefined
+  /** Approval id, set when the action parked for consent. */
+  parkedApprovalId?: string | undefined
+}
+
+/** A system line (request failure) in the direct-action transcript. */
+interface ActNoticeMessage {
+  id: number
+  kind: 'notice'
+  content: string
   /** Renders the notice as a distinct error state with a Try-again. */
   isError?: boolean
 }
 
 /** One rendered turn in the direct-action transcript. */
-export interface ActMessage {
-  id: number
-  /** ``human`` = the operator's instruction, ``action`` = the agent's
-   *  outcome (executed tools + message, or a parked approval),
-   *  ``notice`` = a system line (request failure). */
-  kind: 'human' | 'action' | 'notice'
-  /** Bubble body: the instruction, the agent's final message, or a notice. */
-  content: string
-  /** Acting agent's name, on ``action`` bubbles. */
-  agentName?: string | undefined
-  /** Acting agent's role, on ``action`` bubbles (resolved from the roster). */
-  agentRole?: string | undefined
-  /** Tools the action executed, on ``action`` bubbles. */
-  toolCalls?: readonly ExecutedToolCall[] | undefined
-  /** Approval id, on ``action`` bubbles when the action parked for consent. */
-  parkedApprovalId?: string | undefined
-  /** Idempotency key minted when this instruction was sent; a retry reuses it. */
-  idempotencyKey?: string | undefined
-  /** Renders the notice as a distinct error state with a Try-again. */
-  isError?: boolean
-}
+export type ActMessage = ActHumanMessage | ActActionMessage | ActNoticeMessage

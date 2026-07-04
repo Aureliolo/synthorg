@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.enums import CharterStatus
@@ -18,7 +17,7 @@ from synthorg.meta.charter.models import (
     ProjectCharter,
 )
 from synthorg.meta.charter.service import CharterInterviewService
-from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
+from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import (
     CharterNotEditableError,
     CharterNotFoundError,
@@ -26,8 +25,13 @@ from synthorg.meta.errors import (
     ConversationNotFoundError,
 )
 from synthorg.persistence.charter_protocol import CharterFilterSpec
-from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
 from tests._shared import FakeClock
+from tests._shared.conversation_fakes import (
+    FakeConversationRepo as _FakeConversationRepo,
+)
+from tests._shared.conversation_fakes import (
+    FakeTurnRepo as _FakeTurnRepo,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -44,72 +48,6 @@ def _draft(**overrides: object) -> CharterDraft:
     }
     defaults.update(overrides)
     return CharterDraft(**defaults)  # type: ignore[arg-type]
-
-
-class _FakeConversationRepo:
-    def __init__(self) -> None:
-        self.items: dict[str, Conversation] = {}
-
-    async def save(self, entity: Conversation) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> Conversation | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, created_by: str | None = None, limit: int = 100, offset: int = 0
-    ) -> tuple[Conversation, ...]:
-        rows = [
-            c
-            for c in self.items.values()
-            if created_by is None or c.created_by == created_by
-        ]
-        return tuple(rows)[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationStatus,
-        to_state: ConversationStatus,
-        **updates: object,
-    ) -> bool:
-        current = self.items.get(entity_id)
-        if current is None or current.status is not from_state:
-            return False
-        self.items[entity_id] = current.model_copy(update={"status": to_state})
-        return True
-
-
-class _FakeTurnRepo:
-    def __init__(self) -> None:
-        self.turns: list[ConversationTurn] = []
-
-    async def append(self, event: ConversationTurn) -> None:
-        self.turns.append(event)
-
-    async def query(
-        self,
-        filter_spec: ConversationTurnFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationTurn, ...]:
-        rows = [
-            t
-            for t in self.turns
-            if filter_spec.conversation_id is None
-            or t.conversation_id == filter_spec.conversation_id
-        ]
-        rows.sort(key=lambda t: t.sequence, reverse=True)
-        return tuple(rows[offset : offset + limit])
-
-    async def purge_before(self, threshold: datetime) -> int:
-        before = len(self.turns)
-        self.turns = [t for t in self.turns if t.created_at >= threshold]
-        return before - len(self.turns)
 
 
 class _FakeCharterRepo:

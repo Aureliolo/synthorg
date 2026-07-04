@@ -1,21 +1,27 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   streamChatAnswer,
   type ChatStreamResult,
 } from '@/api/endpoints/meta-stream'
+import { createLogger } from '@/lib/logger'
 import type { ConversationsState } from '@/stores/conversations'
 
 import type { ChiefOfStaffMessage } from './chat-types'
 
 type SetStaff = ConversationsState['setStaff']
 
+const log = createLogger('chat:streaming')
+
 const STREAM_FAILURE_NOTICE = 'The assistant could not respond. Please try again.'
 
 export interface ChatStreaming {
   /** True while an answer is streaming; enables the Cancel affordance. */
   isStreaming: boolean
-  /** Abort the in-flight stream; the partial answer is kept. */
+  /**
+   * Abort the in-flight stream. Any tokens received so far are kept; if
+   * none arrived the bubble shows "Stopped."
+   */
   cancel: () => void
   /** Stream one free-form answer into the given assistant bubble id. */
   runStream: (question: string, assistantId: number) => Promise<void>
@@ -64,8 +70,11 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
           },
           controller.signal,
         )
-      } catch {
+      } catch (err) {
         const aborted = controller.signal.aborted
+        if (!aborted) {
+          log.error('Chat answer stream failed', err)
+        }
         updateAssistant(assistantId, (m) =>
           aborted
             ? { ...m, isStreaming: false, content: m.content || 'Stopped.' }
@@ -77,14 +86,23 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
               },
         )
       } finally {
-        setStreaming(false)
-        abortRef.current = null
+        // Guard against a newer stream having replaced this one: only the
+        // controller that is still current clears the shared streaming
+        // flag / ref, so an overlapping run is never torn down early.
+        if (abortRef.current === controller) {
+          setStreaming(false)
+          abortRef.current = null
+        }
       }
     },
     [updateAssistant],
   )
 
   const cancel = useCallback(() => abortRef.current?.abort(), [])
+
+  // Abort an in-flight stream if the panel unmounts mid-answer, so the
+  // fetch + reader do not outlive the component.
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   return { isStreaming: streaming, cancel, runStream }
 }

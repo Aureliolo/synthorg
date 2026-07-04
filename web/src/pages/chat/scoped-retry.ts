@@ -27,7 +27,11 @@ export function resolveScopedRetryTarget<M extends RetryableMessage>(
   messages: readonly M[],
   beforeMsgId: number | undefined,
   isHuman: (message: M) => boolean,
-): M | null {
+): RetryableMessage | null {
+  // Returns the retryable projection, not the concrete union member: the
+  // caller only replays ``content`` and reuses ``idempotencyKey``, and the
+  // human-turn variant is the only one that carries a key, so widening to
+  // ``RetryableMessage`` keeps the key reachable without a re-narrow.
   const cutoff =
     beforeMsgId === undefined
       ? messages.length

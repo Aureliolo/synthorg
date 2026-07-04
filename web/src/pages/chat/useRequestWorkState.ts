@@ -25,6 +25,8 @@ export interface RequestWorkState {
   setInput: (value: string) => void
   triggerSend: () => void
   retryBefore: (beforeMsgId: number) => void
+  /** Clear a closed conversation so the next send opens a fresh one. */
+  startNew: () => void
 }
 
 export function useRequestWorkState(): RequestWorkState {
@@ -89,6 +91,13 @@ export function useRequestWorkState(): RequestWorkState {
     [messages, sendMessage],
   )
 
+  const startNew = useCallback(() => {
+    setInput('')
+    // A fresh conversation: dropping conversationId makes the next send
+    // open a new one server-side, and clearing closed re-enables the input.
+    setWork({ messages: [], conversationId: undefined, closed: false })
+  }, [setWork])
+
   return {
     messages,
     input,
@@ -98,11 +107,12 @@ export function useRequestWorkState(): RequestWorkState {
     setInput,
     triggerSend,
     retryBefore,
+    startNew,
   }
 }
 
 type Attribution = Pick<
-  RequestWorkMessage,
+  Extract<RequestWorkMessage, { role: 'assistant' }>,
   'responderRole' | 'responderName' | 'routedTopic'
 >
 

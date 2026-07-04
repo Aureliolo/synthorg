@@ -261,6 +261,8 @@ async def _wire_conversational_repositories_and_reconcile(
             proposal_repo=repositories.proposal_repo,
             invite_repo=repositories.invite_repo,
             participant_repo=repositories.participant_repo,
+            conversation_repo=repositories.conversation_repo,
+            turn_repo=repositories.turn_repo,
         ),
     )
     logger.info(

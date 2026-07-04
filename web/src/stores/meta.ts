@@ -80,7 +80,7 @@ async function runProposeConversation(
   conversationId?: string,
   idempotencyKey?: string,
 ): Promise<ConversationalProposeResponse | null> {
-  set({ proposeLoading: true, error: null })
+  set({ proposeLoading: true })
   try {
     return await postChatPropose(message, conversationId, undefined, idempotencyKey)
   } catch (err) {
@@ -89,7 +89,9 @@ async function runProposeConversation(
       'Propose request failed',
     )
     log.error('Propose request failed', sanitizeForLog(err))
-    set({ error: description })
+    // Surface via toast + the null sentinel only; the shared ``error`` slice
+    // belongs to the data-fetch/config reads, so a chat failure must not
+    // leak into it.
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -104,7 +106,7 @@ async function runConverseGroup(
   conversationId?: string,
   idempotencyKey?: string,
 ): Promise<GroupConverseResult | null> {
-  set({ groupChatLoading: true, error: null })
+  set({ groupChatLoading: true })
   try {
     return await postChatGroup(message, agentIds, conversationId, idempotencyKey)
   } catch (err) {
@@ -113,7 +115,6 @@ async function runConverseGroup(
       'Group chat request failed',
     )
     log.error('Group chat request failed', sanitizeForLog(err))
-    set({ error: description })
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -128,7 +129,7 @@ async function runAct(
   conversationId?: string,
   idempotencyKey?: string,
 ): Promise<ConversationalActResult | null> {
-  set({ actionLoading: true, error: null })
+  set({ actionLoading: true })
   try {
     return await postChatAct(instruction, agent, conversationId, idempotencyKey)
   } catch (err) {
@@ -137,7 +138,6 @@ async function runAct(
       'Direct action request failed',
     )
     log.error('Direct action request failed', sanitizeForLog(err))
-    set({ error: description })
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -257,13 +257,12 @@ async function runSendChat(
   scope?: ChatScope,
   idempotencyKey?: string,
 ): Promise<ChatResponse | null> {
-  set({ chatLoading: true, error: null })
+  set({ chatLoading: true })
   try {
     return await postChat(question, scope, idempotencyKey)
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('Chat request failed', sanitizeForLog(err))
-    set({ error: msg })
     useToastStore.getState().add({
       variant: 'error',
       title: 'Chat request failed',

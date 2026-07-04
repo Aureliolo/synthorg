@@ -69,6 +69,7 @@ async def run_chat_idempotent(  # noqa: PLR0913 -- idempotency plumbing seam
     app_state: AppState,
     *,
     scope: str,
+    actor_id: str,
     key: str | None,
     endpoint: str,
     request_fingerprint: str,
@@ -81,6 +82,11 @@ async def run_chat_idempotent(  # noqa: PLR0913 -- idempotency plumbing seam
     response construction) and caches its JSON dump, and a repeated key
     returns the cached dump. The caller re-validates the returned dict
     back into its typed ``ApiResponse``.
+
+    The cache is partitioned by *actor_id* (folded into the scope) so a
+    key + body a non-dashboard API caller happens to share with another
+    caller cannot cross-return one caller's ``conversation_id`` /
+    ``approval_id`` to the other.
 
     Raises:
         ConflictError: When a concurrent in-flight call holds *key*.
@@ -102,7 +108,7 @@ async def run_chat_idempotent(  # noqa: PLR0913 -- idempotency plumbing seam
         return await _dump()
 
     outcome = await idempotency_service_of(app_state).run_idempotent(
-        scope=NotBlankStr(scope),
+        scope=NotBlankStr(f"{scope}:{actor_id}"),
         key=NotBlankStr(key),
         callback=_dump,
         request_fingerprint=request_fingerprint,

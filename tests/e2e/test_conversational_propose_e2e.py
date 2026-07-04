@@ -69,7 +69,9 @@ from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantRepository,
 )
 from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
     ConversationTurnFilterSpec,
+    ConversationTurnRepository,
 )
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
@@ -286,6 +288,8 @@ def _resume_service(
         proposal_repo=proposal_repo,
         invite_repo=mock_of[ConversationInviteRepository](),
         participant_repo=mock_of[ConversationParticipantRepository](),
+        conversation_repo=mock_of[ConversationRepository](),
+        turn_repo=mock_of[ConversationTurnRepository](),
     )
 
 

@@ -332,8 +332,7 @@ class TestAsk:
             ChatQuery(question="Status?"),
             _snap(),
         )
-        call_args = provider.complete.call_args
-        config = call_args.kwargs.get("config") or call_args[1].get("config")
+        config = provider.complete.call_args.kwargs["config"]
         assert config.temperature == pytest.approx(0.3)
         assert config.max_tokens == 500
 

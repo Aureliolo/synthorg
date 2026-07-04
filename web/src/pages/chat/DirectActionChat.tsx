@@ -37,7 +37,7 @@ function ToolCallRow({ call }: ToolCallRowProps) {
 }
 
 interface ActionBubbleProps {
-  msg: ActMessage
+  msg: Extract<ActMessage, { kind: 'action' }>
 }
 
 function ActionBubble({ msg }: ActionBubbleProps) {

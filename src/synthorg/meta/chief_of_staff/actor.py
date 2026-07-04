@@ -11,7 +11,7 @@ sensitive action escalates and parks exactly as a task action does.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import suppress
 from typing import Final
 
@@ -62,21 +62,28 @@ class ConversationalActArgs(BaseModel):
 class ActProgress(BaseModel):
     """One incremental progress event from a streaming direct action.
 
-    Emitted once per completed action turn, carrying the tools that turn
-    requested so the operator sees the action working before the terminal
-    result arrives.
+    Emitted once per continuing turn (a turn that requested tools and so
+    fed another loop iteration), carrying the tools that turn requested so
+    the operator sees the action working. The terminal turn produces the
+    result rather than a progress event, so no ``ActProgress`` marks it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    turn: int = Field(ge=1, description="1-based index of the completed turn")
+    turn: int = Field(ge=1, description="1-based index of the continuing turn")
     tools: tuple[str, ...] = Field(
         default=(),
         description="Tool names the turn requested, in order (empty if none)",
     )
 
 
-_ACT_STREAM_DONE: Final = object()
+class _ActStreamDone:
+    """Sentinel: the action task has finished feeding the queue."""
+
+    __slots__ = ()
+
+
+_ACT_STREAM_DONE: Final = _ActStreamDone()
 """Sentinel enqueued by the action task once it terminates, so the drain
 loop knows no further progress events will arrive."""
 
@@ -168,16 +175,18 @@ class ConversationalActor:
     async def act_stream(
         self,
         args: ConversationalActArgs,
-    ) -> AsyncIterator[ActProgress | ConversationalActResult]:
+    ) -> AsyncGenerator[ActProgress | ConversationalActResult]:
         """Run a direct action, streaming per-turn progress then the result.
 
         Mirrors :meth:`act` but yields an :class:`ActProgress` after each
-        completed turn (via the engine's ``turn_observer`` hook), then one
-        terminal :class:`ConversationalActResult`. The action runs in a
-        child task feeding an unbounded queue; the drain loop yields
-        progress in order until the task signals completion, then re-awaits
-        it so a failure propagates to the caller. A caller disconnect
-        cancels the child task through the ``finally`` guard.
+        continuing turn (via the engine's ``turn_observer`` hook, which
+        fires only on a turn that requested tools and looped again), then
+        one terminal :class:`ConversationalActResult` for the turn that
+        ended the loop. The action runs in a child task feeding an
+        unbounded queue; the drain loop yields progress in order until the
+        task signals completion, then re-awaits it so a failure propagates
+        to the caller. A caller disconnect cancels the child task through
+        the ``finally`` guard.
 
         Yields:
             Zero or more progress events, then exactly one terminal result.
@@ -194,7 +203,7 @@ class ConversationalActor:
             requested_by=args.requested_by,
         )
         effective_autonomy = self._resolve_autonomy(identity)
-        queue: asyncio.Queue[ActProgress | object] = asyncio.Queue()
+        queue: asyncio.Queue[ActProgress | _ActStreamDone] = asyncio.Queue()
 
         async def _observe(turn_number: int, tool_names: tuple[str, ...]) -> None:
             await queue.put(ActProgress(turn=turn_number, tools=tool_names))
@@ -213,7 +222,7 @@ class ConversationalActor:
             finally:
                 await queue.put(_ACT_STREAM_DONE)
 
-        task = asyncio.ensure_future(_run())
+        task = asyncio.create_task(_run())
         try:
             # lint-allow: long-running-loop-kill-switch -- drains a per-request queue bounded by the action task's terminal _ACT_STREAM_DONE sentinel; the finally cancels the task on client disconnect  # noqa: E501
             while True:

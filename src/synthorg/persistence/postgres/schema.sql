@@ -1548,6 +1548,9 @@ CREATE TABLE conversations (
 -- Serves the unfiltered list_items seek-page (ORDER BY created_at DESC, id DESC).
 CREATE INDEX idx_conversations_created_id
 ON conversations (created_at DESC, id DESC);
+-- Serves the owner-scoped drawer list (WHERE created_by = ? plus the same order).
+CREATE INDEX idx_conversations_created_by_created_id
+ON conversations (created_by, created_at DESC, id DESC);
 
 CREATE TABLE conversation_turns (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

@@ -34,7 +34,6 @@ from synthorg.core.actor_context import require_actor
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
     ConversationalActResult,
@@ -192,12 +191,14 @@ class ConversationalController(Controller):
         actor = require_actor()
 
         async def _build() -> ApiResponse[GroupConverseResult]:
-            # Fence the human-supplied message at the API boundary in a
-            # ``<task-data>`` envelope so the model treats it as data, not
-            # instructions, before it reaches the round loop.
+            # The human message is persisted raw and fenced only at the LLM
+            # boundary: ``build_group_prompt`` wraps the whole transcript in
+            # a ``<task-data>`` envelope, so fencing here would double-fence
+            # it and store the envelope markup in the turn (and the resume
+            # view).
             result = await service.converse(
                 GroupConverseArgs(
-                    message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
+                    message=data.message,
                     created_by=NotBlankStr(actor.actor_id),
                     conversation_id=data.conversation_id,
                     participants=data.participants,
@@ -208,6 +209,7 @@ class ConversationalController(Controller):
         dumped = await run_chat_idempotent(
             app_state,
             scope="meta.chat.group",
+            actor_id=actor.actor_id,
             key=idempotency_key,
             endpoint="/meta/chat/group",
             request_fingerprint=chat_request_fingerprint(data),
@@ -305,6 +307,7 @@ class ConversationalController(Controller):
         dumped = await run_chat_idempotent(
             app_state,
             scope="meta.chat.act",
+            actor_id=operator.actor_id,
             key=idempotency_key,
             endpoint="/meta/chat/act",
             request_fingerprint=chat_request_fingerprint(data),
@@ -377,9 +380,10 @@ class ConversationalController(Controller):
         """Stream a direct MCP action's per-turn progress then result (SSE).
 
         The SSE variant of ``POST /meta/chat/act``: emits a ``progress``
-        frame after each completed action turn (carrying the tools it
-        requested) then one ``complete`` frame carrying the full result
-        (executed tools + final message, or the parked ``approval_id``).
+        frame after each continuing action turn (one that requested tools
+        and looped again, carrying those tools) then one ``complete`` frame
+        carrying the full result of the terminal turn (executed tools +
+        final message, or the parked ``approval_id``).
         Aborting the request (client disconnect) cancels the running
         action. Live-gated on ``direct_mcp_enabled`` so the kill-switch
         takes effect on the next request; no ``Idempotency-Key`` (a stream

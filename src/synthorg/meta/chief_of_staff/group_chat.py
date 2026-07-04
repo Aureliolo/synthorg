@@ -576,12 +576,17 @@ class GroupChatService:
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # One agent's failure skips only that agent (surfaced later in
+            # participants_skipped), never the round. Preserve the
+            # provider-error classification plus any backoff hint so a
+            # rate-limit repeatedly skipping a participant stays diagnosable.
             logger.warning(
                 COS_GROUP_CONTRIBUTION_FAILED,
                 conversation_id=str(conversation.id),
                 agent_id=participant.agent_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                retry_after=getattr(exc, "retry_after", None),
             )
             return None, None
         tracker.record(response.input_tokens, response.output_tokens)

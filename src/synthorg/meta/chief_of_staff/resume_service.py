@@ -24,6 +24,7 @@ cold-import cycle gate.
 """
 
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
     ConversationParticipantStatus,
@@ -33,7 +34,11 @@ from synthorg.meta.chief_of_staff.group_models import (
     ConversationInvite,
     ConversationParticipant,
 )
-from synthorg.meta.chief_of_staff.models import ConversationalProposal
+from synthorg.meta.chief_of_staff.models import (
+    Conversation,
+    ConversationalProposal,
+    ConversationTurn,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_RESUME_INVITE_TRANSITION,
@@ -48,6 +53,11 @@ from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
     ConversationParticipantRepository,
 )
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnFilterSpec,
+    ConversationTurnRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
     ConversationalProposalRepository,
@@ -59,7 +69,13 @@ logger = get_logger(__name__)
 class ConversationalResumeService:
     """Ungated repo facade for the conversational approval-resume flows."""
 
-    __slots__ = ("_invite_repo", "_participant_repo", "_proposal_repo")
+    __slots__ = (
+        "_conversation_repo",
+        "_invite_repo",
+        "_participant_repo",
+        "_proposal_repo",
+        "_turn_repo",
+    )
 
     def __init__(
         self,
@@ -67,10 +83,61 @@ class ConversationalResumeService:
         proposal_repo: ConversationalProposalRepository,
         invite_repo: ConversationInviteRepository,
         participant_repo: ConversationParticipantRepository,
+        conversation_repo: ConversationRepository,
+        turn_repo: ConversationTurnRepository,
     ) -> None:
         self._proposal_repo = proposal_repo
         self._invite_repo = invite_repo
         self._participant_repo = participant_repo
+        self._conversation_repo = conversation_repo
+        self._turn_repo = turn_repo
+
+    async def owner_conversations(
+        self,
+        *,
+        created_by: NotBlankStr,
+        limit: int,
+        offset: int,
+    ) -> tuple[Conversation, ...]:
+        """List one owner's conversations, newest-first, for the drawer.
+
+        Returns:
+            The owner's conversation headers within the page window.
+        """
+        return await self._conversation_repo.list_items(
+            created_by=created_by,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_conversation(
+        self,
+        conversation_id: NotBlankStr,
+    ) -> Conversation | None:
+        """Fetch one conversation header (owner check is the caller's).
+
+        Returns:
+            The conversation, or ``None`` when no such row exists.
+        """
+        return await self._conversation_repo.get(conversation_id)
+
+    async def conversation_turns(
+        self,
+        *,
+        conversation_id: NotBlankStr,
+        limit: int,
+        offset: int,
+    ) -> tuple[ConversationTurn, ...]:
+        """Page one conversation's turns for the resume drawer.
+
+        Returns:
+            The turns within the page window.
+        """
+        return await self._turn_repo.query(
+            ConversationTurnFilterSpec(conversation_id=conversation_id),
+            limit=limit,
+            offset=offset,
+        )
 
     async def proposals_for_approval(
         self,

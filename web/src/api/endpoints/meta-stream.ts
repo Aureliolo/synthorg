@@ -12,6 +12,7 @@ import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 
 import { apiClient } from '../client'
+import type { ChatStreamRequest } from '../types'
 
 const log = createLogger('meta-stream')
 
@@ -44,7 +45,10 @@ function parseSseLines(
       try {
         data = JSON.parse(raw)
       } catch {
-        log.warn('Malformed JSON in meta stream line')
+        log.warn('Malformed JSON in meta stream frame', {
+          event: carry.event || 'message',
+          length: raw.length,
+        })
         carry.event = ''
         continue
       }
@@ -54,9 +58,26 @@ function parseSseLines(
   }
 }
 
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const parsed: unknown = await response.json()
+    if (isRecord(parsed)) {
+      // RFC 9457 body carries ``detail``; the legacy error envelope
+      // carries ``error``. Prefer whichever the failing endpoint sent.
+      const detail = parsed['detail']
+      if (typeof detail === 'string' && detail.trim()) return detail
+      const error = parsed['error']
+      if (typeof error === 'string' && error.trim()) return error
+    }
+  } catch {
+    // Non-JSON or empty body: fall back to the status-only message.
+  }
+  return null
+}
+
 async function openStream(
   path: string,
-  body: unknown,
+  body: ChatStreamRequest,
   signal: AbortSignal | undefined,
 ): Promise<Response> {
   const baseUrl = apiClient.defaults.baseURL ?? ''
@@ -73,7 +94,10 @@ async function openStream(
     ...(signal !== undefined && { signal }),
   })
   if (!response.ok || !response.body) {
-    throw new Error(`Stream failed: HTTP ${response.status}`)
+    // Surface the endpoint's own message (e.g. the 503 "Chief of Staff
+    // chat is not configured..." detail) instead of an opaque status.
+    const detail = await readErrorDetail(response)
+    throw new Error(detail ?? `Stream failed: HTTP ${response.status}`)
   }
   return response
 }
@@ -131,7 +155,10 @@ export interface ChatStreamCallbacks {
 }
 
 function parseChatComplete(data: unknown): ChatStreamResult {
-  if (!isRecord(data)) return { answer: '', sources: [], confidence: 0.5 }
+  if (!isRecord(data)) {
+    log.warn('Malformed complete frame in chat stream; using empty defaults')
+    return { answer: '', sources: [], confidence: 0.5 }
+  }
   const sources = data['sources']
   return {
     answer: typeof data['answer'] === 'string' ? data['answer'] : '',
@@ -148,7 +175,8 @@ export async function streamChatAnswer(
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await openStream('/meta/chat/stream', { question }, signal)
+  const body: ChatStreamRequest = { question }
+  const response = await openStream('/meta/chat/stream', body, signal)
   await consumeStream(response, (frame) => {
     if (frame.event === 'progress') {
       if (isRecord(frame.data) && typeof frame.data['delta'] === 'string') {

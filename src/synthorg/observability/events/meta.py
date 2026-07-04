@@ -206,6 +206,13 @@ META_CHAT_SCOPE_NOT_FOUND: Final[str] = "meta.chat.scope_not_found"
 # as an in-stream ``event: error`` frame rather than an RFC 9457 body.
 META_CHAT_STREAM_FAILED: Final[str] = "meta.chat.stream_failed"
 
+# Emitted at WARNING when a conversation-resume read (``GET
+# /meta/chat/conversations/{id}``) is denied because the id is unknown or
+# belongs to another owner. Both surface an identical 404 to the caller so
+# a foreign id is indistinguishable from a missing one; the server-side
+# ``reason`` records which it was for enumeration-probe triage.
+META_CHAT_CONVERSATION_ACCESS_DENIED: Final[str] = "meta.chat.conversation_denied"
+
 # -- Learning-curve endpoint -----------------------------------------------
 
 # Emitted at DEBUG when ``GET /learning/curve`` serves the benchmark

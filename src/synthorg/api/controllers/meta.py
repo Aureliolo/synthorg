@@ -46,7 +46,6 @@ from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.mcp.server import get_server_config
@@ -432,6 +431,7 @@ class MetaController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
+        actor = require_actor()
         await ensure_feature_enabled(
             app_state,
             "chief_of_staff",
@@ -477,6 +477,7 @@ class MetaController(Controller):
         dumped = await run_chat_idempotent(
             app_state,
             scope="meta.chat",
+            actor_id=actor.actor_id,
             key=idempotency_key,
             endpoint="/meta/chat",
             request_fingerprint=chat_request_fingerprint(data),
@@ -557,12 +558,14 @@ class MetaController(Controller):
         actor = require_actor()
 
         async def _build() -> ApiResponse[ProposeResult]:
-            # Fence the human-supplied prompt content at the API boundary
-            # in a ``<task-data>`` envelope so the model treats it as data,
-            # not instructions, before it reaches domain orchestration.
+            # The human message is persisted raw and fenced only at the LLM
+            # boundary: the propose loop wraps the windowed transcript in a
+            # ``<task-data>`` envelope (and routing does the same), so
+            # fencing here would double-fence it and store the envelope
+            # markup in the turn (and the resume view).
             result = await proposer.converse(
                 ProposeArgs(
-                    message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
+                    message=data.message,
                     created_by=NotBlankStr(actor.actor_id),
                     conversation_id=data.conversation_id,
                     project=data.project,
@@ -573,6 +576,7 @@ class MetaController(Controller):
         dumped = await run_chat_idempotent(
             app_state,
             scope="meta.chat.propose",
+            actor_id=actor.actor_id,
             key=idempotency_key,
             endpoint="/meta/chat/propose",
             request_fingerprint=chat_request_fingerprint(data),

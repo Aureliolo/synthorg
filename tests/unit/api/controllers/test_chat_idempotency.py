@@ -1,4 +1,4 @@
-"""Unit tests for the opt-in chat idempotency wrapper (BE#11).
+"""Unit tests for the opt-in chat idempotency wrapper.
 
 ``run_chat_idempotent`` delegates the fresh/cached/fingerprint semantics
 to :class:`IdempotencyService` (covered in ``tests/unit/idempotency``);
@@ -42,6 +42,7 @@ async def test_no_key_runs_build_once_without_idempotency_service() -> None:
         dumped = await run_chat_idempotent(
             dummy,
             scope="meta.chat",
+            actor_id="user-1",
             key=None,
             endpoint="/meta/chat",
             request_fingerprint="fp",
