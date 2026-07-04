@@ -7,6 +7,7 @@ id, blueprint absent, claim lost), and that a lost claim never applies.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -26,6 +27,16 @@ from tests._shared import as_uuid, mock_of
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 6, 29, 12, 0, tzinfo=UTC)
+
+
+def _asmock(method: object) -> AsyncMock:
+    """Narrow a ``mock_of`` autospec method to ``AsyncMock`` for assertions.
+
+    ``mock_of[T](...)`` is typed ``Any`` in isolation but resolves to the
+    concrete ``T`` under full-project type-checking, so its methods lose the
+    mock-assertion surface; this cast restores it without an explicit ``Any``.
+    """
+    return cast(AsyncMock, method)
 
 
 def _blueprint() -> ToolBlueprint:
@@ -61,92 +72,117 @@ def _approval(*, blueprint_id: str | None = "bp-1") -> ApprovalItem:
     )
 
 
-def _store(
-    *, items: tuple[ApprovalItem, ...], claim: ApprovalItem | None
-) -> ApprovalStoreProtocol:
-    return mock_of[ApprovalStoreProtocol](
-        list_items=AsyncMock(return_value=items),
-        consume_if_approved=AsyncMock(return_value=claim),
-    )
-
-
-def _repo(blueprint: ToolBlueprint | None) -> DynamicToolRepository:
-    return mock_of[DynamicToolRepository](get=AsyncMock(return_value=blueprint))
-
-
-def _service(*, apply_result: ApplyResult) -> ToolsmithService:
-    return mock_of[ToolsmithService](apply=AsyncMock(return_value=apply_result))
-
-
 async def test_approved_tool_is_applied_live() -> None:
     blueprint = _blueprint()
     item = _approval()
-    service = _service(apply_result=ApplyResult(success=True, changes_applied=1))
-    store = _store(items=(item,), claim=item)
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(return_value=ApplyResult(success=True, changes_applied=1))
+    )
+    store = mock_of[ApprovalStoreProtocol](
+        list_items=AsyncMock(return_value=(item,)),
+        consume_if_approved=AsyncMock(return_value=item),
+    )
     consumer = ToolApprovalConsumer(
-        service=service, blueprint_repo=_repo(blueprint), approval_store=store
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=blueprint)
+        ),
+        approval_store=store,
     )
 
     applied = await consumer.consume()
 
     assert applied == 1
-    service.apply.assert_awaited_once()
-    proposal = service.apply.await_args.args[0]
+    _asmock(service.apply).assert_awaited_once()
+    await_args = _asmock(service.apply).await_args
+    assert await_args is not None
+    proposal = await_args.args[0]
     assert proposal.tool_changes == (blueprint,)
 
 
 async def test_item_without_blueprint_id_is_skipped() -> None:
     item = _approval(blueprint_id=None)
-    service = _service(apply_result=ApplyResult(success=True, changes_applied=1))
-    store = _store(items=(item,), claim=item)
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(return_value=ApplyResult(success=True, changes_applied=1))
+    )
+    store = mock_of[ApprovalStoreProtocol](
+        list_items=AsyncMock(return_value=(item,)),
+        consume_if_approved=AsyncMock(return_value=item),
+    )
     consumer = ToolApprovalConsumer(
-        service=service, blueprint_repo=_repo(_blueprint()), approval_store=store
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        approval_store=store,
     )
 
     assert await consumer.consume() == 0
-    service.apply.assert_not_called()
-    store.consume_if_approved.assert_not_called()
+    _asmock(service.apply).assert_not_called()
+    _asmock(store.consume_if_approved).assert_not_called()
 
 
 async def test_missing_blueprint_is_skipped() -> None:
     item = _approval()
-    service = _service(apply_result=ApplyResult(success=True, changes_applied=1))
-    store = _store(items=(item,), claim=item)
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(return_value=ApplyResult(success=True, changes_applied=1))
+    )
     consumer = ToolApprovalConsumer(
-        service=service, blueprint_repo=_repo(None), approval_store=store
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](get=AsyncMock(return_value=None)),
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=item),
+        ),
     )
 
     assert await consumer.consume() == 0
-    service.apply.assert_not_called()
+    _asmock(service.apply).assert_not_called()
 
 
 async def test_lost_claim_never_applies() -> None:
     item = _approval()
-    service = _service(apply_result=ApplyResult(success=True, changes_applied=1))
-    # consume_if_approved returns None: already consumed or a concurrent claim.
-    store = _store(items=(item,), claim=None)
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(return_value=ApplyResult(success=True, changes_applied=1))
+    )
     consumer = ToolApprovalConsumer(
-        service=service, blueprint_repo=_repo(_blueprint()), approval_store=store
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        # consume_if_approved returns None: already consumed or a concurrent claim.
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=None),
+        ),
     )
 
     assert await consumer.consume() == 0
-    service.apply.assert_not_called()
+    _asmock(service.apply).assert_not_called()
 
 
 async def test_apply_rejection_counts_as_not_applied() -> None:
     item = _approval()
-    service = _service(
-        apply_result=ApplyResult(
-            success=False,
-            error_message=NotBlankStr("gate rejected"),
-            changes_applied=0,
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(
+            return_value=ApplyResult(
+                success=False,
+                error_message=NotBlankStr("gate rejected"),
+                changes_applied=0,
+            )
         )
     )
-    store = _store(items=(item,), claim=item)
     consumer = ToolApprovalConsumer(
-        service=service, blueprint_repo=_repo(_blueprint()), approval_store=store
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=item),
+        ),
     )
 
     assert await consumer.consume() == 0
     # The claim still happened (the grant is one-shot), but nothing went live.
-    service.apply.assert_awaited_once()
+    _asmock(service.apply).assert_awaited_once()
