@@ -173,11 +173,13 @@ For docs-related dependencies, actually build the docs to verify nothing breaks.
 ```bash
 if [ -n "$(git status --porcelain)" ]; then
   # 1. Dirty tree: build in an isolated worktree instead of touching it
-  wt_path="$(mktemp -d)/dep-pr-docs-build"
-  git fetch origin "<pr-branch>"
-  git worktree add "$wt_path" "<pr-branch>"
+  wt_path="$(mktemp -d)"
+  trap 'git worktree remove "$wt_path" --force >/dev/null 2>&1 || true' EXIT
+  git fetch origin "+pull/<number>/head:pr-<number>"
+  git worktree add "$wt_path" "pr-<number>"
   ( cd "$wt_path" && uv sync --group docs && uv run zensical build 2>&1 )
   git worktree remove "$wt_path" --force
+  trap - EXIT
 else
   # 2. Clean tree: save current branch and set up cleanup trap
   original_ref="$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)"
@@ -495,6 +497,7 @@ The approval rationale (Phase 8 "Approve with rationale") must name the capabili
 Run the **Merge as-is** path to land the bump, then file (or extend) exactly ONE follow-up issue covering ALL deferred adoptions from this review run, whether they came from a single PR or an entire batch -- never one issue per item (do not skip the follow-up; an un-filed DEFER is just a silent SKIP). If this is the first DEFER item surfaced in the run, create the issue; if a later PR in the same batch adds more DEFER items, edit the existing issue's body to append a new numbered section rather than opening a second issue:
 
 ```bash
+# First DEFER item in the run: create the issue.
 gh issue create --repo <owner>/<repo> --title "Adopt new capabilities from <batch description> dependency bumps" \
   --body "Surfaced by dependency review of #<PR1>[, #<PR2>, ...]. Adopt the following:
 
@@ -506,6 +509,12 @@ File: <path>
 File: <path>
 - <exact change>
 "
+```
+
+```bash
+# Later PR in the same batch adds more DEFER items: extend the existing issue.
+gh issue view <issue-number> --repo <owner>/<repo> --json body --jq .body
+gh issue edit <issue-number> --repo <owner>/<repo> --body "<fetched body with a new numbered section appended>"
 ```
 
 The approval rationale's `Follow-ups:` line must reference the single combined issue number so the trail is closed, for every PR that contributed a DEFER item to it.
@@ -549,7 +558,7 @@ Do steps 1-4 below inside that worktree, then remove it once pushed (`git worktr
 gh pr close <number> --comment "Skipping: <reason from user>"
 ```
 
-After all merges complete, if any PRs were merged, automatically run `/post-merge-cleanup` (do NOT just remind the user; execute it). If this review's fix work happened in a separate worktree (per "Improve and merge" above) and the primary working tree is dirty with unrelated in-progress work, do not let `/post-merge-cleanup`'s `git checkout main && git pull` step touch it -- run only the safe parts (`git fetch --prune`, pruning gone local branches, including the branch behind the worktree you used) and report that the primary checkout was left alone.
+After all merges complete, if any PRs were merged, automatically run `/post-merge-cleanup` (do NOT just remind the user; execute it). If this review's fix work happened in a separate worktree (per "Improve and merge" above) and the primary working tree is dirty with unrelated in-progress work, do NOT run the `/post-merge-cleanup` skill (its `git checkout main && git pull` step would fail or touch that work); instead, manually run only the safe cleanup parts (`git fetch --prune`, pruning gone local branches, including the branch behind the worktree you used) and report that the primary checkout was left alone.
 
 ---
 
