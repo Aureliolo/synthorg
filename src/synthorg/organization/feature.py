@@ -65,6 +65,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ghost_wired_symbols=(
         "CompanyReadService",
         "RoleVersionService",
+        "TeamService",
     ),
     depends_on=(),
 )

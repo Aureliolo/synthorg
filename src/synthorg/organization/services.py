@@ -19,7 +19,7 @@ with no runtime benefit.
 import asyncio
 import copy
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
@@ -52,32 +52,6 @@ logger = get_logger(__name__)
 # Company structure is single-tenant, so its version history is keyed under a
 # single entity id (matching the REST company-version controller).
 _COMPANY_ENTITY_ID = NotBlankStr("default")
-
-
-class UnsetType:
-    """Sentinel type for "field not provided" distinct from ``None``.
-
-    Used by update operations where ``None`` is a legitimate value the
-    caller may want to persist (e.g. clearing a ``department_id``) and
-    must be distinguished from "leave this field unchanged".
-    """
-
-    _instance: UnsetType | None = None
-
-    def __new__(cls) -> UnsetType:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    @override
-    def __repr__(self) -> str:
-        return "UNSET"
-
-    def __bool__(self) -> bool:
-        return False
-
-
-UNSET = UnsetType()
 
 
 # ── CompanyReadService ──────────────────────────────────────────────

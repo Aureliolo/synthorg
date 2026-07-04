@@ -21,12 +21,14 @@ from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
+from tests._shared.settings_fake import FakeSettingsService
 from tests._shared.trust import NoOpTrustStrategy
 
 __all__ = [
     "AsgiDict",
     "CapturingErrorLogger",
     "FakeClock",
+    "FakeSettingsService",
     "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",

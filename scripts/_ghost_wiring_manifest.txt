@@ -187,6 +187,7 @@ ENFORCED ActivityFeedService #2535 -- constructed in api/lifecycle_helpers/persi
 ENFORCED ScalingDecisionService #2535 -- constructed in api/lifecycle_helpers/scaling_wiring.py::_wire over the scaling service; backs the synthorg_scaling_* MCP tools
 ENFORCED CompanyReadService #2535 -- constructed in api/lifecycle_helpers/organization_wiring.py::_wire_company_read_service over the config resolver + org-mutation service + company version repo; backs the synthorg_company_* MCP tools
 ENFORCED RoleVersionService #2535 -- constructed in api/lifecycle_helpers/organization_wiring.py::_wire_role_version_service over the role version repo; backs the synthorg_role_versions_* MCP tools
+ENFORCED TeamService #2535 -- constructed in api/lifecycle_helpers/organization_wiring.py::_wire_team_service over the settings-backed company.departments[*].teams; backs the synthorg_teams_* MCP tools
 ENFORCED EvaluationVersionService #2334 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_evaluation_version_service behind connected persistence; backs the synthorg_evaluation_versions_* MCP tools
 ENFORCED SubworkflowService #2334 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_subworkflow_service over a SubworkflowRegistry; backs the synthorg_subworkflows_* MCP tools
 ENFORCED QuotaTracker #2334 -- constructed in budget/_construction.py::wire_construction from budget subscriptions; threaded into the BudgetEnforcer for per-provider quota enforcement

@@ -21,7 +21,7 @@ from synthorg.organization.services import (
     DepartmentService,
 )
 from synthorg.organization.state import OrganizationStateSlice
-from tests._shared import make_app_state
+from tests._shared import FakeSettingsService, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -53,27 +53,29 @@ def real_department() -> DepartmentService:
 
 
 @pytest.fixture
-def real_team() -> TeamService:
-    return TeamService()
-
-
-@pytest.fixture
 def fake_app_state(
     fake_company: AsyncMock,
     real_department: DepartmentService,
-    real_team: TeamService,
     fake_role_version: AsyncMock,
 ) -> AppState:
-    return make_app_state(
+    settings = FakeSettingsService(
+        {("company", "departments"): json.dumps([{"name": "engineering", "teams": []}])}
+    )
+    app_state = make_app_state(
+        settings_service=settings,
         slices={
             OrganizationStateSlice: {
                 "company_read_service": fake_company,
                 "department_service": real_department,
-                "team_service": real_team,
                 "role_version_service": fake_role_version,
             },
         },
     )
+    app_state.wire(
+        OrganizationStateSlice,
+        team_service=TeamService(app_state=app_state),
+    )
+    return app_state
 
 
 class TestCompany:
@@ -344,18 +346,26 @@ class TestTeams:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_create"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"name": "Core"},
+            arguments={
+                "department": "engineering",
+                "name": "Core",
+                "lead": "alice",
+                "members": ["bob"],
+            },
             actor=make_test_actor(),
         )
         created = json.loads(response)
         assert created["status"] == "ok"
-        team_id = created["data"]["id"]
+        assert created["data"]["department"] == "engineering"
+        assert created["data"]["name"] == "Core"
         get_handler = ORGANIZATION_HANDLERS["synthorg_teams_get"]
         response_get = await get_handler(
             app_state=fake_app_state,
-            arguments={"team_id": team_id},
+            arguments={"department": "engineering", "team_name": "Core"},
         )
-        assert json.loads(response_get)["status"] == "ok"
+        body = json.loads(response_get)
+        assert body["status"] == "ok"
+        assert body["data"]["lead"] == "alice"
 
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_list"]
@@ -368,7 +378,7 @@ class TestTeams:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_delete"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"team_id": str(uuid4())},
+            arguments={"department": "engineering", "team_name": "core"},
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
@@ -378,20 +388,22 @@ class TestTeams:
         fake_app_state: AppState,
     ) -> None:
         create = ORGANIZATION_HANDLERS["synthorg_teams_create"]
-        created = json.loads(
-            await create(
-                app_state=fake_app_state,
-                arguments={"name": "doomed-team"},
-                actor=make_test_actor(),
-            ),
+        await create(
+            app_state=fake_app_state,
+            arguments={
+                "department": "engineering",
+                "name": "doomed-team",
+                "lead": "alice",
+            },
+            actor=make_test_actor(),
         )
-        team_id = created["data"]["id"]
         handler = ORGANIZATION_HANDLERS["synthorg_teams_delete"]
         with structlog.testing.capture_logs() as events:
             response = await handler(
                 app_state=fake_app_state,
                 arguments={
-                    "team_id": team_id,
+                    "department": "engineering",
+                    "team_name": "doomed-team",
                     "confirm": True,
                     "reason": "cleanup",
                 },
@@ -409,18 +421,23 @@ class TestTeams:
         fake_app_state: AppState,
     ) -> None:
         create = ORGANIZATION_HANDLERS["synthorg_teams_create"]
-        created = json.loads(
-            await create(
-                app_state=fake_app_state,
-                arguments={"name": "old-name"},
-                actor=make_test_actor(),
-            ),
+        await create(
+            app_state=fake_app_state,
+            arguments={
+                "department": "engineering",
+                "name": "old-name",
+                "lead": "alice",
+            },
+            actor=make_test_actor(),
         )
-        team_id = created["data"]["id"]
         update = ORGANIZATION_HANDLERS["synthorg_teams_update"]
         response = await update(
             app_state=fake_app_state,
-            arguments={"team_id": team_id, "name": "new-name"},
+            arguments={
+                "department": "engineering",
+                "team_name": "old-name",
+                "name": "new-name",
+            },
             actor=make_test_actor(),
         )
         body = json.loads(response)
@@ -431,7 +448,7 @@ class TestTeams:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_get"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"team_id": str(uuid4())},
+            arguments={"department": "engineering", "team_name": "ghost"},
         )
         assert json.loads(response)["domain_code"] == "not_found"
 
@@ -442,7 +459,11 @@ class TestTeams:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_update"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"team_id": str(uuid4()), "name": "ghost"},
+            arguments={
+                "department": "engineering",
+                "team_name": "ghost",
+                "name": "renamed",
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_found"

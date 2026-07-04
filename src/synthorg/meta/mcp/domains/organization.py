@@ -183,40 +183,71 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "teams",
         "get",
-        "Get a team by ID.",
+        "Get a team by department + name.",
         {
-            "team_id": {"type": "string", "description": "Team UUID"},
+            "department": {
+                "type": "string",
+                "description": "Parent department name",
+                "minLength": 1,
+            },
+            "team_name": {
+                "type": "string",
+                "description": "Team name",
+                "minLength": 1,
+            },
         },
-        required=("team_id",),
+        required=("department", "team_name"),
         args_model=TeamsGetArgs,
     ),
     write_tool(
         "teams",
         "create",
-        "Create a new team.",
+        "Create a new team within a department.",
         {
-            "name": {"type": "string", "description": "Team name"},
-            "department_id": {
+            "department": {
                 "type": "string",
-                "description": "Parent department ID",
+                "description": "Parent department name",
+                "minLength": 1,
+            },
+            "name": {"type": "string", "description": "Team name", "minLength": 1},
+            "lead": {
+                "type": "string",
+                "description": "Team lead agent name",
+                "minLength": 1,
+            },
+            "members": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Team member agent names",
             },
         },
-        required=("name",),
+        required=("department", "name", "lead"),
         args_model=TeamsCreateArgs,
     ),
     write_tool(
         "teams",
         "update",
-        "Update a team.",
+        "Update a team (rename, change lead, replace members).",
         {
-            "team_id": {"type": "string", "description": "Team UUID"},
-            "name": {"type": "string", "description": "New name"},
-            "department_id": {
+            "department": {
                 "type": "string",
-                "description": "New parent department ID",
+                "description": "Parent department name",
+                "minLength": 1,
+            },
+            "team_name": {
+                "type": "string",
+                "description": "Team name",
+                "minLength": 1,
+            },
+            "name": {"type": "string", "description": "New team name"},
+            "lead": {"type": "string", "description": "New team lead agent name"},
+            "members": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Replacement member list",
             },
         },
-        required=("team_id",),
+        required=("department", "team_name"),
         args_model=TeamsUpdateArgs,
     ),
     admin_tool(
@@ -224,14 +255,19 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "delete",
         "Delete a team (destructive; requires confirm).",
         {
-            "team_id": {
+            "department": {
                 "type": "string",
-                "description": "Team UUID",
+                "description": "Parent department name",
+                "minLength": 1,
+            },
+            "team_name": {
+                "type": "string",
+                "description": "Team name",
                 "minLength": 1,
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("team_id", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("department", "team_name", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TeamsDeleteArgs,
     ),
     # --- Role versions ---

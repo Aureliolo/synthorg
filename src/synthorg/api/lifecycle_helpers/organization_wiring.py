@@ -37,8 +37,42 @@ async def wire_organization_read_services(
     """
     connected = persistence is not None and getattr(persistence, "is_connected", False)
     await _wire_company_read_service(app_state, persistence, connected=connected)
+    await _wire_team_service(app_state)
     if connected and persistence is not None:
         await _wire_role_version_service(app_state, persistence)
+
+
+async def _wire_team_service(app_state: AppState) -> None:
+    """Wire the settings-backed ``TeamService`` once settings exist.
+
+    ``TeamService`` reads/writes teams through the company-departments
+    settings blob, so it activates once a settings service is composed; a
+    settings-less boot leaves the synthorg_teams_* tools 503.
+    """
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    org = app_state.slice(OrganizationStateSlice)
+    if (
+        org.team_service is not None
+        or app_state.slice(SettingsStateSlice).settings_service is None
+    ):
+        return
+    try:
+        from synthorg.organization._team_service import TeamService  # noqa: PLC0415
+
+        app_state.wire(
+            OrganizationStateSlice,
+            team_service=TeamService(app_state=app_state),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="team_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="team_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _wire_company_read_service(

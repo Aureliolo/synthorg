@@ -246,37 +246,49 @@ class TeamsListArgs(PaginationFields):
     """Args for ``teams.list``."""
 
 
-class TeamsGetArgs(_ArgsBase):
-    """Args for ``teams.get``."""
+class _TeamKeyArgs(_ArgsBase):
+    """Mixin for tools keyed by ``(department, team_name)``.
 
-    team_id: NotBlankStr = Field(description="Team UUID")
+    Teams are sub-documents of a department, addressed by their names (there
+    is no durable team id).
+    """
+
+    department: NotBlankStr = Field(description="Parent department name")
+    team_name: NotBlankStr = Field(description="Team name")
+
+
+class TeamsGetArgs(_TeamKeyArgs):
+    """Args for ``teams.get``."""
 
 
 class TeamsCreateArgs(_ArgsBase):
     """Args for ``teams.create``."""
 
+    department: NotBlankStr = Field(description="Parent department name")
     name: NotBlankStr = Field(description="Team name")
-    department_id: NotBlankStr | None = Field(
-        default=None,
-        description="Parent department ID",
+    lead: NotBlankStr = Field(description="Team lead agent name")
+    members: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Team member agent names",
     )
 
 
-class TeamsUpdateArgs(_ArgsBase):
+class TeamsUpdateArgs(_TeamKeyArgs):
     """Args for ``teams.update``."""
 
-    team_id: NotBlankStr = Field(description="Team UUID")
-    name: NotBlankStr | None = Field(default=None, description="New name")
-    department_id: NotBlankStr | None = Field(
+    name: NotBlankStr | None = Field(default=None, description="New team name")
+    lead: NotBlankStr | None = Field(
         default=None,
-        description="New parent department ID",
+        description="New team lead agent name",
+    )
+    members: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Replacement member list",
     )
 
 
-class TeamsDeleteArgs(AdminGuardrailFields):
+class TeamsDeleteArgs(_TeamKeyArgs, AdminGuardrailFields):
     """Args for ``teams.delete`` (destructive admin op)."""
-
-    team_id: NotBlankStr = Field(description="Team UUID")
 
 
 # ── Role versions ──────────────────────────────────────────────────
