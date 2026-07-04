@@ -140,7 +140,8 @@ class TestSQLitePersistenceBackend:
     async def test_not_connected_logs_at_debug_not_warning(self) -> None:
         """Boot-ordering access (SQLite implements every repo) logs at DEBUG.
 
-        A WARNING here reopens the two-phase-boot log spam issue #2533 fixes.
+        Two-phase boot touches a repository accessor before ``connect()``; a
+        WARNING here is expected steady-state noise, so it must stay DEBUG.
         """
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         with (
