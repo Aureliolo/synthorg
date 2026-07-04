@@ -146,6 +146,7 @@ type State struct {
 	UpdateHealthTimeout    string `json:"update_health_timeout,omitempty"`
 	CompletionProbeTimeout string `json:"completion_probe_timeout,omitempty"`
 	DiagnosticsDialTimeout string `json:"diagnostics_dial_timeout,omitempty"`
+	StatusDockerTimeout    string `json:"status_docker_timeout,omitempty"`
 
 	// Integer strings parsed by strconv.Atoi. Empty = use compiled-in default.
 	ImagePullAttempts string `json:"image_pull_attempts,omitempty"`
@@ -204,7 +205,13 @@ const (
 	// DiagnosticsDialTimeout bounds each per-port TCP dial in the doctor
 	// port-reachability check.
 	DefaultDiagnosticsDialTimeout = 1 * time.Second
-	DefaultImagePullAttempts      = 3
+	// StatusDockerTimeout bounds the Docker API calls `synthorg status`
+	// makes for the resource-usage and Postgres-volume sections; kept
+	// short so an unresponsive daemon does not hang the status command,
+	// mirroring UpdateHealthTimeout's rationale for the same class of
+	// local Docker query.
+	DefaultStatusDockerTimeout = 15 * time.Second
+	DefaultImagePullAttempts   = 3
 
 	// MinImageVerifyTimeout is the lower bound operators may set for
 	// image-signature verification.  Anything shorter would almost

@@ -117,6 +117,20 @@ class BaseCompletionProvider(ABC):
         ``None`` (leaves the driver without catalog-backed resolution).
         """
 
+    def serves_model(self, model: str) -> bool:  # noqa: ARG002 -- catalogue-free default accepts any id
+        """Report whether this driver can complete against *model*.
+
+        ``True`` by default: drivers without a configured model
+        catalogue (scripted / simulation drivers) accept any id, so
+        model-aware provider selection never excludes them. Drivers
+        with a catalogue (the LiteLLM driver) override this with a
+        membership check over model ids and aliases.
+
+        Returns:
+            ``True`` when the driver can complete against *model*.
+        """
+        return True
+
     def _provider_label(self) -> str:
         """Return the bounded provider identifier used for metrics / logs.
 

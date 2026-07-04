@@ -55,6 +55,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_UPDATE_HEALTH_TIMEOUT` | CLI | Timeout for the Docker API calls the `update` flow makes to inspect the current install (duration, default `15s`) |
 | `SYNTHORG_COMPLETION_PROBE_TIMEOUT` | CLI | Timeout for the one-shot shell-profile probe run by `synthorg completion install` (duration, default `5s`) |
 | `SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT` | CLI | Per-port TCP dial timeout in the `synthorg doctor` port-reachability check (duration, default `1s`) |
+| `SYNTHORG_STATUS_DOCKER_TIMEOUT` | CLI | Timeout for the Docker API calls `synthorg status` makes for the resource-usage and Postgres-volume sections (duration, default `15s`) |
 
 ## Hardcoded network literals (audit rationale)
 

@@ -2,7 +2,11 @@
 
 import sqlite3
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Any, Protocol
+
+import aiosqlite
+
+from synthorg.observability import safe_error_description
 
 
 class WriteContext(Protocol):
@@ -54,3 +58,31 @@ def is_unique_constraint_error(exc: BaseException) -> bool:
         "SQLITE_CONSTRAINT_UNIQUE",
         "SQLITE_CONSTRAINT_PRIMARYKEY",
     }
+
+
+async def rollback_after_failed_write(  # type: ignore[explicit-any]  # logger: structlog lazy proxy
+    db: aiosqlite.Connection,
+    *,
+    operation: str,
+    event: str,
+    logger: Any,
+) -> None:
+    """Roll back the current transaction after a failed write.
+
+    A rollback failure is logged (not raised): the caller is about to
+    raise the original error via its own error-raising helper, and a
+    rollback-of-rollback failure must not mask it. ``logger`` is taken
+    from the caller (rather than bound here) so the emitted event
+    still attributes to the calling repository module, not this
+    shared helper.
+    """
+    try:
+        await db.rollback()
+    except aiosqlite.Error as exc:
+        logger.warning(
+            event,
+            operation=operation,
+            phase="rollback",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

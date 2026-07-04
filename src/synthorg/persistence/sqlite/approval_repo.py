@@ -203,9 +203,10 @@ def _filter_clauses(
     if filter_spec.risk_level is not None:
         clauses.append("risk_level = ?")
         params.append(filter_spec.risk_level.value)
-    if filter_spec.action_type is not None:
-        clauses.append("action_type = ?")
-        params.append(filter_spec.action_type)
+    if filter_spec.action_types:
+        placeholders = ", ".join("?" * len(filter_spec.action_types))
+        clauses.append(f"action_type IN ({placeholders})")
+        params.extend(filter_spec.action_types)
     if filter_spec.created_since is not None:
         clauses.append("created_at >= ?")
         params.append(format_iso_utc(filter_spec.created_since))

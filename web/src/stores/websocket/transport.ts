@@ -358,7 +358,15 @@ async function fetchTicketOrReconnect(
     log.error('Ticket exchange failed:', err)
     const isAuthError = err instanceof AxiosError
       && err.response?.status === 401
-    if (shouldBeConnected && !isAuthError) {
+    if (isAuthError && shouldBeConnected) {
+      // Recovery is externally driven: the 401 interceptor notifies the
+      // auth store, which either redirects to login or (dev bypass)
+      // re-mints the session and calls retry(). Surface the exhausted
+      // state so the Retry affordance shows if neither happens. Gated
+      // on shouldBeConnected so a deliberate disconnect() mid-flight
+      // doesn't paint a stale "Retry" over a teardown the user chose.
+      set({ reconnectExhausted: true })
+    } else if (!isAuthError && shouldBeConnected) {
       scheduleReconnect(set, get)
     }
     throw err

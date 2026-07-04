@@ -824,6 +824,7 @@
       "controllers": [
         "MetaController",
         "MetaEvolutionController",
+        "MetaAlertsController",
         "ConversationalController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -842,7 +843,12 @@
         "OrgInflectionMonitor",
         "build_analytics_collector",
         "SelfImprovementService",
-        "build_rollback_executor"
+        "build_rollback_executor",
+        "_wire_alert_repo",
+        "SQLiteAlertRepository",
+        "PostgresAlertRepository",
+        "PersistentAlertSink",
+        "resolve_chat_answer"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -876,6 +882,7 @@
         "signals_service",
         "experiment_service",
         "ab_test_repo",
+        "alert_repo",
         "self_improvement_service",
         "reports_service",
         "analytics_service",
@@ -1330,6 +1337,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-02T18:16:39.152100Z",
+  "generated_at": "2026-07-03T22:29:21.738009Z",
   "schema_version": 1
 }

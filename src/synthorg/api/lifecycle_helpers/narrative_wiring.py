@@ -91,6 +91,9 @@ def _attach_narrator(
     Pulls the run-cost currency from the wired budget config (falling back
     to the system default) so the narrative renders costs with a unit.
     """
+    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
+        resolve_feature_provider,
+    )
     from synthorg.budget.currency import DEFAULT_CURRENCY  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
@@ -102,8 +105,11 @@ def _attach_narrator(
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    available = provider_registry.list_providers()
-    provider = provider_registry.get(available[0]) if available else None
+    provider = resolve_feature_provider(
+        provider_registry,
+        config.narrative_model,
+        feature="chief_of_staff_narrator",
+    )
     budget_config = app_state.slice(BudgetStateSlice).budget_config
     currency = budget_config.currency if budget_config else DEFAULT_CURRENCY
     narrator = build_chief_of_staff_narrator(

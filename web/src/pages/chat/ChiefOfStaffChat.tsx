@@ -6,6 +6,7 @@ import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatScopePicker } from './ChatScopePicker'
 import {
   useChiefOfStaffChatState,
   type ChiefOfStaffMessage,
@@ -50,9 +51,19 @@ function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
 export function ChiefOfStaffChat() {
   const ctrl = useChiefOfStaffChatState()
 
+  const scopePicker = (
+    <ChatScopePicker
+      proposals={ctrl.scopeableProposals}
+      alerts={ctrl.scopeableAlerts}
+      value={ctrl.scope}
+      onChange={ctrl.setScope}
+      disabled={ctrl.chatLoading}
+    />
+  )
+
   if (ctrl.messages.length === 0 && !ctrl.chatLoading) {
     return (
-      <div className="space-y-section-gap">
+      <div className="mx-auto max-w-3xl space-y-section-gap">
         <EmptyState
           icon={MessageCircle}
           title="Ask the Chief of Staff"
@@ -63,6 +74,7 @@ export function ChiefOfStaffChat() {
           onSelect={ctrl.setInput}
           disabled={ctrl.chatLoading}
         />
+        {scopePicker}
         <ChatInputArea
           value={ctrl.input}
           onChange={ctrl.setInput}
@@ -76,7 +88,7 @@ export function ChiefOfStaffChat() {
   }
 
   return (
-    <div className="flex flex-col gap-section-gap">
+    <div className="mx-auto flex max-w-3xl flex-col gap-section-gap">
       <div
         ref={ctrl.scrollRef}
         role="log"
@@ -93,6 +105,7 @@ export function ChiefOfStaffChat() {
         )}
       </div>
 
+      {scopePicker}
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}

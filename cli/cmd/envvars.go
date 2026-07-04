@@ -52,6 +52,7 @@ const (
 	EnvUpdateHealthTimeout    = config.EnvUpdateHealthTimeout
 	EnvCompletionProbeTimeout = config.EnvCompletionProbeTimeout
 	EnvDiagnosticsDialTimeout = config.EnvDiagnosticsDialTimeout
+	EnvStatusDockerTimeout    = config.EnvStatusDockerTimeout
 	EnvMaxAPIResponseBytes    = config.EnvMaxAPIResponseBytes
 	EnvMaxBinaryBytes         = config.EnvMaxBinaryBytes
 	EnvMaxArchiveEntryBytes   = config.EnvMaxArchiveEntryBytes

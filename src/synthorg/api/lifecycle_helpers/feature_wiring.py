@@ -29,6 +29,7 @@ from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engin
 from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
 from synthorg.api.lifecycle_helpers.meta_wiring import (
     _wire_ab_test_repo,
+    _wire_alert_repo,
     _wire_analytics_collector,
     _wire_analytics_service,
     _wire_experiment_service,
@@ -610,6 +611,7 @@ async def _wire_meta_features(
     await _wire_reports_service(app_state)
     await _wire_experiment_service(app_state)
     await _wire_ab_test_repo(app_state)
+    await _wire_alert_repo(app_state)
     await wire_meta_apply(app_state)
     await _wire_org_inflection_monitor(app_state, si_config=si_config)
     await _wire_analytics_collector(si_config=si_config)

@@ -42,6 +42,25 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="chat_snapshot_window_days",
+        type=SettingType.INTEGER,
+        default="7",
+        description=(
+            "How many trailing days of org signals the Chief of Staff"
+            " considers when answering a chat question (the /meta/chat"
+            " explain path). Resolved fresh per request; a change applies"
+            " without a restart."
+        ),
+        group="Conversational",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=90,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="propose_enabled",
         type=SettingType.BOOLEAN,
         default="true",

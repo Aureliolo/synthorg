@@ -326,6 +326,25 @@ function _extractBackendClientError(
   return _trimmedOrNull(data?.error)
 }
 
+/**
+ * For a 5xx carrying a structured envelope whose category is not
+ * INTERNAL, surface the backend's curated `error` string. A
+ * categorised DomainError (e.g. a tunnel 502 in PROVIDER_ERROR)
+ * writes its message for the operator, and flattening it to the
+ * canned "Temporary connectivity issue" copy hides the actionable
+ * detail. Uncategorised / INTERNAL 5xx bodies stay suppressed so
+ * server internals never leak.
+ */
+function _extractCuratedServerError(
+  data: AxiosErrorData | undefined,
+  status: number | undefined,
+): string | null {
+  if (status === undefined || status < 500) return null
+  const category = data?.error_detail?.error_category
+  if (category === undefined || category === ErrorCategory.INTERNAL) return null
+  return _trimmedOrNull(data?.error)
+}
+
 /** Canned per-status copy from `STATUS_FALLBACK_MESSAGES`, or null. */
 function _statusFallback(status: number | undefined): string | null {
   if (status === undefined) return null
@@ -354,6 +373,7 @@ function _formatAxiosErrorMessage(error: AxiosError): string {
   return (
     _handleSpecialisedAxiosStatus(error, data, status)
     ?? _extractBackendClientError(data, status)
+    ?? _extractCuratedServerError(data, status)
     ?? _statusFallback(status)
     ?? _fallbackAxiosMessage(error, status)
   )

@@ -11,12 +11,20 @@ from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
+from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
+from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
+from synthorg.api.controllers._meta_proposal_helpers import (
+    PROPOSAL_ACTION_TYPES,
+    proposal_to_dict,
+)
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
+    encode_countless_seek_meta,
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId
@@ -24,7 +32,6 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
-from synthorg.core.pagination import collect_all
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -249,20 +256,20 @@ class MetaController(Controller):
         # Records are written by ``ABTestRollout`` through the durable
         # ``AbTestRepository``; when persistence is absent the repo is
         # unwired and the page degrades to empty rather than 503-ing.
-        repo = ab_test_repo_of(state.app_state)
+        app_state = state.app_state
+        secret = cursor_secret_of(app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        repo = ab_test_repo_of(app_state)
         records: tuple[AbTestRecord, ...] = ()
         if repo is not None:
-            bound_repo = repo
-            records = await collect_all(
-                lambda limit, offset: bound_repo.list_items(limit=limit, offset=offset)
-            )
-        summaries = tuple(ab_test_to_dict(record) for record in records)
-        page, meta = paginate_cursor(
-            summaries,
+            records = await repo.list_items(limit=limit + 1, offset=offset)
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(records),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
+        page = tuple(ab_test_to_dict(record) for record in records[:limit])
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/ab-tests/{proposal_id:str}")
@@ -309,7 +316,9 @@ class MetaController(Controller):
     ) -> PaginatedResponse[dict[str, object]]:
         """List improvement proposals from the approval store.
 
-        Returns proposals where action_type starts with ``meta.``.
+        Returns proposals from either producer (see
+        ``_meta_proposal_helpers.PROPOSAL_ACTION_TYPES``), pushed down
+        to the repo as a plain ``IN`` filter.
 
         Args:
             state: Application state.
@@ -319,34 +328,26 @@ class MetaController(Controller):
         Returns:
             Paginated proposal summaries.
         """
+        app_state = state.app_state
+        secret = cursor_secret_of(app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         store = require_service(
-            state.app_state.slice(ApprovalStateSlice).store, "Approval Store"
+            app_state.slice(ApprovalStateSlice).store, "Approval Store"
         )
-        # A backend failure here propagates to the central persistence handler
-        # (500 + retryable); the success path logs the filtered count for
-        # request-context tracing.
-        all_items = await store.list_items()
-        proposals = tuple(
-            {
-                "id": item.id,
-                "title": item.title,
-                "action_type": item.action_type,
-                "status": item.status.value,
-                "risk_level": item.risk_level.value,
-                "requested_by": item.requested_by,
-                "created_at": item.created_at.isoformat(),
-            }
-            for item in all_items
-            if item.action_type.startswith("meta.")
+        items = await store.list_items_page(
+            action_types=PROPOSAL_ACTION_TYPES,
+            limit=limit + 1,
+            offset=offset,
         )
-        logger.debug(META_PROPOSAL_LISTED, count=len(proposals))
-        page, meta = paginate_cursor(
-            proposals,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(items),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
-        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
+        proposals = tuple(proposal_to_dict(item) for item in items[:limit])
+        logger.debug(META_PROPOSAL_LISTED, count=len(proposals))
+        return PaginatedResponse[dict[str, object]](data=proposals, pagination=meta)
 
     @get("/signals")
     async def get_signals(
@@ -398,9 +399,11 @@ class MetaController(Controller):
         """Ask the Chief of Staff a question.
 
         Routes to the ChiefOfStaffChat backend for LLM-powered
-        explanations of signals and proposals.  Returns 503 when the
-        chat backend is not configured (``chief_of_staff.chat_enabled``
-        is False or no LLM provider is registered).
+        explanations of signals and proposals (see
+        ``resolve_chat_answer`` for how ``proposal_id``/``alert_id``
+        scoping is resolved). Returns 503 when the chat backend is not
+        configured (``chief_of_staff.chat_enabled`` is False or no LLM
+        provider is registered).
 
         Args:
             data: Chat request with question text.
@@ -443,13 +446,15 @@ class MetaController(Controller):
             )
             msg = "SignalsService is not configured; cannot build a snapshot."
             raise ServiceUnavailableError(msg)
-        snapshot = await signals_service.get_org_snapshot()
+        snapshot = await signals_service.get_org_snapshot(
+            since=app_state.clock.now() - await resolve_chat_snapshot_window(app_state),
+        )
         query = ChatQuery(
             question=data.question,
             proposal_id=data.proposal_id,
             alert_id=data.alert_id,
         )
-        result = await chat_backend.ask(query, snapshot)
+        result = await resolve_chat_answer(app_state, chat_backend, query, snapshot)
         return ApiResponse[dict[str, object]](
             data={
                 "answer": result.answer,

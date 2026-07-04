@@ -35,6 +35,7 @@ const (
 	EnvUpdateHealthTimeout    = "SYNTHORG_UPDATE_HEALTH_TIMEOUT"
 	EnvCompletionProbeTimeout = "SYNTHORG_COMPLETION_PROBE_TIMEOUT"
 	EnvDiagnosticsDialTimeout = "SYNTHORG_DIAGNOSTICS_DIAL_TIMEOUT"
+	EnvStatusDockerTimeout    = "SYNTHORG_STATUS_DOCKER_TIMEOUT"
 	EnvMaxAPIResponseBytes    = "SYNTHORG_MAX_API_RESPONSE_BYTES"
 	EnvMaxBinaryBytes         = "SYNTHORG_MAX_BINARY_BYTES"
 	EnvMaxArchiveEntryBytes   = "SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES"
@@ -68,6 +69,7 @@ type Tunables struct {
 	UpdateHealthTimeout    time.Duration
 	CompletionProbeTimeout time.Duration
 	DiagnosticsDialTimeout time.Duration
+	StatusDockerTimeout    time.Duration
 	ImagePullAttempts      int
 
 	MaxAPIResponseBytes  int64
@@ -108,6 +110,7 @@ func DefaultTunables() Tunables {
 		UpdateHealthTimeout:     DefaultUpdateHealthTimeout,
 		CompletionProbeTimeout:  DefaultCompletionProbeTimeout,
 		DiagnosticsDialTimeout:  DefaultDiagnosticsDialTimeout,
+		StatusDockerTimeout:     DefaultStatusDockerTimeout,
 		ImagePullAttempts:       DefaultImagePullAttempts,
 		MaxAPIResponseBytes:     DefaultMaxAPIResponseBytes,
 		MaxBinaryBytes:          DefaultMaxBinaryBytes,
@@ -299,7 +302,10 @@ func resolveOperationalTimeouts(t Tunables, s State) (Tunables, error) {
 	if t.CompletionProbeTimeout, err = resolveDurationField("completion_probe_timeout", EnvCompletionProbeTimeout, s.CompletionProbeTimeout, t.CompletionProbeTimeout); err != nil {
 		return t, err
 	}
-	t.DiagnosticsDialTimeout, err = resolveDurationField("diagnostics_dial_timeout", EnvDiagnosticsDialTimeout, s.DiagnosticsDialTimeout, t.DiagnosticsDialTimeout)
+	if t.DiagnosticsDialTimeout, err = resolveDurationField("diagnostics_dial_timeout", EnvDiagnosticsDialTimeout, s.DiagnosticsDialTimeout, t.DiagnosticsDialTimeout); err != nil {
+		return t, err
+	}
+	t.StatusDockerTimeout, err = resolveDurationField("status_docker_timeout", EnvStatusDockerTimeout, s.StatusDockerTimeout, t.StatusDockerTimeout)
 	return t, err
 }
 

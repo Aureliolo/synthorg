@@ -55,6 +55,8 @@ _CATALOG_UNAVAILABLE_MESSAGE = (
 )
 _TOKEN_CREDENTIAL_KEY = "auth_token"  # noqa: S105 -- key name, not a secret
 
+_CONNECTION_NAME_PREFIX = "tunnel-"
+
 
 def credential_connection_name(provider_id: str) -> str:
     """Catalog connection name backing a tunnel provider's token.
@@ -62,7 +64,19 @@ def credential_connection_name(provider_id: str) -> str:
     Returns:
         The deterministic ``tunnel-<provider>`` connection name.
     """
-    return f"tunnel-{provider_id}"
+    return f"{_CONNECTION_NAME_PREFIX}{provider_id}"
+
+
+def tunnel_provider_id_for_connection(connection_name: str) -> str | None:
+    """Inverse of :func:`credential_connection_name`.
+
+    Returns:
+        The provider id, or ``None`` when the name does not follow the
+        ``tunnel-<provider>`` convention.
+    """
+    if not connection_name.startswith(_CONNECTION_NAME_PREFIX):
+        return None
+    return connection_name.removeprefix(_CONNECTION_NAME_PREFIX)
 
 
 class TunnelManager:
@@ -179,6 +193,17 @@ class TunnelManager:
             active_provider=self._active_id,
             providers=tuple(statuses),
         )
+
+    async def provider_status(self, provider_id: str) -> TunnelProviderStatus | None:
+        """One provider's live readiness (the connection health source).
+
+        Returns:
+            The status, or ``None`` for an unknown provider id.
+        """
+        adapter = self._adapters.get(provider_id)
+        if adapter is None:
+            return None
+        return await self._status_of(adapter)
 
     async def store_token(self, provider_id: str, token: str) -> None:
         """Mint (or rotate) the catalog connection holding a token.

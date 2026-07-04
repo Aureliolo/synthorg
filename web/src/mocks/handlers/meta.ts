@@ -5,6 +5,7 @@ import type {
   getMetaConfig,
   getSignals,
   listABTests,
+  listAlerts,
   listEvolutionOutcomes,
   listProposals,
   postChat,
@@ -41,6 +42,9 @@ export const metaHandlers = [
   ),
   http.get('/api/v1/meta/proposals', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof listProposals>([])),
+  ),
+  http.get('/api/v1/meta/alerts', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof listAlerts>([])),
   ),
   http.get('/api/v1/meta/signals', () =>
     HttpResponse.json(

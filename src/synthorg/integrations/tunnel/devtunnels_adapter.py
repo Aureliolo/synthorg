@@ -108,8 +108,10 @@ _STATUS_TIMEOUT_SECONDS: Final[float] = 15.0
 _HOST_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"https://[\w][\w.-]*\.devtunnels\.ms\S*"
 )
+# The CLI has shipped both "enter the code XXXX-XXXX" and
+# "enter the code: XXXX-XXXX"; the optional colon accepts either.
 _DEVICE_CODE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\bcode\s+([A-Z0-9][A-Z0-9-]{5,})\b", re.IGNORECASE
+    r"\bcode:?\s+([A-Z0-9][A-Z0-9-]{5,})\b", re.IGNORECASE
 )
 _VERIFICATION_URL_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"https://\S*(?:login/device|devicelogin)\S*", re.IGNORECASE

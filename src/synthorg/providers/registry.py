@@ -23,6 +23,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,
+    PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_REGISTRY_BUILT,
 )
 
@@ -31,6 +32,7 @@ from .cassette import CassetteConfig, CassetteSession
 from .errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
+    ModelNotFoundError,
 )
 
 logger = get_logger(__name__)
@@ -134,6 +136,54 @@ class ProviderRegistry:
             A sorted tuple of all registered provider name strings.
         """
         return tuple(sorted(self._drivers))
+
+    def resolve_for_model(self, model: str) -> tuple[str, BaseCompletionProvider]:
+        """Pick the provider that serves *model*.
+
+        The per-feature model settings (chat / propose / narrative /
+        judge / charter models) are provider-agnostic strings, so the
+        consuming builders cannot assume the first registered provider
+        serves them: with more than one provider registered, a naive
+        first pick routes the call to a driver that rejects the model at
+        request time. A model no registered provider serves is a
+        configuration error and raises here, so the consuming feature
+        fails loudly at wiring time with the offending model named
+        instead of surfacing baffling per-call failures.
+
+        Returns:
+            The ``(name, driver)`` pair for the first provider (sorted
+            order) whose driver serves *model*.
+
+        Raises:
+            DriverNotRegisteredError: When the registry is empty.
+            ModelNotFoundError: When no registered provider serves
+                *model*.
+        """
+        names = self.list_providers()
+        if not names:
+            logger.error(
+                PROVIDER_DRIVER_NOT_REGISTERED,
+                name=None,
+                available=["(none)"],
+                model=model,
+            )
+            msg = "No providers registered"
+            raise DriverNotRegisteredError(msg, context={"model": model})
+        for name in names:
+            driver = self._drivers[name]
+            if driver.serves_model(model):
+                return name, driver
+        logger.error(
+            PROVIDER_MODEL_NOT_FOUND,
+            model=model,
+            available=list(names),
+        )
+        msg = (
+            f"Model {model!r} is not served by any registered provider"
+            f" (providers: {', '.join(names)}); fix the model setting"
+            f" or register a provider that serves it"
+        )
+        raise ModelNotFoundError(msg, context={"model": model})
 
     def __contains__(self, name: object) -> bool:
         """Check whether a provider name is registered.
@@ -322,6 +372,7 @@ class ProviderRegistry:
                 inner=inner,
                 session=session,
                 provider_name=name,
+                configured_models=config.models,
             )
             logger.info(
                 PROVIDER_CASSETTE_DRIVER_WRAPPED,

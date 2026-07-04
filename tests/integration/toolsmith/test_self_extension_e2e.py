@@ -278,6 +278,16 @@ class _InMemoryApprovalStore:
         del status, risk_level, action_type, created_since
         return tuple(self.items.values())
 
+    async def list_items_page(
+        self,
+        *,
+        action_types: object = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        del action_types
+        return tuple(self.items.values())[offset : offset + limit]
+
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         self.items[str(item.id)] = item
         return item

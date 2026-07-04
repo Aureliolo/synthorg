@@ -40,7 +40,10 @@ from synthorg.persistence._shared.evolution_outcome_marshalling import (
 from synthorg.persistence.evolution_outcome_protocol import (
     EvolutionOutcomeFilterSpec,
 )
-from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    rollback_after_failed_write,
+)
 
 logger = get_logger(__name__)
 
@@ -90,6 +93,12 @@ class SQLiteEvolutionOutcomeRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="save evolution outcome",
+                    event=PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error("save evolution outcome", exc)
 
     async def query(
@@ -181,6 +190,12 @@ class SQLiteEvolutionOutcomeRepository:
                     await self._db.commit()
                     return cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="purge evolution outcomes",
+                    event=PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error("purge evolution outcomes", exc)
 
     def _raise_query_error(self, operation: str, exc: Exception) -> NoReturn:

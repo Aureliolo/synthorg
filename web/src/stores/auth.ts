@@ -45,7 +45,7 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<UserInfoResponse>
   fetchSessions: (scope?: 'own' | 'all') => Promise<void>
   revokeSession: (sessionId: string) => Promise<boolean>
-  handleUnauthorized: () => void
+  handleUnauthorized: (options?: { intentional?: boolean }) => void
   checkSession: () => Promise<void>
 }
 
@@ -60,6 +60,22 @@ interface AuthState {
 // at most once per page load; ``login()`` resets it on success so a
 // later session expiry still works.
 let unauthorizedRedirectInFlight = false
+
+// Bumped by an intentional logout OR a freshly-established session
+// (login/setup succeeding) so a dev-session recovery already in flight
+// (started before either, resolving after) discovers it is stale
+// before it can retry the websocket, clear the in-flight redirect
+// guard, or silently overwrite whichever of those two newer,
+// authoritative outcomes actually landed. ``authEpochReason`` records
+// WHICH of the two happened: a stale recovery must force itself back
+// to unauthenticated after a logout (its own nested fetchUser() call
+// may have already committed a stray authenticated write on top of
+// the logout's state), but must leave a fresher login/setup's own
+// state untouched. Mirrors the generation-counter pattern in
+// api/approval_store.py's ApprovalStore (bumped by clear(), checked
+// before an in-flight scan repopulates the cache).
+let authEpoch = 0
+let authEpochReason: 'logout' | 'login' | null = null
 
 export function _resetUnauthorizedRedirectGuardForTests(): void {
   unauthorizedRedirectInFlight = false
@@ -122,9 +138,21 @@ async function fetchUserImpl(
 
 function handleUnauthorizedImpl(
   set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+  options?: { intentional?: boolean },
 ): void {
-  if (unauthorizedRedirectInFlight) return
+  if (unauthorizedRedirectInFlight && !options?.intentional) return
   unauthorizedRedirectInFlight = true
+  if (IS_DEV_AUTH_BYPASS && !options?.intentional) {
+    // Dev bypass: re-mint the password-free admin session in place.
+    // Bouncing a developer to the login screen on cookie expiry would
+    // dead-end (there is no password to type), and doing nothing left
+    // the websocket and every API call permanently 401ing. Skipped for
+    // an intentional logout (below): re-auto-logging-in there would make
+    // the Logout button a silent no-op.
+    void _recoverDevSession(set, get)
+    return
+  }
   set({ authStatus: 'unauthenticated', user: null })
   import('@/stores/websocket')
     .then(({ useWebSocketStore }) => {
@@ -133,10 +161,51 @@ function handleUnauthorizedImpl(
     .catch(() => {
       // Best-effort -- import may fail during HMR or teardown.
     })
+  _redirectToLogin()
+}
+
+function _redirectToLogin(): void {
   const currentPath = window.location.pathname
   if (currentPath !== '/login' && currentPath !== '/setup') {
     window.location.href = '/login'
   }
+}
+
+/**
+ * Re-establish an expired dev-bypass session without a page bounce.
+ * On success the websocket transport is retried explicitly: its own
+ * reconnect loop stops on an auth-failed ticket exchange, so the fresh
+ * cookie alone would not revive it. On failure (endpoint off, no admin
+ * account) this falls back to the normal login screen.
+ */
+async function _recoverDevSession(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<void> {
+  const epoch = authEpoch
+  const recovered = await _tryDevAutoLogin(set, get)
+  if (epoch !== authEpoch) {
+    // A logout or a fresher login/setup landed while this recovery
+    // was in flight. _tryDevAutoLoginOnce already restored the
+    // unauthenticated state if the reason was a logout; either way,
+    // don't reset the in-flight redirect marker, retry the websocket,
+    // or redirect to /login for a session the user no longer wants
+    // (or already replaced with a newer one).
+    return
+  }
+  if (recovered) {
+    // Recovery does not reload the page, so this in-flight guard would
+    // otherwise stay tripped for the rest of the session, silently
+    // dropping every subsequent 401.
+    unauthorizedRedirectInFlight = false
+    import('@/stores/websocket')
+      .then(({ useWebSocketStore }) => useWebSocketStore.getState().retry())
+      .catch(() => {
+        // Best-effort -- import may fail during HMR or teardown.
+      })
+    return
+  }
+  _redirectToLogin()
 }
 
 // A genuine network error during the bootstrap session check (the backend
@@ -177,15 +246,51 @@ async function _tryDevAutoLogin(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
 ): Promise<boolean> {
+  // Shared in-flight promise: the bootstrap session check and the 401
+  // interceptor can both request an auto-login in the same tick; a
+  // second concurrent devLogin would mint a redundant session.
+  devAutoLoginPromise ??= _tryDevAutoLoginOnce(set, get).finally(() => {
+    devAutoLoginPromise = null
+  })
+  return devAutoLoginPromise
+}
+
+let devAutoLoginPromise: Promise<boolean> | null = null
+
+async function _tryDevAutoLoginOnce(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<boolean> {
+  const epoch = authEpoch
   try {
     await performAuthFlow(set, get, () => authApi.devLogin())
+    if (epoch !== authEpoch) {
+      // A logout or a fresher login/setup landed while this
+      // devLogin/fetchUser round-trip was in flight, making this
+      // success stale. Only a logout needs correcting here (the
+      // nested fetchUser() call above may have just committed a
+      // stray authenticated write on top of the logout's own
+      // unauthenticated state); a fresher login/setup already
+      // committed its own authoritative state and must be left alone.
+      if (authEpochReason === 'logout') {
+        set({ authStatus: 'unauthenticated', user: null })
+      }
+      return false
+    }
     return get().authStatus === 'authenticated'
   } catch (err) {
     log.warn(
       'Dev auto-login failed; showing the normal login screen.',
       getErrorMessage(err),
     )
-    set({ authStatus: 'unauthenticated', user: null })
+    // Same distinction as above: a genuine failure of the current
+    // (non-stale) attempt, or a stale failure that raced behind a
+    // logout, both warrant clearing to unauthenticated; a stale
+    // failure that raced behind a fresher login/setup must not
+    // clobber that newer session.
+    if (epoch === authEpoch || authEpochReason === 'logout') {
+      set({ authStatus: 'unauthenticated', user: null })
+    }
     return false
   }
 }
@@ -279,25 +384,25 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   sessionsLoading: false,
   sessionsError: null,
 
-  login: (username, password) =>
-    performAuthFlow(
-      set,
-      get,
-      () => authApi.login({ username, password }),
-    ),
-  setup: (username, password) =>
-    performAuthFlow(
-      set,
-      get,
-      () => authApi.setup({ username, password }),
-    ),
+  async login(username, password) {
+    await performAuthFlow(set, get, () => authApi.login({ username, password }))
+    authEpoch += 1
+    authEpochReason = 'login'
+  },
+  async setup(username, password) {
+    await performAuthFlow(set, get, () => authApi.setup({ username, password }))
+    authEpoch += 1
+    authEpochReason = 'login'
+  },
   async logout() {
     try {
       await authApi.logout()
     } catch (err) {
       log.warn('Logout API call failed:', getErrorMessage(err))
     }
-    get().handleUnauthorized()
+    authEpoch += 1
+    authEpochReason = 'logout'
+    get().handleUnauthorized({ intentional: true })
   },
   fetchUser: () => fetchUserImpl(set, get),
   fetchSessions: (scope = 'own') => fetchSessionsImpl(set, scope),
@@ -317,7 +422,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ loading: false })
     }
   },
-  handleUnauthorized: () => handleUnauthorizedImpl(set),
+  handleUnauthorized: (options) => handleUnauthorizedImpl(set, get, options),
   checkSession: () => checkSessionImpl(set, get),
 }))
 

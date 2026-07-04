@@ -230,11 +230,35 @@ class TestApprovalRepository:
             _make_item(approval_id="deploy", action_type="deploy:production"),
         )
 
-        filter_spec = ApprovalFilterSpec(action_type=NotBlankStr("scaling:hire"))
+        filter_spec = ApprovalFilterSpec(action_types=(NotBlankStr("scaling:hire"),))
         hires = await repo.query(filter_spec)
         ids = {r.id for r in hires}
         assert as_uuid("hire") in ids
         assert as_uuid("deploy") not in ids
+
+    async def test_query_filter_by_multiple_action_types(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _approval_repo(backend)
+        await repo.save(
+            _make_item(approval_id="hire", action_type="scaling:hire"),
+        )
+        await repo.save(
+            _make_item(approval_id="prune", action_type="scaling:prune"),
+        )
+        await repo.save(
+            _make_item(approval_id="deploy", action_type="deploy:production"),
+        )
+
+        filter_spec = ApprovalFilterSpec(
+            action_types=(
+                NotBlankStr("scaling:hire"),
+                NotBlankStr("scaling:prune"),
+            )
+        )
+        rows = await repo.query(filter_spec)
+        ids = {r.id for r in rows}
+        assert ids == {as_uuid("hire"), as_uuid("prune")}
 
     async def test_query_combined_filters(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
@@ -262,7 +286,7 @@ class TestApprovalRepository:
         filter_spec = ApprovalFilterSpec(
             status=ApprovalStatus.PENDING,
             risk_level=ApprovalRiskLevel.HIGH,
-            action_type=NotBlankStr("deploy:production"),
+            action_types=(NotBlankStr("deploy:production"),),
         )
         rows = await repo.query(filter_spec)
         ids = {r.id for r in rows}

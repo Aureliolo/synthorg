@@ -32,7 +32,7 @@ _REVALIDATE_MAX_FAILURES_MAX: int = 100
 # Built-in defaults applied before ``_apply_bridge_config`` runs, so the
 # handlers never reach back through the resolver per connection.
 _DEFAULT_AUTH_TIMEOUT_SECONDS: float = 10.0
-_DEFAULT_FRAME_TIMEOUT_SECONDS: int = 30
+_DEFAULT_FRAME_TIMEOUT_SECONDS: int = 180
 _DEFAULT_REVALIDATE_WINDOW_SECONDS: int = 60
 _DEFAULT_REVALIDATE_MAX_FAILURES: int = 5
 
@@ -171,7 +171,7 @@ class WsAuthLimits:
     def frame_timeout_seconds(self) -> int:
         """Per-frame WebSocket receive timeout in seconds.
 
-        Bounded by ``[1, 600]``; defaults to 30. Read once at controller
+        Bounded by ``[1, 600]``; defaults to 180. Read once at controller
         construction (read_only_post_init), so the value can be staged
         in tests via ``set_frame_timeout_seconds`` without spinning
         the lifecycle.

@@ -14,9 +14,34 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.ab_test_protocol import AbTestRepository
+from synthorg.persistence.alert_protocol import AlertRepository
 from synthorg.persistence.experiment_protocol import ExperimentRepository
 
 logger = get_logger(__name__)
+
+
+def _log_persistence_absent(
+    app_state: AppState, *, service: str, degrades_to: str
+) -> None:
+    """Log the persistence-absent wiring skip at the right severity.
+
+    Mirrors ``health.py``'s ``_probe_persistence`` distinction: a
+    deliberately persistence-less run (``persistence_expected`` False)
+    logs INFO, but a backend that was configured and still failed to
+    connect (``persistence_expected`` True) logs WARNING -- collapsing
+    the two into one INFO would silently hide a real boot-time outage
+    behind the same message a benign dev run produces.
+    """
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    expected = app_state.slice(PersistenceStateSlice).persistence_expected
+    log = logger.warning if expected else logger.info
+    state_note = "expected but absent" if expected else "absent"
+    log(
+        API_APP_STARTUP,
+        service=service,
+        note=f"persistence {state_note}; {degrades_to}",
+    )
 
 
 async def _wire_analytics_service(app_state: AppState) -> None:
@@ -110,10 +135,10 @@ async def _wire_experiment_service(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).experiment_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
+        _log_persistence_absent(
+            app_state,
             service="experiment_service",
-            note="persistence absent; in-memory fallback stands in",
+            degrades_to="in-memory fallback stands in",
         )
         return
     try:
@@ -187,10 +212,10 @@ async def _wire_ab_test_repo(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).ab_test_repo is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
+        _log_persistence_absent(
+            app_state,
             service="ab_test_repo",
-            note="persistence absent; A/B-test endpoints degrade to empty",
+            degrades_to="A/B-test endpoints degrade to empty",
         )
         return
     try:
@@ -241,6 +266,84 @@ def _build_ab_test_repo(app_state: AppState) -> AbTestRepository:
         )
 
         return PostgresAbTestRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
+
+
+async def _wire_alert_repo(app_state: AppState) -> None:
+    """Wire the durable alert repository at boot.
+
+    Best-effort + idempotent. Builds the per-backend
+    :class:`AlertRepository` over the connected persistence layer and
+    installs it on ``MetaStateSlice`` so the ``/meta/alerts`` endpoint
+    serves real alert records and ``build_org_inflection_monitor`` has a
+    durable sink to fan alerts into. Called before
+    ``_wire_org_inflection_monitor`` so the monitor's persistent sink can
+    be wired in the same pass. When persistence is absent the hook skips
+    and the endpoint degrades to an empty page.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    if app_state.slice(MetaStateSlice).alert_repo is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        _log_persistence_absent(
+            app_state,
+            service="alert_repo",
+            degrades_to="alerts endpoint degrades to empty",
+        )
+        return
+    try:
+        repo = _build_alert_repo(app_state)
+        app_state.wire(MetaStateSlice, alert_repo=repo)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="alert_repo",
+            note="alert repo wiring failed; endpoint degrades to empty",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(API_APP_STARTUP, service="alert_repo", note="wired (durable)")
+
+
+def _build_alert_repo(app_state: AppState) -> AlertRepository:
+    """Build the per-backend durable alert repository.
+
+    Returns:
+        The SQLite or Postgres ``AlertRepository`` over the connected
+        persistence layer.
+    """
+    from synthorg.persistence.backend_dispatch import build_for_backend  # noqa: PLC0415
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+
+    def _build_sqlite() -> AlertRepository:
+        from synthorg.persistence.sqlite.alert_repo import (  # noqa: PLC0415
+            SQLiteAlertRepository,
+        )
+
+        return SQLiteAlertRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
+        )
+
+    def _build_postgres() -> AlertRepository:
+        from synthorg.persistence.postgres.alert_repo import (  # noqa: PLC0415
+            PostgresAlertRepository,
+        )
+
+        return PostgresAlertRepository(postgres_pool(persistence))
 
     return build_for_backend(
         persistence, sqlite=_build_sqlite, postgres=_build_postgres

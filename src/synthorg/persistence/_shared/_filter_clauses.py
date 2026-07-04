@@ -17,6 +17,8 @@ serialisers carry the only genuinely backend-specific value handling.
 from collections.abc import Callable
 from datetime import datetime
 
+from synthorg.meta.models import RuleSeverity
+from synthorg.persistence.alert_protocol import AlertFilterSpec
 from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
@@ -212,6 +214,45 @@ def build_evolution_outcome_filter_clauses(
         params.append(serialize_timestamp(filter_spec.since))
     if filter_spec.until is not None:
         clauses.append(f"recorded_at < {placeholder}")
+        params.append(serialize_timestamp(filter_spec.until))
+    return clauses, params
+
+
+def build_alert_filter_clauses(
+    filter_spec: AlertFilterSpec,
+    *,
+    placeholder: str,
+    serialize_severity: Callable[[RuleSeverity], object],
+    serialize_timestamp: Callable[[datetime], object],
+) -> tuple[list[str], list[object]]:
+    """Build the raw clause list and params for an alert filter.
+
+    Unlike the other builders this returns the unjoined clause list because
+    the callers assemble the statement themselves, matching the
+    evolution-outcome builder above.
+
+    Args:
+        filter_spec: The alert filter to translate.
+        placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
+        serialize_severity: Coerces the severity enum to its bound form.
+        serialize_timestamp: Coerces a UTC datetime to its bound form.
+
+    Returns:
+        The clause fragments to join with ``AND`` and their parameters.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    if filter_spec.severity is not None:
+        clauses.append(f"severity = {placeholder}")
+        params.append(serialize_severity(filter_spec.severity))
+    if filter_spec.alert_type is not None:
+        clauses.append(f"alert_type = {placeholder}")
+        params.append(filter_spec.alert_type)
+    if filter_spec.since is not None:
+        clauses.append(f"emitted_at >= {placeholder}")
+        params.append(serialize_timestamp(filter_spec.since))
+    if filter_spec.until is not None:
+        clauses.append(f"emitted_at < {placeholder}")
         params.append(serialize_timestamp(filter_spec.until))
     return clauses, params
 

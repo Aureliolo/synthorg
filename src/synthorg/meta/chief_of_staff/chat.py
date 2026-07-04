@@ -15,6 +15,7 @@ from synthorg.budget.currency import format_cost
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -203,12 +204,23 @@ class ChiefOfStaffChat:
         self,
         query: ChatQuery,
         snapshot: OrgSignalSnapshot,
+        *,
+        scoped_proposal: ApprovalItem | None = None,
     ) -> ChatResponse:
         """Answer a free-form question about signals/proposals.
+
+        A full :class:`ImprovementProposal` cannot be reconstructed from
+        the approval queue (rationale / rollback plan / change tuples
+        don't survive into it), so a ``proposal_id``-scoped question
+        does not route to :meth:`explain_proposal`; instead the resolved
+        :class:`ApprovalItem` is folded into this free-form answer's
+        context.
 
         Args:
             query: The user's question.
             snapshot: Current signal snapshot for context.
+            scoped_proposal: The approval-queue item the question is
+                scoped to, when ``query.proposal_id`` resolved to one.
 
         Returns:
             Natural language response.
@@ -237,6 +249,10 @@ class ChiefOfStaffChat:
                     for o in recent
                 ]
                 recent_context = "Recent outcomes:\n" + "\n".join(lines)
+        if scoped_proposal is not None:
+            recent_context = (
+                f"{_format_scoped_proposal(scoped_proposal)}\n\n{recent_context}"
+            )
         user = CHAT_QUERY_USER.format(
             snapshot_summary=wrap_untrusted(
                 TAG_TASK_DATA,
@@ -343,6 +359,32 @@ def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
         lines.append(
             f"Coordination Overhead: {coord.coordination_overhead_pct:.0%}",
         )
+    return "\n".join(lines)
+
+
+def _format_scoped_proposal(item: ApprovalItem) -> str:
+    """Format a scoped approval-queue item into readable context.
+
+    ``ApprovalItem`` is the durable projection a proposal survives into
+    once parked for human review; it carries title/description plus
+    whatever the submitting path recorded in ``metadata`` (altitude,
+    source rule), not the full ``ImprovementProposal``.
+
+    Returns:
+        Formatted context lines describing the scoped proposal.
+    """
+    lines = [
+        "The user's question is scoped to this pending proposal:",
+        f"Title: {item.title}",
+        f"Description: {item.description}",
+        f"Status: {item.status.value}",
+    ]
+    altitude = item.metadata.get("altitude")
+    if altitude:
+        lines.append(f"Altitude: {altitude}")
+    source_rule = item.metadata.get("source_rule")
+    if source_rule:
+        lines.append(f"Source rule: {source_rule}")
     return "\n".join(lines)
 
 

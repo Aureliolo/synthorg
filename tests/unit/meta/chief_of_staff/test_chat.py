@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.completion_enums import FinishReason
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -100,6 +102,21 @@ def _proposal() -> ImprovementProposal:
         confidence=0.7,
         source_rule="quality_declining",
     )
+
+
+def _approval_item(**overrides: object) -> ApprovalItem:
+    base: dict[str, object] = {
+        "action_type": "signals.proposal",
+        "title": "Tune retry backoff",
+        "description": "Increase base delay to cut thrash",
+        "requested_by": "meta_improvement_service",
+        "risk_level": ApprovalRiskLevel.MEDIUM,
+        "status": ApprovalStatus.PENDING,
+        "created_at": _NOW,
+        "metadata": {"altitude": "config_tuning", "source_rule": "retry_thrash"},
+    }
+    base.update(overrides)
+    return ApprovalItem(**base)  # type: ignore[arg-type]
 
 
 def _mock_provider(answer: str = "Test explanation") -> AsyncMock:
@@ -268,6 +285,50 @@ class TestAsk:
         config = call_args.kwargs.get("config") or call_args[1].get("config")
         assert config.temperature == pytest.approx(0.3)
         assert config.max_tokens == 500
+
+    async def test_scoped_proposal_context_reaches_the_prompt(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        item = _approval_item()
+        await chat.ask(
+            ChatQuery(question="Why was this proposed?", proposal_id=item.id),
+            _snap(),
+            scoped_proposal=item,
+        )
+        messages = provider.complete.call_args.args[0]
+        user_message = next(m for m in messages if m.role is MessageRole.USER)
+        assert "Tune retry backoff" in user_message.content
+        assert "Increase base delay to cut thrash" in user_message.content
+        assert "config_tuning" in user_message.content
+        assert "retry_thrash" in user_message.content
+
+    async def test_no_scoped_proposal_omits_proposal_context(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        await chat.ask(ChatQuery(question="Status?"), _snap())
+        messages = provider.complete.call_args.args[0]
+        user_message = next(m for m in messages if m.role is MessageRole.USER)
+        assert "scoped to this pending proposal" not in user_message.content
+
+    async def test_scoped_proposal_without_altitude_or_source_rule_metadata(
+        self,
+    ) -> None:
+        # metadata is whatever the submitting path recorded; the manual
+        # MCP-tool submission path (signals.proposal) never sets altitude
+        # or source_rule, so both lines must be omittable, not KeyError.
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        item = _approval_item(metadata={})
+        await chat.ask(
+            ChatQuery(question="Why was this proposed?", proposal_id=item.id),
+            _snap(),
+            scoped_proposal=item,
+        )
+        messages = provider.complete.call_args.args[0]
+        user_message = next(m for m in messages if m.role is MessageRole.USER)
+        assert "Tune retry backoff" in user_message.content
+        assert "Altitude:" not in user_message.content
+        assert "Source rule:" not in user_message.content
 
 
 class TestPromptTemplates:

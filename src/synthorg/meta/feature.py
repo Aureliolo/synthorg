@@ -21,6 +21,7 @@ from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.meta import MetaController
+from synthorg.api.controllers.meta_alerts import MetaAlertsController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.meta_evolution import MetaEvolutionController
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
@@ -71,6 +72,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         MetaController,
         MetaEvolutionController,
+        MetaAlertsController,
         ConversationalController,
         MetaAnalyticsController,
         AnalyticsOverviewController,
@@ -106,6 +108,11 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_analytics_collector",
         "SelfImprovementService",
         "build_rollback_executor",
+        "_wire_alert_repo",
+        "SQLiteAlertRepository",
+        "PostgresAlertRepository",
+        "PersistentAlertSink",
+        "resolve_chat_answer",
     ),
     depends_on=(),
 )

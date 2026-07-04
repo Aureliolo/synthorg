@@ -34,6 +34,7 @@ var tunableKeys = []struct {
 	{"update_health_timeout", "20s"},
 	{"completion_probe_timeout", "8s"},
 	{"diagnostics_dial_timeout", "2s"},
+	{"status_docker_timeout", "20s"},
 	{"image_verify_timeout", "180s"},
 	{"image_pull_retry_delay", "5s"},
 	{"image_pull_attempts", "7"},
