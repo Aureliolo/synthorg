@@ -161,6 +161,22 @@ ENFORCED OrgInflectionMonitor #2334 -- constructed + started in api/lifecycle_he
 ENFORCED build_analytics_collector #2334 -- called in api/lifecycle_helpers/meta_wiring.py::_wire_analytics_collector behind cross_deployment_analytics.collector_enabled; constructs the InMemoryAnalyticsCollector the MetaAnalyticsController routes read
 ENFORCED QualityFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction over the performance tracker; backs the synthorg_quality_* MCP tools
 ENFORCED ReviewFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_reviews_* MCP tools
+ENFORCED SetupFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_setup_* MCP read tools
+ENFORCED ProjectFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_projects_* MCP tools
+ENFORCED RequestsFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_requests_* MCP tools
+ENFORCED TemplatePackFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_template_packs_* MCP tools
+ENFORCED ClientFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_clients_* MCP tools
+ENFORCED AuditReadService #2535 -- constructed in infrastructure/_construction.py::wire_construction over the construction AuditLog; backs the synthorg_audit_* MCP read tools
+ENFORCED EventsReadService #2535 -- constructed in infrastructure/_construction.py::wire_construction over the EventStreamHub; backs the synthorg_events_* MCP read tools
+ENFORCED ArtifactFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction over the artifact storage backend; backs the synthorg_artifacts_* MCP tools
+ENFORCED IntegrationHealthFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction over the health prober; backs the synthorg_integration_health_* MCP read tools
+ENFORCED OAuthFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (in-process registry, optional token manager); backs the synthorg_oauth_* MCP tools
+ENFORCED SimulationFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction over ClientStateSlice.simulation_state (facades depends_on client); backs the synthorg_simulations_* MCP read tools
+ENFORCED UserFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_user_facade_service over the auth service; backs the synthorg_users_* MCP read tools
+ENFORCED BackupFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_backup_facade_service over the started backup service; backs the synthorg_backup_* MCP tools
+ENFORCED OntologyFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_ontology_facade_service over the ontology service; backs the synthorg_ontology_* MCP read tools
+ENFORCED MCPCatalogFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_mcp_catalog_facade_service over the catalog service + installation repo; backs the synthorg_mcp_catalog_* MCP tools
+ENFORCED ProviderReadService #2535 -- constructed in api/lifecycle_helpers/settings_dependent_services.py::_wire_provider_read_facade over the provider registry + health tracker + management; backs the synthorg_providers_* MCP read tools
 ENFORCED EvaluationVersionService #2334 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_evaluation_version_service behind connected persistence; backs the synthorg_evaluation_versions_* MCP tools
 ENFORCED SubworkflowService #2334 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_subworkflow_service over a SubworkflowRegistry; backs the synthorg_subworkflows_* MCP tools
 ENFORCED QuotaTracker #2334 -- constructed in budget/_construction.py::wire_construction from budget subscriptions; threaded into the BudgetEnforcer for per-provider quota enforcement

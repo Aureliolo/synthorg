@@ -157,9 +157,43 @@ def compose_settings_dependent_services(
         preset_override_service=preset_override_service,
     )
     app_state.wire(ApiCoreStateSlice, org_mutation_service=org_mutations)
+    _wire_provider_read_facade(app_state, management)
     logger.info(
         API_APP_STARTUP,
         action="settings_dependent_services_wired",
         provider_audit=audit_service is not None,
         preset_override=preset_override_service is not None,
+    )
+
+
+def _wire_provider_read_facade(
+    app_state: AppState,
+    management: ProviderManagementService,
+) -> None:
+    """Wire ``ProviderReadService`` onto the facades slice.
+
+    The provider registry + health tracker are construction-injected onto
+    ``ProvidersStateSlice``, but the management service this facade also
+    needs is only built here, so the read facade cannot wire at
+    construction. Idempotent (skips when already wired) and a no-op when no
+    provider is configured, so the provider MCP read tools stay 503 rather
+    than projecting an empty registry.
+    """
+    from synthorg.infrastructure.services import ProviderReadService  # noqa: PLC0415
+    from synthorg.infrastructure.state import FacadesStateSlice  # noqa: PLC0415
+
+    providers = app_state.slice(ProvidersStateSlice)
+    if (
+        app_state.slice(FacadesStateSlice).provider_read_service is not None
+        or providers.registry is None
+        or providers.health_tracker is None
+    ):
+        return
+    app_state.wire(
+        FacadesStateSlice,
+        provider_read_service=ProviderReadService(
+            registry=providers.registry,
+            health=providers.health_tracker,
+            management=management,
+        ),
     )

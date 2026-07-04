@@ -15,15 +15,18 @@ operator fixes the underlying configuration and reboots.
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.state import AppState
+from synthorg.backup.state import BackupStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
+from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -345,6 +348,141 @@ async def _wire_evaluation_version_service(
         )
 
 
+async def _wire_user_facade_service(app_state: AppState) -> None:
+    """Wire ``UserFacadeService`` once the auth service is present.
+
+    The auth service is composed inside ``_init_persistence`` (which runs
+    in ``_safe_startup`` before this helper), so by here it is wired
+    whenever authentication is configured; the user MCP read tools 503
+    until then.
+    """
+    api_core = app_state.slice(ApiCoreStateSlice)
+    if (
+        app_state.slice(FacadesStateSlice).user_facade_service is not None
+        or api_core.auth_service is None
+    ):
+        return
+    try:
+        from synthorg.infrastructure.services import UserFacadeService  # noqa: PLC0415
+
+        app_state.wire(
+            FacadesStateSlice,
+            user_facade_service=UserFacadeService(auth_service=api_core.auth_service),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="user_facade_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="user_facade_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _wire_backup_facade_service(app_state: AppState) -> None:
+    """Wire ``BackupFacadeService`` once the backup service has started.
+
+    The backup service reaches ``BackupStateSlice.service`` inside
+    ``_safe_startup`` (gated on the scheduler starting), so this facade
+    wires only when backups are actually running in this deployment.
+    """
+    backup = app_state.slice(BackupStateSlice)
+    if (
+        app_state.slice(FacadesStateSlice).backup_facade_service is not None
+        or backup.service is None
+    ):
+        return
+    try:
+        from synthorg.infrastructure.services import (  # noqa: PLC0415
+            BackupFacadeService,
+        )
+
+        app_state.wire(
+            FacadesStateSlice,
+            backup_facade_service=BackupFacadeService(service=backup.service),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="backup_facade_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="backup_facade_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _wire_ontology_facade_service(app_state: AppState) -> None:
+    """Wire ``OntologyFacadeService`` once the ontology service is present.
+
+    ``_wire_ontology_service`` composes the ontology service inside
+    ``_safe_startup``; this facade projects it for the ontology MCP read
+    tools, which 503 until the underlying service wires.
+    """
+    ontology = app_state.slice(OntologyStateSlice)
+    if (
+        app_state.slice(FacadesStateSlice).ontology_facade_service is not None
+        or ontology.service is None
+    ):
+        return
+    try:
+        from synthorg.integrations.mcp_facades import (  # noqa: PLC0415
+            OntologyFacadeService,
+        )
+
+        app_state.wire(
+            FacadesStateSlice,
+            ontology_facade_service=OntologyFacadeService(ontology=ontology.service),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="ontology_facade_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="ontology_facade_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _wire_mcp_catalog_facade_service(app_state: AppState) -> None:
+    """Wire ``MCPCatalogFacadeService`` once its catalog + repo are present.
+
+    The catalog service and installation repo are wired onto the
+    integrations slice during ``_init_persistence``; the MCP-catalog read/
+    install tools 503 until both are available.
+    """
+    integrations = app_state.slice(IntegrationsStateSlice)
+    if (
+        app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is not None
+        or integrations.mcp_catalog_service is None
+        or integrations.mcp_installations_repo is None
+    ):
+        return
+    try:
+        from synthorg.integrations.mcp_facades import (  # noqa: PLC0415
+            MCPCatalogFacadeService,
+        )
+
+        app_state.wire(
+            FacadesStateSlice,
+            mcp_catalog_facade_service=MCPCatalogFacadeService(
+                catalog=integrations.mcp_catalog_service,
+                installations=integrations.mcp_installations_repo,
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="mcp_catalog_facade_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="mcp_catalog_facade_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 async def wire_persistence_services(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -362,3 +500,7 @@ async def wire_persistence_services(
     await _wire_agent_version_service(app_state, persistence)
     await _wire_subworkflow_service(app_state, persistence)
     await _wire_evaluation_version_service(app_state, persistence)
+    await _wire_user_facade_service(app_state)
+    await _wire_backup_facade_service(app_state)
+    await _wire_ontology_facade_service(app_state)
+    await _wire_mcp_catalog_facade_service(app_state)

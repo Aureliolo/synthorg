@@ -18,6 +18,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.coordination.state import CoordinationStateSlice
+from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.security.state import SecurityStateSlice
@@ -98,3 +99,21 @@ class TestConstructionWiringPopulatesSlices:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         assert built_app_state.slice(PersistenceStateSlice).backend is fake_persistence
+
+    def test_facades_slice_construction_wired(
+        self,
+        built_app_state: AppState,
+    ) -> None:
+        # The dependency-free facades plus the events/audit/OAuth facades wire
+        # unconditionally at construction, so every MCP read tool that shims
+        # through them dispatches to a real service instead of a 503.
+        facades = built_app_state.slice(FacadesStateSlice)
+        assert facades.review_facade_service is not None
+        assert facades.setup_facade_service is not None
+        assert facades.project_facade_service is not None
+        assert facades.requests_facade_service is not None
+        assert facades.template_pack_facade_service is not None
+        assert facades.client_facade_service is not None
+        assert facades.events_read_service is not None
+        assert facades.oauth_facade_service is not None
+        assert facades.audit_read_service is not None
