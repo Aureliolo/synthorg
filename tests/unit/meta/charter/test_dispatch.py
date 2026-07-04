@@ -264,7 +264,7 @@ class _FakeConversationRepo:
         raise NotImplementedError
 
     async def list_items(
-        self, *, limit: int = 0, offset: int = 0
+        self, *, created_by: str | None = None, limit: int = 0, offset: int = 0
     ) -> tuple[object, ...]:
         raise NotImplementedError
 
