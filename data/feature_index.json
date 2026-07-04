@@ -332,7 +332,10 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/coordination",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "CoordinationService",
+        "CeremonyPolicyService"
+      ],
       "mcp_tool_names": [
         "synthorg_coordination_get_task_metrics",
         "synthorg_coordination_metrics_list",
@@ -535,11 +538,30 @@
     },
     {
       "controllers": [],
-      "depends_on": [],
+      "depends_on": [
+        "client"
+      ],
       "directory": "src/synthorg/infrastructure",
       "ghost_wired_symbols": [
         "QualityFacadeService",
-        "ReviewFacadeService"
+        "ReviewFacadeService",
+        "SetupFacadeService",
+        "ProjectFacadeService",
+        "RequestsFacadeService",
+        "TemplatePackFacadeService",
+        "ClientFacadeService",
+        "AuditReadService",
+        "EventsReadService",
+        "ArtifactFacadeService",
+        "IntegrationHealthFacadeService",
+        "OAuthFacadeService",
+        "SimulationFacadeService",
+        "MCPCatalogFacadeService",
+        "UserFacadeService",
+        "BackupFacadeService",
+        "OntologyFacadeService",
+        "ProviderReadService",
+        "SettingsReadService"
       ],
       "mcp_tool_names": [
         "synthorg_health_check",
@@ -626,7 +648,11 @@
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [
-        "build_promotion_service"
+        "build_promotion_service",
+        "AgentHealthService",
+        "PersonalityService",
+        "ActivityFeedService",
+        "ScalingDecisionService"
       ],
       "mcp_tool_names": [
         "synthorg_agents_list",
@@ -692,7 +718,9 @@
       "depends_on": [],
       "directory": "src/synthorg/integrations",
       "ghost_wired_symbols": [
-        "MCPToolFactory"
+        "MCPToolFactory",
+        "ConnectionService",
+        "WebhookService"
       ],
       "mcp_tool_names": [
         "synthorg_mcp_catalog_list",
@@ -848,8 +876,7 @@
         "SQLiteAlertRepository",
         "PostgresAlertRepository",
         "PersistentAlertSink",
-        "resolve_chat_answer",
-        "ToolApprovalConsumer"
+        "resolve_chat_answer"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -991,7 +1018,11 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/organization",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "CompanyReadService",
+        "RoleVersionService",
+        "TeamService"
+      ],
       "mcp_tool_names": [
         "synthorg_company_get",
         "synthorg_company_update",
@@ -1208,10 +1239,7 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
-      "ghost_wired_symbols": [
-        "CosCharterModelSettingsSubscriber",
-        "DirectMcpActorSettingsSubscriber"
-      ],
+      "ghost_wired_symbols": [],
       "mcp_tool_names": [],
       "name": "settings",
       "protocol_exports": [
@@ -1268,8 +1296,7 @@
         "ExternalApiTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
-        "create_lifecycle_strategy",
-        "ToolInvocationTracker"
+        "create_lifecycle_strategy"
       ],
       "mcp_tool_names": [],
       "name": "tools",
@@ -1342,6 +1369,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-04T21:24:09.453062Z",
+  "generated_at": "2026-07-04T19:31:36.134815Z",
   "schema_version": 1
 }
