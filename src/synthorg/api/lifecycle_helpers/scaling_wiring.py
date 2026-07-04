@@ -111,6 +111,9 @@ async def _wire(
     from synthorg.hr.hiring_service import HiringService  # noqa: PLC0415
     from synthorg.hr.offboarding_service import OffboardingService  # noqa: PLC0415
     from synthorg.hr.scaling.config import ScalingConfig  # noqa: PLC0415
+    from synthorg.hr.scaling.decision_service import (  # noqa: PLC0415
+        ScalingDecisionService,
+    )
     from synthorg.hr.scaling.factory import build_scaling_service  # noqa: PLC0415
     from synthorg.memory.state import org_memory_backend_of  # noqa: PLC0415
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
@@ -154,7 +157,13 @@ async def _wire(
         agent_registry=registry,
         approval_store=approval_store,
     )
-    app_state.wire(HrStateSlice, scaling_service=service)
+    # The MCP scaling-decision facade reads the same service's recent-decision
+    # history and manual-trigger path, so it wires from the just-built service.
+    app_state.wire(
+        HrStateSlice,
+        scaling_service=service,
+        scaling_decision_service=ScalingDecisionService(scaling=service),
+    )
     logger.info(API_APP_STARTUP, service="scaling", note="wired (durable)")
 
 

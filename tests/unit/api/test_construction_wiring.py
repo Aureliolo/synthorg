@@ -18,6 +18,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.coordination.state import CoordinationStateSlice
+from synthorg.hr.state import HrStateSlice
 from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
@@ -63,7 +64,23 @@ class TestConstructionWiringPopulatesSlices:
         assert security.autonomy_change_strategy is not None
 
     def test_coordination_slice_wired(self, built_app_state: AppState) -> None:
-        assert built_app_state.slice(CoordinationStateSlice).metrics_store is not None
+        coordination = built_app_state.slice(CoordinationStateSlice)
+        assert coordination.metrics_store is not None
+        # The coordination + ceremony-policy read facades wire at construction
+        # so the synthorg_coordination_* / synthorg_ceremony_policy_* tools
+        # dispatch to a real service instead of a capability gap.
+        assert coordination.coordination_service is not None
+        assert coordination.ceremony_policy_service is not None
+
+    def test_hr_health_facade_construction_wired(
+        self,
+        built_app_state: AppState,
+    ) -> None:
+        # The agent-health facade derives from the construction-injected
+        # performance tracker, so it wires at build time.
+        hr = built_app_state.slice(HrStateSlice)
+        assert hr.performance_tracker is not None
+        assert hr.agent_health_service is not None
 
     def test_approval_slice_wired(self, built_app_state: AppState) -> None:
         assert built_app_state.slice(ApprovalStateSlice).store is not None

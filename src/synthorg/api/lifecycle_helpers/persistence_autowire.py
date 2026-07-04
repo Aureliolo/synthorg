@@ -348,6 +348,95 @@ async def _wire_evaluation_version_service(
         )
 
 
+async def _wire_personality_service(
+    app_state: AppState,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Wire ``PersonalityService`` once persistence is connected.
+
+    Wraps the same custom-preset repo the REST personalities controller
+    builds per request, so the synthorg_personalities_* MCP tools read the
+    identical builtin + custom preset surface instead of 503-ing.
+    """
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        return
+    if app_state.slice(HrStateSlice).personality_service is not None or not hasattr(
+        persistence, "custom_presets"
+    ):
+        return
+    try:
+        from synthorg.hr.personalities.service import (  # noqa: PLC0415
+            PersonalityService,
+        )
+        from synthorg.templates.preset_service import (  # noqa: PLC0415
+            PersonalityPresetService,
+        )
+
+        app_state.wire(
+            HrStateSlice,
+            personality_service=PersonalityService(
+                presets=PersonalityPresetService(
+                    repository=persistence.custom_presets,
+                ),
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="personality_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="personality_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _wire_activity_feed_service(
+    app_state: AppState,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Wire ``ActivityFeedService`` once persistence is connected.
+
+    Aggregates the lifecycle-event / performance / cost sources behind the
+    synthorg_agents_get_activity + synthorg_activities_list tools. The
+    optional tool-invocation and delegation sources stay absent until their
+    own wiring lands, so the feed degrades to the present sources rather
+    than 503-ing.
+    """
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        return
+    hr = app_state.slice(HrStateSlice)
+    if (
+        hr.activity_feed_service is not None
+        or hr.performance_tracker is None
+        or not hasattr(persistence, "lifecycle_events")
+    ):
+        return
+    try:
+        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+        from synthorg.hr.activity_service import ActivityFeedService  # noqa: PLC0415
+        from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+        app_state.wire(
+            HrStateSlice,
+            activity_feed_service=ActivityFeedService(
+                performance_tracker=hr.performance_tracker,
+                lifecycle_repo=persistence.lifecycle_events,
+                cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+                config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="activity_feed_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="activity_feed_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 async def _wire_user_facade_service(app_state: AppState) -> None:
     """Wire ``UserFacadeService`` once the auth service is present.
 
@@ -500,6 +589,8 @@ async def wire_persistence_services(
     await _wire_agent_version_service(app_state, persistence)
     await _wire_subworkflow_service(app_state, persistence)
     await _wire_evaluation_version_service(app_state, persistence)
+    await _wire_personality_service(app_state, persistence)
+    await _wire_activity_feed_service(app_state, persistence)
     await _wire_user_facade_service(app_state)
     await _wire_backup_facade_service(app_state)
     await _wire_ontology_facade_service(app_state)
