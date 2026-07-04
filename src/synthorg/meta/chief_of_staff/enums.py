@@ -88,10 +88,15 @@ class GroupChatTruncationReason(StrEnum):
             before the remaining participants could contribute.
         MAX_TOTAL_TURNS_REACHED: Appending a further contribution would
             exceed the conversation's total-turn cap.
+        INPUT_BUDGET_EXHAUSTED: The next participant's estimated input
+            prompt would not leave room for its reserved output within the
+            round budget, so the round stops before dispatching it (rather
+            than only reacting once output has been consumed).
     """
 
     TOKEN_BUDGET_EXHAUSTED = "token_budget_exhausted"  # noqa: S105 -- enum label, not a secret
     MAX_TOTAL_TURNS_REACHED = "max_total_turns_reached"
+    INPUT_BUDGET_EXHAUSTED = "input_budget_exhausted"
 
 
 __all__ = [

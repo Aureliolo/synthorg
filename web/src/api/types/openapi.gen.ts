@@ -10958,9 +10958,13 @@ export type components = {
          *             before the remaining participants could contribute.
          *         MAX_TOTAL_TURNS_REACHED: Appending a further contribution would
          *             exceed the conversation's total-turn cap.
+         *         INPUT_BUDGET_EXHAUSTED: The next participant's estimated input
+         *             prompt would not leave room for its reserved output within the
+         *             round budget, so the round stops before dispatching it (rather
+         *             than only reacting once output has been consumed).
          * @enum {string}
          */
-        readonly GroupChatTruncationReason: "token_budget_exhausted" | "max_total_turns_reached";
+        readonly GroupChatTruncationReason: "token_budget_exhausted" | "max_total_turns_reached" | "input_budget_exhausted";
         /** GroupConverseResult */
         readonly GroupConverseResult: {
             /** @default [] */
@@ -10973,7 +10977,7 @@ export type components = {
             /** @default [] */
             readonly pending_invites: readonly components["schemas"]["PendingInviteSummary"][];
             /** @enum {string|null} */
-            readonly truncated_reason: "token_budget_exhausted" | "max_total_turns_reached" | null;
+            readonly truncated_reason: "token_budget_exhausted" | "max_total_turns_reached" | "input_budget_exhausted" | null;
         };
         /** HaltContext */
         readonly HaltContext: {

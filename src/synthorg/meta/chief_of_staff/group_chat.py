@@ -40,15 +40,26 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
+from synthorg.meta.chief_of_staff._group_budget import (
+    bounded_call_max_tokens,
+    round_bound,
+)
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import (
     ConversationKind,
     GroupChatTruncationReason,
 )
-from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
+from synthorg.meta.chief_of_staff.group_invite import (
+    GroupInviteCoordinator,
+    extract_contribution,
+)
 from synthorg.meta.chief_of_staff.group_models import (
     AttributedContribution,
     ConversationParticipant,
@@ -60,6 +71,7 @@ from synthorg.meta.chief_of_staff.group_models import (
 from synthorg.meta.chief_of_staff.group_prompt import (
     audit_authority,
     build_group_prompt,
+    render_group_turn,
 )
 from synthorg.meta.chief_of_staff.group_roster import (
     active_participants,
@@ -70,6 +82,7 @@ from synthorg.meta.chief_of_staff.group_roster import (
 )
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import GROUP_CONTRIBUTION_PROMPT
+from synthorg.meta.chief_of_staff.transcript import window_turns
 from synthorg.meta.errors import (
     ConversationClosedError,
     ConversationNotFoundError,
@@ -132,6 +145,7 @@ class GroupChatService:
         cost_tracker: CostTrackerProtocol | None = None,
         invite_coordinator: GroupInviteCoordinator | None = None,
         config_resolver: ConfigResolver | None = None,
+        estimator: PromptTokenEstimator | None = None,
         master_enabled: bool = True,
     ) -> None:
         self._agent_caller = agent_caller
@@ -143,6 +157,7 @@ class GroupChatService:
         self._clock: Clock = clock or SystemClock()
         self._authority_guard = authority_guard or AuthorityDeferenceGuard()
         self._cost_tracker = cost_tracker
+        self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         # Built unconditionally by ``build_group_chat_service``; the round
         # gates it per turn on the live ``invite_enabled`` flag, so ``None``
         # here (no approval store) or a disabled flag both keep the round on
@@ -387,18 +402,46 @@ class GroupChatService:
         # folding the current round into ``history`` would match it
         # incorrectly (suppressing the preamble on the invited agent's
         # very first turn).
+        #
+        # ``render_history`` is the token-windowed view rendered into each
+        # prompt (oldest turns dropped to bound input growth); the full
+        # ``history`` still drives the ``already_spoke`` invite gate above.
+        render_history = window_turns(
+            history,
+            token_budget=self._config.propose_history_token_budget,
+            estimator=self._estimator,
+            render_turn=render_group_turn,
+        )
         for index, participant in enumerate(participants):
-            truncated = self._round_bound(tracker, reserve, total_turns)
+            truncated = round_bound(
+                tracker,
+                reserve,
+                total_turns,
+                max_total_turns=self._config.group_chat_max_total_turns,
+            )
             if truncated is not None:
                 skipped.extend(p.agent_id for p in participants[index:])
                 break
-            call_max_tokens = min(
-                self._config.group_chat_per_agent_max_tokens,
-                tracker.remaining - reserve,
+            # Reserve room for this turn's INPUT before dispatch, not just
+            # its output: a large prompt could otherwise consume the whole
+            # remaining budget on one call. Stop the round if the estimated
+            # input leaves no room for the output reserve.
+            call_max_tokens = bounded_call_max_tokens(
+                render_history,
+                contributions,
+                estimator=self._estimator,
+                remaining=tracker.remaining,
+                reserve=reserve,
+                per_agent_max=self._config.group_chat_per_agent_max_tokens,
             )
+            if call_max_tokens <= 0:
+                truncated = GroupChatTruncationReason.INPUT_BUDGET_EXHAUSTED
+                skipped.extend(p.agent_id for p in participants[index:])
+                break
             contribution, invite_req = await self._dispatch_contribution(
                 conversation,
                 history,
+                render_history,
                 contributions,
                 participant,
                 sequence,
@@ -466,24 +509,11 @@ class GroupChatService:
         if summary is not None:
             pending_invites.append(summary)
 
-    def _round_bound(
-        self, tracker: TokenTracker, reserve: int, total_turns: int
-    ) -> GroupChatTruncationReason | None:
-        """Return the bound that stops the round now, or ``None``.
-
-        Returns:
-            The tripped truncation reason, or ``None`` to continue.
-        """
-        if total_turns >= self._config.group_chat_max_total_turns:
-            return GroupChatTruncationReason.MAX_TOTAL_TURNS_REACHED
-        if tracker.remaining <= reserve:
-            return GroupChatTruncationReason.TOKEN_BUDGET_EXHAUSTED
-        return None
-
     async def _dispatch_contribution(  # noqa: PLR0913 -- one contribution's full context
         self,
         conversation: Conversation,
         history: tuple[ConversationTurn, ...],
+        render_history: tuple[ConversationTurn, ...],
         prior_contributions: list[AttributedContribution],
         participant: ConversationParticipant,
         sequence: int,
@@ -529,7 +559,7 @@ class GroupChatService:
                 ),
             )
         prompt = build_group_prompt(
-            history, prior_contributions, template=template, preamble=preamble
+            render_history, prior_contributions, template=template, preamble=preamble
         )
         audit_authority(
             self._authority_guard,
@@ -555,11 +585,11 @@ class GroupChatService:
             )
             return None, None
         tracker.record(response.input_tokens, response.output_tokens)
-        content, invite_req = self._extract_contribution(
+        content, invite_req = extract_contribution(
             response.content,
-            str(conversation.id),
-            participant.agent_id,
-            invite_coordinator,
+            conversation_id=str(conversation.id),
+            agent_id=participant.agent_id,
+            invite_coordinator=invite_coordinator,
         )
         if not content:
             logger.warning(
@@ -598,32 +628,6 @@ class GroupChatService:
             ),
             invite_req,
         )
-
-    def _extract_contribution(
-        self,
-        raw_content: str | None,
-        conversation_id: NotBlankStr,
-        agent_id: NotBlankStr,
-        invite_coordinator: GroupInviteCoordinator | None,
-    ) -> tuple[str, InviteRequest | None]:
-        """Resolve one reply into its message text + optional invite.
-
-        With the invite feature live this round, the reply is a structured
-        envelope: the parsed ``message`` text and any invite are returned.
-        When off, this is the literal plain-text path -- the raw reply,
-        stripped, with no invite.
-
-        Returns:
-            ``(message_text, invite_request)``.
-        """
-        if invite_coordinator is None:
-            return (raw_content or "").strip(), None
-        parsed = invite_coordinator.parse_contribution(
-            raw_content or "",
-            conversation_id=conversation_id,
-            agent_id=agent_id,
-        )
-        return parsed.message.strip(), parsed.invite
 
     def _log_round_outcome(
         self,

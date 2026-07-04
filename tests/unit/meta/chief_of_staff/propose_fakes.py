@@ -114,9 +114,18 @@ class FakeConversationRepo:
         return self.items.pop(entity_id, None) is not None
 
     async def list_items(
-        self, *, limit: int = 100, offset: int = 0
+        self,
+        *,
+        created_by: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Conversation, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
+        rows = [
+            c
+            for c in self.items.values()
+            if created_by is None or c.created_by == created_by
+        ]
+        return tuple(rows)[offset : offset + limit]
 
     async def transition_if(
         self,

@@ -63,6 +63,8 @@ const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
     'Round stopped early: the per-round token budget was exhausted before every agent could respond.',
   max_total_turns_reached:
     'Round stopped early: the conversation reached its total-turn limit.',
+  input_budget_exhausted:
+    'Round stopped early: the conversation history grew too large to fit the remaining round budget.',
 }
 
 const TRUNCATION_FALLBACK =

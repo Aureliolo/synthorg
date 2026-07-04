@@ -470,4 +470,35 @@ class GroupInviteCoordinator:
             )
 
 
-__all__ = ["GroupInviteCoordinator", "parse_group_contribution"]
+def extract_contribution(
+    raw_content: str | None,
+    *,
+    conversation_id: NotBlankStr,
+    agent_id: NotBlankStr,
+    invite_coordinator: GroupInviteCoordinator | None,
+) -> tuple[str, InviteRequest | None]:
+    """Resolve one reply into its message text plus an optional invite.
+
+    With the invite feature live this round, the reply is a structured
+    envelope: the parsed ``message`` text and any invite are returned.
+    When off, this is the literal plain-text path -- the raw reply,
+    stripped, with no invite.
+
+    Returns:
+        ``(message_text, invite_request)``.
+    """
+    if invite_coordinator is None:
+        return (raw_content or "").strip(), None
+    parsed = invite_coordinator.parse_contribution(
+        raw_content or "",
+        conversation_id=conversation_id,
+        agent_id=agent_id,
+    )
+    return parsed.message.strip(), parsed.invite
+
+
+__all__ = [
+    "GroupInviteCoordinator",
+    "extract_contribution",
+    "parse_group_contribution",
+]

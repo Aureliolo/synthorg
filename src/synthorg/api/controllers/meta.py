@@ -14,6 +14,10 @@ from synthorg.api.controllers._chat_idempotency import (
     run_chat_idempotent,
 )
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
+from synthorg.api.controllers._meta_chat_requests import (
+    ChatRequest,
+    ConversationalProposeRequest,
+)
 from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.controllers._meta_proposal_helpers import (

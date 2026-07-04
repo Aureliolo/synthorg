@@ -25,6 +25,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     wrap_untrusted,
 )
+from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.meta.chief_of_staff.group_models import (
     AttributedContribution,
     ConversationParticipant,
@@ -38,6 +39,24 @@ from synthorg.observability.events.chief_of_staff import (
 logger = get_logger(__name__)
 
 
+def render_group_turn(turn: ConversationTurn) -> str:
+    """Render one group turn as an attributed ``Speaker: content`` line.
+
+    The human speaks as ``Human``; an agent turn is attributed to its
+    stored name; anything else renders as ``Assistant``.
+
+    Returns:
+        The attributed transcript line for *turn*.
+    """
+    if turn.role is ConversationRole.USER:
+        speaker = "Human"
+    elif turn.role is ConversationRole.AGENT:
+        speaker = turn.author_name or "Agent"
+    else:
+        speaker = "Assistant"
+    return f"{speaker}: {turn.content}"
+
+
 def render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
     """Render attributed transcript lines for the group history.
 
@@ -45,16 +64,30 @@ def render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
         One ``Speaker: content`` line per turn (the human as ``Human``,
         each agent by its attributed name).
     """
-    lines: list[str] = []
-    for turn in turns:
-        if turn.role is ConversationRole.USER:
-            speaker = "Human"
-        elif turn.role is ConversationRole.AGENT:
-            speaker = turn.author_name or "Agent"
-        else:
-            speaker = "Assistant"
-        lines.append(f"{speaker}: {turn.content}")
-    return "\n".join(lines)
+    return "\n".join(render_group_turn(turn) for turn in turns)
+
+
+def estimate_group_input_tokens(
+    history: tuple[ConversationTurn, ...],
+    prior_contributions: list[AttributedContribution],
+    *,
+    estimator: PromptTokenEstimator,
+) -> int:
+    """Estimate the input tokens the next contribution prompt will use.
+
+    Sizes the two variable blocks (the rendered history and this round's
+    peer contributions) that dominate the prompt; the fixed template
+    boilerplate is a small constant deliberately excluded so the estimate
+    tracks the parts that actually grow with the conversation.
+
+    Returns:
+        The combined estimated token count of the history and peer blocks.
+    """
+    history_tokens = estimator.estimate_tokens(render_group_history(history))
+    peer_tokens = estimator.estimate_tokens(
+        render_round_contributions(prior_contributions)
+    )
+    return history_tokens + peer_tokens
 
 
 def render_round_contributions(contributions: list[AttributedContribution]) -> str:
@@ -138,6 +171,8 @@ def audit_authority(
 __all__ = [
     "audit_authority",
     "build_group_prompt",
+    "estimate_group_input_tokens",
     "render_group_history",
+    "render_group_turn",
     "render_round_contributions",
 ]

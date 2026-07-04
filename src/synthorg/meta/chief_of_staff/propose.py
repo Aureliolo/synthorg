@@ -29,6 +29,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
@@ -56,7 +60,7 @@ from synthorg.meta.chief_of_staff.responder import (
     select_responder,
 )
 from synthorg.meta.chief_of_staff.routing import RoleRouter
-from synthorg.meta.chief_of_staff.transcript import render_turns_transcript
+from synthorg.meta.chief_of_staff.transcript import windowed_transcript
 from synthorg.meta.errors import (
     ConversationalProposeResponseInvalidError,
     ConversationClosedError,
@@ -160,6 +164,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         role_router: RoleRouter | None = None,
         provider_registry: ProviderRegistry | None = None,
         config_resolver: ConfigResolver | None = None,
+        estimator: PromptTokenEstimator | None = None,
         master_enabled: bool = True,
     ) -> None:
         self._provider = provider
@@ -173,6 +178,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._role_router = role_router
         self._provider_registry = provider_registry
         self._config_resolver = config_resolver
+        self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         self._master_enabled = master_enabled
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
@@ -440,7 +446,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         )
         user = CONVERSATIONAL_PROPOSE_USER.format(
             conversation_history=wrap_untrusted(
-                TAG_TASK_DATA, render_turns_transcript(history)
+                TAG_TASK_DATA,
+                windowed_transcript(
+                    history,
+                    token_budget=self._config.propose_history_token_budget,
+                    estimator=self._estimator,
+                ),
             ),
         )
         messages = [
