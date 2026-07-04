@@ -758,8 +758,8 @@
     },
     "src/synthorg/knowledge/service.py": {
       "cap": 500,
-      "loc": 476,
-      "ratio": 0.952,
+      "loc": 477,
+      "ratio": 0.954,
       "tier": "code"
     },
     "src/synthorg/llm/prompt_purpose.py": {
@@ -770,8 +770,8 @@
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
       "cap": 500,
-      "loc": 415,
-      "ratio": 0.83,
+      "loc": 432,
+      "ratio": 0.864,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/config.py": {
@@ -782,8 +782,8 @@
     },
     "src/synthorg/memory/backends/mem0/mappers.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/sparse_search.py": {
@@ -1422,10 +1422,16 @@
       "ratio": 0.988,
       "tier": "code"
     },
+    "src/synthorg/tools/browser/_executor.py": {
+      "cap": 700,
+      "loc": 670,
+      "ratio": 0.957,
+      "tier": "integration"
+    },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1070,
-      "ratio": 0.973,
+      "loc": 1093,
+      "ratio": 0.994,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
@@ -1544,7 +1550,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 214,
-    "synthorg.core.critical_errors": 626,
+    "synthorg.core.critical_errors": 627,
     "synthorg.core.domain_errors": 227,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1590,7 +1596,7 @@
     "synthorg.llm.prompt_purpose": 52,
     "synthorg.memory.embedding.fine_tune_models": 24,
     "synthorg.memory.errors": 31,
-    "synthorg.memory.models": 73,
+    "synthorg.memory.models": 74,
     "synthorg.memory.protocol": 68,
     "synthorg.meta.chief_of_staff.models": 39,
     "synthorg.meta.config": 27,
@@ -1608,7 +1614,7 @@
     "synthorg.meta.signal_models": 24,
     "synthorg.meta.state": 23,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1782,
+    "synthorg.observability": 1784,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 204,
     "synthorg.observability.events.budget": 20,
@@ -1773,7 +1779,7 @@
     },
     "synthorg.memory.backends.mem0.adapter:Mem0MemoryBackend": {
       "lcom4": 7,
-      "loc": 653
+      "loc": 764
     },
     "synthorg.memory.embedding.fine_tune_orchestrator:FineTuneOrchestrator": {
       "lcom4": 1,
@@ -1849,7 +1855,7 @@
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,
-      "loc": 905
+      "loc": 938
     },
     "synthorg.tools.invoker:ToolInvoker": {
       "lcom4": 1,
