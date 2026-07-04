@@ -69,12 +69,19 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
 
     @property
     def supports_conversational_approvals(self) -> bool:
-        """SQLite cannot durably persist conversational approvals.
+        """SQLite durably persists conversational approvals.
+
+        The schema carries the ``conversations`` / ``conversation_turns``
+        / ``conversational_proposals`` / ``conversation_participants``
+        tables and the ``approvals.source`` CHECK admits the
+        ``conversational_intake`` / ``conversational_invite`` sources, so a
+        parked propose/invite approval survives a reconnect and resumes
+        through Flow 0 identically to Postgres.
 
         Returns:
-            ``False`` until the SQLite ApprovalStore limitation is resolved.
+            ``True`` -- the SQLite ApprovalStore retains parked approvals.
         """
-        return False
+        return True
 
     @property
     def config(self) -> SQLiteConfig:

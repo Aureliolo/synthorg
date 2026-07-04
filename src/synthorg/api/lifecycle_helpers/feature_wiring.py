@@ -574,14 +574,28 @@ async def wire_features_on_startup(
         cost_tracker=cost_tracker,
         si_config=si_config,
     )
-    await wire_chief_of_staff_proposer(
-        app_state,
-        provider_registry=provider_registry,
-        persistence=persistence,
-        cost_tracker=cost_tracker,
-        effective_approval_store=effective_approval_store,
-        si_config=si_config,
-    )
+    try:
+        await wire_chief_of_staff_proposer(
+            app_state,
+            provider_registry=provider_registry,
+            persistence=persistence,
+            cost_tracker=cost_tracker,
+            effective_approval_store=effective_approval_store,
+            si_config=si_config,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # A propose/invite misconfiguration (e.g. enabled over a persistent
+        # SQLite ApprovalStore) makes the guard raise. Degrade to an unwired
+        # proposer (the controller 503s) rather than failing the whole ASGI
+        # startup and taking every other feature down with it.
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="proposer wiring blocked; degrading to unwired",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
     # After the proposer: the refinement router wraps it and attaches to
     # the work pipeline so team-bound work with no definition of done is
     # refined rather than blocked by the coordinator's clarification gate.

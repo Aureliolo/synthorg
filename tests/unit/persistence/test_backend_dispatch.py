@@ -61,9 +61,9 @@ def test_dispatch_does_not_call_unselected_factory() -> None:
     assert build_for_backend(backend, sqlite=lambda: "ok", postgres=_boom) == "ok"
 
 
-def test_sqlite_does_not_support_conversational_approvals() -> None:
+def test_sqlite_supports_conversational_approvals() -> None:
     backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
-    assert backend.supports_conversational_approvals is False
+    assert backend.supports_conversational_approvals is True
 
 
 def test_postgres_supports_conversational_approvals() -> None:

@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Never, cast, override
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog
@@ -23,7 +23,7 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
-from synthorg.api.lifecycle_helpers import narrative_wiring
+from synthorg.api.lifecycle_helpers import feature_wiring, narrative_wiring
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     _guard_conversational_persistence,
 )
@@ -391,54 +391,57 @@ def _persistent_store() -> ApprovalStore:
 
 @pytest.mark.unit
 class TestConversationalPersistenceGuard:
-    """The propose/invite + persistent-SQLite combo fails fast at startup.
+    """Propose/invite over a non-supporting persistent store fails fast.
 
-    The SQLite ``approvals.source`` CHECK omits the conversational
-    sources, so a propose- or invite-produced approval cannot durably
-    persist there. The guard raises rather than letting the invite park's
-    compensation silently drop a parked approval mid-conversation.
+    Both shipped backends now carry the conversational tables and admit
+    the conversational ``approvals.source`` values, so the guard is a
+    forward-looking capability check: any backend whose
+    ``supports_conversational_approvals`` predicate is ``False`` must not
+    run propose/invite over a persistent store, or the invite park's
+    compensation would silently drop a parked approval mid-conversation.
     """
 
-    def test_raises_when_invite_enabled_on_persistent_sqlite(self) -> None:
+    def test_raises_when_invite_enabled_on_non_supporting_backend(self) -> None:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(invite_enabled=True),
                 mock_of[PersistenceBackend](
-                    backend_name="sqlite",
+                    backend_name="custom",
                     supports_conversational_approvals=False,
                 ),
                 _persistent_store(),
             )
 
-    def test_raises_when_propose_enabled_on_persistent_sqlite(self) -> None:
+    def test_raises_when_propose_enabled_on_non_supporting_backend(self) -> None:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(propose_enabled=True),
                 mock_of[PersistenceBackend](
-                    backend_name="sqlite",
+                    backend_name="custom",
                     supports_conversational_approvals=False,
                 ),
                 _persistent_store(),
             )
 
-    def test_allows_in_memory_store_on_sqlite(self) -> None:
+    def test_allows_in_memory_store_on_non_supporting_backend(self) -> None:
         # The default in-memory ApprovalStore never persists, so a
-        # conversational source never reaches the SQLite table.
+        # conversational source never reaches a backend table at all.
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
             mock_of[PersistenceBackend](
-                backend_name="sqlite",
+                backend_name="custom",
                 supports_conversational_approvals=False,
             ),
             ApprovalStore(),
         )
 
-    def test_allows_persistent_store_on_postgres(self) -> None:
-        # Postgres widened its source CHECK, so the durable store is fine.
+    def test_allows_persistent_store_on_supporting_backend(self) -> None:
+        # A backend that advertises conversational-approval durability may
+        # run propose/invite over its durable store (both shipped backends).
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
             mock_of[PersistenceBackend](
-                backend_name="postgres",
+                backend_name="sqlite",
                 supports_conversational_approvals=True,
             ),
             _persistent_store(),
@@ -450,6 +453,63 @@ class TestConversationalPersistenceGuard:
             mock_of[PersistenceBackend](backend_name="sqlite"),
             _persistent_store(),
         )
+
+
+@pytest.mark.unit
+class TestFeatureWiringProposerDegradation:
+    """A proposer wiring failure degrades rather than aborting boot."""
+
+    async def test_proposer_raise_does_not_abort_startup(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Every collaborator wire_features_on_startup drives is stubbed to
+        # a no-op; only the proposer raises the guard's error. The wrap
+        # must swallow it and still run the wirers that follow, so a
+        # propose/invite misconfiguration cannot take the whole boot down.
+        noop = AsyncMock()
+        for name in (
+            "_wire_docs_engine",
+            "_wire_project_brain",
+            "_wire_steering_service",
+            "wire_org_memory_backend",
+            "wire_knowledge_engine",
+            "_wire_custom_rules_service",
+            "_wire_budget_versions_service",
+            "_wire_deliverable_receipts",
+            "_wire_fine_tune_orchestrator",
+            "_wire_research_engine",
+            "_wire_charter_engine",
+            "_wire_meta_features",
+            "wire_run_narrator",
+            "wire_refinement_router",
+        ):
+            monkeypatch.setattr(feature_wiring, name, noop)
+        load_cfg = AsyncMock(return_value=SelfImprovementConfig())
+        monkeypatch.setattr(
+            "synthorg.meta.config.load_self_improvement_config", load_cfg
+        )
+        proposer = AsyncMock(side_effect=ServiceUnavailableError("proposer boom"))
+        monkeypatch.setattr(feature_wiring, "wire_chief_of_staff_proposer", proposer)
+        after_group = AsyncMock()
+        after_actor = AsyncMock()
+        monkeypatch.setattr(feature_wiring, "wire_group_chat_service", after_group)
+        monkeypatch.setattr(feature_wiring, "wire_conversational_actor", after_actor)
+
+        mock_state = MagicMock()
+        app_state = cast("AppState", mock_state)
+        with suppress_type_checks():
+            await feature_wiring.wire_features_on_startup(
+                app_state,
+                provider_registry=None,
+                persistence=None,
+                cost_tracker=None,
+                effective_approval_store=ApprovalStore(),
+            )
+
+        # The wirers sequenced after the proposer still ran: the raise was
+        # contained, boot did not abort.
+        after_group.assert_awaited_once()
+        after_actor.assert_awaited_once()
 
 
 class _NoFineTuneBackend(FakePersistenceBackend):

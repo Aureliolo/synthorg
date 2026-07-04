@@ -183,6 +183,13 @@ class ConversationalController(Controller):
         ``run_chat_action`` itself, so -- unlike the group endpoint --
         the controller passes it through raw to avoid a double fence.
 
+        ``conversation_id`` is opaque caller-supplied correlation
+        metadata: it is echoed back on the response but never resolved,
+        ownership-checked, or persisted (an ``/act`` turn drives the
+        shared engine, not a conversation thread). Unlike ``/propose``
+        and ``/group``, a caller must not assume foreign-conversation
+        isolation from this field.
+
         Returns:
             ``ApiResponse[ConversationalActResult]`` instance.
 

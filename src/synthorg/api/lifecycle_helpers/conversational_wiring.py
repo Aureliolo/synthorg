@@ -179,19 +179,21 @@ def _guard_conversational_persistence(
     persistence: PersistenceBackend | None,
     approval_store: ApprovalStoreProtocol,
 ) -> None:
-    """Fail fast on conversational features over a persistent SQLite store.
+    """Fail fast on conversational features over a non-supporting store.
 
-    The SQLite ``approvals.source`` CHECK deliberately omits the
-    conversational sources (they stay in-memory there), so a propose- or
-    invite-produced approval cannot durably persist on SQLite. Block at
-    startup with an actionable message rather than letting a parked
-    approval silently fail to persist mid-conversation -- the invite
-    park's compensation would quietly drop it, which is worse than a
-    clear boot error the operator can fix.
+    A backend whose ``supports_conversational_approvals`` predicate is
+    ``False`` cannot durably persist a propose- or invite-produced
+    approval. Block at startup with an actionable message rather than
+    letting a parked approval silently fail to persist mid-conversation:
+    the invite park's compensation would quietly drop it, which is worse
+    than a clear boot error the operator can fix. Both shipped backends
+    (SQLite and Postgres) advertise support, so this is a forward-looking
+    capability guard rather than a live constraint on either of them.
 
     Raises:
         ServiceUnavailableError: When propose or invite is enabled
-            against a persistent SQLite ``ApprovalStore``.
+            against a persistent ``ApprovalStore`` on a backend that does
+            not support conversational approvals.
     """
     store_has_persistent_repo = (
         isinstance(approval_store, ApprovalStore) and approval_store.has_persistent_repo
@@ -204,9 +206,9 @@ def _guard_conversational_persistence(
     ):
         msg = (
             "Chief of Staff propose/invite is enabled with a persistent "
-            "SQLite ApprovalStore. This combination cannot durably persist "
-            "conversational approvals. Switch the backend to Postgres, or "
-            "keep ApprovalStore in-memory on SQLite."
+            f"ApprovalStore on backend '{persistence.backend_name}', which "
+            "cannot durably persist conversational approvals. Use a backend "
+            "that supports them, or keep the ApprovalStore in-memory."
         )
         logger.error(
             API_APP_STARTUP,

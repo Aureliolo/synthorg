@@ -7,6 +7,14 @@ Untrusted-content fencing: the shared transcript and this round's peer contribut
 are fenced (``<task-data>`` / ``<peer-contribution>``) before injection,
 and the peer block is scanned for authority cues (detect-and-log, the
 :class:`AuthorityDeferenceGuard` contract).
+
+The authority scan is deliberately detect-and-log only; the
+``<peer-contribution>`` fence is the actual injection defence (the model
+treats fenced content as inert data regardless of its wording).
+Redaction of matched cues is intentionally out of scope: an authority
+phrase is often legitimate business content (a manager writing "I need
+this by Friday"), so stripping it would cost signal for no security gain
+over the fence. This is the terminal design, not a stopgap.
 """
 
 from synthorg.communication.conversation.enums import ConversationRole
