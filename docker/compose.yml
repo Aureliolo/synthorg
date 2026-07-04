@@ -183,7 +183,7 @@ services:
   # --max_payload CLI flag, so non-default settings need a config file.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.14-debian13@sha256:081f7895b874bd1306e61bf631631ac47e227a1ea9c60bfd2551b9be2dec8370
+    image: dhi.io/nats:2.14-debian13@sha256:d42d0f3503b351f728ad1368cf2c0d8bb9b49e090619304ca2a152efac457dd5
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
