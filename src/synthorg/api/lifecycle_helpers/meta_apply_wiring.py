@@ -101,6 +101,7 @@ async def _wire(app_state: AppState) -> None:
     from synthorg.approval.state import approval_store_of  # noqa: PLC0415
     from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
     from synthorg.hr.state import HrStateSlice, agent_registry_of  # noqa: PLC0415
+    from synthorg.memory.state import memory_backend_of  # noqa: PLC0415
     from synthorg.meta.appliers._contexts import (  # noqa: PLC0415
         DurableArchitectureApplierContext,
         DurablePromptApplierContext,
@@ -184,6 +185,7 @@ async def _wire(app_state: AppState) -> None:
     )
     service = SelfImprovementService(
         config=config,
+        memory_backend=memory_backend_of(app_state),
         prompt_context=prompt_context,
         architecture_context=architecture_context,
         settings_writer=settings_service_of(app_state),
