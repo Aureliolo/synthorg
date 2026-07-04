@@ -40,6 +40,7 @@ from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous
 from synthorg.meta.chief_of_staff._propose_parking import ProposeParkingMixin
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
+from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationTurn,
@@ -54,6 +55,7 @@ from synthorg.meta.chief_of_staff.prompts import (
 from synthorg.meta.chief_of_staff.responder import (
     Responder,
     RoutingDecision,
+    RoutingOutcome,
     build_attributed_assistant_turn,
     mark_conversation_routed,
     resolve_responder_provider,
@@ -324,11 +326,8 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             return await self._cap_conversation(conversation, next_sequence + 1, now)
 
         history = (*prior_turns, user_turn)
-        routing = (
-            await self._role_router.route(history)
-            if self._role_router is not None and await self._routing_enabled()
-            else None
-        )
+        outcome = await self._resolve_routing(history)
+        routing = outcome.decision
         responder = select_responder(
             routing, propose_model=await self._resolve_propose_model()
         )
@@ -342,11 +341,36 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
 
         if decision.needs_clarification:
             return await self._record_clarification(
-                conversation, decision, routing, next_sequence + 1, now
+                conversation, decision, routing, outcome.reason, next_sequence + 1, now
             )
         return await self._record_proposals(
-            conversation, args, decision, routing, next_sequence + 1, now
+            conversation,
+            args,
+            decision,
+            routing,
+            outcome.reason,
+            next_sequence + 1,
+            now,
         )
+
+    async def _resolve_routing(
+        self, history: tuple[ConversationTurn, ...]
+    ) -> RoutingOutcome:
+        """Resolve the routing outcome for this turn, gated live.
+
+        Returns a fallback outcome (never calls the router) when no router
+        is wired or the live ``routing_enabled`` gate is off, so the
+        ``routing_reason`` on the result always explains why the generic
+        Chief of Staff answered.
+
+        Returns:
+            The routing outcome for this turn.
+        """
+        if self._role_router is None:
+            return RoutingOutcome(reason=RoutingReason.NO_ROLE_ROUTER)
+        if not await self._routing_enabled():
+            return RoutingOutcome(reason=RoutingReason.ROUTING_DISABLED)
+        return await self._role_router.route(history)
 
     async def _resolve_conversation(
         self, args: ProposeArgs, now: datetime
@@ -519,11 +543,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             )
             raise ConversationalProposeResponseInvalidError from exc
 
-    async def _record_clarification(
+    async def _record_clarification(  # noqa: PLR0913 -- one turn's record context
         self,
         conversation: Conversation,
         decision: ProposeDecision,
         routing: RoutingDecision | None,
+        routing_reason: RoutingReason,
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
@@ -557,6 +582,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             responder_name=routing.responder.name if routing is not None else None,
             routed_topic=routing.topic if routing is not None else None,
             routing_confidence=routing.confidence if routing is not None else None,
+            routing_reason=routing_reason,
         )
 
     async def _cap_conversation(

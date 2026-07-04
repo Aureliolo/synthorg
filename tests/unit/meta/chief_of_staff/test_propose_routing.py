@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.enums import ConversationKind
+from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.chief_of_staff.models import ProposeArgs
 from synthorg.meta.chief_of_staff.responder import (
     generic_responder,
@@ -62,6 +62,7 @@ class TestRoutedClarification:
         assert result.responder_name == "Casey"
         assert result.routed_topic == "budget"
         assert result.routing_confidence == pytest.approx(1.0)
+        assert result.routing_reason is RoutingReason.ROUTED
 
         # The decision prompt is voiced as the CFO, not the generic CoS.
         prompt = provider.received_messages[0][0].content or ""
@@ -97,6 +98,7 @@ class TestRoutedProposal:
         assert result.responder_role == "CFO"
         # "spend" is the CFO budget keyword present in the message.
         assert result.routed_topic == "spend"
+        assert result.routing_reason is RoutingReason.ROUTED
         conv = conv_repo.items[result.conversation_id]
         assert conv.kind is ConversationKind.ROUTED
         summary = next(t for t in turn_repo.turns if t.role.value == "assistant")
@@ -118,6 +120,7 @@ class TestRoutingDisabled:
 
         assert result.responder_role is None
         assert result.routed_topic is None
+        assert result.routing_reason is RoutingReason.NO_ROLE_ROUTER
         prompt = provider.received_messages[0][0].content or ""
         assert "You are the Chief of Staff." in prompt
         conv = conv_repo.items[result.conversation_id]
@@ -140,6 +143,7 @@ class TestRoutingDisabled:
         )
 
         assert result.responder_role is None
+        assert result.routing_reason is RoutingReason.NO_KEYWORD_MATCH
         conv = conv_repo.items[result.conversation_id]
         assert conv.kind is ConversationKind.DIRECT
 

@@ -114,6 +114,7 @@ export const metaHandlers = [
         responder_name: null,
         routed_topic: null,
         routing_confidence: null,
+        routing_reason: 'no_role_router',
         steering: [],
       }),
     )

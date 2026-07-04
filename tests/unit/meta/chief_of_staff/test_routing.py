@@ -12,6 +12,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig, KeywordRoleRule
+from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.responder import (
     GENERIC_RESPONDER_PERSONA,
@@ -115,8 +116,10 @@ class TestLlmConcernRouter:
         )
         router = _llm_router(provider=provider, registry=registry)
 
-        decision = await router.route(_user_turn("How much runway is left?"))
+        outcome = await router.route(_user_turn("How much runway is left?"))
 
+        assert outcome.reason is RoutingReason.ROUTED
+        decision = outcome.decision
         assert decision is not None
         assert decision.topic == "budget"
         assert decision.confidence == pytest.approx(0.92)
@@ -157,7 +160,9 @@ class TestLlmConcernRouter:
         )
         router = _llm_router(provider=provider, registry=registry)
 
-        assert await router.route(_user_turn("Vague thing")) is None
+        outcome = await router.route(_user_turn("Vague thing"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.BELOW_CONFIDENCE_FLOOR
 
     async def test_unknown_role_falls_back_to_default_role(self) -> None:
         ceo = _identity(name="Dana", role="CEO")
@@ -171,7 +176,7 @@ class TestLlmConcernRouter:
         )
         router = _llm_router(provider=provider, registry=registry, default_role="CEO")
 
-        decision = await router.route(_user_turn("Read my stars"))
+        decision = (await router.route(_user_turn("Read my stars"))).decision
 
         assert decision is not None
         assert decision.responder.role == "CEO"
@@ -187,7 +192,9 @@ class TestLlmConcernRouter:
         )
         router = _llm_router(provider=provider, registry=registry, default_role="CTO")
 
-        assert await router.route(_user_turn("Read my stars")) is None
+        outcome = await router.route(_user_turn("Read my stars"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.ROLE_UNRESOLVED
 
     async def test_no_active_agents_skips_classifier(self) -> None:
         registry = await _registry()
@@ -200,7 +207,9 @@ class TestLlmConcernRouter:
         )
         router = _llm_router(provider=provider, registry=registry)
 
-        assert await router.route(_user_turn("How much runway?")) is None
+        outcome = await router.route(_user_turn("How much runway?"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.NO_ACTIVE_AGENTS
         assert provider.call_count == 0
 
     async def test_invalid_classifier_json_falls_back(self) -> None:
@@ -208,7 +217,9 @@ class TestLlmConcernRouter:
         provider = ScriptedProvider(responses=[make_text_response("not json at all")])
         router = _llm_router(provider=provider, registry=registry)
 
-        assert await router.route(_user_turn("How much runway?")) is None
+        outcome = await router.route(_user_turn("How much runway?"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.RESPONSE_INVALID
 
     async def test_classifier_timeout_falls_back_to_generic(self) -> None:
         # A hung provider must not stall the turn: the wall-clock timeout
@@ -220,7 +231,9 @@ class TestLlmConcernRouter:
             timeout_seconds=0.01,
         )
 
-        assert await router.route(_user_turn("How much runway?")) is None
+        outcome = await router.route(_user_turn("How much runway?"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.CLASSIFY_CALL_FAILED
 
     async def test_history_is_fenced_in_classifier_prompt(self) -> None:
         registry = await _registry(_identity(name="Casey", role="CFO"))
@@ -250,8 +263,10 @@ class TestKeywordRoleRouter:
             agent_registry=registry, default_role=NotBlankStr("CEO")
         )
 
-        decision = await router.route(_user_turn("What is our budget this quarter?"))
+        outcome = await router.route(_user_turn("What is our budget this quarter?"))
 
+        assert outcome.reason is RoutingReason.ROUTED
+        decision = outcome.decision
         assert decision is not None
         assert decision.responder.role == "CFO"
         assert decision.topic == "budget"
@@ -263,7 +278,9 @@ class TestKeywordRoleRouter:
             agent_registry=registry, default_role=NotBlankStr("CEO")
         )
 
-        assert await router.route(_user_turn("Tell me a joke")) is None
+        outcome = await router.route(_user_turn("Tell me a joke"))
+        assert outcome.decision is None
+        assert outcome.reason is RoutingReason.NO_KEYWORD_MATCH
 
     async def test_matched_role_inactive_uses_default_role(self) -> None:
         ceo = _identity(name="Dana", role="CEO")
@@ -272,7 +289,7 @@ class TestKeywordRoleRouter:
             agent_registry=registry, default_role=NotBlankStr("CEO")
         )
 
-        decision = await router.route(_user_turn("What is our budget?"))
+        decision = (await router.route(_user_turn("What is our budget?"))).decision
 
         assert decision is not None
         assert decision.responder.role == "CEO"
@@ -286,7 +303,7 @@ class TestKeywordRoleRouter:
             agent_registry=registry, default_role=NotBlankStr("CEO")
         )
 
-        decision = await router.route(_user_turn("What is our budget?"))
+        decision = (await router.route(_user_turn("What is our budget?"))).decision
 
         assert decision is not None
         assert decision.responder.agent_id == str(omega_csuite.id)
@@ -303,7 +320,7 @@ class TestKeywordRoleRouter:
             agent_registry=registry, default_role=NotBlankStr("CEO")
         )
 
-        decision = await router.route(_user_turn("What is our budget?"))
+        decision = (await router.route(_user_turn("What is our budget?"))).decision
 
         assert decision is not None
         assert decision.responder.agent_id == str(aaron.id)
@@ -360,7 +377,8 @@ class TestBuildRoleRouter:
         )
         assert isinstance(router, KeywordRoleRouter)
 
-        decision = await router.route(_user_turn("What is our data strategy?"))
+        outcome = await router.route(_user_turn("What is our data strategy?"))
+        decision = outcome.decision
 
         assert decision is not None
         assert decision.responder.role == "Head of Data"

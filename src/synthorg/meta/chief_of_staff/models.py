@@ -28,7 +28,7 @@ from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
-from synthorg.meta.chief_of_staff.enums import ConversationKind
+from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 
 # ── Proposal outcome learning ─────────────────────────────────────
@@ -565,6 +565,9 @@ class ProposeResult(BaseModel):
             responding role; ``None`` when not routed.
         routing_confidence: Classifier confidence (0-1) for the routed
             topic; ``None`` when not routed.
+        routing_reason: Why this turn was, or was not, routed to a role
+            agent (``ROUTED`` on success, else the fallback cause).
+            ``None`` only on a force-closed turn, where routing is moot.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -579,6 +582,7 @@ class ProposeResult(BaseModel):
     responder_name: NotBlankStr | None = None
     routed_topic: NotBlankStr | None = None
     routing_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    routing_reason: RoutingReason | None = None
 
     @model_validator(mode="after")
     def _validate_status_payload(self) -> Self:

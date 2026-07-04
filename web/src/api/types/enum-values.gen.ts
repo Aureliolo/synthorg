@@ -803,6 +803,19 @@ export const RISK_TOLERANCE_VALUES = [
 ] as const
 export type RiskTolerance = (typeof RISK_TOLERANCE_VALUES)[number]
 
+export const ROUTING_REASON_VALUES = [
+    'routing_disabled',
+    'no_role_router',
+    'no_active_agents',
+    'below_confidence_floor',
+    'role_unresolved',
+    'classify_call_failed',
+    'response_invalid',
+    'no_keyword_match',
+    'routed',
+] as const
+export type RoutingReason = (typeof ROUTING_REASON_VALUES)[number]
+
 export const RULE_SEVERITY_VALUES = [
     'info',
     'warning',

@@ -25,6 +25,7 @@ from synthorg.meta.chief_of_staff._intake_parking import (
     unwind_parked_steering,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,
@@ -93,6 +94,7 @@ class ProposeParkingMixin:
         args: ProposeArgs,
         decision: ProposeDecision,
         routing: RoutingDecision | None,
+        routing_reason: RoutingReason,
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
@@ -228,6 +230,7 @@ class ProposeParkingMixin:
             responder_name=routing.responder.name if routing is not None else None,
             routed_topic=routing.topic if routing is not None else None,
             routing_confidence=routing.confidence if routing is not None else None,
+            routing_reason=routing_reason,
         )
 
     async def _park_proposal(

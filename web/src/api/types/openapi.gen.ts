@@ -13975,6 +13975,8 @@ export type components = {
             readonly responder_role: string | null;
             readonly routed_topic: string | null;
             readonly routing_confidence: number | null;
+            /** @enum {string|null} */
+            readonly routing_reason: "routing_disabled" | "no_role_router" | "no_active_agents" | "below_confidence_floor" | "role_unresolved" | "classify_call_failed" | "response_invalid" | "no_keyword_match" | "routed" | null;
             /** @enum {string} */
             readonly status: "needs_clarification" | "proposed";
             /** @default [] */
@@ -15002,6 +15004,30 @@ export type components = {
             readonly tasks_created: number;
             readonly total_requirements: number;
         };
+        /**
+         * RoutingReason
+         * @description Why a propose turn was, or was not, routed to a role agent.
+         *
+         *     Surfaced on the propose result so a human can see whether the generic
+         *     Chief of Staff answered because routing is off, no agent fit, or the
+         *     classifier was unsure -- rather than the outcome being indistinguishable
+         *     from a routed answer that happened to pick the default role.
+         *
+         *     Attributes:
+         *         ROUTING_DISABLED: The live ``routing_enabled`` gate is off.
+         *         NO_ROLE_ROUTER: No router is wired (no classifier provider).
+         *         NO_ACTIVE_AGENTS: The roster has no active agent to route to.
+         *         BELOW_CONFIDENCE_FLOOR: The classifier's best fit was below the
+         *             confidence floor.
+         *         ROLE_UNRESOLVED: A confident role did not resolve to an active
+         *             agent (nor did the default role).
+         *         CLASSIFY_CALL_FAILED: The classifier call errored or timed out.
+         *         RESPONSE_INVALID: The classifier reply failed to parse/validate.
+         *         NO_KEYWORD_MATCH: The keyword strategy found no matching group.
+         *         ROUTED: A role agent answered this turn.
+         * @enum {string}
+         */
+        readonly RoutingReason: "routing_disabled" | "no_role_router" | "no_active_agents" | "below_confidence_floor" | "role_unresolved" | "classify_call_failed" | "response_invalid" | "no_keyword_match" | "routed";
         /**
          * RuleSeverity
          * @description Severity of a rule match.
