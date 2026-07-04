@@ -6,6 +6,7 @@ booting Playwright or Docker.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock
@@ -668,11 +669,21 @@ class TestSessionStateWiring:
         await tool.execute(arguments={"mode": "webauthn_install"})
         env = cast(AsyncMock, fake_sandbox.execute).call_args.kwargs["env_overrides"]
         payload = json.loads(env["BROWSER_TOOL_ARGS_JSON"])
-        assert payload["storage_state_path"] == (
-            "/workspace/.synthorg/browser/state/agent-x/storage_state.json"
+        # The segment keeps the readable ``agent-x`` prefix and appends a
+        # hash of the owner_id so distinct owners can never collide.
+        state_root = "/workspace/.synthorg/browser/state"
+        assert re.fullmatch(
+            rf"{re.escape(state_root)}/agent-x-[0-9a-f]{{16}}/storage_state\.json",
+            payload["storage_state_path"],
         )
-        assert payload["webauthn_state_path"] == (
-            "/workspace/.synthorg/browser/state/agent-x/webauthn_credentials.json"
+        assert re.fullmatch(
+            rf"{re.escape(state_root)}/agent-x-[0-9a-f]{{16}}/webauthn_credentials\.json",
+            payload["webauthn_state_path"],
+        )
+        # Both session files live under one per-owner directory.
+        assert (
+            payload["storage_state_path"].rsplit("/", 1)[0]
+            == payload["webauthn_state_path"].rsplit("/", 1)[0]
         )
 
     async def test_owner_id_traversal_is_sanitised(

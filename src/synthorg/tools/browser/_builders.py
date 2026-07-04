@@ -16,6 +16,7 @@ from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger
 from synthorg.observability.events.browser import (
     BROWSER_A11Y_SCAN_FAILED,
+    BROWSER_NAVIGATE_FAILED,
     BROWSER_SCREENSHOT_FAILED,
     BROWSER_STORAGE_FAILED,
     BROWSER_WEBAUTHN_FAILED,
@@ -35,6 +36,7 @@ from synthorg.tools.browser._models import (
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser.errors import (
     BrowserAccessibilityError,
+    BrowserNavigationError,
     BrowserScreenshotError,
     BrowserStorageError,
     BrowserWebAuthnError,
@@ -132,14 +134,24 @@ class _BrowserBuilderMixin:
 
         Returns:
             Result of type ``NavigationResult``.
+
+        Raises:
+            BrowserNavigationError: If the executor returned a malformed
+                navigation payload.
         """
         nav_payload: _NavPayload = payload.get("navigation") or {}
-        return NavigationResult(
-            requested_url=requested_url,
-            final_url=str(nav_payload.get("final_url", requested_url)),
-            status_code=nav_payload.get("status_code"),
-            duration_seconds=float(nav_payload.get("duration_seconds", 0.0)),
-        )
+        try:
+            return NavigationResult(
+                requested_url=requested_url,
+                final_url=str(nav_payload.get("final_url", requested_url)),
+                status_code=nav_payload.get("status_code"),
+                duration_seconds=float(nav_payload.get("duration_seconds", 0.0)),
+            )
+        except (ValidationError, ValueError) as exc:
+            logger.warning(BROWSER_NAVIGATE_FAILED, reason="invalid_navigation_payload")
+            raise BrowserNavigationError(
+                "Executor returned an invalid navigation payload"
+            ) from exc
 
     def _build_screenshot(
         self,
@@ -171,19 +183,27 @@ class _BrowserBuilderMixin:
                 "Executor returned an invalid sha256",
                 context={"sha256_length": len(sha)},
             )
-        return ScreenshotMetadata(
-            saved_path=self._baselines.relative(host_path),
-            width=int(
-                ss_payload.get("width", self._settings.viewport_width),
-            ),
-            height=int(
-                ss_payload.get("height", self._settings.viewport_height),
-            ),
-            file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
-            full_page=bool(ss_payload.get("full_page", False)),
-            captured_at_iso=now_iso_utc(),
-            sha256=sha,
-        )
+        try:
+            return ScreenshotMetadata(
+                saved_path=self._baselines.relative(host_path),
+                width=int(
+                    ss_payload.get("width", self._settings.viewport_width),
+                ),
+                height=int(
+                    ss_payload.get("height", self._settings.viewport_height),
+                ),
+                file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
+                full_page=bool(ss_payload.get("full_page", False)),
+                captured_at_iso=now_iso_utc(),
+                sha256=sha,
+            )
+        except (ValidationError, ValueError) as exc:
+            logger.warning(
+                BROWSER_SCREENSHOT_FAILED, reason="invalid_screenshot_payload"
+            )
+            raise BrowserScreenshotError(
+                "Executor returned an invalid screenshot payload"
+            ) from exc
 
     def _build_a11y(
         self,
@@ -257,10 +277,16 @@ class _BrowserBuilderMixin:
         if not storage_payload:
             logger.warning(BROWSER_STORAGE_FAILED, reason="no_storage_payload")
             raise BrowserStorageError("Executor returned no storage payload")
-        return StorageItemsResult(
-            storage_type=storage_payload.get("storage_type", "local"),
-            items=storage_payload.get("items", {}),
-        )
+        try:
+            return StorageItemsResult(
+                storage_type=storage_payload.get("storage_type", "local"),
+                items=storage_payload.get("items", {}),
+            )
+        except (ValidationError, ValueError) as exc:
+            logger.warning(BROWSER_STORAGE_FAILED, reason="invalid_storage_payload")
+            raise BrowserStorageError(
+                "Executor returned an invalid storage payload"
+            ) from exc
 
     def _build_webauthn(
         self,

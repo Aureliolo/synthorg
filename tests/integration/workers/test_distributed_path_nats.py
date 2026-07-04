@@ -73,6 +73,10 @@ _CLOSE_TIMEOUT_SECONDS: Final[float] = 2.0
 """Cap on closing a probe connection so a stuck drain cannot itself hang the
 readiness loop it is meant to clean up after."""
 
+_CONNECT_TIMEOUT_SECONDS: Final[float] = 2.0
+"""``nats.connect`` handshake budget for one readiness attempt; named
+alongside the other probe timeouts so all are tuned in one place."""
+
 
 async def _await_jetstream_ready(url: str) -> None:
     """Poll-connect until the JetStream subsystem answers, or time out.
@@ -94,7 +98,9 @@ async def _await_jetstream_ready(url: str) -> None:
         connection = None
         try:
             async with asyncio.timeout(_READINESS_ATTEMPT_TIMEOUT_SECONDS):
-                connection = await nats.connect(url, connect_timeout=2)
+                connection = await nats.connect(
+                    url, connect_timeout=_CONNECT_TIMEOUT_SECONDS
+                )
                 await connection.jetstream().account_info()
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"

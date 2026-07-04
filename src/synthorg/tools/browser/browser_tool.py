@@ -17,6 +17,7 @@ process.
 """
 
 import asyncio
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -120,6 +121,11 @@ _OUTER_TIMEOUT_BUFFER_SECONDS: Final[float] = 30.0
 _DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
 _BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
 _SESSION_STATE_LOCKS: Final[dict[str, asyncio.Lock]] = {}
+
+_STATE_SEGMENT_HASH_LEN: Final[int] = 16
+"""Hex chars of the ``owner_id`` digest appended to the readable segment
+prefix. 16 hex chars (64 bits) makes an accidental cross-owner collision
+negligible while keeping the directory name short."""
 
 
 def _get_session_state_lock(owner_id: str) -> asyncio.Lock:
@@ -246,8 +252,13 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         self._owner_id = owner_id or f"browser-tool-{uuid4()}"
         # Filesystem-safe owner segment for the per-owner session-state
         # directory, so one owner's cookies/passkeys never land in another's
-        # directory and a crafted owner_id cannot traverse out of it.
-        self._state_segment = re.sub(r"[^A-Za-z0-9_-]", "_", self._owner_id)
+        # directory and a crafted owner_id cannot traverse out of it. A hash
+        # of the raw owner_id is appended so two owners that sanitise to the
+        # same prefix (e.g. "alice:bob" vs "alice_bob") still get distinct
+        # directories -- the readable prefix is kept only for observability.
+        _sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", self._owner_id)
+        _digest = hashlib.sha256(self._owner_id.encode("utf-8")).hexdigest()
+        self._state_segment = f"{_sanitized}-{_digest[:_STATE_SEGMENT_HASH_LEN]}"
         self._settings = settings or BrowserSettings()
 
     @override
