@@ -119,6 +119,26 @@ _OUTER_TIMEOUT_BUFFER_SECONDS: Final[float] = 30.0
 # per-workspace, baselines are per-(spec, screenshot).
 _DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
 _BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
+_SESSION_STATE_LOCKS: Final[dict[str, asyncio.Lock]] = {}
+
+
+def _get_session_state_lock(owner_id: str) -> asyncio.Lock:
+    """Return the per-owner lock serialising session-state mutation.
+
+    An owner's WebAuthn keystore and storage-state files share one
+    workspace directory; each executor run loads, mutates, then
+    rewrites them. Same-owner runs are serialised so two concurrent
+    operations cannot lost-update the keystore. Keyed by owner id (not
+    tool instance) so a shared ``owner_id`` across tools serialises too.
+
+    Returns:
+        Result of type ``asyncio.Lock``.
+    """
+    lock = _SESSION_STATE_LOCKS.get(owner_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _SESSION_STATE_LOCKS[owner_id] = lock
+    return lock
 
 
 def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
@@ -989,13 +1009,18 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         env = {"BROWSER_TOOL_ARGS_JSON": json.dumps(payload)}
         timeout = self._executor_timeout_seconds(operation=operation, args=args)
         try:
-            result = await self._sandbox.execute(
-                command="python3",
-                args=(executor_container,),
-                env_overrides=env,
-                timeout=timeout,
-                owner_id=self._owner_id,
-            )
+            # Serialise same-owner runs: the executor's read-modify-write
+            # of the per-owner keystore / storage-state happens inside this
+            # subprocess, so an in-process lock here (not in the single-shot
+            # executor) is what prevents a concurrent lost update.
+            async with _get_session_state_lock(self._owner_id):
+                result = await self._sandbox.execute(
+                    command="python3",
+                    args=(executor_container,),
+                    env_overrides=env,
+                    timeout=timeout,
+                    owner_id=self._owner_id,
+                )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

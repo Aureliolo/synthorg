@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Final, Literal, TypedDict
 
+from pydantic import ValidationError
+
 from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger
 from synthorg.observability.events.browser import (
@@ -262,8 +264,14 @@ class _BrowserBuilderMixin:
         if not webauthn_payload:
             logger.warning(BROWSER_WEBAUTHN_FAILED, reason="no_webauthn_payload")
             raise BrowserWebAuthnError("Executor returned no webauthn payload")
-        credentials = tuple(
-            WebAuthnCredential.model_validate(c)
-            for c in webauthn_payload.get("credentials", [])
-        )
+        try:
+            credentials = tuple(
+                WebAuthnCredential.model_validate(c)
+                for c in webauthn_payload.get("credentials", [])
+            )
+        except ValidationError as exc:
+            logger.warning(BROWSER_WEBAUTHN_FAILED, reason="invalid_credential")
+            raise BrowserWebAuthnError(
+                "Executor returned an invalid webauthn credential"
+            ) from exc
         return WebAuthnResult(credentials=credentials)

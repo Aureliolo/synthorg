@@ -106,6 +106,17 @@ async def _prefetch_grammars(raw: RawDocument) -> None:
         )
 
 
+def _flatten_exc(exc: BaseException) -> list[BaseException]:
+    """Return the leaf exceptions of ``exc``, expanding nested groups.
+
+    Returns:
+        Every non-group leaf, in left-to-right order.
+    """
+    if isinstance(exc, BaseExceptionGroup):
+        return [leaf for sub in exc.exceptions for leaf in _flatten_exc(sub)]
+    return [exc]
+
+
 async def chunk_raw_document(
     raw: RawDocument,
     *,
@@ -133,17 +144,20 @@ async def chunk_raw_document(
         pieces = await asyncio.to_thread(chunker.chunk_unit, unit)
         return unit.content_kind, pieces
 
-    # A child failure surfaces from the TaskGroup as an ExceptionGroup;
-    # unwrap to the original exception so the ingest caller's type-based
+    # A child failure surfaces from the TaskGroup as an ExceptionGroup.
+    # Collapse it to a single leaf so the ingest caller's type-based
     # dispatch (bare KnowledgeError / critical MemoryError / RecursionError)
-    # still matches instead of collapsing into a generic handler.
+    # still matches: a single handler prevents a mixed-failure batch from
+    # re-escaping as a group, and a critical leaf is surfaced ahead of any
+    # sibling ordinary error so it is never downgraded.
     try:
         async with asyncio.TaskGroup() as tg:
             tasks = [tg.create_task(_chunk_one(unit)) for unit in raw.units]
-    except* (MemoryError, RecursionError) as eg:
-        raise eg.exceptions[0] from eg
     except* Exception as eg:
-        raise eg.exceptions[0] from eg
+        leaves = _flatten_exc(eg)
+        for leaf in leaves:
+            reraise_critical(leaf)
+        raise leaves[0] from eg
 
     typed_pieces: list[tuple[ContentKind, ChunkPiece]] = []
     for task in tasks:

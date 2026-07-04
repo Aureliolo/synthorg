@@ -72,9 +72,9 @@ class InMemoryBackend:
         self._connected = False
         self._connect_lock = asyncio.Lock()
         # Hot-path lock guarding _store reads AND writes.  Every method
-        # that touches _store (store / retrieve / get / delete / count)
-        # acquires this lock so concurrent traffic cannot observe a
-        # half-applied mutation or race a delete against a concurrent
+        # that touches _store (store / retrieve / get / delete / count /
+        # update) acquires this lock so concurrent traffic cannot observe
+        # a half-applied mutation or race a delete against a concurrent
         # store / retrieve. Separate from _connect_lock so connect /
         # disconnect do not serialise hot-path traffic.
         self._store_lock = asyncio.Lock()
@@ -353,8 +353,11 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = self._clock.now()
         async with self._store_lock:
+            # Sample the clock under the lock so a stale instant captured
+            # while waiting on contention cannot revive an entry that
+            # expired during the wait (mirrors store() and mem0 update()).
+            now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             entry = agent_store.get(str(memory_id))
             if entry is None or is_expired(entry, now):

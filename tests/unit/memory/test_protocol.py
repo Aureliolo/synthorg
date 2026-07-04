@@ -85,7 +85,7 @@ class _FakeMemoryBackend:
         entry = agent_store.get(memory_id)
         if entry is None:
             return None
-        updates: dict[str, object] = {}
+        updates: dict[str, object] = {"updated_at": datetime.now(tz=UTC)}
         if request.content is not None:
             updates["content"] = request.content
         if request.metadata is not None:

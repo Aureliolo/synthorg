@@ -99,6 +99,12 @@ _AXE_SCRIPT_MAX_BYTES: Final[int] = 5 * 1024 * 1024
 # so a malformed payload cannot reach arbitrary container paths.
 _SANDBOX_ROOT: Final[str] = "/workspace"
 
+# Session-state files hold secrets (WebAuthn private keys, cookies,
+# localStorage), so they are written owner-only inside the shared
+# workspace rather than with the process-default (umask-derived) modes.
+_SECRET_DIR_MODE: Final[int] = 0o700
+_SECRET_FILE_MODE: Final[int] = 0o600
+
 
 def _reraise_critical(exc: BaseException) -> None:
     """Re-raise ``exc`` when it is an interpreter-critical exception.
@@ -502,7 +508,9 @@ def _save_keystore(path: str, entries: list["WebAuthnKeystoreEntry"]) -> None:
     """Persist the credential keystore to the workspace-mounted path."""
     validated = _validated_sandbox_path(path, field="webauthn_state_path")
     validated.parent.mkdir(parents=True, exist_ok=True)
+    validated.parent.chmod(_SECRET_DIR_MODE)
     validated.write_text(json.dumps(entries), encoding="utf-8")
+    validated.chmod(_SECRET_FILE_MODE)
 
 
 async def _seed_authenticator(
@@ -607,7 +615,9 @@ async def _persist_storage_state(
         return
     validated = _validated_sandbox_path(state_path, field="storage_state_path")
     validated.parent.mkdir(parents=True, exist_ok=True)
+    validated.parent.chmod(_SECRET_DIR_MODE)
     await context.storage_state(path=str(validated))
+    validated.chmod(_SECRET_FILE_MODE)
 
 
 async def _sync_keystore(
