@@ -47,14 +47,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from check_no_ghost_wiring import (
-    MANIFEST,
-    RUNTIME_PREFIXES,
-    _iter_runtime_py,
-    _parse_manifest,
-    _scan_sites,
-    _Sites,
-)
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from check_no_ghost_wiring import (  # type: ignore[import-not-found]
+        MANIFEST,
+        RUNTIME_PREFIXES,
+        _iter_runtime_py,
+        _parse_manifest,
+        _scan_sites,
+        _Sites,
+    )
+else:
+    from scripts.check_no_ghost_wiring import (
+        MANIFEST,
+        RUNTIME_PREFIXES,
+        _iter_runtime_py,
+        _parse_manifest,
+        _scan_sites,
+        _Sites,
+    )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
