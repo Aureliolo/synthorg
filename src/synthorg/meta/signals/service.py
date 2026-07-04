@@ -74,6 +74,20 @@ both.
 """
 
 
+#: Canonical signal-domain order for the availability summary. Matches the
+#: seven aggregators the service composes.
+_SIGNAL_DOMAINS: Final[tuple[str, ...]] = (
+    "performance",
+    "budget",
+    "coordination",
+    "scaling",
+    "errors",
+    "evolution",
+    "telemetry",
+)
+_SCALING_DOMAIN: Final[str] = "scaling"
+
+
 class SignalsService:
     """Facade over the 7 aggregators + snapshot builder + proposal store.
 
@@ -128,6 +142,24 @@ class SignalsService:
         return self._snapshot_builder
 
     # ── Snapshot + per-domain reads ──────────────────────────────────
+
+    def domain_availability(self) -> dict[str, bool]:
+        """Report per-domain availability without running aggregation.
+
+        Every domain aggregates from an always-wired source except
+        ``scaling``, whose aggregator is absent (degraded to unavailable)
+        when no scaling service is wired. Cheap by design: the signals
+        overview must render domain badges without fanning a time window
+        out to all seven aggregators.
+
+        Returns:
+            An ordered mapping of domain name to whether its aggregator is
+            wired and can produce signals.
+        """
+        return {
+            domain: self._scaling is not None if domain == _SCALING_DOMAIN else True
+            for domain in _SIGNAL_DOMAINS
+        }
 
     async def get_org_snapshot(
         self,

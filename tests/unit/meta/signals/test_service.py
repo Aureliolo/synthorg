@@ -113,8 +113,13 @@ def _aggregator_with(summary: object) -> AsyncMock:
     return agg
 
 
-@pytest.fixture
-def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsService:
+def _make_service(
+    *,
+    approval_store: AsyncMock,
+    snapshot_builder: AsyncMock,
+    scaling: AsyncMock | None,
+) -> SignalsService:
+    """Build a SignalsService with a configurable scaling aggregator."""
     return SignalsService(
         performance=_aggregator_with(
             OrgPerformanceSummary(
@@ -135,12 +140,21 @@ def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsSe
             ),
         ),
         coordination=_aggregator_with(OrgCoordinationSummary()),
-        scaling=_aggregator_with(OrgScalingSummary()),
+        scaling=scaling,
         errors=_aggregator_with(OrgErrorSummary()),
         evolution=_aggregator_with(OrgEvolutionSummary()),
         telemetry=_aggregator_with(OrgTelemetrySummary()),
         snapshot_builder=snapshot_builder,
         approval_store=approval_store,
+    )
+
+
+@pytest.fixture
+def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsService:
+    return _make_service(
+        approval_store=approval_store,
+        snapshot_builder=snapshot_builder,
+        scaling=_aggregator_with(OrgScalingSummary()),
     )
 
 
@@ -155,6 +169,36 @@ class TestSignalsServiceSnapshot:
         snap = await service.get_org_snapshot(since=since, until=now)
         assert isinstance(snap, OrgSignalSnapshot)
         snapshot_builder.build.assert_awaited_once_with(since=since, until=now)
+
+
+class TestSignalsServiceAvailability:
+    def test_all_domains_available_when_scaling_wired(
+        self,
+        service: SignalsService,
+    ) -> None:
+        assert service.domain_availability() == {
+            "performance": True,
+            "budget": True,
+            "coordination": True,
+            "scaling": True,
+            "errors": True,
+            "evolution": True,
+            "telemetry": True,
+        }
+
+    def test_scaling_unavailable_without_scaling_aggregator(
+        self,
+        approval_store: AsyncMock,
+        snapshot_builder: AsyncMock,
+    ) -> None:
+        service = _make_service(
+            approval_store=approval_store,
+            snapshot_builder=snapshot_builder,
+            scaling=None,
+        )
+        availability = service.domain_availability()
+        assert availability["scaling"] is False
+        assert all(ok for domain, ok in availability.items() if domain != "scaling")
 
 
 class TestSignalsServicePerDomain:

@@ -366,28 +366,37 @@ class MetaController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, object]]:
-        """Get signal domain summaries.
+        """Get per-domain signal availability + the improvement-cycle toggle.
 
-        Returns domain names with placeholder data -- real signal
-        aggregation runs during the improvement cycle, not on demand.
+        Reflects each domain's real availability from the wired
+        :class:`SignalsService` (the ``scaling`` domain reports
+        ``unavailable`` when no scaling service is wired) rather than a
+        blanket placeholder.
 
         Returns:
-            Signal domain summaries.
+            The improvement ``enabled`` flag and each signal domain's status.
+
+        Raises:
+            ServiceUnavailableError: When the signals service is not wired.
         """
         config = await self_improvement_config_of(state.app_state)
-        domains = [
-            "performance",
-            "budget",
-            "coordination",
-            "scaling",
-            "errors",
-            "evolution",
-            "telemetry",
-        ]
+        signals_service = state.app_state.slice(MetaStateSlice).signals_service
+        if signals_service is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="signals_service",
+                hint="SignalsService must be wired during AppState startup.",
+            )
+            msg = "SignalsService is not configured; cannot report signal domains."
+            raise ServiceUnavailableError(msg)
+        availability = signals_service.domain_availability()
         return ApiResponse[dict[str, object]](
             data={
                 "enabled": config.enabled,
-                "domains": [{"name": d, "status": "available"} for d in domains],
+                "domains": [
+                    {"name": name, "status": "available" if ok else "unavailable"}
+                    for name, ok in availability.items()
+                ],
             },
         )
 
