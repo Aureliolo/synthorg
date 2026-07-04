@@ -11,13 +11,14 @@ import {
 } from 'lucide-react'
 
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import {
   SegmentedControl,
   type SegmentedControlOption,
 } from '@/components/ui/segmented-control'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import type { ChiefOfStaffFlags } from '@/api/endpoints/meta'
+import type { ChiefOfStaffFlags, MetaConfig } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
 import { ChiefOfStaffChat } from './chat/ChiefOfStaffChat'
@@ -139,8 +140,15 @@ const MODE_OPTIONS: readonly SegmentedControlOption<ChatMode>[] = MODES.map(
   (m) => ({ value: m.value, label: m.label }),
 )
 
+// Keyed by the literal union so indexing never yields ``undefined`` (a Record
+// over a literal union is not flagged by noUncheckedIndexedAccess), removing
+// the need for a non-null assertion when resolving the active mode.
+const MODES_BY_VALUE: Record<ChatMode, ModeDefinition> = Object.fromEntries(
+  MODES.map((m) => [m.value, m]),
+) as Record<ChatMode, ModeDefinition>
+
 function parseMode(raw: string | null): ChatMode {
-  return MODES.some((m) => m.value === raw) ? (raw as ChatMode) : 'staff'
+  return MODES.find((m) => m.value === raw)?.value ?? 'staff'
 }
 
 function ChatPageHeader() {
@@ -251,10 +259,42 @@ function ModePanel({ mode, flags }: {
   )
 }
 
+function ModeBody({
+  active,
+  config,
+  error,
+}: {
+  active: ModeDefinition
+  config: MetaConfig | null
+  error: string | null
+}) {
+  // A failed config fetch must not strand a flagged mode on a forever-
+  // skeleton: surface the error with a retry. Modes with no flag (project)
+  // render regardless, since they do not gate on config.
+  if (config === null && active.flag !== null) {
+    if (error !== null) {
+      return (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="Could not load chat configuration"
+          description={error}
+          onRetry={() => {
+            void useMetaStore.getState().fetchConfig()
+          }}
+        />
+      )
+    }
+    return <SkeletonCard className="h-64" />
+  }
+  return <ModePanel mode={active} flags={config?.chief_of_staff} />
+}
+
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = parseMode(searchParams.get('mode'))
   const config = useMetaStore((s) => s.config)
+  const error = useMetaStore((s) => s.error)
 
   useEffect(() => {
     if (useMetaStore.getState().config === null) {
@@ -262,7 +302,7 @@ export default function ChatPage() {
     }
   }, [])
 
-  const active = MODES.find((m) => m.value === mode) ?? MODES[0]!
+  const active = MODES_BY_VALUE[mode]
 
   return (
     <div className="space-y-section-gap">
@@ -279,11 +319,7 @@ export default function ChatPage() {
           })
         }}
       />
-      {config === null && active.flag !== null ? (
-        <SkeletonCard className="h-64" />
-      ) : (
-        <ModePanel mode={active} flags={config?.chief_of_staff} />
-      )}
+      <ModeBody active={active} config={config} error={error} />
     </div>
   )
 }

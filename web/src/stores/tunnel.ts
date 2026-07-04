@@ -213,6 +213,9 @@ function makeCredentialActions(set: Set, get: Get) {
       set({ connectingDevice: provider })
       try {
         const prompt = await beginTunnelDeviceLogin(provider)
+        // A cancel/reset (or a competing login) during the await supersedes
+        // this one; do not resurrect its prompt over the newer state.
+        if (get().connectingDevice !== provider) return
         set({ deviceLogin: prompt })
         if (prompt.already_logged_in) {
           set({ connectingDevice: null })
@@ -220,7 +223,7 @@ function makeCredentialActions(set: Set, get: Get) {
           await get().fetchStatus()
         }
       } catch (err) {
-        set({ connectingDevice: null })
+        if (get().connectingDevice === provider) set({ connectingDevice: null })
         const message = getErrorMessage(err)
         log.error('Failed to begin device login:', message)
         toastError('Failed to start sign-in', message)
@@ -231,6 +234,10 @@ function makeCredentialActions(set: Set, get: Get) {
       const provider = get().connectingDevice
       if (!provider) return
       await get().fetchStatus()
+      // A cancel/reset (or the deadline) during the fetch means this poll no
+      // longer owns the login; bail so a cancelled sign-in cannot still flip
+      // to success and fire a stale "Signed in" toast.
+      if (get().connectingDevice !== provider) return
       // fetchStatus refreshed the snapshot; a now-configured provider means
       // the browser-side authorisation completed, so the pending login is
       // done and the code can be discarded.
