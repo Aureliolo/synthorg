@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTunnelData } from '@/hooks/useTunnelData'
+import { usePolling } from '@/hooks/usePolling'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { useTunnelStore } from '@/stores/tunnel'
@@ -73,6 +74,35 @@ function useTunnelAutoStopOnUnload(autoStop: boolean, isRunning: boolean): void 
   }, [autoStop, isRunning])
 }
 
+// Poll the status while a device login is pending so the card reflects a
+// completed browser-side sign-in without a manual re-check. Device codes
+// expire (~15 min); the deadline abandons the pending login if the user never
+// authorises, so polling never runs unbounded.
+const DEVICE_LOGIN_POLL_MS = 3000
+const DEVICE_LOGIN_DEADLINE_MS = 15 * 60 * 1000
+
+function useDeviceLoginPolling(connectingDevice: string | null): void {
+  const { start, stop } = usePolling(
+    () => useTunnelStore.getState().pollDeviceLogin(),
+    DEVICE_LOGIN_POLL_MS,
+  )
+  const deadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!connectingDevice) return
+    start()
+    deadlineRef.current = setTimeout(() => {
+      useTunnelStore.getState().cancelDeviceLogin()
+    }, DEVICE_LOGIN_DEADLINE_MS)
+    return () => {
+      stop()
+      if (deadlineRef.current) {
+        clearTimeout(deadlineRef.current)
+        deadlineRef.current = null
+      }
+    }
+  }, [connectingDevice, start, stop])
+}
+
 export interface TunnelCardState {
   phase: TunnelPhase
   publicUrl: string | null
@@ -86,6 +116,8 @@ export interface TunnelCardState {
   selectedStatus: TunnelProviderStatus | null
   activeProvider: string | null
   deviceLogin: DeviceLoginPrompt | null
+  /** The provider with an in-flight device login, or `null`. */
+  connectingDevice: string | null
   savingCredential: boolean
   /** Whether Start is actionable for the selected provider. */
   canStart: boolean
@@ -188,6 +220,7 @@ export function useTunnelCard(): TunnelCardState {
     selectedProvider,
     activeProvider,
     deviceLogin,
+    connectingDevice,
   } = useTunnelData()
   const setAutoStop = useTunnelStore((s) => s.setAutoStop)
   const start = useTunnelStore((s) => s.start)
@@ -199,6 +232,7 @@ export function useTunnelCard(): TunnelCardState {
   const isRunning = phase === 'on'
   const isTransitioning = phase === 'enabling' || phase === 'disabling'
   useTunnelAutoStopOnUnload(autoStop, isRunning)
+  useDeviceLoginPolling(connectingDevice)
 
   const selectedStatus =
     providers.find((p) => p.provider_id === selectedProvider) ?? null
@@ -242,6 +276,7 @@ export function useTunnelCard(): TunnelCardState {
     selectedStatus,
     activeProvider,
     deviceLogin,
+    connectingDevice,
     savingCredential,
     canStart,
     introOpen: intro.introOpen,

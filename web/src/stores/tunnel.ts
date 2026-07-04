@@ -39,6 +39,12 @@ export interface TunnelState {
   providers: readonly TunnelProviderStatus[]
   /** Active device-code login prompt (Dev Tunnels), if any. */
   deviceLogin: DeviceLoginPrompt | null
+  /**
+   * The provider with an in-flight device login (a code minted, waiting on
+   * the user to authorise in their browser). Non-null gates Connect off so a
+   * pending login is confirmed by polling rather than re-minting a code.
+   */
+  connectingDevice: string | null
   savingCredential: boolean
 
   fetchStatus: () => Promise<void>
@@ -48,6 +54,10 @@ export interface TunnelState {
   saveCredential: (provider: string, token: string) => Promise<boolean>
   clearCredential: (provider: string) => Promise<boolean>
   beginDeviceLogin: (provider: string) => Promise<void>
+  /** Poll once and resolve a pending login when its provider is configured. */
+  pollDeviceLogin: () => Promise<void>
+  /** Abandon a pending login (code expired) without minting a new one. */
+  cancelDeviceLogin: () => void
   setAutoStop: (enabled: boolean) => void
   reset: () => void
 }
@@ -61,6 +71,7 @@ const INITIAL_STATE = {
   activeProvider: null,
   providers: [] as readonly TunnelProviderStatus[],
   deviceLogin: null,
+  connectingDevice: null,
   savingCredential: false,
 }
 
@@ -195,18 +206,46 @@ function makeCredentialActions(set: Set, get: Get) {
     },
 
     beginDeviceLogin: async (provider: string) => {
+      // Re-minting while a login is already pending for this provider would
+      // orphan the outstanding code; the pending state is confirmed by
+      // polling instead.
+      if (get().connectingDevice === provider) return
+      set({ connectingDevice: provider })
       try {
         const prompt = await beginTunnelDeviceLogin(provider)
         set({ deviceLogin: prompt })
         if (prompt.already_logged_in) {
+          set({ connectingDevice: null })
           useToastStore.getState().add({ variant: 'success', title: 'Already signed in' })
           await get().fetchStatus()
         }
       } catch (err) {
+        set({ connectingDevice: null })
         const message = getErrorMessage(err)
         log.error('Failed to begin device login:', message)
         toastError('Failed to start sign-in', message)
       }
+    },
+
+    pollDeviceLogin: async () => {
+      const provider = get().connectingDevice
+      if (!provider) return
+      await get().fetchStatus()
+      // fetchStatus refreshed the snapshot; a now-configured provider means
+      // the browser-side authorisation completed, so the pending login is
+      // done and the code can be discarded.
+      const configured = get().providers.find(
+        (p) => p.provider_id === provider,
+      )?.credential_configured
+      if (configured) {
+        set({ deviceLogin: null, connectingDevice: null })
+        useToastStore.getState().add({ variant: 'success', title: 'Signed in' })
+      }
+    },
+
+    cancelDeviceLogin: () => {
+      if (!get().connectingDevice) return
+      set({ deviceLogin: null, connectingDevice: null })
     },
   }
 }
