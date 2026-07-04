@@ -12,7 +12,6 @@ import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 
 import { apiClient } from '../client'
-import type { ConversationalActResult } from '../types'
 
 const log = createLogger('meta-stream')
 
@@ -159,49 +158,6 @@ export async function streamChatAnswer(
     }
     if (frame.event === 'complete') {
       callbacks.onComplete(parseChatComplete(frame.data))
-      return
-    }
-    if (frame.event === 'error') {
-      throw new Error(errorMessage(frame.data))
-    }
-  })
-}
-
-/** Request body for a streaming direct action (mirrors the buffered POST). */
-export interface ActStreamRequest {
-  instruction: string
-  agent: string
-  conversation_id?: string | null
-}
-
-/** Incremental callbacks for a streaming direct action. */
-export interface ActStreamCallbacks {
-  onProgress: (turn: number, tools: string[]) => void
-  onComplete: (result: ConversationalActResult) => void
-}
-
-/** Stream a direct MCP action's per-turn progress, then its result. */
-export async function streamChatAct(
-  body: ActStreamRequest,
-  callbacks: ActStreamCallbacks,
-  signal?: AbortSignal,
-): Promise<void> {
-  const response = await openStream('/meta/chat/act/stream', body, signal)
-  await consumeStream(response, (frame) => {
-    if (frame.event === 'progress') {
-      if (isRecord(frame.data)) {
-        const rawTurn = frame.data['turn']
-        const rawTools = frame.data['tools']
-        const turn = typeof rawTurn === 'number' ? rawTurn : 0
-        const tools = Array.isArray(rawTools)
-          ? rawTools.filter((t): t is string => typeof t === 'string')
-          : []
-        callbacks.onProgress(turn, tools)
-      }
-      return
-    }
-    if (frame.event === 'complete') {
-      callbacks.onComplete(frame.data as ConversationalActResult)
       return
     }
     if (frame.event === 'error') {

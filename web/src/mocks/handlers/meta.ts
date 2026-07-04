@@ -269,23 +269,6 @@ export const metaHandlers = [
       sseFrame('complete', { answer: 'default response', sources: [], confidence: 0 }),
     ]),
   ),
-  http.post('/api/v1/meta/chat/act/stream', () =>
-    sseStream([
-      sseFrame('progress', { turn: 1, tools: [] }),
-      sseFrame('complete', {
-        agent_id: 'agent-1',
-        agent_name: 'Agent',
-        conversation_id: null,
-        action: {
-          termination_reason: 'completed',
-          final_message: 'Done.',
-          tool_calls: [],
-          approval_id: null,
-          parked: false,
-        },
-      }),
-    ]),
-  ),
   http.get('/api/v1/meta/chat/conversations', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof listConversations>([])),
   ),
