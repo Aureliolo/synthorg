@@ -69,6 +69,19 @@ _COS_MODEL_FIELDS: tuple[str, ...] = (
     "narrative_model",
 )
 
+# charter setting key -> CharterConfig field (shared names). The model is
+# skip-if-blank (an unset model keeps the config's blank default so the
+# feature reports "not configured" rather than resolving a placeholder); the
+# scalar tuning fields overlay whenever present so a `/settings` change reaches
+# the boot CharterConfig, not just the per-turn live-resolve path.
+_CHARTER_MODEL_FIELDS: tuple[str, ...] = ("interview_model",)
+_CHARTER_SCALAR_FIELDS: tuple[str, ...] = (
+    "interview_temperature",
+    "interview_max_tokens",
+    "interview_max_turns",
+    "default_currency",
+)
+
 
 def _as_bool(value: str) -> bool:
     """Coerce a stored setting string to a boolean.
@@ -205,6 +218,16 @@ async def overlay_feature_settings(
         value = cos.get(field, "").strip()
         if value:
             cos_overrides[field] = value
+
+    charter = await _read_namespace(settings_service, SettingNamespace.CHARTER)
+    charter_overrides = _nested(overrides, "charter")
+    for field in _CHARTER_MODEL_FIELDS:
+        value = charter.get(field, "").strip()
+        if value:
+            charter_overrides[field] = value
+    for field in _CHARTER_SCALAR_FIELDS:
+        if field in charter:
+            charter_overrides[field] = charter[field]
     return overrides
 
 

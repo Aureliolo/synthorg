@@ -89,7 +89,10 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_model_with_fallback
+from synthorg.settings.kill_switch import (
+    require_configured_model,
+    resolve_model_with_fallback,
+)
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -203,11 +206,16 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         Returns:
             The model identifier for this turn's structured call.
         """
-        model = await resolve_model_with_fallback(
-            resolver=self._config_resolver,
+        model = require_configured_model(
+            await resolve_model_with_fallback(
+                resolver=self._config_resolver,
+                namespace=SettingNamespace.CHIEF_OF_STAFF,
+                key="propose_model",
+                fallback=self._config.propose_model or "",
+            ),
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="propose_model",
-            fallback=self._config.propose_model,
+            feature_label="Chief of Staff propose",
         )
         return NotBlankStr(model)
 

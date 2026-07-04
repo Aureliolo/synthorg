@@ -16,6 +16,7 @@ and consistent across the codebase.
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -284,3 +285,38 @@ async def resolve_model_with_fallback(
         fallback=fallback,
     )
     return fallback
+
+
+def require_configured_model(
+    model: str | None,
+    *,
+    namespace: str,
+    key: str,
+    feature_label: str,
+) -> str:
+    """Return *model* when configured; raise a settings-pointing 503 otherwise.
+
+    A per-feature model that resolves blank means no model has been selected
+    yet (no placeholder is ever shipped as a default). Rather than call a
+    provider with an empty model identifier, surface a clear
+    ``ServiceUnavailableError`` naming the setting the operator must configure.
+
+    Args:
+        model: The live-resolved model identifier, possibly blank/``None``.
+        namespace: Setting namespace (e.g. ``"chief_of_staff"``).
+        key: Model setting key within the namespace.
+        feature_label: Human-readable capability name for the 503 message.
+
+    Returns:
+        The non-blank *model* identifier.
+
+    Raises:
+        ServiceUnavailableError: When *model* is blank or ``None``.
+    """
+    if model:
+        return model
+    msg = (
+        f"{feature_label} has no model configured. Set ``{namespace}.{key}``"
+        " in dashboard Settings."
+    )
+    raise ServiceUnavailableError(msg)

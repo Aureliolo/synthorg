@@ -24,6 +24,7 @@ from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
+    CosCharterModelSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
     EvalLoopSettingsSubscriber,
@@ -180,6 +181,10 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         research_sub,
         knowledge_sub,
         simulations_sub,
+        CosCharterModelSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
     ]
     if backup_service is not None:
         subs.append(

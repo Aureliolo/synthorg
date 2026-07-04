@@ -292,7 +292,7 @@ function TunnelIntroDialog({ tunnel }: { tunnel: TunnelCardState }) {
           <p className="mt-1 text-text-secondary">
             Opens a tunnel from a public URL to your local backend. Providers: Cloudflare quick tunnel
             (default, no account, random <code className="font-mono">*.trycloudflare.com</code> URL),
-            ngrok (auth token required), and GitHub Dev Tunnels (devtunnel CLI + GitHub sign-in).
+            ngrok (auth token required), and Dev Tunnels (devtunnel CLI, GitHub sign-in).
             Anyone with the URL can reach your backend (your auth + CSRF still apply).
           </p>
         </section>

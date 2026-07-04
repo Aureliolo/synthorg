@@ -10,7 +10,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.core.types import NotBlankStr
 
 # Low sampling temperature keeps the interview turn emitting deterministic
 # JSON structure (a question or a charter draft) rather than discursive
@@ -56,9 +55,10 @@ class CharterConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     interview_strategy: Literal["llm"] = "llm"
-    interview_model: NotBlankStr = Field(
-        default=NotBlankStr("example-large-001"),
-        description="Model for charter-interview LLM calls",
+    interview_model: str | None = Field(
+        default=None,
+        description="Model for charter-interview LLM calls; unset until an "
+        "operator or setup selects one (never a placeholder default)",
     )
     interview_temperature: float = Field(
         default=_INTERVIEW_TEMPERATURE_DEFAULT,

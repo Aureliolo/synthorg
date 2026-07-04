@@ -17,9 +17,10 @@ _r.register(
         namespace=SettingNamespace.CHARTER,
         key="interview_model",
         type=SettingType.STRING,
-        default="example-large-001",
-        description="Model identifier for charter-interview turns. This is a"
-        " deep, human-in-the-loop elicitation, so it should be a top-tier"
+        default="",
+        description="Model identifier for charter-interview turns. Unset until"
+        " an operator or setup selects one (never a placeholder default). This"
+        " is a deep, human-in-the-loop elicitation, so it should be a top-tier"
         " reasoning-capable model -- not a small/cheap one.",
         group="Charter",
         level=SettingLevel.ADVANCED,

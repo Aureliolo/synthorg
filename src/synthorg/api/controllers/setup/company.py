@@ -22,8 +22,8 @@ from synthorg.api.controllers.setup._embedder_setup import (
     collect_model_ids as _collect_model_ids,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    pick_chat_model,
     pick_decomposition_model,
+    pick_model_for_tier,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
@@ -65,6 +65,8 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.selector import (
     list_embedding_candidates,
     select_embedding_model,
@@ -147,6 +149,10 @@ class SetupCompanyController(Controller):
         model_ids = await _collect_model_ids(app_state)
         selection = select_embedding_model(model_ids)
         capable = pick_decomposition_model(agents)
+
+        def _for(purpose: PromptPurposeId) -> str | None:
+            return pick_model_for_tier(agents, tier_for_purpose(purpose))
+
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
                 decomposition_recommended=capable,
@@ -156,12 +162,15 @@ class SetupCompanyController(Controller):
                     selection.output_dims if selection else None
                 ),
                 embedding_candidates=list_embedding_candidates(model_ids),
-                # Research reuses the capable-model heuristic (its own
-                # setting, not the decomposition model); CoS chat prefers a
-                # cheaper model for its frequent conversational turns. Both
-                # pick from the full catalogue (decomposition_candidates).
+                # Research reuses the capable-model heuristic (its own setting,
+                # not the decomposition model). Each per-feature model is
+                # recommended at its declared tier from the single tier policy.
                 research_recommended=capable,
-                cos_recommended=pick_chat_model(agents),
+                cos_recommended=_for(PromptPurposeId.COS_CHAT),
+                propose_recommended=_for(PromptPurposeId.COS_PROPOSE),
+                routing_recommended=_for(PromptPurposeId.COS_ROUTING),
+                narrative_recommended=_for(PromptPurposeId.COS_NARRATIVE),
+                charter_recommended=_for(PromptPurposeId.CHARTER_INTERVIEW),
             )
         )
 

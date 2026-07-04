@@ -185,7 +185,7 @@ class DevTunnelsAdapter:
     @property
     def display_name(self) -> str:
         """Human-readable provider name."""
-        return "GitHub Dev Tunnels"
+        return "Dev Tunnels"
 
     @property
     def credential_kind(self) -> TunnelCredentialKind:
@@ -412,6 +412,11 @@ class DevTunnelsAdapter:
                 f"{_START_TIMEOUT_SECONDS:.0f}s (exit code {rc})"
             )
             raise TunnelStartFailedError(msg)
+        # The greedy URL pattern can capture a trailing separator the CLI
+        # prints after the URL (e.g. a comma before "or via ..."); strip it so
+        # the public URL copies/pastes cleanly (mirrors the verification-URL
+        # path).
+        url = url.rstrip(".,;")
         self._process = process
         spawn_drain_thread(process.stdout, name="devtunnel-stdout")
         return url

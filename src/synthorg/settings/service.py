@@ -15,7 +15,6 @@ the encryptor, the version semantics); splitting them fragments the
 single audit chain operators rely on.
 """
 
-import asyncio
 import os
 import re
 from collections.abc import Mapping, Sequence
@@ -176,18 +175,6 @@ class SettingsService:
         self._encryptor = encryptor
         self._message_bus = message_bus
         self._cache: dict[tuple[str, str], SettingValue] = {}
-        # Source-of-resolution audit: every (namespace, key) emits one
-        # INFO SETTINGS_VALUE_RESOLVED on the first cold read of the
-        # process so operators can see which source won at startup.
-        # Subsequent resolutions stay at DEBUG. ``_resolution_lock``
-        # gates the membership-test + add window so concurrent
-        # first-reads for the same key promote exactly one entry to
-        # INFO; without it, two coroutines that miss the cache and
-        # interleave around an ``await`` in their resolver chain can
-        # both observe the key as not-yet-logged and emit duplicate
-        # INFO lines.
-        self._resolution_logged: set[tuple[str, str]] = set()
-        self._resolution_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def registry(self) -> SettingsRegistry:
@@ -199,26 +186,14 @@ class SettingsService:
         definition: SettingDefinition,
         source: str,
     ) -> None:
-        """Log a setting resolution; promote to INFO on first cold read.
+        """Log a setting resolution at DEBUG.
 
-        Every ``(namespace, key)`` pair emits exactly one INFO
-        ``SETTINGS_VALUE_RESOLVED`` event during the lifetime of the
-        process so operators can audit which source supplied each
-        configuration value at startup.  Subsequent resolutions for
-        the same pair stay at DEBUG to avoid log spam.
-
-        ``_resolution_lock`` gates the membership-test + add so
-        concurrent first-reads for the same key produce a single
-        INFO line; the actual log emission runs outside the lock to
-        keep the critical section CPU-bound.
+        A resolution always succeeds (it resolves to some source), so it stays
+        at DEBUG rather than flooding startup with one INFO line per setting.
+        Problems -- a feature that cannot activate, an unwired dependency --
+        surface through their own INFO/WARNING events, not here.
         """
-        cache_key = (definition.namespace, definition.key)
-        async with self._resolution_lock:
-            first_read = cache_key not in self._resolution_logged
-            if first_read:
-                self._resolution_logged.add(cache_key)
-        log = logger.info if first_read else logger.debug
-        log(
+        logger.debug(
             SETTINGS_VALUE_RESOLVED,
             namespace=definition.namespace,
             key=definition.key,

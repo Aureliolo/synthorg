@@ -54,7 +54,7 @@ test.describe('Integrations dashboard', () => {
     await waitForFonts(page)
     await page.getByRole('radio', { name: 'ngrok' }).click()
     await expect(page.getByLabel('Auth token')).toBeVisible()
-    await page.getByRole('radio', { name: 'GitHub Dev Tunnels' }).click()
+    await page.getByRole('radio', { name: 'Dev Tunnels' }).click()
     await expect(page.getByText(/devtunnel CLI is not installed/i)).toBeVisible()
   })
 

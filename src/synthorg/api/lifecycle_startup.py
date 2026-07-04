@@ -75,9 +75,9 @@ async def _init_persistence(
                 logger.warning(
                     API_APP_STARTUP,
                     note=(
-                        "SECURITY: dev auth bypass ENABLED -- POST /auth/dev-login"
-                        " mints an admin session with NO password. NEVER enable"
-                        " SYNTHORG_DEV_AUTH_BYPASS in production."
+                        "SECURITY: dev auth bypass ENABLED"
+                        " (SYNTHORG_DEV_AUTH_BYPASS) -- passwordless admin via"
+                        " /auth/dev-login; never enable in production."
                     ),
                 )
             auth_config = app_state.config.api.auth.with_secret(

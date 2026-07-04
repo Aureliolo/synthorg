@@ -40,6 +40,8 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import require_configured_model
 
 logger = get_logger(__name__)
 
@@ -165,6 +167,12 @@ class LLMCharterInterviewer:
             temperature=config.interview_temperature,
             max_tokens=config.interview_max_tokens,
         )
+        model = require_configured_model(
+            config.interview_model,
+            namespace=SettingNamespace.CHARTER,
+            key="interview_model",
+            feature_label="Charter interview",
+        )
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -175,7 +183,7 @@ class LLMCharterInterviewer:
             ):
                 response = await self._provider.complete(
                     messages,
-                    config.interview_model,
+                    model,
                     config=completion_config,
                 )
         except Exception as exc:
