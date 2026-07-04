@@ -406,6 +406,68 @@ export type ChatScope =
   | { kind: 'proposal'; id: string }
   | { kind: 'alert'; id: string }
 
+/** Summary of one of the caller's resumable conversations. */
+export interface ConversationSummary {
+  id: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  status: string
+  /** ``direct`` / ``routed`` resume into Request work; ``group`` into Group. */
+  kind: string
+}
+
+/** One persisted turn of a conversation, for reconstructing a transcript. */
+export interface ConversationTurnRecord {
+  id: string
+  conversation_id: string
+  sequence: number
+  role: string
+  content: string
+  author_agent_id: string | null
+  author_name: string | null
+  routed_topic: string | null
+  routing_confidence: number | null
+  created_at: string
+}
+
+async function fetchConversationsPage(
+  cursor: string | null,
+): Promise<PaginatedResult<ConversationSummary>> {
+  const response = await apiClient.get<PaginatedResponse<ConversationSummary>>(
+    `${BASE}/chat/conversations`,
+    { params: _pageParams(cursor) },
+  )
+  return unwrapPaginated<ConversationSummary>(response)
+}
+
+/** List the caller's conversations (newest-first), walking every page. */
+export async function listConversations(): Promise<ConversationSummary[]> {
+  return paginateAll<ConversationSummary>(fetchConversationsPage)
+}
+
+/** Fetch every turn of one conversation (oldest-first), walking every page. */
+export async function getConversationTurns(
+  conversationId: string,
+): Promise<ConversationTurnRecord[]> {
+  const turns = await paginateAll<ConversationTurnRecord>((cursor) =>
+    fetchConversationTurnsPage(conversationId, cursor),
+  )
+  return [...turns].sort((a, b) => a.sequence - b.sequence)
+}
+
+async function fetchConversationTurnsPage(
+  conversationId: string,
+  cursor: string | null,
+): Promise<PaginatedResult<ConversationTurnRecord>> {
+  const response = await apiClient.get<
+    PaginatedResponse<ConversationTurnRecord>
+  >(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    params: _pageParams(cursor),
+  })
+  return unwrapPaginated<ConversationTurnRecord>(response)
+}
+
 export async function postChat(
   question: string,
   scope?: ChatScope,

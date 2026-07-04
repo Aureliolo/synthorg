@@ -4,8 +4,14 @@ import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { ChiefOfStaffFlags, MetaConfig } from '@/api/endpoints/meta'
+import type {
+  ChiefOfStaffFlags,
+  getConversationTurns,
+  listConversations,
+  MetaConfig,
+} from '@/api/endpoints/meta'
 import { apiSuccess } from '@/mocks/handlers'
+import { paginatedEnvelopeFor } from '@/mocks/handlers/helpers'
 import ChatPage from '@/pages/ChatPage'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
@@ -128,5 +134,77 @@ describe('ChatPage transcript persistence', () => {
     // the unmounted panel's local state.
     expect(screen.getByText('Signals look healthy.')).toBeInTheDocument()
     expect(screen.getByText('how are signals?')).toBeInTheDocument()
+  })
+})
+
+describe('ChatPage conversation resume', () => {
+  it('resumes a past conversation into its mode from the History drawer', async () => {
+    server.use(
+      http.get('/api/v1/meta/chat/conversations', () =>
+        HttpResponse.json(
+          paginatedEnvelopeFor<typeof listConversations>([
+            {
+              id: 'conv-1',
+              created_by: 'ceo',
+              created_at: '2026-06-30T10:00:00Z',
+              updated_at: '2026-06-30T10:05:00Z',
+              status: 'active',
+              kind: 'direct',
+            },
+          ]),
+        ),
+      ),
+      http.get('/api/v1/meta/chat/conversations/conv-1', () =>
+        HttpResponse.json(
+          paginatedEnvelopeFor<typeof getConversationTurns>([
+            {
+              id: 'turn-1',
+              conversation_id: 'conv-1',
+              sequence: 0,
+              role: 'user',
+              content: 'What is our runway?',
+              author_agent_id: null,
+              author_name: null,
+              routed_topic: null,
+              routing_confidence: null,
+              created_at: '2026-06-30T10:00:00Z',
+            },
+            {
+              id: 'turn-2',
+              conversation_id: 'conv-1',
+              sequence: 1,
+              role: 'assistant',
+              content: 'About fourteen months at the current burn.',
+              author_agent_id: null,
+              author_name: null,
+              routed_topic: null,
+              routing_confidence: null,
+              created_at: '2026-06-30T10:05:00Z',
+            },
+          ]),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ChatPage />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /history/i }))
+    const resumeButton = await screen.findByRole('button', {
+      name: /request work/i,
+    })
+    await user.click(resumeButton)
+
+    // The drawer hydrated the Request-work slice and switched modes, so the
+    // persisted turns render in the resumed transcript.
+    await waitFor(() => {
+      expect(screen.getByText('What is our runway?')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText('About fourteen months at the current burn.'),
+    ).toBeInTheDocument()
   })
 })

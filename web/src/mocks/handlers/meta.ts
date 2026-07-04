@@ -8,6 +8,8 @@ import type {
   listAlerts,
   listEvolutionOutcomes,
   listProposals,
+  getConversationTurns,
+  listConversations,
   postChat,
   postChatAct,
   postChatGroup,
@@ -241,4 +243,10 @@ export const metaHandlers = [
       }),
     )
   }),
+  http.get('/api/v1/meta/chat/conversations', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof listConversations>([])),
+  ),
+  http.get('/api/v1/meta/chat/conversations/:id', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof getConversationTurns>([])),
+  ),
 ]
