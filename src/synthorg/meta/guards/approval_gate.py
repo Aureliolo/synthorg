@@ -50,6 +50,35 @@ _ALTITUDE_RISK: dict[ProposalAltitude, ApprovalRiskLevel] = {
 _DEFAULT_EXPIRY_DAYS: Final[int] = 7
 
 
+def _build_metadata(
+    proposal: ImprovementProposal, proposal_id_str: str
+) -> dict[str, str]:
+    """Build the approval-item metadata, enriched for tool creation.
+
+    A ``TOOL_CREATION`` proposal carries the authored ``ToolBlueprint`` in
+    ``tool_changes``; its id, tool name, capability, and description are copied
+    into the metadata so the approve-to-live consumer can rehydrate the
+    blueprint by id and the Approvals UI can show a reviewable summary of the
+    concrete tool. Other altitudes carry only the generic keys.
+
+    Returns:
+        The metadata dict for the approval item.
+    """
+    metadata = {
+        "proposal_id": proposal_id_str,
+        "altitude": proposal.altitude.value,
+        "source_rule": str(proposal.source_rule or ""),
+        "confidence": f"{proposal.confidence:.4f}",
+    }
+    if proposal.altitude is ProposalAltitude.TOOL_CREATION and proposal.tool_changes:
+        blueprint = proposal.tool_changes[0]
+        metadata["blueprint_id"] = str(blueprint.id)
+        metadata["tool_name"] = str(blueprint.name)
+        metadata["tool_capability"] = str(blueprint.capability)
+        metadata["tool_description"] = str(blueprint.description)
+    return metadata
+
+
 class ApprovalGateGuard:
     """Routes proposals to the approval store for human review.
 
@@ -146,12 +175,7 @@ class ApprovalGateGuard:
             risk_level=risk,
             created_at=now,
             expires_at=now + timedelta(days=self._expiry_days),
-            metadata={
-                "proposal_id": proposal_id_str,
-                "altitude": proposal.altitude.value,
-                "source_rule": str(proposal.source_rule or ""),
-                "confidence": f"{proposal.confidence:.4f}",
-            },
+            metadata=_build_metadata(proposal, proposal_id_str),
         )
 
         try:

@@ -57,6 +57,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_PROPOSAL_GUARD_REJECTED,
     TOOLSMITH_SERVICE_ABSENT_GAP,
 )
+from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 from synthorg.settings.resolver import ConfigResolver
@@ -110,6 +111,7 @@ class ToolsmithService:
         overflow_handler: ToolCreationOverflowHandler | None = None,
         existing_capabilities: tuple[NotBlankStr, ...] = (),
         dynamic_registry: DynamicToolRegistry | None = None,
+        blueprint_repo: DynamicToolRepository | None = None,
         clock: Clock | None = None,
         config_resolver: ConfigResolver | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
@@ -122,6 +124,7 @@ class ToolsmithService:
         self._overflow_handler = overflow_handler
         self._existing_capabilities = existing_capabilities
         self._dynamic_registry = dynamic_registry
+        self._blueprint_repo = blueprint_repo
         self._clock = clock or SystemClock()
         self._config_resolver = config_resolver
         self._notification_dispatcher = notification_dispatcher
@@ -298,10 +301,36 @@ class ToolsmithService:
                 error=safe_error_description(exc),
             )
             return ()
+        # Persist the PENDING blueprint before the approval gate registers its
+        # item, so the approve-to-live consumer can rehydrate it by id from the
+        # approval metadata after an operator approves. The applier re-saves it
+        # (owning the lifecycle) on apply; this is the durable link.
+        await self._persist_pending_blueprint(blueprint)
         proposal = _build_proposal(gap, blueprint)
         if await self._guards_pass(proposal):
             return (proposal,)
         return ()
+
+    async def _persist_pending_blueprint(self, blueprint: ToolBlueprint) -> None:
+        """Durably store a PENDING blueprint (best-effort).
+
+        A store failure is logged and swallowed: the proposal + approval still
+        stand, and the consumer simply skips a blueprint it cannot rehydrate,
+        so a transient persistence error never aborts the cycle.
+        """
+        if self._blueprint_repo is None:
+            return
+        try:
+            await self._blueprint_repo.save(blueprint)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_AUTHOR_SKIPPED,
+                capability=blueprint.capability,
+                note="pending_blueprint_persist_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _signal_service_absent(self, gap: CapabilityGap) -> None:
         """Raise an operator ops signal for a recurring service-absent gap.

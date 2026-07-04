@@ -345,6 +345,7 @@ async def wire_toolsmith(
         runtime.service,
         interval_seconds=si_config.toolsmith.cycle_interval_seconds,
         config_resolver=config_resolver_of(app_state),
+        approval_consumer=runtime.approval_consumer,
     )
     try:
         await scheduler.start()
