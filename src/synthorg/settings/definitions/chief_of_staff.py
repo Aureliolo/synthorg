@@ -9,9 +9,10 @@ alerts, narrative, invite) are gated per cycle/turn or started/stopped by a
 settings subscriber, so toggling any of them takes effect with no restart.
 The autonomous capabilities additionally require the persona master switch
 ``self_improvement.chief_of_staff_enabled``. The per-feature models are read
-live per LLM call. The one exception is ``direct_mcp_enabled``: letting a
-chat instruction drive a real MCP action is fail-closed (it needs security
-governance wired at startup) and so stays ``restart_required``.
+live per LLM call. ``direct_mcp_enabled`` (letting a chat instruction drive a
+real MCP action) is fail-closed: a settings subscriber rebuilds the actor
+through the startup governance gate on change, so it too toggles with no
+restart while still materialising only when security governance is wired.
 
 Values overlay onto :class:`~synthorg.meta.chief_of_staff.config.ChiefOfStaffConfig`
 at load time (see :func:`synthorg.meta.config.load_self_improvement_config`);
@@ -179,17 +180,14 @@ _r.register(
         description=(
             "Let a chat instruction drive a real MCP action under the acting"
             " agent's trust level (the /meta/chat/act path). Off by default:"
-            " the Chief of Staff acts for you only when you opt in."
-            " Fail-closed (needs security governance) and restart-required to"
-            " enable (the actor is built at startup)."
+            " the Chief of Staff acts for you only when you opt in. Fail-closed:"
+            " it materialises only when security governance and the MCP"
+            " self-consumer are wired, and stays inert (503) otherwise. A live"
+            " toggle rebuilds the actor through that same fail-closed gate, so"
+            " it takes effect with no restart."
         ),
         group="Acts on your behalf",
         level=SettingLevel.ADVANCED,
-        # lint-allow: restart-required -- security invariant: the acting actor
-        # is built fail-closed at startup (needs engine.has_security_governance)
-        # with no per-request governance re-check, so a live write must not
-        # enable autonomous MCP acting.
-        restart_required=True,
     )
 )
 

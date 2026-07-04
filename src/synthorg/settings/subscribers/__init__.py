@@ -21,6 +21,9 @@ from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
 from synthorg.settings.subscribers.cos_charter_model_subscriber import (
     CosCharterModelSettingsSubscriber,
 )
+from synthorg.settings.subscribers.direct_mcp_actor_subscriber import (
+    DirectMcpActorSettingsSubscriber,
+)
 from synthorg.settings.subscribers.escalation_reconnect_subscriber import (
     EscalationReconnectSettingsSubscriber,
 )
@@ -96,6 +99,7 @@ __all__ = [
     "BudgetBenchmarkProviderSettingsSubscriber",
     "ChiefOfStaffAlertsSettingsSubscriber",
     "CosCharterModelSettingsSubscriber",
+    "DirectMcpActorSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",
     "EscalationReconnectSettingsSubscriber",
     "EvalLoopSettingsSubscriber",
