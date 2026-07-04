@@ -22,6 +22,8 @@ from synthorg.api.controllers._chat_idempotency import (
 from synthorg.api.controllers._conversational_stream import (
     act_progress_stream,
     chat_answer_stream,
+    resolve_act_stream_actor,
+    resolve_chat_stream_backends,
 )
 from synthorg.api.controllers.events._sse import revalidated_sse_stream
 from synthorg.api.dto import ApiResponse
@@ -343,34 +345,7 @@ class ConversationalController(Controller):
             ServiceUnavailableError: When a required dependency is unwired.
         """
         app_state: AppState = state.app_state
-        await ensure_feature_enabled(
-            app_state,
-            "chief_of_staff",
-            "explain_chat_enabled",
-            feature_label="Chief of Staff chat",
-        )
-        meta = app_state.slice(MetaStateSlice)
-        chat_backend = meta.chief_of_staff_chat
-        if chat_backend is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="chief_of_staff_chat",
-                hint="Register an LLM provider so the chat backend can be built.",
-            )
-            msg = (
-                "Chief of Staff chat is not configured. Register an LLM "
-                "provider so the chat backend can be built."
-            )
-            raise ServiceUnavailableError(msg)
-        signals_service = meta.signals_service
-        if signals_service is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="signals_service",
-                hint="SignalsService must be wired during AppState startup.",
-            )
-            msg = "SignalsService is not configured; cannot build a snapshot."
-            raise ServiceUnavailableError(msg)
+        chat_backend, signals_service = await resolve_chat_stream_backends(app_state)
         user = _require_stream_user(request)
         return ServerSentEvent(
             content=revalidated_sse_stream(
@@ -417,30 +392,7 @@ class ConversationalController(Controller):
             ServiceUnavailableError: When the actor is not configured.
         """
         app_state: AppState = state.app_state
-        await ensure_feature_enabled(
-            app_state,
-            "chief_of_staff",
-            "direct_mcp_enabled",
-            feature_label="Direct MCP acting",
-        )
-        actor_service = app_state.slice(MetaStateSlice).conversational_actor
-        if actor_service is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="conversational_actor",
-                hint=(
-                    "Set meta.chief_of_staff.direct_mcp_enabled, register an "
-                    "LLM provider, and enable the MCP self-consumer "
-                    "(security.mcp_self_consumer.mode=trust_scoped)."
-                ),
-            )
-            msg = (
-                "Direct MCP acting is not configured. Enable "
-                "``meta.chief_of_staff.direct_mcp_enabled`` in settings, "
-                "register an LLM provider, and set "
-                "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
-            )
-            raise ServiceUnavailableError(msg)
+        actor_service = await resolve_act_stream_actor(app_state)
         operator = require_actor()
         user = _require_stream_user(request)
         args = ConversationalActArgs(

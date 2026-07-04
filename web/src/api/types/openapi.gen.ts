@@ -23925,6 +23925,7 @@ export interface operations {
             };
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly conversation_id: string;
             };
             readonly cookie?: never;

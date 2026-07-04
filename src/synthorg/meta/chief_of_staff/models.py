@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Domain models for Chief of Staff advanced capabilities.
 
 Defines proposal outcomes, outcome statistics, org-level

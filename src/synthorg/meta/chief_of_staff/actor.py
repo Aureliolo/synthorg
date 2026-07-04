@@ -215,6 +215,7 @@ class ConversationalActor:
 
         task = asyncio.ensure_future(_run())
         try:
+            # lint-allow: long-running-loop-kill-switch -- drains a per-request queue bounded by the action task's terminal _ACT_STREAM_DONE sentinel; the finally cancels the task on client disconnect  # noqa: E501
             while True:
                 item = await queue.get()
                 if item is _ACT_STREAM_DONE:

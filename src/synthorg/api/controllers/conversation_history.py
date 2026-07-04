@@ -24,6 +24,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_countless_seek_meta,
 )
+from synthorg.api.path_params import PathId
 from synthorg.core.actor_context import require_actor
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
@@ -122,7 +123,7 @@ class ConversationHistoryController(Controller):
     @get("/{conversation_id:str}")
     async def get_conversation(
         self,
-        conversation_id: str,
+        conversation_id: PathId,
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,

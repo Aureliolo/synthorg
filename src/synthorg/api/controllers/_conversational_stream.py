@@ -14,9 +14,11 @@ import asyncio
 import json as _json
 from collections.abc import AsyncIterator
 
+from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.actor import (
     ActProgress,
@@ -26,10 +28,100 @@ from synthorg.meta.chief_of_staff.actor import (
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.models import ChatAnswerDelta, ChatQuery
 from synthorg.meta.signals.service import SignalsService
+from synthorg.meta.state import MetaStateSlice
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.meta import META_CHAT_STREAM_FAILED
+from synthorg.observability.events.meta import (
+    META_CHAT_DEPENDENCY_UNAVAILABLE,
+    META_CHAT_STREAM_FAILED,
+)
 
 logger = get_logger(__name__)
+
+
+async def resolve_chat_stream_backends(
+    app_state: AppState,
+) -> tuple[ChiefOfStaffChat, SignalsService]:
+    """Live-gate and resolve the explain-chat + signals backends, or 503.
+
+    Runs before the SSE headers are on the wire, so a disabled feature or
+    an unwired dependency still surfaces as a normal RFC 9457 body.
+
+    Returns:
+        The ``(chat_backend, signals_service)`` pair.
+
+    Raises:
+        ServiceUnavailableError: When the feature is off or a dependency
+            is not wired.
+    """
+    await ensure_feature_enabled(
+        app_state,
+        "chief_of_staff",
+        "explain_chat_enabled",
+        feature_label="Chief of Staff chat",
+    )
+    meta = app_state.slice(MetaStateSlice)
+    chat_backend = meta.chief_of_staff_chat
+    if chat_backend is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="chief_of_staff_chat",
+            hint="Register an LLM provider so the chat backend can be built.",
+        )
+        msg = (
+            "Chief of Staff chat is not configured. Register an LLM "
+            "provider so the chat backend can be built."
+        )
+        raise ServiceUnavailableError(msg)
+    signals_service = meta.signals_service
+    if signals_service is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="signals_service",
+            hint="SignalsService must be wired during AppState startup.",
+        )
+        msg = "SignalsService is not configured; cannot build a snapshot."
+        raise ServiceUnavailableError(msg)
+    return chat_backend, signals_service
+
+
+async def resolve_act_stream_actor(app_state: AppState) -> ConversationalActor:
+    """Live-gate and resolve the conversational actor for streaming, or 503.
+
+    The ``direct_mcp_enabled`` gate is re-checked per request, so the
+    security kill-switch takes effect on the next request without a restart.
+
+    Returns:
+        The wired :class:`ConversationalActor`.
+
+    Raises:
+        ServiceUnavailableError: When acting is disabled or the actor is
+            not wired.
+    """
+    await ensure_feature_enabled(
+        app_state,
+        "chief_of_staff",
+        "direct_mcp_enabled",
+        feature_label="Direct MCP acting",
+    )
+    actor = app_state.slice(MetaStateSlice).conversational_actor
+    if actor is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="conversational_actor",
+            hint=(
+                "Set meta.chief_of_staff.direct_mcp_enabled, register an "
+                "LLM provider, and enable the MCP self-consumer "
+                "(security.mcp_self_consumer.mode=trust_scoped)."
+            ),
+        )
+        msg = (
+            "Direct MCP acting is not configured. Enable "
+            "``meta.chief_of_staff.direct_mcp_enabled`` in settings, "
+            "register an LLM provider, and set "
+            "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
+        )
+        raise ServiceUnavailableError(msg)
+    return actor
 
 
 def _frame(event: str, payload: dict[str, object]) -> dict[str, str]:
@@ -141,4 +233,9 @@ async def act_progress_stream(
         yield _error_frame(exc)
 
 
-__all__ = ["act_progress_stream", "chat_answer_stream"]
+__all__ = [
+    "act_progress_stream",
+    "chat_answer_stream",
+    "resolve_act_stream_actor",
+    "resolve_chat_stream_backends",
+]
