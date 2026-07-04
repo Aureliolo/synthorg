@@ -10,8 +10,8 @@ import type {
   listConversations,
   MetaConfig,
 } from '@/api/endpoints/meta'
-import { apiSuccess } from '@/mocks/handlers'
 import { paginatedEnvelopeFor } from '@/mocks/handlers/helpers'
+import { sseFrame, sseStream } from '@/mocks/handlers/meta'
 import ChatPage from '@/pages/ChatPage'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
@@ -100,15 +100,17 @@ describe('ChatPage transcript persistence', () => {
   })
 
   it('keeps a mode transcript when switching modes and back', async () => {
+    // The default Chief-of-Staff mode is unscoped, so it streams; override
+    // the streaming endpoint with a one-frame answer.
     server.use(
-      http.post('/api/v1/meta/chat', () =>
-        HttpResponse.json(
-          apiSuccess({
+      http.post('/api/v1/meta/chat/stream', () =>
+        sseStream([
+          sseFrame('complete', {
             answer: 'Signals look healthy.',
             sources: [],
             confidence: 0.8,
           }),
-        ),
+        ]),
       ),
     )
     const user = userEvent.setup()

@@ -23,6 +23,25 @@ function _hasBlankField(body: unknown, field: string): boolean {
   return typeof value !== 'string' || !value.trim()
 }
 
+/** Render one ``event:``/``data:`` SSE frame for a mock stream. */
+export function sseFrame(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
+/** Build a ``text/event-stream`` response body from pre-rendered frames. */
+export function sseStream(frames: readonly string[]): HttpResponse<ReadableStream<Uint8Array>> {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(frame))
+      controller.close()
+    },
+  })
+  return new HttpResponse(body, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
+
 export const metaHandlers = [
   http.get('/api/v1/meta/config', () =>
     HttpResponse.json(
@@ -243,6 +262,30 @@ export const metaHandlers = [
       }),
     )
   }),
+  http.post('/api/v1/meta/chat/stream', () =>
+    sseStream([
+      sseFrame('progress', { delta: 'default ' }),
+      sseFrame('progress', { delta: 'response' }),
+      sseFrame('complete', { answer: 'default response', sources: [], confidence: 0 }),
+    ]),
+  ),
+  http.post('/api/v1/meta/chat/act/stream', () =>
+    sseStream([
+      sseFrame('progress', { turn: 1, tools: [] }),
+      sseFrame('complete', {
+        agent_id: 'agent-1',
+        agent_name: 'Agent',
+        conversation_id: null,
+        action: {
+          termination_reason: 'completed',
+          final_message: 'Done.',
+          tool_calls: [],
+          approval_id: null,
+          parked: false,
+        },
+      }),
+    ]),
+  ),
   http.get('/api/v1/meta/chat/conversations', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof listConversations>([])),
   ),

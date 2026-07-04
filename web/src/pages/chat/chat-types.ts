@@ -9,6 +9,8 @@ export interface ChiefOfStaffMessage {
   confidence?: number
   /** Idempotency key minted when this user turn was sent; a retry reuses it. */
   idempotencyKey?: string | undefined
+  /** True while an assistant reply is still receiving streamed tokens. */
+  isStreaming?: boolean
   /** Renders as a distinct error notice (not a normal assistant reply). */
   isError?: boolean
 }

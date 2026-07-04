@@ -1,5 +1,6 @@
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle, Square } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
@@ -107,12 +108,21 @@ export function ChiefOfStaffChat() {
         {ctrl.chatLoading && <ChatThinkingIndicator label="Thinking" />}
       </div>
 
+      {ctrl.isStreaming && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={ctrl.cancel}>
+            <Square className="size-3.5" aria-hidden />
+            Stop
+          </Button>
+        </div>
+      )}
+
       {scopePicker}
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}
         onSend={ctrl.triggerSend}
-        disabled={ctrl.chatLoading}
+        disabled={ctrl.chatLoading || ctrl.isStreaming}
         label="Chat message"
         placeholder="Ask about signals, proposals..."
       />
