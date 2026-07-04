@@ -18,17 +18,17 @@ dependencies = [
     "annotated-types==0.7.0",
     "argon2-cffi==25.1.0",
     "cryptography==49.0.0",
-    "faker==40.23.0",
+    "faker==40.28.1",
     "httpcore==1.0.9",
     "httpx==0.28.1",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
-    "litellm==1.90.0",
-    "cedarpy==4.8.5",
+    "litellm==1.90.3",
+    "cedarpy==4.8.6",
     "lxml==6.1.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.24.0",
     "mcp==1.28.1",
-    "mem0ai==2.0.8",
+    "mem0ai==2.0.11",
     "mmh3==5.2.1",
     "packaging==26.2",
     "prometheus-client==0.25.0",
@@ -43,11 +43,11 @@ dependencies = [
     "opentelemetry-api==1.40.0",
     "opentelemetry-sdk==1.40.0",
     "opentelemetry-exporter-otlp-proto-http==1.40.0",
-    "playwright==1.60.0",
+    "playwright==1.61.0",
     "scikit-image==0.26.0",
-    "pillow==12.2.0",
+    "pillow==12.3.0",
     "numpy==2.5.0",
-    "uvicorn==0.49.0",
+    "uvicorn==0.50.0",
     "yoyo-migrations==9.0.0",
 ]
 
@@ -73,8 +73,8 @@ postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
 # code chunking. pymupdf is deliberately excluded (AGPL).
 knowledge = [
     "pdfplumber==0.11.10",
-    "tree-sitter==0.25.2",
-    "tree-sitter-language-pack==1.10.9",
+    "tree-sitter==0.26.0",
+    "tree-sitter-language-pack==1.12.2",
 ]
 
 [tool.hatch.version]
@@ -108,7 +108,7 @@ test = [
     "pytest-split==0.11.0",
     "polyfactory==3.3.0",
     "respx==0.23.1",
-    "hypothesis==6.155.7",
+    "hypothesis==6.156.1",
     # Distributed runtime: dev envs always have these so mypy can type-check
     # bus/nats.py and workers/ without needing the optional extra installed.
     # Runtime users opt in via `pip install synthorg[distributed]`.
@@ -121,8 +121,8 @@ test = [
     # pdfplumber loader must be installed alongside the test runner.
     # Runtime users opt in via `pip install synthorg[knowledge]`.
     "pdfplumber==0.11.10",
-    "tree-sitter==0.25.2",
-    "tree-sitter-language-pack==1.10.9",
+    "tree-sitter==0.26.0",
+    "tree-sitter-language-pack==1.12.2",
 ]
 docs = [
     "zensical==0.0.46",
@@ -166,7 +166,7 @@ dev = [
     "codespell==2.4.2",
     "sqlfluff==4.2.2",
     "yamllint==1.38.0",
-    "import-linter==2.12",
+    "import-linter==2.13",
     {include-group = "test"},
     {include-group = "docs"},
 ]
