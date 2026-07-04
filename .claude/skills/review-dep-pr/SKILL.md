@@ -155,7 +155,7 @@ For each non-IRRELEVANT changelog item, check our actual usage:
 
 1. **BREAKING**: Does the removed/renamed/changed thing appear in our config or code? If yes → must fix. If no → note but no action needed. **For override/pinned-version changes specifically** (npm `overrides`/`resolutions` or an equivalent transitive-version pin), don't assess risk purely from what the manifest declares. Check the actual lockfile entry for that nested dependency (e.g. `node_modules/<parent>/node_modules/<pkg>` in `package-lock.json`) to confirm it actually resolves to the version the override claims. A manifest/lockfile mismatch (override says vX, lockfile still resolves vY) means the change is currently inert but is latent drift: the real risk materializes the next time the lockfile is regenerated from the manifest, not at merge time. Report this distinction explicitly rather than either dismissing the risk because CI is green today, or treating it as an immediate blocker because it isn't yet.
 2. **DEPRECATION**: Are we using the deprecated feature? If yes → plan migration. If no → skip.
-3. **NEW FEATURE**: Could we use this? Propose an explicit verdict; don't leave it at "could" -- but do not finalize the verdict yourself. For each new capability, propose one of **ADOPT** (worth turning on; record the exact change, i.e. which config key / rule / flag, in which file), **DEFER** (worth adopting but not in this PR; becomes a follow-up item), or **SKIP** (genuinely not applicable; one-line reason) as your recommendation, then surface it to the user via `AskUserQuestion` (Phase 8's ADOPT-decision gate governs this -- there is no exception that lets an assistant-proposed SKIP bypass it). Batch sensibly: group several low-stakes proposed-SKIP items into one multiSelect or single-choice question rather than one question per item, but never let your own confidence that something is "obviously not applicable" (e.g. a feature for a platform we don't use) substitute for the user actually seeing and confirming it -- that exact shortcut is what this rule exists to prevent. Newly-introduced opt-in lint / type-check / security rules are the highest-value case and **default to proposing ADOPT**: a new rule almost always encodes a real bug class the maintainers think is worth catching, and enabling it is the entire reason to read a linter's changelog. "It's only a preview rule, or it lives in a recommended preset we don't currently inherit" is a reason to propose enabling it *deliberately*, NOT a reason to skip it without asking.
+3. **NEW FEATURE**: Could we use this? Propose an explicit verdict, but do not finalize it yourself. For each new capability, propose one of **ADOPT** (worth turning on; record the exact change, i.e. which config key / rule / flag, in which file), **DEFER** (worth adopting but not in this PR; becomes a follow-up item), or **SKIP** (genuinely not applicable; one-line reason) as your recommendation, then surface it to the user via `AskUserQuestion` (Phase 8's ADOPT-decision gate governs this -- there is no exception that lets an assistant-proposed SKIP bypass it). Batch sensibly: group several low-stakes proposed-SKIP items into one multiSelect or single-choice question rather than one question per item, but never let your own confidence that something is "obviously not applicable" (e.g. a feature for a platform we don't use) substitute for the user actually seeing and confirming it -- that exact shortcut is what this rule exists to prevent. Newly-introduced opt-in lint / type-check / security rules are the highest-value case and **default to proposing ADOPT**: a new rule almost always encodes a real bug class the maintainers think is worth catching, and enabling it is the entire reason to read a linter's changelog. "It's only a preview rule, or it lives in a recommended preset we don't currently inherit" is a reason to propose enabling it *deliberately*, NOT a reason to skip it without asking.
 4. **IMPROVEMENT**: Does it affect a feature we use? Quantify impact if possible. If acting on it needs a change on our side (opting into a new fast-path, raising a now-safe limit, switching to a new recommended setting), treat it like a NEW FEATURE and give it an **ADOPT / DEFER / SKIP** verdict too.
 5. **BUGFIX**: Were we hitting this bug? Check if we have workarounds that can now be removed.
 6. **SECURITY**: Does it affect our usage? What's the severity?
@@ -168,15 +168,18 @@ For each non-IRRELEVANT changelog item, check our actual usage:
 
 For docs-related dependencies, actually build the docs to verify nothing breaks.
 
-**Before checkout:** Check for uncommitted changes. If the working tree is dirty (`git status --porcelain` has output), warn the user and skip the build step rather than risk losing work.
+**Before checkout:** Check for uncommitted changes. If the working tree is dirty with unrelated in-progress work, don't skip the build or ask the user to stash it; build in an isolated worktree instead, matching the same worktree-first pattern Phase 8's "Improve and merge" uses:
 
 ```bash
-# 1. Check for dirty working tree -- skip build (don't abort the whole skill)
 if [ -n "$(git status --porcelain)" ]; then
-  echo "WARNING: Working tree is dirty. Skipping docs build -- please commit or stash changes first."
-  # Continue to Phase 5 without docs build results
+  # 1. Dirty tree: build in an isolated worktree instead of touching it
+  wt_path="$(mktemp -d)/dep-pr-docs-build"
+  git fetch origin "<pr-branch>"
+  git worktree add "$wt_path" "<pr-branch>"
+  ( cd "$wt_path" && uv sync --group docs && uv run zensical build 2>&1 )
+  git worktree remove "$wt_path" --force
 else
-  # 2. Save current branch and set up cleanup trap
+  # 2. Clean tree: save current branch and set up cleanup trap
   original_ref="$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)"
   trap 'git checkout "$original_ref"' EXIT
 
@@ -193,7 +196,7 @@ else
 fi
 ```
 
-If the build fails, capture the errors; they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
+If the build fails, capture the errors; they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure, for the clean-tree path.
 
 ## Phase 5: Cross-PR File Overlap Analysis
 
@@ -321,7 +324,7 @@ After presenting all PR reports, route each PR by its triage state. Only invoke 
 
 For a clean PR, skip the per-PR "what should we do" AskUserQuestion (there's nothing left to decide once the ADOPT gate is answered) and post the approval-with-rationale immediately -- approving does not need a fresh go-ahead. Then, before calling `gh pr merge`:
 - If the user has already told you to merge this batch earlier in the conversation (e.g. said "merge", "merge it", "merge all"), proceed directly to Phase 8's merge mechanics.
-- Otherwise, ask a single batch-level confirmation ("PR(s) #X[, #Y, #Z] are clean and approved -- CI green, all ADOPT-gate items answered. Merge now?") and wait for an actual answer. A timeout on this question is not a yes (see the AskUserQuestion discipline note in Phase 0) -- report status and stop.
+- Otherwise, ask a single batch-level confirmation ("PR(s) #X[, #Y, #Z] are clean and approved -- CI green, all ADOPT-gate items answered. Merge now?") and wait for an actual answer. A timeout on this question is not a yes (see the AskUserQuestion-timeout note in Phase 0) -- report status and stop.
 
 **Approve-with-rationale is NEVER skipped, even when merging is deferred.** Approving happens regardless of whether the merge go-ahead has arrived yet; it is not gated on the same confirmation. Every `gh pr merge` invocation in this skill MUST be preceded by an approval review whose body is the three-part Decision / Changelog digest / Follow-ups rationale defined in Phase 8's "Approve with rationale" section. There is no path through this skill that calls `gh pr merge` without first posting the rationale. If you find yourself about to invoke `gh pr merge` and have not yet posted an approval review, stop and post the approval first.
 
@@ -371,9 +374,7 @@ Always available:
 
 **Multiple clean PRs: per-PR triage question is skipped; one batch-level merge confirmation replaces it; the overlap question still applies if overlaps exist.**
 
-When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), approve all of them immediately with rationale, then ask ONE batch-level merge confirmation (`"PRs #X, #Y, #Z are all clean and approved -- CI green, no actionable items. Merge all now?"`) unless the user already told you to merge this batch earlier in the conversation. Once you have a go-ahead (from that question or from earlier explicit instruction), run Phase 8's "Merge as-is" path on each PR in sequence: one squash merge at a time, and before each merge after the first, refresh that PR's branch against the new `main` regardless of file overlap (see Phase 8's "Between merges in a multi-PR batch" note) before its own CI re-check and merge call. The per-PR triage question is what's removed; the multi-PR overlap-strategy question above is NOT removed and still fires whenever the batch has ≥ 2 PRs sharing source or config files. The batch merge confirmation runs after that strategy decision has landed (single-PR batches skip the strategy question but still get the merge confirmation).
-
-The previous behaviour (asking "Merge all? / review individually / skip for now") was a redundant confirmation step for cases where the skill has already proven there is nothing to decide; it's now gone.
+When multiple PRs in the batch all qualify as clean (per the default rule at the top of this phase), approve all of them immediately with rationale, then ask ONE batch-level merge confirmation (`"PRs #X, #Y, #Z are all clean and approved -- CI green, no actionable items. Merge all now?"`) unless the user already told you to merge this batch earlier in the conversation. Once you have a go-ahead (from that question or from earlier explicit instruction), run Phase 8's "Merge as-is" path on each PR in sequence: one squash merge at a time, and before each merge after the first, refresh that PR's branch against the new `main` regardless of file overlap (see Phase 8's "Between merges in a multi-PR batch" note) before its own CI re-check and merge call. The per-PR triage question does not run in this clean-batch path; the multi-PR overlap-strategy question above still fires whenever the batch has ≥ 2 PRs sharing source or config files, and the batch merge confirmation runs after that strategy decision has landed (single-PR batches skip the strategy question but still get the merge confirmation).
 
 ## Phase 8: Execute Decisions
 
@@ -404,7 +405,7 @@ For each PR based on user's choice:
 
 ### Approve with rationale (MANDATORY before any merge)
 
-**Every merge path in this skill funnels through this step first**, including all five strategy paths in Phase 8 (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`) and all three per-PR action sections below (`Merge as-is`, `Improve and merge`, `Fix CI and merge`). Before invoking `gh pr merge` for any PR, post a PR approval whose body is a **three-part structured rationale** (a one-sentence Decision, a Changelog digest paragraph with 2 to 4 explicit bullets, and a Follow-ups line). This leaves a durable artifact on the PR (visible to future reviewers, audit trails, and bisects) explaining what was scanned and what was deemed relevant; without it, "merged by Renovate label, no comment" becomes the only signal in the timeline.
+**Every merge path in this skill funnels through this step first**, including all five strategy paths in Phase 8 (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`) and all five per-PR action sections below (`Merge as-is`, `Adopt and merge`, `Merge now, adopt later`, `Improve and merge`, `Fix CI and merge`). Before invoking `gh pr merge` for any PR, post a PR approval whose body is a **three-part structured rationale** (a one-sentence Decision, a Changelog digest paragraph with 2 to 4 explicit bullets, and a Follow-ups line). This leaves a durable artifact on the PR (visible to future reviewers, audit trails, and bisects) explaining what was scanned and what was deemed relevant; without it, "merged by Renovate label, no comment" becomes the only signal in the timeline.
 
 The `<rationale>` body is multi-line by design. `gh pr review --body` accepts newlines (the bash `"..."` quoting preserves them), but for any rationale beyond a single sentence, prefer one of the multi-line forms below over inlining a long quoted string: heredoc piped to `--body-file -`, or write to a temp file first and pass `--body-file <path>`. Inline `"..."` quoting is fine only for the rare patch-bump-with-nothing-relevant case where the entire rationale fits on one line.
 
@@ -415,7 +416,7 @@ The body MUST contain three sections in this order, each prefixed with its liter
    - which versions were covered (from -> to)
    - **Relevant items** that affect us (new features adopted / deprecations actioned / bug fixes we were hitting / security fixes that matter)
    - **Reviewed but not relevant** items (breaking changes in features we don't use, irrelevant platform changes, removed APIs we never imported)
-3. **`Follow-ups:`** one line; `none` if clean, otherwise the deferred items the user explicitly accepted in Phase 7 (e.g. "adopt new `--cache-dependency-path` input in a follow-up PR").
+3. **`Follow-ups:`** one line; `none` if clean, otherwise the deferred items the user explicitly accepted in Phase 7. If a combined follow-up issue was filed or extended per "Merge now, adopt later," reference its number (e.g. "adopt `--cache-dependency-path` -- tracked in #1234"); for a deferred adoption not yet issue-tracked, name the change directly (e.g. "adopt new `--cache-dependency-path` input in a follow-up PR").
 
 Recommended invocation patterns (pick whichever matches the rationale length):
 
@@ -491,7 +492,7 @@ The approval rationale (Phase 8 "Approve with rationale") must name the capabili
 
 ### Merge now, adopt later
 
-Run the **Merge as-is** path to land the bump. Then file (or extend) exactly ONE follow-up issue covering ALL deferred adoptions from this review run, whether they came from a single PR or an entire batch -- never one issue per item. If this is the first DEFER item surfaced in the run, create the issue; if a later PR in the same batch adds more DEFER items, edit the existing issue's body to append a new numbered section rather than opening a second issue (do not skip the follow-up; an un-filed DEFER is just a silent SKIP):
+Run the **Merge as-is** path to land the bump, then file (or extend) exactly ONE follow-up issue covering ALL deferred adoptions from this review run, whether they came from a single PR or an entire batch -- never one issue per item (do not skip the follow-up; an un-filed DEFER is just a silent SKIP). If this is the first DEFER item surfaced in the run, create the issue; if a later PR in the same batch adds more DEFER items, edit the existing issue's body to append a new numbered section rather than opening a second issue:
 
 ```bash
 gh issue create --repo <owner>/<repo> --title "Adopt new capabilities from <batch description> dependency bumps" \
@@ -530,7 +531,7 @@ Do steps 1-4 below inside that worktree, then remove it once pushed (`git worktr
    - **Use the replacement PR number for all remaining steps** (CI wait, merge)
 5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait; if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
 6. **Approve with rationale** (per the section above): required before merge. The rationale must additionally describe the improvements applied in this PR (which recommended changes were committed, and what they were verified against).
-7. Merge the active PR, subject to the same explicit go-ahead requirement as every other merge path in this skill (Phase 7's clean-PR default note applies equally here: a fix being applied does not change who authorizes the merge).
+7. Merge the active PR, subject to the same explicit go-ahead requirement as every other merge path in this skill (per Phase 7: having applied the fix yourself doesn't change who authorizes the merge).
 
 ### Fix CI and merge
 
@@ -558,7 +559,7 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **Be specific about what affects us**: don't just list changelog items, cross-reference each one against our actual config and code usage.
 - **Major version bumps get extra scrutiny**: check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Offering improvements is the point, not a bonus**: reviewing a changelog exists to catch four things equally: breaking changes to handle, deprecations to migrate, workarounds to remove, AND new capabilities to adopt. A new opt-in lint / type / security rule, a new config flag, or a new fast-path is an ADOPT/DEFER/SKIP decision the user gets to make (Phase 3 verdict → Phase 6 "Opt-in improvements to adopt" → Phase 7 "Adopt and merge" option), never something the assistant decides on the user's behalf. **There is no item small or obviously-irrelevant enough to skip without asking** -- Phase 8's ADOPT-decision gate requires a recorded user answer for every row, SKIP included. If a bump introduces an adoptable improvement, the skill MUST surface it and offer to enable it; merging such a PR without ever presenting the adoption choice is a skill failure, and so is the assistant quietly deciding "not applicable" on its own authority.
-- **AskUserQuestion timeouts are never consent**: see the note after Phase 0. A timed-out question gets restated and the run stops there; nothing recommended, default, or "clean" is ever executed on the strength of a timeout. This applies to every AskUserQuestion call in every phase, and to every merge-confirmation this skill asks for.
+- **AskUserQuestion timeouts are never consent**: see the AskUserQuestion-timeout note in Phase 0. A timed-out question gets restated and the run stops there; nothing recommended, default, or "clean" is ever executed on the strength of a timeout. This applies to every AskUserQuestion call in every phase, and to every merge-confirmation this skill asks for.
 - **Approving and merging are different actions with different authorization**: approving a clean, fully-answered PR can happen immediately with no fresh confirmation. Merging always needs an explicit go-ahead -- either the user said "merge" earlier in the conversation, or a single batch-level confirmation was asked and actually answered. Silently merging because a PR "looks clean" is the same failure mode as silently skipping an adoption item: the assistant deciding something the user should decide.
 - **One combined follow-up issue per review run, not one per adopted item**: when multiple DEFER items exist across a PR or a batch, they land in a single issue (create once, append sections for later items), never a fresh issue per capability.
 - **Never check an unpinned "latest" version when assessing a nested/transitive dependency's real behavior**: resolve the actual version from the lockfile first. An unpinned `npm view <pkg>` silently defaults to latest and can produce a risk assessment for a version that isn't even installed.
