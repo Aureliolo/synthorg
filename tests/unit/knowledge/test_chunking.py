@@ -17,6 +17,7 @@ from synthorg.knowledge.chunking.document import OffsetChunker
 from synthorg.knowledge.chunking.protocol import ChunkPiece
 from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.enums import ContentKind, SourceType
+from synthorg.knowledge.errors import KnowledgeDependencyError
 from synthorg.knowledge.models import (
     CodeLocator,
     PdfLocator,
@@ -248,6 +249,65 @@ class TestChunkRawDocument:
         )
         await chunk_raw_document(raw, config=_CONFIG)
         assert call_log[0] == "prefetch"
+
+    async def test_child_domain_error_propagates_unwrapped(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A KnowledgeError from a chunk task surfaces unwrapped, not as a group.
+
+        The ingest caller dispatches on the bare ``KnowledgeError`` type,
+        so the ``TaskGroup``'s ``ExceptionGroup`` must be unwrapped.
+        """
+
+        class _FailingChunker:
+            def chunk_unit(self, unit: RawUnit) -> tuple[ChunkPiece, ...]:
+                raise KnowledgeDependencyError
+
+        monkeypatch.setattr(
+            "synthorg.knowledge.chunking.factory.build_chunker",
+            lambda content_kind, config: _FailingChunker(),
+        )
+        raw = RawDocument(
+            source_id=NotBlankStr("src-fail"),
+            source_type=SourceType.PDF,
+            uri=NotBlankStr("corpus/x.pdf"),
+            title="X",
+            content_hash="a" * 64,
+            units=(_doc_unit("boom"),),
+        )
+        with pytest.raises(KnowledgeDependencyError):
+            await chunk_raw_document(raw, config=_CONFIG)
+
+    async def test_child_critical_error_propagates_unwrapped(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A RecursionError from a chunk task must reach the caller unwrapped.
+
+        A critical error demoted into a generic ``ExceptionGroup`` would
+        defeat the ingest caller's ``except MemoryError, RecursionError``
+        re-raise guard.
+        """
+
+        class _CriticalChunker:
+            def chunk_unit(self, unit: RawUnit) -> tuple[ChunkPiece, ...]:
+                raise RecursionError
+
+        monkeypatch.setattr(
+            "synthorg.knowledge.chunking.factory.build_chunker",
+            lambda content_kind, config: _CriticalChunker(),
+        )
+        raw = RawDocument(
+            source_id=NotBlankStr("src-crit"),
+            source_type=SourceType.PDF,
+            uri=NotBlankStr("corpus/x.pdf"),
+            title="X",
+            content_hash="a" * 64,
+            units=(_doc_unit("boom"),),
+        )
+        with pytest.raises(RecursionError):
+            await chunk_raw_document(raw, config=_CONFIG)
 
     async def test_unsupported_language_alongside_supported_degrades_gracefully(
         self,

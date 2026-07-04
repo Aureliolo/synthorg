@@ -55,12 +55,18 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, object]:
 
 
 def build_update_metadata(request: MemoryUpdateRequest) -> dict[str, object] | None:
-    """Build the partial metadata dict to merge for an ``update()`` call.
+    """Build the metadata dict to merge for an ``update()`` call.
 
-    Mem0 merges this dict onto the entry's existing metadata rather
-    than replacing it (``new_metadata = deepcopy(existing); new_metadata
-    .update(metadata)``), so only keys the caller actually wants to
-    change are included -- an omitted key survives untouched.
+    When ``request.metadata`` is set it is a wholesale replacement of the
+    entry's ``MemoryMetadata``, matching ``InMemoryBackend.update()``
+    (which assigns ``request.metadata`` outright). So all three prefixed
+    fields (``confidence``, ``source``, ``tags``) are written
+    unconditionally: a ``None`` source or empty tag tuple clears the
+    prior value rather than surviving it, otherwise the same
+    ``MemoryUpdateRequest`` would yield divergent results across
+    backends. Only these three keys are touched; ``category`` /
+    ``namespace`` (which ``MemoryMetadata`` does not carry) are left
+    untouched, as on the in-memory backend.
 
     Args:
         request: Update request with the fields to change.
@@ -72,10 +78,8 @@ def build_update_metadata(request: MemoryUpdateRequest) -> dict[str, object] | N
     meta: dict[str, object] = {}
     if request.metadata is not None:
         meta[f"{_PREFIX}confidence"] = request.metadata.confidence
-        if request.metadata.source is not None:
-            meta[f"{_PREFIX}source"] = request.metadata.source
-        if request.metadata.tags:
-            meta[f"{_PREFIX}tags"] = list(request.metadata.tags)
+        meta[f"{_PREFIX}source"] = request.metadata.source
+        meta[f"{_PREFIX}tags"] = list(request.metadata.tags)
     if request.expires_at is not None:
         meta[f"{_PREFIX}expires_at"] = request.expires_at.isoformat()
     elif request.clear_expiration:

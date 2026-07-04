@@ -74,8 +74,12 @@ _MAX_CHARS: int = KNOWLEDGE_CHUNK_MAX_TOKENS * DEFAULT_CHAR_PER_TOKEN
 _TARGET_CHARS: int = KNOWLEDGE_CHUNK_TARGET_TOKENS * DEFAULT_CHAR_PER_TOKEN
 
 
-def _language_for(path: str) -> str | None:
-    """Return the grammar name for *path*'s extension, or None."""
+def language_for(path: str) -> str | None:
+    """Return the grammar name for *path*'s extension, or None.
+
+    Public because the batch prefetch in ``factory.py`` resolves the same
+    extension-to-grammar mapping to pre-load a batch's grammars.
+    """
     lowered = path.lower()
     for ext, language in _EXTENSION_LANGUAGE.items():
         if lowered.endswith(ext):
@@ -145,7 +149,7 @@ class CodeChunker:
         if not unit.text.strip():
             return ()
         path = unit.locator.path
-        language = _language_for(path)
+        language = language_for(path)
         parser = _load_parser(language) if language is not None else None
         lines = unit.text.split("\n")
         if parser is None:

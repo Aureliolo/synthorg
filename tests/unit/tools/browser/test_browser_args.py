@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.browser._args import BrowserToolArgs
+from synthorg.tools.browser._constants import STORAGE_VALUE_MAX_LENGTH
 
 pytestmark = pytest.mark.unit
 
@@ -115,11 +116,17 @@ class TestBrowserToolArgsStorage:
         with pytest.raises(ValidationError):
             BrowserToolArgs.model_validate({"mode": "storage_get"})
 
-    def test_storage_get_without_key_is_ok(self) -> None:
+    def test_storage_get_requires_key(self) -> None:
+        with pytest.raises(ValidationError):
+            BrowserToolArgs.model_validate(
+                {"mode": "storage_get", "url": "http://example.test"},
+            )
+
+    def test_storage_get_with_key_is_ok(self) -> None:
         args = BrowserToolArgs.model_validate(
-            {"mode": "storage_get", "url": "http://example.test"},
+            {"mode": "storage_get", "url": "http://example.test", "storage_key": "k"},
         )
-        assert args.storage_key is None
+        assert args.storage_key == "k"
         assert args.storage_type == "local"
 
     def test_storage_set_requires_key(self) -> None:
@@ -160,12 +167,24 @@ class TestBrowserToolArgsStorage:
                 {"mode": "storage_remove", "url": "http://example.test"},
             )
 
+    def test_storage_value_over_cap_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            BrowserToolArgs.model_validate(
+                {
+                    "mode": "storage_set",
+                    "url": "http://example.test",
+                    "storage_key": "k",
+                    "storage_value": "x" * (STORAGE_VALUE_MAX_LENGTH + 1),
+                },
+            )
+
     def test_storage_type_is_literal(self) -> None:
         with pytest.raises(ValidationError):
             BrowserToolArgs.model_validate(
                 {
                     "mode": "storage_get",
                     "url": "http://example.test",
+                    "storage_key": "k",
                     "storage_type": "cookies",
                 },
             )

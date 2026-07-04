@@ -1,5 +1,6 @@
 """Cedar policy engine adapter using ``cedarpy``."""
 
+import asyncio
 import json
 import time
 
@@ -49,6 +50,17 @@ class CedarPolicyEngine:
         *,
         fail_closed: bool = False,
     ) -> None:
+        # Policies are operator-authored static rule sets, concatenated
+        # and parsed once into a single PolicySet. Cedar template linking
+        # (with_linked / with_linked_batch) instantiates parameterised
+        # templates with ?principal / ?resource slots into concrete
+        # per-entity policies; it simplifies composition only when many
+        # near-identical policies differ solely by principal or resource
+        # (e.g. per-user share grants managed at runtime). This engine
+        # evaluates general rules against per-request concrete entities, so
+        # there are no per-entity policies to link and template linking
+        # would add indirection without simplifying the composition.
+        # Revisit only if runtime per-entity grant policies are introduced.
         self._policy_set = cedarpy.PolicySet.from_str("\n".join(policy_texts))
         self._fail_closed = fail_closed
 
@@ -97,7 +109,11 @@ class CedarPolicyEngine:
         start = time.perf_counter()
         decision: PolicyDecision | None = None
         try:
-            result = cedarpy.is_authorized(
+            # cedarpy.is_authorized is a synchronous CPU-bound call into
+            # the Rust core; offload it so a large policy set cannot block
+            # the event loop for the evaluation's duration.
+            result = await asyncio.to_thread(
+                cedarpy.is_authorized,
                 cedar_request,
                 self._policy_set,
                 [],

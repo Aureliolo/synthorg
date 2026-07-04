@@ -20,6 +20,7 @@ from synthorg.tools.browser._constants import (
     MIN_VIEWPORT_DIMENSION,
     NAVIGATION_TIMEOUT_SECONDS,
     START_COMMAND_TIMEOUT_SECONDS_DEFAULT,
+    STORAGE_VALUE_MAX_LENGTH,
     WAIT_CONDITION_DEFAULT,
 )
 
@@ -199,12 +200,14 @@ class BrowserToolArgs(BaseModel):
     storage_key: NotBlankStr | None = Field(
         default=None,
         description=(
-            "Storage item key. Required for storage_set and storage_remove; "
-            "optional for storage_get (omit to fetch all items)."
+            "Storage item key. Required for storage_get, storage_set, and "
+            "storage_remove: reads and writes name the exact key rather than "
+            "dumping the whole store."
         ),
     )
     storage_value: str | None = Field(
         default=None,
+        max_length=STORAGE_VALUE_MAX_LENGTH,
         description="Storage item value. Required for storage_set.",
     )
 
@@ -252,7 +255,10 @@ class BrowserToolArgs(BaseModel):
         if (self.viewport_width is None) != (self.viewport_height is None):
             msg = "viewport_width and viewport_height must be set together"
             raise ValueError(msg)
-        if self.mode in {"storage_set", "storage_remove"} and self.storage_key is None:
+        if (
+            self.mode in {"storage_get", "storage_set", "storage_remove"}
+            and self.storage_key is None
+        ):
             msg = f"{self.mode!r} mode requires storage_key"
             raise ValueError(msg)
         if self.mode == "storage_set" and self.storage_value is None:

@@ -28,6 +28,11 @@ class BrowserPayload(TypedDict):
     storage_type: NotRequired[Literal["local", "session"]]
     storage_key: NotRequired[str]
     storage_value: NotRequired[str]
+    # Workspace-mounted paths that persist a browsing session across
+    # separate tool calls: the Playwright storage_state (cookies +
+    # localStorage) and the host-side virtual-authenticator keystore.
+    storage_state_path: NotRequired[str]
+    webauthn_state_path: NotRequired[str]
     webauthn_rp_id: NotRequired[str]
     webauthn_user_handle: NotRequired[str]
     webauthn_credential_id: NotRequired[str]
@@ -51,7 +56,21 @@ class StoragePayload(TypedDict):
 
 
 class WebAuthnCredentialPayload(TypedDict):
-    """A single virtual WebAuthn credential (in-container JSON shape)."""
+    """A model-safe virtual credential returned to the host (no private key)."""
+
+    id: str
+    rp_id: str
+    user_handle: str
+    public_key: str
+
+
+class WebAuthnKeystoreEntry(TypedDict):
+    """A full credential tuple persisted host-side to re-seed the authenticator.
+
+    Includes the private key. This shape is written only to the
+    workspace-mounted keystore file, never to the result returned to the
+    model-facing surface.
+    """
 
     id: str
     rp_id: str

@@ -10,7 +10,7 @@ freshness diffing stays stable across re-ingests.
 import asyncio
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.knowledge.chunking.code import CodeChunker, _language_for
+from synthorg.knowledge.chunking.code import CodeChunker, language_for
 from synthorg.knowledge.chunking.document import OffsetChunker
 from synthorg.knowledge.chunking.protocol import (
     ChunkPiece,
@@ -59,7 +59,7 @@ def _batch_languages(units: tuple[RawUnit, ...]) -> frozenset[str]:
             continue
         if not isinstance(unit.locator, CodeLocator):
             continue
-        language = _language_for(unit.locator.path)
+        language = language_for(unit.locator.path)
         if language is not None:
             languages.add(language)
     return frozenset(languages)
@@ -133,8 +133,17 @@ async def chunk_raw_document(
         pieces = await asyncio.to_thread(chunker.chunk_unit, unit)
         return unit.content_kind, pieces
 
-    async with asyncio.TaskGroup() as tg:
-        tasks = [tg.create_task(_chunk_one(unit)) for unit in raw.units]
+    # A child failure surfaces from the TaskGroup as an ExceptionGroup;
+    # unwrap to the original exception so the ingest caller's type-based
+    # dispatch (bare KnowledgeError / critical MemoryError / RecursionError)
+    # still matches instead of collapsing into a generic handler.
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_chunk_one(unit)) for unit in raw.units]
+    except* (MemoryError, RecursionError) as eg:
+        raise eg.exceptions[0] from eg
+    except* Exception as eg:
+        raise eg.exceptions[0] from eg
 
     typed_pieces: list[tuple[ContentKind, ChunkPiece]] = []
     for task in tasks:

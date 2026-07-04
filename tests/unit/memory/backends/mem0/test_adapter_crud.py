@@ -405,6 +405,26 @@ class TestDelete:
         assert result is True
         mock_client.delete.assert_called_once_with("mem-001")
 
+    async def test_delete_holds_per_memory_id_lock(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """delete()'s ownership-check + delete runs under the per-id lock."""
+        lock_depths: list[int] = []
+
+        def _record(_memory_id: str) -> dict[str, object]:
+            lock_depths.append(len(backend._entry_locks))
+            return mem0_get_result("mem-001", user_id="test-agent-001")
+
+        mock_client.get.side_effect = _record
+        mock_client.delete.return_value = None
+
+        await backend.delete("test-agent-001", "mem-001")
+
+        assert lock_depths
+        assert all(depth >= 1 for depth in lock_depths)
+
     async def test_delete_not_found(
         self,
         backend: Mem0MemoryBackend,
@@ -604,6 +624,92 @@ class TestUpdate:
 
         call_args = mock_client.update.call_args
         assert call_args[1]["metadata"]["_synthorg_expires_at"] is None
+
+    async def test_update_metadata_replaces_all_fields(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """A metadata update is a wholesale replace of all three fields.
+
+        Matches ``InMemoryBackend.update()``: a tags-only
+        ``MemoryMetadata`` still rewrites ``confidence`` to its default
+        and clears ``source``, so the same request cannot diverge across
+        backends.
+        """
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+
+        await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(metadata=MemoryMetadata(tags=("urgent",))),
+        )
+
+        meta = mock_client.update.call_args[1]["metadata"]
+        assert meta["_synthorg_confidence"] == 1.0
+        assert meta["_synthorg_source"] is None
+        assert meta["_synthorg_tags"] == ["urgent"]
+
+    async def test_update_expired_returns_none(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """An expired entry is gone; update refuses to revive it."""
+        mock_client.get.return_value = {
+            "id": "mem-001",
+            "memory": "stored content",
+            "created_at": "2020-01-01T00:00:00+00:00",
+            "updated_at": None,
+            "user_id": "test-agent-001",
+            "metadata": {
+                "_synthorg_category": "episodic",
+                "_synthorg_confidence": 1.0,
+                "_synthorg_expires_at": "2020-06-01T00:00:00+00:00",
+            },
+        }
+
+        entry = await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(content="new content"),
+        )
+
+        assert entry is None
+        mock_client.update.assert_not_called()
+
+    async def test_update_holds_per_memory_id_lock(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """update()'s read-modify-write runs under the per-memory_id lock.
+
+        The lock map holds an entry for the id only while a caller is
+        inside ``acquire``, so a non-zero length observed during the DB
+        calls proves the TOCTOU-closing lock is held.
+        """
+        lock_depths: list[int] = []
+
+        def _record(_memory_id: str) -> dict[str, object]:
+            lock_depths.append(len(backend._entry_locks))
+            return mem0_get_result("mem-001", user_id="test-agent-001")
+
+        mock_client.get.side_effect = _record
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+
+        await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(content="new content"),
+        )
+
+        assert lock_depths
+        assert all(depth >= 1 for depth in lock_depths)
 
     async def test_update_not_found_returns_none(
         self,

@@ -51,10 +51,11 @@ import json
 import os
 import sys
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from playwright.async_api import BrowserContext, Page, VirtualCredential
+from playwright.async_api import Browser, BrowserContext, Page, VirtualCredential
 
 if TYPE_CHECKING:
     # The executor is copied into and run inside the sandbox container, where
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
         StoragePayload,
         Violation,
         WebAuthnCredentialPayload,
+        WebAuthnKeystoreEntry,
         WebAuthnPayload,
     )
 
@@ -365,19 +367,26 @@ async def _accessibility(
 
 
 async def _storage_get(page: Page, payload: "BrowserPayload") -> "StoragePayload":
-    """Read one item, or all items, from the page's WebStorage.
+    """Read a single named item from the page's WebStorage.
+
+    A key is required: dumping the whole store would surface every value
+    a page holds (session tokens, embedded API keys) unfiltered into the
+    model-facing result, so reads must name the exact key.
 
     Returns:
-        The storage type plus the matching key/value pairs.
+        The storage type plus the matching key/value pair (empty when the
+        key is absent).
+
+    Raises:
+        ValueError: If ``storage_key`` is missing from the payload.
     """
     storage_type = payload.get("storage_type") or "local"
     storage = page.session_storage if storage_type == "session" else page.local_storage
     key = payload.get("storage_key")
-    if key:
-        value = await storage.get_item(key)
-        items = {key: value} if value is not None else {}
-    else:
-        items = {item["name"]: item["value"] for item in await storage.items()}
+    if not key:
+        raise ValueError("storage_get requires storage_key")
+    value = await storage.get_item(key)
+    items = {key: value} if value is not None else {}
     return {"storage_type": storage_type, "items": items}
 
 
@@ -419,7 +428,9 @@ async def _storage_clear(page: Page, payload: "BrowserPayload") -> "StoragePaylo
     return {"storage_type": storage_type, "items": {}}
 
 
-_STORAGE_HANDLERS = {
+_STORAGE_HANDLERS: Final[
+    dict[str, Callable[[Page, "BrowserPayload"], Awaitable["StoragePayload"]]]
+] = {
     "storage_get": _storage_get,
     "storage_set": _storage_set,
     "storage_remove": _storage_remove,
@@ -430,13 +441,34 @@ _STORAGE_HANDLERS = {
 def _credential_to_payload(
     cred: VirtualCredential,
 ) -> "WebAuthnCredentialPayload":
-    """Normalize a Playwright ``VirtualCredential`` to the host-side JSON shape.
+    """Normalize a ``VirtualCredential`` to the model-safe host shape.
 
     Playwright returns camelCase keys (``rpId``, ``userHandle``, ...); the
-    host-side model expects snake_case.
+    host-side model expects snake_case. The private key is deliberately
+    omitted: it is a secret and must never reach the model-facing result.
 
     Returns:
-        The credential in snake_case field form.
+        The credential's non-secret fields in snake_case form.
+    """
+    return {
+        "id": cred["id"],
+        "rp_id": cred["rpId"],
+        "user_handle": cred["userHandle"],
+        "public_key": cred["publicKey"],
+    }
+
+
+def _credential_to_keystore_entry(
+    cred: VirtualCredential,
+) -> "WebAuthnKeystoreEntry":
+    """Normalize a ``VirtualCredential`` to the full host-side keystore shape.
+
+    Includes the private key so the authenticator can be re-seeded on a
+    later call. Written only to the workspace-mounted keystore file, never
+    to the result returned to the model.
+
+    Returns:
+        The full credential tuple in snake_case form.
     """
     return {
         "id": cred["id"],
@@ -447,16 +479,65 @@ def _credential_to_payload(
     }
 
 
+def _load_keystore(path: str | None) -> list["WebAuthnKeystoreEntry"]:
+    """Load the virtual-authenticator credential keystore from the workspace.
+
+    Returns:
+        The stored credential tuples, or an empty list when no keystore
+        exists yet or it cannot be parsed.
+    """
+    if not path:
+        return []
+    validated = _validated_sandbox_path(path, field="webauthn_state_path")
+    if not validated.exists():
+        return []
+    try:
+        data = json.loads(validated.read_text(encoding="utf-8"))
+    except json.JSONDecodeError, OSError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _save_keystore(path: str, entries: list["WebAuthnKeystoreEntry"]) -> None:
+    """Persist the credential keystore to the workspace-mounted path."""
+    validated = _validated_sandbox_path(path, field="webauthn_state_path")
+    validated.parent.mkdir(parents=True, exist_ok=True)
+    validated.write_text(json.dumps(entries), encoding="utf-8")
+
+
+async def _seed_authenticator(
+    context: BrowserContext,
+    entries: list["WebAuthnKeystoreEntry"],
+) -> None:
+    """Install the virtual authenticator and re-seed every stored credential.
+
+    Re-seeding imports each keystore credential (id + keys + user handle)
+    so ``webauthn_list``/``delete`` see prior credentials and a page's
+    ``navigator.credentials.get()`` ceremony is answered during browsing.
+    """
+    await context.credentials.install()
+    for entry in entries:
+        await context.credentials.create(
+            rp_id=entry["rp_id"],
+            id=entry["id"],
+            user_handle=entry["user_handle"],
+            private_key=entry["private_key"],
+            public_key=entry["public_key"],
+        )
+
+
 async def _webauthn(
     context: BrowserContext,
     payload: "BrowserPayload",
+    entries: list["WebAuthnKeystoreEntry"],
 ) -> "WebAuthnPayload":
     """Run one WebAuthn virtual-authenticator operation.
 
-    Each call installs a fresh virtual authenticator on ``context`` --
-    the sandbox launches a new browser per executor invocation, so no
-    authenticator state persists across separate tool calls; every
-    webauthn_* operation is self-contained within its own call.
+    The authenticator is already installed and re-seeded from the keystore
+    by ``_run_in_context`` before this runs, so ``list``/``delete`` act on
+    the persisted credentials. ``create`` appends the new full credential
+    (private key included) to the workspace keystore; ``delete`` removes it.
+    Only the non-secret credential fields are ever returned to the host.
 
     Returns:
         The credentials produced or returned by this operation.
@@ -465,7 +546,7 @@ async def _webauthn(
         KeyError: If a required payload field is missing for this operation.
     """
     operation = payload["operation"]
-    await context.credentials.install()
+    state_path = payload.get("webauthn_state_path")
     if operation == "webauthn_install":
         return {"credentials": []}
     if operation == "webauthn_create_credential":
@@ -473,13 +554,156 @@ async def _webauthn(
             rp_id=payload["webauthn_rp_id"],
             user_handle=payload.get("webauthn_user_handle"),
         )
+        if state_path:
+            _save_keystore(state_path, [*entries, _credential_to_keystore_entry(cred)])
         return {"credentials": [_credential_to_payload(cred)]}
     if operation == "webauthn_list_credentials":
         creds = await context.credentials.get(rp_id=payload.get("webauthn_rp_id"))
         return {"credentials": [_credential_to_payload(c) for c in creds]}
     # webauthn_delete_credential
-    await context.credentials.delete(id=payload["webauthn_credential_id"])
+    target_id = payload["webauthn_credential_id"]
+    await context.credentials.delete(id=target_id)
+    if state_path:
+        _save_keystore(state_path, [e for e in entries if e["id"] != target_id])
     return {"credentials": []}
+
+
+async def _new_context(
+    browser: Browser,
+    payload: "BrowserPayload",
+    width: int,
+    height: int,
+) -> BrowserContext:
+    """Create a context, seeding it from the persisted storage_state if present.
+
+    Returns:
+        A browser context pre-loaded with any saved cookies/localStorage.
+    """
+    state_path = payload.get("storage_state_path")
+    if state_path:
+        validated = _validated_sandbox_path(state_path, field="storage_state_path")
+        if validated.exists():
+            return await browser.new_context(
+                viewport={"width": width, "height": height},
+                storage_state=str(validated),
+            )
+    return await browser.new_context(
+        viewport={"width": width, "height": height},
+    )
+
+
+async def _persist_storage_state(
+    context: BrowserContext,
+    payload: "BrowserPayload",
+) -> None:
+    """Save the context's cookies + localStorage back to the workspace.
+
+    Called only on the page path (a navigation has materialised the
+    origin's localStorage) so a webauthn-only call cannot clobber a
+    previously-saved storage snapshot with an empty one.
+    """
+    state_path = payload.get("storage_state_path")
+    if not state_path:
+        return
+    validated = _validated_sandbox_path(state_path, field="storage_state_path")
+    validated.parent.mkdir(parents=True, exist_ok=True)
+    await context.storage_state(path=str(validated))
+
+
+async def _sync_keystore(
+    context: BrowserContext,
+    payload: "BrowserPayload",
+    entries: list["WebAuthnKeystoreEntry"],
+) -> None:
+    """Merge any page-registered passkeys back into the workspace keystore.
+
+    After a navigation with the authenticator seeded, a page may have
+    registered its own passkey via ``navigator.credentials.create()``;
+    capture those so they survive to the next call.
+    """
+    state_path = payload.get("webauthn_state_path")
+    if not state_path:
+        return
+    merged: "dict[str, WebAuthnKeystoreEntry]" = {e["id"]: e for e in entries}
+    for cred in await context.credentials.get():
+        merged[cred["id"]] = _credential_to_keystore_entry(cred)
+    _save_keystore(state_path, list(merged.values()))
+
+
+async def _dispatch_page(
+    context: BrowserContext,
+    payload: "BrowserPayload",
+    *,
+    seeded: bool,
+    entries: list["WebAuthnKeystoreEntry"],
+) -> dict[str, object]:
+    """Run the page-scoped operations (navigate, screenshot, a11y, storage).
+
+    Returns:
+        The result envelope for a page-path operation.
+
+    Raises:
+        ValueError: If a required payload field is missing.
+    """
+    operation = payload["operation"]
+    page = await context.new_page()
+    try:
+        navigation = await _navigate(page, payload)
+        screenshot_result: dict[str, object] | None = None
+        a11y_result: dict[str, object] | None = None
+        storage_result: "StoragePayload | None" = None
+        if operation in {"capture", "screenshot"}:
+            if not payload.get("screenshot_path"):
+                raise ValueError("screenshot_path required for capture / screenshot")
+            screenshot_result = await _screenshot(page, payload)
+        if operation in {"capture", "accessibility_scan"}:
+            a11y_result = await _accessibility(page, payload)
+        if operation in _STORAGE_OPERATIONS:
+            storage_result = await _STORAGE_HANDLERS[operation](page, payload)
+        # Persist session state while the page (and its origin's
+        # localStorage) is still open, so a later call sees the writes.
+        await _persist_storage_state(context, payload)
+        if seeded:
+            await _sync_keystore(context, payload, entries)
+        return {
+            "status": "ok",
+            "navigation": navigation,
+            "screenshot": screenshot_result,
+            "accessibility": a11y_result,
+            "storage": storage_result,
+        }
+    finally:
+        await page.close()
+
+
+async def _run_in_context(
+    browser: Browser,
+    payload: "BrowserPayload",
+    width: int,
+    height: int,
+) -> dict[str, object]:
+    """Seed session state, then dispatch the operation within one context.
+
+    Returns:
+        The operation's result envelope.
+    """
+    operation = payload["operation"]
+    entries = _load_keystore(payload.get("webauthn_state_path"))
+    context = await _new_context(browser, payload, width, height)
+    try:
+        # Seed the virtual authenticator for any webauthn op, and for a
+        # page path only once the agent has created credentials -- so a
+        # navigation answers a passkey ceremony while a plain browse with
+        # no stored passkeys keeps the native (absent) behaviour.
+        seeded = operation in _WEBAUTHN_OPERATIONS or bool(entries)
+        if seeded:
+            await _seed_authenticator(context, entries)
+        if operation in _WEBAUTHN_OPERATIONS:
+            webauthn_result = await _webauthn(context, payload, entries)
+            return {"status": "ok", "webauthn": webauthn_result}
+        return await _dispatch_page(context, payload, seeded=seeded, entries=entries)
+    finally:
+        await context.close()
 
 
 async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
@@ -496,7 +720,6 @@ async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
     """
     from playwright.async_api import async_playwright  # noqa: PLC0415
 
-    operation = payload["operation"]
     width = int(
         payload.get("viewport_width") or _DEFAULT_VIEWPORT_WIDTH,
     )
@@ -524,46 +747,7 @@ async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
             timeout=launch_timeout_seconds,
         )
         try:
-            context = await browser.new_context(
-                viewport={"width": width, "height": height},
-            )
-            try:
-                if operation in _WEBAUTHN_OPERATIONS:
-                    # WebAuthn virtual-authenticator operations are a CDP-level
-                    # concept scoped to the browser context, independent of
-                    # any specific page -- no navigation is needed.
-                    webauthn_result = await _webauthn(context, payload)
-                    return {"status": "ok", "webauthn": webauthn_result}
-                page = await context.new_page()
-                try:
-                    navigation = await _navigate(page, payload)
-                    screenshot_result: dict[str, object] | None = None
-                    a11y_result: dict[str, object] | None = None
-                    storage_result: "StoragePayload | None" = None
-                    if operation in {"capture", "screenshot"}:
-                        if not payload.get("screenshot_path"):
-                            raise ValueError(
-                                "screenshot_path required for capture / screenshot",
-                            )
-                        screenshot_result = await _screenshot(page, payload)
-                    if operation in {"capture", "accessibility_scan"}:
-                        a11y_result = await _accessibility(page, payload)
-                    if operation in _STORAGE_OPERATIONS:
-                        storage_result = await _STORAGE_HANDLERS[operation](
-                            page,
-                            payload,
-                        )
-                    return {
-                        "status": "ok",
-                        "navigation": navigation,
-                        "screenshot": screenshot_result,
-                        "accessibility": a11y_result,
-                        "storage": storage_result,
-                    }
-                finally:
-                    await page.close()
-            finally:
-                await context.close()
+            return await _run_in_context(browser, payload, width, height)
         finally:
             await browser.close()
 

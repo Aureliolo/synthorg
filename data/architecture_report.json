@@ -30,12 +30,6 @@
       "ratio": 0.934,
       "tier": "code"
     },
-    "src/synthorg/api/approval_store.py": {
-      "cap": 600,
-      "loc": 600,
-      "ratio": 1.0,
-      "tier": "service"
-    },
     "src/synthorg/api/auth/controllers/session.py": {
       "cap": 400,
       "loc": 370,
@@ -758,8 +752,8 @@
     },
     "src/synthorg/knowledge/service.py": {
       "cap": 500,
-      "loc": 476,
-      "ratio": 0.952,
+      "loc": 477,
+      "ratio": 0.954,
       "tier": "code"
     },
     "src/synthorg/llm/prompt_purpose.py": {
@@ -770,8 +764,8 @@
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
       "cap": 500,
-      "loc": 415,
-      "ratio": 0.83,
+      "loc": 432,
+      "ratio": 0.864,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/config.py": {
@@ -782,8 +776,8 @@
     },
     "src/synthorg/memory/backends/mem0/mappers.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/sparse_search.py": {
@@ -1422,10 +1416,16 @@
       "ratio": 0.988,
       "tier": "code"
     },
+    "src/synthorg/tools/browser/_executor.py": {
+      "cap": 700,
+      "loc": 664,
+      "ratio": 0.949,
+      "tier": "integration"
+    },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1070,
-      "ratio": 0.973,
+      "loc": 1068,
+      "ratio": 0.971,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
@@ -1544,7 +1544,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 214,
-    "synthorg.core.critical_errors": 625,
+    "synthorg.core.critical_errors": 626,
     "synthorg.core.domain_errors": 226,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1590,7 +1590,7 @@
     "synthorg.llm.prompt_purpose": 50,
     "synthorg.memory.embedding.fine_tune_models": 24,
     "synthorg.memory.errors": 31,
-    "synthorg.memory.models": 73,
+    "synthorg.memory.models": 74,
     "synthorg.memory.protocol": 68,
     "synthorg.meta.chief_of_staff.models": 39,
     "synthorg.meta.config": 26,
@@ -1608,10 +1608,9 @@
     "synthorg.meta.signal_models": 24,
     "synthorg.meta.state": 23,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1781,
+    "synthorg.observability": 1783,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 204,
-    "synthorg.observability.events.approval_gate": 20,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 33,
     "synthorg.observability.events.client": 24,
@@ -1632,7 +1631,7 @@
     "synthorg.observability.events.training": 22,
     "synthorg.observability.events.workflow": 26,
     "synthorg.observability.events.workspace": 28,
-    "synthorg.observability.metrics_hub": 34,
+    "synthorg.observability.metrics_hub": 33,
     "synthorg.ontology.models": 25,
     "synthorg.persistence._generics": 220,
     "synthorg.persistence._shared": 165,
@@ -1668,10 +1667,6 @@
     "synthorg.tools.network_validator": 30
   },
   "lcom": {
-    "synthorg.api.approval_store:ApprovalStore": {
-      "lcom4": 1,
-      "loc": 541
-    },
     "synthorg.api.bus_bridge:MessageBusBridge": {
       "lcom4": 1,
       "loc": 479
@@ -1778,7 +1773,7 @@
     },
     "synthorg.memory.backends.mem0.adapter:Mem0MemoryBackend": {
       "lcom4": 7,
-      "loc": 653
+      "loc": 764
     },
     "synthorg.memory.embedding.fine_tune_orchestrator:FineTuneOrchestrator": {
       "lcom4": 1,
@@ -1850,7 +1845,7 @@
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,
-      "loc": 905
+      "loc": 934
     },
     "synthorg.tools.invoker:ToolInvoker": {
       "lcom4": 1,

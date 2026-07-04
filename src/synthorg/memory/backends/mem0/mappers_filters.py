@@ -14,7 +14,7 @@ from synthorg.observability.events.memory import MEMORY_FILTER_APPLIED
 logger = get_logger(__name__)
 
 
-def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
+def is_expired(entry: MemoryEntry, now: datetime) -> bool:
     """Return True if *entry* has expired.
 
     Returns:
@@ -48,7 +48,7 @@ def _matches_filters(
         ``True`` if the entry passes every query filter, ``False``
         otherwise.
     """
-    if _is_expired(entry, now):
+    if is_expired(entry, now):
         return False
     if not _matches_metadata(entry, query):
         return False

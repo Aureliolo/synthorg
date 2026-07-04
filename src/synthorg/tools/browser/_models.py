@@ -297,11 +297,13 @@ class StorageItemsResult(BaseModel):
 
 
 class WebAuthnCredential(BaseModel):
-    """A virtual WebAuthn credential.
+    """A virtual WebAuthn credential, minus its private key.
 
-    The private key is a virtual-authenticator artifact (never a real
-    hardware key), included so a caller can persist and re-seed it in a
-    later call.
+    The private key never reaches this model-facing surface: it is a
+    secret and stays in the tool's host-side credential keystore, keyed
+    by ``id``, so the sandbox can re-seed the authenticator on a later
+    call without the key ever entering the LLM context or persisted
+    conversation history.
     """
 
     model_config = _RESPONSE_CONFIG
@@ -311,9 +313,6 @@ class WebAuthnCredential(BaseModel):
         description="Relying-party id the credential is scoped to.",
     )
     user_handle: str = Field(description="Base64url-encoded user handle.")
-    private_key: str = Field(
-        description="Base64url-encoded PKCS#8 (DER) private key.",
-    )
     public_key: str = Field(
         description="Base64url-encoded SPKI (DER) public key.",
     )

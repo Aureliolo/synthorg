@@ -18,6 +18,7 @@ process.
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -72,10 +73,13 @@ from synthorg.tools.browser._constants import (
     ACCESSIBILITY_SCAN_TIMEOUT_SECONDS,
     AXE_BUNDLE_PATH,
     AXE_VERSION_PIN,
+    BROWSER_STATE_SUBDIR,
     CONTAINER_WORKSPACE_ROOT,
     NAVIGATION_TIMEOUT_SECONDS,
     SCREENSHOT_TIMEOUT_SECONDS,
     SCREENSHOTS_SUBDIR,
+    STORAGE_STATE_FILENAME,
+    WEBAUTHN_STATE_FILENAME,
 )
 from synthorg.tools.browser._models import (
     ScreenshotDiffResult,
@@ -220,6 +224,10 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         self._differ: ScreenshotDiffer = screenshot_differ or SSIMDiffer()
         self._baselines = WorkspaceBaselineStore(workspace=self._workspace)
         self._owner_id = owner_id or f"browser-tool-{uuid4()}"
+        # Filesystem-safe owner segment for the per-owner session-state
+        # directory, so one owner's cookies/passkeys never land in another's
+        # directory and a crafted owner_id cannot traverse out of it.
+        self._state_segment = re.sub(r"[^A-Za-z0-9_-]", "_", self._owner_id)
         self._settings = settings or BrowserSettings()
 
     @override
@@ -611,12 +619,13 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         """Mode webauthn.
 
         Handles webauthn_install, webauthn_create_credential,
-        webauthn_list_credentials, webauthn_delete_credential. Each call
-        installs a fresh virtual authenticator in the sandbox's browser
-        context and is entirely self-contained: no authenticator state
-        persists across separate tool invocations. ``url``/``path`` are
-        optional since the virtual authenticator is a browser-context-level
-        concept, not tied to a specific page.
+        webauthn_list_credentials, webauthn_delete_credential. Created
+        credentials persist in a per-owner keystore on the workspace and
+        are re-seeded into the virtual authenticator on each call, so
+        ``list``/``delete`` operate on prior credentials and a passkey
+        ceremony triggered during a later navigation is answered. ``url``
+        /``path`` are optional since the virtual authenticator is a
+        browser-context-level concept, not tied to a specific page.
 
         Returns:
             Result of type ``ToolExecutionResult``.
@@ -896,10 +905,33 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             "storage_type": args.storage_type,
             "storage_key": args.storage_key,
             "storage_value": args.storage_value,
+            "storage_state_path": self._state_container_path(STORAGE_STATE_FILENAME),
+            "webauthn_state_path": self._state_container_path(WEBAUTHN_STATE_FILENAME),
             "webauthn_rp_id": args.webauthn_rp_id,
             "webauthn_user_handle": args.webauthn_user_handle,
             "webauthn_credential_id": args.webauthn_credential_id,
         }
+
+    def _state_host_dir(self) -> Path:
+        """Return the per-owner session-state directory on the host workspace.
+
+        Returns:
+            The workspace-resident directory holding this owner's
+            persisted storage_state and virtual-authenticator keystore.
+        """
+        return self._workspace / BROWSER_STATE_SUBDIR / self._state_segment
+
+    def _state_container_path(self, filename: str) -> str:
+        """Return the container path for a per-owner session-state file.
+
+        Returns:
+            The ``/workspace``-rooted path the in-container executor reads
+            and writes for cross-call session persistence.
+        """
+        return (
+            f"{CONTAINER_WORKSPACE_ROOT}/{BROWSER_STATE_SUBDIR}/"
+            f"{self._state_segment}/{filename}"
+        )
 
     def _executor_timeout_seconds(
         self,
@@ -1177,6 +1209,10 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             axe_changed = copy_if_stale(AXE_BUNDLE_PATH, axe_target)
             screenshots_root = self._workspace / SCREENSHOTS_SUBDIR
             screenshots_root.mkdir(parents=True, exist_ok=True)
+            # Per-owner session-state dir must exist on the mounted
+            # workspace before the executor writes storage_state / the
+            # webauthn keystore into it.
+            self._state_host_dir().mkdir(parents=True, exist_ok=True)
         if executor_changed or axe_changed:
             logger.debug(
                 BROWSER_ASSETS_DEPLOYED,

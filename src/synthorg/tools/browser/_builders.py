@@ -82,12 +82,15 @@ class _StoragePayload(TypedDict, total=False):
 
 
 class _WebAuthnCredentialPayload(TypedDict, total=False):
-    """A single virtual credential decoded from the in-container executor."""
+    """A single virtual credential decoded from the in-container executor.
+
+    Carries no private key: the executor keeps that host-side in the
+    credential keystore and returns only the model-safe fields.
+    """
 
     id: str
     rp_id: str
     user_handle: str
-    private_key: str
     public_key: str
 
 

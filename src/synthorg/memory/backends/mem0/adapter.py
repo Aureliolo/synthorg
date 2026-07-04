@@ -10,8 +10,10 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, override
 
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -30,7 +32,7 @@ from synthorg.memory.backends.mem0.mappers import (
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
 )
-from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters
+from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters, is_expired
 from synthorg.memory.backends.mem0.mappers_shared import (
     SHARED_NAMESPACE,
     check_delete_ownership,
@@ -133,6 +135,11 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         self._client: Mem0Client | None = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
+        # Serialise read-modify-write on a single memory_id so a
+        # concurrent update/delete on the same entry cannot interleave
+        # between the ownership fetch and the write (a lost update or
+        # update-after-delete). Distinct ids proceed in parallel.
+        self._entry_locks: RefcountedLockMap[str] = RefcountedLockMap()
         self._qdrant_client: QdrantClient | None = None
         self._sparse_encoder: BM25Tokenizer | None = (
             BM25Tokenizer() if mem0_config.sparse_search_enabled else None
@@ -675,44 +682,48 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
-        try:
-            existing = await asyncio.to_thread(client.get, str(memory_id))
-            if existing is None:
-                logger.debug(
+        async with self._entry_locks.acquire(str(memory_id)):
+            try:
+                existing = await asyncio.to_thread(client.get, str(memory_id))
+                if existing is None:
+                    logger.debug(
+                        MEMORY_ENTRY_DELETED,
+                        agent_id=agent_id,
+                        memory_id=memory_id,
+                        found=False,
+                    )
+                    return False
+                check_delete_ownership(existing, agent_id, memory_id)
+                await asyncio.to_thread(client.delete, str(memory_id))
+            except MemoryStoreError:
+                raise
+            except (builtins.MemoryError, RecursionError) as exc:
+                log_exception_redacted(
+                    logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="delete"
+                )
+                raise
+            except Exception as exc:
+                reraise_critical(exc)
+                logger.warning(
+                    MEMORY_ENTRY_DELETE_FAILED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    error=safe_error_description(exc),
+                    error_type=type(exc).__name__,
+                )
+                msg = (
+                    f"Failed to delete memory {memory_id}: "
+                    f"{safe_error_description(exc)}"
+                )
+                raise MemoryStoreError(msg) from exc
+            else:
+                logger.info(
                     MEMORY_ENTRY_DELETED,
                     agent_id=agent_id,
                     memory_id=memory_id,
-                    found=False,
+                    found=True,
                 )
-                return False
-            check_delete_ownership(existing, agent_id, memory_id)
-            await asyncio.to_thread(client.delete, str(memory_id))
-        except MemoryStoreError:
-            raise
-        except (builtins.MemoryError, RecursionError) as exc:
-            log_exception_redacted(
-                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="delete"
-            )
-            raise
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                MEMORY_ENTRY_DELETE_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=safe_error_description(exc),
-                error_type=type(exc).__name__,
-            )
-            msg = f"Failed to delete memory {memory_id}: {safe_error_description(exc)}"
-            raise MemoryStoreError(msg) from exc
-        else:
-            logger.info(
-                MEMORY_ENTRY_DELETED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                found=True,
-            )
-            return True
+                return True
 
     async def update(
         self,
@@ -745,71 +756,88 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
-        try:
-            existing = await asyncio.to_thread(client.get, str(memory_id))
-            if existing is None:
-                logger.debug(
-                    MEMORY_ENTRY_UPDATED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    found=False,
+        async with self._entry_locks.acquire(str(memory_id)):
+            try:
+                existing = await asyncio.to_thread(client.get, str(memory_id))
+                if existing is None:
+                    logger.debug(
+                        MEMORY_ENTRY_UPDATED,
+                        agent_id=agent_id,
+                        memory_id=memory_id,
+                        found=False,
+                    )
+                    return None
+                # An expired entry is logically gone; refuse to revive it,
+                # matching InMemoryBackend.update() so TTL semantics stay
+                # identical across backends.
+                current = mem0_result_to_entry(existing, agent_id)
+                if is_expired(current, datetime.now(UTC)):
+                    logger.debug(
+                        MEMORY_ENTRY_UPDATED,
+                        agent_id=agent_id,
+                        memory_id=memory_id,
+                        found=False,
+                        reason="expired",
+                    )
+                    return None
+                check_update_ownership(existing, agent_id, memory_id)
+                update_kwargs: dict[str, object] = {}
+                if request.content is not None:
+                    update_kwargs["data"] = str(request.content)
+                new_metadata = build_update_metadata(request)
+                if new_metadata is not None:
+                    update_kwargs["metadata"] = new_metadata
+                await asyncio.to_thread(client.update, str(memory_id), **update_kwargs)
+                refreshed = await asyncio.to_thread(client.get, str(memory_id))
+            except MemoryStoreError:
+                raise
+            except (builtins.MemoryError, RecursionError) as exc:
+                log_exception_redacted(
+                    logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="update"
                 )
-                return None
-            check_update_ownership(existing, agent_id, memory_id)
-            update_kwargs: dict[str, object] = {}
-            if request.content is not None:
-                update_kwargs["data"] = str(request.content)
-            new_metadata = build_update_metadata(request)
-            if new_metadata is not None:
-                update_kwargs["metadata"] = new_metadata
-            await asyncio.to_thread(client.update, str(memory_id), **update_kwargs)
-            refreshed = await asyncio.to_thread(client.get, str(memory_id))
-        except MemoryStoreError:
-            raise
-        except (builtins.MemoryError, RecursionError) as exc:
-            log_exception_redacted(
-                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="update"
-            )
-            raise
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                MEMORY_ENTRY_UPDATE_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=safe_error_description(exc),
-                error_type=type(exc).__name__,
-            )
-            msg = f"Failed to update memory {memory_id}: {safe_error_description(exc)}"
-            raise MemoryStoreError(msg) from exc
-        else:
-            embedded_content = (
-                str(request.content)
-                if request.content is not None
-                else str(existing.get("memory") or existing.get("data") or "")
-            )
-            await self._record_embedding_cost(
-                agent_id=str(agent_id),
-                task_id="memory-update",
-                content_length=len(embedded_content),
-                operation="update",
-            )
-            if refreshed is None:
+                raise
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
+                    MEMORY_ENTRY_UPDATE_FAILED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    error=safe_error_description(exc),
+                    error_type=type(exc).__name__,
+                )
+                msg = (
+                    f"Failed to update memory {memory_id}: "
+                    f"{safe_error_description(exc)}"
+                )
+                raise MemoryStoreError(msg) from exc
+            else:
+                embedded_content = (
+                    str(request.content)
+                    if request.content is not None
+                    else str(existing.get("memory") or existing.get("data") or "")
+                )
+                await self._record_embedding_cost(
+                    agent_id=str(agent_id),
+                    task_id="memory-update",
+                    content_length=len(embedded_content),
+                    operation="update",
+                )
+                if refreshed is None:
+                    logger.warning(
+                        MEMORY_ENTRY_UPDATED,
+                        agent_id=agent_id,
+                        memory_id=memory_id,
+                        found=False,
+                        reason="disappeared_after_update",
+                    )
+                    return None
+                entry = mem0_result_to_entry(refreshed, agent_id)
+                logger.info(
                     MEMORY_ENTRY_UPDATED,
                     agent_id=agent_id,
                     memory_id=memory_id,
-                    found=False,
-                    reason="disappeared_after_update",
                 )
-                return None
-            entry = mem0_result_to_entry(refreshed, agent_id)
-            logger.info(
-                MEMORY_ENTRY_UPDATED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-            )
-            return entry
+                return entry
 
     async def count(
         self,

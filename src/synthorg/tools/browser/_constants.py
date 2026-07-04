@@ -51,6 +51,20 @@ SCREENSHOTS_SUBDIR: Final[str] = ".synthorg/screenshots"
 BASELINE_META_FILENAME: Final[str] = ".meta.json"
 DIFF_HEATMAP_SUFFIX: Final[str] = "_diff.png"
 
+# Per-owner browser-session state persisted across tool calls in the
+# workspace mount: the Playwright storage_state (cookies + localStorage)
+# and the virtual-authenticator credential keystore. Each owner gets its
+# own subdirectory so one agent's session cannot read another's.
+BROWSER_STATE_SUBDIR: Final[str] = ".synthorg/browser/state"
+STORAGE_STATE_FILENAME: Final[str] = "storage_state.json"
+WEBAUTHN_STATE_FILENAME: Final[str] = "webauthn_credentials.json"
+
+# Upper bound on a single WebStorage value written through the tool, so a
+# pathological payload cannot be pushed into a page's storage and echoed
+# back through the result. 1 MiB comfortably exceeds any realistic token
+# or config value while staying well under a browser's per-origin quota.
+STORAGE_VALUE_MAX_LENGTH: Final[int] = 1024 * 1024
+
 BROWSER_IMAGE_PIN_DEFAULT: Final[str] = (
     "mcr.microsoft.com/playwright/python:v1.61.0-jammy"
 )

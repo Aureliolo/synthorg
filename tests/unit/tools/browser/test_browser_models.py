@@ -223,11 +223,22 @@ class TestStorageAndWebAuthnModels:
             id="cred-1",
             rp_id="example.test",
             user_handle="user-1",
-            private_key="priv",
             public_key="pub",
         )
         roundtrip = WebAuthnCredential.model_validate(original.model_dump())
         assert roundtrip == original
+
+    def test_webauthn_credential_rejects_private_key(self) -> None:
+        """The private key must never appear on the model-facing surface."""
+        dumped = WebAuthnCredential(
+            id="cred-1",
+            rp_id="example.test",
+            user_handle="user-1",
+            public_key="pub",
+        ).model_dump()
+        assert "private_key" not in dumped
+        with pytest.raises(ValidationError):
+            WebAuthnCredential.model_validate({**dumped, "private_key": "priv"})
 
     def test_webauthn_result_empty_credentials(self) -> None:
         result = WebAuthnResult(credentials=())
@@ -240,7 +251,6 @@ class TestStorageAndWebAuthnModels:
                     id="cred-1",
                     rp_id="example.test",
                     user_handle="user-1",
-                    private_key="priv",
                     public_key="pub",
                 ),
             ),
