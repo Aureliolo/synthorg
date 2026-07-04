@@ -14,7 +14,11 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.communication.conversation.enums import ConversationStatus
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    QueryError,
+    TurnSequenceConflictError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
@@ -330,9 +334,10 @@ class PostgresConversationTurnRepository:
         ``ConstraintViolationError``.
 
         Raises:
+            TurnSequenceConflictError: On a sequence collision that still
+                conflicts after the retry budget (retryable 409).
             ConstraintViolationError: On non-sequence constraint
-                violations, or a sequence collision that still
-                conflicts after the retry budget.
+                violations (FK / CHECK).
             QueryError: On other database errors.
         """
         # Unlike the SQLite sibling, which holds one serialising write
@@ -404,6 +409,23 @@ class PostgresConversationTurnRepository:
                         update={"sequence": next_sequence},
                     )
                     continue
+                if constraint == _TURN_SEQUENCE_UNIQUE_CONSTRAINT:
+                    # Retry budget exhausted on a genuine sequence race
+                    # (a cross-process append past the in-process lock):
+                    # transient and retryable, so surface a 409 rather
+                    # than a mislabelled non-retryable 400.
+                    msg = (
+                        "Turn sequence conflict appending turn "
+                        f"{current.id!r} (conversation {current.conversation_id!r})"
+                    )
+                    logger.warning(
+                        PERSISTENCE_CONVERSATION_TURN_FAILED,
+                        operation="append",
+                        conversation_id=current.conversation_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise TurnSequenceConflictError(msg, constraint=constraint) from exc
                 msg = (
                     "Constraint violation appending turn "
                     f"{current.id!r} (conversation {current.conversation_id!r})"

@@ -145,6 +145,24 @@ class ConstraintViolationError(QueryError):
         self.sqlstate: str | None = sqlstate
 
 
+class TurnSequenceConflictError(ConstraintViolationError):
+    """Raised when a conversation turn's sequence number is taken.
+
+    Two turns for the same conversation racing to append (across worker
+    processes, past the in-process turn lock) collide on the
+    ``UNIQUE(conversation_id, sequence)`` constraint. Unlike a generic
+    constraint violation, this is transient and safe to retry once the
+    loser re-reads the conversation's next free sequence, so it surfaces
+    as a retryable 409 rather than a non-retryable 400.
+    """
+
+    is_retryable: bool = True
+    default_message: ClassVar[str] = "Conversation turn sequence conflict"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.TURN_SEQUENCE_CONFLICT
+    status_code: ClassVar[int] = 409
+
+
 class PersistenceVersionConflictError(
     QueryError
 ):  # lint-allow: error-code-uniqueness -- twin of domain VersionConflictError

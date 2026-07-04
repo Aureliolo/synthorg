@@ -86,6 +86,7 @@ from synthorg.persistence.conversational_proposal_protocol import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -427,6 +428,8 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             ``ProposeDecision`` instance.
 
         Raises:
+            ProviderTimeoutError: The provider call exceeded the turn
+                timeout (surfaced as a retryable 504).
             Exception: Provider call failed.
             ConversationalProposeResponseInvalidError: Provider
                 response failed validation.
@@ -469,6 +472,13 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
                     ),
                     timeout=self._config.agent_call_timeout_seconds,
                 )
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, which is not
+            # a DomainError: type it so the client sees a retryable 504
+            # rather than an opaque 500 while the user turn already persisted.
+            log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
+            msg = "Chief of Staff propose call timed out"
+            raise ProviderTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
