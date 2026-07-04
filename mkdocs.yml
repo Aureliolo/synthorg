@@ -267,6 +267,7 @@ nav:
           - Pluggable Subsystems: reference/pluggable-subsystems.md
           - Protocols Audit: reference/protocols-audit.md
           - Protocols Audit Cleanup Log: reference/protocols-audit-log.md
+          - Unshipped Surface Inventory: reference/unshipped-surface-inventory.md
           - Typed Boundaries: reference/typed-boundaries.md
           - Test-Double Ladder: reference/test-doubles.md
           - Retry Patterns: reference/retry-patterns.md
