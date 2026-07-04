@@ -201,4 +201,62 @@ describe('auth store dev bypass auto-login', () => {
     })
     expect(wsRetrySpy).not.toHaveBeenCalled()
   })
+
+  it('a fresh login is not overwritten by a stale dev-session recovery resolving after it', async () => {
+    // A background 401 can trip the shared in-flight guard and start a
+    // dev-session recovery; if the user completes an unrelated, real
+    // login before that stale recovery's devLogin round-trip resolves,
+    // the stale recovery must not clobber the fresh session once it
+    // catches up (nor retry the websocket for a recovery attempt that
+    // a newer login has already superseded).
+    const FRESH_USER: UserInfoResponse = {
+      id: 'fresh-user',
+      username: 'fresh-user',
+      role: 'ceo',
+      must_change_password: false,
+      org_roles: [],
+      scoped_departments: [],
+    }
+    let resolveDevLogin: (() => void) | undefined
+    const devLoginGate = new Promise<void>((resolve) => {
+      resolveDevLogin = resolve
+    })
+    let devLoginCalls = 0
+    server.use(
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json(apiSuccess({ expires_in: 3600, must_change_password: false })),
+      ),
+      http.post('/api/v1/auth/dev-login', async () => {
+        await devLoginGate
+        devLoginCalls += 1
+        return HttpResponse.json(
+          apiSuccess({ expires_in: 86400, must_change_password: false }),
+        )
+      }),
+      http.get('/api/v1/auth/me', () => HttpResponse.json(apiSuccess(FRESH_USER))),
+    )
+
+    // Trip the in-flight guard with a non-intentional recovery that
+    // blocks on the gate above.
+    useAuthStore.getState().handleUnauthorized()
+
+    // A fresh, unrelated login succeeds while that recovery is pending.
+    await useAuthStore.getState().login('fresh-user', 'correct-password')
+
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+    expect(useAuthStore.getState().user?.username).toBe('fresh-user')
+
+    // Release the stale recovery; it must not clobber the fresh login
+    // once its own devLogin round-trip finally resolves. fetchUser()'s
+    // existing already-authenticated short-circuit means the recovery
+    // never re-fetches /auth/me here, so devLoginCalls is the signal
+    // that its chain has run to completion.
+    resolveDevLogin?.()
+    await vi.waitFor(() => {
+      expect(devLoginCalls).toBe(1)
+    })
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+    expect(useAuthStore.getState().user?.username).toBe('fresh-user')
+    expect(wsRetrySpy).not.toHaveBeenCalled()
+  })
 })

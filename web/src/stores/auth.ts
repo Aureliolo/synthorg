@@ -61,14 +61,21 @@ interface AuthState {
 // later session expiry still works.
 let unauthorizedRedirectInFlight = false
 
-// Bumped by an intentional logout so a dev-session recovery already in
-// flight (started before the logout, resolving after) discovers it is
-// stale before it can retry the websocket, clear the in-flight redirect
-// guard, or silently re-authenticate the user right after they logged
-// out. Mirrors the generation-counter pattern in api/approval_store.py's
-// ApprovalStore (bumped by clear(), checked before an in-flight scan
-// repopulates the cache).
+// Bumped by an intentional logout OR a freshly-established session
+// (login/setup succeeding) so a dev-session recovery already in flight
+// (started before either, resolving after) discovers it is stale
+// before it can retry the websocket, clear the in-flight redirect
+// guard, or silently overwrite whichever of those two newer,
+// authoritative outcomes actually landed. ``authEpochReason`` records
+// WHICH of the two happened: a stale recovery must force itself back
+// to unauthenticated after a logout (its own nested fetchUser() call
+// may have already committed a stray authenticated write on top of
+// the logout's state), but must leave a fresher login/setup's own
+// state untouched. Mirrors the generation-counter pattern in
+// api/approval_store.py's ApprovalStore (bumped by clear(), checked
+// before an in-flight scan repopulates the cache).
 let authEpoch = 0
+let authEpochReason: 'logout' | 'login' | null = null
 
 export function _resetUnauthorizedRedirectGuardForTests(): void {
   unauthorizedRedirectInFlight = false
@@ -178,11 +185,12 @@ async function _recoverDevSession(
   const epoch = authEpoch
   const recovered = await _tryDevAutoLogin(set, get)
   if (epoch !== authEpoch) {
-    // An intentional logout landed while this recovery was in flight.
-    // _tryDevAutoLoginOnce already restored the unauthenticated state
-    // if it raced past that guard; don't reset the in-flight redirect
-    // marker or retry the websocket for a session the user no longer
-    // wants.
+    // A logout or a fresher login/setup landed while this recovery
+    // was in flight. _tryDevAutoLoginOnce already restored the
+    // unauthenticated state if the reason was a logout; either way,
+    // don't reset the in-flight redirect marker, retry the websocket,
+    // or redirect to /login for a session the user no longer wants
+    // (or already replaced with a newer one).
     return
   }
   if (recovered) {
@@ -257,12 +265,16 @@ async function _tryDevAutoLoginOnce(
   try {
     await performAuthFlow(set, get, () => authApi.devLogin())
     if (epoch !== authEpoch) {
-      // An intentional logout landed while this devLogin/fetchUser
-      // round-trip was in flight; its success is stale. Restore the
-      // logout's unauthenticated state instead of trusting the
-      // just-completed authFlow, and report failure so the caller
-      // does not treat this as a live recovered session.
-      set({ authStatus: 'unauthenticated', user: null })
+      // A logout or a fresher login/setup landed while this
+      // devLogin/fetchUser round-trip was in flight, making this
+      // success stale. Only a logout needs correcting here (the
+      // nested fetchUser() call above may have just committed a
+      // stray authenticated write on top of the logout's own
+      // unauthenticated state); a fresher login/setup already
+      // committed its own authoritative state and must be left alone.
+      if (authEpochReason === 'logout') {
+        set({ authStatus: 'unauthenticated', user: null })
+      }
       return false
     }
     return get().authStatus === 'authenticated'
@@ -271,7 +283,14 @@ async function _tryDevAutoLoginOnce(
       'Dev auto-login failed; showing the normal login screen.',
       getErrorMessage(err),
     )
-    set({ authStatus: 'unauthenticated', user: null })
+    // Same distinction as above: a genuine failure of the current
+    // (non-stale) attempt, or a stale failure that raced behind a
+    // logout, both warrant clearing to unauthenticated; a stale
+    // failure that raced behind a fresher login/setup must not
+    // clobber that newer session.
+    if (epoch === authEpoch || authEpochReason === 'logout') {
+      set({ authStatus: 'unauthenticated', user: null })
+    }
     return false
   }
 }
@@ -365,18 +384,16 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   sessionsLoading: false,
   sessionsError: null,
 
-  login: (username, password) =>
-    performAuthFlow(
-      set,
-      get,
-      () => authApi.login({ username, password }),
-    ),
-  setup: (username, password) =>
-    performAuthFlow(
-      set,
-      get,
-      () => authApi.setup({ username, password }),
-    ),
+  async login(username, password) {
+    await performAuthFlow(set, get, () => authApi.login({ username, password }))
+    authEpoch += 1
+    authEpochReason = 'login'
+  },
+  async setup(username, password) {
+    await performAuthFlow(set, get, () => authApi.setup({ username, password }))
+    authEpoch += 1
+    authEpochReason = 'login'
+  },
   async logout() {
     try {
       await authApi.logout()
@@ -384,6 +401,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       log.warn('Logout API call failed:', getErrorMessage(err))
     }
     authEpoch += 1
+    authEpochReason = 'logout'
     get().handleUnauthorized({ intentional: true })
   },
   fetchUser: () => fetchUserImpl(set, get),
