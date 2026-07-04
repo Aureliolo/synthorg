@@ -16,6 +16,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
@@ -75,6 +76,14 @@ class InMemoryBackend:
 
     async def delete(self, agent_id: str, memory_id: str) -> bool:
         return False
+
+    async def update(
+        self,
+        agent_id: str,
+        memory_id: str,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        return None
 
     async def count(
         self,

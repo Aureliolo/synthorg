@@ -21,6 +21,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -51,6 +52,35 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, object]:
     if request.expires_at is not None:
         meta[f"{_PREFIX}expires_at"] = request.expires_at.isoformat()
     return meta
+
+
+def build_update_metadata(request: MemoryUpdateRequest) -> dict[str, object] | None:
+    """Build the partial metadata dict to merge for an ``update()`` call.
+
+    Mem0 merges this dict onto the entry's existing metadata rather
+    than replacing it (``new_metadata = deepcopy(existing); new_metadata
+    .update(metadata)``), so only keys the caller actually wants to
+    change are included -- an omitted key survives untouched.
+
+    Args:
+        request: Update request with the fields to change.
+
+    Returns:
+        Dict of prefixed metadata fields to merge, or ``None`` if the
+        request touches neither ``metadata`` nor the expiration.
+    """
+    meta: dict[str, object] = {}
+    if request.metadata is not None:
+        meta[f"{_PREFIX}confidence"] = request.metadata.confidence
+        if request.metadata.source is not None:
+            meta[f"{_PREFIX}source"] = request.metadata.source
+        if request.metadata.tags:
+            meta[f"{_PREFIX}tags"] = list(request.metadata.tags)
+    if request.expires_at is not None:
+        meta[f"{_PREFIX}expires_at"] = request.expires_at.isoformat()
+    elif request.clear_expiration:
+        meta[f"{_PREFIX}expires_at"] = None
+    return meta or None
 
 
 def parse_mem0_datetime(raw: object) -> datetime | None:

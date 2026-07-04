@@ -45,6 +45,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
@@ -105,6 +106,14 @@ class _RecordingBackend:
     async def delete(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool:
         self.deleted.append(memory_id)
         return True
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        return None
 
     async def count(
         self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None

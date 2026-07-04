@@ -1,6 +1,7 @@
-"""Tests for Mem0 adapter -- store, retrieve, get, delete, count."""
+"""Tests for Mem0 adapter -- store, retrieve, get, delete, update, count."""
 
 import builtins
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,7 +14,7 @@ from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
 )
-from synthorg.memory.models import MemoryQuery
+from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryUpdateRequest
 
 from .conftest import (
     make_store_request,
@@ -507,6 +508,232 @@ class TestDelete:
         """delete() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
             await backend.delete(SHARED_NAMESPACE, "mem-001")
+
+
+# ── Update ────────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestUpdate:
+    async def test_update_content_success(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+
+        entry = await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(content="new content"),
+        )
+
+        assert entry is not None
+        assert entry.id == "mem-001"
+        mock_client.update.assert_called_once()
+        call_args = mock_client.update.call_args
+        assert call_args[0][0] == "mem-001"
+        assert call_args[1]["data"] == "new content"
+        assert "metadata" not in call_args[1]
+
+    async def test_update_metadata_only(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+
+        entry = await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(metadata=MemoryMetadata(confidence=0.5)),
+        )
+
+        assert entry is not None
+        call_args = mock_client.update.call_args
+        assert "data" not in call_args[1]
+        assert call_args[1]["metadata"]["_synthorg_confidence"] == 0.5
+
+    async def test_update_expires_at_set(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+        new_expiry = datetime(2027, 1, 1, tzinfo=UTC)
+
+        await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(expires_at=new_expiry),
+        )
+
+        call_args = mock_client.update.call_args
+        assert (
+            call_args[1]["metadata"]["_synthorg_expires_at"] == new_expiry.isoformat()
+        )
+
+    async def test_update_expires_at_clear(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.return_value = {"message": "Memory updated successfully!"}
+
+        await backend.update(
+            "test-agent-001",
+            "mem-001",
+            MemoryUpdateRequest(clear_expiration=True),
+        )
+
+        call_args = mock_client.update.call_args
+        assert call_args[1]["metadata"]["_synthorg_expires_at"] is None
+
+    async def test_update_not_found_returns_none(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = None
+
+        entry = await backend.update(
+            "test-agent-001",
+            "nonexistent",
+            MemoryUpdateRequest(content="new content"),
+        )
+
+        assert entry is None
+        mock_client.update.assert_not_called()
+
+    async def test_update_exception_wraps(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
+        mock_client.update.side_effect = RuntimeError("update failed")
+
+        with pytest.raises(MemoryStoreError, match="Failed to update") as exc_info:
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+
+        assert exc_info.value.__cause__ is not None
+
+    async def test_update_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """builtins.MemoryError is re-raised without wrapping."""
+        mock_client.get.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+
+    async def test_update_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.get.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+
+    async def test_update_shared_namespace_entry_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """update() rejects entries belonging to the shared namespace."""
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id=SHARED_NAMESPACE,
+        )
+
+        with pytest.raises(MemoryStoreError, match="shared namespace"):
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+        mock_client.update.assert_not_called()
+
+    async def test_update_ownership_mismatch_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """update() rejects when user_id doesn't match agent_id."""
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="other-agent",
+        )
+
+        with pytest.raises(MemoryStoreError, match="cannot update"):
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+        mock_client.update.assert_not_called()
+
+    async def test_update_orphan_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """update() raises when memory has no user_id (orphan)."""
+        mock_client.get.return_value = mem0_get_result("mem-001")
+
+        with pytest.raises(MemoryStoreError, match="unverifiable"):
+            await backend.update(
+                "test-agent-001",
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
+        mock_client.update.assert_not_called()
+
+    async def test_update_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """update() rejects the shared namespace as agent_id."""
+        with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
+            await backend.update(
+                SHARED_NAMESPACE,
+                "mem-001",
+                MemoryUpdateRequest(content="new content"),
+            )
 
 
 # ── Count ─────────────────────────────────────────────────────────

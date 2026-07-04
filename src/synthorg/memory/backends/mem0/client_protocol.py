@@ -49,3 +49,11 @@ class Mem0Client(Protocol):
     def delete(self, memory_id: str) -> None:
         """Delete."""
         ...
+
+    def update(self, memory_id: str, **kwargs: object) -> dict[str, object]:
+        """Update.
+
+        Returns:
+            Mapping from ``str`` to ``object``.
+        """
+        ...

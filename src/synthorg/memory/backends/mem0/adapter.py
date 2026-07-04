@@ -24,6 +24,7 @@ from synthorg.memory.backends.mem0.config import (
 )
 from synthorg.memory.backends.mem0.mappers import (
     build_mem0_metadata,
+    build_update_metadata,
     extract_category,
     mem0_result_to_entry,
     query_to_mem0_getall_args,
@@ -33,6 +34,7 @@ from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters
 from synthorg.memory.backends.mem0.mappers_shared import (
     SHARED_NAMESPACE,
     check_delete_ownership,
+    check_update_ownership,
 )
 from synthorg.memory.backends.mem0.mappers_validate import (
     validate_add_result,
@@ -54,6 +56,7 @@ from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.sparse import BM25Tokenizer
 from synthorg.observability import (
@@ -82,6 +85,8 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
+    MEMORY_ENTRY_UPDATE_FAILED,
+    MEMORY_ENTRY_UPDATED,
 )
 
 if TYPE_CHECKING:
@@ -708,6 +713,103 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 found=True,
             )
             return True
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        """Update a memory entry's content, metadata, or expiration.
+
+        Mem0's ``update()`` takes no ``user_id`` filter, so this fetches
+        the existing entry first and verifies ownership, mirroring
+        ``delete()``.  Mem0 recomputes the embedding on every update
+        (even a metadata-only change), so an embedding cost is recorded
+        the same way ``store()`` does.
+
+        Args:
+            agent_id: Owning agent identifier.
+            memory_id: Memory identifier.
+            request: Fields to update; unset fields are left unchanged.
+
+        Returns:
+            The updated memory entry, or ``None`` if not found.
+
+        Raises:
+            MemoryConnectionError: If the backend is not connected.
+            MemoryStoreError: If the update operation fails or
+                ownership verification fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
+        client = self._require_connected()
+        self._validate_agent_id(agent_id)
+        try:
+            existing = await asyncio.to_thread(client.get, str(memory_id))
+            if existing is None:
+                logger.debug(
+                    MEMORY_ENTRY_UPDATED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    found=False,
+                )
+                return None
+            check_update_ownership(existing, agent_id, memory_id)
+            update_kwargs: dict[str, object] = {}
+            if request.content is not None:
+                update_kwargs["data"] = str(request.content)
+            new_metadata = build_update_metadata(request)
+            if new_metadata is not None:
+                update_kwargs["metadata"] = new_metadata
+            await asyncio.to_thread(client.update, str(memory_id), **update_kwargs)
+            refreshed = await asyncio.to_thread(client.get, str(memory_id))
+        except MemoryStoreError:
+            raise
+        except (builtins.MemoryError, RecursionError) as exc:
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="update"
+            )
+            raise
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_ENTRY_UPDATE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                error=safe_error_description(exc),
+                error_type=type(exc).__name__,
+            )
+            msg = f"Failed to update memory {memory_id}: {safe_error_description(exc)}"
+            raise MemoryStoreError(msg) from exc
+        else:
+            embedded_content = (
+                str(request.content)
+                if request.content is not None
+                else str(existing.get("memory") or existing.get("data") or "")
+            )
+            await self._record_embedding_cost(
+                agent_id=str(agent_id),
+                task_id="memory-update",
+                content_length=len(embedded_content),
+                operation="update",
+            )
+            if refreshed is None:
+                logger.warning(
+                    MEMORY_ENTRY_UPDATED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    found=False,
+                    reason="disappeared_after_update",
+                )
+                return None
+            entry = mem0_result_to_entry(refreshed, agent_id)
+            logger.info(
+                MEMORY_ENTRY_UPDATED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+            )
+            return entry
 
     async def count(
         self,
