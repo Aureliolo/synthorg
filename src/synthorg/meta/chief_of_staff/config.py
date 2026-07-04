@@ -280,7 +280,7 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Chat ──────────────────────────────────────────────────────
 
     chat_enabled: bool = False
-    chat_model: str | None = Field(
+    chat_model: NotBlankStr | None = Field(
         default=None,
         description="Model for chat explanation LLM calls; unset until "
         "an operator or setup selects one (never a placeholder default)",
@@ -291,7 +291,7 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Clarify + propose ─────────────────────────────────────────
 
     propose_enabled: bool = False
-    propose_model: str | None = Field(
+    propose_model: NotBlankStr | None = Field(
         default=None,
         description="Model for clarify-and-propose LLM calls; unset until "
         "an operator or setup selects one (never a placeholder default)",
@@ -321,7 +321,7 @@ class ChiefOfStaffConfig(BaseModel):
 
     routing_enabled: bool = False
     routing_strategy: Literal["llm", "keyword"] = "llm"
-    routing_model: str | None = Field(
+    routing_model: NotBlankStr | None = Field(
         default=None,
         description="Model for the concern-routing classifier LLM calls; "
         "unset until an operator or setup selects one (never a placeholder)",
@@ -401,7 +401,7 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Run narrative (documentary mode) ──────────────────
 
     narrative_enabled: bool = False
-    narrative_model: str | None = Field(
+    narrative_model: NotBlankStr | None = Field(
         default=None,
         description="Model for the run-narrative prose LLM calls; unset until "
         "an operator or setup selects one (never a placeholder default)",

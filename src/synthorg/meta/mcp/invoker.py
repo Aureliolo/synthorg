@@ -15,6 +15,7 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.boundary import parse_typed
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.registry import ToolDefReader
@@ -65,15 +66,20 @@ class MCPToolInvoker:
         handlers: Mapping of handler keys to handler functions. A
             ``LayeredHandlerMap`` lets authored-tool handlers dispatch
             alongside the static handler map.
+        clock: Clock seam for the capability-gap timestamp; tests inject
+            a ``FakeClock`` so the toolsmith recurrence window is
+            deterministic.
     """
 
     def __init__(
         self,
         registry: ToolDefReader,
         handlers: Mapping[str, ToolHandler],
+        clock: Clock | None = None,
     ) -> None:
         self._registry = registry
         self._handlers = handlers
+        self._clock = clock or SystemClock()
         # Seed the bounded MCP tool-name allowlist so
         # ``record_mcp_handler_outcome`` can fold any caller-supplied
         # tool name that is not in the registry into a sentinel
@@ -91,8 +97,6 @@ class MCPToolInvoker:
         """
         if not tool_name.strip():
             return
-        from datetime import UTC, datetime  # noqa: PLC0415
-
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
         from synthorg.meta.mcp.server import (  # noqa: PLC0415
             get_capability_gap_sink,
@@ -105,12 +109,15 @@ class MCPToolInvoker:
         try:
             await sink.record_gap(
                 NotBlankStr(tool_name),
-                occurred_at=datetime.now(UTC),
+                occurred_at=self._clock.now(),
                 kind=GapKind.MISSING_TOOL,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING, not DEBUG: this is the sink for the toolsmith's
+            # novel-capability demand signal, so a silent write failure
+            # would let the whole self-extension loop go dark unnoticed.
+            logger.warning(
                 MCP_SERVER_INVOKE_FAILED,
                 tool_name=tool_name,
                 note="missing_tool_gap_record_failed",

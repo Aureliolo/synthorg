@@ -171,6 +171,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
             service=service,
             blueprint_repo=repo,
             approval_store=approval_store,
+            notification_dispatcher=notification_dispatcher,
         )
         if approval_store is not None
         else None

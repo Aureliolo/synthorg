@@ -339,6 +339,11 @@ Sidebar layout (220px expanded, 56px icon rail):
   - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
   - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
   - Settings, `Settings`, `/settings`
+- **Integrations** (collapsible label):
+  - Connections, `Cable`, `/connections` (external-service credentials + tunnel providers; the tunnel card mints/reads a tunnel connection and surfaces device-login providers here)
+  - OAuth Apps, `KeyRound`, `/integrations/oauth-apps`
+  - MCP Catalog, `Boxes`, `/integrations/mcp-catalog`
+  - SSRF Violations, `ShieldAlert`, `/providers/ssrf-violations`
 - **Bottom**:
   - Collapse toggle
   - Notifications bell + badge

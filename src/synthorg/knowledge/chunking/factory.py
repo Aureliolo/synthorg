@@ -94,7 +94,16 @@ async def _prefetch_grammars(raw: RawDocument) -> None:
         return
     try:
         await asyncio.to_thread(_prefetch_grammars_sync, languages)
-    except ImportError:
+    except ImportError as exc:
+        # Optional-extras-absent is the expected case, but a broken (present
+        # but half-importable) tree_sitter pack is indistinguishable without
+        # a trace; DEBUG keeps it diagnosable without startup noise.
+        logger.debug(
+            KNOWLEDGE_GRAMMAR_PREFETCH_FAILED,
+            languages=sorted(languages),
+            reason="tree_sitter_extras_absent",
+            error_type=type(exc).__name__,
+        )
         return
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

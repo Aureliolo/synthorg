@@ -1,5 +1,5 @@
 # module-kind: adapter
-"""GitHub Dev Tunnels adapter (Microsoft ``devtunnel`` CLI).
+"""Dev Tunnels adapter (Microsoft ``devtunnel`` CLI).
 
 Drives the ``devtunnel`` CLI: a GitHub device-code login
 (``devtunnel user login -g -d``) establishes the credential the CLI
@@ -133,7 +133,7 @@ def _asset_segment() -> tuple[str, str] | None:
 
 
 class DevTunnelsAdapter:
-    """GitHub Dev Tunnels provider via the ``devtunnel`` CLI.
+    """Dev Tunnels provider via the ``devtunnel`` CLI (GitHub sign-in).
 
     Args:
         port: Local API port to expose.
@@ -222,7 +222,7 @@ class DevTunnelsAdapter:
             result = await run_cli(
                 [str(binary), "user", "show"],
                 timeout_seconds=_STATUS_TIMEOUT_SECONDS,
-                env=self._confined_env(),
+                env=await self._confined_env(),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -269,7 +269,7 @@ class DevTunnelsAdapter:
             try:
                 process = spawn_cli(
                     [str(binary), "user", "login", "-g", "-d"],
-                    env=self._confined_env(),
+                    env=await self._confined_env(),
                 )
             except OSError as exc:
                 logger.warning(
@@ -335,8 +335,34 @@ class DevTunnelsAdapter:
             )
             return url
 
+    async def _terminate_login_process(self) -> None:
+        """Terminate an in-flight device-login child (best-effort).
+
+        The login flow runs outside ``_lifecycle_lock`` and its daemon drain
+        thread blocks on the child, so without this a shutdown/restart mid
+        device-login orphans the ``devtunnel login`` process (it polls the
+        auth endpoint for minutes) and leaks its threads.
+        """
+        login = self._login_process
+        self._login_process = None
+        self._login_pending = False
+        if login is None or login.poll() is not None:
+            return
+        try:
+            await terminate_process(login)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="disconnect",
+                note="login_process_terminate_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     async def stop(self) -> None:
-        """Stop the tunnel process (best-effort teardown)."""
+        """Stop the tunnel process + any in-flight device login (best-effort)."""
+        await self._terminate_login_process()
         async with self._lifecycle_lock:
             process = self._process
             if process is None:
@@ -379,7 +405,7 @@ class DevTunnelsAdapter:
         try:
             process = spawn_cli(
                 [str(binary), "host", "-p", str(self._port), "--allow-anonymous"],
-                env=self._confined_env(),
+                env=await self._confined_env(),
             )
         except OSError as exc:
             logger.warning(
@@ -421,7 +447,12 @@ class DevTunnelsAdapter:
         spawn_drain_thread(process.stdout, name="devtunnel-stdout")
         return url
 
-    def _confined_env(self) -> dict[str, str] | None:
+    def _prepare_home_dir(self) -> None:
+        """Create the owner-only private HOME (blocking; call off-loop)."""
+        self._home_dir.mkdir(parents=True, exist_ok=True)
+        self._home_dir.chmod(stat.S_IRWXU)
+
+    async def _confined_env(self) -> dict[str, str] | None:
         """Environment overrides confining the CLI's login cache.
 
         Returns:
@@ -431,8 +462,10 @@ class DevTunnelsAdapter:
             credential manager rather than under ``%USERPROFILE%``.
         """
         if sys.platform != "win32":
-            self._home_dir.mkdir(parents=True, exist_ok=True)
-            self._home_dir.chmod(stat.S_IRWXU)
+            # mkdir/chmod are blocking I/O; offload so a slow (e.g. network-
+            # mounted) state dir cannot stall the event loop, matching the
+            # rest of this adapter's blocking-I/O convention.
+            await asyncio.to_thread(self._prepare_home_dir)
             return {"HOME": str(self._home_dir)}
         else:  # noqa: RET505 -- both platform branches must be if/else arms: mypy prunes a dead platform *branch* silently but flags trailing code as unreachable
             return None

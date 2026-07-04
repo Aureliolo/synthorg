@@ -56,11 +56,15 @@ class TestMCPToolInvoker:
             RingBufferCapabilityGapStore,
         )
         from synthorg.meta.toolsmith.models import GapKind
+        from tests._shared import FakeClock
 
+        moment = datetime(2026, 6, 29, 12, 0, tzinfo=UTC)
         store = RingBufferCapabilityGapStore(max_observations=8)
         install_capability_gap_sink(store)
         try:
-            invoker = MCPToolInvoker(registry_with(), {})
+            # Inject the clock so the recorded gap timestamps are deterministic
+            # rather than wall-clock (the recurrence window then needs no fudge).
+            invoker = MCPToolInvoker(registry_with(), {}, clock=FakeClock(start=moment))
             for _ in range(2):
                 await invoker.invoke(
                     "synthorg_widget_frobnicate", {}, app_state=mock_of[AppState]()
@@ -68,7 +72,7 @@ class TestMCPToolInvoker:
             gaps = await store.recurring(
                 threshold=2,
                 window=timedelta(hours=1),
-                now=datetime.now(UTC) + timedelta(seconds=1),
+                now=moment + timedelta(seconds=1),
             )
         finally:
             reset_singletons()

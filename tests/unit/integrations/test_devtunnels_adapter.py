@@ -1,4 +1,4 @@
-"""Tests for the GitHub Dev Tunnels adapter."""
+"""Tests for the Dev Tunnels adapter."""
 
 import io
 import os
@@ -390,25 +390,52 @@ class TestCredentialCheckDegradation:
 
 
 class TestConfinedEnv:
-    def test_posix_confines_home_to_private_dir(
+    async def test_posix_confines_home_to_private_dir(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.setattr(sys, "platform", "linux")
         home = tmp_path / "home"
         adapter = _adapter(tmp_path)
-        env = adapter._confined_env()
+        env = await adapter._confined_env()
         assert env == {"HOME": str(home)}
         assert home.is_dir()
         if os.name == "posix":
             assert stat.S_IMODE(home.stat().st_mode) == stat.S_IRWXU
 
-    def test_windows_returns_none(
+    async def test_windows_returns_none(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         monkeypatch.setattr(sys, "platform", "win32")
         adapter = _adapter(tmp_path)
-        assert adapter._confined_env() is None
+        assert await adapter._confined_env() is None
         assert not (tmp_path / "home").exists()
+
+
+class TestStopTerminatesLogin:
+    async def test_stop_terminates_in_flight_login_process(
+        self, tmp_path: Path
+    ) -> None:
+        adapter = _adapter(tmp_path)
+        login = FakePopen(returncode=None)  # still polling the auth endpoint
+        adapter._login_process = login
+        adapter._login_pending = True
+
+        await adapter.stop()
+
+        # terminated + cleared pending prove the in-flight login was torn down
+        # (mypy narrows ``_login_process`` from the assignment, so assert the
+        # observable teardown rather than the nulled attribute).
+        assert login.terminated is True
+        assert adapter._login_pending is False
+
+    async def test_stop_ignores_an_already_exited_login(self, tmp_path: Path) -> None:
+        adapter = _adapter(tmp_path)
+        login = FakePopen(returncode=0)  # already completed
+        adapter._login_process = login
+
+        await adapter.stop()
+
+        assert login.terminated is False
 
 
 class TestDownload:

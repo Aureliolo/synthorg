@@ -40,7 +40,12 @@ from synthorg.meta.toolsmith.errors import (
     ToolAuthoringError,
     ToolCapabilityNotAllowedError,
 )
-from synthorg.meta.toolsmith.models import CapabilityGap, GapKind, ToolBlueprint
+from synthorg.meta.toolsmith.models import (
+    CapabilityGap,
+    GapKind,
+    ToolBlueprint,
+    ToolBlueprintState,
+)
 from synthorg.meta.toolsmith.protocol import (
     CapabilityGapStore,
     ToolBlueprintGenerator,
@@ -54,10 +59,14 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_SKIPPED,
     TOOLSMITH_CYCLE_COMPLETED,
     TOOLSMITH_CYCLE_STARTED,
+    TOOLSMITH_GAP_RECURRING_DETECTED,
     TOOLSMITH_PROPOSAL_GUARD_REJECTED,
     TOOLSMITH_SERVICE_ABSENT_GAP,
 )
-from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
+from synthorg.persistence.tool_blueprint_protocol import (
+    DynamicToolRepository,
+    ToolBlueprintFilterSpec,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 from synthorg.settings.resolver import ConfigResolver
@@ -72,6 +81,17 @@ _ALLOWED_CAPABILITIES_KEY: Final[str] = "tool_creation_allowed_capabilities"
 # is the right starting prior until the gate-then-guards chain has
 # additional evidence.
 _TOOL_CREATION_CONFIDENCE: Final[float] = 0.5
+
+# A blueprint in any of these states means the capability is already served
+# or has an in-flight proposal, so re-authoring the recurring gap is a
+# duplicate. RETIRED is excluded: a rolled-back capability may be re-proposed.
+_NON_TERMINAL_BLUEPRINT_STATES: Final[frozenset[ToolBlueprintState]] = frozenset(
+    {
+        ToolBlueprintState.PENDING,
+        ToolBlueprintState.VALIDATED,
+        ToolBlueprintState.ACTIVE,
+    }
+)
 
 
 class ToolsmithService:
@@ -223,6 +243,13 @@ class ToolsmithService:
             window=timedelta(hours=self._config.gap_window_hours),
             now=moment,
         )
+        for gap in gaps:
+            logger.info(
+                TOOLSMITH_GAP_RECURRING_DETECTED,
+                capability=gap.signature,
+                occurrences=gap.occurrences,
+                kind=gap.kind.value,
+            )
         proposals: list[ImprovementProposal] = []
         if gaps:
             async with asyncio.TaskGroup() as tg:
@@ -282,6 +309,17 @@ class ToolsmithService:
                 reason="not_in_live_allowlist",
             )
             return ()
+        # A gap recurs across cycles while its first proposal is still pending
+        # (or the tool is already validated/active). Re-authoring it would
+        # collide on the UNIQUE tool name and pile duplicate approval items on
+        # the operator, so skip once a non-terminal blueprint already exists.
+        if await self._has_open_blueprint(gap.signature):
+            logger.info(
+                TOOLSMITH_AUTHOR_SKIPPED,
+                capability=gap.signature,
+                reason="blueprint_already_open",
+            )
+            return ()
         # Dedup hint = static surface known at boot + dynamic-registry
         # capabilities the applier registered earlier in this run. The
         # latter prevents the LLM from authoring a duplicate of a tool
@@ -310,6 +348,36 @@ class ToolsmithService:
         if await self._guards_pass(proposal):
             return (proposal,)
         return ()
+
+    async def _has_open_blueprint(self, capability: str) -> bool:
+        """True if a non-terminal blueprint for this capability already exists.
+
+        Non-terminal = PENDING / VALIDATED / ACTIVE (an in-flight proposal or a
+        live tool). RETIRED does not count, so a rolled-back capability can be
+        re-proposed. A best-effort read: a query failure falls through to
+        authoring rather than blocking the cycle.
+
+        Returns:
+            ``True`` when such a blueprint exists; ``False`` otherwise
+            (including when no repo is wired or the query fails).
+        """
+        if self._blueprint_repo is None:
+            return False
+        try:
+            existing = await self._blueprint_repo.query(
+                ToolBlueprintFilterSpec(capability=NotBlankStr(capability))
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_AUTHOR_SKIPPED,
+                capability=capability,
+                note="open_blueprint_check_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        return any(bp.state in _NON_TERMINAL_BLUEPRINT_STATES for bp in existing)
 
     async def _persist_pending_blueprint(self, blueprint: ToolBlueprint) -> None:
         """Durably store a PENDING blueprint (best-effort).

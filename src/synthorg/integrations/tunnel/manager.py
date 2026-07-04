@@ -369,7 +369,11 @@ class TunnelManager:
             return
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING, not DEBUG: an already-seeded row is the expected case
+            # (DuplicateConnectionError above), so reaching here means the
+            # catalog write genuinely failed and the tunnel would silently
+            # never appear in the Connections list until an operator noticed.
+            logger.warning(
                 TUNNEL_ERROR,
                 phase="seed_connection",
                 provider=adapter.provider_id,

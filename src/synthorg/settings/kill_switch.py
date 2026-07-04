@@ -315,8 +315,11 @@ def require_configured_model(
     """
     if model:
         return model
+    # Plain quotes, not RST double-backticks: this message is surfaced verbatim
+    # in the dashboard (e.g. the charter interview error banner), where markup
+    # would render literally.
     msg = (
-        f"{feature_label} has no model configured. Set ``{namespace}.{key}``"
+        f"{feature_label} has no model configured. Set '{namespace}.{key}'"
         " in dashboard Settings."
     )
     raise ServiceUnavailableError(msg)

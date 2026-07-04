@@ -1,7 +1,7 @@
 """Tests for the multi-provider ``TunnelManager`` facade."""
 
 from typing import override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -13,6 +13,7 @@ from synthorg.integrations.tunnel.manager import (
 )
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -176,9 +177,10 @@ class TestSnapshot:
 
 class TestCredentials:
     async def test_store_token_mints_catalog_connection(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.delete = AsyncMock(side_effect=ConnectionNotFoundError("absent"))
-        catalog.create = AsyncMock(return_value=None)
+        catalog = mock_of[ConnectionCatalog](
+            delete=AsyncMock(side_effect=ConnectionNotFoundError("absent")),
+            create=AsyncMock(return_value=None),
+        )
         ngrok = FakeAdapter("ngrok", credential_kind=TunnelCredentialKind.TOKEN)
         manager = _manager(FakeAdapter("cloudflare"), ngrok, catalog=catalog)
 
@@ -207,16 +209,18 @@ class TestCredentials:
             await manager.store_token("ngrok", "tok")
 
     async def test_clear_token_is_idempotent(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.delete = AsyncMock(side_effect=ConnectionNotFoundError("absent"))
+        catalog = mock_of[ConnectionCatalog](
+            delete=AsyncMock(side_effect=ConnectionNotFoundError("absent")),
+        )
         ngrok = FakeAdapter("ngrok", credential_kind=TunnelCredentialKind.TOKEN)
         manager = _manager(FakeAdapter("cloudflare"), ngrok, catalog=catalog)
         await manager.clear_token("ngrok")
         catalog.delete.assert_awaited_once_with(credential_connection_name("ngrok"))
 
     async def test_ngrok_adapter_reads_catalog_token_through_manager(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_credentials = AsyncMock(return_value={"auth_token": "cat-token"})
+        catalog = mock_of[ConnectionCatalog](
+            get_credentials=AsyncMock(return_value={"auth_token": "cat-token"}),
+        )
         ngrok = NgrokAdapter(auth_token_env="SYNTHORG_TEST_UNSET_TOKEN", port=3001)
         manager = TunnelManager(adapters=(FakeAdapter("cloudflare"), ngrok))
 
@@ -234,9 +238,10 @@ class TestDeviceLoginConnectionSeed:
     """A device-login provider seeds a read-only, no-secret catalog row."""
 
     async def test_snapshot_seeds_missing_device_login_connection(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get = AsyncMock(return_value=None)
-        catalog.create = AsyncMock(return_value=None)
+        catalog = mock_of[ConnectionCatalog](
+            get=AsyncMock(return_value=None),
+            create=AsyncMock(return_value=None),
+        )
         devtunnels = FakeAdapter(
             "devtunnels", credential_kind=TunnelCredentialKind.DEVICE_LOGIN
         )
@@ -251,9 +256,12 @@ class TestDeviceLoginConnectionSeed:
         assert kwargs["health_check_enabled"] is False
 
     async def test_seed_is_idempotent_when_already_present(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get = AsyncMock(return_value=MagicMock())
-        catalog.create = AsyncMock(return_value=None)
+        # get returns a truthy row: the manager only checks it is not None
+        # before deciding the connection already exists.
+        catalog = mock_of[ConnectionCatalog](
+            get=AsyncMock(return_value=object()),
+            create=AsyncMock(return_value=None),
+        )
         devtunnels = FakeAdapter(
             "devtunnels", credential_kind=TunnelCredentialKind.DEVICE_LOGIN
         )
@@ -264,9 +272,10 @@ class TestDeviceLoginConnectionSeed:
         catalog.create.assert_not_called()
 
     async def test_token_provider_is_not_seeded(self) -> None:
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get = AsyncMock(return_value=None)
-        catalog.create = AsyncMock(return_value=None)
+        catalog = mock_of[ConnectionCatalog](
+            get=AsyncMock(return_value=None),
+            create=AsyncMock(return_value=None),
+        )
         ngrok = FakeAdapter("ngrok", credential_kind=TunnelCredentialKind.TOKEN)
         manager = _manager(FakeAdapter("cloudflare"), ngrok, catalog=catalog)
 

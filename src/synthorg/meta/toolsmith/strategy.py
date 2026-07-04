@@ -12,7 +12,7 @@ an authored tool cannot widen its own isolation.
 import json
 from collections.abc import Sequence
 from typing import ClassVar, Final
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
@@ -280,7 +280,10 @@ class LLMToolBlueprintGenerator:
         name = f"synthorg_{domain}_{action}"
         try:
             return ToolBlueprint(
-                id=NotBlankStr(f"bp-{uuid4().hex}"),
+                # Deterministic id from capability: re-authoring a recurring
+                # (or rolled-back) gap upserts the same ``dynamic_tools`` row
+                # rather than colliding on the UNIQUE name constraint.
+                id=NotBlankStr(f"bp-{uuid5(NAMESPACE_URL, capability).hex}"),
                 name=NotBlankStr(name),
                 description=args.description,
                 capability=capability,

@@ -29,6 +29,7 @@ from synthorg.meta.models import (
 )
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.service import ToolsmithService
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_APPLY_COMPLETED,
@@ -51,6 +52,9 @@ class ToolApprovalConsumer:
             blueprint (and re-checks the live tool-creation master gate).
         blueprint_repo: Durable blueprint store the consumer rehydrates from.
         approval_store: Approval store the consumer polls + atomically claims.
+        notification_dispatcher: Optional ops-alert sink. The claim is
+            one-shot, so a failed apply silently burns an operator's
+            approval; a dispatcher surfaces that instead of a log-only trace.
     """
 
     def __init__(
@@ -59,10 +63,12 @@ class ToolApprovalConsumer:
         service: ToolsmithService,
         blueprint_repo: DynamicToolRepository,
         approval_store: ApprovalStoreProtocol,
+        notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self._service = service
         self._blueprint_repo = blueprint_repo
         self._approval_store = approval_store
+        self._notification_dispatcher = notification_dispatcher
 
     async def consume(self) -> int:
         """Apply every approved tool-creation blueprint; return the count applied.
@@ -90,7 +96,10 @@ class ToolApprovalConsumer:
             ``True`` iff the tool was registered live this pass.
         """
         blueprint_id = item.metadata.get("blueprint_id")
-        if not blueprint_id:
+        # ``NotBlankStr(...)`` is a no-op outside a Pydantic boundary (it is an
+        # annotated alias, so it just forwards to ``str``), so guard the blank
+        # case explicitly here rather than rely on the wrapper below.
+        if not blueprint_id or not blueprint_id.strip():
             return False
         blueprint = await self._blueprint_repo.get(NotBlankStr(blueprint_id))
         if blueprint is None:
@@ -120,6 +129,7 @@ class ToolApprovalConsumer:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            await self._notify_apply_failed(blueprint, safe_error_description(exc))
             return False
         if not result.success:
             logger.warning(
@@ -128,6 +138,9 @@ class ToolApprovalConsumer:
                 note="approve_to_live_apply_rejected",
                 detail=str(result.error_message or ""),
             )
+            await self._notify_apply_failed(
+                blueprint, str(result.error_message or "validation gate rejected")
+            )
             return False
         logger.info(
             TOOLSMITH_APPLY_COMPLETED,
@@ -135,6 +148,47 @@ class ToolApprovalConsumer:
             note="approve_to_live",
         )
         return True
+
+    async def _notify_apply_failed(self, blueprint: ToolBlueprint, reason: str) -> None:
+        """Surface a burned approval to the operator (best-effort).
+
+        The one-shot grant is already consumed by the time apply runs, so a
+        failed apply leaves the approval spent with the tool never live. An
+        ops alert lets the operator re-propose rather than discovering it only
+        by log-grep. A no-op when no dispatcher is wired.
+        """
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        body = (
+            f"Approved tool {blueprint.name!r} (capability "
+            f"{blueprint.capability!r}) failed to go live: {reason}. The "
+            "approval is spent; re-propose the tool to try again."
+        )
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.SYSTEM,
+                    severity=NotificationSeverity.WARNING,
+                    title="Approved tool failed to go live",
+                    body=body,
+                    source="meta.toolsmith",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_APPLY_FAILED,
+                tool_name=blueprint.name,
+                note="apply_failed_alert_dispatch_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
 
 def _apply_proposal_for(blueprint: ToolBlueprint) -> ImprovementProposal:

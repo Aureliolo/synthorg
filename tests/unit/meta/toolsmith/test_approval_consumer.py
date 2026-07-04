@@ -21,6 +21,7 @@ from synthorg.meta.models import ApplyResult
 from synthorg.meta.toolsmith.approval_consumer import ToolApprovalConsumer
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.service import ToolsmithService
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from tests._shared import as_uuid, mock_of
 
@@ -186,3 +187,49 @@ async def test_apply_rejection_counts_as_not_applied() -> None:
     assert await consumer.consume() == 0
     # The claim still happened (the grant is one-shot), but nothing went live.
     _asmock(service.apply).assert_awaited_once()
+
+
+async def test_apply_failure_alerts_the_operator() -> None:
+    item = _approval()
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(
+            return_value=ApplyResult(
+                success=False,
+                error_message=NotBlankStr("gate rejected"),
+                changes_applied=0,
+            )
+        )
+    )
+    dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+    consumer = ToolApprovalConsumer(
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=item),
+        ),
+        notification_dispatcher=dispatcher,
+    )
+
+    assert await consumer.consume() == 0
+    # A spent-but-failed approval is surfaced so the operator can re-propose.
+    _asmock(dispatcher.dispatch).assert_awaited_once()
+
+
+async def test_whitespace_blueprint_id_is_skipped() -> None:
+    item = _approval(blueprint_id="   ")
+    repo = mock_of[DynamicToolRepository](get=AsyncMock(return_value=_blueprint()))
+    consumer = ToolApprovalConsumer(
+        service=mock_of[ToolsmithService](apply=AsyncMock()),
+        blueprint_repo=repo,
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=item),
+        ),
+    )
+
+    assert await consumer.consume() == 0
+    # A whitespace-only id is not a real blueprint reference; never look it up.
+    _asmock(repo.get).assert_not_called()

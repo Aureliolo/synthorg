@@ -113,6 +113,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "PostgresAlertRepository",
         "PersistentAlertSink",
         "resolve_chat_answer",
+        "ToolApprovalConsumer",
     ),
     depends_on=(),
 )
