@@ -61,6 +61,15 @@ interface AuthState {
 // later session expiry still works.
 let unauthorizedRedirectInFlight = false
 
+// Bumped by an intentional logout so a dev-session recovery already in
+// flight (started before the logout, resolving after) discovers it is
+// stale before it can retry the websocket, clear the in-flight redirect
+// guard, or silently re-authenticate the user right after they logged
+// out. Mirrors the generation-counter pattern in api/approval_store.py's
+// ApprovalStore (bumped by clear(), checked before an in-flight scan
+// repopulates the cache).
+let authEpoch = 0
+
 export function _resetUnauthorizedRedirectGuardForTests(): void {
   unauthorizedRedirectInFlight = false
 }
@@ -166,7 +175,16 @@ async function _recoverDevSession(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
 ): Promise<void> {
+  const epoch = authEpoch
   const recovered = await _tryDevAutoLogin(set, get)
+  if (epoch !== authEpoch) {
+    // An intentional logout landed while this recovery was in flight.
+    // _tryDevAutoLoginOnce already restored the unauthenticated state
+    // if it raced past that guard; don't reset the in-flight redirect
+    // marker or retry the websocket for a session the user no longer
+    // wants.
+    return
+  }
   if (recovered) {
     // Recovery does not reload the page, so this in-flight guard would
     // otherwise stay tripped for the rest of the session, silently
@@ -235,8 +253,18 @@ async function _tryDevAutoLoginOnce(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
 ): Promise<boolean> {
+  const epoch = authEpoch
   try {
     await performAuthFlow(set, get, () => authApi.devLogin())
+    if (epoch !== authEpoch) {
+      // An intentional logout landed while this devLogin/fetchUser
+      // round-trip was in flight; its success is stale. Restore the
+      // logout's unauthenticated state instead of trusting the
+      // just-completed authFlow, and report failure so the caller
+      // does not treat this as a live recovered session.
+      set({ authStatus: 'unauthenticated', user: null })
+      return false
+    }
     return get().authStatus === 'authenticated'
   } catch (err) {
     log.warn(
@@ -355,6 +383,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     } catch (err) {
       log.warn('Logout API call failed:', getErrorMessage(err))
     }
+    authEpoch += 1
     get().handleUnauthorized({ intentional: true })
   },
   fetchUser: () => fetchUserImpl(set, get),

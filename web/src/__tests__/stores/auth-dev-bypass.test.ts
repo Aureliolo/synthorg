@@ -182,17 +182,23 @@ describe('auth store dev bypass auto-login', () => {
       expect(wsDisconnectSpy).toHaveBeenCalled()
     })
 
-    // Drain the still-pending recovery so it doesn't leak past this test.
-    // _redirectToLogin() above left window.location.href as the relative
-    // '/login'; a real browser would resolve that into a full navigation
-    // (aborting this JS context), but the location mock does not, so the
-    // stale recovery's fetchUser() would otherwise fail to build a
-    // request URL. Restore an absolute href so that continuation settles
-    // through its normal success path instead of an unrelated URL error.
+    // Drain the still-pending recovery so it doesn't leak past this test,
+    // and prove the epoch guard actually prevents it from clobbering the
+    // intentional logout: without the guard, this stale continuation
+    // would flip authStatus back to 'authenticated' once dev-login and
+    // fetchUser resolve. _redirectToLogin() above left window.location.href
+    // as the relative '/login'; a real browser would resolve that into a
+    // full navigation (aborting this JS context), but the location mock
+    // does not, so the stale recovery's fetchUser() would otherwise fail
+    // to build a request URL. Restore an absolute href so that
+    // continuation settles through its normal success path instead of an
+    // unrelated URL error.
     window.location.href = 'http://localhost/login'
     resolveDevLogin?.()
     await vi.waitFor(() => {
-      expect(wsRetrySpy).toHaveBeenCalled()
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+      expect(useAuthStore.getState().user).toBeNull()
     })
+    expect(wsRetrySpy).not.toHaveBeenCalled()
   })
 })

@@ -5,7 +5,7 @@ on the catalog / OAuth / webhook / health-prober surface and delegates
 the tunnel-specific pieces here.
 """
 
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -29,8 +29,6 @@ def resolve_tunnel_state_dir() -> Path | None:
     Raises:
         ValueError: When the value carries a ``..`` traversal component.
     """
-    from pathlib import PurePath  # noqa: PLC0415
-
     from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
         resolve_init_value,
     )

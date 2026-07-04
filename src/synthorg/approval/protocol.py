@@ -77,6 +77,15 @@ class ApprovalStoreProtocol(Protocol):
         Unlike :meth:`list_items`, does not drain the full store or
         apply lazy expiration; a single ``LIMIT``/``OFFSET`` query
         (or a bounded cache scan when no repository is configured).
+
+        Args:
+            action_types: Match any of these action-type values (``IN``).
+                ``None`` or an empty tuple matches every action type.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Up to ``limit`` matching items, newest-first.
         """
         ...
 
