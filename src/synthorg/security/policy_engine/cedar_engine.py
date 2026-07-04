@@ -30,12 +30,17 @@ class CedarPolicyEngine:
     """Cedar-based runtime policy evaluator.
 
     Uses ``cedarpy.is_authorized()`` for stateless embedded policy
-    evaluation.  Policies are loaded at construction time from text
-    strings.
+    evaluation.  Policies are parsed once at construction time into a
+    reusable ``cedarpy.PolicySet``, avoiding a full text re-parse on
+    every ``evaluate()`` call (the dominant per-call cost per the
+    cedarpy benchmarks).
 
     Args:
         policy_texts: Cedar policy source strings.
         fail_closed: If ``True``, return deny on evaluation errors.
+
+    Raises:
+        ValueError: If the concatenated policy text fails to parse.
     """
 
     def __init__(
@@ -44,7 +49,7 @@ class CedarPolicyEngine:
         *,
         fail_closed: bool = False,
     ) -> None:
-        self._policies = "\n".join(policy_texts)
+        self._policy_set = cedarpy.PolicySet.from_str("\n".join(policy_texts))
         self._fail_closed = fail_closed
 
     @property
@@ -94,7 +99,7 @@ class CedarPolicyEngine:
         try:
             result = cedarpy.is_authorized(
                 cedar_request,
-                self._policies,
+                self._policy_set,
                 [],
             )
             latency_ms = (time.perf_counter() - start) * 1000
