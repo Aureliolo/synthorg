@@ -4,6 +4,7 @@ import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
 import { resolveScopedRetryContent } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 /** A parked work item, with its approval id for a deep link. */
 export interface RequestWorkProposal {
@@ -53,7 +54,7 @@ export function useRequestWorkState(): RequestWorkState {
   const [conversationClosed, setConversationClosed] = useState(false)
   const proposeLoading = useMetaStore((s) => s.proposeLoading)
   const propose = useMetaStore((s) => s.proposeConversation)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useScrollToBottom(messages)
   const msgIdRef = useRef(0)
   const conversationIdRef = useRef<string | undefined>(undefined)
 
@@ -72,7 +73,6 @@ export function useRequestWorkState(): RequestWorkState {
         setConversationClosed(result.conversation_closed)
       }
       setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
-      scrollToBottom(scrollRef)
     },
     [proposeLoading, conversationClosed, propose, nextMsgId],
   )
@@ -167,13 +167,4 @@ function buildAssistantMessage(
     steering,
     ...toAttribution(result),
   }
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

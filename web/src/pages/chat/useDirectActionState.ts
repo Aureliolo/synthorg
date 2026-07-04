@@ -8,6 +8,7 @@ import type {
 } from '@/api/types'
 import { useMetaStore } from '@/stores/meta'
 import { resolveScopedRetryContent } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export interface ActMessage {
   id: number
@@ -19,6 +20,8 @@ export interface ActMessage {
   content: string
   /** Acting agent's name, on ``action`` bubbles. */
   agentName?: string | undefined
+  /** Acting agent's role, on ``action`` bubbles (resolved from the roster). */
+  agentRole?: string | undefined
   /** Tools the action executed, on ``action`` bubbles. */
   toolCalls?: readonly ExecutedToolCall[] | undefined
   /** Approval id, on ``action`` bubbles when the action parked for consent. */
@@ -49,7 +52,7 @@ export function useDirectActionState(): DirectActionState {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [messages, setMessages] = useState<readonly ActMessage[]>([])
   const [input, setInput] = useState('')
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useScrollToBottom(messages)
   const msgIdRef = useRef(0)
   const conversationIdRef = useRef<string | undefined>(undefined)
 
@@ -77,13 +80,15 @@ export function useDirectActionState(): DirectActionState {
         selectedAgentId,
         conversationIdRef.current,
       )
-      setMessages((prev) => [...prev, buildActMessage(result, nextMsgId)])
+      // The acting agent is the one the operator selected; resolve its role
+      // from the roster rather than mislabelling every action as "acting".
+      const actingRole = activeAgents.find((a) => a.id === selectedAgentId)?.role
+      setMessages((prev) => [...prev, buildActMessage(result, nextMsgId, actingRole)])
       if (result) {
         conversationIdRef.current = result.conversation_id ?? undefined
       }
-      scrollToBottom(scrollRef)
     },
-    [loading, selectedAgentId, runAction, nextMsgId],
+    [loading, selectedAgentId, runAction, nextMsgId, activeAgents],
   )
 
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
@@ -140,6 +145,7 @@ const TERMINATION_REASON_COPY: Readonly<
 function buildActMessage(
   result: ConversationalActResult | null,
   nextMsgId: () => number,
+  actingRole: string | undefined,
 ): ActMessage {
   if (!result) {
     return {
@@ -163,18 +169,10 @@ function buildActMessage(
     kind: 'action',
     content,
     agentName: result.agent_name,
+    agentRole: actingRole,
     toolCalls: action.tool_calls,
     parkedApprovalId: action.parked
       ? (action.approval_id ?? undefined)
       : undefined,
   }
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

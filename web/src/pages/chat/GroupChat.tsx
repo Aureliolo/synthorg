@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
 import { useGroupChatState, type GroupMessage } from './useGroupChatState'
 
@@ -106,7 +107,7 @@ function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupB
     )
   }
   const isHuman = msg.kind === 'human'
-  const isAttributed = Boolean(msg.agentName && msg.role)
+  const isAttributed = hasAttribution(msg.agentName, msg.role)
   return (
     <div
       className={cn(

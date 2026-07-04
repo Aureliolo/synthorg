@@ -4,6 +4,7 @@ import type { AlertSummary, ChatScope, ProposalSummary } from '@/api/endpoints/m
 import { useMetaStore } from '@/stores/meta'
 import type { ChatScopeValue } from './ChatScopePicker'
 import { resolveScopedRetryContent } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export interface ChiefOfStaffMessage {
   id: number
@@ -50,7 +51,7 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   const alerts = useMetaStore((s) => s.alerts)
   const fetchProposals = useMetaStore((s) => s.fetchProposals)
   const fetchAlerts = useMetaStore((s) => s.fetchAlerts)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useScrollToBottom(messages)
   const msgIdRef = useRef(0)
 
   useEffect(() => {
@@ -69,7 +70,6 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
       ])
       const response = await sendChat(question, toChatScope(scope))
       setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
-      scrollToBottom(scrollRef)
     },
     [chatLoading, sendChat, nextMsgId, scope],
   )
@@ -126,13 +126,4 @@ function buildAssistantMessage(
     content: 'The assistant could not respond. Please try again.',
     isError: true,
   }
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

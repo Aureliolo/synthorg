@@ -99,6 +99,8 @@ describe('DirectActionChat', () => {
     expect(screen.getByText('query_metrics')).toBeInTheDocument()
     // The human instruction is echoed into the transcript.
     expect(screen.getByText('how is revenue?')).toBeInTheDocument()
+    // Attribution uses the acting agent's real role, not a hardcoded "acting".
+    expect(screen.queryByText('acting')).not.toBeInTheDocument()
   })
 
   it('surfaces a parked action with a consent CTA to approvals', async () => {

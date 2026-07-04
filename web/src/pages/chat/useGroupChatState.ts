@@ -8,6 +8,7 @@ import type {
 import { useApprovalsStore } from '@/stores/approvals'
 import { useMetaStore } from '@/stores/meta'
 import { resolveScopedRetryContent } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export interface GroupMessage {
   id: number
@@ -126,7 +127,7 @@ export function useGroupChatState(): GroupChatState {
   const [messages, setMessages] = useState<readonly GroupMessage[]>([])
   const [input, setInput] = useState('')
   const [started, setStarted] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useScrollToBottom(messages)
   const msgIdRef = useRef(0)
   const conversationIdRef = useRef<string | undefined>(undefined)
 
@@ -135,20 +136,6 @@ export function useGroupChatState(): GroupChatState {
   useEffect(() => {
     void fetchRef.current()
   }, [])
-
-  // Keep the transcript pinned to the latest turn. Driving the scroll
-  // from an effect (rather than a fire-and-forget call in the send
-  // handler) lets the cleanup cancel a pending frame on unmount, so no
-  // animation-frame handle survives the component.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [messages])
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 

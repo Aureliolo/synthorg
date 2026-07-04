@@ -18,10 +18,15 @@ export interface ChatInputAreaProps {
   inputDisabled?: boolean
   label: string
   placeholder: string
+  /** Visible rows for the multiline field. Default 2. */
+  rows?: number
   className?: string
 }
 
-/** Shared single-line send box for the meta conversational surfaces. */
+/**
+ * Shared multiline send box for the meta conversational surfaces. Enter
+ * sends; Shift+Enter inserts a newline so operators can compose paragraphs.
+ */
 export function ChatInputArea({
   value,
   onChange,
@@ -30,10 +35,11 @@ export function ChatInputArea({
   inputDisabled = false,
   label,
   placeholder,
+  rows = 2,
   className,
 }: ChatInputAreaProps) {
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         onSend()
@@ -46,8 +52,10 @@ export function ChatInputArea({
       <div className="flex-1">
         <InputField
           label={label}
+          multiline
+          rows={rows}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onValueChange={onChange}
           placeholder={placeholder}
           onKeyDown={handleKeyDown}
           disabled={inputDisabled}

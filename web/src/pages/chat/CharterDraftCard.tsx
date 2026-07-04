@@ -3,7 +3,6 @@ import type { CharterEditRequest, ProjectCharter } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
-import { formatCurrency } from '@/utils/format'
 
 const STATUS_LABELS: Readonly<Record<ProjectCharter['status'], string>> = {
   drafted: 'Drafted',
@@ -47,7 +46,6 @@ interface CharterBudgetRowProps {
   amount: string
   amountValid: boolean
   disabled: boolean
-  ceiling: number
   currency: string
   onAmountChange: (value: string) => void
 }
@@ -56,27 +54,22 @@ function CharterBudgetRow({
   amount,
   amountValid,
   disabled,
-  ceiling,
   currency,
   onAmountChange,
 }: CharterBudgetRowProps) {
+  // The budget IS the approval ceiling; a separate read-only "Approved
+  // ceiling" field just echoed the same number. One editable field with the
+  // currency as a hint removes the duplication.
   return (
-    <div className="grid gap-grid-gap sm:grid-cols-2">
-      <InputField
-        label="Budget"
-        type="number"
-        value={amount}
-        onValueChange={onAmountChange}
-        disabled={disabled}
-        error={amountValid ? undefined : 'Budget must be a positive number.'}
-      />
-      <div>
-        <h4 className="mb-1 text-sm font-medium">Approved ceiling</h4>
-        <p className="text-sm text-text-secondary">
-          {formatCurrency(ceiling, currency)}
-        </p>
-      </div>
-    </div>
+    <InputField
+      label="Budget"
+      type="number"
+      value={amount}
+      onValueChange={onAmountChange}
+      disabled={disabled}
+      hint={currency}
+      error={amountValid ? undefined : 'Budget must be a positive number.'}
+    />
   )
 }
 
@@ -174,7 +167,6 @@ function CharterDraftCardInner({
           amount={amount}
           amountValid={amountValid}
           disabled={editingDisabled}
-          ceiling={charter.envelope.amount}
           currency={charter.envelope.currency}
           onAmountChange={setAmount}
         />

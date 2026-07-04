@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
 import { useDirectActionState, type ActMessage } from './useDirectActionState'
 
@@ -61,7 +62,9 @@ function ActionBubble({ msg }: ActionBubbleProps) {
           </Button>
         </div>
       )}
-      {msg.agentName && <ResponderAttribution name={msg.agentName} role="acting" />}
+      {hasAttribution(msg.agentName, msg.agentRole) && (
+        <ResponderAttribution name={msg.agentName ?? ''} role={msg.agentRole ?? ''} />
+      )}
     </div>
   )
 }

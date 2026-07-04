@@ -7,6 +7,7 @@ import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
 import { useRequestWorkState, type RequestWorkMessage } from './useRequestWorkState'
 
@@ -54,7 +55,7 @@ function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
 }
 
 function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
-  const isAttributed = Boolean(msg.responderRole && msg.responderName)
+  const isAttributed = hasAttribution(msg.responderName, msg.responderRole)
   return (
     <div
       className={cn(
