@@ -524,8 +524,8 @@ The approval rationale's `Follow-ups:` line must reference the single combined i
 **Before checkout:** Verify the working tree is clean (`git status --porcelain`). If it's dirty with unrelated in-progress work, do NOT ask the user to stash or commit it just to make room for this fix -- create an isolated worktree instead so their work is never touched:
 
 ```bash
-git fetch origin <pr-branch>
-git worktree add <path> <pr-branch>
+git fetch origin "+pull/<number>/head:pr-<number>"
+git worktree add <path> "pr-<number>"
 ```
 
 Do steps 1-4 below inside that worktree, then remove it once pushed (`git worktree remove <path> --force`). Only fall back to asking the user to stash/commit if worktree creation itself fails. If the working tree is already clean, `gh pr checkout <number>` in place is fine and no worktree is needed.
