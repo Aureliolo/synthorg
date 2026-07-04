@@ -19,13 +19,15 @@ with no runtime benefit.
 import asyncio
 import copy
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.company import Company
 from synthorg.core.pagination import collect_all
+from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -34,17 +36,22 @@ from synthorg.observability.events.company import (
     DEPARTMENT_DELETED_VIA_MCP,
     DEPARTMENT_UPDATED_VIA_MCP,
     DEPARTMENTS_REORDERED_VIA_MCP,
-    ORG_CAPABILITY_UNSUPPORTED,
 )
 from synthorg.organization.department_record import _DepartmentRecord
-from synthorg.organization.models import UpdateCompanyRequest
+from synthorg.organization.models import ReorderDepartmentsRequest, UpdateCompanyRequest
 from synthorg.persistence.department_protocol import DepartmentRepository
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
     from synthorg.api.services.org_mutations import OrgMutationService
 
 
 logger = get_logger(__name__)
+
+# Company structure is single-tenant, so its version history is keyed under a
+# single entity id (matching the REST company-version controller).
+_COMPANY_ENTITY_ID = NotBlankStr("default")
 
 
 class UnsetType:
@@ -77,93 +84,77 @@ UNSET = UnsetType()
 
 
 class CompanyReadService:
-    """Read + light mutation facade over the company/org surface."""
+    """Read + light-mutation facade over the company/org surface.
 
-    def __init__(self, *, org_mutation: OrgMutationService) -> None:
-        # Stored as ``object``: the facade probes capabilities via
-        # ``getattr`` + ``callable`` rather than the concrete type.
-        self._org: object = org_mutation
+    Reads project the same durable sources the REST company controllers
+    use: the config resolver for the company snapshot + departments, and
+    the ``VersionRepository[Company]`` for history. Writes route through
+    ``OrgMutationService`` (the single owner of the company-settings write
+    + snapshot flow). ``company_versions`` is optional: a persistence-less
+    deployment has no durable history, so the version reads surface a
+    capability gap rather than a 503.
+    """
 
-    async def get_company(self) -> object:
-        """Return the company snapshot or raise if the capability is missing.
+    def __init__(
+        self,
+        *,
+        org_mutation: OrgMutationService,
+        config_resolver: ConfigResolver,
+        company_versions: VersionRepository[Company] | None = None,
+    ) -> None:
+        self._org = org_mutation
+        self._resolver = config_resolver
+        self._versions = company_versions
 
-        Raises:
-            CapabilityNotSupportedError: When the wired
-                ``OrgMutationService`` does not expose ``get_company``.
+    async def get_company(self) -> Mapping[str, object]:
+        """Return the curated company snapshot (name, agents, departments).
+
+        Returns:
+            A JSON-safe mapping mirroring the REST ``GET /company`` shape.
         """
-        fn = getattr(self._org, "get_company", None)
-        if callable(fn):
-            return await fn()
-        logger.warning(
-            ORG_CAPABILITY_UNSUPPORTED,
-            capability="company_get",
-            error_type=CapabilityNotSupportedError.__name__,
-        )
-        raise CapabilityNotSupportedError(
-            "company_get",
-            "OrgMutationService does not expose get_company",
-        )
+        async with asyncio.TaskGroup() as tg:
+            t_name = tg.create_task(self._resolver.get_str("company", "company_name"))
+            t_agents = tg.create_task(self._resolver.get_agents())
+            t_depts = tg.create_task(self._resolver.get_departments())
+        return {
+            "company_name": t_name.result(),
+            "agents": [a.model_dump(mode="json") for a in t_agents.result()],
+            "departments": [d.model_dump(mode="json") for d in t_depts.result()],
+        }
 
     async def update_company(
         self,
         *,
         payload: Mapping[str, object],
         actor_id: NotBlankStr,
-    ) -> object:
+    ) -> Mapping[str, object]:
         """Apply a partial company-settings update.
 
         The payload is validated against :class:`UpdateCompanyRequest`
         here so unknown keys are rejected before reaching the mutation
-        service.  ``actor_id`` is bound to the actor-context seam for the
+        service. ``actor_id`` is bound to the actor-context seam for the
         call so the mutation service's snapshot leaf attributes the
         version to this caller (the MCP layer is bypassed by the
         HTTP-only ``AuthContextMiddleware``, so the binding is explicit
         here).
 
         Returns:
-            The updated company snapshot returned by the mutation service.
-
-        Raises:
-            CapabilityNotSupportedError: When ``OrgMutationService`` does
-                not expose ``update_company``.
+            The updated company fields returned by the mutation service.
         """
-        fn = getattr(self._org, "update_company", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="company_update",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
-            raise CapabilityNotSupportedError(
-                "company_update",
-                "OrgMutationService does not expose update_company",
-            )
         data = UpdateCompanyRequest.model_validate(dict(payload))
         actor = ActorIdentity(actor_id=actor_id, kind=ActorKind.HUMAN, label=actor_id)
         with actor_scope(actor):
-            result = await fn(data)
+            updated, _etag = await self._org.update_company(data)
         logger.info(COMPANY_UPDATED_VIA_MCP, actor_id=actor_id)
-        return result
+        return updated
 
     async def list_departments(self) -> Sequence[object]:
         """Return the company's departments.
 
-        Raises:
-            CapabilityNotSupportedError: When ``OrgMutationService`` does
-                not expose ``list_departments``.
+        Returns:
+            The department models resolved from company settings.
         """
-        fn = getattr(self._org, "list_departments", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="company_list_departments",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
-            raise CapabilityNotSupportedError(
-                "company_list_departments",
-                "OrgMutationService does not expose list_departments",
-            )
-        return tuple(await fn())
+        return tuple(await self._resolver.get_departments())
 
     async def reorder_departments(
         self,
@@ -171,24 +162,18 @@ class CompanyReadService:
         department_ids: Sequence[str],
         actor_id: NotBlankStr,
     ) -> None:
-        """Apply a new department ordering, auditing the change.
+        """Apply a new department ordering (by name), auditing the change.
 
-        Raises:
-            CapabilityNotSupportedError: When ``OrgMutationService`` does
-                not expose ``reorder_departments``.
+        ``department_ids`` is an exact permutation of the current
+        department names (the reorder key is the display name, matching
+        the REST ``POST /company/reorder-departments`` contract).
         """
-        fn = getattr(self._org, "reorder_departments", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="company_reorder_departments",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
-            raise CapabilityNotSupportedError(
-                "company_reorder_departments",
-                "OrgMutationService does not expose reorder_departments",
-            )
-        await fn(department_ids=tuple(department_ids), actor=actor_id)
+        data = ReorderDepartmentsRequest(
+            department_names=tuple(NotBlankStr(name) for name in department_ids),
+        )
+        actor = ActorIdentity(actor_id=actor_id, kind=ActorKind.HUMAN, label=actor_id)
+        with actor_scope(actor):
+            await self._org.reorder_departments(data)
         logger.info(
             DEPARTMENTS_REORDERED_VIA_MCP,
             actor_id=actor_id,
@@ -196,48 +181,54 @@ class CompanyReadService:
         )
 
     async def list_versions(self) -> Sequence[object]:
-        """Return all company-snapshot versions.
-
-        Raises:
-            CapabilityNotSupportedError: When ``OrgMutationService`` does
-                not expose ``list_company_versions``.
-        """
-        fn = getattr(self._org, "list_company_versions", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="company_list_versions",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
-            raise CapabilityNotSupportedError(
-                "company_list_versions",
-                "OrgMutationService does not expose list_company_versions",
-            )
-        return tuple(await fn())
-
-    async def get_version(self, version_id: NotBlankStr) -> object | None:
-        """Fetch a single company-snapshot version by id.
+        """Return every company-snapshot version, newest-repo-order.
 
         Returns:
-            The matching company-snapshot version, or ``None`` when no
-            version has that id.
+            All company version snapshots from the durable repository.
 
         Raises:
-            CapabilityNotSupportedError: When ``OrgMutationService`` does
-                not expose ``get_company_version``.
+            CapabilityNotSupportedError: When no durable version
+                repository is wired (a persistence-less deployment).
         """
-        fn = getattr(self._org, "get_company_version", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="company_get_version",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
+        if self._versions is None:
             raise CapabilityNotSupportedError(
-                "company_get_version",
-                "OrgMutationService does not expose get_company_version",
+                "company_versions_list",
+                "company version history requires a durable persistence backend",
             )
-        return cast("object | None", await fn(version_id))
+        versions = self._versions
+        return await collect_all(
+            lambda limit, offset: versions.list_versions(
+                _COMPANY_ENTITY_ID, limit=limit, offset=offset
+            )
+        )
+
+    async def get_version(self, version_id: NotBlankStr) -> object | None:
+        """Fetch a single company-snapshot version by its version number.
+
+        ``version_id`` is the one-based monotonic version number (the only
+        stable key company snapshots carry); a non-numeric or out-of-range
+        value resolves to ``None`` so the handler maps it onto
+        ``not_found``.
+
+        Returns:
+            The matching company-snapshot version, or ``None``.
+
+        Raises:
+            CapabilityNotSupportedError: When no durable version
+                repository is wired (a persistence-less deployment).
+        """
+        if self._versions is None:
+            raise CapabilityNotSupportedError(
+                "company_versions_get",
+                "company version history requires a durable persistence backend",
+            )
+        try:
+            version_num = int(version_id)
+        except ValueError:
+            return None
+        if version_num < 1:
+            return None
+        return await self._versions.get_version(_COMPANY_ENTITY_ID, version_num)
 
 
 # ── DepartmentService ───────────────────────────────────────────────
@@ -472,108 +463,97 @@ class DepartmentService:
 
 
 class RoleVersionService:
-    """Read facade for the role-version snapshot history."""
+    """Read facade for the per-role version-snapshot history.
+
+    Role snapshots are keyed by ``(role_name, version)`` in the durable
+    ``VersionRepository[Role]`` (there is no global snapshot id), so both
+    reads require the role name. ``role_versions`` is optional: a
+    persistence-less deployment has no durable history and the reads
+    surface a capability gap rather than a 503.
+    """
 
     def __init__(
         self,
         *,
-        org_mutation: OrgMutationService | None = None,
+        role_versions: VersionRepository[Role] | None = None,
     ) -> None:
-        # Stored as ``object``: the facade probes capabilities via
-        # ``getattr`` + ``callable`` rather than the concrete type.
-        self._org: object | None = org_mutation
+        self._versions = role_versions
 
     async def list_versions(
         self,
         *,
-        role_name: NotBlankStr | None = None,
+        role_name: NotBlankStr,
         offset: int = 0,
         limit: int | None = None,
     ) -> tuple[tuple[object, ...], int]:
-        """Return a paginated role-snapshot slice plus the unfiltered total.
+        """Return a paginated slice of a role's snapshots plus the total.
 
         Args:
-            role_name: Optional role-name filter.
+            role_name: The role whose version history to list (required;
+                snapshots are per-role in the durable store).
             offset: Non-negative page offset.
             limit: Optional positive page size; ``None`` returns every
                 version from ``offset`` onwards.
 
         Returns:
             A ``(page, total)`` pair where ``total`` counts every version
-            matching ``role_name`` before pagination is applied.
+            of ``role_name`` before pagination is applied.
 
         Raises:
-            CapabilityNotSupportedError: When no ``OrgMutationService`` is
-                wired, or the wired one does not expose
-                ``list_role_versions``.
+            CapabilityNotSupportedError: When no durable version
+                repository is wired (a persistence-less deployment).
         """
-        if self._org is None:
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="role_versions_list",
-                reason="not_wired",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
+        if self._versions is None:
             raise CapabilityNotSupportedError(
                 "role_versions_list",
-                "OrgMutationService not wired on app_state",
+                "role version history requires a durable persistence backend",
             )
-        fn = getattr(self._org, "list_role_versions", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="role_versions_list",
-                reason="not_exposed",
-                error_type=CapabilityNotSupportedError.__name__,
+        repo = self._versions
+        total = await repo.count_versions(role_name)
+        if limit is None:
+            everything = await collect_all(
+                lambda inner_limit, inner_offset: repo.list_versions(
+                    role_name, limit=inner_limit, offset=inner_offset
+                )
             )
-            raise CapabilityNotSupportedError(
-                "role_versions_list",
-                "OrgMutationService does not expose list_role_versions",
+            page = tuple(everything)[offset:]
+        else:
+            page = tuple(
+                await repo.list_versions(role_name, limit=limit, offset=offset)
             )
-        versions = tuple(await fn(role_name=role_name))
-        total = len(versions)
-        end = None if limit is None else offset + limit
-        return versions[offset:end], total
+        return page, total
 
     async def get_version(
         self,
+        *,
+        role_name: NotBlankStr,
         version_id: NotBlankStr,
     ) -> object | None:
-        """Fetch a single role-snapshot version by id.
+        """Fetch a single role snapshot by role name + version number.
+
+        ``version_id`` is the one-based monotonic version number; a
+        non-numeric or out-of-range value resolves to ``None`` so the
+        handler maps it onto ``not_found``.
 
         Returns:
-            The matching role-snapshot version, or ``None`` when no
-            version has that id.
+            The matching role-snapshot version, or ``None``.
 
         Raises:
-            CapabilityNotSupportedError: When no ``OrgMutationService`` is
-                wired, or the wired one does not expose
-                ``get_role_version``.
+            CapabilityNotSupportedError: When no durable version
+                repository is wired (a persistence-less deployment).
         """
-        if self._org is None:
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="role_versions_get",
-                reason="not_wired",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
+        if self._versions is None:
             raise CapabilityNotSupportedError(
                 "role_versions_get",
-                "OrgMutationService not wired on app_state",
+                "role version history requires a durable persistence backend",
             )
-        fn = getattr(self._org, "get_role_version", None)
-        if not callable(fn):
-            logger.warning(
-                ORG_CAPABILITY_UNSUPPORTED,
-                capability="role_versions_get",
-                reason="not_exposed",
-                error_type=CapabilityNotSupportedError.__name__,
-            )
-            raise CapabilityNotSupportedError(
-                "role_versions_get",
-                "OrgMutationService does not expose get_role_version",
-            )
-        return cast("object | None", await fn(version_id))
+        try:
+            version_num = int(version_id)
+        except ValueError:
+            return None
+        if version_num < 1:
+            return None
+        return await self._versions.get_version(role_name, version_num)
 
 
 __all__ = [

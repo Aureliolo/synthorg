@@ -451,7 +451,10 @@ class TestTeams:
 class TestRoleVersions:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"role_name": "engineer"},
+        )
         payload = json.loads(response)
         assert payload["status"] == "ok"
         assert payload["data"] == []
@@ -466,7 +469,7 @@ class TestRoleVersions:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"offset": 3, "limit": 2},
+            arguments={"role_name": "engineer", "offset": 3, "limit": 2},
         )
         payload = json.loads(response)
         assert payload["status"] == "ok"
@@ -479,7 +482,7 @@ class TestRoleVersions:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_get"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"version_id": "v1"},
+            arguments={"role_name": "engineer", "version_id": "v1"},
         )
         assert json.loads(response)["domain_code"] == "not_found"
 
@@ -492,7 +495,10 @@ class TestRoleVersions:
             side_effect=CapabilityNotSupportedError("role_versions_list", "x"),
         )
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
-        response = await handler(app_state=fake_app_state, arguments={})
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"role_name": "engineer"},
+        )
         assert json.loads(response)["domain_code"] == "not_supported"
 
     async def test_get_capability_gap(
@@ -506,6 +512,6 @@ class TestRoleVersions:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_get"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"version_id": "v1"},
+            arguments={"role_name": "engineer", "version_id": "v1"},
         )
         assert json.loads(response)["domain_code"] == "not_supported"

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
 from synthorg.organization._team_service import TeamService
@@ -20,6 +21,7 @@ from synthorg.organization.services import (
     RoleVersionService,
 )
 from synthorg.persistence.department_protocol import DepartmentRepository
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -298,61 +300,62 @@ class TestTeamService:
         assert await service.get_team(NotBlankStr("bad")) is None
 
 
-# ── CompanyReadService capability paths ────────────────────────────
+# ── CompanyReadService (durable-source reads) ──────────────────────
+
+
+def _company_read_service(
+    *,
+    company_versions: object | None = None,
+) -> CompanyReadService:
+    """Build a CompanyReadService over a resolver stub with no company data."""
+    resolver = mock_of[ConfigResolver](
+        get_str=AsyncMock(return_value="Acme"),
+        get_agents=AsyncMock(return_value=()),
+        get_departments=AsyncMock(return_value=()),
+    )
+    return CompanyReadService(
+        org_mutation=mock_of[OrgMutationService](),
+        config_resolver=resolver,
+        company_versions=company_versions,  # type: ignore[arg-type]
+    )
 
 
 class TestCompanyReadService:
-    async def test_list_departments_capability_gap(self) -> None:
-        class _NoLister:
-            pass
+    async def test_get_company_reads_config_resolver(self) -> None:
+        service = _company_read_service()
+        company = await service.get_company()
+        assert company["company_name"] == "Acme"
+        assert company["agents"] == []
+        assert company["departments"] == []
 
-        service = CompanyReadService(org_mutation=_NoLister())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_departments()
+    async def test_list_departments_reads_config_resolver(self) -> None:
+        service = _company_read_service()
+        assert await service.list_departments() == ()
 
-    async def test_list_versions_capability_gap(self) -> None:
-        class _NoVersions:
-            pass
-
-        service = CompanyReadService(org_mutation=_NoVersions())  # type: ignore[arg-type]
+    async def test_list_versions_without_repo_raises(self) -> None:
+        service = _company_read_service(company_versions=None)
         with pytest.raises(CapabilityNotSupportedError):
             await service.list_versions()
 
-    async def test_get_version_capability_gap(self) -> None:
-        class _NoGet:
-            pass
-
-        service = CompanyReadService(org_mutation=_NoGet())  # type: ignore[arg-type]
+    async def test_get_version_without_repo_raises(self) -> None:
+        service = _company_read_service(company_versions=None)
         with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
+            await service.get_version(NotBlankStr("1"))
 
 
-# ── RoleVersionService capability paths ────────────────────────────
+# ── RoleVersionService (durable-source reads) ──────────────────────
 
 
 class TestRoleVersionService:
-    async def test_list_versions_capability_gap_unwired(self) -> None:
+    async def test_list_versions_without_repo_raises(self) -> None:
         service = RoleVersionService()
         with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
+            await service.list_versions(role_name=NotBlankStr("engineer"))
 
-    async def test_get_version_capability_gap_unwired(self) -> None:
+    async def test_get_version_without_repo_raises(self) -> None:
         service = RoleVersionService()
         with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
-
-    async def test_list_versions_capability_gap_missing_method(self) -> None:
-        class _PartialOrg:
-            pass
-
-        service = RoleVersionService(org_mutation=_PartialOrg())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
-
-    async def test_get_version_capability_gap_missing_method(self) -> None:
-        class _PartialOrg:
-            pass
-
-        service = RoleVersionService(org_mutation=_PartialOrg())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
+            await service.get_version(
+                role_name=NotBlankStr("engineer"),
+                version_id=NotBlankStr("1"),
+            )

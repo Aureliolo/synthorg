@@ -62,6 +62,9 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=(
+        "CompanyReadService",
+        "RoleVersionService",
+    ),
     depends_on=(),
 )

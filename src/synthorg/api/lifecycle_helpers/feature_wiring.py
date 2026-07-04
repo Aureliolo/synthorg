@@ -40,6 +40,9 @@ from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
 from synthorg.api.lifecycle_helpers.org_memory_wiring import (
     wire_org_memory_backend,
 )
+from synthorg.api.lifecycle_helpers.organization_wiring import (
+    wire_organization_read_services,
+)
 from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -561,6 +564,10 @@ async def wire_features_on_startup(
         effective_approval_store=effective_approval_store,
         si_config=si_config,
     )
+    # After meta wiring: the settings-composed config resolver + org-mutation
+    # service exist, so the organization read facades (company + role version)
+    # can project the durable org surface.
+    await wire_organization_read_services(app_state, persistence)
     await wire_run_narrator(
         app_state,
         provider_registry=provider_registry,

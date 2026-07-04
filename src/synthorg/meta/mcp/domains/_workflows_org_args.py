@@ -285,16 +285,18 @@ class TeamsDeleteArgs(AdminGuardrailFields):
 class RoleVersionsListArgs(PaginationFields):
     """Args for ``role_versions.list``."""
 
-    role_name: NotBlankStr | None = Field(
-        default=None,
-        description="Filter by role name",
+    role_name: NotBlankStr = Field(
+        description="Role whose version history to list",
     )
 
 
 class RoleVersionsGetArgs(_ArgsBase):
     """Args for ``role_versions.get``."""
 
-    version_id: NotBlankStr = Field(description="Role version ID")
+    role_name: NotBlankStr = Field(description="Role the version belongs to")
+    version_id: NotBlankStr = Field(
+        description="Role version number (one-based; 1 = first revision)",
+    )
 
 
 __all__ = [

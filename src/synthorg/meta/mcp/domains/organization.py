@@ -238,25 +238,35 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "role_versions",
         "list",
-        "List role configuration versions.",
+        "List a role's configuration version history.",
         {
-            "role_name": {"type": "string", "description": "Filter by role name"},
+            "role_name": {
+                "type": "string",
+                "description": "Role whose version history to list",
+                "minLength": 1,
+            },
             **PAGINATION_PROPERTIES,
         },
+        required=("role_name",),
         args_model=RoleVersionsListArgs,
     ),
     read_tool(
         "role_versions",
         "get",
-        "Get a specific role version.",
+        "Get a specific version of a role.",
         {
+            "role_name": {
+                "type": "string",
+                "description": "Role the version belongs to",
+                "minLength": 1,
+            },
             "version_id": {
                 "type": "string",
-                "description": "Role version ID",
+                "description": "Role version number (one-based; 1 = first revision)",
                 "minLength": 1,
             },
         },
-        required=("version_id",),
+        required=("role_name", "version_id"),
         args_model=RoleVersionsGetArgs,
     ),
 )

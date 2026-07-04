@@ -336,8 +336,11 @@ async def _role_versions_get(
     if not _role_version_service_wired(app_state):
         return capability_gap(tool, _WHY_ROLE_NOT_WIRED)
     try:
-        version_id = typed_args(arguments, RoleVersionsGetArgs).version_id
-        version = await role_version_service_of(app_state).get_version(version_id)
+        args = typed_args(arguments, RoleVersionsGetArgs)
+        version = await role_version_service_of(app_state).get_version(
+            role_name=args.role_name,
+            version_id=args.version_id,
+        )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -348,8 +351,12 @@ async def _role_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        missing = NotFoundError(f"Version {version_id} not found")
-        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        missing = NotFoundError(
+            f"Version {args.version_id} not found for role {args.role_name!r}"
+        )
+        log_handler_invoke_failed(
+            tool, missing, role_name=args.role_name, version_id=args.version_id
+        )
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(version))
