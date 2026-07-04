@@ -15,7 +15,7 @@ import structlog
 from structlog.typing import EventDict
 from typeguard import suppress_type_checks
 
-from synthorg.api._tunnel_wiring import resolve_tunnel_state_dir
+from synthorg.api._tunnel_wiring import resolve_tunnel_state_dir, wire_tunnel_provider
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle import _wire_ontology_service
@@ -366,8 +366,6 @@ class TestTunnelUnconditionalWiring:
         rejected inside the try block and the tunnel card degrades to
         unavailable rather than the whole boot failing.
         """
-        from synthorg.api._tunnel_wiring import wire_tunnel_provider
-
         monkeypatch.setenv("SYNTHORG_TUNNEL_STATE_DIR", "/data/../etc")
         config = RootConfig(company_name="test")
         with structlog.testing.capture_logs() as captured:

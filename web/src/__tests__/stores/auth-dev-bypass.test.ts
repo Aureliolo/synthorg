@@ -145,4 +145,54 @@ describe('auth store dev bypass auto-login', () => {
     })
     expect(wsRetrySpy).not.toHaveBeenCalled()
   })
+
+  it('an intentional logout is not swallowed by an in-flight dev-session recovery', async () => {
+    // A background 401 (e.g. a stale request) can trip the shared
+    // in-flight guard and start recovering a dev session; if the user
+    // clicks Logout while that recovery is still awaiting /dev-login,
+    // the guard must not silently drop the intentional call.
+    let resolveDevLogin: (() => void) | undefined
+    const devLoginGate = new Promise<void>((resolve) => {
+      resolveDevLogin = resolve
+    })
+    server.use(
+      http.post('/api/v1/auth/logout', () => HttpResponse.json(apiSuccess(null))),
+      http.post('/api/v1/auth/dev-login', async () => {
+        await devLoginGate
+        return HttpResponse.json(
+          apiSuccess({ expires_in: 86400, must_change_password: false }),
+        )
+      }),
+      http.get('/api/v1/auth/me', () => HttpResponse.json(apiSuccess(ADMIN))),
+    )
+    useAuthStore.setState({ authStatus: 'authenticated', user: ADMIN })
+
+    // Trip the in-flight guard with a non-intentional recovery that
+    // blocks on the gate above.
+    useAuthStore.getState().handleUnauthorized()
+
+    // Logout races in while that recovery is still pending.
+    await useAuthStore.getState().logout()
+
+    expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    expect(useAuthStore.getState().user).toBeNull()
+    // disconnect() runs inside handleUnauthorizedImpl's dynamic-import
+    // chain, which settles a tick after logout() itself resolves.
+    await vi.waitFor(() => {
+      expect(wsDisconnectSpy).toHaveBeenCalled()
+    })
+
+    // Drain the still-pending recovery so it doesn't leak past this test.
+    // _redirectToLogin() above left window.location.href as the relative
+    // '/login'; a real browser would resolve that into a full navigation
+    // (aborting this JS context), but the location mock does not, so the
+    // stale recovery's fetchUser() would otherwise fail to build a
+    // request URL. Restore an absolute href so that continuation settles
+    // through its normal success path instead of an unrelated URL error.
+    window.location.href = 'http://localhost/login'
+    resolveDevLogin?.()
+    await vi.waitFor(() => {
+      expect(wsRetrySpy).toHaveBeenCalled()
+    })
+  })
 })

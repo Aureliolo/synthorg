@@ -188,7 +188,7 @@ class _ReadMixin(_ApprovalRepoBase):
         Results are ordered by ``(created_at DESC, id DESC)``.
 
         Args:
-            filter_spec: Carries optional status, risk_level, action_type
+            filter_spec: Carries optional status, risk_level, action_types
                 filters (all optional).
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
@@ -234,7 +234,7 @@ class _ReadMixin(_ApprovalRepoBase):
         """Count approval items matching the filter spec.
 
         Args:
-            filter_spec: Carries optional status, risk_level, action_type
+            filter_spec: Carries optional status, risk_level, action_types
                 filters (all optional).
 
         Returns:

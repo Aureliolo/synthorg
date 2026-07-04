@@ -125,7 +125,7 @@ function handleUnauthorizedImpl(
   get: () => AuthState,
   options?: { intentional?: boolean },
 ): void {
-  if (unauthorizedRedirectInFlight) return
+  if (unauthorizedRedirectInFlight && !options?.intentional) return
   unauthorizedRedirectInFlight = true
   if (IS_DEV_AUTH_BYPASS && !options?.intentional) {
     // Dev bypass: re-mint the password-free admin session in place.

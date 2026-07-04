@@ -44,21 +44,14 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
-    API_APPROVAL_EXPIRE_BATCH_FAILED,
-    API_APPROVAL_EXPIRED,
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
 )
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_STATUS_TRANSITIONED,
-)
-from synthorg.observability.metrics_hub import record_approval_decision
 from synthorg.persistence.approval_protocol import (
     ApprovalFilterSpec,
     ApprovalRepository,
@@ -346,222 +339,10 @@ class ApprovalStore(ApprovalExpirationMixin):
             matches = [
                 item
                 for item in self._items.values()
-                if action_types is None or item.action_type in action_types
+                if not action_types or item.action_type in action_types
             ]
+        matches.sort(key=lambda item: (item.created_at, item.id), reverse=True)
         return tuple(matches[offset : offset + limit])
-
-    async def _list_from_repo(
-        self,
-        *,
-        status: ApprovalStatus | None,
-        risk_level: ApprovalRiskLevel | None,
-        action_type: NotBlankStr | None,
-        created_since: datetime | None,
-    ) -> tuple[ApprovalItem, ...]:
-        """Repo-backed list path with batched expiry persistence.
-
-        Per-page chunked so the store lock is held only for short
-        cache-mutation critical sections, never across repo I/O,
-        ``save_many``, or callback dispatch. A long unbounded scan
-        cannot stall concurrent ``get()`` / ``save()`` callers that
-        serialize on the same lock.
-
-        Per-page protocol: read page (no lock) -> compute expirations
-        (pure, no lock) -> ``expire_if_pending`` (no lock; compare-and-
-        set so concurrent saves can't be clobbered) -> brief lock for
-        cache update -> emit audit events + fire callbacks (no lock).
-        Each page is independent so a failure on one page does not
-        leave a half-applied state on a later page.
-
-        Generation guard: captures ``self._generation`` under the lock
-        before any repo I/O, then skips the cache-update step on a
-        per-page basis if the captured generation no longer matches
-        ``self._generation`` (i.e. a concurrent ``clear()`` landed
-        between the capture and the cache write). Without this guard
-        an in-flight scan could repopulate ``_items`` after a clear
-        finished, undoing the post-clear empty-cache invariant the
-        ``save()`` path already protects via the same generation check.
-
-        Cache refresh scope: every row in a fetched page is written
-        into ``_items`` (not just the EXPIRED transitions), so a
-        non-expired sibling whose authoritative repo state has drifted
-        from the cache still gets refreshed. Otherwise a stale cached
-        copy could survive a repo read and leak into a later ``get()``
-        / ``save_if_pending()`` decision.
-
-        Status filtering:
-
-        * When ``status`` is ``EXPIRED``, ``PENDING``, or ``None``,
-          the repo query omits the status filter. ``PENDING`` cannot
-          be pushed down because :meth:`_compute_page` flips PENDING
-          rows to EXPIRED between pages; a repo-side ``status=pending``
-          filter would shrink the result set under the iterator, so
-          ``offset += 100`` would skip rows that were still PENDING
-          when the previous page was read but should remain visible
-          to the caller. ``EXPIRED`` also stays unfiltered so PENDING
-          rows that should lazily flip to EXPIRED surface and get
-          persisted.
-        * When ``status`` is any other terminal value (APPROVED,
-          REJECTED, CANCELLED), the repo authoritatively persists that
-          status and lazy expiration cannot promote into it -- the
-          filter is pushed down so the DB only returns matching rows.
-
-        Side effects after each per-page batch save:
-
-        * Emits one ``APPROVAL_STATUS_TRANSITIONED`` + one
-          ``API_APPROVAL_EXPIRED`` audit event per newly-expired item.
-        * Fires the optional ``on_expire`` callback for each item via
-          :meth:`_fire_expire_callback` (best-effort; failures are
-          logged at ERROR but do not unwind the expiration).
-
-        Returns:
-            Tuple of the declared element types.
-        """
-        assert self._repo is not None  # noqa: S101 -- caller invariant
-        # Capture generation under the lock before any repo I/O so a
-        # concurrent ``clear()`` landing mid-scan can be detected and
-        # prevent a post-clear cache resurrection. Mirrors the same
-        # guard ``save()`` already applies.
-        async with self._lock:
-            captured_generation = self._generation
-        # Push the status filter down only for terminal non-EXPIRED
-        # queries (APPROVED / REJECTED / CANCELLED). PENDING cannot
-        # be pushed down because the per-page expiration flip removes
-        # rows from the filtered set as the iterator advances --
-        # ``offset += 100`` would then skip PENDING rows that should
-        # have been visible. EXPIRED also stays unfiltered so the
-        # lazy-expire pass can promote the PENDING rows.
-        repo_status = (
-            None
-            if status in {None, ApprovalStatus.PENDING, ApprovalStatus.EXPIRED}
-            else status
-        )
-        page_size = DEFAULT_LIST_LIMIT
-        result: list[ApprovalItem] = []
-        offset = 0
-        # lint-allow: long-running-loop-kill-switch -- bounded paginated scan
-        # (breaks on empty page below); one-shot drain, not a service loop.
-        while True:
-            # Repo I/O outside the store lock so concurrent get() /
-            # save() callers are never blocked by a long scan.
-            # ``created_since`` pushes down unconditionally: creation
-            # time is immutable, so it cannot shrink the result set
-            # under the iterator the way a PENDING status filter can.
-            filter_spec = ApprovalFilterSpec(
-                status=repo_status,
-                risk_level=risk_level,
-                action_types=(action_type,) if action_type is not None else None,
-                created_since=created_since,
-            )
-            page = await self._repo.query(
-                filter_spec,
-                limit=page_size,
-                offset=offset,
-            )
-            if not page:
-                break
-            page_result, to_persist, page_cache = self._compute_page(
-                page,
-                status=status,
-                risk_level=risk_level,
-            )
-            actually_expired_ids: set[str] = set()
-            if to_persist:
-                # Compare-and-set at the repo boundary: only flip rows
-                # still PENDING. A concurrent save() that landed a
-                # newer terminal status (APPROVED / REJECTED /
-                # CANCELLED) between our page read and this call wins
-                # the race; ``expire_if_pending`` returns only the ids
-                # that actually transitioned, so audit events,
-                # callbacks, and cache writes don't fire for rows we
-                # never persisted.
-                try:
-                    actually_expired_ids = set(
-                        await self._repo.expire_if_pending(
-                            tuple(str(item.id) for item in to_persist),
-                        ),
-                    )
-                except Exception as exc:
-                    reraise_critical(exc)
-                    # Log the attempted ids before re-raising so a
-                    # production failure on the batched expiry path
-                    # is diagnosable -- otherwise the caller sees the
-                    # ``QueryError`` and has no record of which lazy
-                    # expirations were attempted.
-                    logger.warning(
-                        API_APPROVAL_EXPIRE_BATCH_FAILED,
-                        batch_size=len(to_persist),
-                        approval_ids=tuple(str(item.id) for item in to_persist),
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-                    raise
-            # Lost-race rows: rows we tried to flip but the repo
-            # already had a newer terminal status. Refetch them so
-            # the response reflects the authoritative state instead
-            # of either our stale EXPIRED guess or silent omission
-            # (an unfiltered ``list_items()`` must not under-report
-            # rows just because a concurrent save() raced with the
-            # expire pass). Apply the caller's filters to each
-            # refetched row; rows where the repo returns ``None``
-            # (deleted between page read and refetch) drop out.
-            attempted_ids = {str(item.id) for item in to_persist}
-            lost_race_ids = attempted_ids - actually_expired_ids
-            # Single batch fetch instead of one ``get`` per id; under
-            # heavy contention the lost-race set can be large, and a
-            # per-id loop turns into N+1 round-trips.
-            refetched_batch = await self._repo.get_many(
-                tuple(NotBlankStr(lost_id) for lost_id in lost_race_ids)
-            )
-            refetched_rows: list[ApprovalItem] = [
-                item
-                for item in refetched_batch
-                if (status is None or item.status == status)
-                and (risk_level is None or item.risk_level == risk_level)
-                and (action_type is None or item.action_type == action_type)
-                and (created_since is None or item.created_at >= created_since)
-            ]
-            # Refresh the entire page slice in the cache (not just the
-            # EXPIRED transitions) so stale non-expired siblings can't
-            # outlive a fresh repo read; refetched lost-race rows
-            # land alongside so subsequent ``get()`` returns the
-            # authoritative state. Generation guard: a concurrent
-            # ``clear()`` between the I/O and this critical section
-            # bumps ``_generation``; skip the cache write so the
-            # post-clear empty-cache invariant survives.
-            async with self._lock:
-                if self._generation == captured_generation:
-                    for item_id, cached in page_cache.items():
-                        if item_id in lost_race_ids:
-                            # Stale local guess; either the refetch
-                            # below provides the authoritative copy
-                            # (and overwrites this slot a few lines
-                            # down) or the row no longer matches
-                            # filters and we evict so the next
-                            # ``get()`` refetches.
-                            self._items.pop(item_id, None)
-                        else:
-                            self._items[item_id] = cached
-                    for refetched in refetched_rows:
-                        self._items[str(refetched.id)] = refetched
-            for expired in to_persist:
-                if str(expired.id) not in actually_expired_ids:
-                    continue
-                logger.info(
-                    APPROVAL_STATUS_TRANSITIONED,
-                    approval_id=expired.id,
-                    from_status=ApprovalStatus.PENDING.value,
-                    to_status=ApprovalStatus.EXPIRED.value,
-                )
-                logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
-                record_approval_decision(outcome="expired")
-                self._fire_expire_callback(expired)
-            result.extend(i for i in page_result if str(i.id) not in lost_race_ids)
-            result.extend(refetched_rows)
-            if len(page) < page_size:
-                break
-            offset += page_size
-        return tuple(result)
 
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         """Update an existing approval item (first-writer-wins).

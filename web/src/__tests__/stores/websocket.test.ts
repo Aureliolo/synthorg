@@ -649,6 +649,30 @@ describe('websocket store', () => {
 
       expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
     })
+
+    it('does not set reconnectExhausted when disconnect() races ahead of a ticket 401', async () => {
+      // If a deliberate disconnect() lands while the ticket exchange is
+      // still in flight (e.g. a stale ticket 401 arrives just after the
+      // user navigates away), the exhausted flag must not paint a stale
+      // Retry affordance over a teardown the user chose.
+      let resolveTicket: (() => void) | undefined
+      const ticketGate = new Promise<void>((resolve) => {
+        resolveTicket = resolve
+      })
+      server.use(
+        http.post('/api/v1/auth/ws-ticket', async () => {
+          await ticketGate
+          return HttpResponse.json(apiError('Unauthorized'), { status: 401 })
+        }),
+      )
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      useWebSocketStore.getState().disconnect()
+      resolveTicket?.()
+
+      await expect(connectPromise).rejects.toThrow(/status code 401|Unauthorized/)
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(false)
+    })
   })
 
   describe('first-message auth', () => {
