@@ -168,6 +168,10 @@ async function _recoverDevSession(
 ): Promise<void> {
   const recovered = await _tryDevAutoLogin(set, get)
   if (recovered) {
+    // Recovery does not reload the page, so this in-flight guard would
+    // otherwise stay tripped for the rest of the session, silently
+    // dropping every subsequent 401.
+    unauthorizedRedirectInFlight = false
     import('@/stores/websocket')
       .then(({ useWebSocketStore }) => useWebSocketStore.getState().retry())
       .catch(() => {

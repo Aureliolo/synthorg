@@ -214,6 +214,18 @@ export async function listAlerts(filter?: AlertListFilter): Promise<AlertSummary
   return paginateAll<AlertSummary>((cursor) => fetchAlertsPage(cursor, filter))
 }
 
+/**
+ * Fetch a single bounded page of the most recent alerts (backend default
+ * page size, newest-first). For UI surfaces like the chat scope picker
+ * that only need a reasonably-sized recent set, not the full history --
+ * unlike {@link listAlerts}, this never walks every cursor page.
+ */
+export async function listRecentAlerts(
+  filter?: AlertListFilter,
+): Promise<AlertSummary[]> {
+  return (await fetchAlertsPage(null, filter)).data
+}
+
 export async function getSignals(): Promise<SignalsResponse> {
   const response = await apiClient.get<ApiResponse<SignalsResponse>>(
     `${BASE}/signals`,

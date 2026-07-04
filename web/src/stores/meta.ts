@@ -6,8 +6,8 @@ import {
   getMetaConfig,
   getSignals,
   listABTests,
-  listAlerts,
   listProposals,
+  listRecentAlerts,
   postChat,
   postChatAct,
   postChatGroup,
@@ -210,7 +210,9 @@ async function runFetchProposals(set: MetaSet): Promise<void> {
 async function runFetchAlerts(set: MetaSet): Promise<void> {
   set({ error: null })
   try {
-    set({ alerts: await listAlerts() })
+    // The chat scope picker only needs a reasonably-sized recent set,
+    // not the full alert history -- bounded single page, not paginateAll.
+    set({ alerts: await listRecentAlerts() })
   } catch (err) {
     log.error('Failed to fetch alerts', sanitizeForLog(err))
     set({ error: getErrorMessage(err) })

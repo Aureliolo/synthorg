@@ -318,6 +318,38 @@ class ApprovalStore(ApprovalExpirationMixin):
                 created_since=created_since,
             )
 
+    async def list_items_page(
+        self,
+        *,
+        action_types: tuple[NotBlankStr, ...] | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        """Bounded listing read: no drain loop, no lazy expiration.
+
+        That sweep is owned by ``ApprovalTimeoutScheduler`` (works
+        against both paths via :meth:`list_items`). Falls back to a
+        bounded cache scan when no repository is configured.
+
+        Args:
+            action_types: Values to match (``IN``); ``None`` matches every type.
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Up to ``limit`` matching items.
+        """
+        if self._repo is not None:
+            filter_spec = ApprovalFilterSpec(action_types=action_types)
+            return await self._repo.query(filter_spec, limit=limit, offset=offset)
+        async with self._lock:
+            matches = [
+                item
+                for item in self._items.values()
+                if action_types is None or item.action_type in action_types
+            ]
+        return tuple(matches[offset : offset + limit])
+
     async def _list_from_repo(
         self,
         *,
@@ -418,7 +450,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             filter_spec = ApprovalFilterSpec(
                 status=repo_status,
                 risk_level=risk_level,
-                action_type=action_type,
+                action_types=(action_type,) if action_type is not None else None,
                 created_since=created_since,
             )
             page = await self._repo.query(

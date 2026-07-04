@@ -17,12 +17,13 @@ the plain free-form path. Alert takes priority when both ids are set.
 
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
 from synthorg.meta.signal_models import OrgSignalSnapshot
 from synthorg.meta.state import alert_repo_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CHAT_SCOPE_NOT_FOUND,
@@ -51,14 +52,24 @@ async def resolve_chat_answer(
                 scope="alert_id",
             )
         else:
-            alert = await alert_repo.get_by_id(query.alert_id)
-            if alert is not None:
-                return await chat_backend.explain_alert(alert, snapshot)
-            logger.warning(
-                META_CHAT_SCOPE_NOT_FOUND,
-                scope="alert_id",
-                value=str(query.alert_id),
-            )
+            try:
+                alert = await alert_repo.get_by_id(query.alert_id)
+            except PersistenceError as exc:
+                logger.warning(
+                    META_CHAT_DEPENDENCY_UNAVAILABLE,
+                    dependency="alert_repo",
+                    scope="alert_id",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            else:
+                if alert is not None:
+                    return await chat_backend.explain_alert(alert, snapshot)
+                logger.warning(
+                    META_CHAT_SCOPE_NOT_FOUND,
+                    scope="alert_id",
+                    value=str(query.alert_id),
+                )
         return await chat_backend.ask(query, snapshot)
 
     if query.proposal_id is not None:
@@ -70,14 +81,24 @@ async def resolve_chat_answer(
                 scope="proposal_id",
             )
         else:
-            item = await store.get(NotBlankStr(str(query.proposal_id)))
-            if item is not None:
-                return await chat_backend.ask(query, snapshot, scoped_proposal=item)
-            logger.warning(
-                META_CHAT_SCOPE_NOT_FOUND,
-                scope="proposal_id",
-                value=str(query.proposal_id),
-            )
+            try:
+                item = await store.get(NotBlankStr(str(query.proposal_id)))
+            except PersistenceError as exc:
+                logger.warning(
+                    META_CHAT_DEPENDENCY_UNAVAILABLE,
+                    dependency="approval_store",
+                    scope="proposal_id",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            else:
+                if item is not None:
+                    return await chat_backend.ask(query, snapshot, scoped_proposal=item)
+                logger.warning(
+                    META_CHAT_SCOPE_NOT_FOUND,
+                    scope="proposal_id",
+                    value=str(query.proposal_id),
+                )
         return await chat_backend.ask(query, snapshot)
 
     return await chat_backend.ask(query, snapshot)

@@ -80,21 +80,26 @@ describe('fetchProposals', () => {
 
 describe('fetchAlerts', () => {
   it('stores alerts and clears error on success', async () => {
+    const alerts = [
+      {
+        id: 'alert-1',
+        severity: 'warning',
+        alert_type: 'inflection',
+        description: 'Quality dropped sharply',
+        affected_domains: ['performance'],
+        signal_context: {},
+        recommended_action: null,
+        emitted_at: '2026-06-20T12:00:00Z',
+      },
+    ]
     server.use(
-      http.get('/api/v1/meta/alerts', () =>
-        HttpResponse.json({
-          success: true,
-          data: [],
-          error: null,
-          error_detail: null,
-          pagination: { limit: 50, next_cursor: null, has_more: false },
-        }),
-      ),
+      http.get('/api/v1/meta/alerts', () => HttpResponse.json(pageEnvelope(alerts))),
     )
     useMetaStore.setState({ error: 'stale' })
 
     await useMetaStore.getState().fetchAlerts()
 
+    expect(useMetaStore.getState().alerts).toEqual(alerts)
     expect(useMetaStore.getState().error).toBeNull()
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })

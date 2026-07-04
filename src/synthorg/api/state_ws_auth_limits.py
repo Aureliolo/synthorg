@@ -171,7 +171,7 @@ class WsAuthLimits:
     def frame_timeout_seconds(self) -> int:
         """Per-frame WebSocket receive timeout in seconds.
 
-        Bounded by ``[1, 600]``; defaults to 30. Read once at controller
+        Bounded by ``[1, 600]``; defaults to 180. Read once at controller
         construction (read_only_post_init), so the value can be staged
         in tests via ``set_frame_timeout_seconds`` without spinning
         the lifecycle.

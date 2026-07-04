@@ -197,15 +197,23 @@ func renderHealthSectionJSON(out *ui.UI, snap statusSnapshot) {
 	case snap.healthErr != nil:
 		section.Error = snap.healthErr.Error()
 	case snap.healthEnvelopeOK:
-		section.Data = json.RawMessage(snap.healthBody)
+		// Marshal the already-unwrapped healthData, not the raw
+		// healthBody: healthBody is the full ApiResponse envelope
+		// (itself carrying a "data" field), so re-wrapping it under
+		// this struct's own "data" tag would double-nest the payload.
+		data, err := json.Marshal(snap.healthData)
+		if err == nil {
+			section.Data = json.RawMessage(data)
+		} else {
+			section.Error = fmt.Sprintf("failed to encode health data: %v", err)
+		}
 	case snap.healthBody != nil:
 		section.Error = fmt.Sprintf("unparseable response (HTTP %d)", snap.healthStatusCode)
 	}
 	b, err := json.MarshalIndent(section, "", "  ")
 	if err != nil {
-		// Only reachable if healthBody isn't valid JSON despite
-		// healthEnvelopeOK; degrade to a safe fallback rather than
-		// emit a broken document.
+		// Only reachable if section itself fails to marshal; degrade
+		// to a safe fallback rather than emit a broken document.
 		_, _ = fmt.Fprintf(out.Writer(), "{\"ready\":false,\"error\":%q}\n", err.Error())
 		return
 	}

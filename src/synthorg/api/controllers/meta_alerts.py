@@ -13,15 +13,15 @@ from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
-from synthorg.core.pagination import collect_all
 from synthorg.meta.chief_of_staff.models import Alert
 from synthorg.meta.models import RuleSeverity
 from synthorg.meta.state import alert_repo_of
@@ -90,23 +90,21 @@ class MetaAlertsController(Controller):
             Paginated alert summaries; an empty page when the durable
             repository is unavailable.
         """
-        repo = alert_repo_of(state.app_state)
+        app_state = state.app_state
+        secret = cursor_secret_of(app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        repo = alert_repo_of(app_state)
         alerts: tuple[Alert, ...] = ()
         if repo is not None:
-            bound = repo
             filter_spec = AlertFilterSpec(severity=severity, alert_type=alert_type)
-            alerts = await collect_all(
-                lambda limit, offset: bound.query(
-                    filter_spec, limit=limit, offset=offset
-                )
-            )
-        summaries = tuple(_alert_to_dict(a) for a in alerts)
-        page, meta = paginate_cursor(
-            summaries,
+            alerts = await repo.query(filter_spec, limit=limit + 1, offset=offset)
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(alerts),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
+        page = tuple(_alert_to_dict(a) for a in alerts[:limit])
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
 

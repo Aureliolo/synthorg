@@ -12,24 +12,9 @@ import socket
 from typing import Final, NamedTuple
 from urllib.parse import urlparse, urlunparse
 
-_ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
+from synthorg.tools.network_validator import BLOCKED_NETWORKS as _BLOCKED_NETWORKS
 
-# Private, loopback, link-local, and reserved networks.
-_BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]] = (
-    ipaddress.IPv4Network("0.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("100.64.0.0/10"),
-    ipaddress.IPv4Network("127.0.0.0/8"),
-    ipaddress.IPv4Network("169.254.0.0/16"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
-    ipaddress.IPv4Network("192.0.0.0/24"),
-    ipaddress.IPv4Network("192.0.2.0/24"),
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv6Network("::/128"),
-    ipaddress.IPv6Network("::1/128"),
-    ipaddress.IPv6Network("fc00::/7"),
-    ipaddress.IPv6Network("fe80::/10"),
-)
+_ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 
 
 class SsrfCheckResult(NamedTuple):

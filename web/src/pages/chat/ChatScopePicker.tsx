@@ -31,24 +31,11 @@ function fromOptionValue(raw: string): { kind: string; id: string } {
   return { kind: raw.slice(0, sep), id: raw.slice(sep + 1) }
 }
 
-/** Optional "scope this question to a proposal or alert" picker + chip. */
-export function ChatScopePicker({
-  proposals,
-  alerts,
-  value,
-  onChange,
-  disabled,
-}: ChatScopePickerProps) {
-  const clearButtonRef = useRef<HTMLButtonElement>(null)
-
-  // Move focus to the clear affordance when the picker swaps to the
-  // chip on selection, so keyboard/screen-reader users don't lose their
-  // position (the picker they were just on is unmounted).
-  useEffect(() => {
-    if (value) clearButtonRef.current?.focus()
-  }, [value])
-
-  const groups: SelectOptionGroup[] = [
+function buildScopeGroups(
+  proposals: readonly ProposalSummary[],
+  alerts: readonly AlertSummary[],
+): SelectOptionGroup[] {
+  return [
     {
       label: 'Proposals',
       options: proposals.map((p) => ({
@@ -64,10 +51,52 @@ export function ChatScopePicker({
       })),
     },
   ].filter((group) => group.options.length > 0)
+}
 
-  if (groups.length === 0) {
+function resolveScopeSelection(
+  raw: string,
+  proposals: readonly ProposalSummary[],
+  alerts: readonly AlertSummary[],
+): ChatScopeValue | null {
+  if (!raw) return null
+  const { kind, id } = fromOptionValue(raw)
+  if (kind !== 'proposal' && kind !== 'alert') {
     return null
   }
+  const source = kind === 'proposal' ? proposals : alerts
+  const match = source.find((item) => item.id === id)
+  if (!match) {
+    return null
+  }
+  const label = 'title' in match ? match.title : match.description
+  return { kind, id, label }
+}
+
+/** Optional "scope this question to a proposal or alert" picker + chip. */
+export function ChatScopePicker({
+  proposals,
+  alerts,
+  value,
+  onChange,
+  disabled,
+}: ChatScopePickerProps) {
+  const clearButtonRef = useRef<HTMLButtonElement>(null)
+  const pickerContainerRef = useRef<HTMLDivElement>(null)
+  const wasSetRef = useRef(value !== null)
+
+  // Move focus so keyboard/screen-reader users don't lose their position
+  // when this component's own selection swaps its rendered subtree: to
+  // the clear affordance on picker -> chip, and back to the picker
+  // container on chip -> picker (rather than falling back to the
+  // document body, which is what happens with no explicit target).
+  useEffect(() => {
+    if (value && !wasSetRef.current) {
+      clearButtonRef.current?.focus()
+    } else if (!value && wasSetRef.current) {
+      pickerContainerRef.current?.focus()
+    }
+    wasSetRef.current = value !== null
+  }, [value])
 
   if (value) {
     return (
@@ -90,33 +119,26 @@ export function ChatScopePicker({
     )
   }
 
+  const groups = buildScopeGroups(proposals, alerts)
+  if (groups.length === 0) {
+    return null
+  }
+
   const handleChange = (raw: string) => {
-    if (!raw) {
-      onChange(null)
-      return
-    }
-    const { kind, id } = fromOptionValue(raw)
-    if (kind !== 'proposal' && kind !== 'alert') {
-      return
-    }
-    const source = kind === 'proposal' ? proposals : alerts
-    const match = source.find((item) => item.id === id)
-    if (!match) {
-      return
-    }
-    const label = 'title' in match ? match.title : match.description
-    onChange({ kind, id, label })
+    onChange(resolveScopeSelection(raw, proposals, alerts))
   }
 
   return (
-    <SelectField
-      label="Scope to a proposal or alert (optional)"
-      hideLabel
-      groups={groups}
-      value=""
-      onChange={handleChange}
-      placeholder="Scope to a proposal or alert (optional)"
-      disabled={disabled}
-    />
+    <div ref={pickerContainerRef} tabIndex={-1}>
+      <SelectField
+        label="Scope to a proposal or alert (optional)"
+        hideLabel
+        groups={groups}
+        value=""
+        onChange={handleChange}
+        placeholder="Scope to a proposal or alert (optional)"
+        disabled={disabled}
+      />
+    </div>
   )
 }

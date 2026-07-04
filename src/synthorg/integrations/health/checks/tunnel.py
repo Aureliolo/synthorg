@@ -1,6 +1,7 @@
 """Tunnel-provider connection health check."""
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -57,6 +58,21 @@ class TunnelHealthCheck:
             maps to no known provider.
         """
         now = self._clock.now()
+        status = await self._resolve_status(connection, now)
+        if isinstance(status, HealthReport):
+            return status
+        return self._build_report(connection, status, now)
+
+    async def _resolve_status(
+        self, connection: Connection, now: datetime
+    ) -> TunnelProviderStatus | HealthReport:
+        """Call the bound status lookup, or build an early UNKNOWN/UNHEALTHY report.
+
+        Returns:
+            The resolved status to build a report from, or a
+            ``HealthReport`` already final (lookup unbound, lookup
+            raised, or the connection maps to no known provider).
+        """
         if self._status_lookup is None:
             logger.warning(
                 HEALTH_CHECK_FAILED,
@@ -99,6 +115,20 @@ class TunnelHealthCheck:
                 error_detail="unknown tunnel provider",
                 checked_at=now,
             )
+        return status
+
+    def _build_report(
+        self,
+        connection: Connection,
+        status: TunnelProviderStatus,
+        now: datetime,
+    ) -> HealthReport:
+        """Build the HEALTHY/UNHEALTHY report from a resolved status.
+
+        Returns:
+            ``HEALTHY`` when available with a credential configured,
+            ``UNHEALTHY`` otherwise.
+        """
         if status.available and status.credential_configured:
             logger.info(HEALTH_CHECK_PASSED, connection_name=connection.name)
             return HealthReport(

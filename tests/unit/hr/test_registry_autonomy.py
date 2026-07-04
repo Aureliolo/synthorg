@@ -73,6 +73,15 @@ class _RecordingApprovalStore:
     ) -> tuple[ApprovalItem, ...]:
         return tuple(self.added)
 
+    async def list_items_page(
+        self,
+        *,
+        action_types: tuple[NotBlankStr, ...] | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        return tuple(self.added)[offset : offset + limit]
+
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         return None
 

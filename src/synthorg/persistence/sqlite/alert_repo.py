@@ -38,7 +38,10 @@ from synthorg.persistence._shared.alert_marshalling import (
     row_to_alert,
 )
 from synthorg.persistence.alert_protocol import AlertFilterSpec
-from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    rollback_after_failed_write,
+)
 
 logger = get_logger(__name__)
 
@@ -95,7 +98,12 @@ class SQLiteAlertRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback("save alert")
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="save alert",
+                    event=PERSISTENCE_ALERT_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error(
                     "save alert", PERSISTENCE_ALERT_SAVE_FAILED, exc
                 )
@@ -114,6 +122,7 @@ class SQLiteAlertRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+            MalformedRowError: If a returned row fails to parse.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_ALERT_QUERY_FAILED
@@ -146,6 +155,7 @@ class SQLiteAlertRepository:
 
         Raises:
             QueryError: If the database query fails.
+            MalformedRowError: If the returned row fails to parse.
         """
         sql = f"SELECT {_SELECT_COLS} FROM org_alerts WHERE id = ?"  # noqa: S608
         try:
@@ -178,28 +188,15 @@ class SQLiteAlertRepository:
                     await self._db.commit()
                     return cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback("purge alerts")
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="purge alerts",
+                    event=PERSISTENCE_ALERT_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error(
                     "purge alerts", PERSISTENCE_ALERT_PURGE_FAILED, exc
                 )
-
-    async def _rollback(self, operation: str) -> None:
-        """Roll back the current transaction after a failed write.
-
-        A rollback failure is logged (not raised): the caller is about
-        to raise the original error via ``_raise_query_error``, and a
-        rollback-of-rollback failure must not mask it.
-        """
-        try:
-            await self._db.rollback()
-        except aiosqlite.Error as exc:
-            logger.warning(
-                PERSISTENCE_ALERT_QUERY_FAILED,
-                operation=operation,
-                phase="rollback",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
 
     def _raise_query_error(
         self, operation: str, event: str, exc: Exception

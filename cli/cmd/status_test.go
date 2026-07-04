@@ -508,6 +508,18 @@ func TestRenderHealthSectionJSON(t *testing.T) {
 			if tc.snap.healthErr != nil && decoded.Error == "" {
 				t.Errorf("expected a non-empty error field, got %s", buf.String())
 			}
+			if tc.snap.healthEnvelopeOK {
+				// Data must decode directly to healthResponse: it must
+				// NOT be double-nested under another "data" key from
+				// re-wrapping the raw ApiResponse envelope.
+				var data healthResponse
+				if err := json.Unmarshal(decoded.Data, &data); err != nil {
+					t.Fatalf("decoded.Data is not a flat healthResponse: %v\ndata: %s", err, decoded.Data)
+				}
+				if data != tc.snap.healthData {
+					t.Errorf("decoded.Data = %+v, want %+v", data, tc.snap.healthData)
+				}
+			}
 		})
 	}
 }
@@ -516,7 +528,9 @@ func TestRenderHealthSectionJSON(t *testing.T) {
 // failure survives into --json output instead of rendering as an
 // indistinguishable empty array (the #1 finding this test guards).
 func TestRenderContainersSectionJSON(t *testing.T) {
-	t.Parallel()
+	// Not t.Parallel(): mutates the package-level statusServices global
+	// below, which TestRenderTopBanner also mutates -- running both in
+	// Go's parallel phase races on that shared write.
 	oldServices := statusServices
 	t.Cleanup(func() { statusServices = oldServices })
 	statusServices = ""
@@ -626,7 +640,9 @@ func TestRenderHealthSectionBackend(t *testing.T) {
 
 // TestRenderTopBanner covers the OK/degraded/critical banner shapes.
 func TestRenderTopBanner(t *testing.T) {
-	t.Parallel()
+	// Not t.Parallel(): mutates the package-level statusServices global
+	// below, which TestRenderContainersSectionJSON also mutates -- running
+	// both in Go's parallel phase races on that shared write.
 	okHealth := healthResponse{Status: "ok"}
 
 	tests := []struct {

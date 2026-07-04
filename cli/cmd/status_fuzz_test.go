@@ -70,8 +70,19 @@ func FuzzFilterStatsByName(f *testing.F) {
 		if got == "" {
 			return
 		}
-		if len(strings.Split(got, "\n")) == 0 {
-			t.Fatalf("filterStatsByName(%q) returned non-empty string with zero lines", statsOut)
+		gotLines := strings.Split(got, "\n")
+		inputLines := strings.Split(strings.TrimSuffix(statsOut, "\n"), "\n")
+		if gotLines[0] != inputLines[0] {
+			t.Fatalf("filterStatsByName(%q, %v) header %q, want %q", statsOut, wanted, gotLines[0], inputLines[0])
+		}
+		for _, line := range gotLines[1:] {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			if _, ok := names[fields[0]]; !ok {
+				t.Fatalf("filterStatsByName(%q, %v) kept non-matching row %q", statsOut, wanted, line)
+			}
 		}
 	})
 }

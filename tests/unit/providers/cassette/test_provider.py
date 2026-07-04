@@ -14,6 +14,7 @@ from typing import override
 
 import pytest
 
+from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
@@ -356,3 +357,64 @@ class TestSequencedReplayOrder:
         second = await rep.complete(_msgs("same"), "m")
         assert first.content == "first"
         assert second.content == "second"
+
+
+class TestServesModel:
+    """Pure-replay ``serves_model`` must discriminate by declared models.
+
+    Without this, every replay-mode wrapper accepted every model, and
+    ``ProviderRegistry.resolve_for_model`` always picked the
+    alphabetically-first registered provider regardless of which
+    model was actually requested.
+    """
+
+    async def test_no_inner_and_no_declared_models_accepts_any(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "c.json"
+        await _record_session(path).flush()
+        wrapper = CassetteCompletionProvider(
+            inner=None,
+            session=_replay_session(path),
+            provider_name=_PROVIDER,
+        )
+        assert wrapper.serves_model("anything") is True
+
+    async def test_no_inner_with_declared_models_checks_membership(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "c.json"
+        await _record_session(path).flush()
+        wrapper = CassetteCompletionProvider(
+            inner=None,
+            session=_replay_session(path),
+            provider_name=_PROVIDER,
+            configured_models=(ProviderModelConfig(id="model-a"),),
+        )
+        assert wrapper.serves_model("model-a") is True
+        assert wrapper.serves_model("model-b") is False
+
+    async def test_no_inner_checks_alias_too(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.json"
+        await _record_session(path).flush()
+        wrapper = CassetteCompletionProvider(
+            inner=None,
+            session=_replay_session(path),
+            provider_name=_PROVIDER,
+            configured_models=(ProviderModelConfig(id="model-a", alias="fast"),),
+        )
+        assert wrapper.serves_model("fast") is True
+
+    def test_with_inner_still_delegates_regardless_of_declared_models(self) -> None:
+        inner = ScriptedDriver(
+            _PROVIDER,
+            strategy=SingleResponseStrategy(response=_response("x")),
+        )
+        wrapper = CassetteCompletionProvider(
+            inner=inner,
+            session=_record_session(Path("unused")),
+            provider_name=_PROVIDER,
+            configured_models=(ProviderModelConfig(id="model-a"),),
+        )
+        # ScriptedDriver has no catalogue: base class accepts any model.
+        assert wrapper.serves_model("model-z") is True

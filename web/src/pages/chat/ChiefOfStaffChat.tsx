@@ -51,6 +51,16 @@ function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
 export function ChiefOfStaffChat() {
   const ctrl = useChiefOfStaffChatState()
 
+  const scopePicker = (
+    <ChatScopePicker
+      proposals={ctrl.scopeableProposals}
+      alerts={ctrl.scopeableAlerts}
+      value={ctrl.scope}
+      onChange={ctrl.setScope}
+      disabled={ctrl.chatLoading}
+    />
+  )
+
   if (ctrl.messages.length === 0 && !ctrl.chatLoading) {
     return (
       <div className="mx-auto max-w-3xl space-y-section-gap">
@@ -64,13 +74,7 @@ export function ChiefOfStaffChat() {
           onSelect={ctrl.setInput}
           disabled={ctrl.chatLoading}
         />
-        <ChatScopePicker
-          proposals={ctrl.scopeableProposals}
-          alerts={ctrl.scopeableAlerts}
-          value={ctrl.scope}
-          onChange={ctrl.setScope}
-          disabled={ctrl.chatLoading}
-        />
+        {scopePicker}
         <ChatInputArea
           value={ctrl.input}
           onChange={ctrl.setInput}
@@ -101,13 +105,7 @@ export function ChiefOfStaffChat() {
         )}
       </div>
 
-      <ChatScopePicker
-        proposals={ctrl.scopeableProposals}
-        alerts={ctrl.scopeableAlerts}
-        value={ctrl.scope}
-        onChange={ctrl.setScope}
-        disabled={ctrl.chatLoading}
-      />
+      {scopePicker}
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}

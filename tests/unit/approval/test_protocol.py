@@ -67,6 +67,7 @@ class TestApprovalStoreProtocol:
             "delete",
             "get",
             "list_items",
+            "list_items_page",
             "save",
             "save_if_pending",
         }

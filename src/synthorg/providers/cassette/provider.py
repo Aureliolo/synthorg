@@ -26,6 +26,7 @@ from collections.abc import (
 )
 from typing import override
 
+from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_FORMAT_ERROR,
@@ -37,6 +38,10 @@ from synthorg.providers._validation import validate_messages, validate_model
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import (
     ModelCapabilities,
+)
+from synthorg.providers.drivers.litellm_model_catalog import (
+    build_model_lookup,
+    model_is_known,
 )
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import (
@@ -70,6 +75,14 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         session: Shared cassette session (lanes, FIFO, persistence).
         provider_name: Stable provider label used for request keying;
             must be identical between the record and replay runs.
+        configured_models: This provider's declared model list from
+            its ``ProviderConfig`` (may be empty). Backs
+            :meth:`serves_model` in pure-replay mode, when there is no
+            inner driver to delegate the catalogue check to -- without
+            it, every replay-mode wrapper would accept every model,
+            and ``ProviderRegistry.resolve_for_model`` would always
+            pick the alphabetically-first registered provider
+            regardless of which model was actually requested.
     """
 
     def __init__(
@@ -78,11 +91,13 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         inner: BaseCompletionProvider | None,
         session: CassetteSession,
         provider_name: str,
+        configured_models: tuple[ProviderModelConfig, ...] = (),
     ) -> None:
         super().__init__()
         self._inner = inner
         self._session = session
         self._provider_name = provider_name
+        self._model_lookup = build_model_lookup(configured_models)
 
     @property
     def provider_name(self) -> str:
@@ -103,14 +118,18 @@ class CassetteCompletionProvider(BaseCompletionProvider):
     def serves_model(self, model: str) -> bool:
         """Delegate the model-catalogue check to the wrapped driver.
 
-        Pure-replay mode has no inner driver; recorded outcomes are
-        keyed by request, not catalogue, so any model id is accepted.
+        Pure-replay mode has no inner driver to delegate to. Falls
+        back to a membership check over this provider's declared
+        ``configured_models``; when none were declared, accepts any
+        model id (matches the base class's catalogue-free default).
 
         Returns:
-            The inner driver's verdict, or ``True`` in replay mode.
+            The inner driver's verdict, or the declared-model check.
         """
         if self._inner is None:
-            return True
+            if not self._model_lookup:
+                return True
+            return model_is_known(self._model_lookup, model)
         return self._inner.serves_model(model)
 
     def _require_inner(self) -> BaseCompletionProvider:

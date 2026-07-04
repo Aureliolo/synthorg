@@ -14,15 +14,15 @@ from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
-from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
 from synthorg.meta.signal_models import OrgEvolutionSummary
@@ -156,25 +156,25 @@ class MetaEvolutionController(Controller):
             Paginated outcome summaries; an empty page when the durable
             store is unavailable.
         """
-        service = state.app_state.slice(MetaStateSlice).evolution_read_service
+        app_state = state.app_state
+        secret = cursor_secret_of(app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        service = app_state.slice(MetaStateSlice).evolution_read_service
         outcomes: tuple[EvolutionOutcomeRecord, ...] = ()
         if service is not None:
-            bound = service
-            outcomes = await collect_all(
-                lambda limit, offset: bound.list_outcomes(
-                    limit=limit,
-                    offset=offset,
-                    agent_id=NotBlankStr(agent_id) if agent_id else None,
-                    axis=NotBlankStr(axis) if axis else None,
-                )
+            outcomes = await service.list_outcomes(
+                limit=limit + 1,
+                offset=offset,
+                agent_id=NotBlankStr(agent_id) if agent_id else None,
+                axis=NotBlankStr(axis) if axis else None,
             )
-        summaries = tuple(_outcome_to_dict(o) for o in outcomes)
-        page, meta = paginate_cursor(
-            summaries,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(outcomes),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
+        page = tuple(_outcome_to_dict(o) for o in outcomes[:limit])
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/axes/stats")

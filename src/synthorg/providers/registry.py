@@ -372,6 +372,7 @@ class ProviderRegistry:
                 inner=inner,
                 session=session,
                 provider_name=name,
+                configured_models=config.models,
             )
             logger.info(
                 PROVIDER_CASSETTE_DRIVER_WRAPPED,

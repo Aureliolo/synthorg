@@ -106,6 +106,7 @@ class PostgresAlertRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+            MalformedRowError: If a returned row fails to parse.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_ALERT_QUERY_FAILED
@@ -142,6 +143,7 @@ class PostgresAlertRepository:
 
         Raises:
             QueryError: If the database query fails.
+            MalformedRowError: If the returned row fails to parse.
         """
         sql = f"SELECT {_SELECT_COLS} FROM org_alerts WHERE id = %s"  # noqa: S608
         try:

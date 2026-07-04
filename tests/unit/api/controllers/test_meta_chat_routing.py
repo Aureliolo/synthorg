@@ -19,8 +19,10 @@ from structlog.testing import capture_logs
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.models import Alert, ChatQuery, ChatResponse
@@ -161,6 +163,25 @@ class TestResolveChatAnswerAlertScope:
         assert META_CHAT_SCOPE_NOT_FOUND in events
         assert META_CHAT_DEPENDENCY_UNAVAILABLE not in events
 
+    async def test_alert_repo_read_failure_falls_back_to_ask(self) -> None:
+        repo = mock_of[AlertRepository](
+            get_by_id=AsyncMock(side_effect=QueryError("db down"))
+        )
+        state = make_app_state()
+        state.wire(MetaStateSlice, alert_repo=repo)
+        chat_backend = _chat_backend()
+        query = ChatQuery(question="Explain this alert", alert_id=uuid4())
+        snapshot = _snapshot()
+
+        with capture_logs() as caplog:
+            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+
+        assert result.answer == "ask answer"
+        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.explain_alert.assert_not_awaited()
+        events = [r.get("event") for r in caplog]
+        assert META_CHAT_DEPENDENCY_UNAVAILABLE in events
+
     async def test_no_alert_repo_wired_falls_back_to_ask(self) -> None:
         state = make_app_state()
         chat_backend = _chat_backend()
@@ -209,6 +230,23 @@ class TestResolveChatAnswerProposalScope:
         events = [r.get("event") for r in caplog]
         assert META_CHAT_SCOPE_NOT_FOUND in events
         assert META_CHAT_DEPENDENCY_UNAVAILABLE not in events
+
+    async def test_approval_store_read_failure_falls_back_to_plain_ask(self) -> None:
+        store = mock_of[ApprovalStoreProtocol](
+            get=AsyncMock(side_effect=QueryError("db down"))
+        )
+        state = make_app_state(approval_store=store)
+        chat_backend = _chat_backend()
+        query = ChatQuery(question="Explain this proposal", proposal_id=uuid4())
+        snapshot = _snapshot()
+
+        with capture_logs() as caplog:
+            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+
+        assert result.answer == "ask answer"
+        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        events = [r.get("event") for r in caplog]
+        assert META_CHAT_DEPENDENCY_UNAVAILABLE in events
 
     async def test_no_approval_store_falls_back_to_plain_ask(self) -> None:
         state = make_app_state()

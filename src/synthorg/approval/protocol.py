@@ -65,6 +65,21 @@ class ApprovalStoreProtocol(Protocol):
         """List approval items with optional filters."""
         ...
 
+    async def list_items_page(
+        self,
+        *,
+        action_types: tuple[NotBlankStr, ...] | None = None,
+        limit: int,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]:
+        """Bounded, direct repo read for paginated listing endpoints.
+
+        Unlike :meth:`list_items`, does not drain the full store or
+        apply lazy expiration; a single ``LIMIT``/``OFFSET`` query
+        (or a bounded cache scan when no repository is configured).
+        """
+        ...
+
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
         """Update an existing approval item (first-writer-wins)."""
         ...

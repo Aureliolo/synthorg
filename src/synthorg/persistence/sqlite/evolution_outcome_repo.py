@@ -40,7 +40,10 @@ from synthorg.persistence._shared.evolution_outcome_marshalling import (
 from synthorg.persistence.evolution_outcome_protocol import (
     EvolutionOutcomeFilterSpec,
 )
-from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    rollback_after_failed_write,
+)
 
 logger = get_logger(__name__)
 
@@ -90,7 +93,12 @@ class SQLiteEvolutionOutcomeRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback("save evolution outcome")
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="save evolution outcome",
+                    event=PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error("save evolution outcome", exc)
 
     async def query(
@@ -182,26 +190,13 @@ class SQLiteEvolutionOutcomeRepository:
                     await self._db.commit()
                     return cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback("purge evolution outcomes")
+                await rollback_after_failed_write(
+                    self._db,
+                    operation="purge evolution outcomes",
+                    event=PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED,
+                    logger=logger,
+                )
                 self._raise_query_error("purge evolution outcomes", exc)
-
-    async def _rollback(self, operation: str) -> None:
-        """Roll back the current transaction after a failed write.
-
-        A rollback failure is logged (not raised): the caller is about
-        to raise the original error via ``_raise_query_error``, and a
-        rollback-of-rollback failure must not mask it.
-        """
-        try:
-            await self._db.rollback()
-        except aiosqlite.Error as exc:
-            logger.warning(
-                PERSISTENCE_EVOLUTION_OUTCOME_QUERY_FAILED,
-                operation=operation,
-                phase="rollback",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
 
     def _raise_query_error(self, operation: str, exc: Exception) -> NoReturn:
         event = (
