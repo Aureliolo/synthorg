@@ -1,3 +1,4 @@
+# module-kind: service
 """Chief of Staff clarify-and-propose service.
 
 Extends the explain-only chat surface with a propose+create path:
