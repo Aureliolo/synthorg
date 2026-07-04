@@ -122,8 +122,8 @@
     },
     "src/synthorg/api/controllers/meta.py": {
       "cap": 500,
-      "loc": 488,
-      "ratio": 0.976,
+      "loc": 495,
+      "ratio": 0.99,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -920,8 +920,8 @@
     },
     "src/synthorg/meta/feature.py": {
       "cap": 100,
-      "loc": 100,
-      "ratio": 1.0,
+      "loc": 101,
+      "ratio": 1.01,
       "tier": "feature"
     },
     "src/synthorg/meta/mcp/handlers/common.py": {
@@ -980,8 +980,8 @@
     },
     "src/synthorg/meta/toolsmith/service.py": {
       "cap": 500,
-      "loc": 403,
-      "ratio": 0.806,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/notifications/dispatcher.py": {
@@ -1430,8 +1430,8 @@
     },
     "src/synthorg/tools/browser/_executor.py": {
       "cap": 700,
-      "loc": 670,
-      "ratio": 0.957,
+      "loc": 674,
+      "ratio": 0.963,
       "tier": "integration"
     },
     "src/synthorg/tools/browser/browser_tool.py": {
@@ -1555,7 +1555,7 @@
     "synthorg.core.auth.roles": 31,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
-    "synthorg.core.clock": 214,
+    "synthorg.core.clock": 215,
     "synthorg.core.critical_errors": 630,
     "synthorg.core.domain_errors": 227,
     "synthorg.core.effective_autonomy": 23,
@@ -1570,7 +1570,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 103,
     "synthorg.core.task_enums": 90,
-    "synthorg.core.types": 1211,
+    "synthorg.core.types": 1212,
     "synthorg.engine.context": 41,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 86,
@@ -1620,8 +1620,8 @@
     "synthorg.meta.signal_models": 24,
     "synthorg.meta.state": 24,
     "synthorg.meta.toolsmith.models": 21,
-    "synthorg.notifications.dispatcher": 22,
-    "synthorg.notifications.models": 23,
+    "synthorg.notifications.dispatcher": 23,
+    "synthorg.notifications.models": 24,
     "synthorg.observability": 1786,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 204,
