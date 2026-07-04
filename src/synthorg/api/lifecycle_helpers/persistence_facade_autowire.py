@@ -76,11 +76,12 @@ async def _wire_user_facade_service(app_state: AppState) -> None:
 
 
 async def _wire_backup_facade_service(app_state: AppState) -> None:
-    """Wire ``BackupFacadeService`` once the backup service has started.
+    """Wire ``BackupFacadeService`` once a backup service instance exists.
 
-    The backup service reaches ``BackupStateSlice.service`` inside
-    ``_safe_startup`` (gated on the scheduler starting), so this facade
-    wires only when backups are actually running in this deployment.
+    The gate is solely ``BackupStateSlice.service is not None``: whenever a
+    backup service was constructed onto the slice for this deployment the
+    facade wires, independently of scheduler state. A deployment that never
+    builds a backup service leaves the backup MCP tools 503.
     """
     backup = app_state.slice(BackupStateSlice)
     if (

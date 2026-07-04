@@ -11,7 +11,6 @@ from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
@@ -29,6 +28,11 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_BUDGET_REJECTED,
     TEMPLATE_PACK_LIST,
     TEMPLATE_PACK_SETTING_NOT_FOUND,
+)
+from synthorg.organization.team_navigation import (
+    persist_company_departments,
+    read_company_departments_versioned,
+    with_company_departments_cas,
 )
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.state import SettingsStateSlice
@@ -257,9 +261,17 @@ async def _apply_pack_to_settings(
 
     pack_agents = expand_template_agents(loaded)
 
-    async with _AGENT_LOCK:
+    # ``departments`` is the contended key (team + department CRUD write it
+    # under compare-and-set), so the whole read-rebalance-write runs through
+    # the shared departments CAS handler + lock: on a conflicting concurrent
+    # write the dedup + rebalance is recomputed against fresh state rather
+    # than clobbering it. ``agents`` has no other CAS writer, so it is
+    # written unconditionally within the same guarded section.
+    captured: dict[str, tuple[list[dict[str, object]], ApplyTemplatePackResponse]] = {}
+
+    async def read() -> tuple[list[dict[str, object]], str]:
         current_agents = await _read_setting_list(app_state, "agents")
-        current_depts = await _read_setting_list(app_state, "departments")
+        current_depts, version = await read_company_departments_versioned(app_state)
 
         new_agents = _deduplicate_agents(pack_agents, current_agents)
         new_depts = _deduplicate_departments(
@@ -268,7 +280,6 @@ async def _apply_pack_to_settings(
             current_depts,
         )
 
-        # Budget rebalancing.
         rebalance_result = compute_rebalance(
             existing_depts=current_depts,
             new_depts=new_depts,
@@ -300,30 +311,32 @@ async def _apply_pack_to_settings(
             )
 
         final_depts = list(rebalance_result.departments)
+        captured["result"] = (
+            current_agents + new_agents,
+            ApplyTemplatePackResponse(
+                pack_name=data.pack_name,
+                agents_added=len(new_agents),
+                departments_added=len(new_depts),
+                budget_before=rebalance_result.old_total,
+                budget_after=rebalance_result.new_total,
+                rebalance_mode=data.rebalance_mode,
+                scale_factor=rebalance_result.scale_factor,
+            ),
+        )
+        return final_depts, version
 
+    async def write(final_depts: list[dict[str, object]], version: str) -> None:
+        agents = captured["result"][0]
         settings_svc = require_service(
             app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
         )
-        await settings_svc.set(
-            "company",
-            "agents",
-            json.dumps(current_agents + new_agents),
-        )
-        await settings_svc.set(
-            "company",
-            "departments",
-            json.dumps(final_depts),
+        await settings_svc.set("company", "agents", json.dumps(agents))
+        await persist_company_departments(
+            app_state, final_depts, expected_updated_at=version
         )
 
-    return ApplyTemplatePackResponse(
-        pack_name=data.pack_name,
-        agents_added=len(new_agents),
-        departments_added=len(new_depts),
-        budget_before=rebalance_result.old_total,
-        budget_after=rebalance_result.new_total,
-        rebalance_mode=data.rebalance_mode,
-        scale_factor=rebalance_result.scale_factor,
-    )
+    await with_company_departments_cas(read, write)
+    return captured["result"][1]
 
 
 # ---- Controller -----------------------------------------------------------

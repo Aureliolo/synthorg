@@ -111,22 +111,30 @@ MCP handler shims:
 |---|---|---|
 | `CompanyReadService` | `synthorg.organization.services` | `synthorg_company_get`/`_update`/`_list_departments`/`_reorder_departments`/`_versions_list`/`_versions_get` |
 | `DepartmentService` | `synthorg.organization.services` | `synthorg_departments_list`/`_get`/`_create`/`_update`/`_delete`/`_get_health` |
-| `TeamService` | `synthorg.organization.services` | `synthorg_teams_list`/`_get`/`_create`/`_update`/`_delete` |
+| `TeamService` | `synthorg.organization._team_service` | `synthorg_teams_list`/`_get`/`_create`/`_update`/`_delete` |
 | `RoleVersionService` | `synthorg.organization.services` | `synthorg_role_versions_list`/`_get` |
 
-`CompanyReadService` and `RoleVersionService` wrap the existing
-`OrgMutationService` read surface; `DepartmentService` and `TeamService`
-use in-memory stores pending durable repositories. Writes emit
+`CompanyReadService` and `RoleVersionService` project the durable org read
+surface (the settings-composed config resolver + `OrgMutationService` for
+company reads, the per-entity version repositories for history).
+`DepartmentService` persists departments through a durable department
+repository, and `TeamService` reads/writes teams through the settings-backed
+`company.departments[*].teams` blob (the same structure the REST
+`TeamController` mutates) under a shared compare-and-set write path, so the
+two surfaces cannot lose each other's updates. Writes emit
 `organization.*_via_mcp` audit events from the facade layer.
 
 The MCP args contract follows the same conventions as the rest of the
 tool surface:
 
-- Entity reads key by UUID: `synthorg_departments_{get,update,delete,get_health}`
-  take `department_id`; `synthorg_teams_{get,update,delete}` take `team_id`;
-  `synthorg_company_versions_get` and `synthorg_role_versions_get` take a
-  string `version_id`. `synthorg_teams_create` accepts an optional
-  `department_id` to attach the new team.
+- Entity reads key by their durable identifier:
+  `synthorg_departments_{get,update,delete,get_health}` take `department_id`;
+  `synthorg_teams_{get,update,delete}` address a team by its
+  `(department, team_name)` pair (teams are sub-documents of a department,
+  with no standalone team id); `synthorg_company_versions_get` and
+  `synthorg_role_versions_get` take a string `version_id`.
+  `synthorg_teams_create` takes the parent `department` plus the new team's
+  `name` / `lead` / `members`.
 - `synthorg_departments_delete` and `synthorg_teams_delete` are
   `admin_tool`s: they enforce the guardrail triple (`confirm` + `reason` +
   actor) and emit `MCP_ADMIN_OP_EXECUTED` on a successful delete.

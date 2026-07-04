@@ -8,18 +8,6 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.controllers._team_helpers import (
-    _check_team_name_unique,
-    _find_department,
-    _find_team,
-    _member_list,
-    _persist_departments,
-    _persisted_name,
-    _teams_of,
-    _validate_team_model,
-)
-from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK as _AGENT_LOCK
-from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathName
@@ -35,6 +23,16 @@ from synthorg.observability.events.api import (
     API_TEAM_REORDERED,
     API_TEAM_UPDATED,
     API_VALIDATION_FAILED,
+)
+from synthorg.organization.team_navigation import (
+    check_team_name_unique,
+    find_department,
+    find_team,
+    member_list,
+    mutate_company_departments,
+    persisted_name,
+    teams_of,
+    validate_team_model,
 )
 
 logger = get_logger(__name__)
@@ -104,7 +102,7 @@ def _team_to_response(team_dict: dict[str, object]) -> TeamResponse:
     Returns:
         ``TeamResponse`` instance.
     """
-    team = _validate_team_model(team_dict)
+    team = validate_team_model(team_dict)
     return TeamResponse(
         name=team.name,
         lead=team.lead,
@@ -153,26 +151,21 @@ class TeamController(Controller):
         """
         app_state: AppState = state.app_state
 
-        async with _AGENT_LOCK:
-            depts = await _read_setting_list(app_state, "departments")
-            dept_idx, dept = _find_department(depts, dept_name)
-
-            teams: list[dict[str, object]] = _teams_of(dept)
-            _check_team_name_unique(teams, data.name)
-
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
+            dept_idx, dept = find_department(depts, dept_name)
+            teams = teams_of(dept)
+            check_team_name_unique(teams, data.name)
             team_dict: dict[str, object] = {
                 "name": data.name,
                 "lead": data.lead,
                 "members": list(data.members),
             }
-            _validate_team_model(team_dict)
-
+            validate_team_model(team_dict)
             teams.append(team_dict)
-            dept = {**dept, "teams": teams}
-            depts[dept_idx] = dept
+            depts[dept_idx] = {**dept, "teams": teams}
+            return team_dict
 
-            await _persist_departments(app_state, depts)
-
+        team_dict = await mutate_company_departments(app_state, _mutate)
         logger.info(
             API_TEAM_CREATED,
             department=dept_name,
@@ -212,12 +205,10 @@ class TeamController(Controller):
         """
         app_state: AppState = state.app_state
 
-        async with _AGENT_LOCK:
-            depts = await _read_setting_list(app_state, "departments")
-            dept_idx, dept = _find_department(depts, dept_name)
-
-            teams: list[dict[str, object]] = _teams_of(dept)
-            stored_names = [_persisted_name(t, "Team") for t in teams]
+        def _mutate(depts: list[dict[str, object]]) -> list[dict[str, object]]:
+            dept_idx, dept = find_department(depts, dept_name)
+            teams = teams_of(dept)
+            stored_names = [persisted_name(t, "Team") for t in teams]
             team_map: dict[str, dict[str, object]] = {
                 normalize_identifier(name): t
                 for name, t in zip(stored_names, teams, strict=True)
@@ -287,12 +278,10 @@ class TeamController(Controller):
                 raise ValidationError(msg)
 
             reordered = [team_map[name] for name in requested_order]
+            depts[dept_idx] = {**dept, "teams": reordered}
+            return reordered
 
-            dept = {**dept, "teams": reordered}
-            depts[dept_idx] = dept
-
-            await _persist_departments(app_state, depts)
-
+        reordered = await mutate_company_departments(app_state, _mutate)
         logger.info(
             API_TEAM_REORDERED,
             department=dept_name,
@@ -337,34 +326,24 @@ class TeamController(Controller):
         """
         app_state: AppState = state.app_state
 
-        async with _AGENT_LOCK:
-            depts = await _read_setting_list(app_state, "departments")
-            dept_idx, dept = _find_department(depts, dept_name)
-
-            teams: list[dict[str, object]] = _teams_of(dept)
-            team_idx, team = _find_team(teams, team_name)
-
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
+            dept_idx, dept = find_department(depts, dept_name)
+            teams = teams_of(dept)
+            team_idx, team = find_team(teams, team_name)
             updated = {**team}
             if data.name is not None:
-                _check_team_name_unique(
-                    teams,
-                    data.name,
-                    exclude_index=team_idx,
-                )
+                check_team_name_unique(teams, data.name, exclude_index=team_idx)
                 updated["name"] = data.name
             if data.lead is not None:
                 updated["lead"] = data.lead
             if data.members is not None:
                 updated["members"] = list(data.members)
-
-            _validate_team_model(updated)
-
+            validate_team_model(updated)
             teams[team_idx] = updated
-            dept = {**dept, "teams": teams}
-            depts[dept_idx] = dept
+            depts[dept_idx] = {**dept, "teams": teams}
+            return updated
 
-            await _persist_departments(app_state, depts)
-
+        updated = await mutate_company_departments(app_state, _mutate)
         logger.info(
             API_TEAM_UPDATED,
             department=dept_name,
@@ -408,12 +387,10 @@ class TeamController(Controller):
         """
         app_state: AppState = state.app_state
 
-        async with _AGENT_LOCK:
-            depts = await _read_setting_list(app_state, "departments")
-            dept_idx, dept = _find_department(depts, dept_name)
-
-            teams: list[dict[str, object]] = _teams_of(dept)
-            team_idx, team = _find_team(teams, team_name)
+        def _mutate(depts: list[dict[str, object]]) -> None:
+            dept_idx, dept = find_department(depts, dept_name)
+            teams = teams_of(dept)
+            team_idx, team = find_team(teams, team_name)
 
             if reassign_to is not None:
                 if normalize_identifier(reassign_to) == normalize_identifier(team_name):
@@ -426,31 +403,29 @@ class TeamController(Controller):
                         reassign_to=reassign_to,
                     )
                     raise ValidationError(msg)
-                target_idx, target = _find_team(teams, reassign_to)
+                target_idx, target = find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
-                existing_members = _member_list(target)
+                existing_members = member_list(target)
                 # Coerce to str so a corrupted persisted member (None, int,
-                # ...) raises a 422 via _validate_team_model below rather
+                # ...) raises a 422 via validate_team_model below rather
                 # than a 500 from normalize_identifier.
                 existing_lower = {
                     normalize_identifier(str(m)) for m in existing_members
                 }
-                for member in _member_list(team):
+                for member in member_list(team):
                     member_normalized = normalize_identifier(str(member))
                     if member_normalized not in existing_lower:
                         existing_members.append(member)
                         existing_lower.add(member_normalized)
 
                 updated_target = {**target, "members": existing_members}
-                _validate_team_model(updated_target)
+                validate_team_model(updated_target)
                 teams[target_idx] = updated_target
 
             teams.pop(team_idx)
-            dept = {**dept, "teams": teams}
-            depts[dept_idx] = dept
+            depts[dept_idx] = {**dept, "teams": teams}
 
-            await _persist_departments(app_state, depts)
-
+        await mutate_company_departments(app_state, _mutate)
         logger.info(
             API_TEAM_DELETED,
             department=dept_name,

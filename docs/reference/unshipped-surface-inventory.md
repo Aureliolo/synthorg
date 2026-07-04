@@ -100,6 +100,7 @@ Each already has a construction site (so the discovery gate passes it) and
 | `WorkflowVersionService` | persistence lacks the workflow-version repo |
 | `AgentVersionService` | persistence lacks the agent-version repo |
 | `TrainingService` | the training feature prerequisite is absent |
+| `SelfImprovementService` (`meta.py::_WHY_SELF_IMPROVEMENT`, `synthorg_meta_*`) | the self-improvement meta loop is not enabled for the deployment; its constructor-param cleanup is owned by the companion boot-warning audit (#2533, D2) |
 
 ## INTENTIONAL-BACKEND-DEPENDENT (documented)
 
@@ -119,4 +120,33 @@ Classification **DEAD / OWNED-ELSEWHERE**.
 | `ToolInvocationTracker` construction | Owned by #2533 (D4). |
 | `api/controllers/meta.py::get_signals` placeholder data | Fixed: now reports real per-domain availability from the wired `SignalsService`. |
 | `agents_training.py` stale `_WHY_*` capability reasons | Fixed: corrected to the "service not wired" reason once the training / personality services were wired. |
+| `agents_crud.py` stale `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Fixed: the sibling defect. The strings claimed permanent architectural gaps ("no streaming endpoint", "no dedicated service method"), but the activity-feed / agent-version / agent-health services are now wired, so each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment"). |
 | `communication/meeting/enums.py` `EMBEDDING` docstring | Fixed: `EmbeddingSimilarityDetector` is fully implemented; the "placeholder / NotImplementedError" claim was stale. |
+
+## Idioms 3-7 sweep of `src/synthorg`
+
+The issue mandates auditing not only the `capability_gap` handler surface
+(idioms 1-2, resolved above) but also the wider "declared but unshipped"
+idioms 3-7 across the source tree. That sweep found no unshipped concrete
+surface beyond what the tables above already resolve:
+
+- **Idiom 3 (`NotImplementedError` in a concrete class).** Every one of the
+  31 `raise NotImplementedError` sites (across 11 modules, e.g. the
+  `OrgAgentMutationsMixin` / `OrgDepartmentMutationsMixin` seams, the Postgres
+  backend connection / migration bases, the Docker-sandbox lifecycle /
+  sidecar bases, the mem0 adapter base, `budget/tracker_summary.py`,
+  `core/scheduler.py`) is an abstract base / mixin seam: marked
+  `@abstractmethod`, `# pragma: no cover - see concrete`, or documented as
+  "raised if the subclass does not implement", and overridden by its concrete
+  subclass. No concrete class ships an unimplemented operation.
+- **Idioms 4-5 (`TODO` / `FIXME` / `HACK` / `XXX` markers).** None exist in
+  `src/synthorg/`; forensic and deferral markers in source are forbidden by
+  convention and enforced by the comment gates.
+- **Idiom 6 (`placeholder` / `stub` / "not implemented" text).** The textual
+  hits are docstrings, comments, and identifiers (template-field
+  placeholders, test-double "stub" naming, prose describing behaviour), not
+  unfinished production code.
+- **Idiom 7 (ghost 503 strings / unwired subsystems).** This *is* the
+  `capability_gap` surface catalogued in the UNFINISHED and
+  DEPLOYMENT-OPTIONAL tables above, and is now regression-guarded by
+  `scripts/check_mcp_capability_gap_documented.py`.

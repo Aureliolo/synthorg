@@ -69,15 +69,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_WHY_ACTIVITY = (
-    "activity feed derivation lives in hr.activity module; no "
-    "streaming endpoint on app_state"
-)
-_WHY_HISTORY = (
-    "career history reads via agent_identity_versions controller; "
-    "not exposed on app_state"
-)
-_WHY_HEALTH = "agent health aggregation has no dedicated service method"
+_WHY_ACTIVITY = "activity_feed_service is not wired on app_state in this deployment"
+_WHY_HISTORY = "agent_version_service is not wired on app_state in this deployment"
+_WHY_HEALTH = "agent_health_service is not wired on app_state in this deployment"
 
 
 async def _agents_list(

@@ -1,19 +1,19 @@
 # module-kind: service
-# ruff: noqa: EM101
 """Organization facades for the MCP handler layer.
 
-Company read/versions, department CRUD + health, team CRUD, and
-role-version history.  Writes route through ``org_mutation_service``
-where it already owns the flow; other paths use in-memory stores until
-durable repositories land.
+Hosts ``CompanyReadService`` (company snapshot + version history),
+``DepartmentService`` (durable department CRUD + health), and
+``RoleVersionService`` (role-version history). Company writes route
+through ``org_mutation_service``; reads and version history project the
+same durable sources the REST controllers use (the config resolver and
+the per-entity version repositories). Team CRUD lives in the sibling
+``_team_service`` module, which mutates the settings-backed
+``company.departments[*].teams`` blob.
 
 The file-level ``EM101`` suppression is intentional: every capability
 gap in this module raises :class:`CapabilityNotSupportedError` from a
 short identifier and operator-readable reason, both string literals by
-design so capability telemetry (logged via
-:data:`MCP_HANDLER_CAPABILITY_GAP`) has a stable, grep-able message.
-Hoisting them to ``msg = ...`` locals would obscure the one-line intent
-with no runtime benefit.
+design so capability telemetry has a stable, grep-able message.
 """
 
 import asyncio
@@ -26,16 +26,19 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.company import Company
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.pagination import collect_all
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.company import (
     COMPANY_UPDATED_VIA_MCP,
     DEPARTMENT_CREATED_VIA_MCP,
     DEPARTMENT_DELETED_VIA_MCP,
     DEPARTMENT_UPDATED_VIA_MCP,
     DEPARTMENTS_REORDERED_VIA_MCP,
+    ORG_CAPABILITY_UNSUPPORTED,
 )
 from synthorg.organization.department_record import _DepartmentRecord
 from synthorg.organization.models import ReorderDepartmentsRequest, UpdateCompanyRequest
@@ -52,6 +55,27 @@ logger = get_logger(__name__)
 # Company structure is single-tenant, so its version history is keyed under a
 # single entity id (matching the REST company-version controller).
 _COMPANY_ENTITY_ID = NotBlankStr("default")
+
+
+def _require_version_repo[R](repo: R | None, capability: str, detail: str) -> R:
+    """Return *repo*, or log + raise when version history is unavailable.
+
+    Returns:
+        The wired version repository.
+
+    Raises:
+        CapabilityNotSupportedError: When *repo* is ``None`` (a
+            persistence-less deployment), logged under
+            ``ORG_CAPABILITY_UNSUPPORTED`` first.
+    """
+    if repo is None:
+        logger.warning(
+            ORG_CAPABILITY_UNSUPPORTED,
+            capability=capability,
+            reason="no_durable_version_repository",
+        )
+        raise CapabilityNotSupportedError(capability, detail)
+    return repo
 
 
 # ── CompanyReadService ──────────────────────────────────────────────
@@ -164,12 +188,11 @@ class CompanyReadService:
             CapabilityNotSupportedError: When no durable version
                 repository is wired (a persistence-less deployment).
         """
-        if self._versions is None:
-            raise CapabilityNotSupportedError(
-                "company_versions_list",
-                "company version history requires a durable persistence backend",
-            )
-        versions = self._versions
+        versions = _require_version_repo(
+            self._versions,
+            "company_versions_list",
+            "company version history requires a durable persistence backend",
+        )
         return await collect_all(
             lambda limit, offset: versions.list_versions(
                 _COMPANY_ENTITY_ID, limit=limit, offset=offset
@@ -191,18 +214,18 @@ class CompanyReadService:
             CapabilityNotSupportedError: When no durable version
                 repository is wired (a persistence-less deployment).
         """
-        if self._versions is None:
-            raise CapabilityNotSupportedError(
-                "company_versions_get",
-                "company version history requires a durable persistence backend",
-            )
+        versions = _require_version_repo(
+            self._versions,
+            "company_versions_get",
+            "company version history requires a durable persistence backend",
+        )
         try:
             version_num = int(version_id)
         except ValueError:
             return None
         if version_num < 1:
             return None
-        return await self._versions.get_version(_COMPANY_ENTITY_ID, version_num)
+        return await versions.get_version(_COMPANY_ENTITY_ID, version_num)
 
 
 # ── DepartmentService ───────────────────────────────────────────────
@@ -260,15 +283,27 @@ class DepartmentService:
                 department from ``offset`` onwards.
 
         Raises:
-            ValueError: If ``offset`` is negative, or ``limit`` is
+            ValidationError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
         """
         if offset < 0:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="department",
+                reason="negative_offset",
+                offset=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         if limit is not None and limit < 1:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="department",
+                reason="non_positive_limit",
+                limit=limit,
+            )
             msg = f"limit must be >= 1 when provided, got {limit}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(d) for d in self._departments.values())
         ordered = tuple(
@@ -477,12 +512,11 @@ class RoleVersionService:
             CapabilityNotSupportedError: When no durable version
                 repository is wired (a persistence-less deployment).
         """
-        if self._versions is None:
-            raise CapabilityNotSupportedError(
-                "role_versions_list",
-                "role version history requires a durable persistence backend",
-            )
-        repo = self._versions
+        repo = _require_version_repo(
+            self._versions,
+            "role_versions_list",
+            "role version history requires a durable persistence backend",
+        )
         total = await repo.count_versions(role_name)
         if limit is None:
             everything = await collect_all(
@@ -516,18 +550,18 @@ class RoleVersionService:
             CapabilityNotSupportedError: When no durable version
                 repository is wired (a persistence-less deployment).
         """
-        if self._versions is None:
-            raise CapabilityNotSupportedError(
-                "role_versions_get",
-                "role version history requires a durable persistence backend",
-            )
+        repo = _require_version_repo(
+            self._versions,
+            "role_versions_get",
+            "role version history requires a durable persistence backend",
+        )
         try:
             version_num = int(version_id)
         except ValueError:
             return None
         if version_num < 1:
             return None
-        return await self._versions.get_version(role_name, version_num)
+        return await repo.get_version(role_name, version_num)
 
 
 __all__ = [

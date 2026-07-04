@@ -162,8 +162,8 @@ interface SignalOverviewSectionProps {
 }
 
 function SignalOverviewSection({ signals, proposalCount }: SignalOverviewSectionProps) {
-  const healthyDomains = signals.domains.filter(
-    (d) => d.status === 'ok' || d.status === 'healthy',
+  const availableDomains = signals.domains.filter(
+    (d) => d.status === 'available',
   ).length
   return (
     <SectionCard title="Signal overview" icon={Sparkles}>
@@ -171,7 +171,7 @@ function SignalOverviewSection({ signals, proposalCount }: SignalOverviewSection
         <MetricCard label="Meta enabled" value={signals.enabled ? 'Yes' : 'No'} />
         <MetricCard label="Domains tracked" value={formatNumber(signals.domains.length)} />
         <MetricCard label="Active proposals" value={formatNumber(proposalCount)} />
-        <MetricCard label="Healthy domains" value={formatNumber(healthyDomains)} />
+        <MetricCard label="Available domains" value={formatNumber(availableDomains)} />
       </div>
     </SectionCard>
   )

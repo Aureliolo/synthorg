@@ -1032,6 +1032,12 @@
       "ratio": 0.92,
       "tier": "code"
     },
+    "src/synthorg/organization/services.py": {
+      "cap": 600,
+      "loc": 483,
+      "ratio": 0.805,
+      "tier": "service"
+    },
     "src/synthorg/persistence/migrations.py": {
       "cap": 500,
       "loc": 414,
@@ -1551,7 +1557,7 @@
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 213,
     "synthorg.core.critical_errors": 628,
-    "synthorg.core.domain_errors": 227,
+    "synthorg.core.domain_errors": 228,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
     "synthorg.core.iso_datetime": 30,
@@ -1614,9 +1620,9 @@
     "synthorg.meta.signal_models": 24,
     "synthorg.meta.state": 23,
     "synthorg.notifications.models": 21,
-    "synthorg.observability": 1785,
+    "synthorg.observability": 1786,
     "synthorg.observability.background_tasks": 27,
-    "synthorg.observability.events.api": 206,
+    "synthorg.observability.events.api": 208,
     "synthorg.observability.events.budget": 20,
     "synthorg.observability.events.chief_of_staff": 33,
     "synthorg.observability.events.client": 24,

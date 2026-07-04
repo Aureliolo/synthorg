@@ -1,12 +1,15 @@
 # module-kind: code
-"""On-startup wiring for the organization MCP read services.
+"""On-startup wiring for the organization MCP services.
 
 The company-read and role-version facades project the durable org surface
 (the settings-composed config resolver + ``OrgMutationService`` for company
 reads/writes, and the per-entity version repositories for history), so they
 wire after settings composition + persistence connect rather than at
-construction. Each is best-effort + idempotent: a missing dependency leaves
-the facade absent and its MCP tools 503 until the operator fixes the boot.
+construction. The settings-backed ``TeamService`` (which both reads and
+writes ``company.departments[*].teams``) wires here too but is gated only on
+a composed settings service, independently of persistence. Each wire is
+best-effort + idempotent: a missing dependency leaves the facade absent and
+its MCP tools 503 until the operator fixes the boot.
 """
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -49,8 +52,6 @@ async def _wire_team_service(app_state: AppState) -> None:
     settings blob, so it activates once a settings service is composed; a
     settings-less boot leaves the synthorg_teams_* tools 503.
     """
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
     org = app_state.slice(OrganizationStateSlice)
     if (
         org.team_service is not None

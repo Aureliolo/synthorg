@@ -12,21 +12,21 @@ durable team store or team id.
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.company import (
     TEAM_CREATED_VIA_MCP,
     TEAM_DELETED_VIA_MCP,
     TEAM_UPDATED_VIA_MCP,
 )
-from synthorg.organization.settings_write_lock import ORG_SETTINGS_WRITE_LOCK
 from synthorg.organization.team_navigation import (
     check_team_name_unique,
     find_department,
     find_team,
-    persist_company_departments,
+    mutate_company_departments,
     persisted_name,
     read_company_departments,
     teams_of,
@@ -77,26 +77,48 @@ class TeamService:
         Teams are ordered by ``(department, name)`` case-insensitively so
         pagination is deterministic across calls.
 
+        A corrupt / legacy department or team record (missing or
+        non-string ``name``, or otherwise failing validation) is skipped
+        and logged, not raised, so one bad record never fails the whole
+        listing for every other, valid team.
+
         Returns:
             A ``(page, total)`` pair of department-tagged team views.
 
         Raises:
-            ValueError: If ``offset`` is negative, or ``limit`` is provided
-                and non-positive.
+            ValidationError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
         """
         if offset < 0:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="team",
+                reason="negative_offset",
+                offset=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         if limit is not None and limit < 1:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="team",
+                reason="non_positive_limit",
+                limit=limit,
+            )
             msg = f"limit must be >= 1 when provided, got {limit}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         depts = await read_company_departments(self._app_state)
         views: list[dict[str, object]] = []
         for dept in depts:
-            dept_name = persisted_name(dept, "Department")
-            views.extend(
-                _team_view(department=dept_name, team=team) for team in teams_of(dept)
-            )
+            try:
+                dept_name = persisted_name(dept, "Department")
+            except ValidationError:
+                continue
+            for team in teams_of(dept):
+                try:
+                    views.append(_team_view(department=dept_name, team=team))
+                except ValidationError:
+                    continue
         views.sort(
             key=lambda view: (
                 normalize_identifier(str(view["department"])),
@@ -146,28 +168,31 @@ class TeamService:
             ConflictError: If a team with this name already exists there.
             ValidationError: If the team data is invalid.
         """
-        team_dict: dict[str, object] = {
-            "name": name,
-            "lead": lead,
-            "members": list(members),
-        }
-        async with ORG_SETTINGS_WRITE_LOCK:
-            depts = await read_company_departments(self._app_state)
+
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
             dept_idx, dept = find_department(depts, department)
             teams = teams_of(dept)
             check_team_name_unique(teams, name)
+            team_dict: dict[str, object] = {
+                "name": name,
+                "lead": lead,
+                "members": list(members),
+            }
             validate_team_model(team_dict)
             teams.append(team_dict)
             depts[dept_idx] = {**dept, "teams": teams}
-            await persist_company_departments(self._app_state, depts)
-            dept_name = persisted_name(dept, "Department")
+            return _team_view(
+                department=persisted_name(dept, "Department"), team=team_dict
+            )
+
+        view = await mutate_company_departments(self._app_state, _mutate)
         logger.info(
             TEAM_CREATED_VIA_MCP,
-            department=dept_name,
+            department=view["department"],
             team=name,
             actor_id=actor_id,
         )
-        return _team_view(department=dept_name, team=team_dict)
+        return view
 
     async def update_team(  # noqa: PLR0913 -- one kwarg per patchable team field
         self,
@@ -191,14 +216,11 @@ class TeamService:
             ConflictError: If a rename collides with an existing team name.
             ValidationError: If the updated team data is invalid.
         """
-        async with ORG_SETTINGS_WRITE_LOCK:
-            depts = await read_company_departments(self._app_state)
-            try:
-                dept_idx, dept = find_department(depts, department)
-                teams = teams_of(dept)
-                team_idx, team = find_team(teams, team_name)
-            except NotFoundError:
-                return None
+
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
+            dept_idx, dept = find_department(depts, department)
+            teams = teams_of(dept)
+            team_idx, team = find_team(teams, team_name)
             updated = {**team}
             if name is not None:
                 check_team_name_unique(teams, name, exclude_index=team_idx)
@@ -210,15 +232,21 @@ class TeamService:
             validate_team_model(updated)
             teams[team_idx] = updated
             depts[dept_idx] = {**dept, "teams": teams}
-            await persist_company_departments(self._app_state, depts)
-            dept_name = persisted_name(dept, "Department")
+            return _team_view(
+                department=persisted_name(dept, "Department"), team=updated
+            )
+
+        try:
+            view = await mutate_company_departments(self._app_state, _mutate)
+        except NotFoundError:
+            return None
         logger.info(
             TEAM_UPDATED_VIA_MCP,
-            department=dept_name,
-            team=updated["name"],
+            department=view["department"],
+            team=view["name"],
             actor_id=actor_id,
         )
-        return _team_view(department=dept_name, team=updated)
+        return view
 
     async def delete_team(
         self,
@@ -234,18 +262,19 @@ class TeamService:
             ``True`` when a team was removed, ``False`` when the department
             or team does not exist.
         """
-        async with ORG_SETTINGS_WRITE_LOCK:
-            depts = await read_company_departments(self._app_state)
-            try:
-                dept_idx, dept = find_department(depts, department)
-                teams = teams_of(dept)
-                team_idx, _ = find_team(teams, team_name)
-            except NotFoundError:
-                return False
+
+        def _mutate(depts: list[dict[str, object]]) -> str:
+            dept_idx, dept = find_department(depts, department)
+            teams = teams_of(dept)
+            team_idx, _ = find_team(teams, team_name)
             teams.pop(team_idx)
             depts[dept_idx] = {**dept, "teams": teams}
-            await persist_company_departments(self._app_state, depts)
-            dept_name = persisted_name(dept, "Department")
+            return persisted_name(dept, "Department")
+
+        try:
+            dept_name = await mutate_company_departments(self._app_state, _mutate)
+        except NotFoundError:
+            return False
         logger.info(
             TEAM_DELETED_VIA_MCP,
             department=dept_name,

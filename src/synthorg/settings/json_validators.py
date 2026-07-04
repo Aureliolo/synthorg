@@ -26,6 +26,18 @@ a normalisation hook.
 from collections.abc import Callable
 from typing import Final
 
+#: Reject a ``company`` structural blob nesting deeper than this. The persisted
+#: department / agent shapes are shallow (department -> teams -> members); a
+#: pathologically deep payload from the generic settings-write MCP tool is a
+#: denial-of-service (``RecursionError``) vector, so it is refused before any
+#: model validation walks it.
+_MAX_JSON_DEPTH: Final[int] = 32
+
+#: Keys every persisted ``company.agents`` element must carry as a non-empty
+#: string (mirrors ``setup_agents._REQUIRED_AGENT_KEYS`` without importing up
+#: into the controller layer).
+_REQUIRED_AGENT_KEYS: Final[frozenset[str]] = frozenset({"name", "role"})
+
 
 def _validate_csp_docs_external_origins(value: object) -> None:
     """Reject any non-canonical ``csp_docs_external_origins`` payload.
@@ -66,8 +78,112 @@ def _validate_csp_docs_external_origins(value: object) -> None:
     ApiBridgeConfig(csp_docs_external_origins=tuple(value))
 
 
+def _reject_deep_nesting(value: object, key: str) -> None:
+    """Reject a ``company/*`` payload nesting past :data:`_MAX_JSON_DEPTH`.
+
+    Walks the parsed structure iteratively (an explicit stack, never
+    recursion) so the guard itself cannot ``RecursionError`` on the very
+    input it defends against.
+
+    Raises:
+        ValueError: If any node sits deeper than :data:`_MAX_JSON_DEPTH`.
+    """
+    stack: list[tuple[object, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > _MAX_JSON_DEPTH:
+            msg = f"company/{key} nests deeper than {_MAX_JSON_DEPTH} levels"
+            raise ValueError(msg)
+        if isinstance(node, dict):
+            stack.extend((child, depth + 1) for child in node.values())
+        elif isinstance(node, list):
+            stack.extend((child, depth + 1) for child in node)
+
+
+def _validate_company_departments(value: object) -> None:
+    """Reject a ``company.departments`` payload of the wrong shape.
+
+    The generic settings-write MCP tool can target this key directly,
+    bypassing the ``Team`` validation the team CRUD path applies, so each
+    persisted team is re-validated as :class:`~synthorg.core.company_departments.Team`
+    here. The department wrapper itself is checked loosely (the persisted
+    blob is a looser dict than the in-memory ``Department`` model, e.g. it
+    carries ``head_role`` / ``budget_percent``), so only the load-bearing
+    invariants are enforced: a list of objects, each with a non-empty
+    string ``name`` and, when present, well-formed ``teams``.
+
+    Raises:
+        ValueError: If the payload is not a list of department objects, a
+            department lacks a string ``name``, ``teams`` is not a list, or
+            a team entry fails ``Team`` validation.
+    """
+    from synthorg.core.company_departments import Team  # noqa: PLC0415
+
+    if not isinstance(value, list):
+        msg = "company/departments must be a JSON array of department objects"
+        raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+    _reject_deep_nesting(value, "departments")
+    for idx, dept in enumerate(value):
+        if not isinstance(dept, dict):
+            msg = (
+                f"company/departments[{idx}] must be an object, "
+                f"got {type(dept).__name__}"
+            )
+            raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+        name = dept.get("name")
+        if not isinstance(name, str) or not name.strip():
+            msg = f"company/departments[{idx}].name must be a non-empty string"
+            raise ValueError(msg)
+        raw_teams = dept.get("teams", [])
+        if not isinstance(raw_teams, list):
+            msg = f"company/departments[{idx}].teams must be an array"
+            raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+        for team_idx, team in enumerate(raw_teams):
+            try:
+                Team.model_validate(team)
+            except (ValueError, TypeError) as exc:
+                msg = (
+                    f"company/departments[{idx}].teams[{team_idx}] is not a "
+                    f"valid team: {exc}"
+                )
+                raise ValueError(msg) from exc
+
+
+def _validate_company_agents(value: object) -> None:
+    """Reject a ``company.agents`` payload of the wrong shape.
+
+    Mirrors the setup-agent element check at the settings-write boundary so
+    the generic settings-write MCP tool cannot persist a corrupt agents
+    blob: a list of objects, each carrying a non-empty string ``name`` and
+    ``role``.
+
+    Raises:
+        ValueError: If the payload is not a list of agent objects, or an
+            element lacks a non-empty string ``name`` / ``role``.
+    """
+    if not isinstance(value, list):
+        msg = "company/agents must be a JSON array of agent objects"
+        raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+    _reject_deep_nesting(value, "agents")
+    for idx, agent in enumerate(value):
+        if not isinstance(agent, dict):
+            msg = f"company/agents[{idx}] must be an object, got {type(agent).__name__}"
+            raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+        missing = _REQUIRED_AGENT_KEYS - agent.keys()
+        if missing:
+            msg = f"company/agents[{idx}] missing required keys: {sorted(missing)}"
+            raise ValueError(msg)
+        for required in sorted(_REQUIRED_AGENT_KEYS):
+            field = agent[required]
+            if not isinstance(field, str) or not field.strip():
+                msg = f"company/agents[{idx}].{required} must be a non-empty string"
+                raise ValueError(msg)
+
+
 _JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[object], None]]] = {
     ("api", "csp_docs_external_origins"): _validate_csp_docs_external_origins,
+    ("company", "departments"): _validate_company_departments,
+    ("company", "agents"): _validate_company_agents,
 }
 
 

@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from synthorg.api.controllers._team_helpers import (
-    _check_team_name_unique,
-    _find_department,
-    _find_team,
-    _persisted_name,
-)
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.organization.team_navigation import (
+    check_team_name_unique as _check_team_name_unique,
+)
+from synthorg.organization.team_navigation import find_department as _find_department
+from synthorg.organization.team_navigation import find_team as _find_team
+from synthorg.organization.team_navigation import persisted_name as _persisted_name
 from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
@@ -576,16 +576,27 @@ class TestPrivateHelpers:
         with pytest.raises(ValidationError, match="non-string"):
             _persisted_name({"name": 42}, "Team")
 
-    async def test_find_department_surfaces_corrupted_record(self) -> None:
+    async def test_find_department_skips_corrupted_record(self) -> None:
+        """A corrupt record is skipped, not surfaced, so a lookup for a
+        valid sibling still resolves and a miss reports ``not found``."""
         depts: list[JsonDict] = [
             {"name": None, "budget_percent": 50.0, "teams": []},
+            {"name": "Engineering", "budget_percent": 50.0, "teams": []},
         ]
-        with pytest.raises(ValidationError, match="non-string"):
+        idx, dept = _find_department(depts, "engineering")
+        assert idx == 1
+        assert dept["name"] == "Engineering"
+        with pytest.raises(NotFoundError, match="Department"):
             _find_department(depts, "anything")
 
-    async def test_find_team_surfaces_corrupted_record(self) -> None:
+    async def test_find_team_skips_corrupted_record(self) -> None:
+        """A corrupt team is skipped so an unrelated lookup is unaffected."""
         teams: list[JsonDict] = [
             {"name": 7, "lead": "alice", "members": []},
+            _team(name="Backend"),
         ]
-        with pytest.raises(ValidationError, match="non-string"):
+        idx, team = _find_team(teams, "backend")
+        assert idx == 1
+        assert team["name"] == "Backend"
+        with pytest.raises(NotFoundError, match="Team"):
             _find_team(teams, "anything")

@@ -50,7 +50,7 @@ class _DepartmentRecord:
         self,
         *,
         id: UUID,  # noqa: A002
-        name: str,
+        name: NotBlankStr,
         description: str,
         created_at: datetime,
     ) -> None:

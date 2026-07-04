@@ -7,7 +7,7 @@ service that ships wired-in-name-only: a typed ``AppState`` slice field
 (``X | None = None``) that an MCP handler reads but that nothing in the boot
 path ever constructs. Such a tool is registered and callable yet returns
 ``not_supported`` / 503 in every deployment -- the exact "declared but
-unshipped surface" defect issue #2535 exists to prevent.
+unshipped surface" defect this gate exists to prevent.
 
 This gate closes that blind spot by *discovering* every service an MCP
 handler depends on, from two AST shapes, and asserting each backing class is
@@ -73,9 +73,9 @@ if TYPE_CHECKING:
 _HANDLERS_DIR: Final[str] = "src/synthorg/meta/mcp/handlers"
 
 # capability_gap lives in common.py; that module + the shared handler
-# helpers are the unknown-tool / routing turf (owned by #2533), never a
-# per-service slice guard, so scanning them would fail-close on non-guard
-# capability_gap calls. Skip them.
+# helpers are the unknown-tool / routing turf (owned by the capability-gap
+# routing rework), never a per-service slice guard, so scanning them would
+# fail-close on non-guard capability_gap calls. Skip them.
 _HANDLER_SKIP: Final[frozenset[str]] = frozenset(
     {
         "common.py",

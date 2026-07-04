@@ -60,9 +60,11 @@ export interface AlertSummary {
   emitted_at: string
 }
 
+export type SignalDomainStatus = 'available' | 'unavailable'
+
 export interface SignalDomain {
   name: string
-  status: string
+  status: SignalDomainStatus
 }
 
 export interface SignalsResponse {

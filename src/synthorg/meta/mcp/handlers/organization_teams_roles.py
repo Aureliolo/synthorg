@@ -290,7 +290,7 @@ async def _role_versions_list(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List role-version snapshots, optionally filtered by role name.
+    """List a single role's version snapshots (role name is required).
 
     Returns:
         Resulting string.

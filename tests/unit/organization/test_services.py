@@ -7,6 +7,7 @@ and is already exercised via the MCP handler tests.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from synthorg.organization.services import (
     RoleVersionService,
 )
 from synthorg.persistence.department_protocol import DepartmentRepository
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeSettingsService, make_app_state, mock_of
 
@@ -426,6 +428,37 @@ class TestCompanyReadService:
         with pytest.raises(CapabilityNotSupportedError):
             await service.get_version(NotBlankStr("1"))
 
+    async def test_list_versions_with_repo_drains_pages(self) -> None:
+        snap1, snap2 = SimpleNamespace(v=1), SimpleNamespace(v=2)
+        repo = mock_of[VersionRepository](
+            list_versions=AsyncMock(return_value=(snap1, snap2)),
+        )
+        service = _company_read_service(company_versions=repo)
+        assert list(await service.list_versions()) == [snap1, snap2]
+
+    async def test_get_version_with_repo_resolves_by_number(self) -> None:
+        snap = SimpleNamespace(v=3)
+        repo = mock_of[VersionRepository](
+            get_version=AsyncMock(return_value=snap),
+        )
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("3")) is snap
+        assert repo.get_version.await_args.args[1] == 3
+
+    async def test_get_version_non_numeric_returns_none_without_repo_call(
+        self,
+    ) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("abc")) is None
+        repo.get_version.assert_not_awaited()
+
+    async def test_get_version_below_one_returns_none_without_repo_call(self) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("0")) is None
+        repo.get_version.assert_not_awaited()
+
 
 # ── RoleVersionService (durable-source reads) ──────────────────────
 
@@ -443,3 +476,54 @@ class TestRoleVersionService:
                 role_name=NotBlankStr("engineer"),
                 version_id=NotBlankStr("1"),
             )
+
+    async def test_list_versions_with_limit_forwards_page_and_total(self) -> None:
+        snap1, snap2 = SimpleNamespace(v=1), SimpleNamespace(v=2)
+        repo = mock_of[VersionRepository](
+            count_versions=AsyncMock(return_value=5),
+            list_versions=AsyncMock(return_value=(snap1, snap2)),
+        )
+        service = RoleVersionService(role_versions=repo)
+        page, total = await service.list_versions(
+            role_name=NotBlankStr("engineer"), offset=3, limit=2
+        )
+        assert total == 5
+        assert list(page) == [snap1, snap2]
+        call = repo.list_versions.await_args
+        assert call.kwargs["limit"] == 2
+        assert call.kwargs["offset"] == 3
+
+    async def test_list_versions_without_limit_drains_all(self) -> None:
+        snap = SimpleNamespace(v=1)
+        repo = mock_of[VersionRepository](
+            count_versions=AsyncMock(return_value=1),
+            list_versions=AsyncMock(return_value=(snap,)),
+        )
+        service = RoleVersionService(role_versions=repo)
+        page, total = await service.list_versions(
+            role_name=NotBlankStr("engineer"), limit=None
+        )
+        assert total == 1
+        assert list(page) == [snap]
+
+    async def test_get_version_with_repo_resolves_by_number(self) -> None:
+        snap = SimpleNamespace(v=4)
+        repo = mock_of[VersionRepository](
+            get_version=AsyncMock(return_value=snap),
+        )
+        service = RoleVersionService(role_versions=repo)
+        result = await service.get_version(
+            role_name=NotBlankStr("engineer"),
+            version_id=NotBlankStr("4"),
+        )
+        assert result is snap
+
+    async def test_get_version_non_numeric_returns_none(self) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = RoleVersionService(role_versions=repo)
+        result = await service.get_version(
+            role_name=NotBlankStr("engineer"),
+            version_id=NotBlankStr("nope"),
+        )
+        assert result is None
+        repo.get_version.assert_not_awaited()

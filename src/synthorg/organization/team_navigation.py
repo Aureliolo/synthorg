@@ -11,10 +11,12 @@ there is no separate durable team store.
 """
 
 import json
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Final
 
 from synthorg._core.features import require_service
 from synthorg.core.company_departments import Team
+from synthorg.core.concurrency.cas_retry import CASRetryHandler
 from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.normalization import normalize_identifier
@@ -24,6 +26,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
+from synthorg.organization.settings_write_lock import ORG_SETTINGS_WRITE_LOCK
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.state import SettingsStateSlice
 
@@ -33,6 +36,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DEPARTMENTS_KEY = "departments"
+
+#: Shared compare-and-set handler for every ``company.departments`` write.
+#: An ``asyncio.Lock`` serialises in-process writers, but the API can run
+#: multiple worker processes (``api/server.py`` supports ``workers>1``),
+#: so cross-process safety rests on CAS, not the lock.
+_DEPARTMENTS_CAS: Final[CASRetryHandler] = CASRetryHandler(
+    resource="company_departments"
+)
 
 
 def persisted_name(record: dict[str, object], record_type: str) -> str:
@@ -60,22 +71,50 @@ def persisted_name(record: dict[str, object], record_type: str) -> str:
     return value
 
 
+def _safe_persisted_name(record: dict[str, object], record_type: str) -> str | None:
+    """Read a record's ``name`` for comparison, tolerating corruption.
+
+    Unlike :func:`persisted_name`, a non-string name logs a warning and
+    returns ``None`` instead of raising, so a single corrupt/legacy
+    record (e.g. one missing its ``name``) cannot break a lookup or a
+    listing for every *other*, unrelated record in the same blob.
+
+    Returns:
+        The ``name`` as a ``str``, or ``None`` when it is absent / not a
+        string (the record is then skipped by the caller).
+    """
+    value = record.get("name")
+    if isinstance(value, str):
+        return value
+    logger.warning(
+        API_VALIDATION_FAILED,
+        record_type=record_type,
+        reason="non_string_persisted_name_skipped",
+        value_type=type(value).__name__,
+    )
+    return None
+
+
 def find_department(
     depts: list[dict[str, object]],
     name: str,
 ) -> tuple[int, dict[str, object]]:
     """Find a department by name (case-insensitive).
 
+    A department record with a missing / non-string ``name`` is skipped
+    (logged, not raised), so one corrupt record never blocks lookups for
+    the others.
+
     Returns:
         Tuple of (index, department dict).
 
     Raises:
         NotFoundError: If not found.
-        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
-        if normalize_identifier(persisted_name(dept, "Department")) == target:
+        dept_name = _safe_persisted_name(dept, "Department")
+        if dept_name is not None and normalize_identifier(dept_name) == target:
             return idx, dept
     logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
     msg = f"Department {name!r} not found"
@@ -110,16 +149,22 @@ def find_team(
 ) -> tuple[int, dict[str, object]]:
     """Find a team by name within a department's teams list.
 
+    A team record with a missing / non-string ``name`` is skipped
+    (logged, not raised), so one corrupt record never blocks lookups for
+    the others.
+
     Returns:
         Tuple of (index, team dict).
 
     Raises:
         NotFoundError: If not found.
-        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
-        if normalize_identifier(persisted_name(team, "Team")) == target:
+        team_name_value = _safe_persisted_name(team, "Team")
+        if team_name_value is not None and normalize_identifier(team_name_value) == (
+            target
+        ):
             return idx, team
     logger.warning(API_RESOURCE_NOT_FOUND, resource="team", name=team_name)
     msg = f"Team {team_name!r} not found"
@@ -134,15 +179,19 @@ def check_team_name_unique(
 ) -> None:
     """Raise ConflictError if a team with this name already exists.
 
+    A corrupt sibling (missing / non-string ``name``) is skipped rather
+    than raised: it cannot collide with *name*, so it must not block an
+    otherwise-valid create/rename.
+
     Raises:
         ConflictError: If a name collision is detected.
-        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, team in enumerate(teams):
         if idx == exclude_index:
             continue
-        if normalize_identifier(persisted_name(team, "Team")) == target:
+        existing = _safe_persisted_name(team, "Team")
+        if existing is not None and normalize_identifier(existing) == target:
             logger.warning(
                 API_RESOURCE_CONFLICT,
                 resource="team",
@@ -176,30 +225,19 @@ def validate_team_model(team_dict: dict[str, object]) -> Team:
         raise DomainValidationError(msg) from exc
 
 
-async def read_company_departments(
-    app_state: AppStateSliceMixin,
-) -> list[dict[str, object]]:
-    """Read the raw ``company.departments`` list from settings.
+def _parse_departments_json(value: str) -> list[dict[str, object]]:
+    """Parse a stored ``company.departments`` JSON string into dicts.
 
     Returns:
-        The parsed departments list, or ``[]`` when the setting is missing
-        or empty.
+        The parsed list, or ``[]`` when *value* is empty.
 
     Raises:
-        DomainError: If the stored JSON is corrupt (invalid JSON or not a
-            list of objects).
+        DomainError: If the JSON is invalid or not a list of objects.
     """
-    settings_svc = require_service(
-        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
-    )
-    try:
-        entry = await settings_svc.get("company", _DEPARTMENTS_KEY)
-    except SettingNotFoundError:
-        return []
-    if not entry.value:
+    if not value:
         return []
     try:
-        parsed = json.loads(entry.value)
+        parsed = json.loads(value)
     except json.JSONDecodeError as exc:
         logger.warning(
             API_VALIDATION_FAILED,
@@ -225,14 +263,132 @@ async def read_company_departments(
     return parsed
 
 
+async def read_company_departments(
+    app_state: AppStateSliceMixin,
+) -> list[dict[str, object]]:
+    """Read the raw ``company.departments`` list from settings.
+
+    Returns:
+        The parsed departments list, or ``[]`` when the setting is missing
+        or empty.
+
+    Raises:
+        DomainError: If the stored JSON is corrupt (invalid JSON or not a
+            list of objects).
+    """
+    settings_svc = require_service(
+        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+    )
+    try:
+        entry = await settings_svc.get("company", _DEPARTMENTS_KEY)
+    except SettingNotFoundError:
+        return []
+    return _parse_departments_json(entry.value)
+
+
+async def read_company_departments_versioned(
+    app_state: AppStateSliceMixin,
+) -> tuple[list[dict[str, object]], str]:
+    """Read ``company.departments`` plus its compare-and-set version token.
+
+    Reads DB state directly (bypassing the cache/fallback chain) so the
+    version token is authoritative for a subsequent CAS write.
+
+    Returns:
+        A ``(departments, version)`` pair. ``version`` is the setting's
+        ``updated_at`` token, ``""`` for a never-written key (the
+        first-write sentinel), threaded back into
+        :func:`persist_company_departments` for compare-and-set.
+
+    Raises:
+        DomainError: If the stored JSON is corrupt.
+    """
+    settings_svc = require_service(
+        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+    )
+    value, version = await settings_svc.get_versioned("company", _DEPARTMENTS_KEY)
+    return _parse_departments_json(value), version
+
+
 async def persist_company_departments(
     app_state: AppStateSliceMixin,
     depts: list[dict[str, object]],
+    *,
+    expected_updated_at: str | None = None,
 ) -> None:
-    """Write the full ``company.departments`` list back to settings."""
+    """Write the full ``company.departments`` list back to settings.
+
+    When *expected_updated_at* is supplied the write is compare-and-set:
+    it raises :class:`~synthorg.core.domain_errors.VersionConflictError`
+    if the stored version moved since the read, so a concurrent writer's
+    update is never silently overwritten.
+    """
     await require_service(
         app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
-    ).set("company", _DEPARTMENTS_KEY, json.dumps(depts))
+    ).set(
+        "company",
+        _DEPARTMENTS_KEY,
+        json.dumps(depts),
+        expected_updated_at=expected_updated_at,
+    )
+
+
+async def with_company_departments_cas[T](
+    read: Callable[[], Awaitable[tuple[T, str]]],
+    write: Callable[[T, str], Awaitable[None]],
+) -> T:
+    """Run an arbitrary CAS read-modify-write over ``company.departments``.
+
+    The shared seam for any writer of the blob: *read* loads + validates +
+    builds the new value (returning ``(new_value, version)``) and *write*
+    persists it guarded by *version*, raising
+    :class:`~synthorg.core.domain_errors.VersionConflictError` on a stale
+    token so the handler retries. Both run under the module CAS handler and
+    the in-process
+    :data:`~synthorg.organization.settings_write_lock.ORG_SETTINGS_WRITE_LOCK`,
+    so a writer that must touch ``company.departments`` alongside another key
+    (e.g. template-pack apply, which also writes ``company.agents``) shares
+    the exact retry policy, resource label, and write lock the team /
+    department CRUD path uses. Every scheme therefore cooperates on the one
+    CAS token rather than clobbering.
+
+    Returns:
+        The winning *read*'s ``new_value`` once *write* succeeds.
+    """
+    async with ORG_SETTINGS_WRITE_LOCK:
+        return await _DEPARTMENTS_CAS.execute(read, write)
+
+
+async def mutate_company_departments[T](
+    app_state: AppStateSliceMixin,
+    mutate: Callable[[list[dict[str, object]]], T],
+) -> T:
+    """Run a compare-and-set read-modify-write over ``company.departments``.
+
+    *mutate* receives the parsed departments list, mutates it in place
+    (raising ``NotFoundError`` / ``ConflictError`` / ``ValidationError``
+    to abort without retry) and returns a caller result. The list is
+    persisted through :func:`with_company_departments_cas`, retrying on a
+    cross-writer version conflict, so a concurrent department / team / setup
+    write can never silently lose this update.
+
+    Returns:
+        Whatever *mutate* returned on the winning attempt.
+    """
+    captured: dict[str, T] = {}
+
+    async def read() -> tuple[list[dict[str, object]], str]:
+        depts, version = await read_company_departments_versioned(app_state)
+        captured["result"] = mutate(depts)
+        return depts, version
+
+    async def write(new_depts: list[dict[str, object]], version: str) -> None:
+        await persist_company_departments(
+            app_state, new_depts, expected_updated_at=version
+        )
+
+    await with_company_departments_cas(read, write)
+    return captured["result"]
 
 
 __all__ = [
@@ -240,9 +396,12 @@ __all__ = [
     "find_department",
     "find_team",
     "member_list",
+    "mutate_company_departments",
     "persist_company_departments",
     "persisted_name",
     "read_company_departments",
+    "read_company_departments_versioned",
     "teams_of",
     "validate_team_model",
+    "with_company_departments_cas",
 ]

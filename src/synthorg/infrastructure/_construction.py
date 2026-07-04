@@ -16,14 +16,15 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     """Wire the read / MCP facades onto the facades slice.
 
     The dependency-free facades (review, setup, project, requests,
-    template-pack, client) and the OAuth registry always wire. The
-    construction-dependent facades wire only when their backing primitive is
-    present: quality projects the performance tracker; events/audit/artifact/
-    integration-health read their construction-time primitives; simulation
-    reads the client feature's simulation state (the source of the
-    ``depends_on=("client",)`` edge). ``OAuthFacadeService`` accepts a ``None``
-    token manager, so it wires unconditionally. Partial ``wire`` preserves the
-    facade fields that sibling wirers populate at the persistence and
+    template-pack, client) and the events-read facade always wire; the
+    events-read facade takes the always-present event-stream hub, and
+    ``OAuthFacadeService`` accepts a ``None`` token manager, so both wire
+    unconditionally. The construction-dependent facades wire only when their
+    backing primitive is present: quality projects the performance tracker;
+    audit / artifact / integration-health read their construction-time
+    primitives; simulation reads the client feature's simulation state (the
+    source of the ``depends_on=("client",)`` edge). Partial ``wire`` preserves
+    the facade fields that sibling wirers populate at the persistence and
     settings phases (user, backup, ontology, mcp-catalog, provider-read).
     """
     from synthorg.client.state import ClientStateSlice  # noqa: PLC0415
