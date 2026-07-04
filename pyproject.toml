@@ -702,6 +702,7 @@ ignore_names = [
     "StoragePayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
     "WebAuthnCredentialPayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
     "WebAuthnPayload", # tools/browser/_executor.py (TYPE_CHECKING-only)
+    "WebAuthnKeystoreEntry",  # tools/browser/_executor.py (TYPE_CHECKING-only)
 ]
 
 # ---------------------------------------------------------------------------

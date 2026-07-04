@@ -225,8 +225,8 @@ The browser tool exposes two capability families that carry state between
 separate tool calls: direct WebStorage access and WebAuthn passkey handling.
 Because each call launches a fresh Chromium in the sandbox, that state is
 persisted in the mounted workspace under a **per-owner** directory
-(`<workspace>/.synthorg/browser/state/<owner>/`) so one agent's session can
-never read another's. Two files live there:
+(`<workspace>/.synthorg/browser/state/<owner>/`) so one agent's session state
+is never visible to a different agent. Two files live there:
 
 - **`storage_state.json`**: a Playwright storage-state snapshot (cookies plus
   per-origin localStorage). Loaded into the context on every call and re-saved
@@ -259,7 +259,7 @@ in the database, never in LLM context or persisted conversation history). The
 sandbox re-seeds the authenticator from that host-side keystore by reference,
 so the key material round-trips host-side only. Per-owner isolation of the
 state directory is the boundary that keeps one agent's cookies and passkeys out
-of another's reach.
+of reach of any other agent.
 
 ## Git Clone SSRF Prevention
 
