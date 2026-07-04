@@ -31,6 +31,7 @@ from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.service import SelfImprovementService
 from synthorg.meta.signals.service import SignalsService
 from synthorg.persistence.ab_test_protocol import AbTestRepository
+from synthorg.persistence.alert_protocol import AlertRepository
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteRepository,
 )
@@ -50,6 +51,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     signals_service: SignalsService | None = None
     experiment_service: ExperimentService | None = None
     ab_test_repo: AbTestRepository | None = None
+    alert_repo: AlertRepository | None = None
     self_improvement_service: SelfImprovementService | None = None
     reports_service: ReportsService | None = None
     analytics_service: AnalyticsService | None = None
@@ -132,6 +134,19 @@ def ab_test_repo_of(app_state: AppStateSliceMixin) -> AbTestRepository | None:
         The wired A/B-test repository, or ``None``.
     """
     return app_state.slice(MetaStateSlice).ab_test_repo
+
+
+def alert_repo_of(app_state: AppStateSliceMixin) -> AlertRepository | None:
+    """Return the durable alert repository, or ``None`` when absent.
+
+    Soft accessor: the ``/meta/alerts`` endpoint degrades to an empty
+    page when persistence is unavailable rather than 503-ing, so this
+    returns the slice field directly instead of raising.
+
+    Returns:
+        The wired alert repository, or ``None``.
+    """
+    return app_state.slice(MetaStateSlice).alert_repo
 
 
 def self_improvement_service_of(

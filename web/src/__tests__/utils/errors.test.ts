@@ -213,6 +213,32 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toContain('connectivity')
   })
 
+  it('surfaces the curated message on a categorised 502', () => {
+    // A categorised DomainError (tunnel/integration failures map to
+    // PROVIDER_ERROR with HTTP 502) writes its message for the
+    // operator; the canned connectivity copy would hide it.
+    const error = makeAxiosError(502, {
+      error: 'A device login is already in progress; complete it first.',
+      error_detail: makeDetail(ErrorCategory.PROVIDER_ERROR),
+    })
+    expect(getErrorMessage(error)).toBe(
+      'A device login is already in progress; complete it first.',
+    )
+  })
+
+  it('keeps the canned copy for an INTERNAL-category 502', () => {
+    const error = makeAxiosError(502, {
+      error: 'Traceback (most recent call last): boom',
+      error_detail: makeDetail(ErrorCategory.INTERNAL),
+    })
+    expect(getErrorMessage(error)).toContain('connectivity')
+  })
+
+  it('keeps the canned copy for an unstructured 502 body', () => {
+    const error = makeAxiosError(502, { error: 'raw upstream text' })
+    expect(getErrorMessage(error)).toContain('connectivity')
+  })
+
   it('mentions setup-completion in 429 toast when the request hit /setup/complete', () => {
     const error = makeAxiosError(429, undefined, {}, '/api/v1/setup/complete')
     expect(getErrorMessage(error)).toContain('setup completion')

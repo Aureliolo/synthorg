@@ -1141,7 +1141,7 @@ async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + tim
     silent past the budget is closed with policy code 1008 so a
     silent client cannot indefinitely hold a slot (DoS prevention).
     Defaults to ``app_state.ws_auth_limits.frame_timeout_seconds``
-    (registered setting ``api.ws_frame_timeout_seconds``, default 30).
+    (registered setting ``api.ws_frame_timeout_seconds``, default 180).
 
     Raises:
         Exception: Raised on the corresponding failure path.

@@ -65,13 +65,13 @@ The helper `writeNATSConfigIfNeeded` keeps the file in sync on every compose wri
 
 ## Status banner verdict levels
 
-`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status.go`:
+`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status_snapshot.go`. The banner's readiness signal is topology-free: the unauthenticated `/readyz` probe reports a single `ok`/`unavailable` outcome rather than a per-component breakdown, so the CLI cannot distinguish "persistence not wired" from "message bus not wired" from "a provider is failing its health check" -- any one of them renders the same `CRITICAL` line. The per-component breakdown is only available behind authentication on `GET /health`.
 
 - `OK`: collapses to a single green "All systems operational" line; the happy path stays compact.
-- `DEGRADED`: amber box listing recoverable issues (e.g., a service restarting, or distributed bus expected but not wired).
-- `CRITICAL`: red box for unrecoverable state (e.g., backend unreachable, persistence not wired when expected, any container unhealthy).
+- `DEGRADED`: amber box for recoverable container-fleet issues (a service restarting).
+- `CRITICAL`: red box for unrecoverable state (backend unreachable, an unparseable health response, `/readyz` reporting anything other than `ok`, any container unhealthy, or no containers running at all).
 
-Escalation rules: `CRITICAL` wins over `DEGRADED`, and signals are gated on install expectations: a default internal-bus install is not flagged `DEGRADED` merely because the backend's health response omits `message_bus` (only `--bus-backend nats` installs expect one). An unmatched `--services` filter reports `OK`, not `CRITICAL`, because `renderContainersSection` already explains "No containers match requested services".
+Escalation rules: `CRITICAL` wins over `DEGRADED`. An unmatched `--services` filter reports `OK`, not `CRITICAL`, because `renderContainersSection` already explains "No containers match requested services". `--json` emits the same signals as a single well-formed JSON document per section (a `{"ready": bool, "data"/"error": ...}` health object, and a `{"containers": [...], "error": ...}` containers object) rather than human-oriented text.
 
 ## See also
 

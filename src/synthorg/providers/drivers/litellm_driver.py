@@ -57,7 +57,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
-    PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
@@ -72,6 +71,11 @@ from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
+)
+from synthorg.providers.drivers.litellm_model_catalog import (
+    build_model_lookup,
+    model_is_known,
+    resolve_model,
 )
 from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
 from synthorg.providers.drivers.litellm_tool_accumulator import (
@@ -181,7 +185,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         # net for rotation, not a token-refresh mechanism.
         self._credentials_cached_at: float | None = None
         self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
-            MappingProxyType(self._build_model_lookup(config.models))
+            MappingProxyType(build_model_lookup(config.models))
         )
         self._routing_key = config.litellm_provider or provider_name
         # Built lazily (inside the event loop) on the first ollama call:
@@ -206,6 +210,15 @@ class LiteLLMDriver(BaseCompletionProvider):
             )
             self._vram_guard = guard
         await guard.ensure_capacity(model_id)
+
+    @override
+    def serves_model(self, model: str) -> bool:
+        """Membership check over this provider's model ids and aliases.
+
+        Returns:
+            ``True`` when *model* resolves in the configured catalogue.
+        """
+        return model_is_known(self._model_lookup, model)
 
     @override
     def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
@@ -447,47 +460,6 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     # ── Model resolution ─────────────────────────────────────────
 
-    @staticmethod
-    def _build_model_lookup(
-        models: tuple[ProviderModelConfig, ...],
-    ) -> dict[str, ProviderModelConfig]:
-        """Build alias/id -> model config lookup.
-
-        Returns:
-            A dict mapping each model's canonical ID and any alias to its
-            ``ProviderModelConfig``.
-
-        Raises:
-            ValueError: If two models share the same ID, or an alias
-                collides with another model's ID or alias.
-        """
-        lookup: dict[str, ProviderModelConfig] = {}
-        for m in models:
-            if m.id in lookup and lookup[m.id] is not m:
-                logger.error(
-                    PROVIDER_CALL_ERROR,
-                    error="duplicate_model_id",
-                    model_id=m.id,
-                )
-                msg = f"Duplicate model lookup key: {m.id!r}"
-                raise ValueError(msg)
-            lookup[m.id] = m
-            if m.alias is not None:
-                if m.alias in lookup and lookup[m.alias].id != m.id:
-                    logger.error(
-                        PROVIDER_CALL_ERROR,
-                        error="model_alias_collision",
-                        alias=m.alias,
-                        collides_with=lookup[m.alias].id,
-                    )
-                    msg = (
-                        f"Model alias {m.alias!r} collides with "
-                        f"existing key for model {lookup[m.alias].id!r}"
-                    )
-                    raise ValueError(msg)
-                lookup[m.alias] = m
-        return lookup
-
     def _resolve_model(self, model: str) -> ProviderModelConfig:
         """Resolve a model alias or ID to its config.
 
@@ -498,23 +470,9 @@ class LiteLLMDriver(BaseCompletionProvider):
         Raises:
             ModelNotFoundError: If not found in this provider.
         """
-        config = self._model_lookup.get(model)
-        if config is None:
-            logger.error(
-                PROVIDER_MODEL_NOT_FOUND,
-                provider=self._provider_name,
-                model=model,
-                available=sorted(self._model_lookup),
-            )
-            msg = f"Model {model!r} not found in provider {self._provider_name!r}"
-            raise errors.ModelNotFoundError(
-                msg,
-                context={
-                    "provider": self._provider_name,
-                    "model": model,
-                },
-            )
-        return config
+        return resolve_model(
+            self._model_lookup, model, provider_name=self._provider_name
+        )
 
     # ── Request building ─────────────────────────────────────────
 

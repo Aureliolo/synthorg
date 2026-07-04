@@ -814,14 +814,17 @@ _r.register(
         namespace=SettingNamespace.API,
         key="ws_frame_timeout_seconds",
         type=SettingType.INTEGER,
-        default="30",
+        default="180",
         description=(
             "Per-frame receive timeout for established WebSocket"
             " connections. A connection that goes idle (no inbound"
             " frame) for longer than this is closed with policy code"
             " 1008. Bounds the number of slots a silent client can"
-            " hold (DoS prevention). Sampled per new connection-open;"
-            " a change applies to subsequent connections without a restart."
+            " hold (DoS prevention) while tolerating browser timer"
+            " throttling in hidden dashboard tabs, which stretches the"
+            " client's 20-second heartbeat to a minute or more."
+            " Sampled per new connection-open; a change applies to"
+            " subsequent connections without a restart."
         ),
         group="WebSocket",
         level=SettingLevel.ADVANCED,

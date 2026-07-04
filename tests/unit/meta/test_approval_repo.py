@@ -158,7 +158,9 @@ class TestSQLiteApprovalRepository:
         await repo.save(
             _item(item_id="a2", action_type="meta.architecture"),
         )
-        config = await repo.query(ApprovalFilterSpec(action_type="meta.config_tuning"))
+        config = await repo.query(
+            ApprovalFilterSpec(action_types=("meta.config_tuning",))
+        )
         assert len(config) == 1
         assert config[0].id == as_uuid("a1")
 

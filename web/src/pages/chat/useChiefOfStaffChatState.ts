@@ -1,6 +1,8 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { AlertSummary, ChatScope, ProposalSummary } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
+import type { ChatScopeValue } from './ChatScopePicker'
 import { resolveScopedRetryContent } from './scoped-retry'
 
 export interface ChiefOfStaffMessage {
@@ -22,15 +24,39 @@ export interface ChiefOfStaffChatState {
   triggerSend: () => void
   /** Re-send the user message before the clicked error bubble's id. */
   retryLast: (beforeMsgId?: number) => void
+  /**
+   * Optional proposal/alert the conversation is scoped to. Persists
+   * across turns (every question is scoped) until explicitly cleared
+   * via `setScope(null)` -- not a one-shot "next question only" scope.
+   */
+  scope: ChatScopeValue | null
+  setScope: (value: ChatScopeValue | null) => void
+  scopeableProposals: readonly ProposalSummary[]
+  scopeableAlerts: readonly AlertSummary[]
+}
+
+function toChatScope(value: ChatScopeValue | null): ChatScope | undefined {
+  if (!value) return undefined
+  return { kind: value.kind, id: value.id }
 }
 
 export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   const [messages, setMessages] = useState<ChiefOfStaffMessage[]>([])
   const [input, setInput] = useState('')
+  const [scope, setScope] = useState<ChatScopeValue | null>(null)
   const chatLoading = useMetaStore((s) => s.chatLoading)
   const sendChat = useMetaStore((s) => s.sendChat)
+  const proposals = useMetaStore((s) => s.proposals)
+  const alerts = useMetaStore((s) => s.alerts)
+  const fetchProposals = useMetaStore((s) => s.fetchProposals)
+  const fetchAlerts = useMetaStore((s) => s.fetchAlerts)
   const scrollRef = useRef<HTMLDivElement>(null)
   const msgIdRef = useRef(0)
+
+  useEffect(() => {
+    if (proposals.length === 0) void fetchProposals()
+    if (alerts.length === 0) void fetchAlerts()
+  }, [proposals.length, alerts.length, fetchProposals, fetchAlerts])
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
@@ -41,11 +67,11 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
         ...prev,
         { id: nextMsgId(), role: 'user', content: question },
       ])
-      const response = await sendChat(question)
+      const response = await sendChat(question, toChatScope(scope))
       setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
       scrollToBottom(scrollRef)
     },
-    [chatLoading, sendChat, nextMsgId],
+    [chatLoading, sendChat, nextMsgId, scope],
   )
 
   const triggerSend = useCallback(() => {
@@ -66,7 +92,19 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
     if (content !== null) void sendMessage(content)
   }, [messages, sendMessage])
 
-  return { messages, input, chatLoading, scrollRef, setInput, triggerSend, retryLast }
+  return {
+    messages,
+    input,
+    chatLoading,
+    scrollRef,
+    setInput,
+    triggerSend,
+    retryLast,
+    scope,
+    setScope,
+    scopeableProposals: proposals,
+    scopeableAlerts: alerts,
+  }
 }
 
 function buildAssistantMessage(

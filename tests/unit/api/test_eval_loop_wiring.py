@@ -30,7 +30,7 @@ class TestSelectProvider:
     def test_pinned_present_returns_it(self) -> None:
         driver = mock_of[BaseCompletionProvider]()
         registry = ProviderRegistry({"example-provider": driver})
-        assert _select_provider(registry, "example-provider") is driver
+        assert _select_provider(registry, "example-provider", "model-x") is driver
 
     def test_pinned_but_absent_returns_none(self) -> None:
         # An explicit-but-absent provider (typo / stale config) degrades to
@@ -39,15 +39,35 @@ class TestSelectProvider:
         registry = ProviderRegistry(
             {"example-provider": mock_of[BaseCompletionProvider]()}
         )
-        assert _select_provider(registry, "absent-name") is None
+        assert _select_provider(registry, "absent-name", "model-x") is None
 
-    def test_unpinned_uses_first_available(self) -> None:
-        driver = mock_of[BaseCompletionProvider]()
-        registry = ProviderRegistry({"example-provider": driver})
-        assert _select_provider(registry, "") is driver
+    def test_unpinned_resolves_by_model(self) -> None:
+        """No provider pinned: resolve by which driver actually serves the model.
+
+        Two providers registered, each serving a different model, proves
+        selection is model-aware rather than "whichever sorts first".
+        """
+        matching = mock_of[BaseCompletionProvider](
+            serves_model=lambda m: m == "model-b"
+        )
+        other = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-a")
+        registry = ProviderRegistry({"provider-a": other, "provider-b": matching})
+        assert _select_provider(registry, "", "model-b") is matching
+
+    def test_unpinned_no_provider_serves_model_returns_none(self) -> None:
+        """Two providers registered, neither serves the requested model.
+
+        ``resolve_feature_provider`` must degrade to ``None`` (feature
+        stays unwired) rather than crash wiring, and must not silently
+        pick a provider that will reject the model at request time.
+        """
+        first = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-a")
+        second = mock_of[BaseCompletionProvider](serves_model=lambda m: m == "model-b")
+        registry = ProviderRegistry({"provider-a": first, "provider-b": second})
+        assert _select_provider(registry, "", "model-c") is None
 
     def test_no_registry_returns_none(self) -> None:
-        assert _select_provider(None, "example-provider") is None
+        assert _select_provider(None, "example-provider", "model-x") is None
 
 
 def _wired_app_state() -> AppState:

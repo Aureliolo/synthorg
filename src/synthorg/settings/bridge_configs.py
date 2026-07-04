@@ -277,7 +277,7 @@ class ApiBridgeConfig(BaseModel):
         ge=WS_AUTH_TIMEOUT_MIN_SECONDS,
         le=WS_AUTH_TIMEOUT_MAX_SECONDS,
     )
-    ws_frame_timeout_seconds: int = Field(default=30, ge=1, le=600)
+    ws_frame_timeout_seconds: int = Field(default=180, ge=1, le=600)
     auth_revalidate_window_seconds: int = Field(default=60, ge=1, le=3_600)
     auth_revalidate_max_failures: int = Field(default=5, ge=1, le=100)
     sse_keepalive_seconds: float = Field(default=30.0, ge=1.0, le=600.0)

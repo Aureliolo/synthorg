@@ -243,3 +243,12 @@ class TestAgentWorkspaceRoot:
         state = _make_state()
         state.wire(WorkspaceStateSlice, agent_workspace_root=tmp_path)
         assert agent_workspace_root_of(state) == tmp_path
+
+    def test_missing_pinned_root_is_created(self, tmp_path: Path) -> None:
+        """Resolving creates the directory: PathValidator consumers
+        refuse a missing root and no deployment step pre-creates it."""
+        state = _make_state()
+        pinned = tmp_path / "data" / "agent-workspaces"
+        state.wire(WorkspaceStateSlice, agent_workspace_root=pinned)
+        assert agent_workspace_root_of(state) == pinned
+        assert pinned.is_dir()

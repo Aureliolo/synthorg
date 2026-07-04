@@ -12,6 +12,7 @@ poisoning startup.
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from synthorg.api._feature_provider_resolution import resolve_feature_provider
 from synthorg.api.state import AppState
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -173,14 +174,17 @@ async def _build_charter_interview(
     charter_config = si_config.charter
     charter_repo = build_charter_repository(persistence)
     conv_repos = build_conversational_repositories(persistence)
-    available = provider_registry.list_providers()
-    if charter_repo is None or conv_repos is None or not available:
+    provider = resolve_feature_provider(
+        provider_registry,
+        charter_config.interview_model,
+        feature="charter_interview",
+    )
+    if charter_repo is None or conv_repos is None or provider is None:
         logger.warning(
             CHARTER_SUBSTRATE_UNAVAILABLE,
             note="charter interview stores/provider unavailable (pre-setup?)",
         )
         return None
-    provider = provider_registry.get(available[0])
     strategy = build_charter_interview_strategy(
         charter_config,
         provider=provider,

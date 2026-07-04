@@ -38,6 +38,7 @@ var supportedConfigKeys = []string{
 	"nats_image_tag", "output", "postgres_image_tag",
 	"registry_host", "sandbox",
 	"self_update_api_timeout", "self_update_http_timeout",
+	"status_docker_timeout",
 	"telemetry_opt_in", "timestamps",
 	"tuf_fetch_timeout", "update_health_timeout", "web_port",
 }
@@ -146,7 +147,7 @@ Supported keys:
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
-Plus 26 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
+Plus 27 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
 postgres_image_tag, nats_image_tag,
 default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
 health_check_timeout, health_wait_timeout, self_update_http_timeout,
@@ -154,7 +155,8 @@ self_update_api_timeout, tuf_fetch_timeout, attestation_http_timeout,
 image_verify_timeout, image_pull_attempts, image_pull_retry_delay,
 health_poll_interval, health_initial_delay, dhi_verify_timeout,
 update_health_timeout, completion_probe_timeout, diagnostics_dial_timeout,
-max_api_response_bytes, max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
+status_docker_timeout, max_api_response_bytes, max_binary_bytes,
+max_archive_entry_bytes). Run 'synthorg config list'
 for the full key set with current values; durations accept Go duration
 strings ("30s", "5m"); byte sizes accept "4MiB", "256MB", etc.
 
@@ -372,6 +374,7 @@ var gettableConfigKeys = []string{
 	"persistence_backend", "postgres_image_tag",
 	"registry_host", "sandbox",
 	"self_update_api_timeout", "self_update_http_timeout",
+	"status_docker_timeout",
 	"telemetry_opt_in", "timestamps",
 	"tuf_fetch_timeout", "update_health_timeout", "web_port",
 }

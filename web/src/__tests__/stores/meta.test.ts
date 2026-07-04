@@ -19,6 +19,7 @@ function resetStore() {
   useMetaStore.setState({
     config: null,
     proposals: [],
+    alerts: [],
     abTests: [],
     evolutionSummary: null,
     evolutionAxes: [],
@@ -77,6 +78,44 @@ describe('fetchProposals', () => {
   })
 })
 
+describe('fetchAlerts', () => {
+  it('stores alerts and clears error on success', async () => {
+    const alerts = [
+      {
+        id: 'alert-1',
+        severity: 'warning',
+        alert_type: 'inflection',
+        description: 'Quality dropped sharply',
+        affected_domains: ['performance'],
+        signal_context: {},
+        recommended_action: null,
+        emitted_at: '2026-06-20T12:00:00Z',
+      },
+    ]
+    server.use(
+      http.get('/api/v1/meta/alerts', () => HttpResponse.json(pageEnvelope(alerts))),
+    )
+    useMetaStore.setState({ error: 'stale' })
+
+    await useMetaStore.getState().fetchAlerts()
+
+    expect(useMetaStore.getState().alerts).toEqual(alerts)
+    expect(useMetaStore.getState().error).toBeNull()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('sets error state on API failure without toasting (list-read pattern)', async () => {
+    server.use(
+      http.get('/api/v1/meta/alerts', () => HttpResponse.json(apiError('boom'))),
+    )
+
+    await useMetaStore.getState().fetchAlerts()
+
+    expect(useMetaStore.getState().error).toBe('boom')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+})
+
 describe('fetchSignals', () => {
   it('stores signals and clears error on success', async () => {
     const response = { enabled: true, domains: [] as unknown[] }
@@ -123,7 +162,51 @@ describe('sendChat', () => {
 
     expect(result).toEqual(response)
     expect(useMetaStore.getState().chatLoading).toBe(false)
-    expect(requestBodies[0]).toEqual({ question: 'hello' })
+    expect(requestBodies[0]).toEqual({
+      question: 'hello',
+      proposal_id: null,
+      alert_id: null,
+    })
+  })
+
+  it('forwards a proposal scope in the request body', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/meta/chat', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json(
+          apiSuccess({ answer: 'scoped', sources: [], confidence: 0.9 }),
+        )
+      }),
+    )
+
+    await useMetaStore.getState().sendChat('why?', { kind: 'proposal', id: 'prop-1' })
+
+    expect(requestBodies[0]).toEqual({
+      question: 'why?',
+      proposal_id: 'prop-1',
+      alert_id: null,
+    })
+  })
+
+  it('forwards an alert scope in the request body', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/meta/chat', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json(
+          apiSuccess({ answer: 'scoped', sources: [], confidence: 0.9 }),
+        )
+      }),
+    )
+
+    await useMetaStore.getState().sendChat('why?', { kind: 'alert', id: 'alert-1' })
+
+    expect(requestBodies[0]).toEqual({
+      question: 'why?',
+      proposal_id: null,
+      alert_id: 'alert-1',
+    })
   })
 
   it('returns null, sets error state, and emits an error toast on API failure', async () => {

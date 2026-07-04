@@ -34,14 +34,20 @@ def build_org_inflection_monitor(
         return None
     from synthorg.meta.chief_of_staff.alerts import (  # noqa: PLC0415
         LoggingAlertSink,
+        PersistentAlertSink,
         ProactiveAlertService,
     )
     from synthorg.meta.chief_of_staff.inflection import (  # noqa: PLC0415
         OrgInflectionDetector,
     )
+    from synthorg.meta.chief_of_staff.protocol import AlertSink  # noqa: PLC0415
 
+    sinks: tuple[AlertSink, ...] = (LoggingAlertSink(),)
+    alert_repo = app_state.slice(MetaStateSlice).alert_repo
+    if alert_repo is not None:
+        sinks = (*sinks, PersistentAlertSink(alert_repo))
     alert_service = ProactiveAlertService(
-        alert_sinks=(LoggingAlertSink(),),
+        alert_sinks=sinks,
         severity_threshold=cos_config.inflection_severity_threshold,
     )
     return OrgInflectionMonitor(

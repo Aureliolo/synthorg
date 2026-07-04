@@ -7,6 +7,7 @@
 
 import type {
   ChatActRequest,
+  ChatRequest,
   ConversationalActResult,
   ConversationalProposeRequest,
   GroupChatRequest,
@@ -40,6 +41,23 @@ export interface ProposalSummary {
   risk_level: string
   requested_by: string
   created_at: string
+}
+
+// Org-alert wire shape. The backend serialises the durable ``Alert`` to a
+// plain dict (not a named OpenAPI schema), so this interface is
+// hand-maintained against ``_alert_to_dict`` in the meta-alerts controller.
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+export type AlertType = 'inflection' | 'threshold' | 'trend'
+
+export interface AlertSummary {
+  id: string
+  severity: AlertSeverity
+  alert_type: AlertType
+  description: string
+  affected_domains: readonly string[]
+  signal_context: Record<string, unknown>
+  recommended_action: string | null
+  emitted_at: string
 }
 
 export interface SignalDomain {
@@ -168,6 +186,44 @@ async function fetchProposalsPage(
 
 export async function listProposals(): Promise<ProposalSummary[]> {
   return paginateAll<ProposalSummary>(fetchProposalsPage)
+}
+
+export interface AlertListFilter {
+  severity?: AlertSeverity
+  alertType?: AlertType
+}
+
+async function fetchAlertsPage(
+  cursor: string | null,
+  filter?: AlertListFilter,
+): Promise<PaginatedResult<AlertSummary>> {
+  const response = await apiClient.get<PaginatedResponse<AlertSummary>>(
+    `${BASE}/alerts`,
+    {
+      params: {
+        ..._pageParams(cursor),
+        ...(filter?.severity ? { severity: filter.severity } : {}),
+        ...(filter?.alertType ? { alert_type: filter.alertType } : {}),
+      },
+    },
+  )
+  return unwrapPaginated<AlertSummary>(response)
+}
+
+export async function listAlerts(filter?: AlertListFilter): Promise<AlertSummary[]> {
+  return paginateAll<AlertSummary>((cursor) => fetchAlertsPage(cursor, filter))
+}
+
+/**
+ * Fetch a single bounded page of the most recent alerts (backend default
+ * page size, newest-first). For UI surfaces like the chat scope picker
+ * that only need a reasonably-sized recent set, not the full history --
+ * unlike {@link listAlerts}, this never walks every cursor page.
+ */
+export async function listRecentAlerts(
+  filter?: AlertListFilter,
+): Promise<AlertSummary[]> {
+  return (await fetchAlertsPage(null, filter)).data
 }
 
 export async function getSignals(): Promise<SignalsResponse> {
@@ -316,7 +372,18 @@ export async function postChatAct(
   return unwrap(response)
 }
 
-export async function postChat(question: string): Promise<ChatResponse> {
+// A discriminated union, not two independent optionals: the picker UI
+// (ChatScopeValue) can only ever produce "scoped to one proposal" or
+// "scoped to one alert", never both, so the wire-adjacent type should
+// make that illegal state unrepresentable too.
+export type ChatScope =
+  | { kind: 'proposal'; id: string }
+  | { kind: 'alert'; id: string }
+
+export async function postChat(
+  question: string,
+  scope?: ChatScope,
+): Promise<ChatResponse> {
   const trimmed = question.trim()
   if (!trimmed) {
     throw new Error('Question must not be blank')
@@ -327,9 +394,14 @@ export async function postChat(question: string): Promise<ChatResponse> {
   // axios 429 interceptor retries after ``Retry-After`` instead of
   // surfacing a hard failure on ratelimit bursts -- the server treats
   // replays of the same key as a no-op, so the retry is safe.
+  const body: ChatRequest = {
+    question: trimmed,
+    proposal_id: scope?.kind === 'proposal' ? scope.id : null,
+    alert_id: scope?.kind === 'alert' ? scope.id : null,
+  }
   const response = await apiClient.post<ApiResponse<ChatResponse>>(
     `${BASE}/chat`,
-    { question: trimmed },
+    body,
     {
       headers: {
         'Idempotency-Key': crypto.randomUUID(),

@@ -98,6 +98,16 @@ class _FakeRegistry:
         del name
         return self._provider
 
+    def resolve_for_model(self, model: str) -> tuple[str, ScriptedProvider]:
+        """The lone fake provider serves every model (no catalogue)."""
+        del model
+        if not self._providers:
+            from synthorg.providers.errors import DriverNotRegisteredError
+
+            msg = "No providers registered"
+            raise DriverNotRegisteredError(msg)
+        return self._providers[0], self._provider
+
 
 def _repos() -> ConversationalRepositories:
     # The builder only stores these references; behaviour is covered by

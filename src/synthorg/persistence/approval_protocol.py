@@ -51,7 +51,13 @@ class ApprovalFilterSpec(BaseModel):
 
     status: ApprovalStatus | None = Field(default=None)
     risk_level: ApprovalRiskLevel | None = Field(default=None)
-    action_type: NotBlankStr | None = Field(default=None)
+    action_types: tuple[NotBlankStr, ...] | None = Field(default=None)
+    """Match any of these action-type values (``IN``, not a prefix).
+
+    An empty tuple is treated the same as ``None`` (no filter applied)
+    rather than "match nothing"; no caller has a legitimate reason to
+    request an empty result set via this field.
+    """
     created_since: datetime | None = Field(default=None)
 
 
@@ -266,7 +272,7 @@ class ApprovalRepository(
         pagination remains stable under concurrent inserts.
 
         Args:
-            filter_spec: Carries optional status, risk_level, action_type
+            filter_spec: Carries optional status, risk_level, action_types
                 filters (all optional).
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.

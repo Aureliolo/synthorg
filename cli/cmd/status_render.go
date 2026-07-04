@@ -14,10 +14,15 @@ import (
 )
 
 // printPostgresVolumeInfo reports the size of the synthorg-pgdata named
-// volume when the Postgres persistence backend is active.
+// volume when the Postgres persistence backend is active. Docker calls
+// are bounded by StatusDockerTimeout so an unresponsive daemon cannot
+// hang the status command.
 func printPostgresVolumeInfo(ctx context.Context, out *ui.UI, info docker.Info) {
+	timeout := GetGlobalOpts(ctx).Tunables.StatusDockerTimeout
+	inspectCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	_, err := docker.RunCmd(
-		ctx, info.DockerPath,
+		inspectCtx, info.DockerPath,
 		"volume", "inspect", "synthorg-pgdata",
 		"--format", "{{.Mountpoint}}",
 	)
@@ -25,8 +30,10 @@ func printPostgresVolumeInfo(ctx context.Context, out *ui.UI, info docker.Info) 
 		out.KeyValue("Postgres volume", "synthorg-pgdata (not created yet)")
 		return
 	}
+	dfCtx, dfCancel := context.WithTimeout(ctx, timeout)
+	defer dfCancel()
 	dfOut, dfErr := docker.RunCmd(
-		ctx, info.DockerPath,
+		dfCtx, info.DockerPath,
 		"system", "df", "-v", "--format", "{{json .Volumes}}",
 	)
 	if dfErr != nil {
@@ -164,74 +171,100 @@ func renderTopBanner(out *ui.UI, snap statusSnapshot) {
 	out.Blank()
 }
 
-// renderHealthSection prints the backend health summary (with an
-// explicit red persistence line when the backend is half-up). Pulled up
+// renderHealthSection prints the backend health summary. Pulled up
 // above the container table so the highest-signal information leads.
 func renderHealthSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 	if jsonOut {
 		renderHealthSectionJSON(out, snap)
 		return
 	}
-	if !renderHealthSectionBackend(out, snap) {
-		return
-	}
-	renderHealthSectionPersistence(out, snap)
-	hr := snap.healthData
-	if hr.MessageBus != nil {
-		out.KeyValue("Message bus", fmt.Sprintf("%v", hr.MessageBus))
-	}
-	if hr.Telemetry != "" {
-		out.KeyValue("Telemetry", hr.Telemetry)
-	}
+	renderHealthSectionBackend(out, snap)
 	out.Blank()
 }
 
-func renderHealthSectionJSON(out *ui.UI, snap statusSnapshot) {
-	w := out.Writer()
-	_, _ = fmt.Fprintln(w, "Health check:")
-	if snap.healthBody != nil {
-		_, _ = fmt.Fprintf(w, "  %s\n", string(snap.healthBody))
-	} else if snap.healthErr != nil {
-		_, _ = fmt.Fprintf(w, "  error: %v\n", snap.healthErr)
-	}
+// healthSectionJSON is the --json shape of the health section: a single
+// well-formed JSON value (never a label line plus a raw byte dump), so
+// callers can decode it directly.
+type healthSectionJSON struct {
+	Ready bool            `json:"ready"`
+	Data  json.RawMessage `json:"data,omitempty"`
+	Error string          `json:"error,omitempty"`
 }
 
-// renderHealthSectionBackend prints the top-level backend reachability
-// line. Returns true if the section should continue (envelope parsed)
-// or false if the caller should stop here.
-func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) bool {
+func renderHealthSectionJSON(out *ui.UI, snap statusSnapshot) {
+	section := healthSectionJSON{Ready: snap.isReady()}
+	switch {
+	case snap.healthErr != nil:
+		section.Error = snap.healthErr.Error()
+	case snap.healthEnvelopeOK:
+		// Marshal the already-unwrapped healthData, not the raw
+		// healthBody: healthBody is the full ApiResponse envelope
+		// (itself carrying a "data" field), so re-wrapping it under
+		// this struct's own "data" tag would double-nest the payload.
+		data, err := json.Marshal(snap.healthData)
+		if err == nil {
+			section.Data = json.RawMessage(data)
+		} else {
+			section.Error = fmt.Sprintf("failed to encode health data: %v", err)
+		}
+	case snap.healthBody != nil:
+		section.Error = fmt.Sprintf("unparseable response (HTTP %d)", snap.healthStatusCode)
+	}
+	b, err := json.MarshalIndent(section, "", "  ")
+	if err != nil {
+		// Only reachable if section itself fails to marshal; degrade
+		// to a safe fallback rather than emit a broken document.
+		_, _ = fmt.Fprintf(out.Writer(), "{\"ready\":false,\"error\":%q}\n", err.Error())
+		return
+	}
+	_, _ = fmt.Fprintln(out.Writer(), string(b))
+}
+
+// renderHealthSectionBackend prints the backend reachability and
+// readiness line. A ready backend implies every configured dependency
+// (persistence / message bus / providers) passed its health probe; the
+// unauthenticated /readyz payload carries no per-component breakdown.
+func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) {
 	if snap.healthErr != nil {
 		out.Error(fmt.Sprintf("Backend unreachable: %v", snap.healthErr))
 		out.HintError("Run 'synthorg logs backend' to see why.")
-		return false
+		return
 	}
 	if !snap.healthEnvelopeOK {
 		out.Warn(fmt.Sprintf("Backend health: unparseable response (HTTP %d)", snap.healthStatusCode))
-		return false
+		return
 	}
 	hr := snap.healthData
-	if snap.healthStatusCode >= 200 && snap.healthStatusCode < 300 && hr.Status == "ok" {
-		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %s)", hr.Version, formatUptime(hr.Uptime)))
-		return true
+	if snap.isReady() {
+		out.Success(fmt.Sprintf(
+			"Backend healthy (v%s, uptime %s) -- all configured dependencies passing",
+			hr.Version, formatUptime(hr.Uptime)))
+		return
 	}
-	out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", snap.healthStatusCode))
-	out.HintError("Run 'synthorg doctor' for diagnostics.")
-	return true
+	out.Error(fmt.Sprintf(
+		"Backend not ready (HTTP %d) -- a configured dependency (persistence / message bus / providers) is failing its health probe",
+		snap.healthStatusCode))
+	out.HintError("Check 'synthorg logs backend' for the failing component's health-check warning.")
 }
 
-// renderHealthSectionPersistence prints the persistence-wiring line,
-// emitting an explicit "NOT WIRED" error when the backend is half-up.
-func renderHealthSectionPersistence(out *ui.UI, snap statusSnapshot) {
-	hr := snap.healthData
-	switch {
-	case snap.expectsPersistent && !snap.persistenceWired:
-		out.Error("Persistence: NOT WIRED -- controllers depending on persistence will return 503")
-		out.HintError("Check 'synthorg logs backend' for the auto_wire warning that names the missing env var.")
-	case hr.Persistence != nil:
-		out.KeyValue("Persistence", fmt.Sprintf("%v", hr.Persistence))
-	default:
-		out.KeyValue("Persistence", "not configured")
+// renderContainersSectionJSON emits the --json containers section as a
+// single well-formed JSON document: a container query failure survives
+// into the `error` field instead of rendering as an indistinguishable
+// empty array.
+func renderContainersSectionJSON(out *ui.UI, containers []containerInfo, containerErr error) {
+	section := struct {
+		Containers []containerInfo `json:"containers"`
+		Error      string          `json:"error,omitempty"`
+	}{Containers: containers}
+	if containerErr != nil {
+		section.Error = containerErr.Error()
 	}
+	b, err := json.MarshalIndent(section, "", "  ")
+	if err != nil {
+		out.Warn(fmt.Sprintf("Could not marshal container JSON: %v", err))
+		return
+	}
+	_, _ = fmt.Fprintln(out.Writer(), string(b))
 }
 
 // renderContainersSection prints the per-container table with health
@@ -244,12 +277,7 @@ func renderContainersSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 
 	w := out.Writer()
 	if jsonOut {
-		b, err := json.MarshalIndent(containers, "", "  ")
-		if err != nil {
-			out.Warn(fmt.Sprintf("Could not marshal container JSON: %v", err))
-			return
-		}
-		_, _ = fmt.Fprintln(w, string(b))
+		renderContainersSectionJSON(out, containers, snap.containerErr)
 		return
 	}
 	if snap.containerErr != nil {
@@ -312,7 +340,10 @@ func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataD
 	// `docker stats` over ALL running containers can never fail on a
 	// vanished specific target; we then filter the rendered rows to this
 	// project's names.
-	namesOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "--format", "{{.Name}}")
+	timeout := GetGlobalOpts(ctx).Tunables.StatusDockerTimeout
+	namesCtx, namesCancel := context.WithTimeout(ctx, timeout)
+	defer namesCancel()
+	namesOut, err := docker.ComposeExecOutput(namesCtx, info, dataDir, "ps", "--format", "{{.Name}}")
 	if err != nil || strings.TrimSpace(namesOut) == "" {
 		return
 	}
@@ -320,7 +351,9 @@ func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataD
 	for _, name := range strings.Fields(namesOut) {
 		composeNames[name] = struct{}{}
 	}
-	statsOut, err := docker.RunCmd(ctx, info.DockerPath, "stats", "--no-stream", "--format",
+	statsCtx, statsCancel := context.WithTimeout(ctx, timeout)
+	defer statsCancel()
+	statsOut, err := docker.RunCmd(statsCtx, info.DockerPath, "stats", "--no-stream", "--format",
 		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}")
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not get resource usage: %v", err))

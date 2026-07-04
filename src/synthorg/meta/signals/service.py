@@ -8,7 +8,7 @@ and the approval store to expose one callable surface:
 * :meth:`get_org_snapshot` fans the same window out to all 7
   aggregators via :class:`SnapshotBuilder`.
 * :meth:`list_proposals` queries :class:`ApprovalStore` for items
-  flagged with ``action_type=_PROPOSAL_ACTION_TYPE``.
+  flagged with ``action_type=PROPOSAL_ACTION_TYPE``.
 * :meth:`submit_proposal` wraps an :class:`ImprovementProposal` into
   an :class:`ApprovalItem` and persists it (destructive: audit-logged,
   returns the created item).
@@ -25,6 +25,7 @@ Design notes:
 """
 
 from datetime import datetime
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -62,10 +63,14 @@ from synthorg.observability.events.meta import (
 
 logger = get_logger(__name__)
 
-_PROPOSAL_ACTION_TYPE = "signals.proposal"
+PROPOSAL_ACTION_TYPE: Final[str] = "signals.proposal"
 """Discriminator used on approval items that originate from the signals
-facade.  Listing filters by this type so the generic approval queue
-stays clean.
+facade (the manual, MCP-tool-driven submission path). Listing filters by
+this type so the generic approval queue stays clean. The automated
+self-improvement-cycle path (``meta.guards.approval_gate``) uses a
+different, altitude-suffixed discriminator
+(``PROPOSAL_GUARD_ACTION_TYPE_PREFIX``); ``GET /meta/proposals`` matches
+both.
 """
 
 
@@ -265,7 +270,7 @@ class SignalsService:
             raise ValueError(msg)
         items = await self._approval_store.list_items(
             status=status,
-            action_type=NotBlankStr(_PROPOSAL_ACTION_TYPE),
+            action_type=NotBlankStr(PROPOSAL_ACTION_TYPE),
         )
         ordered = tuple(sorted(items, key=lambda a: a.created_at, reverse=True))
         total = len(ordered)
@@ -316,7 +321,7 @@ class SignalsService:
 
         item = ApprovalItem(
             id=uuid4(),
-            action_type=NotBlankStr(_PROPOSAL_ACTION_TYPE),
+            action_type=NotBlankStr(PROPOSAL_ACTION_TYPE),
             title=proposal.title,
             description=proposal.description,
             requested_by=NotBlankStr(actor_name),

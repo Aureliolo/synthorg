@@ -47,9 +47,9 @@ def _filter_clauses(
     if filter_spec.risk_level is not None:
         clauses.append("risk_level = %s")
         params.append(filter_spec.risk_level.value)
-    if filter_spec.action_type is not None:
-        clauses.append("action_type = %s")
-        params.append(filter_spec.action_type)
+    if filter_spec.action_types:
+        clauses.append("action_type = ANY(%s)")
+        params.append(list(filter_spec.action_types))
     if filter_spec.created_since is not None:
         clauses.append("created_at >= %s")
         params.append(filter_spec.created_since)
@@ -188,7 +188,7 @@ class _ReadMixin(_ApprovalRepoBase):
         Results are ordered by ``(created_at DESC, id DESC)``.
 
         Args:
-            filter_spec: Carries optional status, risk_level, action_type
+            filter_spec: Carries optional status, risk_level, action_types
                 filters (all optional).
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
@@ -234,7 +234,7 @@ class _ReadMixin(_ApprovalRepoBase):
         """Count approval items matching the filter spec.
 
         Args:
-            filter_spec: Carries optional status, risk_level, action_type
+            filter_spec: Carries optional status, risk_level, action_types
                 filters (all optional).
 
         Returns:

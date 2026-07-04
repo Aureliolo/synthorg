@@ -354,6 +354,78 @@ class TestApprovalStoreFilters:
 
 
 @pytest.mark.unit
+class TestListItemsPage:
+    """Cache-fallback path of list_items_page (no repository configured)."""
+
+    async def test_empty_tuple_action_types_matches_all(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item(approval_id="a1", action_type="code:merge"))
+        await store.add(_make_item(approval_id="a2", action_type="deploy:staging"))
+        result = await store.list_items_page(action_types=(), limit=10)
+        assert {item.id for item in result} == {as_uuid("a1"), as_uuid("a2")}
+
+    async def test_none_action_types_matches_all(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item(approval_id="a1", action_type="code:merge"))
+        await store.add(_make_item(approval_id="a2", action_type="deploy:staging"))
+        result = await store.list_items_page(action_types=None, limit=10)
+        assert {item.id for item in result} == {as_uuid("a1"), as_uuid("a2")}
+
+    async def test_filters_by_action_types_tuple(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item(approval_id="a1", action_type="code:merge"))
+        await store.add(_make_item(approval_id="a2", action_type="deploy:staging"))
+        await store.add(_make_item(approval_id="a3", action_type="db:admin"))
+        result = await store.list_items_page(
+            action_types=("code:merge", "db:admin"),
+            limit=10,
+        )
+        assert {item.id for item in result} == {as_uuid("a1"), as_uuid("a3")}
+
+    async def test_orders_newest_first(self) -> None:
+        store = ApprovalStore()
+        base = _now()
+        for delta_seconds, approval_id in ((0, "old"), (10, "mid"), (20, "new")):
+            await store.add(
+                ApprovalItem(
+                    id=as_uuid(approval_id),
+                    action_type="code:merge",
+                    title="Test",
+                    description="desc",
+                    requested_by="agent-dev",
+                    risk_level=ApprovalRiskLevel.MEDIUM,
+                    status=ApprovalStatus.PENDING,
+                    created_at=base + timedelta(seconds=delta_seconds),
+                ),
+            )
+        result = await store.list_items_page(limit=10)
+        assert [item.id for item in result] == [
+            as_uuid("new"),
+            as_uuid("mid"),
+            as_uuid("old"),
+        ]
+
+    async def test_offset_and_limit_apply_after_sort(self) -> None:
+        store = ApprovalStore()
+        base = _now()
+        for delta_seconds, approval_id in ((0, "old"), (10, "mid"), (20, "new")):
+            await store.add(
+                ApprovalItem(
+                    id=as_uuid(approval_id),
+                    action_type="code:merge",
+                    title="Test",
+                    description="desc",
+                    requested_by="agent-dev",
+                    risk_level=ApprovalRiskLevel.MEDIUM,
+                    status=ApprovalStatus.PENDING,
+                    created_at=base + timedelta(seconds=delta_seconds),
+                ),
+            )
+        result = await store.list_items_page(limit=1, offset=1)
+        assert [item.id for item in result] == [as_uuid("mid")]
+
+
+@pytest.mark.unit
 class TestOnExpireCallback:
     """on_expire callback lifecycle."""
 

@@ -49,10 +49,22 @@ def agent_workspace_root_of(app_state: AppStateSliceMixin) -> Path:
     temp directory, so agent filesystem / sandbox tools always observe a
     valid absolute path even on injected / dev / empty-company boots.
 
+    The directory is created on resolve: consumers bound file access to
+    it via ``PathValidator``, which refuses a missing directory, and no
+    deployment step pre-creates it on the data volume.
+
+    Deliberately synchronous, not ``await asyncio.to_thread(...)``: every
+    call site is a sync DI-style factory invoked during boot wiring or a
+    rare admin-triggered reinit (never a per-request hot path), and
+    ``mkdir(exist_ok=True)`` on an already-existing local directory is a
+    sub-millisecond stat, not a stall worth an async cascade through
+    those factories' call graphs.
+
     Returns:
-        The agent workspace root directory.
+        The agent workspace root directory (existing).
     """
     root = app_state.slice(WorkspaceStateSlice).agent_workspace_root
-    if root is not None:
-        return root
-    return Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
+    if root is None:
+        root = Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
+    root.mkdir(parents=True, exist_ok=True)
+    return root
