@@ -197,6 +197,15 @@ class ConversationalController(Controller):
             ServiceUnavailableError: When the actor is not configured.
         """
         app_state = state.app_state
+        # Live gate: a security kill-switch must take effect on the next
+        # request. Flipping direct_mcp_enabled off 503s here immediately
+        # rather than waiting for a restart to unwire the actor.
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "direct_mcp_enabled",
+            feature_label="Direct MCP acting",
+        )
         actor_service = app_state.slice(MetaStateSlice).conversational_actor
         if actor_service is None:
             logger.warning(

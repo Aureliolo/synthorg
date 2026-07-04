@@ -502,7 +502,12 @@ async def _wire_chief_of_staff_chat(
     cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
-    """Wire the Chief of Staff chat backend behind chief_of_staff.chat_enabled."""
+    """Ghost-wire the Chief of Staff chat backend whenever a provider exists.
+
+    Enablement is gated live per request on ``POST /meta/chat`` via
+    ``explain_chat_enabled``, not at build time, so the toggle takes
+    effect without a restart.
+    """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).chief_of_staff_chat is not None:

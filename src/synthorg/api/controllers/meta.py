@@ -431,14 +431,11 @@ class MetaController(Controller):
             logger.warning(
                 META_CHAT_DEPENDENCY_UNAVAILABLE,
                 dependency="chief_of_staff_chat",
-                hint=(
-                    "Set meta.chief_of_staff.chat_enabled and register an LLM provider."
-                ),
+                hint="Register an LLM provider so the chat backend can be built.",
             )
             msg = (
-                "Chief of Staff chat is not configured. Enable "
-                "``meta.chief_of_staff.chat_enabled`` in settings and "
-                "ensure an LLM provider is registered."
+                "Chief of Staff chat is not configured. Register an LLM "
+                "provider so the chat backend can be built."
             )
             raise ServiceUnavailableError(msg)
         signals_service = _require_signals_service(

@@ -170,12 +170,13 @@ def build_chief_of_staff_chat(
 ) -> ChiefOfStaffChat | None:
     """Resolve a ChiefOfStaffChat from the meta config + provider registry.
 
-    Returns ``None`` -- and the ``POST /meta/chat`` endpoint then surfaces
-    503 -- when:
-
-    - ``chief_of_staff_config.chat_enabled`` is False (the documented
-      opt-in default), or
-    - no LLM provider is registered (degenerate test/anonymous boots).
+    Ghost-wired: built whenever an LLM provider is registered, independent
+    of the enablement flag. The live per-request gate on ``POST /meta/chat``
+    (``ensure_feature_enabled(..., "explain_chat_enabled")``) is the sole
+    enablement gate, so toggling the setting takes effect on the next
+    request with no restart. Returns ``None`` -- and the endpoint then
+    surfaces 503 -- only when no LLM provider is registered (degenerate
+    test/anonymous boots).
 
     The provider is resolved by the configured chat model (the model
     name in config is provider-agnostic).
@@ -184,9 +185,6 @@ def build_chief_of_staff_chat(
         The ``ChiefOfStaffChat`` value when present, ``None`` otherwise.
     """
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: PLC0415
-
-    if not chief_of_staff_config.chat_enabled:
-        return None
 
     provider = resolve_feature_provider(
         provider_registry,

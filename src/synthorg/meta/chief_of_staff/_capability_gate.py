@@ -8,9 +8,11 @@ enabled, so turning the persona off suspends every autonomous behaviour at
 once without touching the individual flags.
 
 The user-initiated conversational capabilities (explain-chat, propose,
-group-chat) are deliberately NOT routed through here: they default on and
-are gated by their own flag alone, so the off-by-default persona switch
-cannot silently disable them.
+group-chat, direct-MCP acting) are deliberately NOT routed through here:
+explain-chat, propose, and group-chat default on and are gated by their
+own flag alone, and direct-MCP acting is fail-closed with its own
+boot-time governance gate plus a live per-request feature gate. In every
+case the off-by-default persona switch cannot silently disable them.
 """
 
 from synthorg.settings.enums import SettingNamespace

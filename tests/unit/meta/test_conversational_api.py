@@ -7,11 +7,14 @@ standing up a full TestClient (the ``test_budget_forecast_controller``
 pattern).
 """
 
+from types import SimpleNamespace
+
 import pytest
 from litestar.datastructures import State
 from pydantic import ValidationError
 
 from synthorg.api.controllers.conversational import (
+    ChatActRequest,
     ConversationalController,
     GroupChatRequest,
 )
@@ -88,5 +91,31 @@ async def test_chat_group_503_when_unwired() -> None:
         await ConversationalController.chat_group.fn(
             controller,
             data=GroupChatRequest(message=NotBlankStr("anyone there?")),
+            state=state,
+        )
+
+
+async def test_chat_act_live_gate_runs_before_actor() -> None:
+    """chat_act consults the live feature gate before the actor path.
+
+    A wired actor sits on the slice, so the ``None``-guard would pass;
+    the ``ServiceUnavailableError`` therefore proves the live gate ran
+    first (fail-closed here because the test app_state carries no config
+    resolver). This is the security kill-switch: the flag is re-read per
+    request, so flipping it off 503s without a restart. Removing the gate
+    would let execution fall through to the actor path and raise
+    something other than ``ServiceUnavailableError``.
+    """
+    controller = object.__new__(ConversationalController)
+    state = State()
+    state.app_state = make_app_state(
+        slices={MetaStateSlice: {"conversational_actor": SimpleNamespace()}}
+    )
+    with pytest.raises(ServiceUnavailableError):
+        await ConversationalController.chat_act.fn(
+            controller,
+            data=ChatActRequest(
+                instruction=NotBlankStr("ship it"), agent=NotBlankStr("ceo")
+            ),
             state=state,
         )
