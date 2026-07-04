@@ -14,9 +14,7 @@ URL probing (candidate URL probing for presets) lives in
 
 import json
 from collections.abc import Awaitable, Callable
-from contextvars import ContextVar
 from typing import Final
-from urllib.parse import urlparse
 
 import httpx
 from pydantic import JsonValue
@@ -46,18 +44,6 @@ from synthorg.providers.url_utils import redact_url as _redact_url
 
 logger = get_logger(__name__)
 
-# Per-discovery-pass dedup for the SSRF-bypass audit warning: one Ollama
-# pass probes ``/api/show`` once per model, so a naive per-request
-# warning would emit one line per model against the same origin. Warns
-# once per origin per pass (keyed on origin alone -- enrichment probes
-# hit the same host under ``preset_name=None``); repeat hits within the
-# pass demote to debug. A fresh set per pass keeps a recurring bypass
-# visible on the next pass instead of going dark after the first hit.
-_BYPASS_WARNED_ORIGINS: ContextVar[set[str] | None] = ContextVar(
-    "discovery_bypass_warned_origins",
-    default=None,
-)
-
 _DISCOVERY_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
@@ -86,28 +72,22 @@ async def discover_models(
     Returns:
         Tuple of discovered model configs, or empty tuple on failure.
     """
-    # One bypass-warning dedup scope per pass; reset so sequential
-    # passes on the same task each warn afresh.
-    token = _BYPASS_WARNED_ORIGINS.set(set())
-    try:
-        # Local ``ollama`` speaks the native listing protocol
-        # (``GET /api/tags``). ``ollama-cloud`` is reached through Ollama's
-        # OpenAI-compatible endpoint (``https://ollama.com/v1``), so it lists
-        # via the standard ``GET {base}/models`` path below, NOT ``/api/tags``.
-        if preset_name == "ollama":
-            return await _discover_ollama(
-                base_url,
-                headers=headers,
-                trust_url=trust_url,
-            )
-        return await _discover_standard_api(
+    # Local ``ollama`` speaks the native listing protocol
+    # (``GET /api/tags``). ``ollama-cloud`` is reached through Ollama's
+    # OpenAI-compatible endpoint (``https://ollama.com/v1``), so it lists
+    # via the standard ``GET {base}/models`` path below, NOT ``/api/tags``.
+    if preset_name == "ollama":
+        return await _discover_ollama(
             base_url,
-            preset_name,
             headers=headers,
             trust_url=trust_url,
         )
-    finally:
-        _BYPASS_WARNED_ORIGINS.reset(token)
+    return await _discover_standard_api(
+        base_url,
+        preset_name,
+        headers=headers,
+        trust_url=trust_url,
+    )
 
 
 def _discovery_url(base_url: str, suffix: str) -> str:
@@ -296,27 +276,16 @@ async def _fetch_json_trusted(
         Parsed JSON dict, or ``None`` on any failure.
     """
     safe_url = _redact_url(url)
-    # The audit trail must show a bypass that keeps happening, not go
-    # dark after the first hit: every discovery pass warns once per
-    # origin, and repeat URLs within the pass demote to debug. Outside
-    # a pass scope (no ContextVar set) every occurrence still warns.
-    parsed = urlparse(url)
-    origin_key = f"{parsed.scheme}://{parsed.netloc}"
-    warned = _BYPASS_WARNED_ORIGINS.get()
-    if warned is None or origin_key not in warned:
-        if warned is not None:
-            warned.add(origin_key)
-        logger.warning(
-            PROVIDER_DISCOVERY_SSRF_BYPASSED,
-            preset=preset_name,
-            url=safe_url,
-        )
-    else:
-        logger.debug(
-            PROVIDER_DISCOVERY_SSRF_BYPASSED,
-            preset=preset_name,
-            url=safe_url,
-        )
+    # A trusted discovery URL is allowlisted -- a preset ``candidate_url`` or an
+    # admin-entered provider base URL auto-allowlisted on registration -- so
+    # fetching it is a legitimate call, not a security event, and logs at DEBUG.
+    # The genuine dev-mode private-IP master-switch bypass is warned where that
+    # switch is honoured, so it is not double-warned here.
+    logger.debug(
+        PROVIDER_DISCOVERY_SSRF_BYPASSED,
+        preset=preset_name,
+        url=safe_url,
+    )
     return await _safe_fetch(
         _do_fetch_json(url, headers, preset_name=preset_name, body=body),
         preset_name,

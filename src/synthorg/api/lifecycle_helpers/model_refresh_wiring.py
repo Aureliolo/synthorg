@@ -17,6 +17,7 @@ from synthorg.api.services.upgrade_recommendation_service import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
@@ -82,6 +83,7 @@ async def wire_model_refresh(app_state: AppState) -> None:
         recommender=UpgradeRecommender(),
         repo=repo,
         config_resolver=resolver,
+        notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
     )
 
     if config.mode not in _CADENCE_MODES:
