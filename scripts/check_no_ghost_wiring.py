@@ -77,6 +77,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # constructed at boot by the facades feature construction_wirer
     # (infrastructure/_construction.py) via run_construction_wiring.
     "src/synthorg/infrastructure/",
+    # integrations/ holds the external-integration services; the connection
+    # MCP facade + tunnel service are constructed at boot by the integrations
+    # feature construction_wirer (integrations/_construction.py) via
+    # run_construction_wiring, so counting them tracks that wiring.
+    "src/synthorg/integrations/",
     "src/synthorg/client/",
     "src/synthorg/settings/",
     # tools/ is reached at boot via the

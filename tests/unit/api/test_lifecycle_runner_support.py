@@ -45,6 +45,14 @@ class TestWireWebhookRequestServices:
         assert slice_.webhook_replay_protector is not None
         assert slice_.webhook_activity_service is not None
 
+    def test_webhook_service_wired_without_persistence(self) -> None:
+        app_state = make_app_state()
+        _wire_webhook_request_services(None, app_state)
+        # The definition-CRUD facade uses a process-local store, so it wires
+        # unconditionally and the synthorg_webhooks_* tools dispatch to it
+        # instead of 503-ing.
+        assert app_state.slice(IntegrationsStateSlice).webhook_service is not None
+
     def test_idempotent_replay_protector_not_replaced(self) -> None:
         app_state = make_app_state()
         _wire_webhook_request_services(None, app_state)

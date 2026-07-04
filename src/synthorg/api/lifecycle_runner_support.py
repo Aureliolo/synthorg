@@ -325,6 +325,27 @@ def _wire_webhook_request_services(
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="webhook_replay_protector")
+    if slice_.webhook_service is None:
+        # The definition-CRUD facade backs the synthorg_webhooks_* MCP tools.
+        # Its store is process-local (no durable definition store exists), so
+        # it needs no persistence and wires unconditionally, like the replay
+        # protector above.
+        from synthorg.integrations.webhooks.definition_store import (  # noqa: PLC0415
+            InMemoryWebhookDefinitionStore,
+        )
+        from synthorg.integrations.webhooks.service import (  # noqa: PLC0415
+            WebhookService,
+        )
+
+        app_state.wire_if_field_absent(
+            IntegrationsStateSlice,
+            "webhook_service",
+            WebhookService(
+                store=InMemoryWebhookDefinitionStore(),
+                clock=app_state.clock,
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="webhook_service")
     if (
         slice_.webhook_activity_service is None
         and persistence is not None
