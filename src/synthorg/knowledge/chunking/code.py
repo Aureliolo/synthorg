@@ -109,10 +109,13 @@ def _load_parser(language: str) -> Parser | None:
         raise KnowledgeDependencyError(msg) from exc
     try:
         return get_parser(language)
-    except (LookupError, OSError, ValueError) as exc:
+    except (LookupError, OSError, ValueError, RuntimeError) as exc:
         # A missing grammar is the expected "degrade to line-window"
         # path; log at WARNING so a corrupt grammar pack or I/O failure
         # is distinguishable from the clean not-installed fallback.
+        # ``RuntimeError`` covers a language name this pack maps but does
+        # not actually provide a grammar for (e.g. "c_sharp"), which
+        # ``get_parser`` raises rather than one of the lookup/IO errors.
         logger.warning(
             KNOWLEDGE_GRAMMAR_LOAD_FAILED,
             language=language,

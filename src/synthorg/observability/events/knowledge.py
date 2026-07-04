@@ -41,6 +41,13 @@ chunker from a regression in the grammar pack (corrupt data, I/O failure)
 that operators would otherwise have no signal for.
 """
 
+KNOWLEDGE_GRAMMAR_PREFETCH_FAILED: Final[str] = "knowledge.grammar.prefetch_failed"
+"""Emitted at WARNING when batch grammar prefetch fails.
+
+Non-fatal: chunking still proceeds via each unit's own lazy
+``get_parser`` call, just without the batched pre-download.
+"""
+
 # -- Retrieval ----------------------------------------------------------------
 
 KNOWLEDGE_SEARCHED: Final[str] = "knowledge.searched"

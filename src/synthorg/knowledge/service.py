@@ -433,7 +433,8 @@ class KnowledgeService:
         await self._sources.save(pending)
         try:
             outcome = await self._indexer.index(
-                source=pending, chunks=chunk_raw_document(raw, config=self._config)
+                source=pending,
+                chunks=await chunk_raw_document(raw, config=self._config),
             )
         except builtins.MemoryError, RecursionError:
             raise
