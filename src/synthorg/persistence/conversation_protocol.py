@@ -91,10 +91,15 @@ class ConversationRepository(
     async def list_items(
         self,
         *,
+        created_by: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Conversation, ...]:
         """List conversations, newest-first (``created_at DESC, id DESC``).
+
+        When ``created_by`` is set, only that owner's conversations are
+        returned (the resume/list endpoint scopes to the caller so a
+        conversation is never cross-tenant visible).
 
         Raises:
             QueryError: If the database query fails or pagination args

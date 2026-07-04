@@ -176,6 +176,7 @@ class PostgresConversationRepository:
     async def list_items(
         self,
         *,
+        created_by: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Conversation, ...]:
@@ -186,22 +187,29 @@ class PostgresConversationRepository:
                 are invalid.
 
         Returns:
-            The matching entities.
+            The matching entities, scoped to ``created_by`` when set.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        where = "WHERE created_by = %s " if created_by is not None else ""
+        params: tuple[object, ...] = (
+            (created_by, effective_limit, offset)
+            if created_by is not None
+            else (effective_limit, offset)
+        )
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed column list
-                    "FROM conversations ORDER BY created_at DESC, id DESC "
+                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed cols + WHERE
+                    f"FROM conversations {where}"
+                    "ORDER BY created_at DESC, id DESC "
                     "LIMIT %s OFFSET %s",
-                    (effective_limit, offset),
+                    params,
                 )
                 rows = await cur.fetchall()
                 items = tuple(row_to_conversation(r) for r in rows)
