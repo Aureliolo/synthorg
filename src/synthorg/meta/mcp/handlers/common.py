@@ -51,6 +51,7 @@ from synthorg.meta.mcp.handlers.common_args import (
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
 )
+from synthorg.meta.toolsmith.models import GapKind
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
@@ -386,7 +387,10 @@ def capability_gap(tool_name: str, reason: str) -> str:
         tool_name=tool_name,
         reason=reason,
     )
-    _record_capability_gap(tool_name)
+    # A wired handler whose backing service is absent is a SynthOrg framework
+    # gap (implement the service), not a novel tool to author, so it records a
+    # SERVICE_ABSENT gap that the toolsmith routes to an ops signal.
+    _record_capability_gap(tool_name, GapKind.SERVICE_ABSENT)
     return _not_supported_envelope(reason)
 
 
@@ -395,7 +399,7 @@ def capability_gap(tool_name: str, reason: str) -> str:
 _PENDING_GAP_TASKS: set[asyncio.Task[None]] = set()
 
 
-def _record_capability_gap(tool_name: str) -> None:
+def _record_capability_gap(tool_name: str, kind: GapKind) -> None:
     """Feed a capability-gap observation to the toolsmith sink, if installed.
 
     Best-effort and non-blocking: ``capability_gap`` runs on the response
@@ -405,7 +409,8 @@ def _record_capability_gap(tool_name: str) -> None:
     loop is running. The toolsmith gap store swallows its own write errors,
     so a failed record never disturbs the handler response. Recording every
     unfulfilled capability request is what lets the toolsmith detect a
-    recurring gap and propose a new tool.
+    recurring gap and (for a genuinely-missing tool) propose a new one, or
+    (for an absent service) raise an ops signal.
     """
     from synthorg.meta.mcp.server import (  # noqa: PLC0415
         get_capability_gap_sink,
@@ -419,7 +424,9 @@ def _record_capability_gap(tool_name: str) -> None:
     except RuntimeError:
         return
     task = loop.create_task(
-        sink.record_gap(NotBlankStr(tool_name), occurred_at=datetime.now(UTC)),
+        sink.record_gap(
+            NotBlankStr(tool_name), occurred_at=datetime.now(UTC), kind=kind
+        ),
     )
     _PENDING_GAP_TASKS.add(task)
     task.add_done_callback(_on_gap_task_done)

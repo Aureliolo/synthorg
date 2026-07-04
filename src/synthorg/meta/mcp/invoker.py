@@ -81,6 +81,43 @@ class MCPToolInvoker:
         # the registry is frozen, which the dispatcher already requires.
         register_mcp_tool_names(frozenset(self._registry.get_names()))
 
+    async def _record_missing_tool_gap(self, tool_name: str) -> None:
+        """Record an unknown-tool request as a MISSING_TOOL capability gap.
+
+        Best-effort: the toolsmith gap sink is optional (present only when
+        the toolsmith is wired) and the store swallows its own write errors,
+        so a recording failure never disturbs the dispatch response. A blank
+        tool name is skipped (the gap signature must be non-blank).
+        """
+        if not tool_name.strip():
+            return
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+        from synthorg.meta.mcp.server import (  # noqa: PLC0415
+            get_capability_gap_sink,
+        )
+        from synthorg.meta.toolsmith.models import GapKind  # noqa: PLC0415
+
+        sink = get_capability_gap_sink()
+        if sink is None:
+            return
+        try:
+            await sink.record_gap(
+                NotBlankStr(tool_name),
+                occurred_at=datetime.now(UTC),
+                kind=GapKind.MISSING_TOOL,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                MCP_SERVER_INVOKE_FAILED,
+                tool_name=tool_name,
+                note="missing_tool_gap_record_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     async def invoke(
         self,
         tool_name: str,
@@ -132,6 +169,10 @@ class MCPToolInvoker:
                 outcome="not_found",
                 duration_sec=time.perf_counter() - invocation_start,
             )
+            # An unknown tool is the genuine "the org wants a capability that
+            # does not exist" demand the toolsmith authors for: record it as a
+            # MISSING_TOOL gap so recurring novel-tool demand is captured.
+            await self._record_missing_tool_gap(tool_name)
             return ToolExecutionResult(
                 content=json.dumps({"error": f"Unknown tool: {tool_name}"}),
                 is_error=True,

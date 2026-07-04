@@ -36,6 +36,22 @@ _ACTION_TYPE_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
 _MAX_SCRIPT_BODY_CHARS: Final[int] = 65536
 
 
+class GapKind(StrEnum):
+    """What kind of missing capability a gap observation records.
+
+    ``MISSING_TOOL``: an agent requested a tool that does not exist on the
+    surface (the genuine novel-capability demand the toolsmith authors for).
+
+    ``SERVICE_ABSENT``: a wired MCP handler could not run because its backing
+    SynthOrg service/primitive is not implemented in this deployment. That is
+    a framework gap to wire in SynthOrg, NOT a novel tool to author, so it
+    routes to an operator ops signal instead of the authoring cycle.
+    """
+
+    MISSING_TOOL = "missing_tool"
+    SERVICE_ABSENT = "service_absent"
+
+
 class ToolBlueprintState(StrEnum):
     """Lifecycle state of an authored tool blueprint.
 
@@ -69,6 +85,9 @@ class CapabilityGap(BaseModel):
     Attributes:
         signature: Stable key identifying the missing capability
             (typically the requested ``domain:action`` capability tag).
+        kind: Whether the gap is a genuinely-missing tool (authoring
+            candidate) or a wired handler with an absent service (ops
+            signal). Groups separately in recurrence analysis.
         occurrences: Number of times the gap was observed in the window.
         first_seen: First observation timestamp (UTC).
         last_seen: Most recent observation timestamp (UTC).
@@ -77,6 +96,7 @@ class CapabilityGap(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     signature: NotBlankStr
+    kind: GapKind = GapKind.MISSING_TOOL
     occurrences: int = Field(ge=1)
     first_seen: AwareDatetime
     last_seen: AwareDatetime

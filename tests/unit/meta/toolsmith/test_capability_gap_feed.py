@@ -14,6 +14,7 @@ import pytest
 from synthorg.meta.mcp.handlers.common import _PENDING_GAP_TASKS, capability_gap
 from synthorg.meta.mcp.server import install_capability_gap_sink, reset_singletons
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
+from synthorg.meta.toolsmith.models import GapKind
 
 pytestmark = pytest.mark.unit
 
@@ -38,7 +39,11 @@ async def test_capability_gap_envelope_feeds_recurring_detection() -> None:
     finally:
         reset_singletons()
 
-    assert any(gap.signature == _SIG for gap in recurring)
+    # A wired-handler capability_gap is a SERVICE_ABSENT gap (ops signal), not
+    # a novel tool to author.
+    matching = [gap for gap in recurring if gap.signature == _SIG]
+    assert matching
+    assert all(gap.kind is GapKind.SERVICE_ABSENT for gap in matching)
 
 
 async def test_capability_gap_is_noop_without_installed_sink() -> None:

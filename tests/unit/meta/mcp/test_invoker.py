@@ -44,6 +44,39 @@ class TestMCPToolInvoker:
         body = json.loads(result.content)
         assert "Unknown tool" in body["error"]
 
+    async def test_unknown_tool_records_missing_tool_gap(self) -> None:
+        """An unknown tool feeds the toolsmith a MISSING_TOOL capability gap."""
+        from datetime import UTC, datetime, timedelta
+
+        from synthorg.meta.mcp.server import (
+            install_capability_gap_sink,
+            reset_singletons,
+        )
+        from synthorg.meta.toolsmith.gap_store import (
+            RingBufferCapabilityGapStore,
+        )
+        from synthorg.meta.toolsmith.models import GapKind
+
+        store = RingBufferCapabilityGapStore(max_observations=8)
+        install_capability_gap_sink(store)
+        try:
+            invoker = MCPToolInvoker(registry_with(), {})
+            for _ in range(2):
+                await invoker.invoke(
+                    "synthorg_widget_frobnicate", {}, app_state=mock_of[AppState]()
+                )
+            gaps = await store.recurring(
+                threshold=2,
+                window=timedelta(hours=1),
+                now=datetime.now(UTC) + timedelta(seconds=1),
+            )
+        finally:
+            reset_singletons()
+
+        matching = [g for g in gaps if g.signature == "synthorg_widget_frobnicate"]
+        assert matching
+        assert all(g.kind is GapKind.MISSING_TOOL for g in matching)
+
     async def test_invoke_no_handler(self) -> None:
         tool = make_tool()
         registry = registry_with(tool)

@@ -13,6 +13,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ImprovementProposal
 from synthorg.meta.toolsmith.models import (
     CapabilityGap,
+    GapKind,
     ToolBlueprint,
     ToolValidationResult,
 )
@@ -22,8 +23,9 @@ from synthorg.meta.toolsmith.models import (
 class CapabilityGapSink(Protocol):
     """Receives a single capability-gap observation.
 
-    Wired into the MCP ``capability_gap`` envelope helper so every
-    unfulfilled capability request is recorded for recurrence analysis.
+    Wired into the MCP ``capability_gap`` envelope helper and the
+    unknown-tool dispatch path so every unfulfilled capability request is
+    recorded for recurrence analysis.
     """
 
     async def record_gap(
@@ -31,6 +33,7 @@ class CapabilityGapSink(Protocol):
         signature: NotBlankStr,
         *,
         occurred_at: datetime,
+        kind: GapKind = GapKind.MISSING_TOOL,
     ) -> None:
         """Record one observation of a missing capability.
 
@@ -39,6 +42,9 @@ class CapabilityGapSink(Protocol):
                 requested ``domain:action`` capability tag).
             occurred_at: Observation timestamp (UTC, caller-supplied
                 via the Clock seam).
+            kind: Whether this is a genuinely-missing tool (authoring
+                candidate) or a wired handler with an absent service
+                (ops signal). Defaults to ``MISSING_TOOL``.
         """
         ...
 

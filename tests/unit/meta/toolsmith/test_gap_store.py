@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
+from synthorg.meta.toolsmith.models import GapKind
 from synthorg.meta.toolsmith.protocol import CapabilityGapStore
 
 pytestmark = pytest.mark.unit
@@ -56,6 +57,42 @@ class TestRingBufferCapabilityGapStore:
         assert gaps[0].occurrences == 3
         assert gaps[0].first_seen == _NOW
         assert gaps[0].last_seen == _NOW + timedelta(minutes=2)
+
+    async def test_default_kind_is_missing_tool(self) -> None:
+        store = _store()
+        for i in range(3):
+            await store.record_gap(
+                NotBlankStr("textkit:slugify"),
+                occurred_at=_NOW + timedelta(minutes=i),
+            )
+        gaps = await store.recurring(
+            threshold=3, window=timedelta(hours=24), now=_NOW + timedelta(minutes=3)
+        )
+        assert len(gaps) == 1
+        assert gaps[0].kind is GapKind.MISSING_TOOL
+
+    async def test_same_signature_different_kind_groups_separately(self) -> None:
+        store = _store()
+        for i in range(3):
+            await store.record_gap(
+                NotBlankStr("textkit:slugify"),
+                occurred_at=_NOW + timedelta(minutes=i),
+                kind=GapKind.MISSING_TOOL,
+            )
+        for i in range(3):
+            await store.record_gap(
+                NotBlankStr("textkit:slugify"),
+                occurred_at=_NOW + timedelta(minutes=i),
+                kind=GapKind.SERVICE_ABSENT,
+            )
+        gaps = await store.recurring(
+            threshold=3, window=timedelta(hours=24), now=_NOW + timedelta(minutes=3)
+        )
+        # Same signature, two kinds -> two distinct recurring gaps.
+        assert len(gaps) == 2
+        kinds = {gap.kind for gap in gaps}
+        assert kinds == {GapKind.MISSING_TOOL, GapKind.SERVICE_ABSENT}
+        assert all(gap.occurrences == 3 for gap in gaps)
 
     async def test_recurring_excludes_out_of_window(self) -> None:
         store = _store()

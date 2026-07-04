@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.toolsmith.models import CapabilityGap
+from synthorg.meta.toolsmith.models import CapabilityGap, GapKind
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_GAP_EVICTED,
@@ -30,12 +30,13 @@ logger = get_logger(__name__)
 
 
 class _Observation:
-    """A single (signature, timestamp) gap observation."""
+    """A single (signature, kind, timestamp) gap observation."""
 
-    __slots__ = ("occurred_at", "signature")
+    __slots__ = ("kind", "occurred_at", "signature")
 
-    def __init__(self, signature: str, occurred_at: datetime) -> None:
+    def __init__(self, signature: str, kind: GapKind, occurred_at: datetime) -> None:
         self.signature = signature
+        self.kind = kind
         self.occurred_at = occurred_at
 
 
@@ -60,6 +61,7 @@ class RingBufferCapabilityGapStore:
         signature: NotBlankStr,
         *,
         occurred_at: datetime,
+        kind: GapKind = GapKind.MISSING_TOOL,
     ) -> None:
         """Record one observation of a missing capability.
 
@@ -78,7 +80,7 @@ class RingBufferCapabilityGapStore:
         try:
             async with self._lock:
                 evicted = len(self._obs) == self._max
-                self._obs.append(_Observation(str(signature), occurred_at))
+                self._obs.append(_Observation(str(signature), kind, occurred_at))
             logger.debug(TOOLSMITH_GAP_RECORDED, signature=signature)
             if evicted:
                 logger.info(TOOLSMITH_GAP_EVICTED, max_observations=self._max)
@@ -121,20 +123,21 @@ class RingBufferCapabilityGapStore:
         cutoff = now - window
         async with self._lock:
             snapshot = [o for o in self._obs if o.occurred_at >= cutoff]
-        grouped: dict[str, list[datetime]] = {}
+        grouped: dict[tuple[str, GapKind], list[datetime]] = {}
         for obs in snapshot:
-            grouped.setdefault(obs.signature, []).append(obs.occurred_at)
+            grouped.setdefault((obs.signature, obs.kind), []).append(obs.occurred_at)
         gaps = [
             CapabilityGap(
                 signature=NotBlankStr(signature),
+                kind=kind,
                 occurrences=len(times),
                 first_seen=min(times),
                 last_seen=max(times),
             )
-            for signature, times in grouped.items()
+            for (signature, kind), times in grouped.items()
             if len(times) >= threshold
         ]
-        gaps.sort(key=lambda g: (-g.occurrences, g.signature))
+        gaps.sort(key=lambda g: (-g.occurrences, g.signature, g.kind))
         return tuple(gaps)
 
     async def count(self) -> int:

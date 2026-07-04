@@ -40,12 +40,13 @@ from synthorg.meta.toolsmith.errors import (
     ToolAuthoringError,
     ToolCapabilityNotAllowedError,
 )
-from synthorg.meta.toolsmith.models import CapabilityGap, ToolBlueprint
+from synthorg.meta.toolsmith.models import CapabilityGap, GapKind, ToolBlueprint
 from synthorg.meta.toolsmith.protocol import (
     CapabilityGapStore,
     ToolBlueprintGenerator,
     ToolCreationOverflowHandler,
 )
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.observability.events.toolsmith import (
@@ -54,6 +55,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_CYCLE_COMPLETED,
     TOOLSMITH_CYCLE_STARTED,
     TOOLSMITH_PROPOSAL_GUARD_REJECTED,
+    TOOLSMITH_SERVICE_ABSENT_GAP,
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
@@ -110,6 +112,7 @@ class ToolsmithService:
         dynamic_registry: DynamicToolRegistry | None = None,
         clock: Clock | None = None,
         config_resolver: ConfigResolver | None = None,
+        notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:
         self._config = config
         self._gap_store = gap_store
@@ -121,16 +124,18 @@ class ToolsmithService:
         self._dynamic_registry = dynamic_registry
         self._clock = clock or SystemClock()
         self._config_resolver = config_resolver
+        self._notification_dispatcher = notification_dispatcher
 
     async def record_gap(
         self,
         signature: NotBlankStr,
         *,
         occurred_at: datetime | None = None,
+        kind: GapKind = GapKind.MISSING_TOOL,
     ) -> None:
         """Record a capability-gap observation (the sink seam)."""
         await self._gap_store.record_gap(
-            signature, occurred_at=occurred_at or self._clock.now()
+            signature, occurred_at=occurred_at or self._clock.now(), kind=kind
         )
 
     async def _tool_creation_enabled(self) -> bool:
@@ -252,9 +257,16 @@ class ToolsmithService:
     async def _handle_gap(self, gap: CapabilityGap) -> tuple[ImprovementProposal, ...]:
         """Author or overflow a single gap, then guard the result.
 
+        A SERVICE_ABSENT gap (a wired handler whose backing service is not
+        implemented) is a SynthOrg framework gap, not novel-tool demand, so it
+        raises an operator ops signal and is never authored.
+
         Returns:
             Tuple of the declared element types.
         """
+        if gap.kind is GapKind.SERVICE_ABSENT:
+            await self._signal_service_absent(gap)
+            return ()
         if gap.signature in self._config.service_access_capabilities:
             return await self._handle_overflow(gap)
         # Re-read the allowlist live per gap so an operator can narrow it at
@@ -290,6 +302,55 @@ class ToolsmithService:
         if await self._guards_pass(proposal):
             return (proposal,)
         return ()
+
+    async def _signal_service_absent(self, gap: CapabilityGap) -> None:
+        """Raise an operator ops signal for a recurring service-absent gap.
+
+        The capability exists as a wired MCP handler but its backing SynthOrg
+        service is not implemented in this deployment: the fix is to implement
+        the service in SynthOrg, not to author a sandbox tool. Best-effort: a
+        dispatch failure is logged (criticals re-raised) and never aborts the
+        cycle; a no-op when no dispatcher is wired.
+        """
+        logger.info(
+            TOOLSMITH_SERVICE_ABSENT_GAP,
+            capability=gap.signature,
+            occurrences=gap.occurrences,
+            dispatcher_wired=self._notification_dispatcher is not None,
+        )
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        body = (
+            f"MCP tool {gap.signature!r} was requested {gap.occurrences} times "
+            "but its handler has no backing SynthOrg service in this "
+            "deployment. Implement/wire the service in SynthOrg (this is a "
+            "framework gap, not a tool to author)."
+        )
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.SYSTEM,
+                    severity=NotificationSeverity.WARNING,
+                    title="Wired MCP tool has no backing service",
+                    body=body,
+                    source="meta.toolsmith",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_SERVICE_ABSENT_GAP,
+                capability=gap.signature,
+                note="ops_signal_dispatch_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _handle_overflow(
         self, gap: CapabilityGap

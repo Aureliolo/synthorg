@@ -26,6 +26,7 @@ from synthorg.meta.toolsmith.validation_gate import (
     SandboxBriefRunner,
     SandboxResolver,
 )
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
@@ -72,6 +73,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
     config_resolver: ConfigResolver | None = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ToolsmithRuntime:
     """Wire the toolsmith pipeline from config and runtime dependencies.
 
@@ -97,6 +99,9 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         config_resolver: Optional resolver threaded into the service for the
             live ``tool_creation_enabled`` gate and per-gap allowlist re-read,
             and into the overflow strategy for the live model read.
+        notification_dispatcher: Optional operator-alert sink for recurring
+            SERVICE_ABSENT gaps (a wired handler with no backing service);
+            ``None`` disables that ops signal.
 
     Returns:
         A :class:`ToolsmithRuntime` with the service and dynamic registry.
@@ -152,6 +157,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         dynamic_registry=dynamic_registry,
         clock=resolved_clock,
         config_resolver=config_resolver,
+        notification_dispatcher=notification_dispatcher,
     )
     return ToolsmithRuntime(service=service, dynamic_registry=dynamic_registry)
 
