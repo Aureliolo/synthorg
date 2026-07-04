@@ -126,8 +126,20 @@ class MetaController(Controller):
             Current SelfImprovementConfig as dict.
         """
         config = await self_improvement_config_of(state.app_state)
+        data = config.model_dump()
+        # Effective direct-MCP readiness: the toggle alone is inert without a
+        # wired conversational actor (security governance + MCP self-consumer +
+        # boot engine). Surface it so the dashboard can cross-warn that an
+        # enabled ``direct_mcp_enabled`` stays fail-closed until governance is
+        # configured, without a restart.
+        cos = data.get("chief_of_staff")
+        if isinstance(cos, dict):
+            actor_wired = (
+                state.app_state.slice(MetaStateSlice).conversational_actor is not None
+            )
+            cos["direct_mcp_ready"] = actor_wired
         return ApiResponse[dict[str, object]](
-            data=config.model_dump(),
+            data=data,
         )
 
     @get("/rules")

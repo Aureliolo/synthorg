@@ -142,6 +142,18 @@ export interface ChiefOfStaffFlags {
   propose_enabled: boolean
   group_chat_enabled: boolean
   direct_mcp_enabled: boolean
+  // Per-capability model ids. Blank (``null``) until an operator or setup
+  // selects one: an enabled capability with a blank model 503s server-side,
+  // so the dashboard surfaces the missing setting inline before the request.
+  chat_model: string | null
+  propose_model: string | null
+  routing_model: string | null
+  narrative_model: string | null
+  // Effective direct-MCP readiness. ``direct_mcp_enabled`` alone is inert:
+  // the acting path stays fail-closed until security governance + the MCP
+  // self-consumer are configured (a wired conversational actor). Lets the
+  // dashboard cross-warn that an enabled toggle is not yet live.
+  direct_mcp_ready: boolean
 }
 
 export interface MetaConfig {

@@ -45,6 +45,18 @@ describe('ProjectInterview', () => {
     ).toBeInTheDocument()
   })
 
+  it('surfaces a persistent inline banner for a turn failure', () => {
+    useCharterStore.setState({
+      turnError:
+        'Charter interview requires a configured model (charter.interview_model).',
+    })
+    renderPage()
+    expect(
+      screen.getByText('The charter interview could not continue'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/charter\.interview_model/)).toBeInTheDocument()
+  })
+
   it('approves the drafted charter', async () => {
     const user = userEvent.setup()
     renderPage()
