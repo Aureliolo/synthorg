@@ -1,4 +1,5 @@
 import { ClipboardList } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -23,6 +24,35 @@ interface ProposeBubbleProps {
   onRetry: () => void
 }
 
+function ApprovalLink({ id, label }: { id: string; label: string }) {
+  return (
+    <li>
+      <Link
+        to={`/approvals?selected=${encodeURIComponent(id)}`}
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        {label}
+      </Link>
+    </li>
+  )
+}
+
+function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
+  const proposals = msg.proposals ?? []
+  const steering = msg.steering ?? []
+  if (proposals.length === 0 && steering.length === 0) return null
+  return (
+    <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
+      {proposals.map((p) => (
+        <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
+      ))}
+      {steering.map((s) => (
+        <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
+      ))}
+    </ul>
+  )
+}
+
 function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
   const isAttributed = Boolean(msg.responderRole && msg.responderName)
   return (
@@ -33,13 +63,7 @@ function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      {msg.proposals && msg.proposals.length > 0 && (
-        <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
-          {msg.proposals.map((title) => (
-            <li key={title}>{title}</li>
-          ))}
-        </ul>
-      )}
+      <QueuedApprovals msg={msg} />
       {isAttributed && (
         <ResponderAttribution
           name={msg.responderName ?? ''}
@@ -64,6 +88,7 @@ function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
 
 export function RequestWorkChat() {
   const ctrl = useRequestWorkState()
+  const sendDisabled = ctrl.proposeLoading || ctrl.conversationClosed
 
   if (ctrl.messages.length === 0 && !ctrl.proposeLoading) {
     return (
@@ -114,11 +139,19 @@ export function RequestWorkChat() {
         )}
       </div>
 
+      {ctrl.conversationClosed && (
+        <p role="status" className="text-xs text-text-secondary">
+          This request-work conversation is closed. Start a new message to
+          open another.
+        </p>
+      )}
+
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}
         onSend={ctrl.triggerSend}
-        disabled={ctrl.proposeLoading}
+        disabled={sendDisabled}
+        inputDisabled={ctrl.conversationClosed}
         label={INPUT_LABEL}
         placeholder={INPUT_PLACEHOLDER}
       />

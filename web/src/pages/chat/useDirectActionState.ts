@@ -4,6 +4,7 @@ import type {
   ActiveAgentSummary,
   ConversationalActResult,
   ExecutedToolCall,
+  TerminationReason,
 } from '@/api/types'
 import { useMetaStore } from '@/stores/meta'
 import { resolveScopedRetryContent } from './scoped-retry'
@@ -120,6 +121,22 @@ export function useDirectActionState(): DirectActionState {
   }
 }
 
+// Copy for a non-clean stop. ``completed``/``parked`` already carry their
+// own message or approval block, so they render nothing extra; the rest
+// keep an action bubble from ever appearing blank.
+const TERMINATION_REASON_COPY: Readonly<
+  Record<TerminationReason, string | null>
+> = {
+  completed: null,
+  parked: null,
+  max_turns: 'Stopped: reached the turn limit.',
+  budget_exhausted: 'Stopped: the action budget was exhausted.',
+  stagnation: 'Stopped: no further progress was possible.',
+  shutdown: 'Stopped: the runtime shut down.',
+  cancelled: 'Stopped: the action was cancelled.',
+  error: 'Stopped: an error interrupted the action.',
+}
+
 function buildActMessage(
   result: ConversationalActResult | null,
   nextMsgId: () => number,
@@ -133,10 +150,18 @@ function buildActMessage(
     }
   }
   const action = result.action
+  const finalMessage = action.final_message ?? ''
+  // Never render an empty action bubble: fall back to the stop-reason copy
+  // and then a generic line so there is always something to read.
+  const content =
+    finalMessage !== ''
+      ? finalMessage
+      : (TERMINATION_REASON_COPY[action.termination_reason] ??
+        'The action finished with no message.')
   return {
     id: nextMsgId(),
     kind: 'action',
-    content: action.final_message ?? '',
+    content,
     agentName: result.agent_name,
     toolCalls: action.tool_calls,
     parkedApprovalId: action.parked

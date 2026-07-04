@@ -186,13 +186,21 @@ interface RosterStripProps {
 function RosterStrip({ roster }: RosterStripProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {roster.map((p) => (
-        <ResponderAttribution
-          key={p.id}
-          name={p.agent_name}
-          role={p.participant_role}
-        />
-      ))}
+      {roster.map((p) => {
+        const removed = p.status === 'removed'
+        return (
+          <div key={p.id} className="flex items-center gap-1.5">
+            <ResponderAttribution
+              name={p.agent_name}
+              role={p.participant_role}
+              className={removed ? 'opacity-60' : undefined}
+            />
+            {removed && (
+              <span className="text-xs text-muted-foreground">(removed)</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

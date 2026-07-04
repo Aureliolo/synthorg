@@ -49,6 +49,8 @@ describe('ChiefOfStaffChat', () => {
       ).toBeInTheDocument()
     })
     expect(screen.getByText('how are signals?')).toBeInTheDocument()
+    // The model's confidence is surfaced alongside the answer.
+    expect(screen.getByText('Confidence: 90%')).toBeInTheDocument()
   })
 
   it('renders a failure notice when the chat request fails', async () => {

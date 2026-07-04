@@ -44,6 +44,11 @@ function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
           Sources: {msg.sources.join(', ')}
         </p>
       )}
+      {msg.role === 'assistant' && typeof msg.confidence === 'number' && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Confidence: {Math.round(msg.confidence * 100)}%
+        </p>
+      )}
     </div>
   )
 }

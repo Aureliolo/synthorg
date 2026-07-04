@@ -244,6 +244,19 @@ function buildRoundMessages(
       content: TRUNCATION_NOTICE[result.truncated_reason] ?? TRUNCATION_FALLBACK,
     })
   }
+  if (result.participants_skipped.length > 0) {
+    // A per-agent dispatch failure skips that agent without a truncated_reason;
+    // name who stayed silent so a missing contribution is never unexplained.
+    const nameById = new Map(
+      result.participants.map((p) => [p.agent_id, p.agent_name]),
+    )
+    const names = result.participants_skipped.map((id) => nameById.get(id) ?? id)
+    bubbles.push({
+      id: nextMsgId(),
+      kind: 'notice',
+      content: `${names.join(', ')} did not respond this round.`,
+    })
+  }
   for (const invite of result.pending_invites) {
     bubbles.push({
       id: nextMsgId(),

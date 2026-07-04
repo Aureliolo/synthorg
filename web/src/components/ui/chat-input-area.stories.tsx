@@ -42,12 +42,15 @@ export const WithValue: Story = {
   ),
 }
 
-export const Disabled: Story = {
-  args: { value: 'Sending...', disabled: true },
+// Send blocked (a precondition is unmet) while the field stays editable so the
+// operator can keep composing.
+export const SendDisabled: Story = {
+  render: (args) => (
+    <Controlled {...args} initialValue="Cut the cloud budget by 20%" disabled />
+  ),
 }
 
-// In-flight send: the box keeps the message visible but disables the field and
-// send button (the send affordance is managed purely via `disabled`).
-export const Sending: Story = {
-  args: { value: 'Cut the cloud budget by 20%', disabled: true },
+// Terminal state (e.g. a closed conversation): the field itself is frozen.
+export const InputFrozen: Story = {
+  args: { value: 'Cut the cloud budget by 20%', inputDisabled: true },
 }
