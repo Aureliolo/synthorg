@@ -8,6 +8,11 @@ from litestar.datastructures import State
 from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
+from synthorg.api.controllers._chat_idempotency import (
+    ChatIdempotencyKeyHeader,
+    chat_request_fingerprint,
+    run_chat_idempotent,
+)
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
 from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
@@ -399,6 +404,7 @@ class MetaController(Controller):
         self,
         data: ChatRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[dict[str, object]]:
         """Ask the Chief of Staff a question.
 
@@ -412,6 +418,8 @@ class MetaController(Controller):
         Args:
             data: Chat request with question text.
             state: Application state.
+            idempotency_key: Optional retry-safe key; replays the cached
+                answer when supplied and repeated.
 
         Returns:
             Chat response with answer, sources, and confidence.
@@ -442,22 +450,35 @@ class MetaController(Controller):
             app_state,
             "SignalsService is not configured; cannot build a snapshot.",
         )
-        snapshot = await signals_service.get_org_snapshot(
-            since=app_state.clock.now() - await resolve_chat_snapshot_window(app_state),
+
+        async def _build() -> ApiResponse[dict[str, object]]:
+            snapshot = await signals_service.get_org_snapshot(
+                since=app_state.clock.now()
+                - await resolve_chat_snapshot_window(app_state),
+            )
+            query = ChatQuery(
+                question=data.question,
+                proposal_id=data.proposal_id,
+                alert_id=data.alert_id,
+            )
+            result = await resolve_chat_answer(app_state, chat_backend, query, snapshot)
+            return ApiResponse[dict[str, object]](
+                data={
+                    "answer": result.answer,
+                    "sources": list(result.sources),
+                    "confidence": result.confidence,
+                },
+            )
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat",
+            key=idempotency_key,
+            endpoint="/meta/chat",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        query = ChatQuery(
-            question=data.question,
-            proposal_id=data.proposal_id,
-            alert_id=data.alert_id,
-        )
-        result = await resolve_chat_answer(app_state, chat_backend, query, snapshot)
-        return ApiResponse[dict[str, object]](
-            data={
-                "answer": result.answer,
-                "sources": list(result.sources),
-                "confidence": result.confidence,
-            },
-        )
+        return ApiResponse[dict[str, object]].model_validate(dumped)
 
     @post(
         "/chat/propose",
@@ -475,6 +496,7 @@ class MetaController(Controller):
         self,
         data: ConversationalProposeRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[ProposeResult]:
         """Clarify an underspecified request, or park work for approval.
 
@@ -529,18 +551,30 @@ class MetaController(Controller):
             )
             raise ServiceUnavailableError(msg)
         actor = require_actor()
-        # Fence the human-supplied prompt content at the API boundary
-        # in a ``<task-data>`` envelope so the model treats it as data,
-        # not instructions, before it reaches domain orchestration.
-        result = await proposer.converse(
-            ProposeArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
-                created_by=NotBlankStr(actor.actor_id),
-                conversation_id=data.conversation_id,
-                project=data.project,
+
+        async def _build() -> ApiResponse[ProposeResult]:
+            # Fence the human-supplied prompt content at the API boundary
+            # in a ``<task-data>`` envelope so the model treats it as data,
+            # not instructions, before it reaches domain orchestration.
+            result = await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
+                    created_by=NotBlankStr(actor.actor_id),
+                    conversation_id=data.conversation_id,
+                    project=data.project,
+                )
             )
+            return ApiResponse[ProposeResult](data=result)
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat.propose",
+            key=idempotency_key,
+            endpoint="/meta/chat/propose",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        return ApiResponse[ProposeResult](data=result)
+        return ApiResponse[ProposeResult].model_validate(dumped)
 
     @post(
         "/cycle",

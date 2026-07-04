@@ -13,6 +13,11 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api._feature_gate import ensure_feature_enabled
+from synthorg.api.controllers._chat_idempotency import (
+    ChatIdempotencyKeyHeader,
+    chat_request_fingerprint,
+    run_chat_idempotent,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -95,6 +100,7 @@ class ConversationalController(Controller):
         self,
         data: GroupChatRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[GroupConverseResult]:
         """Run one round-robin round across the group's active agents.
 
@@ -138,18 +144,30 @@ class ConversationalController(Controller):
             )
             raise ServiceUnavailableError(msg)
         actor = require_actor()
-        # Fence the human-supplied message at the API boundary in a
-        # ``<task-data>`` envelope so the model treats it as data, not
-        # instructions, before it reaches the round loop.
-        result = await service.converse(
-            GroupConverseArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
-                created_by=NotBlankStr(actor.actor_id),
-                conversation_id=data.conversation_id,
-                participants=data.participants,
+
+        async def _build() -> ApiResponse[GroupConverseResult]:
+            # Fence the human-supplied message at the API boundary in a
+            # ``<task-data>`` envelope so the model treats it as data, not
+            # instructions, before it reaches the round loop.
+            result = await service.converse(
+                GroupConverseArgs(
+                    message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
+                    created_by=NotBlankStr(actor.actor_id),
+                    conversation_id=data.conversation_id,
+                    participants=data.participants,
+                )
             )
+            return ApiResponse[GroupConverseResult](data=result)
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat.group",
+            key=idempotency_key,
+            endpoint="/meta/chat/group",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        return ApiResponse[GroupConverseResult](data=result)
+        return ApiResponse[GroupConverseResult].model_validate(dumped)
 
     @post(
         "/act",
@@ -166,6 +184,7 @@ class ConversationalController(Controller):
         self,
         data: ChatActRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[ConversationalActResult]:
         """Drive a real MCP action from a chat instruction under trust.
 
@@ -225,12 +244,24 @@ class ConversationalController(Controller):
             )
             raise ServiceUnavailableError(msg)
         operator = require_actor()
-        result = await actor_service.act(
-            ConversationalActArgs(
-                instruction=data.instruction,
-                agent=data.agent,
-                conversation_id=data.conversation_id,
-                requested_by=operator.actor_id,
+
+        async def _build() -> ApiResponse[ConversationalActResult]:
+            result = await actor_service.act(
+                ConversationalActArgs(
+                    instruction=data.instruction,
+                    agent=data.agent,
+                    conversation_id=data.conversation_id,
+                    requested_by=operator.actor_id,
+                )
             )
+            return ApiResponse[ConversationalActResult](data=result)
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat.act",
+            key=idempotency_key,
+            endpoint="/meta/chat/act",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        return ApiResponse[ConversationalActResult](data=result)
+        return ApiResponse[ConversationalActResult].model_validate(dumped)

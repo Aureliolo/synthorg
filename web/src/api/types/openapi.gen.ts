@@ -23685,7 +23685,10 @@ export interface operations {
     readonly ApiV1MetaChatChat: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
+                readonly "Idempotency-Key"?: string | null;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
@@ -23716,7 +23719,10 @@ export interface operations {
     readonly ApiV1MetaChatActChatAct: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
+                readonly "Idempotency-Key"?: string | null;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
@@ -23747,7 +23753,10 @@ export interface operations {
     readonly ApiV1MetaChatGroupChatGroup: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
+                readonly "Idempotency-Key"?: string | null;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
@@ -23778,7 +23787,10 @@ export interface operations {
     readonly ApiV1MetaChatProposeChatPropose: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
+                readonly "Idempotency-Key"?: string | null;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
