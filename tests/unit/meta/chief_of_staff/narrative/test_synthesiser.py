@@ -57,12 +57,18 @@ def _synth_returning(content: str) -> NarrativeSynthesiser:
     provider = mock_of[CompletionProvider](
         complete=AsyncMock(return_value=_response(content))
     )
-    return NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+    return NarrativeSynthesiser(
+        provider=provider,
+        config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+    )
 
 
 def _synth_raising(exc: type[BaseException] | BaseException) -> NarrativeSynthesiser:
     provider = mock_of[CompletionProvider](complete=AsyncMock(side_effect=exc))
-    return NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+    return NarrativeSynthesiser(
+        provider=provider,
+        config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+    )
 
 
 class TestWriteProse:
@@ -108,7 +114,10 @@ class TestWriteProse:
         provider = mock_of[CompletionProvider](
             complete=AsyncMock(return_value=_response(json.dumps({"summary": "ok"})))
         )
-        synth = NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+        synth = NarrativeSynthesiser(
+            provider=provider,
+            config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+        )
         await synth.write_prose(_run())
         messages = provider.complete.await_args.args[0]
         # Fenced brief title + record ride in the USER message (index 1);

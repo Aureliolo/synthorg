@@ -436,6 +436,7 @@ class TestClarificationCap:
         provider = ScriptedProvider()
         config = ChiefOfStaffConfig(
             propose_enabled=True,
+            propose_model="example-small-001",
             propose_max_clarification_turns=2,
         )
         proposer, conv_repo, turn_repo, _, _ = build_proposer(

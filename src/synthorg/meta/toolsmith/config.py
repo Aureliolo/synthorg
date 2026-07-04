@@ -32,7 +32,10 @@ class ToolAuthoringConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    model: NotBlankStr = Field(default=NotBlankStr("example-large-001"))
+    model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal toolsmith default
+        default=NotBlankStr("example-large-001")
+    )
     temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4000, ge=100)
 

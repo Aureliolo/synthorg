@@ -1,9 +1,10 @@
-"""Source-of-resolution audit log on first cold read.
+"""Source-of-resolution audit log.
 
-Every ``(namespace, key)`` resolves through the source chain at most
-once per process at INFO; subsequent resolutions stay at DEBUG.  The
-log payload carries ``source`` so an operator can tell which surface
-supplied each value at startup.
+Every ``(namespace, key)`` resolution logs at DEBUG and carries the winning
+``source`` so an operator can tell which surface supplied each value. A
+resolution always succeeds, so it never logs at INFO -- problems (a feature
+that cannot activate, an unwired dependency) surface through their own
+INFO/WARNING events, not here.
 """
 
 import asyncio
@@ -56,33 +57,31 @@ def _resolved(logs: Sequence[EventDict]) -> list[dict[str, JsonValue]]:
     return [dict(log) for log in logs if log["event"] == SETTINGS_VALUE_RESOLVED]
 
 
-async def test_first_cold_read_emits_info(
+async def test_cold_read_logs_source_at_debug(
     service: SettingsService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("SYNTHORG_OBSERVABILITY_ROOT_LOG_LEVEL", raising=False)
     with structlog.testing.capture_logs() as logs:
         await service.get("observability", "root_log_level")
     events = _resolved(logs)
-    info_events = [e for e in events if e["log_level"] == "info"]
-    assert len(info_events) == 1, f"expected one INFO event, got {events}"
-    e = info_events[0]
+    assert len(events) == 1, f"expected one resolution event, got {events}"
+    e = events[0]
+    assert e["log_level"] == "debug"
     assert e["namespace"] == "observability"
     assert e["key"] == "root_log_level"
     assert e["source"] == "default"
 
 
-async def test_subsequent_reads_stay_at_debug(service: SettingsService) -> None:
-    # First call promotes the (ns,key) into the seen-set.
-    await service.get("observability", "root_log_level")
+async def test_resolutions_never_log_at_info(service: SettingsService) -> None:
     with structlog.testing.capture_logs() as logs:
         for _ in range(5):
             await service.get("observability", "root_log_level")
     events = _resolved(logs)
     info_events = [e for e in events if e["log_level"] == "info"]
-    assert info_events == [], f"second-read INFO leak: {info_events}"
+    assert info_events == [], f"resolution INFO leak: {info_events}"
 
 
-async def test_concurrent_first_reads_emit_info_at_most_once(
+async def test_concurrent_reads_never_log_at_info(
     service: SettingsService,
 ) -> None:
     with structlog.testing.capture_logs() as logs:
@@ -91,10 +90,7 @@ async def test_concurrent_first_reads_emit_info_at_most_once(
                 _ = tg.create_task(service.get("observability", "root_log_level"))
     events = _resolved(logs)
     info_events = [e for e in events if e["log_level"] == "info"]
-    # ``_resolution_lock`` gates the membership-test + set-add window
-    # so the (namespace, key) pair is promoted to INFO exactly once
-    # even when 10 concurrent readers race past the cache miss.
-    assert len(info_events) == 1, f"concurrent first-read race: {info_events}"
+    assert info_events == [], f"concurrent resolution INFO leak: {info_events}"
 
 
 # ── Source coverage: db / env / default ────────────────────────
@@ -121,9 +117,8 @@ async def test_db_source_logged() -> None:
     with structlog.testing.capture_logs() as logs:
         await svc.get("observability", "root_log_level")
     events = _resolved(logs)
-    info_events = [e for e in events if e["log_level"] == "info"]
-    assert len(info_events) == 1
-    assert info_events[0]["source"] == "db"
+    assert len(events) == 1
+    assert events[0]["source"] == "db"
 
 
 async def test_env_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -141,9 +136,8 @@ async def test_env_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
     with structlog.testing.capture_logs() as logs:
         await svc.get("observability", "root_log_level")
     events = _resolved(logs)
-    info_events = [e for e in events if e["log_level"] == "info"]
-    assert len(info_events) == 1
-    assert info_events[0]["source"] == "env"
+    assert len(events) == 1
+    assert events[0]["source"] == "env"
 
 
 async def test_default_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,6 +155,5 @@ async def test_default_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
     with structlog.testing.capture_logs() as logs:
         await svc.get("observability", "root_log_level")
     events = _resolved(logs)
-    info_events = [e for e in events if e["log_level"] == "info"]
-    assert len(info_events) == 1
-    assert info_events[0]["source"] == "default"
+    assert len(events) == 1
+    assert events[0]["source"] == "default"

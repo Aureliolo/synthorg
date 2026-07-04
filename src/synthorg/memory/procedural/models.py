@@ -250,6 +250,7 @@ class ProceduralMemoryConfig(BaseModel):
         description="Whether procedural memory generation is active",
     )
     model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal procedural-memory default
         default="example-small-001",
         description="Model identifier for the proposer LLM call",
     )

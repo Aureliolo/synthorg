@@ -211,6 +211,7 @@ class CodeModificationConfig(BaseModel):
         NotBlankStr("src/synthorg/api/middleware/*"),
     )
     llm_model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal code-modification default
         default=NotBlankStr("example-large-001"),
         description="Model for code generation LLM calls",
     )
@@ -370,6 +371,7 @@ class SelfImprovementConfig(BaseModel):
     toolsmith: ToolsmithConfig = Field(default_factory=ToolsmithConfig)
 
     analysis_model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal analysis default
         default=NotBlankStr("example-small-001"),
         description="Model for proposal analysis LLM calls",
     )
