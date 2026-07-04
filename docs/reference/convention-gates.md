@@ -54,6 +54,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_logger_exception_str_exc.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_long_running_loops_have_kill_switch.py` | push | `src/synthorg/` | full | no | `long_running_loops_kill_switch_baseline.txt` | keep |
 | `check_mcp_admin_tool_guardrails.py` | push | `meta/mcp/` | full | no | none | keep |
+| `check_mcp_capability_gap_documented.py` | push | `meta/mcp/handlers/` + slices + manifest | full | no | manifest | keep |
 | `check_mock_spec.py` | commit+push | `tests/` | staged | yes | none | keep (zero-tolerance) |
 | `check_module_depth.py` | push | `src/synthorg/` | full | no | `_module_depth_baseline.txt` | keep |
 | `check_module_size_budget.py` | push | `src/synthorg/` | full | no | `_module_size_baseline.json` (drained) | keep |

@@ -177,6 +177,7 @@ ENFORCED BackupFacadeService #2535 -- constructed in api/lifecycle_helpers/persi
 ENFORCED OntologyFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_ontology_facade_service over the ontology service; backs the synthorg_ontology_* MCP read tools
 ENFORCED MCPCatalogFacadeService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_mcp_catalog_facade_service over the catalog service + installation repo; backs the synthorg_mcp_catalog_* MCP tools
 ENFORCED ProviderReadService #2535 -- constructed in api/lifecycle_helpers/settings_dependent_services.py::_wire_provider_read_facade over the provider registry + health tracker + management; backs the synthorg_providers_* MCP read tools
+ENFORCED SettingsReadService #2535 -- constructed in api/lifecycle_helpers/settings_dependent_services.py::_wire_settings_read_facade over the composed settings service; backs the synthorg_settings_* MCP tools
 ENFORCED ConnectionService #2535 -- constructed in integrations/_construction.py::wire_construction over the enabled-gated connection catalog; backs the synthorg_connections_* MCP tools
 ENFORCED WebhookService #2535 -- constructed in api/lifecycle_runner_support.py::_wire_webhook_request_services over an in-process definition store; backs the synthorg_webhooks_* MCP tools
 ENFORCED CoordinationService #2535 -- constructed in coordination/_construction.py::wire_construction over the coordination metrics store; backs the synthorg_coordination_* MCP read tools

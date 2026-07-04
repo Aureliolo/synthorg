@@ -95,6 +95,7 @@ def compose_settings_dependent_services(
         return
 
     app_state.wire(SettingsStateSlice, settings_service=settings_service)
+    _wire_settings_read_facade(app_state, settings_service)
     config = app_state.config
     persistence = app_state.slice(PersistenceStateSlice).backend
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
@@ -163,6 +164,27 @@ def compose_settings_dependent_services(
         action="settings_dependent_services_wired",
         provider_audit=audit_service is not None,
         preset_override=preset_override_service is not None,
+    )
+
+
+def _wire_settings_read_facade(
+    app_state: AppState,
+    settings_service: SettingsService,
+) -> None:
+    """Wire ``SettingsReadService`` onto the settings slice.
+
+    The facade wraps the just-composed settings service so the
+    ``synthorg_settings_*`` MCP tools resolve real data instead of 503-ing.
+    Idempotent: skips when already wired so a re-compose at startup does not
+    replace a live facade.
+    """
+    from synthorg.infrastructure.services import SettingsReadService  # noqa: PLC0415
+
+    if app_state.slice(SettingsStateSlice).settings_read_service is not None:
+        return
+    app_state.wire(
+        SettingsStateSlice,
+        settings_read_service=SettingsReadService(settings=settings_service),
     )
 
 

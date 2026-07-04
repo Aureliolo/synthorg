@@ -65,6 +65,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "BackupFacadeService",
         "OntologyFacadeService",
         "ProviderReadService",
+        "SettingsReadService",
     ),
     depends_on=("client",),
 )
