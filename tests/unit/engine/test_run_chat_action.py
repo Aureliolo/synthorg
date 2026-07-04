@@ -172,6 +172,32 @@ class TestRunChatAction:
         assert [tc.tool_name for tc in result.tool_calls] == ["query_metrics"]
         assert tool.calls == [{"window": "7d"}]
 
+    async def test_turn_observer_fires_per_turn(self) -> None:
+        tool = QueryTool()
+        engine, _ = _build_engine(
+            responses=[
+                _tool_call("query_metrics", window="7d"),
+                _final("Revenue is up 4%."),
+            ],
+            tool=tool,
+        )
+        observed: list[tuple[int, tuple[str, ...]]] = []
+
+        async def _observe(turn: int, tools: tuple[str, ...]) -> None:
+            observed.append((turn, tools))
+
+        await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="What is revenue doing this week?",
+            turn_observer=_observe,
+        )
+
+        # The observer fires per continuing turn: turn 1 executed the tool
+        # and the loop went round again. The terminal turn (the final text)
+        # returns before the hook, since its content is the ``complete``
+        # frame, not a progress event.
+        assert observed == [(1, ("query_metrics",))]
+
     async def test_instruction_is_untrusted_fenced(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])
 

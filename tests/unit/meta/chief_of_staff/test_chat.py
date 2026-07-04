@@ -10,7 +10,12 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.completion_enums import FinishReason
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.chief_of_staff.models import Alert, ChatQuery
+from synthorg.meta.chief_of_staff.models import (
+    Alert,
+    ChatAnswerComplete,
+    ChatAnswerDelta,
+    ChatQuery,
+)
 from synthorg.meta.chief_of_staff.prompts import (
     ALERT_EXPLANATION_SYSTEM,
     ALERT_EXPLANATION_USER,
@@ -36,10 +41,11 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleSeverity,
 )
-from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.enums import MessageRole, StreamEventType
+from synthorg.providers.models import CompletionResponse, StreamChunk, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
+from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
 
@@ -216,6 +222,49 @@ class TestExplainProposal:
         )
         with pytest.raises(exc_cls):
             await chat.explain_proposal(_proposal(), _snap())
+
+
+class TestAskStream:
+    """ChiefOfStaffChat.ask_stream tests."""
+
+    async def test_streams_deltas_then_complete(self) -> None:
+        chunks = [
+            StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="Runway is "),
+            StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="14 months."),
+            StreamChunk(event_type=StreamEventType.DONE),
+        ]
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(stream_chunks=chunks),
+            config=ChiefOfStaffConfig(),
+        )
+        events = [
+            event
+            async for event in chat.ask_stream(ChatQuery(question="runway?"), _snap())
+        ]
+        deltas = [e.delta for e in events if isinstance(e, ChatAnswerDelta)]
+        completes = [e for e in events if isinstance(e, ChatAnswerComplete)]
+        assert deltas == ["Runway is ", "14 months."]
+        assert len(completes) == 1
+        # The terminal event assembles the deltas under the free-form
+        # contract (empty sources, default confidence).
+        assert completes[0].answer == "Runway is 14 months."
+        assert completes[0].sources == ()
+        assert completes[0].confidence == pytest.approx(0.5)
+
+    async def test_empty_stream_yields_fallback_answer(self) -> None:
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(
+                stream_chunks=[StreamChunk(event_type=StreamEventType.DONE)],
+            ),
+            config=ChiefOfStaffConfig(),
+        )
+        events = [
+            event async for event in chat.ask_stream(ChatQuery(question="hi"), _snap())
+        ]
+        completes = [e for e in events if isinstance(e, ChatAnswerComplete)]
+        assert [e for e in events if isinstance(e, ChatAnswerDelta)] == []
+        assert len(completes) == 1
+        assert completes[0].answer == "Unable to generate explanation."
 
 
 class TestExplainAlert:

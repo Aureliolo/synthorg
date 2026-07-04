@@ -24,8 +24,10 @@ from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.actor import (
+    ActProgress,
     ConversationalActArgs,
     ConversationalActor,
+    ConversationalActResult,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -177,3 +179,55 @@ class TestConversationalActor:
         )
 
         assert engine.run_chat_action.await_args.kwargs["effective_autonomy"] is None
+
+
+class TestActStream:
+    """ConversationalActor.act_stream streaming tests."""
+
+    @staticmethod
+    def _streaming_actor(*, side_effect: object) -> ConversationalActor:
+        registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=_identity()),
+            get_by_name=AsyncMock(return_value=None),
+        )
+        return ConversationalActor(
+            engine=mock_of[AgentEngine](
+                run_chat_action=AsyncMock(side_effect=side_effect),
+            ),
+            agent_registry=registry,
+            autonomy_resolver=None,
+            config=ChiefOfStaffConfig(direct_mcp_enabled=True, direct_mcp_max_turns=4),
+        )
+
+    async def test_emits_progress_per_turn_then_result(self) -> None:
+        async def _run(*, turn_observer: object, **_kwargs: object) -> ChatActionResult:
+            # ``turn_observer`` is the TurnObserver the actor threaded in.
+            await turn_observer(1, ("query_metrics",))  # type: ignore[operator]
+            await turn_observer(2, ())  # type: ignore[operator]
+            return _completed_result()
+
+        actor = self._streaming_actor(side_effect=_run)
+
+        events = [
+            event
+            async for event in actor.act_stream(
+                ConversationalActArgs(instruction="check", agent=str(_AGENT_ID)),
+            )
+        ]
+
+        progresses = [e for e in events if isinstance(e, ActProgress)]
+        results = [e for e in events if isinstance(e, ConversationalActResult)]
+        assert [p.turn for p in progresses] == [1, 2]
+        assert progresses[0].tools == ("query_metrics",)
+        assert progresses[1].tools == ()
+        # The terminal event is the same result shape as ``act``.
+        assert len(results) == 1
+        assert results[0].action.final_message == "Done."
+
+    async def test_engine_failure_propagates(self) -> None:
+        actor = self._streaming_actor(side_effect=RuntimeError("engine boom"))
+        with pytest.raises(RuntimeError, match="engine boom"):
+            async for _event in actor.act_stream(
+                ConversationalActArgs(instruction="x", agent=str(_AGENT_ID)),
+            ):
+                pass

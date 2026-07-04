@@ -82,6 +82,7 @@ class ScriptedProvider:
         response: CompletionResponse | None = None,
         error: Exception | None = None,
         capabilities: ModelCapabilities | None = None,
+        stream_chunks: Sequence[StreamChunk] | None = None,
     ) -> None:
         configured = (
             int(responses is not None)
@@ -101,6 +102,11 @@ class ScriptedProvider:
             self._strategy = SingleResponseStrategy(response=response)
         else:
             self._strategy = None
+        self._stream_chunks: tuple[StreamChunk, ...] = (
+            tuple(stream_chunks)
+            if stream_chunks is not None
+            else (StreamChunk(event_type=StreamEventType.DONE),)
+        )
         self._call_count = 0
         self.received_messages: list[list[ChatMessage]] = []
         self.complete_calls: list[
@@ -152,13 +158,15 @@ class ScriptedProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Return a trivial single-chunk stream (protocol conformance)."""
+        """Return the configured stream chunks (default: a single DONE)."""
         del messages, model, tools, config
+        chunks = self._stream_chunks
 
-        async def _empty() -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(event_type=StreamEventType.DONE)
+        async def _iter() -> AsyncIterator[StreamChunk]:
+            for chunk in chunks:
+                yield chunk
 
-        return _empty()
+        return _iter()
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Return the configured capabilities regardless of ``model``."""

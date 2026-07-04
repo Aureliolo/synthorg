@@ -2749,6 +2749,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/act/stream": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ChatActStream */
+        readonly post: operations["ApiV1MetaChatActStreamChatActStream"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/chat/conversations": {
         readonly parameters: {
             readonly query?: never;
@@ -2811,6 +2828,23 @@ export type paths = {
         readonly put?: never;
         /** ChatPropose */
         readonly post: operations["ApiV1MetaChatProposeChatPropose"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/chat/stream": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ChatStream */
+        readonly post: operations["ApiV1MetaChatStreamChatStream"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -8476,6 +8510,11 @@ export type components = {
              * @description Improvement proposal the question is scoped to, if any.
              */
             readonly proposal_id?: string | null;
+            /** @description Free-text question for the Chief of Staff agent. */
+            readonly question: string;
+        };
+        /** ChatStreamRequest */
+        readonly ChatStreamRequest: {
             /** @description Free-text question for the Chief of Staff agent. */
             readonly question: string;
         };
@@ -23814,6 +23853,37 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1MetaChatActStreamChatActStream: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ChatActRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/event-stream": unknown;
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1MetaChatConversationsListConversations: {
         readonly parameters: {
             readonly query?: {
@@ -23936,6 +24006,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_ProposeResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatStreamChatStream: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ChatStreamRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/event-stream": unknown;
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

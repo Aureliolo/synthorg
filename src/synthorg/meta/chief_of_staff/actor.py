@@ -10,6 +10,11 @@ all live in the engine's tool-invoker + ``ApprovalGate`` path, so a
 sensitive action escalates and parks exactly as a task action does.
 """
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import suppress
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
@@ -19,6 +24,7 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
+from synthorg.engine.loop_protocol import TurnObserver
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -51,6 +57,28 @@ class ConversationalActArgs(BaseModel):
         default=None,
         description="The human operator who directed the action (audit)",
     )
+
+
+class ActProgress(BaseModel):
+    """One incremental progress event from a streaming direct action.
+
+    Emitted once per completed action turn, carrying the tools that turn
+    requested so the operator sees the action working before the terminal
+    result arrives.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    turn: int = Field(ge=1, description="1-based index of the completed turn")
+    tools: tuple[str, ...] = Field(
+        default=(),
+        description="Tool names the turn requested, in order (empty if none)",
+    )
+
+
+_ACT_STREAM_DONE: Final = object()
+"""Sentinel enqueued by the action task once it terminates, so the drain
+loop knows no further progress events will arrive."""
 
 
 class ConversationalActResult(BaseModel):
@@ -136,6 +164,93 @@ class ConversationalActor:
             conversation_id=args.conversation_id,
             action=result,
         )
+
+    async def act_stream(
+        self,
+        args: ConversationalActArgs,
+    ) -> AsyncIterator[ActProgress | ConversationalActResult]:
+        """Run a direct action, streaming per-turn progress then the result.
+
+        Mirrors :meth:`act` but yields an :class:`ActProgress` after each
+        completed turn (via the engine's ``turn_observer`` hook), then one
+        terminal :class:`ConversationalActResult`. The action runs in a
+        child task feeding an unbounded queue; the drain loop yields
+        progress in order until the task signals completion, then re-awaits
+        it so a failure propagates to the caller. A caller disconnect
+        cancels the child task through the ``finally`` guard.
+
+        Yields:
+            Zero or more progress events, then exactly one terminal result.
+
+        Raises:
+            NotFoundError: When the named agent is not registered.
+        """
+        identity = await self._resolve_identity(args.agent)
+        agent_id = str(identity.id)
+        logger.info(
+            COS_ACT_REQUESTED,
+            agent_id=agent_id,
+            conversation_id=args.conversation_id,
+            requested_by=args.requested_by,
+        )
+        effective_autonomy = self._resolve_autonomy(identity)
+        queue: asyncio.Queue[ActProgress | object] = asyncio.Queue()
+
+        async def _observe(turn_number: int, tool_names: tuple[str, ...]) -> None:
+            await queue.put(ActProgress(turn=turn_number, tools=tool_names))
+
+        observer: TurnObserver = _observe
+
+        async def _run() -> ChatActionResult:
+            try:
+                return await self._engine.run_chat_action(
+                    identity=identity,
+                    instruction=args.instruction,
+                    effective_autonomy=effective_autonomy,
+                    max_turns=self._config.direct_mcp_max_turns,
+                    turn_observer=observer,
+                )
+            finally:
+                await queue.put(_ACT_STREAM_DONE)
+
+        task = asyncio.ensure_future(_run())
+        try:
+            while True:
+                item = await queue.get()
+                if item is _ACT_STREAM_DONE:
+                    break
+                if isinstance(item, ActProgress):
+                    yield item
+            result = await task
+            logger.info(
+                COS_ACT_PARKED if result.parked else COS_ACT_COMPLETED,
+                agent_id=agent_id,
+                conversation_id=args.conversation_id,
+                termination_reason=result.termination_reason.value,
+                approval_id=result.approval_id,
+                tool_call_count=len(result.tool_calls),
+            )
+            yield ConversationalActResult(
+                agent_id=NotBlankStr(agent_id),
+                agent_name=identity.name,
+                conversation_id=args.conversation_id,
+                action=result,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.error(
+                COS_ACT_FAILED,
+                agent_id=agent_id,
+                conversation_id=args.conversation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
 
     async def _resolve_identity(self, agent: str) -> AgentIdentity:
         """Resolve *agent* by id then by name, raising when unknown.

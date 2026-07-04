@@ -127,6 +127,15 @@ running an obsolete task to completion. The task's terminal DB status is the
 durable cross-process signal (the operator cancels in the API process; the agent
 runs in the worker process)."""
 
+TurnObserver = Callable[[int, tuple[str, ...]], Awaitable[None]]
+"""Async callback invoked after each processed turn with ``(turn_number,
+tool_names)``: the 1-based turn index and the tools that turn requested, in
+order (empty when the turn made no tool call).
+
+Purely observational: it never affects control flow, and an observer raising
+must not corrupt the run. Used to surface incremental progress on a streamed
+chat action; ``None`` disables it."""
+
 
 @runtime_checkable
 class ExecutionLoop(Protocol):

@@ -8,8 +8,9 @@ tier. Mounted under ``/meta/chat`` alongside the explain-only and
 clarify-and-propose endpoints that live on ``MetaController``.
 """
 
-from litestar import Controller, post
+from litestar import Controller, Request, post
 from litestar.datastructures import State
+from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api._feature_gate import ensure_feature_enabled
@@ -18,11 +19,18 @@ from synthorg.api.controllers._chat_idempotency import (
     chat_request_fingerprint,
     run_chat_idempotent,
 )
+from synthorg.api.controllers._conversational_stream import (
+    act_progress_stream,
+    chat_answer_stream,
+)
+from synthorg.api.controllers.events._sse import revalidated_sse_stream
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.actor import (
@@ -76,6 +84,42 @@ class ChatActRequest(BaseModel):
         default=None,
         description="Existing conversation to act within; None starts a new one.",
     )
+
+
+class ChatStreamRequest(BaseModel):
+    """Request body for the streaming free-form Chief-of-Staff endpoint.
+
+    Streaming serves only the free-form path (proposal / alert
+    deep-explain stays on the buffered endpoint), so it carries no
+    scoping ids.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    question: NotBlankStr = Field(
+        max_length=2000,
+        description="Free-text question for the Chief of Staff agent.",
+    )
+
+
+def _require_stream_user(request: Request[object, object, State]) -> AuthenticatedUser:
+    """Bind the authenticated user so a long stream can be revalidated.
+
+    The route guards already require an authenticated caller; this
+    re-checks defensively because :func:`revalidated_sse_stream` needs the
+    user to tear the stream down on mid-flight revocation.
+
+    Returns:
+        The connection's :class:`AuthenticatedUser`.
+
+    Raises:
+        ValidationError: When no authenticated user is attached.
+    """
+    user = getattr(request, "user", None)
+    if not isinstance(user, AuthenticatedUser):
+        msg = "streaming chat requires an authenticated user"
+        raise ValidationError(msg)
+    return user
 
 
 class ConversationalController(Controller):
@@ -265,3 +309,150 @@ class ConversationalController(Controller):
             build=_build,
         )
         return ApiResponse[ConversationalActResult].model_validate(dumped)
+
+    @post(
+        "/stream",
+        media_type="text/event-stream",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat", key="user"),
+        ],
+    )
+    async def chat_stream(
+        self,
+        request: Request[object, object, State],
+        data: ChatStreamRequest,
+        state: State,
+    ) -> ServerSentEvent:
+        """Stream a free-form Chief-of-Staff answer token-by-token (SSE).
+
+        The SSE variant of ``POST /meta/chat`` for the unscoped free-form
+        path: emits a ``progress`` frame per token delta then one
+        ``complete`` frame carrying the assembled answer. Streaming and
+        idempotency are mutually exclusive, so this endpoint takes no
+        ``Idempotency-Key`` (a token stream cannot be replayed from cache).
+
+        Returns 503 (before any frame) when the chat backend or signals
+        service is not configured, so the failure still surfaces as a
+        normal RFC 9457 body rather than an in-stream error.
+
+        Returns:
+            An SSE response of ``progress`` / ``complete`` / ``error`` frames.
+
+        Raises:
+            ServiceUnavailableError: When a required dependency is unwired.
+        """
+        app_state: AppState = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "explain_chat_enabled",
+            feature_label="Chief of Staff chat",
+        )
+        meta = app_state.slice(MetaStateSlice)
+        chat_backend = meta.chief_of_staff_chat
+        if chat_backend is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="chief_of_staff_chat",
+                hint="Register an LLM provider so the chat backend can be built.",
+            )
+            msg = (
+                "Chief of Staff chat is not configured. Register an LLM "
+                "provider so the chat backend can be built."
+            )
+            raise ServiceUnavailableError(msg)
+        signals_service = meta.signals_service
+        if signals_service is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="signals_service",
+                hint="SignalsService must be wired during AppState startup.",
+            )
+            msg = "SignalsService is not configured; cannot build a snapshot."
+            raise ServiceUnavailableError(msg)
+        user = _require_stream_user(request)
+        return ServerSentEvent(
+            content=revalidated_sse_stream(
+                chat_answer_stream(
+                    app_state=app_state,
+                    chat_backend=chat_backend,
+                    signals_service=signals_service,
+                    question=data.question,
+                ),
+                app_state=app_state,
+                user=user,
+            ),
+        )
+
+    @post(
+        "/act/stream",
+        media_type="text/event-stream",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat.act", key="user"),
+        ],
+    )
+    async def chat_act_stream(
+        self,
+        request: Request[object, object, State],
+        data: ChatActRequest,
+        state: State,
+    ) -> ServerSentEvent:
+        """Stream a direct MCP action's per-turn progress then result (SSE).
+
+        The SSE variant of ``POST /meta/chat/act``: emits a ``progress``
+        frame after each completed action turn (carrying the tools it
+        requested) then one ``complete`` frame carrying the full result
+        (executed tools + final message, or the parked ``approval_id``).
+        Aborting the request (client disconnect) cancels the running
+        action. Live-gated on ``direct_mcp_enabled`` so the kill-switch
+        takes effect on the next request; no ``Idempotency-Key`` (a stream
+        cannot be replayed).
+
+        Returns:
+            An SSE response of ``progress`` / ``complete`` / ``error`` frames.
+
+        Raises:
+            ServiceUnavailableError: When the actor is not configured.
+        """
+        app_state: AppState = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "direct_mcp_enabled",
+            feature_label="Direct MCP acting",
+        )
+        actor_service = app_state.slice(MetaStateSlice).conversational_actor
+        if actor_service is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="conversational_actor",
+                hint=(
+                    "Set meta.chief_of_staff.direct_mcp_enabled, register an "
+                    "LLM provider, and enable the MCP self-consumer "
+                    "(security.mcp_self_consumer.mode=trust_scoped)."
+                ),
+            )
+            msg = (
+                "Direct MCP acting is not configured. Enable "
+                "``meta.chief_of_staff.direct_mcp_enabled`` in settings, "
+                "register an LLM provider, and set "
+                "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
+            )
+            raise ServiceUnavailableError(msg)
+        operator = require_actor()
+        user = _require_stream_user(request)
+        args = ConversationalActArgs(
+            instruction=data.instruction,
+            agent=data.agent,
+            conversation_id=data.conversation_id,
+            requested_by=operator.actor_id,
+        )
+        return ServerSentEvent(
+            content=revalidated_sse_stream(
+                act_progress_stream(actor=actor_service, args=args),
+                app_state=app_state,
+                user=user,
+            ),
+        )

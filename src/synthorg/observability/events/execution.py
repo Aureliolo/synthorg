@@ -95,6 +95,11 @@ EXECUTION_RECOVERY_DIAGNOSIS: Final[str] = "execution.recovery.diagnosis"
 EXECUTION_CHECKPOINT_CALLBACK_FAILED: Final[str] = (
     "execution.checkpoint.callback_failed"
 )
+
+# Emitted at WARNING when the optional per-turn progress observer raises.
+# Purely observational, so the failure is logged and swallowed rather than
+# aborting the run.
+EXECUTION_TURN_OBSERVER_FAILED: Final[str] = "execution.turn.observer_failed"
 EXECUTION_RESUME_START: Final[str] = "execution.resume.start"
 EXECUTION_RESUME_COMPLETE: Final[str] = "execution.resume.complete"
 EXECUTION_RESUME_FAILED: Final[str] = "execution.resume.failed"

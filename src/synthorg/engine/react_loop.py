@@ -6,6 +6,7 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.completion_enums import FinishReason
@@ -24,6 +25,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
+    EXECUTION_TURN_OBSERVER_FAILED,
 )
 from synthorg.providers.models import (
     CompletionConfig,
@@ -58,6 +60,7 @@ from .loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+    TurnObserver,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -111,6 +114,7 @@ class ReactLoop:
         compaction_callback: CompactionCallback | None = None,
         steering_inbox: SteeringInbox | None = None,
         step_classifier: StepQualityClassifier | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
@@ -118,6 +122,7 @@ class ReactLoop:
         self._compaction_callback = compaction_callback
         self._steering_inbox = steering_inbox
         self._step_classifier = step_classifier
+        self._turn_observer = turn_observer
 
     async def _whole_run_signals(
         self,
@@ -165,6 +170,36 @@ class ReactLoop:
                 )
             }
         )
+
+    async def _notify_turn_observer(
+        self,
+        turn_number: int,
+        response: CompletionResponse,
+    ) -> None:
+        """Fire the optional turn observer with this turn's tool names.
+
+        Purely observational: an observer failure is logged and swallowed
+        so it can never corrupt the run, but cancellation still propagates
+        so a client disconnect tears a streamed action down at once.
+
+        Raises:
+            CancelledError: Propagated so a client disconnect halts the run.
+        """
+        if self._turn_observer is None:
+            return
+        tool_names = tuple(call.name for call in response.tool_calls)
+        try:
+            await self._turn_observer(turn_number, tool_names)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_TURN_OBSERVER_FAILED,
+                turn_number=turn_number,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     @property
     def approval_gate(self) -> ApprovalGate | None:
@@ -284,6 +319,8 @@ class ReactLoop:
             if isinstance(result, ExecutionResult):
                 return await self._attach_whole_run_signals(result, turns)
             ctx = result
+
+            await self._notify_turn_observer(turn_number, response)
 
             # Stagnation detection after successful turn processing
             stag_outcome = await check_stagnation(

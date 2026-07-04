@@ -200,6 +200,12 @@ META_CHAT_DEPENDENCY_UNAVAILABLE: Final[str] = "meta.chat.dependency_unavailable
 # rather than failing the request.
 META_CHAT_SCOPE_NOT_FOUND: Final[str] = "meta.chat.scope_not_found"
 
+# Emitted at WARNING when a streaming conversational endpoint
+# (``/meta/chat/stream`` or ``/meta/chat/act/stream``) fails after the SSE
+# response headers are already on the wire, so the error can only surface
+# as an in-stream ``event: error`` frame rather than an RFC 9457 body.
+META_CHAT_STREAM_FAILED: Final[str] = "meta.chat.stream_failed"
+
 # -- Learning-curve endpoint -----------------------------------------------
 
 # Emitted at DEBUG when ``GET /learning/curve`` serves the benchmark

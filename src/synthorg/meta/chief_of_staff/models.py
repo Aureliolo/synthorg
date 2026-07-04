@@ -257,6 +257,33 @@ class ChatResponse(BaseModel):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class ChatAnswerDelta(BaseModel):
+    """One incremental text delta from a streaming chat answer.
+
+    Attributes:
+        delta: The next fragment of the answer, in arrival order.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    delta: str
+
+
+class ChatAnswerComplete(BaseModel):
+    """Terminal event of a streaming chat answer: the assembled result.
+
+    Mirrors :class:`ChatResponse` so a streamed answer carries the same
+    ``answer`` / ``sources`` / ``confidence`` contract as the buffered
+    endpoint once the last delta has arrived.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    answer: NotBlankStr
+    sources: tuple[NotBlankStr, ...] = ()
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 # ── Conversational clarify + propose ──────────────────────────────
 
 
