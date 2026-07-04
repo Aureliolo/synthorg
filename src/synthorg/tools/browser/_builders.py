@@ -241,25 +241,25 @@ class _BrowserBuilderMixin:
                 A11yViolation.model_validate(v)
                 for v in a11y_payload.get("warnings", [])
             )
-        except ValidationError as exc:
+            return A11yScanResult(
+                url=str(a11y_payload.get("url", url)),
+                min_impact=a11y_payload.get("min_impact", args.min_impact),
+                violations=violations,
+                warnings=warnings,
+                total_affected_nodes=int(
+                    a11y_payload.get("total_affected_nodes", 0),
+                ),
+                scan_duration_seconds=float(
+                    a11y_payload.get("scan_duration_seconds", 0.0),
+                ),
+                axe_version=str(a11y_payload.get("axe_version", AXE_VERSION_PIN)),
+                passed=bool(a11y_payload.get("passed", True)),
+            )
+        except (ValidationError, ValueError) as exc:
             logger.warning(BROWSER_A11Y_SCAN_FAILED, reason="invalid_a11y_payload")
             raise BrowserAccessibilityError(
                 "Executor returned an invalid accessibility payload"
             ) from exc
-        return A11yScanResult(
-            url=str(a11y_payload.get("url", url)),
-            min_impact=a11y_payload.get("min_impact", args.min_impact),
-            violations=violations,
-            warnings=warnings,
-            total_affected_nodes=int(
-                a11y_payload.get("total_affected_nodes", 0),
-            ),
-            scan_duration_seconds=float(
-                a11y_payload.get("scan_duration_seconds", 0.0),
-            ),
-            axe_version=str(a11y_payload.get("axe_version", AXE_VERSION_PIN)),
-            passed=bool(a11y_payload.get("passed", True)),
-        )
 
     def _build_storage(
         self,
