@@ -6,7 +6,7 @@ import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
 import type { GroupMessage } from './chat-types'
 import { nextMessageId } from './message-id'
-import { resolveScopedRetryContent } from './scoped-retry'
+import { resolveScopedRetryTarget } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export type { GroupMessage } from './chat-types'
@@ -63,17 +63,25 @@ function useGroupSend(deps: GroupSendDeps): {
     deps
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, idempotencyKey?: string) => {
       const conversationId = useConversationsStore.getState().group.conversationId
       const canStart = conversationId !== undefined || selectedIds.length > 0
       if (!message || loading || !canStart) return
+      // Mint the key once per logical turn; a manual retry reuses it so a
+      // round that actually ran server-side is deduped, not re-run.
+      const key = idempotencyKey ?? crypto.randomUUID()
       setGroup((s) => ({
         messages: [
           ...s.messages,
-          { id: nextMessageId(), kind: 'human', content: message },
+          {
+            id: nextMessageId(),
+            kind: 'human',
+            content: message,
+            idempotencyKey: key,
+          },
         ],
       }))
-      const result = await converse(message, selectedIds, conversationId)
+      const result = await converse(message, selectedIds, conversationId, key)
       setGroup((s) => ({ messages: [...s.messages, ...buildRoundMessages(result)] }))
       if (result) {
         setGroup({
@@ -103,12 +111,12 @@ function useGroupSend(deps: GroupSendDeps): {
   // turn when multiple failures exist.
   const retryLast = useCallback(
     (beforeMsgId?: number) => {
-      const content = resolveScopedRetryContent(
+      const target = resolveScopedRetryTarget(
         messages,
         beforeMsgId,
         (m) => m.kind === 'human',
       )
-      if (content !== null) void sendMessage(content)
+      if (target) void sendMessage(target.content, target.idempotencyKey)
     },
     [messages, sendMessage],
   )

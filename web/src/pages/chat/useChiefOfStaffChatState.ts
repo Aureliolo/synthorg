@@ -6,7 +6,7 @@ import { useMetaStore } from '@/stores/meta'
 import type { ChiefOfStaffMessage } from './chat-types'
 import type { ChatScopeValue } from './ChatScopePicker'
 import { nextMessageId } from './message-id'
-import { resolveScopedRetryContent } from './scoped-retry'
+import { resolveScopedRetryTarget } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export type { ChiefOfStaffMessage } from './chat-types'
@@ -60,15 +60,23 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   )
 
   const sendMessage = useCallback(
-    async (question: string) => {
+    async (question: string, idempotencyKey?: string) => {
       if (!question || chatLoading) return
+      // Mint the key once per logical turn; a manual retry reuses it so a
+      // turn that actually succeeded server-side is deduped, not re-run.
+      const key = idempotencyKey ?? crypto.randomUUID()
       setStaff((s) => ({
         messages: [
           ...s.messages,
-          { id: nextMessageId(), role: 'user', content: question },
+          {
+            id: nextMessageId(),
+            role: 'user',
+            content: question,
+            idempotencyKey: key,
+          },
         ],
       }))
-      const response = await sendChat(question, toChatScope(scope))
+      const response = await sendChat(question, toChatScope(scope), key)
       setStaff((s) => ({
         messages: [...s.messages, buildAssistantMessage(response)],
       }))
@@ -91,12 +99,12 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   // turn when multiple failures exist.
   const retryLast = useCallback(
     (beforeMsgId?: number) => {
-      const content = resolveScopedRetryContent(
+      const target = resolveScopedRetryTarget(
         messages,
         beforeMsgId,
         (m) => m.role === 'user',
       )
-      if (content !== null) void sendMessage(content)
+      if (target) void sendMessage(target.content, target.idempotencyKey)
     },
     [messages, sendMessage],
   )

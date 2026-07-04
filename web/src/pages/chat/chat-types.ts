@@ -7,6 +7,8 @@ export interface ChiefOfStaffMessage {
   content: string
   sources?: string[]
   confidence?: number
+  /** Idempotency key minted when this user turn was sent; a retry reuses it. */
+  idempotencyKey?: string | undefined
   /** Renders as a distinct error notice (not a normal assistant reply). */
   isError?: boolean
 }
@@ -38,6 +40,8 @@ export interface RequestWorkMessage {
   proposals?: readonly RequestWorkProposal[] | undefined
   /** Parked steering directives, on the "proposed" branch. */
   steering?: readonly RequestWorkSteering[] | undefined
+  /** Idempotency key minted when this user turn was sent; a retry reuses it. */
+  idempotencyKey?: string | undefined
   /** Renders as a distinct error notice (not a normal assistant reply). */
   isError?: boolean | undefined
 }
@@ -68,6 +72,8 @@ export interface GroupMessage {
   /** Set once the operator resolves an ``invite`` in context. The
    *  invited agent joins on the next round after ``approved``. */
   resolved?: 'approved' | 'declined'
+  /** Idempotency key minted when this human turn was sent; a retry reuses it. */
+  idempotencyKey?: string | undefined
   /** Renders the notice as a distinct error state with a Try-again. */
   isError?: boolean
 }
@@ -89,6 +95,8 @@ export interface ActMessage {
   toolCalls?: readonly ExecutedToolCall[] | undefined
   /** Approval id, on ``action`` bubbles when the action parked for consent. */
   parkedApprovalId?: string | undefined
+  /** Idempotency key minted when this instruction was sent; a retry reuses it. */
+  idempotencyKey?: string | undefined
   /** Renders the notice as a distinct error state with a Try-again. */
   isError?: boolean
 }

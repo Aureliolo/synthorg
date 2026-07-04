@@ -72,6 +72,43 @@ describe('ChiefOfStaffChat', () => {
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
 
+  it('reuses the idempotency key when retrying a failed turn', async () => {
+    const keys: (string | null)[] = []
+    let call = 0
+    server.use(
+      http.post('/api/v1/meta/chat', ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        call += 1
+        // Fail the first attempt so the error notice offers a retry, then
+        // succeed on the retry.
+        return call === 1
+          ? HttpResponse.json(apiError('boom'))
+          : HttpResponse.json(
+              apiSuccess({ answer: 'Recovered.', sources: [], confidence: 0.7 }),
+            )
+      }),
+    )
+    const user = userEvent.setup()
+    render(<ChiefOfStaffChat />)
+
+    await user.type(screen.getByLabelText('Chat message'), 'try me')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Recovered.')).toBeInTheDocument()
+    })
+
+    // A retry that minted a fresh key would let the server re-run a turn that
+    // actually succeeded; the original key must be reused so it is deduped.
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).not.toBeNull()
+    expect(keys[0]).toBe(keys[1])
+  })
+
   describe('scope picker', () => {
     beforeEach(() => {
       server.use(

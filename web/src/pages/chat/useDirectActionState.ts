@@ -9,7 +9,7 @@ import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
 import type { ActMessage } from './chat-types'
 import { nextMessageId } from './message-id'
-import { resolveScopedRetryContent } from './scoped-retry'
+import { resolveScopedRetryTarget } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export type { ActMessage } from './chat-types'
@@ -25,6 +25,89 @@ export interface DirectActionState {
   setInput: (value: string) => void
   triggerSend: () => void
   retryLast: (beforeMsgId?: number) => void
+}
+
+type SetAction = ReturnType<typeof useConversationsStore.getState>['setAction']
+type RunAction = ReturnType<typeof useMetaStore.getState>['runAction']
+
+interface ActionSendDeps {
+  loading: boolean
+  selectedAgentId: string | null
+  runAction: RunAction
+  activeAgents: readonly ActiveAgentSummary[]
+  setAction: SetAction
+  messages: readonly ActMessage[]
+  input: string
+  setInput: (value: string) => void
+}
+
+function useDirectActionSend(deps: ActionSendDeps): {
+  triggerSend: () => void
+  retryLast: (beforeMsgId?: number) => void
+} {
+  const { loading, selectedAgentId, runAction, activeAgents, setAction } = deps
+  const { messages, input, setInput } = deps
+
+  const sendInstruction = useCallback(
+    async (instruction: string, idempotencyKey?: string) => {
+      if (!instruction || loading || !selectedAgentId) return
+      // Mint the key once per logical turn; a manual retry reuses it so an
+      // action that actually ran server-side is deduped, not re-run.
+      const key = idempotencyKey ?? crypto.randomUUID()
+      setAction((s) => ({
+        messages: [
+          ...s.messages,
+          {
+            id: nextMessageId(),
+            kind: 'human',
+            content: instruction,
+            idempotencyKey: key,
+          },
+        ],
+      }))
+      const conversationId =
+        useConversationsStore.getState().action.conversationId
+      const result = await runAction(instruction, selectedAgentId, conversationId, key)
+      // The acting agent is the one the operator selected; resolve its role
+      // from the roster rather than mislabelling every action as "acting".
+      const actingRole = activeAgents.find((a) => a.id === selectedAgentId)?.role
+      setAction((s) => ({
+        messages: [...s.messages, buildActMessage(result, actingRole)],
+        ...(result && { conversationId: result.conversation_id ?? undefined }),
+      }))
+    },
+    [loading, selectedAgentId, runAction, activeAgents, setAction],
+  )
+
+  // ``runAction`` owns its error UX (catches internally, returns ``null`` on
+  // failure), so voiding the promise is safe -- there is no rejection to leak.
+  const triggerSend = useCallback(() => {
+    // Mirror sendInstruction's preconditions before clearing the input, so a
+    // send blocked by an in-flight action or a missing agent selection does not
+    // discard the operator's composed text.
+    if (loading || !selectedAgentId) return
+    const instruction = input.trim()
+    if (!instruction) return
+    setInput('')
+    void sendInstruction(instruction)
+  }, [loading, selectedAgentId, input, setInput, sendInstruction])
+
+  // Retry the human instruction that precedes the clicked error bubble; an
+  // unscoped retry would replay the transcript tail rather than the
+  // instruction the operator clicked on.
+  const retryLast = useCallback(
+    (beforeMsgId?: number) => {
+      const target = resolveScopedRetryTarget(
+        messages,
+        beforeMsgId,
+        (m) => m.kind === 'human',
+      )
+      if (target) void sendInstruction(target.content, target.idempotencyKey)
+    },
+    [messages, sendInstruction],
+  )
+
+  return { triggerSend, retryLast }
 }
 
 export function useDirectActionState(): DirectActionState {
@@ -53,56 +136,16 @@ export function useDirectActionState(): DirectActionState {
     [setAction],
   )
 
-  const sendInstruction = useCallback(
-    async (instruction: string) => {
-      if (!instruction || loading || !selectedAgentId) return
-      setAction((s) => ({
-        messages: [
-          ...s.messages,
-          { id: nextMessageId(), kind: 'human', content: instruction },
-        ],
-      }))
-      const conversationId =
-        useConversationsStore.getState().action.conversationId
-      const result = await runAction(instruction, selectedAgentId, conversationId)
-      // The acting agent is the one the operator selected; resolve its role
-      // from the roster rather than mislabelling every action as "acting".
-      const actingRole = activeAgents.find((a) => a.id === selectedAgentId)?.role
-      setAction((s) => ({
-        messages: [...s.messages, buildActMessage(result, actingRole)],
-        ...(result && { conversationId: result.conversation_id ?? undefined }),
-      }))
-    },
-    [loading, selectedAgentId, runAction, activeAgents, setAction],
-  )
-
-  // ``runAction`` owns its error UX (catches internally, returns ``null`` on
-  // failure), so voiding the promise is safe -- there is no rejection to leak.
-  const triggerSend = useCallback(() => {
-    // Mirror sendInstruction's preconditions before clearing the input, so a
-    // send blocked by an in-flight action or a missing agent selection does not
-    // discard the operator's composed text.
-    if (loading || !selectedAgentId) return
-    const instruction = input.trim()
-    if (!instruction) return
-    setInput('')
-    void sendInstruction(instruction)
-  }, [loading, selectedAgentId, input, sendInstruction])
-
-  // Retry the human instruction that precedes the clicked error bubble (see
-  // ``resolveScopedRetryContent``); an unscoped retry would replay the
-  // transcript tail rather than the instruction the operator clicked on.
-  const retryLast = useCallback(
-    (beforeMsgId?: number) => {
-      const content = resolveScopedRetryContent(
-        messages,
-        beforeMsgId,
-        (m) => m.kind === 'human',
-      )
-      if (content !== null) void sendInstruction(content)
-    },
-    [messages, sendInstruction],
-  )
+  const { triggerSend, retryLast } = useDirectActionSend({
+    loading,
+    selectedAgentId,
+    runAction,
+    activeAgents,
+    setAction,
+    messages,
+    input,
+    setInput,
+  })
 
   return {
     activeAgents,

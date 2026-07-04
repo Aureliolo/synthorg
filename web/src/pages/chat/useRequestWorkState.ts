@@ -6,7 +6,7 @@ import { useMetaStore } from '@/stores/meta'
 
 import type { RequestWorkMessage } from './chat-types'
 import { nextMessageId } from './message-id'
-import { resolveScopedRetryContent } from './scoped-retry'
+import { resolveScopedRetryTarget } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export type {
@@ -37,16 +37,24 @@ export function useRequestWorkState(): RequestWorkState {
   const scrollRef = useScrollToBottom(messages)
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, idempotencyKey?: string) => {
       if (!message || proposeLoading || conversationClosed) return
+      // Mint the key once per logical turn; a manual retry reuses it so a
+      // parked proposal that actually succeeded is deduped, not re-parked.
+      const key = idempotencyKey ?? crypto.randomUUID()
       setWork((s) => ({
         messages: [
           ...s.messages,
-          { id: nextMessageId(), role: 'user', content: message },
+          {
+            id: nextMessageId(),
+            role: 'user',
+            content: message,
+            idempotencyKey: key,
+          },
         ],
       }))
       const conversationId = useConversationsStore.getState().work.conversationId
-      const result = await propose(message, conversationId)
+      const result = await propose(message, conversationId, key)
       if (result) {
         setWork({
           conversationId: result.conversation_id,
@@ -71,12 +79,12 @@ export function useRequestWorkState(): RequestWorkState {
 
   const retryBefore = useCallback(
     (beforeMsgId: number) => {
-      const content = resolveScopedRetryContent(
+      const target = resolveScopedRetryTarget(
         messages,
         beforeMsgId,
         (m) => m.role === 'user',
       )
-      if (content !== null) void sendMessage(content)
+      if (target) void sendMessage(target.content, target.idempotencyKey)
     },
     [messages, sendMessage],
   )
