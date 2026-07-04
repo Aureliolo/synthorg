@@ -3,32 +3,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActiveAgentSummary,
   ConversationalActResult,
-  ExecutedToolCall,
   TerminationReason,
 } from '@/api/types'
+import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
+import type { ActMessage } from './chat-types'
+import { nextMessageId } from './message-id'
 import { resolveScopedRetryContent } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
-export interface ActMessage {
-  id: number
-  /** ``human`` = the operator's instruction, ``action`` = the agent's
-   *  outcome (executed tools + message, or a parked approval),
-   *  ``notice`` = a system line (request failure). */
-  kind: 'human' | 'action' | 'notice'
-  /** Bubble body: the instruction, the agent's final message, or a notice. */
-  content: string
-  /** Acting agent's name, on ``action`` bubbles. */
-  agentName?: string | undefined
-  /** Acting agent's role, on ``action`` bubbles (resolved from the roster). */
-  agentRole?: string | undefined
-  /** Tools the action executed, on ``action`` bubbles. */
-  toolCalls?: readonly ExecutedToolCall[] | undefined
-  /** Approval id, on ``action`` bubbles when the action parked for consent. */
-  parkedApprovalId?: string | undefined
-  /** Renders the notice as a distinct error state with a Try-again. */
-  isError?: boolean
-}
+export type { ActMessage } from './chat-types'
 
 export interface DirectActionState {
   activeAgents: readonly ActiveAgentSummary[]
@@ -49,12 +33,11 @@ export function useDirectActionState(): DirectActionState {
   const runAction = useMetaStore((s) => s.runAction)
   const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
 
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<readonly ActMessage[]>([])
+  const messages = useConversationsStore((s) => s.action.messages)
+  const selectedAgentId = useConversationsStore((s) => s.action.selectedAgentId)
+  const setAction = useConversationsStore((s) => s.setAction)
   const [input, setInput] = useState('')
   const scrollRef = useScrollToBottom(messages)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
 
   const fetchRef = useRef(fetchActiveAgents)
   fetchRef.current = fetchActiveAgents
@@ -62,33 +45,35 @@ export function useDirectActionState(): DirectActionState {
     void fetchRef.current()
   }, [])
 
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
-
-  const selectAgent = useCallback((id: string) => {
-    setSelectedAgentId((prev) => (prev === id ? null : id))
-  }, [])
+  const selectAgent = useCallback(
+    (id: string) =>
+      setAction((s) => ({
+        selectedAgentId: s.selectedAgentId === id ? null : id,
+      })),
+    [setAction],
+  )
 
   const sendInstruction = useCallback(
     async (instruction: string) => {
       if (!instruction || loading || !selectedAgentId) return
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), kind: 'human', content: instruction },
-      ])
-      const result = await runAction(
-        instruction,
-        selectedAgentId,
-        conversationIdRef.current,
-      )
+      setAction((s) => ({
+        messages: [
+          ...s.messages,
+          { id: nextMessageId(), kind: 'human', content: instruction },
+        ],
+      }))
+      const conversationId =
+        useConversationsStore.getState().action.conversationId
+      const result = await runAction(instruction, selectedAgentId, conversationId)
       // The acting agent is the one the operator selected; resolve its role
       // from the roster rather than mislabelling every action as "acting".
       const actingRole = activeAgents.find((a) => a.id === selectedAgentId)?.role
-      setMessages((prev) => [...prev, buildActMessage(result, nextMsgId, actingRole)])
-      if (result) {
-        conversationIdRef.current = result.conversation_id ?? undefined
-      }
+      setAction((s) => ({
+        messages: [...s.messages, buildActMessage(result, actingRole)],
+        ...(result && { conversationId: result.conversation_id ?? undefined }),
+      }))
     },
-    [loading, selectedAgentId, runAction, nextMsgId, activeAgents],
+    [loading, selectedAgentId, runAction, activeAgents, setAction],
   )
 
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
@@ -107,10 +92,17 @@ export function useDirectActionState(): DirectActionState {
   // Retry the human instruction that precedes the clicked error bubble (see
   // ``resolveScopedRetryContent``); an unscoped retry would replay the
   // transcript tail rather than the instruction the operator clicked on.
-  const retryLast = useCallback((beforeMsgId?: number) => {
-    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.kind === 'human')
-    if (content !== null) void sendInstruction(content)
-  }, [messages, sendInstruction])
+  const retryLast = useCallback(
+    (beforeMsgId?: number) => {
+      const content = resolveScopedRetryContent(
+        messages,
+        beforeMsgId,
+        (m) => m.kind === 'human',
+      )
+      if (content !== null) void sendInstruction(content)
+    },
+    [messages, sendInstruction],
+  )
 
   return {
     activeAgents,
@@ -144,12 +136,11 @@ const TERMINATION_REASON_COPY: Readonly<
 
 function buildActMessage(
   result: ConversationalActResult | null,
-  nextMsgId: () => number,
   actingRole: string | undefined,
 ): ActMessage {
   if (!result) {
     return {
-      id: nextMsgId(),
+      id: nextMessageId(),
       kind: 'notice',
       content: 'The action could not be completed. Please try again.',
       isError: true,
@@ -165,7 +156,7 @@ function buildActMessage(
       : (TERMINATION_REASON_COPY[action.termination_reason] ??
         'The action finished with no message.')
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     kind: 'action',
     content,
     agentName: result.agent_name,

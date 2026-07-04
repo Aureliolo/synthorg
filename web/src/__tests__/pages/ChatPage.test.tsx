@@ -1,9 +1,14 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
 import type { ChiefOfStaffFlags, MetaConfig } from '@/api/endpoints/meta'
+import { apiSuccess } from '@/mocks/handlers'
 import ChatPage from '@/pages/ChatPage'
 import { useMetaStore } from '@/stores/meta'
+import { server } from '@/test-setup'
 
 const BASE_FLAGS: ChiefOfStaffFlags = {
   chat_enabled: true,
@@ -74,5 +79,54 @@ describe('ChatPage mode gating', () => {
     expect(
       screen.getByText('This conversation mode is switched off'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('ChatPage transcript persistence', () => {
+  beforeEach(() => {
+    useMetaStore.setState({
+      config: configWith({}),
+      chatLoading: false,
+      proposals: [],
+      alerts: [],
+      error: null,
+    })
+  })
+
+  it('keeps a mode transcript when switching modes and back', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat', () =>
+        HttpResponse.json(
+          apiSuccess({
+            answer: 'Signals look healthy.',
+            sources: [],
+            confidence: 0.8,
+          }),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ChatPage />
+      </MemoryRouter>,
+    )
+
+    // Send a message in the default Chief of Staff mode.
+    await user.type(screen.getByLabelText('Chat message'), 'how are signals?')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => {
+      expect(screen.getByText('Signals look healthy.')).toBeInTheDocument()
+    })
+
+    // Switch to Request work (unmounts the Chief of Staff panel) and back.
+    await user.click(screen.getByRole('radio', { name: 'Request work' }))
+    expect(screen.queryByText('Signals look healthy.')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: 'Chief of Staff' }))
+
+    // The transcript survived the remount: it lives in the store, not in
+    // the unmounted panel's local state.
+    expect(screen.getByText('Signals look healthy.')).toBeInTheDocument()
+    expect(screen.getByText('how are signals?')).toBeInTheDocument()
   })
 })

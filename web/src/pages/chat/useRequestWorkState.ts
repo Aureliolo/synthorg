@@ -1,40 +1,19 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
+import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
 
+import type { RequestWorkMessage } from './chat-types'
+import { nextMessageId } from './message-id'
 import { resolveScopedRetryContent } from './scoped-retry'
 import { useScrollToBottom } from './use-scroll-to-bottom'
 
-/** A parked work item, with its approval id for a deep link. */
-export interface RequestWorkProposal {
-  title: string
-  approvalId: string
-}
-
-/** A parked steering directive, with its approval id for a deep link. */
-export interface RequestWorkSteering {
-  text: string
-  approvalId: string
-}
-
-export interface RequestWorkMessage {
-  id: number
-  role: 'user' | 'assistant'
-  content: string
-  /** Role of the routed agent that answered, when concern-routed. */
-  responderRole?: string | undefined
-  /** Display name of the routed agent, when concern-routed. */
-  responderName?: string | undefined
-  /** Concern topic that selected the role, when routed. */
-  routedTopic?: string | undefined
-  /** Parked work items, on the "proposed" branch. */
-  proposals?: readonly RequestWorkProposal[] | undefined
-  /** Parked steering directives, on the "proposed" branch. */
-  steering?: readonly RequestWorkSteering[] | undefined
-  /** Renders as a distinct error notice (not a normal assistant reply). */
-  isError?: boolean | undefined
-}
+export type {
+  RequestWorkMessage,
+  RequestWorkProposal,
+  RequestWorkSteering,
+} from './chat-types'
 
 export interface RequestWorkState {
   messages: readonly RequestWorkMessage[]
@@ -49,32 +28,36 @@ export interface RequestWorkState {
 }
 
 export function useRequestWorkState(): RequestWorkState {
-  const [messages, setMessages] = useState<RequestWorkMessage[]>([])
+  const messages = useConversationsStore((s) => s.work.messages)
+  const conversationClosed = useConversationsStore((s) => s.work.closed)
+  const setWork = useConversationsStore((s) => s.setWork)
   const [input, setInput] = useState('')
-  const [conversationClosed, setConversationClosed] = useState(false)
   const proposeLoading = useMetaStore((s) => s.proposeLoading)
   const propose = useMetaStore((s) => s.proposeConversation)
   const scrollRef = useScrollToBottom(messages)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
-
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
   const sendMessage = useCallback(
     async (message: string) => {
       if (!message || proposeLoading || conversationClosed) return
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), role: 'user', content: message },
-      ])
-      const result = await propose(message, conversationIdRef.current)
+      setWork((s) => ({
+        messages: [
+          ...s.messages,
+          { id: nextMessageId(), role: 'user', content: message },
+        ],
+      }))
+      const conversationId = useConversationsStore.getState().work.conversationId
+      const result = await propose(message, conversationId)
       if (result) {
-        conversationIdRef.current = result.conversation_id
-        setConversationClosed(result.conversation_closed)
+        setWork({
+          conversationId: result.conversation_id,
+          closed: result.conversation_closed,
+        })
       }
-      setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
+      setWork((s) => ({
+        messages: [...s.messages, buildAssistantMessage(result)],
+      }))
     },
-    [proposeLoading, conversationClosed, propose, nextMsgId],
+    [proposeLoading, conversationClosed, propose, setWork],
   )
 
   const triggerSend = useCallback(() => {
@@ -123,9 +106,9 @@ function toAttribution(result: ConversationalProposeResponse): Attribution {
   }
 }
 
-function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
+function buildFailureMessage(): RequestWorkMessage {
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     role: 'assistant',
     content: 'The assistant could not respond. Please try again.',
     isError: true,
@@ -134,14 +117,13 @@ function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
 
 function buildAssistantMessage(
   result: ConversationalProposeResponse | null,
-  nextMsgId: () => number,
 ): RequestWorkMessage {
   if (!result) {
-    return buildFailureMessage(nextMsgId)
+    return buildFailureMessage()
   }
   if (result.status === 'needs_clarification') {
     return {
-      id: nextMsgId(),
+      id: nextMessageId(),
       role: 'assistant',
       content: result.clarifying_question ?? 'Could you clarify?',
       ...toAttribution(result),
@@ -160,7 +142,7 @@ function buildAssistantMessage(
   const total = proposals.length + steering.length
   const plural = total === 1 ? '' : 's'
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     role: 'assistant',
     content: `Queued ${total} item${plural} for your approval.`,
     proposals,
