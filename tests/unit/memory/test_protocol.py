@@ -12,6 +12,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.protocol import MemoryBackend
 
@@ -73,6 +74,29 @@ class _FakeMemoryBackend:
             del agent_store[memory_id]
             return True
         return False
+
+    async def update(
+        self,
+        agent_id: str,
+        memory_id: str,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        agent_store = self._store.get(agent_id, {})
+        entry = agent_store.get(memory_id)
+        if entry is None:
+            return None
+        updates: dict[str, object] = {"updated_at": datetime.now(tz=UTC)}
+        if request.content is not None:
+            updates["content"] = request.content
+        if request.metadata is not None:
+            updates["metadata"] = request.metadata
+        if request.expires_at is not None:
+            updates["expires_at"] = request.expires_at
+        elif request.clear_expiration:
+            updates["expires_at"] = None
+        updated = entry.model_copy(update=updates)
+        agent_store[memory_id] = updated
+        return updated
 
     async def count(
         self,

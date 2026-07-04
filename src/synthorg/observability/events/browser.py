@@ -47,3 +47,11 @@ BROWSER_SPEC_FAILED: Final[str] = "browser.spec.failed"
 BROWSER_START_COMMAND_START: Final[str] = "browser.start_command.start"
 BROWSER_START_COMMAND_SUCCESS: Final[str] = "browser.start_command.success"
 BROWSER_START_COMMAND_FAILED: Final[str] = "browser.start_command.failed"
+
+BROWSER_STORAGE_START: Final[str] = "browser.storage.start"
+BROWSER_STORAGE_SUCCESS: Final[str] = "browser.storage.success"
+BROWSER_STORAGE_FAILED: Final[str] = "browser.storage.failed"
+
+BROWSER_WEBAUTHN_START: Final[str] = "browser.webauthn.start"
+BROWSER_WEBAUTHN_SUCCESS: Final[str] = "browser.webauthn.success"
+BROWSER_WEBAUTHN_FAILED: Final[str] = "browser.webauthn.failed"

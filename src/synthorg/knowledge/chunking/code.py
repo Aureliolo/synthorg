@@ -74,8 +74,12 @@ _MAX_CHARS: int = KNOWLEDGE_CHUNK_MAX_TOKENS * DEFAULT_CHAR_PER_TOKEN
 _TARGET_CHARS: int = KNOWLEDGE_CHUNK_TARGET_TOKENS * DEFAULT_CHAR_PER_TOKEN
 
 
-def _language_for(path: str) -> str | None:
-    """Return the grammar name for *path*'s extension, or None."""
+def language_for(path: str) -> str | None:
+    """Return the grammar name for *path*'s extension, or None.
+
+    Public because the batch prefetch in ``factory.py`` resolves the same
+    extension-to-grammar mapping to pre-load a batch's grammars.
+    """
     lowered = path.lower()
     for ext, language in _EXTENSION_LANGUAGE.items():
         if lowered.endswith(ext):
@@ -109,10 +113,13 @@ def _load_parser(language: str) -> Parser | None:
         raise KnowledgeDependencyError(msg) from exc
     try:
         return get_parser(language)
-    except (LookupError, OSError, ValueError) as exc:
+    except (LookupError, OSError, ValueError, RuntimeError) as exc:
         # A missing grammar is the expected "degrade to line-window"
         # path; log at WARNING so a corrupt grammar pack or I/O failure
         # is distinguishable from the clean not-installed fallback.
+        # ``RuntimeError`` covers a language name this pack maps but does
+        # not actually provide a grammar for (e.g. "c_sharp"), which
+        # ``get_parser`` raises rather than one of the lookup/IO errors.
         logger.warning(
             KNOWLEDGE_GRAMMAR_LOAD_FAILED,
             language=language,
@@ -142,7 +149,7 @@ class CodeChunker:
         if not unit.text.strip():
             return ()
         path = unit.locator.path
-        language = _language_for(path)
+        language = language_for(path)
         parser = _load_parser(language) if language is not None else None
         lines = unit.text.split("\n")
         if parser is None:

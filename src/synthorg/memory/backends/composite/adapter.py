@@ -24,6 +24,7 @@ from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
@@ -360,6 +361,24 @@ class CompositeBackend:
         self._require_connected()
         backend, raw_id = self._parse_id(memory_id)
         return await backend.delete(agent_id, NotBlankStr(raw_id))
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        """Parse prefixed ID and delegate to the owning backend.
+
+        Returns:
+            The updated ``MemoryEntry``, or ``None`` when no match is found.
+        """
+        self._require_connected()
+        backend, raw_id = self._parse_id(memory_id)
+        entry = await backend.update(agent_id, NotBlankStr(raw_id), request)
+        if entry is not None:
+            return self._rewrite_entry(backend, entry)
+        return None
 
     async def count(
         self,

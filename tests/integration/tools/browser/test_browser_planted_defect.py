@@ -56,7 +56,7 @@ pytestmark = [
     pytest.mark.timeout(300),
 ]
 
-_BROWSER_IMAGE: Final[str] = "mcr.microsoft.com/playwright/python:v1.60.0-jammy"
+_BROWSER_IMAGE: Final[str] = "mcr.microsoft.com/playwright/python:v1.61.0-jammy"
 _MAX_TURNS: Final[int] = 8
 _SANDBOX_TIMEOUT_SECONDS: Final[int] = 180
 _TEST_MODEL: Final[str] = "test-model-001"

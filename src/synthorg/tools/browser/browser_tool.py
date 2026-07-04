@@ -17,13 +17,13 @@ process.
 """
 
 import asyncio
+import hashlib
 import json
 import re
 from pathlib import Path
 from typing import (
     ClassVar,
     Final,
-    TypedDict,
     assert_never,
     cast,
     override,
@@ -35,7 +35,6 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_ARGS_VALIDATION_FAILED,
@@ -57,29 +56,34 @@ from synthorg.observability.events.browser import (
     BROWSER_START_COMMAND_FAILED,
     BROWSER_START_COMMAND_START,
     BROWSER_START_COMMAND_SUCCESS,
+    BROWSER_STORAGE_FAILED,
+    BROWSER_STORAGE_START,
+    BROWSER_STORAGE_SUCCESS,
+    BROWSER_WEBAUTHN_FAILED,
+    BROWSER_WEBAUTHN_START,
+    BROWSER_WEBAUTHN_SUCCESS,
 )
 from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-from synthorg.tools.browser._args import A11yImpact, BrowserToolArgs
+from synthorg.tools.browser._args import BrowserToolArgs
 from synthorg.tools.browser._asset_paths import copy_if_stale, reject_path_traversal
 from synthorg.tools.browser._baseline import WorkspaceBaselineStore
+from synthorg.tools.browser._builders import _BrowserBuilderMixin, _ExecutorResult
 from synthorg.tools.browser._constants import (
     ACCESSIBILITY_SCAN_TIMEOUT_SECONDS,
     AXE_BUNDLE_PATH,
     AXE_VERSION_PIN,
+    BROWSER_STATE_SUBDIR,
     CONTAINER_WORKSPACE_ROOT,
     NAVIGATION_TIMEOUT_SECONDS,
     SCREENSHOT_TIMEOUT_SECONDS,
     SCREENSHOTS_SUBDIR,
-    SHA256_HEX_LENGTH,
+    STORAGE_STATE_FILENAME,
+    WEBAUTHN_STATE_FILENAME,
 )
 from synthorg.tools.browser._models import (
-    A11yScanResult,
-    A11yViolation,
-    NavigationResult,
     ScreenshotDiffResult,
-    ScreenshotMetadata,
     SpecResult,
 )
 from synthorg.tools.browser._protocols import ScreenshotDiffer
@@ -97,7 +101,6 @@ from synthorg.tools.browser.errors import (
     BrowserDiffError,
     BrowserDomainError,
     BrowserLaunchError,
-    BrowserScreenshotError,
     BrowserStartCommandError,
 )
 from synthorg.tools.network_metadata import is_cloud_metadata_host
@@ -111,57 +114,37 @@ _DEPLOY_SUBDIR: Final[str] = ".synthorg/browser"
 _EXECUTOR_DEPLOY_NAME: Final[str] = "executor.py"
 _AXE_DEPLOY_NAME: Final[str] = "axe.min.js"
 _OUTER_TIMEOUT_BUFFER_SECONDS: Final[float] = 30.0
-_SHA256_HEX_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-f0-9]{64}$")
 
 # Concurrency locks shared across BrowserTool instances. Two locks are
 # needed because the natural race domains are different: assets are
 # per-workspace, baselines are per-(spec, screenshot).
 _DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
 _BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
+_SESSION_STATE_LOCKS: Final[dict[str, asyncio.Lock]] = {}
+
+_STATE_SEGMENT_HASH_LEN: Final[int] = 16
+"""Hex chars of the ``owner_id`` digest appended to the readable segment
+prefix. 16 hex chars (64 bits) makes an accidental cross-owner collision
+negligible while keeping the directory name short."""
 
 
-class _NavPayload(TypedDict, total=False):
-    """Navigation sub-payload decoded from the in-container executor."""
+def _get_session_state_lock(owner_id: str) -> asyncio.Lock:
+    """Return the per-owner lock serialising session-state mutation.
 
-    requested_url: str
-    final_url: str
-    status_code: int | None
-    duration_seconds: float
+    An owner's WebAuthn keystore and storage-state files share one
+    workspace directory; each executor run loads, mutates, then
+    rewrites them. Same-owner runs are serialised so two concurrent
+    operations cannot lost-update the keystore. Keyed by owner id (not
+    tool instance) so a shared ``owner_id`` across tools serialises too.
 
-
-class _ScreenshotPayload(TypedDict, total=False):
-    """Screenshot sub-payload decoded from the in-container executor."""
-
-    saved_path: str
-    width: int
-    height: int
-    file_size_bytes: int
-    full_page: bool
-    sha256: str
-
-
-class _A11yPayload(TypedDict, total=False):
-    """Accessibility sub-payload decoded from the in-container executor."""
-
-    url: str
-    min_impact: A11yImpact
-    violations: list[dict[str, JsonValue]]
-    warnings: list[dict[str, JsonValue]]
-    total_affected_nodes: int
-    scan_duration_seconds: float
-    axe_version: str
-    passed: bool
-
-
-class _ExecutorResult(TypedDict, total=False):
-    """Top-level JSON envelope returned by the in-container executor."""
-
-    status: str
-    error_type: str
-    message: str
-    navigation: _NavPayload
-    screenshot: _ScreenshotPayload
-    accessibility: _A11yPayload
+    Returns:
+        Result of type ``asyncio.Lock``.
+    """
+    lock = _SESSION_STATE_LOCKS.get(owner_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _SESSION_STATE_LOCKS[owner_id] = lock
+    return lock
 
 
 def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
@@ -195,7 +178,7 @@ def _get_baseline_lock(
     return lock
 
 
-class BrowserTool(BaseTool):
+class BrowserTool(_BrowserBuilderMixin, BaseTool):
     """Headless-browser automation backed by Playwright in a sandbox.
 
     Caller contract: invoke :meth:`cleanup` at the task boundary to
@@ -242,10 +225,16 @@ class BrowserTool(BaseTool):
             name="browser",
             description=(
                 "Headless browser via Playwright. Modes: navigate, "
-                "screenshot, diff, accessibility_scan, spec. Captures "
-                "screenshots to the project workspace; diffs against "
-                "stored baselines via SSIM; injects axe-core for "
-                "accessibility scans. SECURITY: the optional "
+                "screenshot, diff, accessibility_scan, spec, storage_get, "
+                "storage_set, storage_remove, storage_clear, "
+                "webauthn_install, webauthn_create_credential, "
+                "webauthn_list_credentials, webauthn_delete_credential. "
+                "Captures screenshots to the project workspace; diffs "
+                "against stored baselines via SSIM; injects axe-core for "
+                "accessibility scans; reads/writes localStorage and "
+                "sessionStorage directly; registers and answers WebAuthn "
+                "passkey ceremonies via a virtual authenticator (no real "
+                "hardware key needed). SECURITY: the optional "
                 "start_command argument is passed to bash -c inside "
                 "the sandbox; trust the sandbox boundary, never pass "
                 "untrusted strings."
@@ -261,6 +250,15 @@ class BrowserTool(BaseTool):
         self._differ: ScreenshotDiffer = screenshot_differ or SSIMDiffer()
         self._baselines = WorkspaceBaselineStore(workspace=self._workspace)
         self._owner_id = owner_id or f"browser-tool-{uuid4()}"
+        # Filesystem-safe owner segment for the per-owner session-state
+        # directory, so one owner's cookies/passkeys never land in another's
+        # directory and a crafted owner_id cannot traverse out of it. A hash
+        # of the raw owner_id is appended so two owners that sanitise to the
+        # same prefix (e.g. "alice:bob" vs "alice_bob") still get distinct
+        # directories -- the readable prefix is kept only for observability.
+        _sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", self._owner_id)
+        _digest = hashlib.sha256(self._owner_id.encode("utf-8")).hexdigest()
+        self._state_segment = f"{_sanitized}-{_digest[:_STATE_SEGMENT_HASH_LEN]}"
         self._settings = settings or BrowserSettings()
 
     @override
@@ -299,6 +297,15 @@ class BrowserTool(BaseTool):
                     return await self._mode_diff(args)
                 case "spec":
                     return await self._mode_spec(args)
+                case "storage_get" | "storage_set" | "storage_remove" | "storage_clear":
+                    return await self._mode_storage(args)
+                case (
+                    "webauthn_install"
+                    | "webauthn_create_credential"
+                    | "webauthn_list_credentials"
+                    | "webauthn_delete_credential"
+                ):
+                    return await self._mode_webauthn(args)
                 case _ as unhandled:
                     assert_never(unhandled)
         except BrowserDomainError as exc:
@@ -306,6 +313,10 @@ class BrowserTool(BaseTool):
 
     async def cleanup(self) -> None:
         """Release sandbox resources tied to this tool's owner."""
+        # Drop the per-owner session lock so the registry does not grow
+        # unbounded across the (unique-per-instance) owner ids. Cleanup is
+        # the owner's end of life, so no further same-owner run can race it.
+        _SESSION_STATE_LOCKS.pop(self._owner_id, None)
         try:
             await self._sandbox.release_owner(self._owner_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -591,6 +602,100 @@ class BrowserTool(BaseTool):
         )
         return ok_result(result)
 
+    async def _mode_storage(
+        self,
+        args: BrowserToolArgs,
+    ) -> ToolExecutionResult:
+        """Mode storage.
+
+        Handles storage_get, storage_set, storage_remove, storage_clear.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
+        url = self._resolve_url(args)
+        safe_url = redact_url(url)
+        logger.debug(
+            BROWSER_STORAGE_START,
+            mode=args.mode,
+            storage_type=args.storage_type,
+            url=safe_url,
+        )
+        try:
+            payload = await self._run_executor(
+                operation=args.mode,
+                url=url,
+                args=args,
+            )
+            storage = self._build_storage(payload)
+        except BrowserDomainError as exc:
+            logger.warning(
+                BROWSER_STORAGE_FAILED,
+                mode=args.mode,
+                url=safe_url,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        logger.debug(
+            BROWSER_STORAGE_SUCCESS,
+            mode=args.mode,
+            storage_type=storage.storage_type,
+        )
+        return ok_result(storage)
+
+    async def _mode_webauthn(
+        self,
+        args: BrowserToolArgs,
+    ) -> ToolExecutionResult:
+        """Mode webauthn.
+
+        Handles webauthn_install, webauthn_create_credential,
+        webauthn_list_credentials, webauthn_delete_credential. Created
+        credentials persist in a per-owner keystore on the workspace and
+        are re-seeded into the virtual authenticator on each call, so
+        ``list``/``delete`` operate on prior credentials and a passkey
+        ceremony triggered during a later navigation is answered. ``url``
+        /``path`` are optional since the virtual authenticator is a
+        browser-context-level concept, not tied to a specific page.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
+        url = self._resolve_url(args) if (args.url or args.path) else ""
+        logger.debug(
+            BROWSER_WEBAUTHN_START,
+            mode=args.mode,
+            rp_id=args.webauthn_rp_id,
+        )
+        try:
+            payload = await self._run_executor(
+                operation=args.mode,
+                url=url,
+                args=args,
+            )
+            webauthn = self._build_webauthn(payload)
+        except BrowserDomainError as exc:
+            logger.warning(
+                BROWSER_WEBAUTHN_FAILED,
+                mode=args.mode,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        logger.debug(
+            BROWSER_WEBAUTHN_SUCCESS,
+            mode=args.mode,
+            credential_count=len(webauthn.credentials),
+        )
+        return ok_result(webauthn)
+
     # ---------------------------------------------------------------
     # Diff computation (host-side)
     # ---------------------------------------------------------------
@@ -832,7 +937,36 @@ class BrowserTool(BaseTool):
             "axe_script_path": axe_container,
             "min_impact": args.min_impact,
             "axe_version": AXE_VERSION_PIN,
+            "storage_type": args.storage_type,
+            "storage_key": args.storage_key,
+            "storage_value": args.storage_value,
+            "storage_state_path": self._state_container_path(STORAGE_STATE_FILENAME),
+            "webauthn_state_path": self._state_container_path(WEBAUTHN_STATE_FILENAME),
+            "webauthn_rp_id": args.webauthn_rp_id,
+            "webauthn_user_handle": args.webauthn_user_handle,
+            "webauthn_credential_id": args.webauthn_credential_id,
         }
+
+    def _state_host_dir(self) -> Path:
+        """Return the per-owner session-state directory on the host workspace.
+
+        Returns:
+            The workspace-resident directory holding this owner's
+            persisted storage_state and virtual-authenticator keystore.
+        """
+        return self._workspace / BROWSER_STATE_SUBDIR / self._state_segment
+
+    def _state_container_path(self, filename: str) -> str:
+        """Return the container path for a per-owner session-state file.
+
+        Returns:
+            The ``/workspace``-rooted path the in-container executor reads
+            and writes for cross-call session persistence.
+        """
+        return (
+            f"{CONTAINER_WORKSPACE_ROOT}/{BROWSER_STATE_SUBDIR}/"
+            f"{self._state_segment}/{filename}"
+        )
 
     def _executor_timeout_seconds(
         self,
@@ -890,13 +1024,18 @@ class BrowserTool(BaseTool):
         env = {"BROWSER_TOOL_ARGS_JSON": json.dumps(payload)}
         timeout = self._executor_timeout_seconds(operation=operation, args=args)
         try:
-            result = await self._sandbox.execute(
-                command="python3",
-                args=(executor_container,),
-                env_overrides=env,
-                timeout=timeout,
-                owner_id=self._owner_id,
-            )
+            # Serialise same-owner runs: the executor's read-modify-write
+            # of the per-owner keystore / storage-state happens inside this
+            # subprocess, so an in-process lock here (not in the single-shot
+            # executor) is what prevents a concurrent lost update.
+            async with _get_session_state_lock(self._owner_id):
+                result = await self._sandbox.execute(
+                    command="python3",
+                    args=(executor_container,),
+                    env_overrides=env,
+                    timeout=timeout,
+                    owner_id=self._owner_id,
+                )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -1022,116 +1161,6 @@ class BrowserTool(BaseTool):
         logger.debug(BROWSER_START_COMMAND_SUCCESS, command_present=True)
 
     # ---------------------------------------------------------------
-    # Builders
-    # ---------------------------------------------------------------
-
-    def _build_navigation(
-        self,
-        payload: _ExecutorResult,
-        requested_url: str,
-    ) -> NavigationResult:
-        """Build navigation.
-
-        Returns:
-            Result of type ``NavigationResult``.
-        """
-        nav_payload: _NavPayload = payload.get("navigation") or {}
-        return NavigationResult(
-            requested_url=requested_url,
-            final_url=str(nav_payload.get("final_url", requested_url)),
-            status_code=nav_payload.get("status_code"),
-            duration_seconds=float(nav_payload.get("duration_seconds", 0.0)),
-        )
-
-    def _build_screenshot(
-        self,
-        payload: _ExecutorResult,
-        host_path: Path,
-    ) -> ScreenshotMetadata:
-        """Build screenshot.
-
-        Returns:
-            Result of type ``ScreenshotMetadata``.
-
-        Raises:
-            BrowserScreenshotError: If the related operation fails.
-        """
-        ss_payload: _ScreenshotPayload = payload.get("screenshot") or {}
-        if not ss_payload:
-            logger.warning(BROWSER_SCREENSHOT_FAILED, reason="no_screenshot_payload")
-            raise BrowserScreenshotError(
-                "Executor returned no screenshot payload",
-            )
-        sha = str(ss_payload.get("sha256", ""))
-        if len(sha) != SHA256_HEX_LENGTH or _SHA256_HEX_PATTERN.match(sha) is None:
-            logger.warning(
-                BROWSER_SCREENSHOT_FAILED,
-                reason="invalid_sha256",
-                sha256_length=len(sha),
-            )
-            raise BrowserScreenshotError(
-                "Executor returned an invalid sha256",
-                context={"sha256_length": len(sha)},
-            )
-        return ScreenshotMetadata(
-            saved_path=self._baselines.relative(host_path),
-            width=int(
-                ss_payload.get("width", self._settings.viewport_width),
-            ),
-            height=int(
-                ss_payload.get("height", self._settings.viewport_height),
-            ),
-            file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
-            full_page=bool(ss_payload.get("full_page", False)),
-            captured_at_iso=now_iso_utc(),
-            sha256=sha,
-        )
-
-    def _build_a11y(
-        self,
-        payload: _ExecutorResult,
-        url: str,
-        args: BrowserToolArgs,
-    ) -> A11yScanResult:
-        """Build a11y.
-
-        Returns:
-            Result of type ``A11yScanResult``.
-        """
-        a11y_payload: _A11yPayload = payload.get("accessibility") or {}
-        if not a11y_payload:
-            return A11yScanResult(
-                url=url,
-                min_impact=args.min_impact,
-                violations=(),
-                warnings=(),
-                total_affected_nodes=0,
-                scan_duration_seconds=0.0,
-                axe_version=AXE_VERSION_PIN,
-                passed=True,
-            )
-        violations = tuple(
-            A11yViolation.model_validate(v) for v in a11y_payload.get("violations", [])
-        )
-        warnings = tuple(
-            A11yViolation.model_validate(v) for v in a11y_payload.get("warnings", [])
-        )
-        return A11yScanResult(
-            url=str(a11y_payload.get("url", url)),
-            min_impact=a11y_payload.get("min_impact", args.min_impact),
-            violations=violations,
-            warnings=warnings,
-            total_affected_nodes=int(
-                a11y_payload.get("total_affected_nodes", 0),
-            ),
-            scan_duration_seconds=float(
-                a11y_payload.get("scan_duration_seconds", 0.0),
-            ),
-            axe_version=str(a11y_payload.get("axe_version", AXE_VERSION_PIN)),
-            passed=bool(a11y_payload.get("passed", True)),
-        )
-
-    # ---------------------------------------------------------------
     # Path translation + asset staging
     # ---------------------------------------------------------------
 
@@ -1220,6 +1249,10 @@ class BrowserTool(BaseTool):
             axe_changed = copy_if_stale(AXE_BUNDLE_PATH, axe_target)
             screenshots_root = self._workspace / SCREENSHOTS_SUBDIR
             screenshots_root.mkdir(parents=True, exist_ok=True)
+            # Per-owner session-state dir must exist on the mounted
+            # workspace before the executor writes storage_state / the
+            # webauthn keystore into it.
+            self._state_host_dir().mkdir(parents=True, exist_ok=True)
         if executor_changed or axe_changed:
             logger.debug(
                 BROWSER_ASSETS_DEPLOYED,

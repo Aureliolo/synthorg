@@ -6,6 +6,7 @@ booting Playwright or Docker.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock
@@ -280,6 +281,8 @@ class TestBrowserToolExecutorErrorPaths:
             ("PlaywrightTimeoutError", "BrowserNavigationError"),
             ("FileNotFoundError", "BrowserAccessibilityError"),
             ("BrowserDiffError", "BrowserDiffError"),
+            ("BrowserStorageError", "BrowserStorageError"),
+            ("BrowserWebAuthnError", "BrowserWebAuthnError"),
             ("CompletelyUnknownError", "BrowserDomainError"),
         ],
     )
@@ -428,6 +431,281 @@ class TestPathTraversalRejection:
         )
         assert result.is_error is True
         assert result.metadata["error_type"] == "BrowserArgumentError"
+
+
+class TestStorageModes:
+    async def test_storage_get_by_key(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {
+                "status": "ok",
+                "storage": {
+                    "storage_type": "local",
+                    "items": {"token": "abc123"},
+                },
+            },
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={
+                "mode": "storage_get",
+                "url": "http://example.test",
+                "storage_key": "token",
+            },
+        )
+        assert result.is_error is False, result.content
+        meta = cast(JsonDict, result.metadata)
+        assert meta["storage_type"] == "local"
+        assert meta["items"] == {"token": "abc123"}
+
+    async def test_storage_get_requires_key(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "storage_get", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_storage_set_requires_key_and_value(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "storage_set", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_storage_set_success(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {
+                "status": "ok",
+                "storage": {
+                    "storage_type": "session",
+                    "items": {"key1": "value1"},
+                },
+            },
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={
+                "mode": "storage_set",
+                "url": "http://example.test",
+                "storage_type": "session",
+                "storage_key": "key1",
+                "storage_value": "value1",
+            },
+        )
+        assert result.is_error is False, result.content
+        meta = cast(JsonDict, result.metadata)
+        assert meta["storage_type"] == "session"
+        assert meta["items"] == {"key1": "value1"}
+
+    async def test_storage_remove_requires_key(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "storage_remove", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_storage_clear_requires_no_extra_fields(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {
+                "status": "ok",
+                "storage": {"storage_type": "local", "items": {}},
+            },
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "storage_clear", "url": "http://example.test"},
+        )
+        assert result.is_error is False, result.content
+        assert cast(JsonDict, result.metadata)["items"] == {}
+
+    async def test_storage_no_payload_raises(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {"status": "ok"},
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={
+                "mode": "storage_get",
+                "url": "http://example.test",
+                "storage_key": "token",
+            },
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserStorageError"
+
+
+class TestWebAuthnModes:
+    async def test_webauthn_install_needs_no_url(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {"status": "ok", "webauthn": {"credentials": []}},
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(arguments={"mode": "webauthn_install"})
+        assert result.is_error is False, result.content
+        assert cast(JsonDict, result.metadata)["credentials"] == []
+
+    async def test_webauthn_create_credential_requires_rp_id(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "webauthn_create_credential"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_webauthn_create_credential_success(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {
+                "status": "ok",
+                "webauthn": {
+                    "credentials": [
+                        {
+                            "id": "cred-1",
+                            "rp_id": "example.test",
+                            "user_handle": "user-1",
+                            "public_key": "pub",
+                        },
+                    ],
+                },
+            },
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={
+                "mode": "webauthn_create_credential",
+                "webauthn_rp_id": "example.test",
+            },
+        )
+        assert result.is_error is False, result.content
+        meta = cast(JsonDict, result.metadata)
+        assert len(meta["credentials"]) == 1
+        assert meta["credentials"][0]["rp_id"] == "example.test"
+        # The private key must never surface on the model-facing result.
+        assert "private_key" not in meta["credentials"][0]
+
+    async def test_webauthn_delete_credential_requires_credential_id(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "webauthn_delete_credential"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_webauthn_no_payload_raises(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {"status": "ok"},
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(arguments={"mode": "webauthn_install"})
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserWebAuthnError"
+
+
+class TestSessionStateWiring:
+    """The executor payload carries per-owner session-state paths."""
+
+    async def test_payload_carries_owner_scoped_state_paths(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {"status": "ok", "webauthn": {"credentials": []}},
+        )
+        tool = BrowserTool(
+            sandbox=fake_sandbox,
+            workspace=workspace,
+            owner_id="agent-x",
+        )
+        await tool.execute(arguments={"mode": "webauthn_install"})
+        env = cast(AsyncMock, fake_sandbox.execute).call_args.kwargs["env_overrides"]
+        payload = json.loads(env["BROWSER_TOOL_ARGS_JSON"])
+        # The segment keeps the readable ``agent-x`` prefix and appends a
+        # hash of the owner_id so distinct owners can never collide.
+        state_root = "/workspace/.synthorg/browser/state"
+        assert re.fullmatch(
+            rf"{re.escape(state_root)}/agent-x-[0-9a-f]{{16}}/storage_state\.json",
+            payload["storage_state_path"],
+        )
+        assert re.fullmatch(
+            rf"{re.escape(state_root)}/agent-x-[0-9a-f]{{16}}/webauthn_credentials\.json",
+            payload["webauthn_state_path"],
+        )
+        # Both session files live under one per-owner directory.
+        assert (
+            payload["storage_state_path"].rsplit("/", 1)[0]
+            == payload["webauthn_state_path"].rsplit("/", 1)[0]
+        )
+
+    async def test_owner_id_traversal_is_sanitised(
+        self,
+        workspace: Path,
+        fake_sandbox: SandboxBackend,
+    ) -> None:
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
+            {"status": "ok", "webauthn": {"credentials": []}},
+        )
+        tool = BrowserTool(
+            sandbox=fake_sandbox,
+            workspace=workspace,
+            owner_id="../evil/id",
+        )
+        await tool.execute(arguments={"mode": "webauthn_install"})
+        env = cast(AsyncMock, fake_sandbox.execute).call_args.kwargs["env_overrides"]
+        payload = json.loads(env["BROWSER_TOOL_ARGS_JSON"])
+        assert ".." not in payload["webauthn_state_path"]
+        assert payload["webauthn_state_path"].startswith(
+            "/workspace/.synthorg/browser/state/",
+        )
 
 
 class TestUrlSchemeRestriction:

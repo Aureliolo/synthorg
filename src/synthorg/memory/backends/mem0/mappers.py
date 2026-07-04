@@ -21,6 +21,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -51,6 +52,39 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, object]:
     if request.expires_at is not None:
         meta[f"{_PREFIX}expires_at"] = request.expires_at.isoformat()
     return meta
+
+
+def build_update_metadata(request: MemoryUpdateRequest) -> dict[str, object] | None:
+    """Build the metadata dict to merge for an ``update()`` call.
+
+    When ``request.metadata`` is set it is a wholesale replacement of the
+    entry's ``MemoryMetadata``, matching ``InMemoryBackend.update()``
+    (which assigns ``request.metadata`` outright). So all three prefixed
+    fields (``confidence``, ``source``, ``tags``) are written
+    unconditionally: a ``None`` source or empty tag tuple clears the
+    prior value rather than surviving it, otherwise the same
+    ``MemoryUpdateRequest`` would yield divergent results across
+    backends. Only these three keys are touched; ``category`` /
+    ``namespace`` (which ``MemoryMetadata`` does not carry) are left
+    untouched, as on the in-memory backend.
+
+    Args:
+        request: Update request with the fields to change.
+
+    Returns:
+        Dict of prefixed metadata fields to merge, or ``None`` if the
+        request touches neither ``metadata`` nor the expiration.
+    """
+    meta: dict[str, object] = {}
+    if request.metadata is not None:
+        meta[f"{_PREFIX}confidence"] = request.metadata.confidence
+        meta[f"{_PREFIX}source"] = request.metadata.source
+        meta[f"{_PREFIX}tags"] = list(request.metadata.tags)
+    if request.expires_at is not None:
+        meta[f"{_PREFIX}expires_at"] = request.expires_at.isoformat()
+    elif request.clear_expiration:
+        meta[f"{_PREFIX}expires_at"] = None
+    return meta or None
 
 
 def parse_mem0_datetime(raw: object) -> datetime | None:

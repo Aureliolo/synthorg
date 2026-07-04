@@ -16,6 +16,7 @@ from synthorg.memory.errors import (
 from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 
 
@@ -122,6 +123,7 @@ class TestProtocol:
             "retrieve",
             "get",
             "delete",
+            "update",
             "count",
         ):
             assert hasattr(composite, attr)
@@ -285,6 +287,51 @@ class TestPrefixedIds:
             match="missing backend prefix",
         ):
             await connected.get("a", "nocolon")
+
+
+# -- Update -----------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestUpdate:
+    async def test_update_by_prefixed_id(
+        self,
+        connected: CompositeBackend,
+    ) -> None:
+        mid = await connected.store(
+            "a",
+            _req(namespace="memories", content="hello"),
+        )
+        entry = await connected.update(
+            "a",
+            mid,
+            MemoryUpdateRequest(content="updated"),
+        )
+        assert entry is not None
+        assert entry.content == "updated"
+        assert entry.id == mid
+
+    async def test_update_missing_returns_none(
+        self,
+        connected: CompositeBackend,
+    ) -> None:
+        entry = await connected.update(
+            "a",
+            "session:nonexistent",
+            MemoryUpdateRequest(content="x"),
+        )
+        assert entry is None
+
+    async def test_update_unknown_prefix_raises(
+        self,
+        connected: CompositeBackend,
+    ) -> None:
+        with pytest.raises(MemoryRetrievalError, match="Unknown backend"):
+            await connected.update(
+                "a",
+                "badprefix:123",
+                MemoryUpdateRequest(content="x"),
+            )
 
 
 # -- Retrieve fan-out -------------------------------------------------

@@ -12,6 +12,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from tests._shared import FakeClock
 
@@ -84,6 +85,7 @@ class TestProtocol:
             "retrieve",
             "get",
             "delete",
+            "update",
             "count",
         ):
             assert hasattr(backend, attr)
@@ -295,6 +297,126 @@ class TestDelete:
         connected: InMemoryBackend,
     ) -> None:
         assert await connected.delete("agent-a", "nope") is False
+
+
+# -- Update -------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestUpdate:
+    async def test_update_content(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        mid = await connected.store("agent-a", _req(content="old"))
+        entry = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(content="new"),
+        )
+        assert entry is not None
+        assert entry.content == "new"
+        refetched = await connected.get("agent-a", mid)
+        assert refetched is not None
+        assert refetched.content == "new"
+
+    async def test_update_metadata(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        mid = await connected.store("agent-a", _req())
+        new_metadata = MemoryMetadata(confidence=0.3, tags=("urgent",))
+        entry = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(metadata=new_metadata),
+        )
+        assert entry is not None
+        assert entry.metadata.confidence == 0.3
+        assert entry.metadata.tags == ("urgent",)
+
+    async def test_update_sets_expires_at(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        mid = await connected.store("agent-a", _req())
+        new_expiry = datetime.now(UTC) + timedelta(days=1)
+        entry = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(expires_at=new_expiry),
+        )
+        assert entry is not None
+        assert entry.expires_at == new_expiry
+
+    async def test_update_clears_expires_at(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        mid = await connected.store(
+            "agent-a",
+            _req(),
+        )
+        await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(expires_at=datetime.now(UTC) + timedelta(days=1)),
+        )
+        entry = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(clear_expiration=True),
+        )
+        assert entry is not None
+        assert entry.expires_at is None
+
+    async def test_update_sets_updated_at(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        mid = await connected.store("agent-a", _req())
+        entry = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(content="new"),
+        )
+        assert entry is not None
+        assert entry.updated_at is not None
+
+    async def test_update_missing_returns_none(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        entry = await connected.update(
+            "agent-a",
+            "nope",
+            MemoryUpdateRequest(content="new"),
+        )
+        assert entry is None
+
+    async def test_update_expired_returns_none(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        past = datetime.now(tz=UTC) - timedelta(hours=1)
+        mid = await connected.store("agent-a", _req())
+        store = connected._store["agent-a"]
+        entry = store[mid]
+        store[mid] = entry.model_copy(update={"expires_at": past})
+
+        result = await connected.update(
+            "agent-a",
+            mid,
+            MemoryUpdateRequest(content="new"),
+        )
+        assert result is None
+
+    async def test_update_raises_when_not_connected(
+        self,
+        backend: InMemoryBackend,
+    ) -> None:
+        with pytest.raises(MemoryConnectionError):
+            await backend.update("agent-a", "mem-1", MemoryUpdateRequest(content="x"))
 
 
 # -- Retrieve ---------------------------------------------------------

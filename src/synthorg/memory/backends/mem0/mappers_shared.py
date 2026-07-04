@@ -7,12 +7,14 @@ ownership checks live alongside the constants they depend on.
 """
 
 from collections.abc import Mapping
+from typing import NamedTuple
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import MemoryStoreError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_ENTRY_DELETE_FAILED,
+    MEMORY_ENTRY_UPDATE_FAILED,
     MEMORY_MODEL_INVALID,
 )
 
@@ -69,12 +71,41 @@ def extract_publisher(raw: Mapping[str, object]) -> NotBlankStr | None:
     return NotBlankStr(coerced) if coerced else None
 
 
-def check_delete_ownership(
+class _OwnershipMessages(NamedTuple):
+    """Phrasing for one ownership-check caller (delete vs. update)."""
+
+    action_noun: str
+    action_verb: str
+    shared_namespace_hint: str
+    fail_event: str
+
+
+_DELETE_MESSAGES = _OwnershipMessages(
+    action_noun="deletion",
+    action_verb="delete",
+    shared_namespace_hint="use retract() to remove shared entries",
+    fail_event=MEMORY_ENTRY_DELETE_FAILED,
+)
+_UPDATE_MESSAGES = _OwnershipMessages(
+    action_noun="update",
+    action_verb="update",
+    shared_namespace_hint="shared entries cannot be updated directly",
+    fail_event=MEMORY_ENTRY_UPDATE_FAILED,
+)
+
+
+def _check_ownership(
     existing: Mapping[str, object],
     agent_id: NotBlankStr,
     memory_id: NotBlankStr,
+    messages: _OwnershipMessages,
 ) -> None:
     """Verify the caller owns this private memory entry.
+
+    Shared by ``check_delete_ownership`` and ``check_update_ownership``
+    since mem0's ``update()``/``delete()``/``get()`` take no
+    ``user_id`` filter -- both mutations must fetch the entry first
+    and verify ownership the same way.
 
     Raises:
         MemoryStoreError: If ownership cannot be verified
@@ -85,10 +116,10 @@ def check_delete_ownership(
     if owner is None:
         msg = (
             f"Memory {memory_id} has no user_id -- ownership "
-            f"unverifiable, refusing deletion"
+            f"unverifiable, refusing {messages.action_noun}"
         )
         logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
+            messages.fail_event,
             agent_id=agent_id,
             memory_id=memory_id,
             reason="unverifiable_ownership",
@@ -97,22 +128,51 @@ def check_delete_ownership(
     if str(owner) == SHARED_NAMESPACE:
         msg = (
             f"Memory {memory_id} belongs to the shared namespace -- "
-            f"use retract() to remove shared entries"
+            f"{messages.shared_namespace_hint}"
         )
         logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
+            messages.fail_event,
             agent_id=agent_id,
             memory_id=memory_id,
             reason="shared namespace entry",
         )
         raise MemoryStoreError(msg)
     if str(owner) != str(agent_id):
-        msg = f"Agent {agent_id} cannot delete memory {memory_id} owned by {owner}"
+        msg = (
+            f"Agent {agent_id} cannot {messages.action_verb} memory "
+            f"{memory_id} owned by {owner}"
+        )
         logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
+            messages.fail_event,
             agent_id=agent_id,
             memory_id=memory_id,
             reason="ownership mismatch",
             actual_owner=str(owner),
         )
         raise MemoryStoreError(msg)
+
+
+def check_delete_ownership(
+    existing: Mapping[str, object],
+    agent_id: NotBlankStr,
+    memory_id: NotBlankStr,
+) -> None:
+    """Verify the caller owns this private memory entry before deletion.
+
+    Raises:
+        MemoryStoreError: If ownership cannot be verified.
+    """
+    _check_ownership(existing, agent_id, memory_id, _DELETE_MESSAGES)
+
+
+def check_update_ownership(
+    existing: Mapping[str, object],
+    agent_id: NotBlankStr,
+    memory_id: NotBlankStr,
+) -> None:
+    """Verify the caller owns this private memory entry before update.
+
+    Raises:
+        MemoryStoreError: If ownership cannot be verified.
+    """
+    _check_ownership(existing, agent_id, memory_id, _UPDATE_MESSAGES)

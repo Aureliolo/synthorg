@@ -543,6 +543,7 @@ jsdom
 kanban
 keyframes
 keyless
+keystore
 knowledge_heavy
 kwarg
 kwargs

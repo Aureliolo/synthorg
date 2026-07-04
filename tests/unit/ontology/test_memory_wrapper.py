@@ -11,6 +11,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.ontology.config import OntologyMemoryConfig
 from synthorg.ontology.memory_wrapper import OntologyAwareMemoryBackend
@@ -44,6 +45,7 @@ def _make_inner() -> AsyncMock:
     inner.retrieve = AsyncMock(return_value=())
     inner.get = AsyncMock(return_value=None)
     inner.delete = AsyncMock(return_value=True)
+    inner.update = AsyncMock(return_value=None)
     inner.count = AsyncMock(return_value=0)
     inner.connect = AsyncMock()
     inner.disconnect = AsyncMock()
@@ -308,6 +310,17 @@ class TestOntologyAwarePassthrough:
         )
         result = await wrapper.delete("agent-1", "mem-1")
         assert result is True
+
+    async def test_update_delegates(self) -> None:
+        inner = _make_inner()
+        wrapper = OntologyAwareMemoryBackend(
+            inner,
+            _make_ontology(),
+            OntologyMemoryConfig(),
+        )
+        request = MemoryUpdateRequest(content="revised")
+        await wrapper.update("agent-1", "mem-1", request)
+        inner.update.assert_awaited_once_with("agent-1", "mem-1", request)
 
     async def test_count_delegates(self) -> None:
         inner = _make_inner()

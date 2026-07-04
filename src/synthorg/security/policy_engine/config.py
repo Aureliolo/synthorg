@@ -75,7 +75,8 @@ def build_policy_engine(
 
     Raises:
         ValueError: When engine is ``"cedar"`` but no policy files
-            are provided.
+            are provided, a policy file cannot be read, or the
+            concatenated policy text fails to parse.
     """
     if config.engine == "none":
         return None

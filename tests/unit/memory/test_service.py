@@ -23,6 +23,7 @@ from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -642,6 +643,14 @@ class _FakeMemoryBackend:
     async def delete(self, agent_id: str, memory_id: str) -> bool:
         self.delete_calls.append((str(agent_id), str(memory_id)))
         return self._present.pop((str(agent_id), str(memory_id)), False)
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        return None
 
     async def count(
         self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None

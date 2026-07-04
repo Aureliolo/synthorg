@@ -98,6 +98,79 @@ class MemoryStoreRequest(BaseModel):
     )
 
 
+class MemoryUpdateRequest(BaseModel):
+    """Input to ``MemoryBackend.update()``.
+
+    At least one of ``content``, ``metadata``, ``expires_at``, or
+    ``clear_expiration`` must be set; a request touching nothing is
+    rejected as a no-op.  ``expires_at`` and ``clear_expiration`` are
+    mutually exclusive: set ``expires_at`` to change the expiration,
+    ``clear_expiration=True`` to remove it, or leave both at their
+    defaults to leave the existing expiration untouched.
+
+    Attributes:
+        content: New memory content, or ``None`` to leave unchanged.
+        metadata: New metadata, or ``None`` to leave unchanged.
+        expires_at: New expiration timestamp, or ``None`` to leave
+            the current expiration untouched.
+        clear_expiration: If ``True``, remove any existing expiration.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    content: NotBlankStr | None = Field(
+        default=None,
+        description="New memory content text",
+    )
+    metadata: MemoryMetadata | None = Field(
+        default=None,
+        description="New metadata",
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description="New expiration timestamp",
+    )
+    clear_expiration: bool = Field(
+        default=False,
+        description="Remove any existing expiration",
+    )
+
+    @model_validator(mode="after")
+    def _validate_update_request(self) -> Self:
+        """Ensure the request is neither contradictory nor a no-op.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        if self.expires_at is not None and self.clear_expiration:
+            msg = "expires_at and clear_expiration are mutually exclusive"
+            logger.warning(
+                MEMORY_MODEL_INVALID,
+                model="MemoryUpdateRequest",
+                field="expires_at",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if (
+            self.content is None
+            and self.metadata is None
+            and self.expires_at is None
+            and not self.clear_expiration
+        ):
+            msg = "MemoryUpdateRequest requires at least one field to update"
+            logger.warning(
+                MEMORY_MODEL_INVALID,
+                model="MemoryUpdateRequest",
+                field="(all)",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+
 class MemoryEntry(BaseModel):
     """A memory entry returned from the backend.
 

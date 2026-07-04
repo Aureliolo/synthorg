@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import cedarpy
 import pytest
 
 from synthorg.security.policy_engine.cedar_engine import CedarPolicyEngine
@@ -54,6 +55,24 @@ class TestCedarPolicyEngine:
         decision = await engine.evaluate(_make_request())
         assert isinstance(decision.latency_ms, float)
         assert decision.latency_ms >= 0
+
+    async def test_policy_set_pre_parsed(self) -> None:
+        """The policy text is parsed once at construction, not per call.
+
+        Guards against a regression back to passing a raw policy
+        string to ``cedarpy.is_authorized`` on every ``evaluate()``.
+        """
+        engine = CedarPolicyEngine(
+            policy_texts=("permit(principal, action, resource);",),
+        )
+        cedar_request = {
+            "principal": 'Principal::"agent-001"',
+            "action": 'Action::"tool_invoke"',
+            "resource": 'Resource::"read_file"',
+            "context": {},
+        }
+        result = cedarpy.is_authorized(cedar_request, engine._policy_set, [])
+        assert result.metrics["policies_pre_parsed"] == 1
 
     async def test_fail_open_on_error(self) -> None:
         """When fail_closed=False, errors return allow."""

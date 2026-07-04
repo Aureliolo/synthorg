@@ -14,6 +14,7 @@ shipped defaults (300 / 3 / 30) would make these hang.
 """
 
 import asyncio
+import contextlib
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Final
@@ -57,6 +58,25 @@ inside the 25s per-test cap and trips it under CI image-pull contention."""
 
 _READINESS_POLL_SECONDS: Final[float] = 0.25
 
+_READINESS_ATTEMPT_TIMEOUT_SECONDS: Final[float] = 5.0
+"""Per-attempt cap on one connect + ``account_info`` probe. ``nats.connect``
+takes its own ``connect_timeout``, but ``account_info()`` does not: a JetStream
+server that accepts the TCP port before its subsystem is ready can leave that
+call awaiting a reply that never arrives. Unbounded, one such attempt hangs
+forever, so the ``_READINESS_TIMEOUT_SECONDS`` loop deadline is never
+re-checked and the wait runs to the module timeout's ``SIGABRT`` (taking the
+whole xdist worker down). Capping each attempt keeps the retry loop live so the
+60s budget actually bounds the wait and a wedged server degrades to a clean
+``pytest.skip`` instead of a suite-killing abort."""
+
+_CLOSE_TIMEOUT_SECONDS: Final[float] = 2.0
+"""Cap on closing a probe connection so a stuck drain cannot itself hang the
+readiness loop it is meant to clean up after."""
+
+_CONNECT_TIMEOUT_SECONDS: Final[float] = 2.0
+"""``nats.connect`` handshake budget for one readiness attempt; named
+alongside the other probe timeouts so all are tuned in one place."""
+
 
 async def _await_jetstream_ready(url: str) -> None:
     """Poll-connect until the JetStream subsystem answers, or time out.
@@ -75,16 +95,25 @@ async def _await_jetstream_ready(url: str) -> None:
     deadline = loop.time() + _READINESS_TIMEOUT_SECONDS
     last_error: str = "no connection attempt completed"
     while loop.time() < deadline:
+        connection = None
         try:
-            connection = await nats.connect(url, connect_timeout=2)
-            try:
+            async with asyncio.timeout(_READINESS_ATTEMPT_TIMEOUT_SECONDS):
+                connection = await nats.connect(
+                    url, connect_timeout=_CONNECT_TIMEOUT_SECONDS
+                )
                 await connection.jetstream().account_info()
-                return
-            finally:
-                await connection.close()
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             await asyncio.sleep(_READINESS_POLL_SECONDS)
+        else:
+            return
+        finally:
+            # Close outside the attempt's timeout scope (which has already
+            # exited by here) with its own cap, so a stuck drain cannot hang
+            # the readiness loop it is meant to clean up after.
+            if connection is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(connection.close(), _CLOSE_TIMEOUT_SECONDS)
     msg = (
         f"NATS JetStream not ready within {_READINESS_TIMEOUT_SECONDS}s "
         f"(last error: {last_error})"

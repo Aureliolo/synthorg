@@ -10,6 +10,9 @@ from synthorg.tools.browser._models import (
     ScreenshotDiffResult,
     ScreenshotMetadata,
     SpecResult,
+    StorageItemsResult,
+    WebAuthnCredential,
+    WebAuthnResult,
 )
 
 pytestmark = pytest.mark.unit
@@ -192,3 +195,65 @@ class TestModelInvariants:
         a11y = _a11y()
         with pytest.raises(ValidationError):
             a11y.violations = (_violation(),)
+
+
+class TestStorageAndWebAuthnModels:
+    def test_storage_items_round_trip(self) -> None:
+        original = StorageItemsResult(
+            storage_type="local",
+            items={"token": "abc"},
+        )
+        roundtrip = StorageItemsResult.model_validate(original.model_dump())
+        assert roundtrip == original
+
+    def test_storage_type_is_literal(self) -> None:
+        with pytest.raises(ValidationError):
+            StorageItemsResult.model_validate(
+                {"storage_type": "cookies", "items": {}},
+            )
+
+    def test_storage_items_extra_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            StorageItemsResult.model_validate(
+                {"storage_type": "local", "items": {}, "stray": 1},
+            )
+
+    def test_webauthn_credential_round_trip(self) -> None:
+        original = WebAuthnCredential(
+            id="cred-1",
+            rp_id="example.test",
+            user_handle="user-1",
+            public_key="pub",
+        )
+        roundtrip = WebAuthnCredential.model_validate(original.model_dump())
+        assert roundtrip == original
+
+    def test_webauthn_credential_rejects_private_key(self) -> None:
+        """The private key must never appear on the model-facing surface."""
+        dumped = WebAuthnCredential(
+            id="cred-1",
+            rp_id="example.test",
+            user_handle="user-1",
+            public_key="pub",
+        ).model_dump()
+        assert "private_key" not in dumped
+        with pytest.raises(ValidationError):
+            WebAuthnCredential.model_validate({**dumped, "private_key": "priv"})
+
+    def test_webauthn_result_empty_credentials(self) -> None:
+        result = WebAuthnResult(credentials=())
+        assert result.credentials == ()
+
+    def test_webauthn_result_credentials_frozen(self) -> None:
+        result = WebAuthnResult(
+            credentials=(
+                WebAuthnCredential(
+                    id="cred-1",
+                    rp_id="example.test",
+                    user_handle="user-1",
+                    public_key="pub",
+                ),
+            ),
+        )
+        with pytest.raises(ValidationError):
+            result.credentials = ()

@@ -7,6 +7,7 @@ is also placed into ``content`` so the LLM-facing surface remains
 plain text.
 """
 
+from collections.abc import Mapping
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -277,3 +278,57 @@ class SpecResult(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+class StorageItemsResult(BaseModel):
+    """Items read from or written to a page's WebStorage."""
+
+    model_config = _RESPONSE_CONFIG
+
+    storage_type: Literal["local", "session"] = Field(
+        description="Which storage was accessed.",
+    )
+    items: Mapping[str, str] = Field(
+        description=(
+            "Key/value pairs read or written. Empty for storage_remove "
+            "and storage_clear."
+        ),
+    )
+
+
+class WebAuthnCredential(BaseModel):
+    """A virtual WebAuthn credential, minus its private key.
+
+    The private key never reaches this model-facing surface: it is a
+    secret and stays in the tool's host-side credential keystore, keyed
+    by ``id``, so the sandbox can re-seed the authenticator on a later
+    call without the key ever entering the LLM context or persisted
+    conversation history.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    id: NotBlankStr = Field(description="Base64url-encoded credential id.")
+    rp_id: NotBlankStr = Field(
+        description="Relying-party id the credential is scoped to.",
+    )
+    user_handle: str = Field(description="Base64url-encoded user handle.")
+    public_key: str = Field(
+        description="Base64url-encoded SPKI (DER) public key.",
+    )
+
+
+class WebAuthnResult(BaseModel):
+    """Outcome of a WebAuthn virtual-authenticator operation.
+
+    ``credentials`` is empty for webauthn_install and
+    webauthn_delete_credential, and holds one entry for
+    webauthn_create_credential, or the full matching set for
+    webauthn_list_credentials.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    credentials: tuple[WebAuthnCredential, ...] = Field(
+        description="Credentials produced or returned by this operation.",
+    )

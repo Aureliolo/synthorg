@@ -12,7 +12,12 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.text_similarity import tokenize_words, word_overlap
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.models import (
+    MemoryEntry,
+    MemoryQuery,
+    MemoryStoreRequest,
+    MemoryUpdateRequest,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
@@ -257,6 +262,20 @@ class OntologyAwareMemoryBackend:
             ``True`` when an entry was deleted, ``False`` otherwise.
         """
         return await self._inner.delete(agent_id, memory_id)
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        """Update a memory entry via the inner backend.
+
+        Returns:
+            The updated ``MemoryEntry``, or ``None`` when the entry is
+            absent or expired.
+        """
+        return await self._inner.update(agent_id, memory_id, request)
 
     async def count(
         self,

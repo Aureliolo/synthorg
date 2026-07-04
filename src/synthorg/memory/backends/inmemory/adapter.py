@@ -9,12 +9,12 @@ backend.
 
 import asyncio
 import uuid
-from datetime import datetime
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.inmemory.query import is_expired, matches, prune_expired
 from synthorg.memory.errors import (
     MemoryConnectionError,
     MemoryStoreError,
@@ -23,6 +23,7 @@ from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -38,6 +39,7 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
+    MEMORY_ENTRY_UPDATED,
 )
 
 logger = get_logger(__name__)
@@ -70,9 +72,9 @@ class InMemoryBackend:
         self._connected = False
         self._connect_lock = asyncio.Lock()
         # Hot-path lock guarding _store reads AND writes.  Every method
-        # that touches _store (store / retrieve / get / delete / count)
-        # acquires this lock so concurrent traffic cannot observe a
-        # half-applied mutation or race a delete against a concurrent
+        # that touches _store (store / retrieve / get / delete / count /
+        # update) acquires this lock so concurrent traffic cannot observe
+        # a half-applied mutation or race a delete against a concurrent
         # store / retrieve. Separate from _connect_lock so connect /
         # disconnect do not serialise hot-path traffic.
         self._store_lock = asyncio.Lock()
@@ -198,7 +200,7 @@ class InMemoryBackend:
             now = self._clock.now()
             agent_store = self._store.setdefault(str(agent_id), {})
             # Prune expired entries before checking quota.
-            _prune_expired(agent_store, now)
+            prune_expired(agent_store, now)
             if len(agent_store) >= self._max_memories_per_agent:
                 msg = (
                     f"Agent {agent_id} has reached the memory limit "
@@ -256,9 +258,9 @@ class InMemoryBackend:
         now = self._clock.now()
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
-            matches = [e for e in agent_store.values() if _matches(e, query, now)]
-            matches.sort(key=lambda e: e.created_at, reverse=True)
-            result = tuple(matches[: query.limit])
+            hits = [e for e in agent_store.values() if matches(e, query, now)]
+            hits.sort(key=lambda e: e.created_at, reverse=True)
+            result = tuple(hits[: query.limit])
         logger.debug(
             MEMORY_ENTRY_RETRIEVED,
             backend="inmemory",
@@ -290,7 +292,7 @@ class InMemoryBackend:
                 str(memory_id),
             )
         if entry is not None:
-            if _is_expired(entry, self._clock.now()):
+            if is_expired(entry, self._clock.now()):
                 return None
             logger.debug(
                 MEMORY_ENTRY_FETCHED,
@@ -331,6 +333,54 @@ class InMemoryBackend:
             return True
         return False
 
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        """Update a memory entry's content, metadata, or expiration.
+
+        Args:
+            agent_id: Owning agent identifier.
+            memory_id: Memory identifier.
+            request: Fields to update; unset fields are left unchanged.
+
+        Returns:
+            The updated entry, or ``None`` if not found or expired.
+
+        Raises:
+            MemoryConnectionError: If not connected.
+        """
+        self._require_connected()
+        async with self._store_lock:
+            # Sample the clock under the lock so a stale instant captured
+            # while waiting on contention cannot revive an entry that
+            # expired during the wait (mirrors store() and mem0 update()).
+            now = self._clock.now()
+            agent_store = self._store.get(str(agent_id), {})
+            entry = agent_store.get(str(memory_id))
+            if entry is None or is_expired(entry, now):
+                return None
+            updates: dict[str, object] = {"updated_at": now}
+            if request.content is not None:
+                updates["content"] = request.content
+            if request.metadata is not None:
+                updates["metadata"] = request.metadata
+            if request.expires_at is not None:
+                updates["expires_at"] = request.expires_at
+            elif request.clear_expiration:
+                updates["expires_at"] = None
+            updated = entry.model_copy(update=updates)
+            agent_store[str(memory_id)] = updated
+        logger.debug(
+            MEMORY_ENTRY_UPDATED,
+            backend="inmemory",
+            agent_id=agent_id,
+            memory_id=memory_id,
+        )
+        return updated
+
     async def count(
         self,
         agent_id: NotBlankStr,
@@ -354,12 +404,12 @@ class InMemoryBackend:
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
             if category is None:
-                total = sum(1 for e in agent_store.values() if not _is_expired(e, now))
+                total = sum(1 for e in agent_store.values() if not is_expired(e, now))
             else:
                 total = sum(
                     1
                     for e in agent_store.values()
-                    if e.category == category and not _is_expired(e, now)
+                    if e.category == category and not is_expired(e, now)
                 )
         logger.debug(
             MEMORY_ENTRY_COUNTED,
@@ -389,56 +439,3 @@ class InMemoryBackend:
         async with self._store_lock:
             agent_store = self._store.pop(str(agent_id), {})
             return len(agent_store)
-
-
-# -- Filter helpers (module-private) ----------------------------------
-
-
-def _prune_expired(store: dict[str, MemoryEntry], now: datetime) -> None:
-    """Remove expired entries from an agent store in-place (clock injected)."""
-    expired = [mid for mid, entry in store.items() if _is_expired(entry, now)]
-    for mid in expired:
-        del store[mid]
-
-
-def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
-    """Return True if *entry* has expired.
-
-    Returns:
-        ``True`` when the predicate holds, ``False`` otherwise.
-    """
-    return entry.expires_at is not None and entry.expires_at <= now
-
-
-def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
-    """Check namespace, category, tag, and text filters.
-
-    Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
-    """
-    if query.namespaces and entry.namespace not in query.namespaces:
-        return False
-    if query.categories and entry.category not in query.categories:
-        return False
-    if query.tags and not all(tag in entry.metadata.tags for tag in query.tags):
-        return False
-    return not (query.text and query.text.lower() not in entry.content.lower())
-
-
-def _matches(
-    entry: MemoryEntry,
-    query: MemoryQuery,
-    now: datetime,
-) -> bool:
-    """Return True if *entry* passes all query filters.
-
-    Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
-    """
-    if _is_expired(entry, now):
-        return False
-    if not _matches_metadata(entry, query):
-        return False
-    if query.since is not None and entry.created_at < query.since:
-        return False
-    return not (query.until is not None and entry.created_at >= query.until)

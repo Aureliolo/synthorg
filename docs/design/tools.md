@@ -22,7 +22,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
-| **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec. The `url` field is restricted to `http`/`https` and rejects link-local / cloud-metadata hosts (169.254.169.254, `metadata.google.internal`); local files use the workspace-scoped `path` field. Loopback and private addresses stay allowed so the in-sandbox app-under-test is reachable | QA, frontend devs, agents validating web deliverables |
+| **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec, direct WebStorage read/write (`storage_get`/`storage_set`/`storage_remove`/`storage_clear`), and WebAuthn passkey handling via a virtual authenticator (`webauthn_install`/`webauthn_create_credential`/`webauthn_list_credentials`/`webauthn_delete_credential`). The `url` field is restricted to `http`/`https` and rejects link-local / cloud-metadata hosts (169.254.169.254, `metadata.google.internal`); local files use the workspace-scoped `path` field. Loopback and private addresses stay allowed so the in-sandbox app-under-test is reachable. Session state (cookies, localStorage, passkeys) persists across calls (see [Browser Session State](#browser-session-state-webstorage--webauthn)) | QA, frontend devs, agents validating web deliverables |
 | **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host (SSRF policy + DNS pinning), per-connection rate limiting, sensitive/write calls gated to approval | Agents consuming third-party APIs while building deliverables |
 | **Desktop** | Virtual desktop (Xvfb + xdotool + scrot in a container): launch a GUI app, click/type/press-keys/scroll, capture screenshots | QA, frontend devs, agents validating GUI deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
@@ -218,6 +218,48 @@ they are durable provenance on disk (never in the database).
 
 The screenshots feed the **vision verifier** quality gate (the UI cousin of the
 red-team gate); see [Verification & Quality](verification-quality.md).
+
+## Browser Session State: WebStorage & WebAuthn
+
+The browser tool exposes two capability families that carry state between
+separate tool calls: direct WebStorage access and WebAuthn passkey handling.
+Because each call launches a fresh Chromium in the sandbox, that state is
+persisted in the mounted workspace under a **per-owner** directory
+(`<workspace>/.synthorg/browser/state/<owner>/`) so one agent's session state
+is never visible to a different agent. Two files live there:
+
+- **`storage_state.json`**: a Playwright storage-state snapshot (cookies plus
+  per-origin localStorage). Loaded into the context on every call and re-saved
+  after any navigation, so a `storage_set` followed by a later `storage_get`
+  against the same origin observes the write, and an authenticated cookie jar
+  survives across calls. `sessionStorage` is deliberately per-call: it is
+  session-scoped by definition, and a fresh browser launch is a fresh session.
+- **`webauthn_credentials.json`**: the virtual-authenticator credential
+  keystore.
+
+**WebStorage.** Reads name an explicit key; there is no whole-store dump, so a
+page's tokens or embedded secrets are never returned wholesale into the
+model-facing result. Written values are size-capped. Storage operations
+navigate to the target origin first (WebStorage is per-origin).
+
+**WebAuthn.** The tool drives a Playwright virtual authenticator: no real
+hardware key is involved. `webauthn_create_credential` generates a discoverable
+passkey; the credential is re-seeded into the authenticator at the start of
+every subsequent call, so `webauthn_list_credentials` and
+`webauthn_delete_credential` act on the persisted set, and a
+`navigator.credentials.get()` ceremony triggered by a page during a later
+navigation is answered automatically. Passkeys a page registers itself during
+browsing are synced back into the keystore.
+
+**Secret-handling posture (SEC-1).** A virtual credential's **private key**
+never reaches the model-facing surface: it is stripped from every tool result
+and lives only in the workspace keystore file, keyed by credential id, at the
+same trust level as screenshots and baselines (on disk in the workspace, never
+in the database, never in LLM context or persisted conversation history). The
+sandbox re-seeds the authenticator from that host-side keystore by reference,
+so the key material round-trips host-side only. Per-owner isolation of the
+state directory is the boundary that keeps one agent's cookies and passkeys out
+of reach of any other agent.
 
 ## Git Clone SSRF Prevention
 

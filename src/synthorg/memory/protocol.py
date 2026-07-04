@@ -13,6 +13,7 @@ from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 
 
@@ -157,6 +158,31 @@ class MemoryBackend(Protocol):
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the delete operation fails.
+        """
+        ...
+
+    async def update(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        request: MemoryUpdateRequest,
+    ) -> MemoryEntry | None:
+        """Update a memory entry's content, metadata, or expiration.
+
+        Unset fields on ``request`` are left unchanged.
+
+        Args:
+            agent_id: Owning agent identifier.
+            memory_id: Memory identifier.
+            request: Fields to update.
+
+        Returns:
+            The updated memory entry, or ``None`` if not found.
+
+        Raises:
+            MemoryConnectionError: If the backend is not connected.
+            MemoryStoreError: If the update operation fails or
+                ownership verification fails.
         """
         ...
 
