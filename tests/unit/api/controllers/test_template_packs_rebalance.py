@@ -3,6 +3,7 @@
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import override
 from unittest.mock import patch
 
 import httpx
@@ -238,6 +239,7 @@ class _ConcurrentAgentInjector(FakeSettingsService):
         self._injected_agents = injected_agents
         self.fired = False
 
+    @override
     async def set_many(
         self,
         items: Sequence[tuple[str, str, str]],

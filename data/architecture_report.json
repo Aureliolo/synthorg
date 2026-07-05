@@ -122,8 +122,8 @@
     },
     "src/synthorg/api/controllers/meta.py": {
       "cap": 500,
-      "loc": 502,
-      "ratio": 1.004,
+      "loc": 474,
+      "ratio": 0.948,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -1576,7 +1576,7 @@
     "synthorg.core.role": 21,
     "synthorg.core.task": 103,
     "synthorg.core.task_enums": 90,
-    "synthorg.core.types": 1211,
+    "synthorg.core.types": 1212,
     "synthorg.engine.context": 41,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 86,
