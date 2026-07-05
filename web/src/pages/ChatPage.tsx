@@ -40,6 +40,8 @@ interface ModeDefinition {
   readonly label: string
   readonly icon: LucideIcon
   readonly title: string
+  /** One-line answer to "who am I talking to and what happens". */
+  readonly explainer: string
   readonly component: () => React.ReactNode
   /**
    * Config flag gating this mode, or ``null`` for always-available
@@ -78,6 +80,8 @@ const MODES: readonly ModeDefinition[] = [
     label: 'Chief of Staff',
     icon: MessageCircle,
     title: 'Chief of Staff',
+    explainer:
+      'Ask the Chief of Staff about anything in the organisation: signals, spend, proposals, agent performance. Read-only: nothing is changed.',
     component: () => <ChiefOfStaffChat />,
     flag: 'chat_enabled',
     settingKey: 'chief_of_staff.explain_chat_enabled',
@@ -89,6 +93,8 @@ const MODES: readonly ModeDefinition[] = [
     label: 'Request work',
     icon: ClipboardList,
     title: 'Request work',
+    explainer:
+      'Describe work in natural language. The Chief of Staff clarifies, then queues concrete work items for your approval before anything runs.',
     component: () => <RequestWorkChat />,
     flag: 'propose_enabled',
     settingKey: 'chief_of_staff.propose_enabled',
@@ -100,6 +106,8 @@ const MODES: readonly ModeDefinition[] = [
     label: 'Group chat',
     icon: Users,
     title: 'Group chat',
+    explainer:
+      'Talk with several agents in one conversation. Every participant sees the shared transcript and responds each round.',
     component: () => <GroupChat />,
     flag: 'group_chat_enabled',
     settingKey: 'chief_of_staff.group_chat_enabled',
@@ -111,6 +119,8 @@ const MODES: readonly ModeDefinition[] = [
     label: 'Direct action',
     icon: Zap,
     title: 'Direct action',
+    explainer:
+      'Instruct one agent to act with its own tools. Sensitive actions park in the approval queue instead of running immediately.',
     component: () => <DirectActionChat />,
     flag: 'direct_mcp_enabled',
     settingKey: 'chief_of_staff.direct_mcp_enabled',
@@ -122,6 +132,8 @@ const MODES: readonly ModeDefinition[] = [
     label: 'New project',
     icon: Rocket,
     title: 'New project',
+    explainer:
+      'Pitch an idea to the CEO. It interviews you, drafts a project charter beside the conversation, and the approved charter becomes a project.',
     component: () => <ProjectInterview />,
     flag: null,
     settingKey: null,

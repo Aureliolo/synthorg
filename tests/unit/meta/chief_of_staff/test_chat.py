@@ -8,6 +8,7 @@ import pytest
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
@@ -235,7 +236,7 @@ class TestAskStream:
         ]
         chat = ChiefOfStaffChat(
             provider=ScriptedProvider(stream_chunks=chunks),
-            config=ChiefOfStaffConfig(),
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
         )
         events = [
             event
@@ -256,7 +257,7 @@ class TestAskStream:
             provider=ScriptedProvider(
                 stream_chunks=[StreamChunk(event_type=StreamEventType.DONE)],
             ),
-            config=ChiefOfStaffConfig(),
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
         )
         events = [
             event async for event in chat.ask_stream(ChatQuery(question="hi"), _snap())
@@ -265,6 +266,19 @@ class TestAskStream:
         assert [e for e in events if isinstance(e, ChatAnswerDelta)] == []
         assert len(completes) == 1
         assert completes[0].answer == "Unable to generate explanation."
+
+    async def test_fail_closed_when_no_model_configured(self) -> None:
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(
+                stream_chunks=[StreamChunk(event_type=StreamEventType.DONE)],
+            ),
+            config=ChiefOfStaffConfig(),
+        )
+        with pytest.raises(ServiceUnavailableError):
+            _ = [
+                event
+                async for event in chat.ask_stream(ChatQuery(question="hi"), _snap())
+            ]
 
 
 class TestExplainAlert:
