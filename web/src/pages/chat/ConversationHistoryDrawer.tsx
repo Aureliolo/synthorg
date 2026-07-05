@@ -58,6 +58,9 @@ export function ConversationHistoryDrawer({
     const load = async () => {
       setLoading(true)
       setError(null)
+      // Clear a prior resume failure too, so its banner does not linger into
+      // a freshly reopened drawer where nothing has failed yet.
+      setResumeError(null)
       try {
         const items = await listConversations()
         if (!cancelled) setConversations(items)

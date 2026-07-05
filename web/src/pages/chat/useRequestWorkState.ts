@@ -40,10 +40,14 @@ export function useRequestWorkState(): RequestWorkState {
 
   const sendMessage = useCallback(
     async (message: string, idempotencyKey?: string) => {
-      // Read the live loading flag (not the render-time closure) so a rapid
-      // second submit in the same render window can't slip past a propose
-      // that is already in flight.
-      if (!message || useMetaStore.getState().proposeLoading || conversationClosed)
+      // Read the live loading + closed flags (not the render-time closures)
+      // so a rapid second submit in the same render window can't slip past a
+      // propose already in flight or a conversation the last response closed.
+      if (
+        !message ||
+        useMetaStore.getState().proposeLoading ||
+        useConversationsStore.getState().work.closed
+      )
         return
       // Mint the key once per logical turn; a manual retry reuses it so a
       // parked proposal that actually succeeded is deduped, not re-parked.
@@ -71,18 +75,22 @@ export function useRequestWorkState(): RequestWorkState {
         messages: [...s.messages, buildAssistantMessage(result)],
       }))
     },
-    [conversationClosed, propose, setWork],
+    [propose, setWork],
   )
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
     // Guard before clearing: Enter during an in-flight propose (or on a
     // closed conversation) must not wipe the composed text.
-    if (!message || useMetaStore.getState().proposeLoading || conversationClosed)
+    if (
+      !message ||
+      useMetaStore.getState().proposeLoading ||
+      useConversationsStore.getState().work.closed
+    )
       return
     setInput('')
     void sendMessage(message)
-  }, [input, conversationClosed, sendMessage])
+  }, [input, sendMessage])
 
   const retryBefore = useCallback(
     (beforeMsgId: number) => {
@@ -91,7 +99,9 @@ export function useRequestWorkState(): RequestWorkState {
         beforeMsgId,
         (m) => m.role === 'user',
       )
-      if (target) void sendMessage(target.content, target.idempotencyKey)
+      if (target && target.role === 'user') {
+        void sendMessage(target.content, target.idempotencyKey)
+      }
     },
     [messages, sendMessage],
   )

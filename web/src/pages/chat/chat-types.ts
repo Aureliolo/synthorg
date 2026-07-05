@@ -1,5 +1,7 @@
 import type { ExecutedToolCall } from '@/api/types'
 
+import type { ChatScopeValue } from './ChatScopePicker'
+
 /**
  * A user turn on a role-tagged surface. Carries the idempotency key minted
  * when it was sent (used by the buffered path; the unscoped streaming
@@ -10,6 +12,9 @@ interface UserTurn {
   role: 'user'
   content: string
   idempotencyKey?: string | undefined
+  /** Scope snapshot at send time, replayed on retry so a reused key never
+   *  pairs with a scope the operator changed after the turn failed. */
+  scope?: ChatScopeValue | null | undefined
 }
 
 /** An assistant reply in the Chief of Staff explain-only transcript. */
@@ -68,6 +73,9 @@ interface GroupHumanMessage {
   kind: 'human'
   content: string
   idempotencyKey?: string | undefined
+  /** Participant snapshot at send time, replayed on a first-round retry so a
+   *  reused key never pairs with a roster the operator changed afterwards. */
+  participants?: readonly string[] | undefined
 }
 
 /** An attributed agent contribution in the group transcript. */
@@ -119,6 +127,9 @@ interface ActHumanMessage {
   kind: 'human'
   content: string
   idempotencyKey?: string | undefined
+  /** Acting-agent snapshot at send time, replayed on retry so a reused key
+   *  never runs the original instruction against a different agent. */
+  agentId?: string | undefined
 }
 
 /** The agent's outcome (executed tools + message, or a parked approval). */

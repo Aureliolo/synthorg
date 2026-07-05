@@ -21,17 +21,18 @@ interface RetryableMessage {
  * when no human message is in scope. ``isHuman`` selects the human-turn
  * discriminator, which differs per surface (``kind === 'human'`` for
  * Act/Group, ``role === 'user'`` for Chat). The caller replays the message's
- * content and reuses its idempotency key.
+ * content, reuses its idempotency key, and reads any per-turn payload
+ * snapshot it stored (participants / agent / scope) so the retry replays the
+ * exact original request the key was minted for, not the live selection.
  */
 export function resolveScopedRetryTarget<M extends RetryableMessage>(
   messages: readonly M[],
   beforeMsgId: number | undefined,
   isHuman: (message: M) => boolean,
-): RetryableMessage | null {
-  // Returns the retryable projection, not the concrete union member: the
-  // caller only replays ``content`` and reuses ``idempotencyKey``, and the
-  // human-turn variant is the only one that carries a key, so widening to
-  // ``RetryableMessage`` keeps the key reachable without a re-narrow.
+): M | null {
+  // Returns the concrete member (not just the ``RetryableMessage`` projection)
+  // so the caller can re-narrow on the human-turn discriminant and read the
+  // payload snapshot it persisted alongside the idempotency key.
   const cutoff =
     beforeMsgId === undefined
       ? messages.length

@@ -93,7 +93,9 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
         beforeMsgId,
         (m) => m.role === 'user',
       )
-      if (target) void sendMessage(target.content, target.idempotencyKey)
+      if (target && target.role === 'user') {
+        void sendMessage(target.content, target.idempotencyKey, target.scope)
+      }
     },
     [messages, sendMessage],
   )

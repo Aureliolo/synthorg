@@ -48,12 +48,15 @@ function useDirectActionSend(deps: ActionSendDeps): {
   const { messages, input, setInput } = deps
 
   const sendInstruction = useCallback(
-    async (instruction: string, idempotencyKey?: string) => {
+    async (instruction: string, idempotencyKey?: string, agentIdOverride?: string) => {
+      // A retry replays the agent the turn was minted against (not the live
+      // selection), so the reused idempotency key still matches its original
+      // run instead of firing the old instruction at a newly-picked agent.
+      const agentId = agentIdOverride ?? selectedAgentId
       // Read the live loading flag (not the render-time closure) so a rapid
       // second submit in the same render window can't slip past an action
       // that is already in flight.
-      if (!instruction || useMetaStore.getState().actionLoading || !selectedAgentId)
-        return
+      if (!instruction || useMetaStore.getState().actionLoading || !agentId) return
       // Mint the key once per logical turn; a manual retry reuses it so an
       // action that actually ran server-side is deduped, not re-run.
       const key = idempotencyKey ?? crypto.randomUUID()
@@ -65,15 +68,16 @@ function useDirectActionSend(deps: ActionSendDeps): {
             kind: 'human',
             content: instruction,
             idempotencyKey: key,
+            agentId,
           },
         ],
       }))
       const conversationId =
         useConversationsStore.getState().action.conversationId
-      const result = await runAction(instruction, selectedAgentId, conversationId, key)
-      // The acting agent is the one the operator selected; resolve its role
+      const result = await runAction(instruction, agentId, conversationId, key)
+      // The acting agent is the one this turn was bound to; resolve its role
       // from the roster rather than mislabelling every action as "acting".
-      const actingRole = activeAgents.find((a) => a.id === selectedAgentId)?.role
+      const actingRole = activeAgents.find((a) => a.id === agentId)?.role
       setAction((s) => ({
         messages: [...s.messages, buildActMessage(result, actingRole)],
         ...(result && { conversationId: result.conversation_id ?? undefined }),
@@ -105,7 +109,9 @@ function useDirectActionSend(deps: ActionSendDeps): {
         beforeMsgId,
         (m) => m.kind === 'human',
       )
-      if (target) void sendInstruction(target.content, target.idempotencyKey)
+      if (target && target.kind === 'human') {
+        void sendInstruction(target.content, target.idempotencyKey, target.agentId)
+      }
     },
     [messages, sendInstruction],
   )

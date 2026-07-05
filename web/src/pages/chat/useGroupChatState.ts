@@ -68,9 +68,18 @@ function useGroupSend(deps: GroupSendDeps): {
   const { selectedIds, converse, setGroup, messages, input, setInput } = deps
 
   const sendMessage = useCallback(
-    async (message: string, idempotencyKey?: string) => {
+    async (
+      message: string,
+      idempotencyKey?: string,
+      participantsOverride?: readonly string[],
+    ) => {
       const conversationId = useConversationsStore.getState().group.conversationId
-      const canStart = conversationId !== undefined || selectedIds.length > 0
+      // A first-round retry replays the participant set the turn was minted
+      // against (not the live selection), so the reused idempotency key still
+      // matches its original round instead of opening the group with a roster
+      // the operator changed after the failure.
+      const participants = participantsOverride ?? selectedIds
+      const canStart = conversationId !== undefined || participants.length > 0
       // Read the live loading flag (not the render-time closure) so a rapid
       // second submit in the same render window can't slip past a turn that
       // is already in flight.
@@ -86,10 +95,11 @@ function useGroupSend(deps: GroupSendDeps): {
             kind: 'human',
             content: message,
             idempotencyKey: key,
+            participants,
           },
         ],
       }))
-      const result = await converse(message, selectedIds, conversationId, key)
+      const result = await converse(message, participants, conversationId, key)
       setGroup((s) => ({ messages: [...s.messages, ...buildRoundMessages(result)] }))
       if (result) {
         setGroup({
@@ -124,7 +134,9 @@ function useGroupSend(deps: GroupSendDeps): {
         beforeMsgId,
         (m) => m.kind === 'human',
       )
-      if (target) void sendMessage(target.content, target.idempotencyKey)
+      if (target && target.kind === 'human') {
+        void sendMessage(target.content, target.idempotencyKey, target.participants)
+      }
     },
     [messages, sendMessage],
   )

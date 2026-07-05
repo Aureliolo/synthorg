@@ -52,49 +52,6 @@ ChatIdempotencyKeyHeader = Annotated[
 ]
 
 
-type ExcludeMap = dict[str, bool | ExcludeMap]
-
-
-def _computed_field_exclude(model: BaseModel) -> ExcludeMap:
-    """Nested Pydantic ``exclude`` mapping over every computed field.
-
-    Computed fields are dumped by ``model_dump`` but rejected by the frozen
-    ``extra="forbid"`` result models on ``model_validate`` (and recomputed on
-    reconstruction anyway), so the cached idempotency payload must omit them
-    at *every* level, not just the top: ``ConversationalActResult.action`` is
-    a ``ChatActionResult`` whose ``parked`` is a computed field.
-
-    Returns:
-        A mapping suitable for ``model_dump(exclude=...)``.
-    """
-    exclude: ExcludeMap = {}
-    for name in type(model).model_computed_fields:
-        exclude[name] = True
-    for name in type(model).model_fields:
-        nested = _nested_exclude(getattr(model, name))
-        if nested:
-            exclude[name] = nested
-    return exclude
-
-
-def _nested_exclude(value: object) -> ExcludeMap | None:
-    """Exclusion sub-mapping for one field value, or ``None`` when none applies.
-
-    Returns:
-        The nested ``exclude`` mapping, or ``None`` for a leaf value.
-    """
-    if isinstance(value, BaseModel):
-        return _computed_field_exclude(value) or None
-    if isinstance(value, list | tuple):
-        for item in value:
-            sub = _nested_exclude(item)
-            # Typed sequences are homogeneous, so the first item that carries
-            # computed fields reveals the shape ``__all__`` applies to all of.
-            if sub:
-                return {"__all__": sub}
-    return None
-
-
 def chat_request_fingerprint(model: BaseModel) -> str:
     """Stable SHA-256 fingerprint of a chat request body.
 
@@ -140,12 +97,12 @@ async def run_chat_idempotent(  # noqa: PLR0913 -- idempotency plumbing seam
 
     async def _dump() -> dict[str, object]:
         response = await build()
-        # Exclude computed fields recursively (e.g. ApiResponse.success and the
-        # nested ChatActionResult.parked) so the stored JSON re-validates
-        # against the frozen ``extra="forbid"`` models on ``model_validate``.
-        return response.model_dump(
-            mode="json", exclude=_computed_field_exclude(response)
-        )
+        # exclude_computed_fields walks the whole serialization tree (nested
+        # models, lists, and dicts alike), so ApiResponse.success and the
+        # nested ChatActionResult.parked are both stripped and the stored JSON
+        # re-validates against the frozen ``extra="forbid"`` models on
+        # ``model_validate`` (computed fields recompute on reconstruction).
+        return response.model_dump(mode="json", exclude_computed_fields=True)
 
     if key is None:
         return await _dump()

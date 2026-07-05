@@ -37,26 +37,45 @@ function toChatScope(value: ChatScopeValue | null): ChatScope | undefined {
  */
 export function useSendChiefOfStaff(
   deps: SendDeps,
-): (question: string, idempotencyKey?: string) => Promise<void> {
+): (
+  question: string,
+  idempotencyKey?: string,
+  scopeOverride?: ChatScopeValue | null,
+) => Promise<void> {
   const { isBlocked, scope, setStaff, sendChat, runStream } = deps
   return useCallback(
-    async (question: string, idempotencyKey?: string) => {
+    async (
+      question: string,
+      idempotencyKey?: string,
+      scopeOverride?: ChatScopeValue | null,
+    ) => {
       if (!question || isBlocked()) return
-      // Mint the key once per logical turn and store it on the user turn so
-      // a manual retry of the buffered scoped path reuses it (a turn that
-      // succeeded server-side is deduped, not re-run). The unscoped
-      // streaming path below ignores it: a token stream cannot be replayed
-      // from cache, so streaming and idempotency are mutually exclusive and
-      // a streamed retry genuinely re-runs.
+      // A retry replays the scope the turn was minted against (passed
+      // explicitly, so ``null`` re-runs an unscoped turn); a fresh send uses
+      // the live picker. Reusing the key with a scope the operator changed
+      // afterwards would pair one key with two different requests.
+      const effectiveScope = scopeOverride !== undefined ? scopeOverride : scope
+      // Mint the key once per logical turn and store it (plus the scope
+      // snapshot) on the user turn so a manual retry of the buffered scoped
+      // path reuses both (a turn that succeeded server-side is deduped, not
+      // re-run). The unscoped streaming path below ignores the key: a token
+      // stream cannot be replayed from cache, so streaming and idempotency
+      // are mutually exclusive and a streamed retry genuinely re-runs.
       const key = idempotencyKey ?? crypto.randomUUID()
       setStaff((s) => ({
         messages: [
           ...s.messages,
-          { id: nextMessageId(), role: 'user', content: question, idempotencyKey: key },
+          {
+            id: nextMessageId(),
+            role: 'user',
+            content: question,
+            idempotencyKey: key,
+            scope: effectiveScope,
+          },
         ],
       }))
-      if (scope) {
-        const response = await sendChat(question, toChatScope(scope), key)
+      if (effectiveScope) {
+        const response = await sendChat(question, toChatScope(effectiveScope), key)
         setStaff((s) => ({
           messages: [...s.messages, buildAssistantMessage(response)],
         }))
