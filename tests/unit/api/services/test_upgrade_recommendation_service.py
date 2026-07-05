@@ -228,3 +228,29 @@ class TestUpgradeRecommendationService:
         service = _service(repo=repo, org_mutations=org)
         with pytest.raises(RuntimeError, match="boom"):
             await service.approve(stored.id, decided_by="op")
+
+    async def test_reassign_reraises_when_provider_vanishes_mid_loop(self) -> None:
+        # The preflight passes at approve() time, then the recommended
+        # provider vanishes. update_agent revalidates the provider/model and
+        # raises NotFoundError; the in-except re-validation confirms the
+        # provider is gone, so the apply must stop rather than swallow it as a
+        # stale-agent skip and partially complete.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=NotFoundError("provider gone")),
+            validate_model_assignment=AsyncMock(
+                side_effect=[
+                    None,
+                    NotFoundError("Provider 'example-provider' not found"),
+                ]
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.approve(stored.id, decided_by="op")
+        # The apply stopped at the first agent, not silently skipping on.
+        assert org.update_agent.await_count == 1

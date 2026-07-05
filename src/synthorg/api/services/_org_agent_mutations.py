@@ -272,11 +272,8 @@ class OrgAgentMutationsMixin:
         at all), so a half-specified pair never reaches here.
         """
         if data.model_provider is not None and data.model_id is not None:
-            providers = await self._read_provider_configs()
-            validate_provider_model_pair(
-                providers,
-                str(data.model_provider),
-                str(data.model_id),
+            await self.validate_model_assignment(
+                str(data.model_provider), str(data.model_id)
             )
 
     async def validate_model_assignment(

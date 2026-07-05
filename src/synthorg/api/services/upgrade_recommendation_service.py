@@ -235,10 +235,11 @@ class UpgradeRecommendationService:
 
         Best-effort per agent: a stale agent id (renamed / deleted since
         the recommendation was produced) is logged and skipped so one
-        missing agent never fails the whole apply. The recommended
-        provider/model is pre-validated by ``_preflight_provider``, so a
-        ``NotFoundError`` here is unambiguously a missing agent, never a
-        gone provider.
+        missing agent never fails the whole apply. ``update_agent``
+        revalidates the provider/model on every call, so a gone provider
+        can also raise ``NotFoundError`` mid-loop even after the up-front
+        ``_preflight_provider``; the handler re-validates to tell the two
+        apart and only skips genuine missing-agent cases.
         """
         rec = stored.recommendation
         for agent_name in stored.agent_ids:
@@ -251,9 +252,14 @@ class UpgradeRecommendationService:
                     ),
                 )
             except NotFoundError as exc:
-                # A stale agent id (renamed / deleted since the recommendation
-                # was produced) is the only tolerated per-agent failure; any
-                # other error propagates so it is not silently swallowed.
+                # ``update_agent`` revalidates the provider/model on every
+                # call, so this NotFoundError is either a gone agent (benign
+                # skip) or the recommended provider vanished mid-loop after
+                # the preflight (fatal). Re-validate: a gone provider/model
+                # re-raises so the apply stops instead of partially
+                # completing; a still-present pair means the agent itself is
+                # genuinely stale, which is the only tolerated per-agent skip.
+                await self._preflight_provider(stored)
                 logger.warning(
                     PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED,
                     agent=agent_name,
