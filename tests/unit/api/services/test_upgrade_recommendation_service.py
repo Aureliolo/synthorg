@@ -9,6 +9,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.organization.models import UpdateAgentOrgRequest
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
@@ -102,6 +103,48 @@ class TestUpgradeRecommendationService:
             await service.approve(stored.id, decided_by="op")
         org.update_agent.assert_not_called()
 
+    async def test_approve_gone_provider_stays_pending(self) -> None:
+        # The recommended provider was removed since the recommendation was
+        # produced. Preflight must fail loudly BEFORE the decide transition,
+        # so the recommendation stays PENDING (retryable) and no agent is
+        # touched, rather than the provider-gone NotFoundError being swallowed
+        # per agent inside _reassign as a benign stale-agent skip.
+        stored = _stored()
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(),
+            validate_model_assignment=AsyncMock(
+                side_effect=NotFoundError("Provider 'example-provider' not found")
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.approve(stored.id, decided_by="op")
+        repo.transition_if.assert_not_called()
+        org.update_agent.assert_not_called()
+
+    async def test_apply_auto_gone_provider_does_not_decide(self) -> None:
+        # Same guard on the auto-apply path: a gone provider fails preflight
+        # before the CAS transition, so nothing is decided or reassigned.
+        stored = _stored()
+        repo = mock_of[UpgradeRecommendationRepository](
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(),
+            validate_model_assignment=AsyncMock(
+                side_effect=NotFoundError("Provider 'example-provider' not found")
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.apply_auto(stored)
+        repo.transition_if.assert_not_called()
+        org.update_agent.assert_not_called()
+
     async def test_reject_transitions_without_reassign(self) -> None:
         stored = _stored()
         repo = mock_of[UpgradeRecommendationRepository](
@@ -145,17 +188,18 @@ class TestUpgradeRecommendationService:
         await service.apply_auto(stored)
         org.update_agent.assert_not_called()
 
-    async def test_reassign_tolerates_failed_agent(self) -> None:
+    async def test_reassign_tolerates_stale_agent(self) -> None:
         stored = _stored(agents=(sid("a"), sid("b")))
         repo = mock_of[UpgradeRecommendationRepository](
             get=AsyncMock(return_value=stored),
             transition_if=AsyncMock(return_value=True),
         )
         org = mock_of[OrgMutationService](
-            update_agent=AsyncMock(side_effect=[RuntimeError("gone"), None]),
+            update_agent=AsyncMock(side_effect=[NotFoundError("gone"), None]),
         )
         service = _service(repo=repo, org_mutations=org)
-        # One agent fails; the apply still completes for the other.
+        # A stale (renamed / deleted) agent is skipped; the apply still
+        # completes for the other.
         await service.approve(stored.id, decided_by="op")
         assert org.update_agent.await_count == 2
         # Both agents were attempted with the recommended model, in order.
@@ -169,3 +213,68 @@ class TestUpgradeRecommendationService:
         assert all(
             call.args[1] == expected for call in org.update_agent.await_args_list
         )
+
+    async def test_reassign_propagates_non_stale_failure(self) -> None:
+        # Only a stale-agent NotFoundError is tolerated; any other failure
+        # (here a conflict) must surface rather than be swallowed per agent.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(RuntimeError, match="boom"):
+            await service.approve(stored.id, decided_by="op")
+
+    async def test_reassign_reraises_when_provider_vanishes_mid_loop(self) -> None:
+        # The preflight passes at approve() time, then the recommended
+        # provider vanishes. update_agent revalidates the provider/model and
+        # raises NotFoundError; the in-except re-validation confirms the
+        # provider is gone, so the apply must stop rather than swallow it as a
+        # stale-agent skip and partially complete.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=NotFoundError("provider gone")),
+            validate_model_assignment=AsyncMock(
+                side_effect=[
+                    None,
+                    NotFoundError("Provider 'example-provider' not found"),
+                ]
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.approve(stored.id, decided_by="op")
+        # The apply stopped at the first agent, not silently skipping on.
+        assert org.update_agent.await_count == 1
+
+    async def test_reassign_reraises_when_model_vanishes_mid_loop(self) -> None:
+        # Companion to the provider-vanish case: the recommended model (not
+        # the provider) disappears mid-loop, so the in-except re-validation
+        # raises ValidationError rather than NotFoundError. That must also
+        # propagate and stop the apply, never be swallowed as a stale skip.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=NotFoundError("stale?")),
+            validate_model_assignment=AsyncMock(
+                side_effect=[
+                    None,
+                    ValidationError("Model 'new' not found in provider"),
+                ]
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(ValidationError):
+            await service.approve(stored.id, decided_by="op")
+        assert org.update_agent.await_count == 1

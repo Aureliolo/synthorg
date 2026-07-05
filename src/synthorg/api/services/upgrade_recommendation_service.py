@@ -13,7 +13,7 @@ from uuid import UUID
 
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
@@ -114,6 +114,7 @@ class UpgradeRecommendationService:
             UpgradeRecommendationAlreadyDecidedError: When not pending.
         """
         stored = await self.get_or_404(rec_id)
+        await self._preflight_provider(stored)
         await self._decide(
             stored,
             to_state=RecommendationStatus.APPROVED,
@@ -162,6 +163,7 @@ class UpgradeRecommendationService:
         Transitions ``PENDING -> AUTO_APPLIED`` and reassigns pinned
         agents. A lost CAS (already decided) is a no-op.
         """
+        await self._preflight_provider(stored)
         moved = await self._repo.transition_if(
             stored.id,
             from_state=RecommendationStatus.PENDING,
@@ -205,12 +207,39 @@ class UpgradeRecommendationService:
             logger.warning(API_RESOURCE_CONFLICT, reason=msg, rec_id=str(stored.id))
             raise UpgradeRecommendationAlreadyDecidedError(msg)
 
+    async def _preflight_provider(self, stored: StoredUpgradeRecommendation) -> None:
+        """Validate the recommendation's provider/model before deciding.
+
+        Every pinned agent is reassigned to the *same* recommended
+        provider/model, and ``update_agent`` raises ``NotFoundError`` both
+        when an agent is missing and when the target provider is gone. If
+        the recommended provider was removed since the recommendation was
+        produced, that would surface once per agent inside ``_reassign`` and
+        be silently swallowed as a stale-agent skip, leaving the whole apply
+        a no-op. Validating the pair once up front makes a gone provider a
+        loud failure that keeps the recommendation ``PENDING`` (retryable)
+        rather than decided-but-unapplied, and leaves any ``NotFoundError``
+        inside ``_reassign`` unambiguously an agent-missing skip.
+
+        Raises:
+            NotFoundError: When the recommended provider is gone.
+            ValidationError: When the provider no longer exposes the model.
+        """
+        rec = stored.recommendation
+        await self._org_mutations.validate_model_assignment(
+            rec.provider_name, rec.recommended_model_id
+        )
+
     async def _reassign(self, stored: StoredUpgradeRecommendation) -> None:
         """Re-point each pinned agent at the recommended model.
 
         Best-effort per agent: a stale agent id (renamed / deleted since
         the recommendation was produced) is logged and skipped so one
-        missing agent never fails the whole apply.
+        missing agent never fails the whole apply. ``update_agent``
+        revalidates the provider/model on every call, so a gone provider
+        can also raise ``NotFoundError`` mid-loop even after the up-front
+        ``_preflight_provider``; the handler re-validates to tell the two
+        apart and only skips genuine missing-agent cases.
         """
         rec = stored.recommendation
         for agent_name in stored.agent_ids:
@@ -222,8 +251,15 @@ class UpgradeRecommendationService:
                         model_id=rec.recommended_model_id,
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
+            except NotFoundError as exc:
+                # ``update_agent`` revalidates the provider/model on every
+                # call, so this NotFoundError is either a gone agent (benign
+                # skip) or the recommended provider vanished mid-loop after
+                # the preflight (fatal). Re-validate: a gone provider/model
+                # re-raises so the apply stops instead of partially
+                # completing; a still-present pair means the agent itself is
+                # genuinely stale, which is the only tolerated per-agent skip.
+                await self._preflight_provider(stored)
                 logger.warning(
                     PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED,
                     agent=agent_name,

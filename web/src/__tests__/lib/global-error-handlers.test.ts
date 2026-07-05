@@ -34,6 +34,30 @@ describe('installGlobalErrorHandlers', () => {
     // The real uninstaller resets the guard so a later install re-arms.
     first()
   })
+
+  it('cancels the default action of a benign error without cutting propagation', () => {
+    const uninstall = installGlobalErrorHandlers()
+    // A listener registered after ours must still receive the event: the
+    // handler uses preventDefault only, never stopImmediatePropagation.
+    const later = vi.fn()
+    window.addEventListener('error', later)
+    try {
+      const event = new ErrorEvent('error', {
+        message: 'ResizeObserver loop limit exceeded',
+        cancelable: true,
+      })
+      const notCancelled = window.dispatchEvent(event)
+
+      expect(notCancelled).toBe(false) // preventDefault was called
+      expect(event.defaultPrevented).toBe(true)
+      expect(later).toHaveBeenCalledTimes(1) // propagation was not cut
+    } finally {
+      // Cleanup in finally so an assertion failure can't leak the listener
+      // or leave the module-level install guard stuck true for later tests.
+      window.removeEventListener('error', later)
+      uninstall()
+    }
+  })
 })
 
 describe('isBenignError', () => {

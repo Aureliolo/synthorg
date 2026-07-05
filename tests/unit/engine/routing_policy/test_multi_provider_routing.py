@@ -192,3 +192,96 @@ class TestMultiProviderAttributionParity:
         # Parity preserved: keep the prior identity + default client together.
         assert final_identity.model.provider == _DEFAULT_PROVIDER
         assert provider is default_client
+
+
+@pytest.mark.unit
+class TestDispatchClientResolution:
+    """Run-start dispatch resolves the agent's OWN provider, not the default."""
+
+    def _clients(
+        self,
+    ) -> tuple[CompletionProvider, CompletionProvider, ProviderRegistry]:
+        default_client = ScriptedProvider([])
+        cheap_client = ScriptedProvider([])
+        clients = {_DEFAULT_PROVIDER: default_client, _CHEAP_PROVIDER: cheap_client}
+
+        def _get(name: str) -> CompletionProvider:
+            if name not in clients:
+                raise DriverNotRegisteredError(name, context={"name": name})
+            return clients[name]
+
+        return default_client, cheap_client, mock_of[ProviderRegistry](get=_get)
+
+    def test_dispatch_resolves_agent_provider_over_engine_default(self) -> None:
+        """An agent pinned to a non-default provider dispatches to it.
+
+        The engine holds the default provider's client, but the agent's model
+        lives on another provider. Dispatching the default client would hit
+        the wrong API (ModelNotFoundError) while cost attribution names the
+        agent's provider, so dispatch must resolve the agent's own provider.
+        """
+        default_client, cheap_client, registry = self._clients()
+        engine = _engine(default_provider=default_client, registry=registry)
+
+        identity = _identity(
+            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+        )
+        assert engine._dispatch_client_for(identity, default_client) is cheap_client
+
+    def test_dispatch_no_registry_falls_back_to_default(self) -> None:
+        default_client = ScriptedProvider([])
+        engine = _engine(default_provider=default_client, registry=None)
+
+        identity = _identity(
+            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+        )
+        assert engine._dispatch_client_for(identity, default_client) is default_client
+
+    def test_dispatch_unknown_provider_raises(self) -> None:
+        # A wired registry that does not know the agent's provider must fail
+        # closed: silently falling back to the default client would dispatch
+        # to the wrong API and misattribute cost.
+        default_client = ScriptedProvider([])
+
+        def _get(name: str) -> CompletionProvider:
+            raise DriverNotRegisteredError(name, context={"name": name})
+
+        registry = mock_of[ProviderRegistry](get=_get)
+        engine = _engine(default_provider=default_client, registry=registry)
+
+        identity = _identity(
+            provider="ghost-provider", model_id="ghost-large-001", tier="large"
+        )
+        with pytest.raises(DriverNotRegisteredError):
+            engine._dispatch_client_for(identity, default_client)
+
+    async def test_noop_route_on_nondefault_provider_dispatches_to_agent(self) -> None:
+        """The exact failing scenario: agent on a non-default provider whose
+        stakes routing cannot resolve a tier (no-op) still runs on its own
+        provider, not the engine default.
+        """
+        default_client, cheap_client, registry = self._clients()
+        # A router whose resolver yields no tiers reproduces the observed
+        # ``no_tier_resolved`` no-op that kept the agent's model unchanged.
+        engine = AgentEngine(
+            provider=default_client,
+            provider_registry=registry,
+            stakes_router=build_stakes_router(
+                StakesRoutingConfig(),
+                benchmark_provider=StubBenchmarkScoreProvider(),
+                resolver=None,
+            ),
+        )
+
+        identity = _identity(
+            provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
+        )
+        dispatched = engine._dispatch_client_for(identity, default_client)
+        routed = await engine._route_stakes(identity, _task(Stakes.HIGH))
+        resolved, final_identity = engine._resolve_provider_instance(
+            routed, identity, dispatched
+        )
+
+        assert routed.model == identity.model  # routing was a no-op
+        assert final_identity.model.provider == _CHEAP_PROVIDER
+        assert resolved is cheap_client  # dispatched to the agent's provider

@@ -81,6 +81,14 @@ export function installGlobalErrorHandlers(): () => void {
       ? formatReason(event.error)
       : (event.message || 'Uncaught global error')
     if (isBenignError(event.error ?? event.message)) {
+      // Suppress the browser's default console logging for a benign warning
+      // like the ResizeObserver loop notice, which otherwise floods the
+      // console every layout frame without signalling any real fault.
+      // ``preventDefault`` only, never ``stopImmediatePropagation``: our
+      // listener is registered after Vite's overlay one so it cannot pre-empt
+      // it anyway, and cutting propagation would silently starve any other
+      // legitimate ``error`` listener.
+      event.preventDefault()
       log.debug('Benign global error ignored', {
         reason: sanitizeForLog(reason),
       })

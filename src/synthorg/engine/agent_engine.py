@@ -486,6 +486,11 @@ class AgentEngine(
             provider: CompletionProvider = self._provider
             _project_budget: float = 0.0
             try:
+                # Dispatch to the provider serving this agent's own model
+                # before stakes routing may re-point it; a registry miss
+                # (agent pinned to an unregistered provider) fails the run
+                # here rather than mis-dispatching to the engine default.
+                provider = self._dispatch_client_for(identity, self._provider)
                 loop_mode = (
                     "auto"
                     if self._auto_loop_config is not None
@@ -517,17 +522,21 @@ class AgentEngine(
 
                 if self._budget_enforcer:
                     preflight = await self._budget_enforcer.check_can_execute(
-                        agent_id,
-                        provider_name=identity.model.provider,
+                        agent_id, provider_name=identity.model.provider
                     )
                     provider, identity = self._apply_degradation(
                         preflight,
                         identity,
                         provider,
                     )
-                    identity = await self._budget_enforcer.resolve_model(
-                        identity,
-                    )
+                    downgraded = await self._budget_enforcer.resolve_model(identity)
+                    # resolve_model may downgrade to a model owned by another
+                    # provider; re-dispatch and only commit the new identity
+                    # once dispatch succeeds, so a registry miss never leaves a
+                    # downgraded identity paired with the pre-downgrade client
+                    # for the fallback / recovery path to reuse.
+                    provider = self._dispatch_client_for(downgraded, provider)
+                    identity = downgraded
 
                 if self._project_repo is not None:
                     _project_budget = await self._validate_project(

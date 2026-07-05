@@ -16,12 +16,8 @@ The scope is async-safe: Python :mod:`contextvars` propagate per
 
 import asyncio
 import math
-from collections.abc import (
-    AsyncIterator,
-    Callable,
-    Mapping,
-)
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Final
@@ -149,6 +145,23 @@ def current_cost_context() -> CostRecordingContext | None:
     return _cost_context.get()
 
 
+@contextmanager
+def _bound_cost_context(value: CostRecordingContext | None) -> Iterator[None]:
+    """Bind ``_cost_context`` to *value*, restoring the prior value on exit.
+
+    Restoration is a plain ``set(previous)`` rather than ``Token.reset``:
+    a streaming scope wraps an SSE async generator whose enter and exit can
+    run in different asyncio contexts (a drive step vs its teardown), where
+    ``Token.reset`` raises ``ValueError``; ``set`` is valid in any context.
+    """
+    previous = _cost_context.get()
+    _cost_context.set(value)
+    try:
+        yield
+    finally:
+        _cost_context.set(previous)
+
+
 @asynccontextmanager
 async def cost_recording_scope(  # noqa: PLR0913
     *,
@@ -200,14 +213,10 @@ async def cost_recording_scope(  # noqa: PLR0913
         # trackerless; it counts these to attribute spend signal by purpose).
         logger.debug(PROVIDER_PROMPT_PURPOSE_INVOKED, prompt_class_id=str(purpose))
     if cost_tracker is None:
-        # Shadow the outer context with ``None`` so nested calls
-        # don't silently inherit a wired outer tracker.  Reset on
-        # exit to restore whatever was active before.
-        token = _cost_context.set(None)
-        try:
+        # Shadow the outer context with ``None`` so nested calls don't
+        # silently inherit a wired outer tracker.
+        with _bound_cost_context(None):
             yield
-        finally:
-            _cost_context.reset(token)
         return
     resolved_currency = (
         currency if currency is not None else resolve_currency(cost_tracker)
@@ -224,11 +233,8 @@ async def cost_recording_scope(  # noqa: PLR0913
         call_category=call_category,
         currency=resolved_currency,
     )
-    token = _cost_context.set(ctx)
-    try:
+    with _bound_cost_context(ctx):
         yield
-    finally:
-        _cost_context.reset(token)
 
 
 def resolve_currency(cost_tracker: CostTrackerProtocol) -> CurrencyCode:

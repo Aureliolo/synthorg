@@ -119,6 +119,45 @@ class UpgradeRecommender:
             )
         return UpgradeAnalysis(recommendations=tuple(recommendations))
 
+    def _best_candidate(
+        self,
+        current: ProviderModelConfig,
+        current_generation: float,
+        newest_candidates: list[ProviderModelConfig],
+        newest_gen: float,
+    ) -> tuple[ProviderModelConfig, float] | None:
+        """Pick the strongest newest-gen candidate without a regression.
+
+        Ranks the regression-free candidates by upgrade score (which
+        rewards capability fit and context headroom) so a larger / more
+        capable sibling at the same generation (e.g. a ``-pro`` variant) is
+        preferred over a smaller / cheaper one (e.g. a ``-flash`` variant)
+        rather than an arbitrary alphabetical pick. Id breaks a score tie
+        deterministically.
+
+        Returns:
+            The highest-scoring viable candidate paired with its score, or
+            ``None`` when every newest-gen candidate would drop a capability
+            the current has.
+        """
+        scored = [
+            (
+                c,
+                _score(
+                    current=current,
+                    candidate=c,
+                    current_generation=current_generation,
+                    candidate_generation=newest_gen,
+                    config=self._config,
+                ),
+            )
+            for c in newest_candidates
+            if not _has_capability_regression(current.metadata, c.metadata)
+        ]
+        if not scored:
+            return None
+        return max(scored, key=lambda pair: (pair[1], pair[0].id))
+
     def _recommend_for_provider(
         self,
         provider_name: str,
@@ -129,37 +168,35 @@ class UpgradeRecommender:
         Returns:
             The list of recommendations (possibly empty).
         """
-        by_family: dict[str, list[tuple[ProviderModelConfig, float]]] = {}
+        # Group by (family, embedding-class): a family label alone spans two
+        # incompatible model classes -- an embedding model (vector output)
+        # and a chat model can share one family label yet are not drop-in
+        # replacements for each other, so a newer-generation chat model must
+        # never surface as the upgrade for an embedding model (or vice versa).
+        by_group: dict[tuple[str, bool], list[tuple[ProviderModelConfig, float]]] = {}
         for model in provider.models:
             family = model.metadata.family
             generation = model.metadata.generation
             if family is None or generation is None or model.stale is not None:
                 continue
-            by_family.setdefault(family, []).append((model, generation))
+            key = (family, model.metadata.supports_embeddings)
+            by_group.setdefault(key, []).append((model, generation))
 
         out: list[UpgradeRecommendation] = []
-        for family, entries in by_family.items():
+        for (family, _), entries in by_group.items():
             newest_gen = max(generation for _, generation in entries)
-            # Every model at the newest generation is a candidate (a tie is
-            # broken deterministically by id), so a single regressing pick
-            # never masks a regress-free sibling of the same generation.
-            newest_candidates = sorted(
-                (model for model, generation in entries if generation >= newest_gen),
-                key=lambda model: model.id,
-            )
+            newest_candidates = [
+                model for model, generation in entries if generation >= newest_gen
+            ]
             for model, generation in entries:
                 if generation >= newest_gen:
                     continue
-                candidate = next(
-                    (
-                        c
-                        for c in newest_candidates
-                        if not _has_capability_regression(model.metadata, c.metadata)
-                    ),
-                    None,
+                best = self._best_candidate(
+                    model, generation, newest_candidates, newest_gen
                 )
-                if candidate is None:
+                if best is None:
                     continue
+                candidate, score = best
                 out.append(
                     UpgradeRecommendation(
                         provider_name=provider_name,
@@ -168,13 +205,7 @@ class UpgradeRecommender:
                         family=family,
                         current_generation=generation,
                         recommended_generation=newest_gen,
-                        score=_score(
-                            current=model,
-                            candidate=candidate,
-                            current_generation=generation,
-                            candidate_generation=newest_gen,
-                            config=self._config,
-                        ),
+                        score=score,
                         reason=(
                             f"Newer in-family model "
                             f"{flatten_label(candidate.id)!r} "
