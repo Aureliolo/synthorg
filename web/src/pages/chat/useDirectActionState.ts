@@ -31,7 +31,6 @@ type SetAction = ReturnType<typeof useConversationsStore.getState>['setAction']
 type RunAction = ReturnType<typeof useMetaStore.getState>['runAction']
 
 interface ActionSendDeps {
-  selectedAgentId: string | null
   runAction: RunAction
   activeAgents: readonly ActiveAgentSummary[]
   setAction: SetAction
@@ -44,15 +43,17 @@ function useDirectActionSend(deps: ActionSendDeps): {
   triggerSend: () => void
   retryLast: (beforeMsgId?: number) => void
 } {
-  const { selectedAgentId, runAction, activeAgents, setAction } = deps
+  const { runAction, activeAgents, setAction } = deps
   const { messages, input, setInput } = deps
 
   const sendInstruction = useCallback(
     async (instruction: string, idempotencyKey?: string, agentIdOverride?: string) => {
-      // A retry replays the agent the turn was minted against (not the live
-      // selection), so the reused idempotency key still matches its original
-      // run instead of firing the old instruction at a newly-picked agent.
-      const agentId = agentIdOverride ?? selectedAgentId
+      // A retry replays the agent the turn was minted against; a fresh send
+      // reads the live selection (not the render-time closure) so a quick
+      // agent switch before the re-render can't route the instruction at a
+      // stale agent or mint the idempotency key for the wrong one.
+      const agentId =
+        agentIdOverride ?? useConversationsStore.getState().action.selectedAgentId
       // Read the live loading flag (not the render-time closure) so a rapid
       // second submit in the same render window can't slip past an action
       // that is already in flight.
@@ -83,7 +84,7 @@ function useDirectActionSend(deps: ActionSendDeps): {
         ...(result && { conversationId: result.conversation_id ?? undefined }),
       }))
     },
-    [selectedAgentId, runAction, activeAgents, setAction],
+    [runAction, activeAgents, setAction],
   )
 
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
@@ -91,13 +92,18 @@ function useDirectActionSend(deps: ActionSendDeps): {
   const triggerSend = useCallback(() => {
     // Mirror sendInstruction's preconditions before clearing the input, so a
     // send blocked by an in-flight action or a missing agent selection does not
-    // discard the operator's composed text.
-    if (useMetaStore.getState().actionLoading || !selectedAgentId) return
+    // discard the operator's composed text. Read the selection live for the
+    // same reason sendInstruction does.
+    if (
+      useMetaStore.getState().actionLoading ||
+      !useConversationsStore.getState().action.selectedAgentId
+    )
+      return
     const instruction = input.trim()
     if (!instruction) return
     setInput('')
     void sendInstruction(instruction)
-  }, [selectedAgentId, input, setInput, sendInstruction])
+  }, [input, setInput, sendInstruction])
 
   // Retry the human instruction that precedes the clicked error bubble; an
   // unscoped retry would replay the transcript tail rather than the
@@ -146,7 +152,6 @@ export function useDirectActionState(): DirectActionState {
   )
 
   const { triggerSend, retryLast } = useDirectActionSend({
-    selectedAgentId,
     runAction,
     activeAgents,
     setAction,

@@ -53,7 +53,6 @@ type SetGroup = ReturnType<typeof useConversationsStore.getState>['setGroup']
 type ConverseGroup = ReturnType<typeof useMetaStore.getState>['converseGroup']
 
 interface GroupSendDeps {
-  selectedIds: readonly string[]
   converse: ConverseGroup
   setGroup: SetGroup
   messages: readonly GroupMessage[]
@@ -65,7 +64,7 @@ function useGroupSend(deps: GroupSendDeps): {
   triggerSend: () => void
   retryLast: (beforeMsgId?: number) => void
 } {
-  const { selectedIds, converse, setGroup, messages, input, setInput } = deps
+  const { converse, setGroup, messages, input, setInput } = deps
 
   const sendMessage = useCallback(
     async (
@@ -73,12 +72,14 @@ function useGroupSend(deps: GroupSendDeps): {
       idempotencyKey?: string,
       participantsOverride?: readonly string[],
     ) => {
-      const conversationId = useConversationsStore.getState().group.conversationId
+      const group = useConversationsStore.getState().group
+      const conversationId = group.conversationId
       // A first-round retry replays the participant set the turn was minted
-      // against (not the live selection), so the reused idempotency key still
-      // matches its original round instead of opening the group with a roster
-      // the operator changed after the failure.
-      const participants = participantsOverride ?? selectedIds
+      // against; a fresh send reads the live selection (not the render-time
+      // closure) so a quick selection change before the re-render still opens
+      // the group with the roster the operator meant and mints the idempotency
+      // key for that exact payload.
+      const participants = participantsOverride ?? group.selectedIds
       const canStart = conversationId !== undefined || participants.length > 0
       // Read the live loading flag (not the render-time closure) so a rapid
       // second submit in the same render window can't slip past a turn that
@@ -109,20 +110,22 @@ function useGroupSend(deps: GroupSendDeps): {
         })
       }
     },
-    [selectedIds, converse, setGroup],
+    [converse, setGroup],
   )
 
   const triggerSend = useCallback(() => {
     // Mirror sendMessage's preconditions before clearing the input, so a send
     // blocked by an in-flight turn or an unstartable conversation does not
-    // discard the operator's composed text.
-    const conversationId = useConversationsStore.getState().group.conversationId
-    const canStart = conversationId !== undefined || selectedIds.length > 0
+    // discard the operator's composed text. Read the selection live for the
+    // same reason sendMessage does.
+    const group = useConversationsStore.getState().group
+    const canStart =
+      group.conversationId !== undefined || group.selectedIds.length > 0
     const message = input.trim()
     if (useMetaStore.getState().groupChatLoading || !canStart || !message) return
     setInput('')
     void sendMessage(message)
-  }, [selectedIds, input, setInput, sendMessage])
+  }, [input, setInput, sendMessage])
 
   // Retry the human message that precedes the clicked error bubble (see
   // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
@@ -221,7 +224,6 @@ export function useGroupChatState(): GroupChatState {
   )
 
   const { triggerSend, retryLast } = useGroupSend({
-    selectedIds,
     converse,
     setGroup,
     messages,
