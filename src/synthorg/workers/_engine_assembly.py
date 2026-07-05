@@ -285,11 +285,11 @@ async def _build_stakes_router_or_none(
     # when the resolver is not wired (anonymous / test boots) so routing still
     # builds. ``get_provider_configs`` itself falls back to ``RootConfig`` when
     # no DB override is set, so the two paths agree on a YAML-only deployment.
-    resolver = app_state.slice(SettingsStateSlice).config_resolver
-    if resolver is None:
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if config_resolver is None:
         providers = dict(app_state.config.providers)
     else:
-        providers = dict(await resolver.get_provider_configs())
+        providers = dict(await config_resolver.get_provider_configs())
     if not providers:
         return None
     resolver = ModelResolver.from_config(providers, selector=CheapestSelector())

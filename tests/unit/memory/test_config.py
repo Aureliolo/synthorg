@@ -291,7 +291,8 @@ class TestCompanyMemoryConfig:
         c = CompanyMemoryConfig()
         assert c.procedural is not None
         assert c.procedural.enabled is True
-        assert c.procedural.model == "example-small-001"
+        # No placeholder default; a model is set by an operator or setup.
+        assert c.procedural.model is None
 
     def test_custom_retrieval_config(self) -> None:
         c = CompanyMemoryConfig(
