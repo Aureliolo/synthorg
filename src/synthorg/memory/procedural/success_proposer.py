@@ -151,6 +151,12 @@ class SuccessMemoryProposer:
         Raises:
             ProviderError: If the related operation fails.
         """
+        model = self._config.model
+        if model is None:
+            # Defensive: the engine gates proposer construction on a
+            # configured model, so an unset model here means no proposer
+            # should exist. Skip rather than call a provider with no model.
+            return None
         try:
             messages = [
                 ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
@@ -168,7 +174,7 @@ class SuccessMemoryProposer:
             ):
                 response = await self._provider.complete(
                     messages,
-                    self._config.model,
+                    model,
                     config=self._completion_config,
                 )
         except ProviderError as exc:

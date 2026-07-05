@@ -48,6 +48,22 @@ def memory_backend_of(app_state: AppStateSliceMixin) -> MemoryBackend:
     return require_service(app_state.slice(MemoryStateSlice).backend, "Memory Backend")
 
 
+def memory_backend_or_none(
+    app_state: AppStateSliceMixin,
+) -> MemoryBackend | None:
+    """Resolve the shared memory backend from its slice, or ``None``.
+
+    Returns ``None`` (never raises) so optional consumers -- e.g.
+    ``SelfImprovementService`` outcome learning, which accepts
+    ``memory_backend=None`` -- can wire up on deployments with no memory
+    backend instead of failing the whole path on a hard ``require_service``.
+
+    Returns:
+        The wired :class:`MemoryBackend`, or ``None`` when unwired.
+    """
+    return app_state.slice(MemoryStateSlice).backend
+
+
 def org_memory_backend_of(
     app_state: AppStateSliceMixin,
 ) -> OrgMemoryBackend | None:

@@ -364,6 +364,7 @@ class AgentEngine(
         if (
             procedural_memory_config is not None
             and procedural_memory_config.enabled
+            and procedural_memory_config.model
             and memory_backend is not None
         ):
             from synthorg.memory.procedural.proposer import (  # noqa: PLC0415

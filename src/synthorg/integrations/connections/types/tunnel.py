@@ -24,7 +24,10 @@ logger = get_logger(__name__)
 class TunnelAuthenticator:
     """Validates tunnel-credential connections.
 
-    Required fields: ``auth_token``.
+    A token-backed provider supplies ``auth_token``; a device-login
+    provider (e.g. Dev Tunnels) supplies no credentials. No field is
+    universally required, but a supplied ``auth_token`` is validated
+    strictly.
     """
 
     @property

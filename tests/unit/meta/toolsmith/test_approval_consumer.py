@@ -218,6 +218,31 @@ async def test_apply_failure_alerts_the_operator() -> None:
     _asmock(dispatcher.dispatch).assert_awaited_once()
 
 
+async def test_apply_raising_exception_is_caught_and_alerts_operator() -> None:
+    # ``service.apply`` raising (rather than returning a failed ApplyResult)
+    # exercises the ``_apply_claimed`` except branch: it must be caught, the
+    # operator alerted, and the batch continue instead of crashing.
+    item = _approval()
+    service = mock_of[ToolsmithService](
+        apply=AsyncMock(side_effect=RuntimeError("boom"))
+    )
+    dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+    consumer = ToolApprovalConsumer(
+        service=service,
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        approval_store=mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(item,)),
+            consume_if_approved=AsyncMock(return_value=item),
+        ),
+        notification_dispatcher=dispatcher,
+    )
+
+    assert await consumer.consume() == 0
+    _asmock(dispatcher.dispatch).assert_awaited_once()
+
+
 async def test_whitespace_blueprint_id_is_skipped() -> None:
     item = _approval(blueprint_id="   ")
     repo = mock_of[DynamicToolRepository](get=AsyncMock(return_value=_blueprint()))

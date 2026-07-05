@@ -100,9 +100,22 @@ class ToolApprovalConsumer:
         # annotated alias, so it just forwards to ``str``), so guard the blank
         # case explicitly here rather than rely on the wrapper below.
         if not blueprint_id or not blueprint_id.strip():
+            # The item is never claimed, so it is re-listed and re-skipped every
+            # tick; log so an operator can see why the approval never goes live.
+            logger.warning(
+                TOOLSMITH_APPLY_FAILED,
+                note="approve_to_live_missing_blueprint_id",
+                approval_id=str(item.id),
+            )
             return False
         blueprint = await self._blueprint_repo.get(NotBlankStr(blueprint_id))
         if blueprint is None:
+            logger.warning(
+                TOOLSMITH_APPLY_FAILED,
+                note="approve_to_live_blueprint_not_found",
+                approval_id=str(item.id),
+                blueprint_id=blueprint_id,
+            )
             return False
         claimed = await self._approval_store.consume_if_approved(
             NotBlankStr(str(item.id)),

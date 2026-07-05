@@ -247,7 +247,10 @@ class TestNarrativeRoundTrip:
         )
         task_repo = mock_of[TaskRepository](get=AsyncMock(return_value=_task()))
         narrator = build_chief_of_staff_narrator(
-            ChiefOfStaffConfig(narrative_enabled=True),
+            ChiefOfStaffConfig(
+                narrative_enabled=True,
+                narrative_model=NotBlankStr("example-small-001"),
+            ),
             provider=mock_of[CompletionProvider](
                 complete=AsyncMock(return_value=_prose_response())
             ),
@@ -334,7 +337,10 @@ def _real_narrator(docs_service: DocsService) -> object:
         query=AsyncMock(side_effect=[(_frame("agent-a", 1),), ()]),
     )
     narrator = build_chief_of_staff_narrator(
-        ChiefOfStaffConfig(narrative_enabled=True),
+        ChiefOfStaffConfig(
+            narrative_enabled=True,
+            narrative_model=NotBlankStr("example-small-001"),
+        ),
         provider=mock_of[CompletionProvider](
             complete=AsyncMock(return_value=_prose_response())
         ),

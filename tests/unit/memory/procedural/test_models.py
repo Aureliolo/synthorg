@@ -231,7 +231,7 @@ class TestProceduralMemoryConfig:
     def test_defaults(self) -> None:
         c = ProceduralMemoryConfig()
         assert c.enabled is True
-        assert c.model == "example-small-001"
+        assert c.model is None
         assert c.temperature == 0.3
         assert c.max_tokens == 1500
         assert c.min_confidence == 0.5

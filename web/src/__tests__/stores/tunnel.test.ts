@@ -200,6 +200,8 @@ describe('useTunnelStore', () => {
     await useTunnelStore.getState().beginDeviceLogin('devtunnels')
     expect(useTunnelStore.getState().deviceLogin?.user_code).toBe('ABCD-1234')
     expect(useTunnelStore.getState().connectingDevice).toBe('devtunnels')
+    // An absolute deadline is stamped so the 15-minute bound survives remounts.
+    expect(useTunnelStore.getState().connectingDeviceDeadline).not.toBeNull()
   })
 
   it('beginDeviceLogin does not re-mint while a login is pending', async () => {
@@ -268,5 +270,6 @@ describe('useTunnelStore', () => {
     const state = useTunnelStore.getState()
     expect(state.connectingDevice).toBeNull()
     expect(state.deviceLogin).toBeNull()
+    expect(state.connectingDeviceDeadline).toBeNull()
   })
 })

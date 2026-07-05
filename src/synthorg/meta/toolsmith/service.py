@@ -118,6 +118,11 @@ class ToolsmithService:
             wired unconditionally so the gate can flip on at runtime; when
             ``None`` (test harness) both reads fall back to the baked
             ``ToolsmithConfig`` so a disabled toolsmith stays fail-safe.
+        blueprint_repo: Optional durable blueprint store used to dedup
+            re-authoring (``_has_open_blueprint``) and to persist a PENDING
+            blueprint for approve-to-live rehydration; ``None`` disables both.
+        notification_dispatcher: Optional operator-alert sink for recurring
+            ``SERVICE_ABSENT`` gaps; ``None`` disables that ops signal.
     """
 
     def __init__(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborators
@@ -339,15 +344,18 @@ class ToolsmithService:
                 error=safe_error_description(exc),
             )
             return ()
-        # Persist the PENDING blueprint before the approval gate registers its
-        # item, so the approve-to-live consumer can rehydrate it by id from the
-        # approval metadata after an operator approves. The applier re-saves it
-        # (owning the lifecycle) on apply; this is the durable link.
-        await self._persist_pending_blueprint(blueprint)
         proposal = _build_proposal(gap, blueprint)
-        if await self._guards_pass(proposal):
-            return (proposal,)
-        return ()
+        if not await self._guards_pass(proposal):
+            return ()
+        # Persist the PENDING blueprint only after the guard chain accepts the
+        # proposal: the approval gate has now registered an item referencing
+        # this blueprint by id, so the approve-to-live consumer can rehydrate
+        # it after an operator approves. Persisting before the guards would
+        # leave an orphan PENDING row on rejection, which _has_open_blueprint
+        # then treats as open and skips re-authoring forever. The applier
+        # re-saves it (owning the lifecycle) on apply; this is the durable link.
+        await self._persist_pending_blueprint(blueprint)
+        return (proposal,)
 
     async def _has_open_blueprint(self, capability: str) -> bool:
         """True if a non-terminal blueprint for this capability already exists.

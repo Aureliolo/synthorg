@@ -348,7 +348,7 @@ async def build_runtime_services(
         rule_matched_confidence=engine_bridge.classifier_rule_matched_confidence,
         fallback_confidence=engine_bridge.classifier_fallback_confidence,
     )
-    engine = _construct_agent_engine(
+    engine = await _construct_agent_engine(
         app_state,
         provider,
         registry,

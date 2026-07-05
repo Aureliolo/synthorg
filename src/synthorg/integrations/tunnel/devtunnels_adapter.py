@@ -345,7 +345,9 @@ class DevTunnelsAdapter:
         """
         login = self._login_process
         self._login_process = None
-        self._login_pending = False
+        # ``_login_pending`` is owned by ``begin_login()`` (cleared in its
+        # ``finally``); clearing it here would let a concurrent ``begin_login()``
+        # start a second ``devtunnel login`` while the first is still in flight.
         if login is None or login.poll() is not None:
             return
         try:

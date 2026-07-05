@@ -184,6 +184,33 @@ class TestModelRefreshService:
         assert note.severity is NotificationSeverity.WARNING
         assert "old" in note.body
 
+    async def test_persistently_stale_model_alerts_once_across_cycles(self) -> None:
+        """A stale model persisting across cycles alerts once, not every cycle."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        stale_probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(
+                return_value=LiveCatalogReport(
+                    provider_name="example-provider",
+                    discovered=(_NEW,),
+                    missing_ids=("old",),
+                    checked_ids=("old", "new"),
+                ),
+            ),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(
+            repo=repo,
+            probe=stale_probe,
+            notification_dispatcher=dispatcher,
+        )
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        # The same stale model in the second cycle is deduped, not re-alerted.
+        dispatcher.dispatch.assert_awaited_once()
+
     async def test_no_stale_models_dispatches_nothing(self) -> None:
         """A clean cycle (no stale models) raises no operator alert."""
         repo = mock_of[UpgradeRecommendationRepository](

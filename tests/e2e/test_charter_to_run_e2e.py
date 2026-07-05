@@ -457,7 +457,7 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
                 ]
             ),
         ),
-        config=CharterConfig(),
+        config=CharterConfig(interview_model=NotBlankStr("test-model-001")),
         conversation_repo=conversation_repo,
         turn_repo=_FakeTurnRepo(),
         charter_repo=charter_repo,

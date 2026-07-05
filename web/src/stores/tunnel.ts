@@ -45,6 +45,12 @@ export interface TunnelState {
    * pending login is confirmed by polling rather than re-minting a code.
    */
   connectingDevice: string | null
+  /**
+   * Absolute epoch-ms deadline for the in-flight device login, or `null`.
+   * Anchored to when the login began (not to component mount) so the
+   * 15-minute bound survives the tunnel card unmounting and remounting.
+   */
+  connectingDeviceDeadline: number | null
   savingCredential: boolean
 
   fetchStatus: () => Promise<void>
@@ -72,8 +78,14 @@ const INITIAL_STATE = {
   providers: [] as readonly TunnelProviderStatus[],
   deviceLogin: null,
   connectingDevice: null,
+  connectingDeviceDeadline: null,
   savingCredential: false,
 }
+
+// Device codes expire (~15 min); the deadline abandons a pending login if the
+// user never authorises, so polling never runs unbounded. Anchored to login
+// start (absolute epoch ms) so it survives card remounts.
+const DEVICE_LOGIN_DEADLINE_MS = 15 * 60 * 1000
 
 // Module-scoped (escapes Zustand state) on purpose: each operation reads its own generation on entry and bails on completion if a newer operation has incremented past it; stashing it inside the store would make reset() race with in-flight fetches that already captured the old value.
 let _operationGeneration = 0
@@ -210,7 +222,10 @@ function makeCredentialActions(set: Set, get: Get) {
       // orphan the outstanding code; the pending state is confirmed by
       // polling instead.
       if (get().connectingDevice === provider) return
-      set({ connectingDevice: provider })
+      set({
+        connectingDevice: provider,
+        connectingDeviceDeadline: Date.now() + DEVICE_LOGIN_DEADLINE_MS,
+      })
       try {
         const prompt = await beginTunnelDeviceLogin(provider)
         // A cancel/reset (or a competing login) during the await supersedes
@@ -218,12 +233,13 @@ function makeCredentialActions(set: Set, get: Get) {
         if (get().connectingDevice !== provider) return
         set({ deviceLogin: prompt })
         if (prompt.already_logged_in) {
-          set({ connectingDevice: null })
+          set({ connectingDevice: null, connectingDeviceDeadline: null })
           useToastStore.getState().add({ variant: 'success', title: 'Already signed in' })
           await get().fetchStatus()
         }
       } catch (err) {
-        if (get().connectingDevice === provider) set({ connectingDevice: null })
+        if (get().connectingDevice === provider)
+          set({ connectingDevice: null, connectingDeviceDeadline: null })
         const message = getErrorMessage(err)
         log.error('Failed to begin device login:', message)
         toastError('Failed to start sign-in', message)
@@ -245,14 +261,14 @@ function makeCredentialActions(set: Set, get: Get) {
         (p) => p.provider_id === provider,
       )?.credential_configured
       if (configured) {
-        set({ deviceLogin: null, connectingDevice: null })
+        set({ deviceLogin: null, connectingDevice: null, connectingDeviceDeadline: null })
         useToastStore.getState().add({ variant: 'success', title: 'Signed in' })
       }
     },
 
     cancelDeviceLogin: () => {
       if (!get().connectingDevice) return
-      set({ deviceLogin: null, connectingDevice: null })
+      set({ deviceLogin: null, connectingDevice: null, connectingDeviceDeadline: null })
     },
   }
 }

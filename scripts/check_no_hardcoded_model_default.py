@@ -161,10 +161,19 @@ def _scan_config_fields(
 
 
 def _scan(root: Path) -> list[str]:
-    """Return every current violation identifier under *root*."""
+    """Return every current violation identifier under *root*.
+
+    Raises:
+        GateSourceError: When the expected source tree is missing under
+            *root*, so a misconfigured ``--repo-root`` fails closed rather
+            than silently scanning zero files and reporting no violations.
+    """
     findings: list[str] = []
     definitions_dir = root / _DEFINITIONS_REL
     src_dir = root / _SRC_REL
+    if not src_dir.is_dir():
+        msg = f"expected source tree not found: {src_dir}"
+        raise GateSourceError(msg)
     for path in sorted(src_dir.rglob("*.py")):
         relpath = path.relative_to(root).as_posix()
         text, tree = read_and_parse(path)

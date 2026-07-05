@@ -104,8 +104,10 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
             live ``tool_creation_enabled`` gate and per-gap allowlist re-read,
             and into the overflow strategy for the live model read.
         notification_dispatcher: Optional operator-alert sink for recurring
-            SERVICE_ABSENT gaps (a wired handler with no backing service);
-            ``None`` disables that ops signal.
+            SERVICE_ABSENT gaps (a wired handler with no backing service) and
+            for approve-to-live apply failures raised by the
+            ``ToolApprovalConsumer`` (a burned operator approval); ``None``
+            disables both ops signals.
 
     Returns:
         A :class:`ToolsmithRuntime` with the service and dynamic registry.

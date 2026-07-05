@@ -135,18 +135,22 @@ class NarrativeSynthesiser:
             temperature=self._config.narrative_temperature,
             max_tokens=self._config.narrative_max_tokens,
         )
-        model = require_configured_model(
-            await resolve_model_with_fallback(
-                resolver=self._config_resolver,
+        # Model resolution stays inside the fallback-protected block: run
+        # narration is a best-effort post-run documentary, so an unset
+        # ``narrative_model`` (ServiceUnavailableError) must degrade to the
+        # deterministic fallback prose, never abort run finalisation.
+        try:
+            model = require_configured_model(
+                await resolve_model_with_fallback(
+                    resolver=self._config_resolver,
+                    namespace=SettingNamespace.CHIEF_OF_STAFF,
+                    key="narrative_model",
+                    fallback=self._config.narrative_model or "",
+                ),
                 namespace=SettingNamespace.CHIEF_OF_STAFF,
                 key="narrative_model",
-                fallback=self._config.narrative_model or "",
-            ),
-            namespace=SettingNamespace.CHIEF_OF_STAFF,
-            key="narrative_model",
-            feature_label="Chief of Staff run narrator",
-        )
-        try:
+                feature_label="Chief of Staff run narrator",
+            )
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=_NARRATOR_AGENT,

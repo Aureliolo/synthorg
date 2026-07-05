@@ -72,7 +72,11 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
     )
     proposer, _, turn_repo, _, _ = build_proposer(
         provider=provider,
-        config=ChiefOfStaffConfig(propose_enabled=True, routing_enabled=True),
+        config=ChiefOfStaffConfig(
+            propose_enabled=True,
+            routing_enabled=True,
+            propose_model=NotBlankStr("test-model-001"),
+        ),
         role_router=router,
     )
 

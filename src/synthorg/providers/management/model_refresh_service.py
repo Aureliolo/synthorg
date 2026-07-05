@@ -120,6 +120,10 @@ class ModelRefreshService:
         self._config_resolver = config_resolver
         self._notification_dispatcher = notification_dispatcher
         self._clock = clock or SystemClock()
+        # (provider, model) tuples already alerted as stale, so a stale model
+        # that persists across reconcile cycles raises a single actionable
+        # alert instead of re-notifying the operator every cycle.
+        self._alerted_stale: set[tuple[str, str]] = set()
 
     async def run_cycle(
         self,
@@ -247,7 +251,16 @@ class ModelRefreshService:
             stale_by_provider: ``(provider_name, stale_model_ids)`` pairs found
                 this cycle.
         """
-        if not stale_by_provider or self._notification_dispatcher is None:
+        if self._notification_dispatcher is None:
+            return
+        # Only alert on stale (provider, model) tuples not already reported, so
+        # a stale model persisting across cycles does not re-notify every pass.
+        new_by_provider = [
+            (name, tuple(mid for mid in ids if (name, mid) not in self._alerted_stale))
+            for name, ids in stale_by_provider
+        ]
+        new_by_provider = [(name, ids) for name, ids in new_by_provider if ids]
+        if not new_by_provider:
             return
         from synthorg.notifications.models import (  # noqa: PLC0415
             Notification,
@@ -255,7 +268,7 @@ class ModelRefreshService:
             NotificationSeverity,
         )
 
-        lines = [f"{name}: {', '.join(ids)}" for name, ids in stale_by_provider]
+        lines = [f"{name}: {', '.join(ids)}" for name, ids in new_by_provider]
         body = (
             "Configured models are no longer served by their provider and "
             "should be replaced (see model recommendations):\n" + "\n".join(lines)
@@ -270,10 +283,12 @@ class ModelRefreshService:
                     source="providers.model_refresh",
                 ),
             )
+            for name, ids in new_by_provider:
+                self._alerted_stale.update((name, mid) for mid in ids)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
-                PROVIDER_MODEL_REFRESH_PROVIDER_FAILED,
+                PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
                 note="stale_model_alert_dispatch_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

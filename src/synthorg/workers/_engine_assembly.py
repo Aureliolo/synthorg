@@ -39,7 +39,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import code_execution_records_of
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.state import config_resolver_of
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
@@ -252,7 +252,7 @@ async def _build_external_api_runtime(
     )
 
 
-def _build_stakes_router_or_none(
+async def _build_stakes_router_or_none(
     app_state: AppState,
 ) -> StakesRouter | None:
     """Build the stakes-aware model router from live application state.
@@ -260,10 +260,13 @@ def _build_stakes_router_or_none(
     Returns ``None`` when the benchmark provider is absent (cost-dial
     not wired, e.g. a persistence-less boot), so the engine simply skips
     stakes routing. Reads the benchmark provider and coordination-metrics
-    store off ``AppState`` and builds a tier resolver over ALL configured
-    providers with a deterministic :class:`CheapestSelector` (v1), so a tier
-    can resolve to the cheapest model serving it across providers. The engine
-    then swaps the dispatched client to the routed model's provider
+    store off ``AppState`` and builds a tier resolver over the LIVE provider
+    set (the persisted configs the resolver serves, falling back to the boot
+    ``RootConfig.providers``), not the boot-time config snapshot, so a
+    DB-backed deployment routes over the providers actually in force. Uses a
+    deterministic :class:`CheapestSelector` (v1) so a tier can resolve to the
+    cheapest model serving it across providers. The engine then swaps the
+    dispatched client to the routed model's provider
     (``AgentEngine._resolve_provider_instance``), keeping the API called and
     the cost attribution on the same provider; ships the ``stakes_aware``
     default strategy.
@@ -278,7 +281,15 @@ def _build_stakes_router_or_none(
     benchmark_provider = app_state.slice(BudgetStateSlice).benchmark_provider
     if benchmark_provider is None:
         return None
-    providers = dict(app_state.config.providers)
+    # Prefer the live persisted provider set; fall back to the boot snapshot
+    # when the resolver is not wired (anonymous / test boots) so routing still
+    # builds. ``get_provider_configs`` itself falls back to ``RootConfig`` when
+    # no DB override is set, so the two paths agree on a YAML-only deployment.
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        providers = dict(app_state.config.providers)
+    else:
+        providers = dict(await resolver.get_provider_configs())
     if not providers:
         return None
     resolver = ModelResolver.from_config(providers, selector=CheapestSelector())
@@ -476,7 +487,7 @@ def _build_compaction_callback(
     )
 
 
-def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
+async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
     registry: ProviderRegistry,
@@ -516,7 +527,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
-        stakes_router=_build_stakes_router_or_none(app_state),
+        stakes_router=await _build_stakes_router_or_none(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),
         approval_store=require_service(
