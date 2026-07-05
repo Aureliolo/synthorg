@@ -332,7 +332,10 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/coordination",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "CoordinationService",
+        "CeremonyPolicyService"
+      ],
       "mcp_tool_names": [
         "synthorg_coordination_get_task_metrics",
         "synthorg_coordination_metrics_list",
@@ -535,11 +538,30 @@
     },
     {
       "controllers": [],
-      "depends_on": [],
+      "depends_on": [
+        "client"
+      ],
       "directory": "src/synthorg/infrastructure",
       "ghost_wired_symbols": [
         "QualityFacadeService",
-        "ReviewFacadeService"
+        "ReviewFacadeService",
+        "SetupFacadeService",
+        "ProjectFacadeService",
+        "RequestsFacadeService",
+        "TemplatePackFacadeService",
+        "ClientFacadeService",
+        "AuditReadService",
+        "EventsReadService",
+        "ArtifactFacadeService",
+        "IntegrationHealthFacadeService",
+        "OAuthFacadeService",
+        "SimulationFacadeService",
+        "MCPCatalogFacadeService",
+        "UserFacadeService",
+        "BackupFacadeService",
+        "OntologyFacadeService",
+        "ProviderReadService",
+        "SettingsReadService"
       ],
       "mcp_tool_names": [
         "synthorg_health_check",
@@ -626,7 +648,11 @@
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [
-        "build_promotion_service"
+        "build_promotion_service",
+        "AgentHealthService",
+        "PersonalityService",
+        "ActivityFeedService",
+        "ScalingDecisionService"
       ],
       "mcp_tool_names": [
         "synthorg_agents_list",
@@ -692,7 +718,9 @@
       "depends_on": [],
       "directory": "src/synthorg/integrations",
       "ghost_wired_symbols": [
-        "MCPToolFactory"
+        "MCPToolFactory",
+        "ConnectionService",
+        "WebhookService"
       ],
       "mcp_tool_names": [
         "synthorg_mcp_catalog_list",
@@ -992,7 +1020,11 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/organization",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "CompanyReadService",
+        "RoleVersionService",
+        "TeamService"
+      ],
       "mcp_tool_names": [
         "synthorg_company_get",
         "synthorg_company_update",
@@ -1343,6 +1375,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-05T08:57:27.077090Z",
+  "generated_at": "2026-07-05T13:18:21.682766Z",
   "schema_version": 1
 }

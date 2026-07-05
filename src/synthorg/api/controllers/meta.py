@@ -24,10 +24,6 @@ from synthorg.api.controllers._meta_proposal_helpers import (
     PROPOSAL_ACTION_TYPES,
     proposal_to_dict,
 )
-from synthorg.api.controllers._meta_requests import (
-    ChatRequest,
-    ConversationalProposeRequest,
-)
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
