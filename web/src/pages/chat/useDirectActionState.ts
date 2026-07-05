@@ -31,7 +31,6 @@ type SetAction = ReturnType<typeof useConversationsStore.getState>['setAction']
 type RunAction = ReturnType<typeof useMetaStore.getState>['runAction']
 
 interface ActionSendDeps {
-  loading: boolean
   selectedAgentId: string | null
   runAction: RunAction
   activeAgents: readonly ActiveAgentSummary[]
@@ -45,12 +44,16 @@ function useDirectActionSend(deps: ActionSendDeps): {
   triggerSend: () => void
   retryLast: (beforeMsgId?: number) => void
 } {
-  const { loading, selectedAgentId, runAction, activeAgents, setAction } = deps
+  const { selectedAgentId, runAction, activeAgents, setAction } = deps
   const { messages, input, setInput } = deps
 
   const sendInstruction = useCallback(
     async (instruction: string, idempotencyKey?: string) => {
-      if (!instruction || loading || !selectedAgentId) return
+      // Read the live loading flag (not the render-time closure) so a rapid
+      // second submit in the same render window can't slip past an action
+      // that is already in flight.
+      if (!instruction || useMetaStore.getState().actionLoading || !selectedAgentId)
+        return
       // Mint the key once per logical turn; a manual retry reuses it so an
       // action that actually ran server-side is deduped, not re-run.
       const key = idempotencyKey ?? crypto.randomUUID()
@@ -76,7 +79,7 @@ function useDirectActionSend(deps: ActionSendDeps): {
         ...(result && { conversationId: result.conversation_id ?? undefined }),
       }))
     },
-    [loading, selectedAgentId, runAction, activeAgents, setAction],
+    [selectedAgentId, runAction, activeAgents, setAction],
   )
 
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
@@ -85,12 +88,12 @@ function useDirectActionSend(deps: ActionSendDeps): {
     // Mirror sendInstruction's preconditions before clearing the input, so a
     // send blocked by an in-flight action or a missing agent selection does not
     // discard the operator's composed text.
-    if (loading || !selectedAgentId) return
+    if (useMetaStore.getState().actionLoading || !selectedAgentId) return
     const instruction = input.trim()
     if (!instruction) return
     setInput('')
     void sendInstruction(instruction)
-  }, [loading, selectedAgentId, input, setInput, sendInstruction])
+  }, [selectedAgentId, input, setInput, sendInstruction])
 
   // Retry the human instruction that precedes the clicked error bubble; an
   // unscoped retry would replay the transcript tail rather than the
@@ -137,7 +140,6 @@ export function useDirectActionState(): DirectActionState {
   )
 
   const { triggerSend, retryLast } = useDirectActionSend({
-    loading,
     selectedAgentId,
     runAction,
     activeAgents,

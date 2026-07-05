@@ -53,7 +53,6 @@ type SetGroup = ReturnType<typeof useConversationsStore.getState>['setGroup']
 type ConverseGroup = ReturnType<typeof useMetaStore.getState>['converseGroup']
 
 interface GroupSendDeps {
-  loading: boolean
   selectedIds: readonly string[]
   converse: ConverseGroup
   setGroup: SetGroup
@@ -66,14 +65,16 @@ function useGroupSend(deps: GroupSendDeps): {
   triggerSend: () => void
   retryLast: (beforeMsgId?: number) => void
 } {
-  const { loading, selectedIds, converse, setGroup, messages, input, setInput } =
-    deps
+  const { selectedIds, converse, setGroup, messages, input, setInput } = deps
 
   const sendMessage = useCallback(
     async (message: string, idempotencyKey?: string) => {
       const conversationId = useConversationsStore.getState().group.conversationId
       const canStart = conversationId !== undefined || selectedIds.length > 0
-      if (!message || loading || !canStart) return
+      // Read the live loading flag (not the render-time closure) so a rapid
+      // second submit in the same render window can't slip past a turn that
+      // is already in flight.
+      if (!message || useMetaStore.getState().groupChatLoading || !canStart) return
       // Mint the key once per logical turn; a manual retry reuses it so a
       // round that actually ran server-side is deduped, not re-run.
       const key = idempotencyKey ?? crypto.randomUUID()
@@ -98,7 +99,7 @@ function useGroupSend(deps: GroupSendDeps): {
         })
       }
     },
-    [loading, selectedIds, converse, setGroup],
+    [selectedIds, converse, setGroup],
   )
 
   const triggerSend = useCallback(() => {
@@ -108,10 +109,10 @@ function useGroupSend(deps: GroupSendDeps): {
     const conversationId = useConversationsStore.getState().group.conversationId
     const canStart = conversationId !== undefined || selectedIds.length > 0
     const message = input.trim()
-    if (loading || !canStart || !message) return
+    if (useMetaStore.getState().groupChatLoading || !canStart || !message) return
     setInput('')
     void sendMessage(message)
-  }, [loading, selectedIds, input, setInput, sendMessage])
+  }, [selectedIds, input, setInput, sendMessage])
 
   // Retry the human message that precedes the clicked error bubble (see
   // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
@@ -208,7 +209,6 @@ export function useGroupChatState(): GroupChatState {
   )
 
   const { triggerSend, retryLast } = useGroupSend({
-    loading,
     selectedIds,
     converse,
     setGroup,

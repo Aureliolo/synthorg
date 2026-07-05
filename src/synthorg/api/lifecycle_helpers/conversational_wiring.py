@@ -352,8 +352,8 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
 
     Raises:
         ServiceUnavailableError: When propose or invite is enabled against
-            a persistent SQLite ApprovalStore (a combination that cannot
-            durably persist conversational approvals).
+            a persistent ApprovalStore on a backend that does not support
+            conversational approvals.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -362,9 +362,10 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     repositories = await _wire_conversational_repositories_and_reconcile(
         app_state, persistence, effective_approval_store
     )
-    # Validate the persistence invariant before the provider gate: an
-    # unsupported persistent-SQLite conversational config must fail the
-    # boot whether or not a provider is configured yet.
+    # Validate the persistence invariant before the provider gate: a
+    # persistent ApprovalStore on a backend that does not support
+    # conversational approvals must fail the boot whether or not a provider
+    # is configured yet.
     _guard_conversational_persistence(
         si_config.chief_of_staff, persistence, effective_approval_store
     )

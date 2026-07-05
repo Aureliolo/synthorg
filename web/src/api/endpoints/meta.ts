@@ -406,6 +406,9 @@ export type ChatScope =
   | { kind: 'proposal'; id: string }
   | { kind: 'alert'; id: string }
 
+/** One of the three conversation shapes (mirrors backend ``ConversationKind``). */
+export type ConversationKind = 'direct' | 'routed' | 'group'
+
 /** Summary of one of the caller's resumable conversations. */
 export interface ConversationSummary {
   id: string
@@ -414,7 +417,7 @@ export interface ConversationSummary {
   updated_at: string
   status: string
   /** ``direct`` / ``routed`` resume into Request work; ``group`` into Group. */
-  kind: string
+  kind: ConversationKind
 }
 
 /** One persisted turn of a conversation, for reconstructing a transcript. */

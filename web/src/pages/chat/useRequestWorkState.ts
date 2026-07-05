@@ -40,7 +40,11 @@ export function useRequestWorkState(): RequestWorkState {
 
   const sendMessage = useCallback(
     async (message: string, idempotencyKey?: string) => {
-      if (!message || proposeLoading || conversationClosed) return
+      // Read the live loading flag (not the render-time closure) so a rapid
+      // second submit in the same render window can't slip past a propose
+      // that is already in flight.
+      if (!message || useMetaStore.getState().proposeLoading || conversationClosed)
+        return
       // Mint the key once per logical turn; a manual retry reuses it so a
       // parked proposal that actually succeeded is deduped, not re-parked.
       const key = idempotencyKey ?? crypto.randomUUID()
@@ -67,17 +71,18 @@ export function useRequestWorkState(): RequestWorkState {
         messages: [...s.messages, buildAssistantMessage(result)],
       }))
     },
-    [proposeLoading, conversationClosed, propose, setWork],
+    [conversationClosed, propose, setWork],
   )
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
     // Guard before clearing: Enter during an in-flight propose (or on a
     // closed conversation) must not wipe the composed text.
-    if (!message || proposeLoading || conversationClosed) return
+    if (!message || useMetaStore.getState().proposeLoading || conversationClosed)
+      return
     setInput('')
     void sendMessage(message)
-  }, [input, proposeLoading, conversationClosed, sendMessage])
+  }, [input, conversationClosed, sendMessage])
 
   const retryBefore = useCallback(
     (beforeMsgId: number) => {

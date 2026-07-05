@@ -41,7 +41,7 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   const scope = useConversationsStore((s) => s.staff.scope)
   const setStaff = useConversationsStore((s) => s.setStaff)
   const [input, setInput] = useState('')
-  const { isStreaming, cancel, runStream } = useChatStreaming(setStaff)
+  const { isStreaming, isBusy, cancel, runStream } = useChatStreaming(setStaff)
   const metaChatLoading = useMetaStore((s) => s.chatLoading)
   const sendChat = useMetaStore((s) => s.sendChat)
   const proposals = useMetaStore((s) => s.proposals)
@@ -60,8 +60,16 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
     [setStaff],
   )
 
+  // Live block read: the store's chatLoading (buffered scoped path) or an
+  // in-flight stream, evaluated at call time so a duplicate submit racing
+  // ahead of the re-render is rejected.
+  const isBlocked = useCallback(
+    () => useMetaStore.getState().chatLoading || isBusy(),
+    [isBusy],
+  )
+
   const sendMessage = useSendChiefOfStaff({
-    blocked: metaChatLoading || isStreaming,
+    isBlocked,
     scope,
     setStaff,
     sendChat,
@@ -69,12 +77,12 @@ export function useChiefOfStaffChatState(): ChiefOfStaffChatState {
   })
 
   const triggerSend = useCallback(() => {
-    if (metaChatLoading || isStreaming) return
+    if (isBlocked()) return
     const question = input.trim()
     if (!question) return
     setInput('')
     void sendMessage(question)
-  }, [metaChatLoading, isStreaming, input, sendMessage])
+  }, [isBlocked, input, sendMessage])
 
   // Retry the user message that precedes the clicked error bubble; an
   // unscoped retry would resend the wrong turn when multiple failures exist.

@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import * as charterApi from '@/api/endpoints/charter'
 import type { CharterFilters } from '@/api/endpoints/charter'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -161,7 +161,7 @@ async function editDraftImpl(
     log.error('Charter edit failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not update the charter',
+      ...getCrudErrorTitle(err, 'Could not update the charter'),
       description: getErrorMessage(err),
     })
     return null
@@ -188,7 +188,7 @@ async function approveImpl(
     log.error('Charter approval failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not approve the charter',
+      ...getCrudErrorTitle(err, 'Could not approve the charter'),
       description: getErrorMessage(err),
     })
     return null
@@ -208,7 +208,7 @@ async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
     log.error('Charter cancel failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not cancel the charter',
+      ...getCrudErrorTitle(err, 'Could not cancel the charter'),
       description: getErrorMessage(err),
     })
     return false

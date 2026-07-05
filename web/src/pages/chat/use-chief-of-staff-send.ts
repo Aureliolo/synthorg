@@ -12,8 +12,12 @@ type SetStaff = ConversationsState['setStaff']
 type SendChat = ReturnType<typeof useMetaStore.getState>['sendChat']
 
 interface SendDeps {
-  /** True when a turn is already in flight (buffered load or streaming). */
-  blocked: boolean
+  /**
+   * Live "a turn is already in flight" read (buffered load or streaming),
+   * evaluated at call time so a duplicate submit racing ahead of the
+   * re-render is still rejected.
+   */
+  isBlocked: () => boolean
   scope: ChatScopeValue | null
   setStaff: SetStaff
   sendChat: SendChat
@@ -34,10 +38,10 @@ function toChatScope(value: ChatScopeValue | null): ChatScope | undefined {
 export function useSendChiefOfStaff(
   deps: SendDeps,
 ): (question: string, idempotencyKey?: string) => Promise<void> {
-  const { blocked, scope, setStaff, sendChat, runStream } = deps
+  const { isBlocked, scope, setStaff, sendChat, runStream } = deps
   return useCallback(
     async (question: string, idempotencyKey?: string) => {
-      if (!question || blocked) return
+      if (!question || isBlocked()) return
       // Mint the key once per logical turn and store it on the user turn so
       // a manual retry of the buffered scoped path reuses it (a turn that
       // succeeded server-side is deduped, not re-run). The unscoped
@@ -67,7 +71,7 @@ export function useSendChiefOfStaff(
       }))
       await runStream(question, assistantId)
     },
-    [blocked, scope, setStaff, sendChat, runStream],
+    [isBlocked, scope, setStaff, sendChat, runStream],
   )
 }
 

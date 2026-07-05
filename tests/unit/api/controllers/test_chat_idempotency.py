@@ -19,6 +19,9 @@ from synthorg.api.controllers._chat_idempotency import (
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.state import AppState
+from synthorg.engine.chat_action import ChatActionResult
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.meta.chief_of_staff.actor import ConversationalActResult
 from synthorg.meta.chief_of_staff.models import ChatQuery
 
 pytestmark = pytest.mark.unit
@@ -50,6 +53,52 @@ async def test_no_key_runs_build_once_without_idempotency_service() -> None:
         )
     assert calls == 1
     assert dumped["data"] == {"answer": "hi"}
+
+
+async def test_dump_excludes_nested_computed_fields_so_replay_revalidates() -> None:
+    """The cached dump omits computed fields at every level, not just the top.
+
+    ``ConversationalActResult.action`` is a ``ChatActionResult`` whose
+    ``parked`` is a computed field; a top-level-only exclusion would leave
+    ``action.parked`` in the stored JSON and ``model_validate`` would reject
+    it under ``extra="forbid"`` on replay.
+    """
+    result = ConversationalActResult(
+        agent_id="agent-cfo",
+        agent_name="Casey",
+        conversation_id="conv-1",
+        action=ChatActionResult(
+            termination_reason=TerminationReason.COMPLETED,
+            final_message="Done.",
+        ),
+    )
+
+    async def _build() -> ApiResponse[ConversationalActResult]:
+        return ApiResponse[ConversationalActResult](data=result)
+
+    dummy = cast("AppState", SimpleNamespace())
+    with suppress_type_checks():
+        dumped = await run_chat_idempotent(
+            dummy,
+            scope="meta.chat.act",
+            actor_id="user-1",
+            key=None,
+            endpoint="/meta/chat/act",
+            request_fingerprint="fp",
+            build=_build,
+        )
+
+    # Top-level (ApiResponse.success) and nested (action.parked) computed
+    # fields are both stripped from the stored payload.
+    assert "success" not in dumped
+    data = cast("dict[str, object]", dumped["data"])
+    action = cast("dict[str, object]", data["action"])
+    assert "parked" not in action
+    # The stored dump round-trips back through the frozen extra="forbid"
+    # models without a ValidationError.
+    restored = ApiResponse[ConversationalActResult].model_validate(dumped)
+    assert restored.data is not None
+    assert restored.data.action.parked is False
 
 
 def test_fingerprint_is_stable_and_payload_sensitive() -> None:

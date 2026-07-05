@@ -6,6 +6,7 @@ import {
 } from '@/api/endpoints/meta-stream'
 import { createLogger } from '@/lib/logger'
 import type { ConversationsState } from '@/stores/conversations'
+import { sanitizeForLog } from '@/utils/logging'
 
 import type { ChiefOfStaffMessage } from './chat-types'
 
@@ -18,6 +19,12 @@ const STREAM_FAILURE_NOTICE = 'The assistant could not respond. Please try again
 export interface ChatStreaming {
   /** True while an answer is streaming; enables the Cancel affordance. */
   isStreaming: boolean
+  /**
+   * Live "a stream is in flight" read backed by the abort ref, not the
+   * render-time flag, so a send guard can reject a duplicate submit that
+   * races ahead of React's re-render.
+   */
+  isBusy: () => boolean
   /**
    * Abort the in-flight stream. Any tokens received so far are kept; if
    * none arrived the bubble shows "Stopped."
@@ -73,7 +80,7 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
       } catch (err) {
         const aborted = controller.signal.aborted
         if (!aborted) {
-          log.error('Chat answer stream failed', err)
+          log.error('Chat answer stream failed', sanitizeForLog(err))
         }
         updateAssistant(assistantId, (m) =>
           aborted
@@ -99,10 +106,11 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
   )
 
   const cancel = useCallback(() => abortRef.current?.abort(), [])
+  const isBusy = useCallback(() => abortRef.current !== null, [])
 
   // Abort an in-flight stream if the panel unmounts mid-answer, so the
   // fetch + reader do not outlive the component.
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  return { isStreaming: streaming, cancel, runStream }
+  return { isStreaming: streaming, isBusy, cancel, runStream }
 }

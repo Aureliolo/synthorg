@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   getConversationTurns,
   listConversations,
+  type ConversationKind,
   type ConversationSummary,
 } from '@/api/endpoints/meta'
 import { Button } from '@/components/ui/button'
@@ -17,13 +18,13 @@ import { hydrateGroupMessages, hydrateWorkMessages } from './chat-hydrate'
 /** Modes a persisted conversation can resume into. */
 export type ResumableMode = 'work' | 'group'
 
-const KIND_LABEL: Readonly<Record<string, string>> = {
+const KIND_LABEL: Readonly<Record<ConversationKind, string>> = {
   direct: 'Request work',
   routed: 'Request work',
   group: 'Group chat',
 }
 
-function modeForKind(kind: string): ResumableMode {
+function modeForKind(kind: ConversationKind): ResumableMode {
   return kind === 'group' ? 'group' : 'work'
 }
 
@@ -44,6 +45,9 @@ export function ConversationHistoryDrawer({
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A failed resume must not clear the list the way a failed list-load does,
+  // so it gets its own non-blocking banner state and leaves the picker intact.
+  const [resumeError, setResumeError] = useState<string | null>(null)
   const [resumingId, setResumingId] = useState<string | null>(null)
 
   // Refetch on every open so the list is never stale and nothing is cached
@@ -72,6 +76,7 @@ export function ConversationHistoryDrawer({
   const handleResume = useCallback(
     async (conversation: ConversationSummary) => {
       setResumingId(conversation.id)
+      setResumeError(null)
       try {
         const turns = await getConversationTurns(conversation.id)
         const mode = modeForKind(conversation.kind)
@@ -96,7 +101,7 @@ export function ConversationHistoryDrawer({
         onResume(mode)
         onClose()
       } catch {
-        setError('Could not resume that conversation.')
+        setResumeError('Could not resume that conversation. Pick another below.')
       } finally {
         setResumingId(null)
       }
@@ -109,6 +114,7 @@ export function ConversationHistoryDrawer({
       <ConversationHistoryBody
         loading={loading}
         error={error}
+        resumeError={resumeError}
         conversations={conversations}
         resumingId={resumingId}
         onResume={handleResume}
@@ -120,6 +126,7 @@ export function ConversationHistoryDrawer({
 interface BodyProps {
   loading: boolean
   error: string | null
+  resumeError: string | null
   conversations: readonly ConversationSummary[]
   resumingId: string | null
   onResume: (conversation: ConversationSummary) => void
@@ -128,6 +135,7 @@ interface BodyProps {
 function ConversationHistoryBody({
   loading,
   error,
+  resumeError,
   conversations,
   resumingId,
   onResume,
@@ -153,6 +161,14 @@ function ConversationHistoryBody({
   }
   return (
     <ul className="space-y-2">
+      {resumeError !== null && (
+        <li
+          role="alert"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {resumeError}
+        </li>
+      )}
       {conversations.map((conversation) => (
         <li key={conversation.id}>
           <Button
@@ -162,7 +178,7 @@ function ConversationHistoryBody({
             aria-busy={resumingId === conversation.id}
             onClick={() => onResume(conversation)}
           >
-            <span>{KIND_LABEL[conversation.kind] ?? conversation.kind}</span>
+            <span>{KIND_LABEL[conversation.kind]}</span>
             <span className="text-xs text-muted-foreground">
               {formatRelativeTime(conversation.updated_at)}
             </span>

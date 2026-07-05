@@ -225,7 +225,7 @@ describe('sendChat', () => {
     })
   })
 
-  it('returns null, sets error state, and emits an error toast on API failure', async () => {
+  it('returns null and emits an error toast on API failure (no shared error leak)', async () => {
     server.use(
       http.post('/api/v1/meta/chat', () =>
         HttpResponse.json(apiError('boom')),
@@ -237,7 +237,9 @@ describe('sendChat', () => {
     expect(result).toBeNull()
     const state = useMetaStore.getState()
     expect(state.chatLoading).toBe(false)
-    expect(state.error).toBe('boom')
+    // A chat mutation surfaces via toast + the null sentinel only; the
+    // shared ``error`` slice belongs to the data-fetch/config reads.
+    expect(state.error).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('error')
@@ -300,7 +302,7 @@ describe('proposeConversation', () => {
     })
   })
 
-  it('returns null, sets error, and emits an error toast on API failure', async () => {
+  it('returns null and emits an error toast on API failure (no shared error leak)', async () => {
     server.use(
       http.post('/api/v1/meta/chat/propose', () =>
         HttpResponse.json(apiError('nope')),
@@ -312,7 +314,7 @@ describe('proposeConversation', () => {
     expect(result).toBeNull()
     const state = useMetaStore.getState()
     expect(state.proposeLoading).toBe(false)
-    expect(state.error).toBe('nope')
+    expect(state.error).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Propose request failed')
@@ -400,7 +402,7 @@ describe('converseGroup', () => {
     })
   })
 
-  it('returns null, sets error, and emits an error toast on API failure', async () => {
+  it('returns null and emits an error toast on API failure (no shared error leak)', async () => {
     server.use(
       http.post('/api/v1/meta/chat/group', () =>
         HttpResponse.json(apiError('nope')),
@@ -414,7 +416,7 @@ describe('converseGroup', () => {
     expect(result).toBeNull()
     const state = useMetaStore.getState()
     expect(state.groupChatLoading).toBe(false)
-    expect(state.error).toBe('nope')
+    expect(state.error).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Group chat request failed')
@@ -475,7 +477,7 @@ describe('runAction', () => {
     })
   })
 
-  it('returns null, sets error, and emits an error toast on API failure', async () => {
+  it('returns null and emits an error toast on API failure (no shared error leak)', async () => {
     server.use(
       http.post('/api/v1/meta/chat/act', () =>
         HttpResponse.json(apiError('nope')),
@@ -489,7 +491,7 @@ describe('runAction', () => {
     expect(result).toBeNull()
     const state = useMetaStore.getState()
     expect(state.actionLoading).toBe(false)
-    expect(state.error).toBe('nope')
+    expect(state.error).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Direct action request failed')
@@ -510,9 +512,9 @@ describe('runAction', () => {
       .runAction('do a thing', 'agent-cfo')
 
     expect(result).toBeNull()
-    expect(useMetaStore.getState().error).toBe(
-      'Direct MCP acting requires security governance.',
-    )
+    // The fail-closed 503 surfaces via a distinct toast, not the shared
+    // ``error`` slice (which stays owned by the data-fetch reads).
+    expect(useMetaStore.getState().error).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Conversational mode unavailable')
