@@ -473,7 +473,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
                 TAG_TASK_DATA,
                 windowed_transcript(
                     history,
-                    token_budget=self._config.propose_history_token_budget,
+                    token_budget=self._config.conversational_history_token_budget,
                     estimator=self._estimator,
                 ),
             ),

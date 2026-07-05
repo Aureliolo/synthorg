@@ -416,7 +416,7 @@ class GroupChatService:
         # ``history`` still drives the ``already_spoke`` invite gate above.
         render_history = window_turns(
             history,
-            token_budget=self._config.propose_history_token_budget,
+            token_budget=self._config.conversational_history_token_budget,
             estimator=self._estimator,
             render_turn=render_group_turn,
         )
