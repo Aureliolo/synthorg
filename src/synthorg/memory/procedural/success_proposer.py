@@ -153,9 +153,8 @@ class SuccessMemoryProposer:
         """
         model = self._config.model
         if model is None:
-            # Defensive: the engine gates proposer construction on a
-            # configured model, so an unset model here means no proposer
-            # should exist. Skip rather than call a provider with no model.
+            # No model configured (the default is unset, never a placeholder);
+            # skip rather than call a provider with an empty model identifier.
             return None
         try:
             messages = [

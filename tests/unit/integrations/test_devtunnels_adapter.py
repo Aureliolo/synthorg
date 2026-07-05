@@ -422,11 +422,14 @@ class TestStopTerminatesLogin:
 
         await adapter.stop()
 
-        # terminated + cleared pending prove the in-flight login was torn down
-        # (mypy narrows ``_login_process`` from the assignment, so assert the
-        # observable teardown rather than the nulled attribute).
+        # ``terminated`` is the observable teardown of the in-flight login child
+        # (mypy narrows ``_login_process`` from the assignment above, so assert
+        # the teardown rather than the nulled attribute). ``_login_pending`` is
+        # deliberately left untouched: ``begin_login`` owns it via its
+        # ``finally``, so clearing it here would let a concurrent ``begin_login``
+        # start a second login while the first is still in flight.
         assert login.terminated is True
-        assert adapter._login_pending is False
+        assert adapter._login_pending is True
 
     async def test_stop_ignores_an_already_exited_login(self, tmp_path: Path) -> None:
         adapter = _adapter(tmp_path)
