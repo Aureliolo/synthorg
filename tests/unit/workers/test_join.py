@@ -58,6 +58,20 @@ async def test_join_abandons_wedged_task_within_timeout() -> None:
     await task
 
 
+async def test_join_reraises_finished_task_exception() -> None:
+    # A sub-task that settles with a real (non-cancellation) exception -- e.g.
+    # a critical re-raised through reraise_critical inside the heartbeat /
+    # ack-extender loop -- must surface, not be dropped as an asyncio
+    # "exception was never retrieved" warning.
+    async def boom() -> None:
+        msg = "boom"
+        raise ValueError(msg)
+
+    task = asyncio.create_task(boom())
+    with pytest.raises(ValueError, match="boom"):
+        await join_cancelled(task, "worker-0", "boom")
+
+
 async def test_external_cancel_is_not_swallowed() -> None:
     started = asyncio.Event()
     release = asyncio.Event()

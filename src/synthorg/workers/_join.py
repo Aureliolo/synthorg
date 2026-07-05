@@ -26,6 +26,12 @@ Comfortably above a routine cancellation (which lands on the sub-task's
 next ``await``) yet well below any caller shutdown deadline, so a wedged
 broker degrades to a logged orphan rather than a hung teardown."""
 
+_ABANDONED_TASKS: Final[set[asyncio.Task[None]]] = set()
+"""Strong references to timed-out joins. asyncio keeps only a weak reference
+to a task, so a still-pending orphan with no owner -- once ``run()`` /
+``_execute_claim()`` returns -- could be garbage-collected before its own
+await unwinds. Each task removes itself via a done-callback once it settles."""
+
 
 async def join_cancelled(
     task: asyncio.Task[None],
@@ -42,14 +48,30 @@ async def join_cancelled(
         label: Human name of the sub-task (e.g. ``"heartbeat"``).
         timeout_seconds: Seconds to wait for the task to finish cancelling
             before abandoning it as a logged orphan.
+
+    Raises:
+        BaseException: Whatever the sub-task itself raised when it settled
+            without being cancelled -- e.g. a critical re-raised through
+            ``reraise_critical`` inside the heartbeat / ack-extender loop.
+            Such a failure must surface, not be dropped as an unretrieved-task
+            warning.
     """
     _done, pending = await asyncio.wait({task}, timeout=timeout_seconds)
     if pending:
+        # Wedged past the deadline: abandon it, but retain a strong reference
+        # so the orphan is not garbage-collected before its await unwinds.
+        _ABANDONED_TASKS.add(task)
+        task.add_done_callback(_ABANDONED_TASKS.discard)
         logger.warning(
             WORKERS_SUBTASK_JOIN_TIMEOUT,
             worker_id=worker_id,
             subtask=label,
         )
+        return
+    # Settled within the deadline. A clean cancellation is expected; any other
+    # completion carrying an exception must propagate rather than be swallowed.
+    if not task.cancelled() and (exc := task.exception()) is not None:
+        raise exc
 
 
 __all__ = ["join_cancelled"]
