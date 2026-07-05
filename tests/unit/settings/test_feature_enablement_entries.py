@@ -53,9 +53,10 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
     ("chief_of_staff", "narrative_enabled", SettingType.BOOLEAN, "false", False),
     # Agent invite: off, gated live per group-chat turn -> no restart.
     ("chief_of_staff", "invite_enabled", SettingType.BOOLEAN, "false", False),
-    # Direct MCP acting: off, fail-closed at boot (needs security governance
-    # wired at startup), so enabling it stays restart-required (KEEP).
-    ("chief_of_staff", "direct_mcp_enabled", SettingType.BOOLEAN, "false", True),
+    # Direct MCP acting: off, fail-closed (needs security governance + the MCP
+    # self-consumer wired). A live toggle rebuilds the actor through that same
+    # gate, so it hot-reloads -> no restart.
+    ("chief_of_staff", "direct_mcp_enabled", SettingType.BOOLEAN, "false", False),
     # Per-feature models: blank by default (setup auto-selects); read live
     # per LLM call -> no restart.
     ("chief_of_staff", "chat_model", SettingType.STRING, "", False),

@@ -33,6 +33,10 @@ interface CharterState {
   draftCharter: ProjectCharter | null
   sending: boolean
   conversationClosed: boolean
+  // Persists the last interview-turn failure so a config error (e.g. a blank
+  // ``charter.interview_model`` 503) stays surfaced inline after the toast
+  // fades, letting the operator act on it. Cleared when a new turn starts.
+  turnError: string | null
 
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
@@ -102,6 +106,7 @@ async function runTurnImpl(
   const { conversationId, messages: previousMessages } = get()
   set({
     sending: true,
+    turnError: null,
     messages: [
       ...previousMessages,
       { id: crypto.randomUUID(), role: 'user', content: message },
@@ -129,12 +134,13 @@ async function runTurnImpl(
     }))
   } catch (err) {
     log.error('Interview turn failed', sanitizeForLog(err))
+    const description = getErrorMessage(err)
     useToastStore.getState().add({
       variant: 'error',
       title: 'Could not continue the interview',
-      description: getErrorMessage(err),
+      description,
     })
-    set({ sending: false, messages: previousMessages })
+    set({ sending: false, messages: previousMessages, turnError: description })
   }
 }
 
@@ -149,6 +155,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   draftCharter: null,
   sending: false,
   conversationClosed: false,
+  turnError: null,
 
   fetchCharters: (filters) => fetchChartersImpl(set, filters),
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
@@ -216,6 +223,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
       draftCharter: null,
       sending: false,
       conversationClosed: false,
+      turnError: null,
     })
   },
 }))

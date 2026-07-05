@@ -142,6 +142,7 @@ class CoordinationSectionConfig(BaseModel):
         description="Git branch for workspace isolation",
     )
     decomposition_model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal coordinator default
         default=NotBlankStr("example-medium-001"),
         description=(
             "LLM model identifier used by the coordinator's task "

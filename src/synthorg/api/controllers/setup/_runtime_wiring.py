@@ -129,12 +129,24 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
         _wire_charter_engine,
     )
+    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+        wire_chief_of_staff_proposer,
+        wire_conversational_actor,
+    )
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
+        _wire_chief_of_staff_chat,
         _wire_research_engine,
     )
     from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
         wire_knowledge_engine,
     )
+    from synthorg.api.lifecycle_helpers.narrative_wiring import (  # noqa: PLC0415
+        wire_run_narrator,
+    )
+    from synthorg.api.lifecycle_helpers.refinement_wiring import (  # noqa: PLC0415
+        wire_refinement_router,
+    )
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
@@ -142,11 +154,14 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
         settings_service = app_state.slice(SettingsStateSlice).settings_service
         si_config = await load_self_improvement_config(settings_service)
         registry = app_state.slice(ProvidersStateSlice).registry
+        persistence = app_state.slice(PersistenceStateSlice).backend
+        cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+        approval_store = app_state.slice(ApprovalStateSlice).store
         await _wire_charter_engine(
             app_state,
             provider_registry=registry,
-            persistence=app_state.slice(PersistenceStateSlice).backend,
-            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            persistence=persistence,
+            cost_tracker=cost_tracker,
             si_config=si_config,
         )
         # Research + knowledge are on by default and need a provider /
@@ -155,6 +170,35 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
         # setup has filled their models and a provider exists.
         await _wire_research_engine(app_state, provider_registry=registry)
         await wire_knowledge_engine(app_state, provider_registry=registry)
+        # The Chief-of-Staff trio (chat / narrator / propose) wires only behind
+        # a resolvable per-feature model. A boot-empty start left their models
+        # blank, so they stayed unwired; setup has now provisioned real models,
+        # and their wiring is idempotent, so re-running it here brings them
+        # online with no restart (mirroring the boot order: narrator, then the
+        # proposer + the refinement router and conversational actor built on it).
+        await _wire_chief_of_staff_chat(
+            app_state,
+            provider_registry=registry,
+            cost_tracker=cost_tracker,
+            si_config=si_config,
+        )
+        await wire_run_narrator(
+            app_state,
+            provider_registry=registry,
+            cost_tracker=cost_tracker,
+            si_config=si_config,
+        )
+        if approval_store is not None:
+            await wire_chief_of_staff_proposer(
+                app_state,
+                provider_registry=registry,
+                persistence=persistence,
+                cost_tracker=cost_tracker,
+                effective_approval_store=approval_store,
+                si_config=si_config,
+            )
+            await wire_refinement_router(app_state)
+            await wire_conversational_actor(app_state, si_config=si_config)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

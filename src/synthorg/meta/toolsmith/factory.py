@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.factory import build_guards
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.toolsmith.applier import ToolCreationApplier
+from synthorg.meta.toolsmith.approval_consumer import ToolApprovalConsumer
 from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
 from synthorg.meta.toolsmith.models import ToolBlueprint
@@ -26,6 +27,7 @@ from synthorg.meta.toolsmith.validation_gate import (
     SandboxBriefRunner,
     SandboxResolver,
 )
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
@@ -52,10 +54,13 @@ class ToolsmithRuntime:
     Attributes:
         service: The orchestrating service (also the capability-gap sink).
         dynamic_registry: The live registry the layered tool surface reads.
+        approval_consumer: The approve-to-live consumer, or ``None`` when no
+            approval store is wired (nothing to consume approvals from).
     """
 
     service: ToolsmithService
     dynamic_registry: DynamicToolRegistry
+    approval_consumer: ToolApprovalConsumer | None = None
 
 
 def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborators
@@ -72,6 +77,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
     config_resolver: ConfigResolver | None = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ToolsmithRuntime:
     """Wire the toolsmith pipeline from config and runtime dependencies.
 
@@ -97,6 +103,11 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         config_resolver: Optional resolver threaded into the service for the
             live ``tool_creation_enabled`` gate and per-gap allowlist re-read,
             and into the overflow strategy for the live model read.
+        notification_dispatcher: Optional operator-alert sink for recurring
+            SERVICE_ABSENT gaps (a wired handler with no backing service) and
+            for approve-to-live apply failures raised by the
+            ``ToolApprovalConsumer`` (a burned operator approval); ``None``
+            disables both ops signals.
 
     Returns:
         A :class:`ToolsmithRuntime` with the service and dynamic registry.
@@ -150,10 +161,28 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         overflow_handler=resolved_overflow,
         existing_capabilities=existing_capabilities,
         dynamic_registry=dynamic_registry,
+        blueprint_repo=repo,
         clock=resolved_clock,
         config_resolver=config_resolver,
+        notification_dispatcher=notification_dispatcher,
     )
-    return ToolsmithRuntime(service=service, dynamic_registry=dynamic_registry)
+    # The approve-to-live consumer needs a place to pull approvals from; without
+    # an approval store there is nothing to consume, so it stays unwired.
+    consumer = (
+        ToolApprovalConsumer(
+            service=service,
+            blueprint_repo=repo,
+            approval_store=approval_store,
+            notification_dispatcher=notification_dispatcher,
+        )
+        if approval_store is not None
+        else None
+    )
+    return ToolsmithRuntime(
+        service=service,
+        dynamic_registry=dynamic_registry,
+        approval_consumer=consumer,
+    )
 
 
 def _build_overflow_handler(

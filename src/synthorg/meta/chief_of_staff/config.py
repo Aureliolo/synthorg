@@ -280,9 +280,10 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Chat ──────────────────────────────────────────────────────
 
     chat_enabled: bool = False
-    chat_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
-        description="Model for chat explanation LLM calls",
+    chat_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for chat explanation LLM calls; unset until "
+        "an operator or setup selects one (never a placeholder default)",
     )
     chat_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     chat_max_tokens: int = Field(default=2000, ge=100)
@@ -290,9 +291,10 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Clarify + propose ─────────────────────────────────────────
 
     propose_enabled: bool = False
-    propose_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
-        description="Model for clarify-and-propose LLM calls",
+    propose_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for clarify-and-propose LLM calls; unset until "
+        "an operator or setup selects one (never a placeholder default)",
     )
     propose_temperature: float = Field(
         default=_PROPOSE_TEMPERATURE_DEFAULT,
@@ -319,9 +321,10 @@ class ChiefOfStaffConfig(BaseModel):
 
     routing_enabled: bool = False
     routing_strategy: Literal["llm", "keyword"] = "llm"
-    routing_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
-        description="Model for the concern-routing classifier LLM calls",
+    routing_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the concern-routing classifier LLM calls; "
+        "unset until an operator or setup selects one (never a placeholder)",
     )
     routing_temperature: float = Field(
         default=_ROUTING_TEMPERATURE_DEFAULT,
@@ -398,9 +401,10 @@ class ChiefOfStaffConfig(BaseModel):
     # ── Run narrative (documentary mode) ──────────────────
 
     narrative_enabled: bool = False
-    narrative_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
-        description="Model for the run-narrative prose LLM calls",
+    narrative_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the run-narrative prose LLM calls; unset until "
+        "an operator or setup selects one (never a placeholder default)",
     )
     narrative_temperature: float = Field(
         default=_NARRATIVE_TEMPERATURE_DEFAULT,

@@ -8,10 +8,12 @@ re-parse per request; this subscriber wires the cache field back to ``None`` so
 the next read reloads the fresh value, keeping the effective-config view in step
 with the live overlay (the running services already read each value live).
 
-The two restart-bound security switches (``self_improvement.code_modification_enabled``
-and ``chief_of_staff.direct_mcp_enabled``) are deliberately NOT watched: they
-require a redeploy, the dispatcher skips restart-required changes, and excluding
-them keeps the no-live-enable invariant explicit.
+The restart-bound security switch ``self_improvement.code_modification_enabled``
+is deliberately NOT watched: it requires a redeploy, the dispatcher skips
+restart-required changes, and excluding it keeps the no-live-enable invariant
+explicit. ``chief_of_staff.direct_mcp_enabled`` IS watched (it hot-reloads via
+:class:`DirectMcpActorSettingsSubscriber`, which rebuilds the actor through the
+fail-closed governance gate), so its cached-config invalidation belongs here.
 """
 
 from synthorg.api.state import AppState
@@ -48,6 +50,7 @@ _CHIEF_OF_STAFF_HOT_KEYS: frozenset[str] = frozenset(
         "alerts_enabled",
         "narrative_enabled",
         "invite_enabled",
+        "direct_mcp_enabled",
         "chat_model",
         "propose_model",
         "routing_model",

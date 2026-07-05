@@ -54,7 +54,9 @@ class TestLLMCharterInterviewer:
     async def test_parses_question_branch(self) -> None:
         provider = ScriptedProvider(response=make_text_response(_QUESTION_JSON))
         decision = await _interviewer(provider).run_turn(
-            _history(), project_id=None, config=CharterConfig()
+            _history(),
+            project_id=None,
+            config=CharterConfig(interview_model="example-large-001"),
         )
         assert decision.needs_more is True
         assert decision.next_question == "What is the budget?"
@@ -63,7 +65,9 @@ class TestLLMCharterInterviewer:
     async def test_parses_draft_branch(self) -> None:
         provider = ScriptedProvider(response=make_text_response(_DRAFT_JSON))
         decision = await _interviewer(provider).run_turn(
-            _history(), project_id=None, config=CharterConfig()
+            _history(),
+            project_id=None,
+            config=CharterConfig(interview_model="example-large-001"),
         )
         assert decision.needs_more is False
         assert decision.draft is not None
@@ -74,7 +78,9 @@ class TestLLMCharterInterviewer:
         provider = ScriptedProvider(response=make_text_response("not json at all"))
         with pytest.raises(CharterInterviewResponseInvalidError):
             await _interviewer(provider).run_turn(
-                _history(), project_id=None, config=CharterConfig()
+                _history(),
+                project_id=None,
+                config=CharterConfig(interview_model="example-large-001"),
             )
 
     async def test_schema_violation_raises(self) -> None:
@@ -83,7 +89,9 @@ class TestLLMCharterInterviewer:
         provider = ScriptedProvider(response=make_text_response(bad))
         with pytest.raises(CharterInterviewResponseInvalidError):
             await _interviewer(provider).run_turn(
-                _history(), project_id=None, config=CharterConfig()
+                _history(),
+                project_id=None,
+                config=CharterConfig(interview_model="example-large-001"),
             )
 
     async def test_uses_configured_model(self) -> None:

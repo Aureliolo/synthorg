@@ -39,7 +39,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import code_execution_records_of
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.state import config_resolver_of
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
@@ -252,35 +252,47 @@ async def _build_external_api_runtime(
     )
 
 
-def _build_stakes_router_or_none(
+async def _build_stakes_router_or_none(
     app_state: AppState,
-    *,
-    active_provider_name: str,
 ) -> StakesRouter | None:
     """Build the stakes-aware model router from live application state.
 
     Returns ``None`` when the benchmark provider is absent (cost-dial
     not wired, e.g. a persistence-less boot), so the engine simply skips
     stakes routing. Reads the benchmark provider and coordination-metrics
-    store off ``AppState`` and builds a tier resolver scoped to the
-    single active provider that the runtime executes against, so the
-    router can never resolve a tier to a model owned by an inactive
-    provider and hand it to the wrong client; ships the ``stakes_aware``
+    store off ``AppState`` and builds a tier resolver over the LIVE provider
+    set (the persisted configs the resolver serves, falling back to the boot
+    ``RootConfig.providers``), not the boot-time config snapshot, so a
+    DB-backed deployment routes over the providers actually in force. Uses a
+    deterministic :class:`CheapestSelector` (v1) so a tier can resolve to the
+    cheapest model serving it across providers. The engine then swaps the
+    dispatched client to the routed model's provider
+    (``AgentEngine._resolve_provider_instance``), keeping the API called and
+    the cost attribution on the same provider; ships the ``stakes_aware``
     default strategy.
 
     Returns:
-        The ``StakesRouter``, or ``None`` when the benchmark provider or
-        the active provider config is absent.
+        The ``StakesRouter``, or ``None`` when the benchmark provider is
+        absent or no providers are configured.
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
+    from synthorg.providers.routing.selector import CheapestSelector  # noqa: PLC0415
 
     benchmark_provider = app_state.slice(BudgetStateSlice).benchmark_provider
     if benchmark_provider is None:
         return None
-    provider_cfg = app_state.config.providers.get(active_provider_name)
-    if provider_cfg is None:
+    # Prefer the live persisted provider set; fall back to the boot snapshot
+    # when the resolver is not wired (anonymous / test boots) so routing still
+    # builds. ``get_provider_configs`` itself falls back to ``RootConfig`` when
+    # no DB override is set, so the two paths agree on a YAML-only deployment.
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if config_resolver is None:
+        providers = dict(app_state.config.providers)
+    else:
+        providers = dict(await config_resolver.get_provider_configs())
+    if not providers:
         return None
-    resolver = ModelResolver.from_config({active_provider_name: provider_cfg})
+    resolver = ModelResolver.from_config(providers, selector=CheapestSelector())
     coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
     return build_stakes_router(
         app_state.config.stakes_routing,
@@ -475,7 +487,7 @@ def _build_compaction_callback(
     )
 
 
-def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
+async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
     registry: ProviderRegistry,
@@ -483,7 +495,6 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
     *,
-    active_provider_name: str,
     flight_recorder_sink: FlightRecorderSink | None = None,
     step_classifier: StepQualityClassifier | None = None,
     classification_detector_timeout_seconds: float | None = None,
@@ -516,9 +527,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
-        stakes_router=_build_stakes_router_or_none(
-            app_state, active_provider_name=active_provider_name
-        ),
+        stakes_router=await _build_stakes_router_or_none(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),
         approval_store=require_service(

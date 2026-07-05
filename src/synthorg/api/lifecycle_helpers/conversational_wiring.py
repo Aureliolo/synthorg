@@ -131,6 +131,49 @@ async def wire_conversational_actor(
         )
 
 
+async def rebuild_conversational_actor(
+    app_state: AppState,
+    *,
+    si_config: SelfImprovementConfig,
+) -> None:
+    """Unconditionally rebuild + swap the direct-MCP actor from current config.
+
+    Unlike the idempotent boot wirer, this always recomputes the actor and
+    swaps the slice to the fresh value, tearing it DOWN (to ``None``) when
+    ``direct_mcp_enabled`` flips off. The rebuild re-runs the same fail-closed
+    :func:`build_conversational_actor` gate (governance + MCP self-consumer
+    must be wired on the boot engine), so a live enable stays fail-closed: the
+    actor materialises only when the engine already carries governance. This is
+    what lets ``direct_mcp_enabled`` be hot-reloadable without weakening the
+    startup security invariant.
+    """
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.workers.execution_service import (  # noqa: PLC0415
+        AgentEngineExecutionService,
+    )
+    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+    agent_registry = app_state.slice(HrStateSlice).agent_registry
+    service = app_state.slice(RuntimeStateSlice).worker_execution_service
+    actor = None
+    if agent_registry is not None and isinstance(service, AgentEngineExecutionService):
+        actor = build_conversational_actor(
+            si_config.chief_of_staff,
+            engine=service.engine,
+            agent_registry=agent_registry,
+            autonomy_resolver=service.autonomy_resolver,
+        )
+    app_state.wire(MetaStateSlice, conversational_actor=actor)
+    logger.info(
+        API_APP_STARTUP,
+        service="conversational_actor",
+        note="direct MCP actor rebuilt (live toggle)",
+        wired=actor is not None,
+        enabled=si_config.chief_of_staff.direct_mcp_enabled,
+    )
+
+
 def _guard_conversational_persistence(
     config: ChiefOfStaffConfig,
     persistence: PersistenceBackend | None,
@@ -351,6 +394,7 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
 
 
 __all__ = [
+    "rebuild_conversational_actor",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
     "wire_group_chat_service",

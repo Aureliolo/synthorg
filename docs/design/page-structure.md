@@ -263,7 +263,7 @@ Multi-step first-run flow. After account creation (conditional), a mode selectio
 | Theme | `/setup/theme` | yes | no |
 | Review (Complete) | `/setup/complete` | yes | yes |
 
-**Agents vs Capabilities split**: the Agents step is the agent roster only (per-agent name, personality, and model assignment, plus the org chart). All org-wide model defaults and feature toggles live on the Capabilities step: a **Models** section at the top carries the per-feature model pickers (coordination, embedding, research, Chief-of-Staff; the research picker is shown only while research is enabled), followed by grouped capability toggles (Conversational, Knowledge & research on by default; Automation, External network egress, Acts on your behalf collapsed and off). Settings that only take effect on the next server start are not badged in the wizard (they apply when the org first boots).
+**Agents vs Capabilities split**: the Agents step is the agent roster only (per-agent name, personality, and model assignment, plus the org chart). All org-wide model defaults and feature toggles live on the Capabilities step: a **Models** section at the top carries the per-feature model pickers (coordination, embedding, research, Chief-of-Staff chat, request-work, concern-routing, run-narrative, and project-charter; the research picker is shown only while research is enabled), one per per-feature model whose live default is blank so setup provisions every one, followed by grouped capability toggles (Conversational, Knowledge & research on by default; Automation, External network egress, Acts on your behalf collapsed and off). Settings that only take effect on the next server start are not badged in the wizard (they apply when the org first boots).
 
 **Provider step layout** (`web/src/pages/setup/ProvidersStep.tsx`): a three-section picker reused on both the wizard and the Settings → Providers page. (a) **Cloud providers** -- a logo-and-name grid for hosted providers; click a card to open the credential form pre-filled with that preset. (b) **Detected on this machine** -- only renders when an auto-detect probe found a reachable local server; rows include the URL, model count, and `[Add local]` / `[Add cloud]` buttons (the cloud variant is offered when a local preset has a hosted counterpart, e.g. local Ollama → Ollama Cloud). The probe is a single batch call to `POST /providers/probe-local` issued once on mount, with a manual rescan button. (c) **Configure manually** -- opens the credential form in custom-endpoint mode. The "Detected" section is hidden entirely when nothing was detected; vLLM is intentionally omitted from auto-detect because its default port (8000) collides with the SynthOrg backend.
 
@@ -339,6 +339,11 @@ Sidebar layout (220px expanded, 56px icon rail):
   - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
   - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
   - Settings, `Settings`, `/settings`
+- **Integrations** (collapsible label):
+  - Connections, `Cable`, `/connections` (external-service credentials + tunnel providers; the tunnel card mints/reads a tunnel connection and surfaces device-login providers here)
+  - OAuth Apps, `KeyRound`, `/integrations/oauth-apps`
+  - MCP Catalog, `Boxes`, `/integrations/mcp-catalog`
+  - SSRF Violations, `ShieldAlert`, `/providers/ssrf-violations`
 - **Bottom**:
   - Collapse toggle
   - Notifications bell + badge

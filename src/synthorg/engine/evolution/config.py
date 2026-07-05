@@ -70,6 +70,7 @@ class ProposerConfig(BaseModel):
 
     type: Literal["separate_analyzer", "self_report", "composite"] = "composite"
     model: NotBlankStr = Field(
+        # lint-allow: hardcoded-model-default -- internal proposer default
         default="example-small-001",
         description="Model for proposer LLM calls",
     )

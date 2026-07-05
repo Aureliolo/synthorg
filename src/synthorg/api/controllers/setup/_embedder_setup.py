@@ -23,6 +23,8 @@ from synthorg.api.controllers.setup_models import SetupAgentSummary
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
+from synthorg.llm.model_tier_policy import tier_for_purpose
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.rankings import DeploymentTier
 from synthorg.memory.embedding.selector import EmbeddingSelection
 from synthorg.observability import get_logger, safe_error_description
@@ -41,6 +43,16 @@ from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.model_matcher_config import ModelMatcherConfig
 
 logger = get_logger(__name__)
+
+# Per-feature model settings auto-provisioned at setup, each paired with the
+# prompt purpose whose tier (from the single tier policy) selects the model.
+_PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
+    ("chief_of_staff", "chat_model", PromptPurposeId.COS_CHAT),
+    ("chief_of_staff", "propose_model", PromptPurposeId.COS_PROPOSE),
+    ("chief_of_staff", "routing_model", PromptPurposeId.COS_ROUTING),
+    ("chief_of_staff", "narrative_model", PromptPurposeId.COS_NARRATIVE),
+    ("charter", "interview_model", PromptPurposeId.CHARTER_INTERVIEW),
+)
 
 # Inverted-convention result from ``auto_select_embedder``: ``None``
 # means success (a model was ranked and persisted); a ``str`` carries
@@ -178,20 +190,20 @@ def _agent_model_id(agent: dict[str, object]) -> str | None:
     return None
 
 
-def pick_chat_model(agents: list[dict[str, object]]) -> str | None:
-    """Choose a cheaper model id for conversational Chief-of-Staff turns.
+def pick_model_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
+    """Choose a roster model id matching *tier*, then any agent's model.
 
-    Chat / clarify-and-propose turns are short and frequent, so prefer a
-    ``small`` (then ``medium``) tier agent's model before falling back to
-    any agent that carries an assignment. Shared by the completion
-    auto-select and the wizard's model-recommendations endpoint.
+    Prefers an agent already matched to *tier* (so a per-feature model
+    tracks the declared tier policy), falling back to any agent that
+    carries a model assignment. Shared by the setup auto-provision and the
+    wizard's model-recommendations endpoint so both derive a per-feature
+    model from a single source (the tier policy), never a placeholder.
 
     Returns:
         A model id, or ``None`` when no agent carries a model.
     """
-    small = [a for a in agents if a.get("tier") == "small"]
-    medium = [a for a in agents if a.get("tier") == "medium"]
-    for pool in (small, medium, agents):
+    preferred = [a for a in agents if a.get("tier") == tier]
+    for pool in (preferred, agents):
         for agent in pool:
             model_id = _agent_model_id(agent)
             if model_id is not None:
@@ -223,15 +235,17 @@ async def ensure_per_feature_models(
     app_state: AppState,
     settings_svc: SettingsServiceProtocol,
 ) -> None:
-    """Auto-fill the research + Chief-of-Staff models when left unset.
+    """Auto-fill the research + Chief-of-Staff + charter models when unset.
 
-    On-by-default research needs a model id to wire, and the
-    Chief-of-Staff chat capabilities read their own model. The wizard's
-    pickers prefill a recommendation, but the operator can advance without
-    choosing one, so this fills sensible defaults from the matched roster
-    (a capable model for research, a cheaper one for chat) before the
-    runtime rebuild on ``/setup/complete``. Only blank settings are
-    written, so an operator's explicit choice is preserved.
+    Each per-feature model defaults to blank (never a placeholder), so the
+    features 503 until a model is chosen. The wizard's pickers prefill a
+    recommendation, but the operator can advance without choosing one, so
+    this provisions a model from the matched roster before the runtime
+    rebuild on ``/setup/complete``. The tier for each feature comes from the
+    single tier policy (``tier_for_purpose``): research/charter/propose take
+    a large model, chat/narrator a medium one, routing a small one. Only
+    blank settings are written, so an operator's explicit choice is
+    preserved.
     """
     from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
         get_existing_agents,
@@ -248,11 +262,12 @@ async def ensure_per_feature_models(
         available = available_task.result()
         fallback = available[0] if available else None
         research_model = pick_decomposition_model(agents) or fallback
-        cos_model = pick_chat_model(agents) or fallback
         await _set_model_if_blank(settings_svc, "research", "model", research_model)
-        await _set_model_if_blank(
-            settings_svc, "chief_of_staff", "chat_model", cos_model
-        )
+        for namespace, key, purpose in _PER_FEATURE_MODEL_SETTINGS:
+            model_id = (
+                pick_model_for_tier(agents, tier_for_purpose(purpose)) or fallback
+            )
+            await _set_model_if_blank(settings_svc, namespace, key, model_id)
     except* Exception as eg:
         # reraise_critical unwraps an ExceptionGroup recursively, so hand it
         # the whole group: a MemoryError/RecursionError leaf at any nesting

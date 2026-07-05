@@ -742,8 +742,13 @@ class TestDiscoverModelsTrustedUrl:
                 assert "localhost" in call.args[0]
                 assert "Host" not in (call.kwargs.get("headers") or {})
 
-    async def test_trusted_url_logs_ssrf_bypass(self) -> None:
-        """trust_url=True logs the SSRF bypass event for the pass."""
+    async def test_trusted_url_logs_ssrf_bypass_at_debug(self) -> None:
+        """trust_url=True logs the allowlisted-fetch event at DEBUG.
+
+        A trusted discovery URL is auto-allowlisted (preset candidate or
+        admin-entered provider base), so fetching it is a legitimate call,
+        not a security event: it logs at DEBUG, never WARNING.
+        """
         response = _mock_response(
             {"data": [{"id": "test-model-001"}]},
         )
@@ -763,23 +768,28 @@ class TestDiscoverModelsTrustedUrl:
                 trust_url=True,
             )
 
-        # Verify the SSRF bypass event was logged.
         from synthorg.observability.events.provider import (
             PROVIDER_DISCOVERY_SSRF_BYPASSED,
         )
 
-        mock_logger.warning.assert_any_call(
+        mock_logger.debug.assert_any_call(
             PROVIDER_DISCOVERY_SSRF_BYPASSED,
             preset="lm-studio",
             url="http://localhost:1234/v1/models",
         )
+        bypass_warnings = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
+        ]
+        assert bypass_warnings == []
 
-    async def test_ssrf_bypass_warns_once_per_origin_per_pass(self) -> None:
-        """Repeat same-origin fetches within a pass demote to debug.
+    async def test_ssrf_bypass_never_warns_across_passes(self) -> None:
+        """Every allowlisted fetch, in any pass, stays on the DEBUG channel.
 
-        One discovery pass fans out several fetches against the same
-        origin (listing + capability probes); only the first warns, but
-        a second pass warns again so a recurring bypass stays visible.
+        A discovery pass fans out several fetches against the same origin
+        (listing + capability probes) and passes recur; none of them is a
+        security event, so none warns.
         """
         from synthorg.observability.events.provider import (
             PROVIDER_DISCOVERY_SSRF_BYPASSED,
@@ -803,29 +813,21 @@ class TestDiscoverModelsTrustedUrl:
                 "lm-studio",
                 trust_url=True,
             )
-            first_pass_warnings = [
-                call
-                for call in mock_logger.warning.call_args_list
-                if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
-            ]
             await discover_models(
                 "http://localhost:1234/v1",
                 "lm-studio",
                 trust_url=True,
             )
 
-        all_warnings = [
+        bypass_warnings = [
             call
             for call in mock_logger.warning.call_args_list
             if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
         ]
-        assert len(first_pass_warnings) == 1
-        assert len(all_warnings) == 2
-        # The listing + /api/version probe share the origin, so the
-        # extra fetch of each pass lands on the debug channel.
-        debug_events = [
+        bypass_debugs = [
             call
             for call in mock_logger.debug.call_args_list
             if call.args and call.args[0] == PROVIDER_DISCOVERY_SSRF_BYPASSED
         ]
-        assert debug_events
+        assert bypass_warnings == []
+        assert len(bypass_debugs) >= 2

@@ -404,7 +404,10 @@ async def test_vague_request_clarifies_then_executes_on_approval(
                 make_text_response(_PROPOSE_JSON),
             ]
         ),
-        config=ChiefOfStaffConfig(propose_enabled=True),
+        config=ChiefOfStaffConfig(
+            propose_enabled=True,
+            propose_model=NotBlankStr("test-model-001"),
+        ),
         conversation_repo=_FakeConversationRepo(),
         turn_repo=_FakeTurnRepo(),
         proposal_repo=proposal_repo,
@@ -494,7 +497,10 @@ async def test_rejected_proposal_never_touches_pipeline(
     proposal_repo = _FakeProposalRepo()
     proposer = ChiefOfStaffProposer(
         provider=ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)]),
-        config=ChiefOfStaffConfig(propose_enabled=True),
+        config=ChiefOfStaffConfig(
+            propose_enabled=True,
+            propose_model=NotBlankStr("test-model-001"),
+        ),
         conversation_repo=_FakeConversationRepo(),
         turn_repo=_FakeTurnRepo(),
         proposal_repo=proposal_repo,

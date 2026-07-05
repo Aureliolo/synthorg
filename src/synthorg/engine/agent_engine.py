@@ -503,9 +503,17 @@ class AgentEngine(
                 # sets the target tier from the task's stakes, then the
                 # budget auto-downgrade below may lower it further when
                 # budget is tight (a hard ceiling must win over a stakes
-                # upgrade).
+                # upgrade). When routing picks a model owned by a different
+                # provider, the dispatched client is swapped to match so the
+                # cost attribution (identity.model.provider) and the API
+                # actually called are the same provider.
                 if self._stakes_router is not None:
-                    identity = await self._route_stakes(identity, task)
+                    routed = await self._route_stakes(identity, task)
+                    provider, identity = self._resolve_provider_instance(
+                        routed,
+                        identity,
+                        provider,
+                    )
 
                 if self._budget_enforcer:
                     preflight = await self._budget_enforcer.check_can_execute(

@@ -56,7 +56,10 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_model_with_fallback
+from synthorg.settings.kill_switch import (
+    require_configured_model,
+    resolve_model_with_fallback,
+)
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -295,11 +298,16 @@ class ChiefOfStaffChat:
             temperature=self._config.chat_temperature,
             max_tokens=self._config.chat_max_tokens,
         )
-        model = await resolve_model_with_fallback(
-            resolver=self._config_resolver,
+        model = require_configured_model(
+            await resolve_model_with_fallback(
+                resolver=self._config_resolver,
+                namespace=SettingNamespace.CHIEF_OF_STAFF,
+                key="chat_model",
+                fallback=self._config.chat_model or "",
+            ),
             namespace=SettingNamespace.CHIEF_OF_STAFF,
             key="chat_model",
-            fallback=self._config.chat_model,
+            feature_label="Chief of Staff chat",
         )
         try:
             async with cost_recording_scope(

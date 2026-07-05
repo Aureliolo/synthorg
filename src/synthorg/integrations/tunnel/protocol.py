@@ -2,7 +2,7 @@
 
 The tunnel subsystem is multi-provider: a :class:`TunnelManager`
 facade selects one concrete :class:`TunnelAdapter` (Cloudflare quick
-tunnel, ngrok, GitHub Dev Tunnels) per the live
+tunnel, ngrok, Dev Tunnels) per the live
 ``integrations.tunnel_provider`` setting. The minimal
 :class:`TunnelProvider` lifecycle contract is what the API controller,
 MCP facade, and shutdown hook drive; adapters additionally describe

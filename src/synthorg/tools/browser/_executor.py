@@ -499,7 +499,14 @@ def _load_keystore(path: str | None) -> list["WebAuthnKeystoreEntry"]:
         return []
     try:
         data = json.loads(validated.read_text(encoding="utf-8"))
-    except json.JSONDecodeError, OSError:
+    except json.JSONDecodeError as exc:
+        # A corrupt keystore is a lost-credentials signal, not "none yet";
+        # surface it (stderr, the sandbox script has no logger) before the
+        # empty fallback so a partial write / truncation is diagnosable.
+        sys.stderr.write(f"webauthn keystore corrupted at {validated}: {exc}\n")
+        return []
+    except OSError as exc:
+        sys.stderr.write(f"webauthn keystore unreadable at {validated}: {exc}\n")
         return []
     return data if isinstance(data, list) else []
 

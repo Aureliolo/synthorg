@@ -303,6 +303,10 @@ class SetupModelRecommendationsResponse(BaseModel):
     embedding_candidates: tuple[str, ...] = ()
     research_recommended: NotBlankStr | None = None
     cos_recommended: NotBlankStr | None = None
+    propose_recommended: NotBlankStr | None = None
+    routing_recommended: NotBlankStr | None = None
+    narrative_recommended: NotBlankStr | None = None
+    charter_recommended: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_embedding_pairing(self) -> Self:

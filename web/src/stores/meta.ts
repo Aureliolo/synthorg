@@ -189,6 +189,7 @@ async function runFetchAll(set: MetaSet): Promise<void> {
 }
 
 async function runFetchConfig(set: MetaSet): Promise<void> {
+  set({ error: null })
   try {
     set({ config: await getMetaConfig() })
   } catch (err) {

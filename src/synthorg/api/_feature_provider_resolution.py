@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 def resolve_feature_provider(
     provider_registry: ProviderRegistry,
-    model: str,
+    model: str | None,
     *,
     feature: str,
 ) -> BaseCompletionProvider | None:
@@ -35,14 +35,22 @@ def resolve_feature_provider(
 
     Returns:
         The serving driver, or ``None`` -- the feature stays unwired --
-        when the registry is empty or no provider serves the model.
-        Both cases log an actionable WARNING naming the model and the
-        registered providers.
+        when the model is not configured, the registry is empty, or no
+        provider serves the model. Each case logs an actionable note
+        naming the model and the registered providers.
     """
     from synthorg.providers.errors import (  # noqa: PLC0415
         DriverNotRegisteredError,
         ModelNotFoundError,
     )
+
+    if not model:
+        logger.info(
+            API_APP_STARTUP,
+            note="feature model not configured; feature stays unwired",
+            feature=feature,
+        )
+        return None
 
     try:
         name, driver = provider_registry.resolve_for_model(model)

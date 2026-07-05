@@ -20,6 +20,9 @@ TOOLSMITH_AUTHOR_SKIPPED: Final[str] = "toolsmith.author.skipped"
 TOOLSMITH_AUTHOR_OVERFLOW_TO_CODE_MOD: Final[str] = (
     "toolsmith.author.overflow_to_code_mod"
 )
+# A recurring gap from a wired handler with an absent service: an ops signal
+# to implement the service in SynthOrg, never a novel tool to author.
+TOOLSMITH_SERVICE_ABSENT_GAP: Final[str] = "toolsmith.gap.service_absent"
 
 # Proposal guard chain
 TOOLSMITH_PROPOSAL_GUARD_REJECTED: Final[str] = "toolsmith.proposal.guard_rejected"

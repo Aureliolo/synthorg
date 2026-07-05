@@ -42,9 +42,16 @@ that operators would otherwise have no signal for.
 """
 
 KNOWLEDGE_GRAMMAR_PREFETCH_FAILED: Final[str] = "knowledge.grammar.prefetch_failed"
-"""Emitted at WARNING when batch grammar prefetch fails.
+"""Emitted when batch grammar prefetch does not complete.
 
-Non-fatal: chunking still proceeds via each unit's own lazy
+Dual-level (see the prefetch call site in
+``synthorg.knowledge.chunking.factory``): DEBUG for the expected
+optional-extras-absent path (``ImportError`` when the ``tree_sitter``
+packs are not installed) and WARNING for a genuine failure (a present
+but broken grammar pack, I/O error). Alerts keyed on this event name
+should filter on level so the expected fallback does not page.
+
+Non-fatal either way: chunking still proceeds via each unit's own lazy
 ``get_parser`` call, just without the batched pre-download.
 """
 

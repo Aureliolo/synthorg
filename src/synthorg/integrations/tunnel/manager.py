@@ -24,7 +24,11 @@ from functools import partial
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
-from synthorg.integrations.errors import ConnectionNotFoundError, TunnelError
+from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
+    DuplicateConnectionError,
+    TunnelError,
+)
 from synthorg.integrations.tunnel.devtunnels_adapter import DevTunnelsAdapter
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
 from synthorg.integrations.tunnel.protocol import (
@@ -186,6 +190,8 @@ class TunnelManager:
             per-provider readiness).
         """
         selected = await self._selected_id()
+        for adapter in self._adapters.values():
+            await self._ensure_device_login_connection(adapter)
         statuses = [await self._status_of(a) for a in self._adapters.values()]
         return TunnelSnapshot(
             public_url=await self.get_url(),
@@ -203,6 +209,7 @@ class TunnelManager:
         adapter = self._adapters.get(provider_id)
         if adapter is None:
             return None
+        await self._ensure_device_login_connection(adapter)
         return await self._status_of(adapter)
 
     async def store_token(self, provider_id: str, token: str) -> None:
@@ -259,6 +266,7 @@ class TunnelManager:
         if not isinstance(adapter, DevTunnelsAdapter):
             msg = f"Tunnel provider '{provider_id}' has no device login."
             raise TunnelError(msg)
+        await self._ensure_device_login_connection(adapter)
         return await adapter.begin_login()
 
     async def _selected_id(self) -> str:
@@ -329,6 +337,49 @@ class TunnelManager:
             detail=detail,
             credential_configured=credential,
         )
+
+    async def _ensure_device_login_connection(self, adapter: TunnelAdapter) -> None:
+        """Seed a read-only catalog row for a device-login tunnel provider.
+
+        A token provider gets its ``tunnel-<provider>`` row from
+        :meth:`store_token`; a device-login provider stores no secret, so
+        without this seed it would never appear in the Connections list. The
+        row carries no credentials and is health-checked through the tunnel
+        status lookup, not a generic HTTP probe. Idempotent and best-effort:
+        an already-seeded row, a missing catalog (persistence not yet up), or
+        a create race is swallowed so a status/login read never fails on it.
+        """
+        if adapter.credential_kind is not TunnelCredentialKind.DEVICE_LOGIN:
+            return
+        catalog = self._catalog_source() if self._catalog_source else None
+        if catalog is None:
+            return
+        name = credential_connection_name(adapter.provider_id)
+        try:
+            if await catalog.get(name) is not None:
+                return
+            await catalog.create(
+                name=name,
+                connection_type=ConnectionType.TUNNEL,
+                auth_method=AuthMethod.CUSTOM.value,
+                credentials={},
+                health_check_enabled=False,
+            )
+        except DuplicateConnectionError:
+            return
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # WARNING, not DEBUG: an already-seeded row is the expected case
+            # (DuplicateConnectionError above), so reaching here means the
+            # catalog write genuinely failed and the tunnel would silently
+            # never appear in the Connections list until an operator noticed.
+            logger.warning(
+                TUNNEL_ERROR,
+                phase="seed_connection",
+                provider=adapter.provider_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _stored_token(self, provider_id: str) -> str | None:
         """Read a provider's dashboard-managed token from the catalog.

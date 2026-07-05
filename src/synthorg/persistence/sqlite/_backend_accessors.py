@@ -271,8 +271,13 @@ class _BackendRepositoryAccessors:
             Result of type ``T``.
         """
         if repo is None:
+            # SQLite implements every repository, so a None repo is always the
+            # two-phase-boot ordering case (an accessor hit before connect(),
+            # caught by the caller's in-memory fallback), never a missing
+            # implementation. DEBUG matches the Postgres boot-ordering branch;
+            # a genuine connect() failure surfaces at connect() time.
             msg = f"Not connected -- call connect() before accessing {name}"
-            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
+            logger.debug(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return repo
 

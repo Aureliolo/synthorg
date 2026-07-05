@@ -264,15 +264,15 @@ def _select_active_provider(
         )
         return None
     if len(names) > 1:
-        logger.warning(
+        logger.info(
             API_APP_STARTUP,
             service="runtime_services",
             note=(
-                "multiple providers registered; the boot AgentEngine "
-                "runs every agent against the first provider -- "
-                "per-task multi-provider routing is not yet implemented"
+                "multiple providers registered; the first is the labelled "
+                "default and stakes routing picks the cheapest model per tier "
+                "across providers per task"
             ),
-            selected_provider=names[0],
+            default_provider=names[0],
             providers=list(names),
         )
     return registry, names
@@ -348,14 +348,13 @@ async def build_runtime_services(
         rule_matched_confidence=engine_bridge.classifier_rule_matched_confidence,
         fallback_confidence=engine_bridge.classifier_fallback_confidence,
     )
-    engine = _construct_agent_engine(
+    engine = await _construct_agent_engine(
         app_state,
         provider,
         registry,
         tool_registry,
         coordination_metrics_collector,
         external_api_runtime,
-        active_provider_name=names[0],
         flight_recorder_sink=flight_recorder_sink,
         step_classifier=step_classifier,
         classification_detector_timeout_seconds=(

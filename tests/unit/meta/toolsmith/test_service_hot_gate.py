@@ -20,10 +20,15 @@ from synthorg.meta.toolsmith.applier import ToolCreationApplier
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.meta.toolsmith.errors import ToolAuthoringError
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
+from synthorg.meta.toolsmith.models import ToolBlueprint, ToolBlueprintState
 from synthorg.meta.toolsmith.protocol import (
     ToolBlueprintGenerator,
 )
 from synthorg.meta.toolsmith.service import ToolsmithService
+from synthorg.persistence.tool_blueprint_protocol import (
+    DynamicToolRepository,
+    ToolBlueprintFilterSpec,
+)
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -44,7 +49,12 @@ async def settings() -> AsyncIterator[SettingsService]:
     await backend.disconnect()
 
 
-def _service(settings: SettingsService, *, generator: AsyncMock) -> ToolsmithService:
+def _service(
+    settings: SettingsService,
+    *,
+    generator: AsyncMock,
+    blueprint_repo: DynamicToolRepository | None = None,
+) -> ToolsmithService:
     return ToolsmithService(
         config=ToolsmithConfig(
             enabled=True,
@@ -58,7 +68,45 @@ def _service(settings: SettingsService, *, generator: AsyncMock) -> ToolsmithSer
         config_resolver=ConfigResolver(
             settings_service=settings, config=RootConfig(company_name="test")
         ),
+        blueprint_repo=blueprint_repo,
     )
+
+
+def _blueprint() -> ToolBlueprint:
+    return ToolBlueprint(
+        id=NotBlankStr("bp-text-slugify"),
+        name=NotBlankStr("synthorg_text_slugify"),
+        description=NotBlankStr("Slugify text."),
+        capability=_CAP,
+        parameters_schema={
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+        script_body=NotBlankStr("print('{}')"),
+        action_type=NotBlankStr("code:read"),
+        state=ToolBlueprintState.PENDING,
+        created_at=_NOW,
+    )
+
+
+def _stateful_repo() -> DynamicToolRepository:
+    """A ``mock_of`` repo with functional ``save`` + ``query`` over a dict."""
+    store: dict[str, ToolBlueprint] = {}
+
+    async def _save(entity: ToolBlueprint, /) -> None:
+        store[entity.id] = entity
+
+    async def _query(
+        spec: ToolBlueprintFilterSpec, **_kwargs: object
+    ) -> tuple[ToolBlueprint, ...]:
+        return tuple(bp for bp in store.values() if bp.capability == spec.capability)
+
+    repo: DynamicToolRepository = mock_of[DynamicToolRepository](
+        save=AsyncMock(side_effect=_save),
+        query=AsyncMock(side_effect=_query),
+    )
+    return repo
 
 
 async def _record_recurring_gap(svc: ToolsmithService) -> None:
@@ -121,6 +169,32 @@ async def test_cycle_skips_capability_dropped_from_live_allowlist(
     proposals = await svc.run_cycle(now=_NOW + timedelta(minutes=2))
     assert proposals == ()
     generator.author.assert_not_awaited()
+
+
+async def test_recurring_gap_authors_once_across_cycles(
+    settings: SettingsService,
+) -> None:
+    """A gap that recurs across cycles is authored + proposed only once.
+
+    Without dedup, the second cycle re-authors the same capability, collides
+    on the UNIQUE tool name at persist, and files a duplicate approval item.
+    The persisted PENDING blueprint must short-circuit the re-author.
+    """
+    generator = AsyncMock(spec=ToolBlueprintGenerator)
+    generator.author.return_value = _blueprint()
+    repo = _stateful_repo()
+    svc = _service(settings, generator=generator, blueprint_repo=repo)
+    await settings.set("self_improvement", "tool_creation_enabled", "true")
+    await settings.set(
+        "self_improvement", "tool_creation_allowed_capabilities", '["text:slugify"]'
+    )
+    await _record_recurring_gap(svc)
+
+    await svc.run_cycle(now=_NOW + timedelta(minutes=2))
+    await svc.run_cycle(now=_NOW + timedelta(minutes=3))
+
+    # The second cycle finds the PENDING blueprint and skips re-authoring.
+    generator.author.assert_awaited_once()
 
 
 async def test_apply_rejected_when_disabled(settings: SettingsService) -> None:

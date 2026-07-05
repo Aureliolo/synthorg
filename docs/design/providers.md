@@ -271,6 +271,18 @@ cheaper tier (still clearing the floor) to save cost. It is config-selectable vi
 the engine *before* the budget auto-downgrade, so a hard budget ceiling still wins
 over a stakes upgrade. See [Pluggable Subsystems](../reference/pluggable-subsystems.md).
 
+**Per-task multi-provider routing (v1).** The stakes router resolves a tier over
+**all** configured providers with a deterministic `CheapestSelector`, so a tier can
+resolve to the cheapest model serving it across providers rather than being pinned to
+the boot default. After routing, the engine swaps the dispatched client to the routed
+model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
+called and the `CostRecord.provider` name are always the same provider (attribution
+parity). If the routed provider cannot be resolved from the registry, the engine keeps
+the pre-routing provider + identity together so a routing miss is never a
+mis-attribution. `names[0]` stays the labelled default/bootstrap provider, and
+auxiliary services (decomposition, evolution, compaction, red-team, vision, the work
+pipeline) stay on that default provider in v1.
+
 ### Multi-Provider Model Resolution
 
 When multiple providers register the same model ID or alias, the `ModelResolver`

@@ -480,16 +480,35 @@ class KeywordRoleRouter:
         return None
 
 
-def _first_provider(provider_registry: ProviderRegistry) -> CompletionProvider | None:
-    """Resolve the first-registered provider, mirroring the proposer.
+def _resolve_router_provider(
+    provider_registry: ProviderRegistry, model: str
+) -> CompletionProvider | None:
+    """Resolve the provider that serves the concern-routing *model*.
+
+    The routing model is provider-agnostic, so a first-registered pick can
+    hand the classifier a driver that does not serve the model, surfacing as
+    a request-time model-not-found error instead of a clean unbuilt router.
 
     Returns:
-        The first registered provider, or ``None`` when none are wired.
+        The serving provider, or ``None`` when no registered provider serves
+        the model (the router then stays unbuilt and routing degrades to the
+        generic responder).
     """
-    names = provider_registry.list_providers()
-    if not names:
+    from synthorg.providers.errors import (  # noqa: PLC0415
+        DriverNotRegisteredError,
+        ModelNotFoundError,
+    )
+
+    try:
+        _name, driver = provider_registry.resolve_for_model(model)
+    except DriverNotRegisteredError, ModelNotFoundError:
+        logger.warning(
+            COS_ROUTING_FALLBACK,
+            detail="no_provider_for_routing_model",
+            model=model,
+        )
         return None
-    return provider_registry.get(names[0])
+    return driver
 
 
 def build_role_router(
@@ -530,13 +549,16 @@ def build_role_router(
             default_role=config.routing_default_role,
             keyword_map=keyword_map,
         )
-    provider = _first_provider(provider_registry)
+    routing_model = config.routing_model
+    if not routing_model:
+        logger.info(COS_ROUTING_FALLBACK, detail="routing_model_not_configured")
+        return None
+    provider = _resolve_router_provider(provider_registry, routing_model)
     if provider is None:
-        logger.warning(COS_ROUTING_FALLBACK, detail="no_provider_for_router")
         return None
     return LlmConcernRouter(
         provider=provider,
-        model=config.routing_model,
+        model=NotBlankStr(routing_model),
         agent_registry=agent_registry,
         confidence_floor=config.routing_confidence_floor,
         default_role=config.routing_default_role,

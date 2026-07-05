@@ -53,12 +53,16 @@ class TestSubscriberProtocol:
         assert ("chief_of_staff", "alerts_enabled") in watched
         assert ("chief_of_staff", "chat_model") in watched
 
-    def test_excludes_restart_bound_keep_settings(self) -> None:
-        """The two restart-bound security switches are not watched."""
+    def test_excludes_restart_bound_keep_setting(self) -> None:
+        """The restart-bound self-modification switch is not watched."""
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
         assert ("self_improvement", "code_modification_enabled") not in watched
-        assert ("chief_of_staff", "direct_mcp_enabled") not in watched
+
+    def test_watches_hot_reloadable_direct_mcp(self) -> None:
+        """direct_mcp_enabled is watched (it hot-reloads, fail-closed)."""
+        sub, _ = _make_subscriber()
+        assert ("chief_of_staff", "direct_mcp_enabled") in sub.watched_keys
 
     def test_subscriber_name(self) -> None:
         sub, _ = _make_subscriber()

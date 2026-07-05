@@ -318,6 +318,8 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 - **`GET /agents/active`** (active-agent roster): the stable runtime UUIDs, names, and roles of the currently active agents. Backs the participant picker for group chat and the acting-agent picker for direct acting.
 
+**Dashboard inline surfacing.** The Chat page reads `GET /meta/config` and surfaces each mode's gating state inline before a request rather than only reacting to a 503: an enabled mode whose per-capability model is blank shows a "no model configured" notice naming the setting (`chief_of_staff.chat_model` / `propose_model`), and direct action shows an "enabled but not yet live" notice while its effective `direct_mcp_ready` is false (the fail-closed governance gate above). The config exposes `direct_mcp_ready` as the effective actor-wired state so the cross-warning needs no restart to clear. The charter interview keeps the always-available / 503-on-demand contract but now persists its last turn failure inline so a blank `charter.interview_model` stays visible after the toast fades.
+
 ### YAML defaults
 
 ```yaml

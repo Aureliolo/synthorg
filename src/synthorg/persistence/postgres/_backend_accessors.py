@@ -345,10 +345,14 @@ class _PostgresBackendRepositoryAccessors:
         """
         if repo is None:
             if self._pool is None:
+                # Expected during the two-phase boot: an accessor hit before
+                # connect() is caught by the caller's in-memory fallback, so
+                # this is a normal ordering state at DEBUG, not a WARNING.
                 msg = f"Not connected -- call connect() before accessing {name}"
+                logger.debug(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             else:
                 msg = f"Postgres {name} repository is not yet implemented"
-            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
+                logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return repo
 

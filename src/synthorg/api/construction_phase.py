@@ -95,6 +95,7 @@ from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_int
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
 
@@ -431,7 +432,8 @@ def build_construction_services(
                 ).value
             ),
         ),
-        tool_invocation_tracker=overrides.tool_invocation_tracker,
+        tool_invocation_tracker=overrides.tool_invocation_tracker
+        or ToolInvocationTracker(),
         artifact_storage=boot.artifact_storage,
         coordinator=overrides.coordinator,
         work_pipeline=overrides.work_pipeline,

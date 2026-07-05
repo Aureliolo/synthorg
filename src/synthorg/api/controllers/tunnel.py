@@ -203,7 +203,7 @@ class TunnelController(Controller):
         state: State,
         data: TunnelDeviceLoginRequest,
     ) -> ApiResponse[DeviceLoginPrompt]:
-        """Start a device-code login (GitHub Dev Tunnels).
+        """Start a device-code login (Dev Tunnels, GitHub sign-in).
 
         The response carries the verification URL and one-time code;
         the provider CLI completes the login in the background once the

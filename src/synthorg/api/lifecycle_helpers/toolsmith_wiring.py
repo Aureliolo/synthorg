@@ -16,6 +16,8 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.toolsmith.factory import ToolsmithRuntime
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -74,6 +76,7 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
     cost_tracker: CostTrackerProtocol | None,
     workspace_root: Path,
     config_resolver: ConfigResolver | None = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ToolsmithRuntime | None:
     """Resolve dependencies and build the toolsmith runtime, or None.
 
@@ -130,6 +133,7 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
         approval_store=approval_store,
         cost_tracker=cost_tracker,
         config_resolver=config_resolver,
+        notification_dispatcher=notification_dispatcher,
     )
 
 
@@ -289,6 +293,7 @@ async def wire_toolsmith(
             cost_tracker=cost_tracker,
             workspace_root=agent_workspace_root_of(app_state),
             config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+            notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
@@ -340,6 +345,7 @@ async def wire_toolsmith(
         runtime.service,
         interval_seconds=si_config.toolsmith.cycle_interval_seconds,
         config_resolver=config_resolver_of(app_state),
+        approval_consumer=runtime.approval_consumer,
     )
     try:
         await scheduler.start()

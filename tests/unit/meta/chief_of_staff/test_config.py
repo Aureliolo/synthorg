@@ -41,7 +41,8 @@ class TestChiefOfStaffConfig:
 
     def test_default_chat_model(self) -> None:
         cfg = ChiefOfStaffConfig()
-        assert cfg.chat_model == "example-small-001"
+        # Unset by default: no placeholder ships live; setup provisions a model.
+        assert cfg.chat_model is None
 
     def test_default_chat_temperature(self) -> None:
         cfg = ChiefOfStaffConfig()
@@ -54,7 +55,7 @@ class TestChiefOfStaffConfig:
     def test_propose_defaults(self) -> None:
         cfg = ChiefOfStaffConfig()
         assert cfg.propose_enabled is False
-        assert cfg.propose_model == "example-small-001"
+        assert cfg.propose_model is None
         assert cfg.propose_temperature == pytest.approx(0.3)
         assert cfg.propose_max_tokens == 2000
         assert cfg.propose_max_proposals_per_turn == 5
@@ -86,7 +87,7 @@ class TestChiefOfStaffConfig:
     def test_narrative_defaults(self) -> None:
         cfg = ChiefOfStaffConfig()
         assert cfg.narrative_enabled is False
-        assert cfg.narrative_model == "example-small-001"
+        assert cfg.narrative_model is None
         assert cfg.narrative_temperature == pytest.approx(0.4)
         assert cfg.narrative_max_tokens == 2000
 

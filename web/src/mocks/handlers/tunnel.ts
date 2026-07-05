@@ -26,7 +26,7 @@ export const mockTunnelProviders: readonly TunnelProviderStatus[] = [
   },
   {
     provider_id: 'devtunnels',
-    display_name: 'GitHub Dev Tunnels',
+    display_name: 'Dev Tunnels',
     credential_kind: 'device_login',
     available: false,
     detail: 'The devtunnel CLI is not installed.',

@@ -8,8 +8,8 @@ import pytest
 from synthorg.api.controllers.setup._embedder_setup import (
     _set_model_if_blank,
     auto_select_embedder,
-    pick_chat_model,
     pick_decomposition_model,
+    pick_model_for_tier,
 )
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
 from synthorg.settings.service import SettingsService
@@ -121,29 +121,26 @@ class TestPickDecompositionModel:
 
 
 @pytest.mark.unit
-class TestPickChatModel:
-    def test_prefers_small_then_medium_tier(self) -> None:
+class TestPickModelForTier:
+    def test_prefers_matching_tier(self) -> None:
         agents: list[dict[str, object]] = [
             {"tier": "large", "model": {"model_id": "large-model"}},
             {"tier": "medium", "model": {"model_id": "medium-model"}},
             {"tier": "small", "model": {"model_id": "small-model"}},
         ]
-        assert pick_chat_model(agents) == "small-model"
+        assert pick_model_for_tier(agents, "small") == "small-model"
+        assert pick_model_for_tier(agents, "medium") == "medium-model"
+        assert pick_model_for_tier(agents, "large") == "large-model"
 
-    def test_falls_back_to_medium_then_any(self) -> None:
-        medium_only: list[dict[str, object]] = [
-            {"tier": "large", "model": {"model_id": "large-model"}},
-            {"tier": "medium", "model": {"model_id": "medium-model"}},
-        ]
-        assert pick_chat_model(medium_only) == "medium-model"
+    def test_falls_back_to_any_agent_with_a_model(self) -> None:
         any_only: list[dict[str, object]] = [
             {"tier": "large", "model": {"model_id": "large-model"}},
         ]
-        assert pick_chat_model(any_only) == "large-model"
+        assert pick_model_for_tier(any_only, "small") == "large-model"
 
     def test_returns_none_without_any_model(self) -> None:
-        assert pick_chat_model([{"tier": "small"}]) is None
-        assert pick_chat_model([]) is None
+        assert pick_model_for_tier([{"tier": "small"}], "small") is None
+        assert pick_model_for_tier([], "small") is None
 
 
 @pytest.mark.unit

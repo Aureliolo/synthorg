@@ -185,7 +185,7 @@ describe('useTunnelStore', () => {
     expect(useTunnelStore.getState().savingCredential).toBe(false)
   })
 
-  it('beginDeviceLogin stores the prompt', async () => {
+  it('beginDeviceLogin stores the prompt and marks the provider connecting', async () => {
     server.use(
       http.post('/api/v1/integrations/tunnel/device-login', () =>
         HttpResponse.json(
@@ -199,5 +199,77 @@ describe('useTunnelStore', () => {
     )
     await useTunnelStore.getState().beginDeviceLogin('devtunnels')
     expect(useTunnelStore.getState().deviceLogin?.user_code).toBe('ABCD-1234')
+    expect(useTunnelStore.getState().connectingDevice).toBe('devtunnels')
+    // An absolute deadline is stamped so the 15-minute bound survives remounts.
+    expect(useTunnelStore.getState().connectingDeviceDeadline).not.toBeNull()
+  })
+
+  it('beginDeviceLogin does not re-mint while a login is pending', async () => {
+    let calls = 0
+    server.use(
+      http.post('/api/v1/integrations/tunnel/device-login', () => {
+        calls += 1
+        return HttpResponse.json(
+          apiSuccess({
+            verification_uri: 'https://github.com/login/device',
+            user_code: 'ABCD-1234',
+            already_logged_in: false,
+          }),
+        )
+      }),
+    )
+    await useTunnelStore.getState().beginDeviceLogin('devtunnels')
+    await useTunnelStore.getState().beginDeviceLogin('devtunnels')
+    expect(calls).toBe(1)
+  })
+
+  it('pollDeviceLogin resolves the pending login once the provider is configured', async () => {
+    useTunnelStore.setState({
+      connectingDevice: 'devtunnels',
+      deviceLogin: {
+        verification_uri: 'https://github.com/login/device',
+        user_code: 'ABCD-1234',
+        already_logged_in: false,
+      },
+    })
+    const configured = mockTunnelProviders.map((p) =>
+      p.provider_id === 'devtunnels' ? { ...p, credential_configured: true } : p,
+    )
+    server.use(
+      http.get('/api/v1/integrations/tunnel/status', () =>
+        HttpResponse.json(apiSuccess(statusPayload({ providers: configured }))),
+      ),
+    )
+    await useTunnelStore.getState().pollDeviceLogin()
+    const state = useTunnelStore.getState()
+    expect(state.connectingDevice).toBeNull()
+    expect(state.deviceLogin).toBeNull()
+  })
+
+  it('pollDeviceLogin keeps waiting while the provider stays unconfigured', async () => {
+    useTunnelStore.setState({ connectingDevice: 'devtunnels' })
+    server.use(
+      http.get('/api/v1/integrations/tunnel/status', () =>
+        HttpResponse.json(apiSuccess(statusPayload())),
+      ),
+    )
+    await useTunnelStore.getState().pollDeviceLogin()
+    expect(useTunnelStore.getState().connectingDevice).toBe('devtunnels')
+  })
+
+  it('cancelDeviceLogin abandons the pending login', () => {
+    useTunnelStore.setState({
+      connectingDevice: 'devtunnels',
+      deviceLogin: {
+        verification_uri: 'https://github.com/login/device',
+        user_code: 'ABCD-1234',
+        already_logged_in: false,
+      },
+    })
+    useTunnelStore.getState().cancelDeviceLogin()
+    const state = useTunnelStore.getState()
+    expect(state.connectingDevice).toBeNull()
+    expect(state.deviceLogin).toBeNull()
+    expect(state.connectingDeviceDeadline).toBeNull()
   })
 })

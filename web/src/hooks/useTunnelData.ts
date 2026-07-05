@@ -15,6 +15,7 @@ export interface UseTunnelDataReturn {
   selectedProvider: string | null
   activeProvider: string | null
   deviceLogin: DeviceLoginPrompt | null
+  connectingDevice: string | null
 }
 
 export function useTunnelData(): UseTunnelDataReturn {
@@ -26,6 +27,7 @@ export function useTunnelData(): UseTunnelDataReturn {
   const selectedProvider = useTunnelStore((s) => s.selectedProvider)
   const activeProvider = useTunnelStore((s) => s.activeProvider)
   const deviceLogin = useTunnelStore((s) => s.deviceLogin)
+  const connectingDevice = useTunnelStore((s) => s.connectingDevice)
 
   // Fetch once on mount; phase transitions are driven by user actions.
   useEffect(() => {
@@ -41,5 +43,6 @@ export function useTunnelData(): UseTunnelDataReturn {
     selectedProvider,
     activeProvider,
     deviceLogin,
+    connectingDevice,
   }
 }

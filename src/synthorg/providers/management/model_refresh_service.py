@@ -19,6 +19,7 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
@@ -97,6 +98,7 @@ class ModelRefreshService:
         recommender: UpgradeRecommender,
         repo: UpgradeRecommendationRepository,
         config_resolver: ConfigResolver,
+        notification_dispatcher: NotificationDispatcher | None = None,
         clock: Clock | None = None,
     ) -> None:
         """Initialise the service.
@@ -107,6 +109,8 @@ class ModelRefreshService:
             recommender: In-family upgrade recommender.
             repo: Durable recommendation store.
             config_resolver: Reads provider + agent config.
+            notification_dispatcher: Operator alert sink for stale
+                (no-longer-served) configured models; ``None`` disables alerting.
             clock: Clock seam; defaults to ``SystemClock``.
         """
         self._mgmt = mgmt_service
@@ -114,7 +118,12 @@ class ModelRefreshService:
         self._recommender = recommender
         self._repo = repo
         self._config_resolver = config_resolver
+        self._notification_dispatcher = notification_dispatcher
         self._clock = clock or SystemClock()
+        # (provider, model) tuples already alerted as stale, so a stale model
+        # that persists across reconcile cycles raises a single actionable
+        # alert instead of re-notifying the operator every cycle.
+        self._alerted_stale: set[tuple[str, str]] = set()
 
     async def run_cycle(
         self,
@@ -154,6 +163,7 @@ class ModelRefreshService:
 
         added = stale = recommended = auto_applied = 0
         scanned = 0
+        stale_by_provider: list[tuple[str, tuple[str, ...]]] = []
         for provider_name, provider in providers.items():
             scanned += 1
             try:
@@ -169,6 +179,8 @@ class ModelRefreshService:
                 continue
             added += len(outcome.added_ids)
             stale += len(outcome.stale_ids)
+            if outcome.stale_ids:
+                stale_by_provider.append((provider_name, tuple(outcome.stale_ids)))
             for rec in outcome.recommendations:
                 key = (
                     rec.provider_name,
@@ -209,6 +221,7 @@ class ModelRefreshService:
                         continue
                     auto_applied += 1
 
+        await self._alert_stale_models(stale_by_provider)
         report = RefreshCycleReport(
             providers_scanned=scanned,
             added_count=added,
@@ -225,6 +238,66 @@ class ModelRefreshService:
             auto_applied_count=auto_applied,
         )
         return report
+
+    async def _alert_stale_models(
+        self, stale_by_provider: list[tuple[str, tuple[str, ...]]]
+    ) -> None:
+        """Alert the operator that configured models are no longer served.
+
+        Best-effort: a missing dispatcher or a sink failure never breaks the
+        refresh cycle (criticals re-raise).
+
+        Args:
+            stale_by_provider: ``(provider_name, stale_model_ids)`` pairs found
+                this cycle.
+        """
+        if self._notification_dispatcher is None:
+            return
+        # Drop healed entries from the suppression set first, so a model that
+        # recovers (leaves the stale set) and later goes stale again alerts
+        # afresh instead of staying permanently muted.
+        current_stale = {(name, mid) for name, ids in stale_by_provider for mid in ids}
+        self._alerted_stale &= current_stale
+        # Only alert on stale (provider, model) tuples not already reported, so
+        # a stale model persisting across cycles does not re-notify every pass.
+        new_by_provider = [
+            (name, tuple(mid for mid in ids if (name, mid) not in self._alerted_stale))
+            for name, ids in stale_by_provider
+        ]
+        new_by_provider = [(name, ids) for name, ids in new_by_provider if ids]
+        if not new_by_provider:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        lines = [f"{name}: {', '.join(ids)}" for name, ids in new_by_provider]
+        body = (
+            "Configured models are no longer served by their provider and "
+            "should be replaced (see model recommendations):\n" + "\n".join(lines)
+        )
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.HEALTH,
+                    severity=NotificationSeverity.WARNING,
+                    title="Configured models no longer served",
+                    body=body,
+                    source="providers.model_refresh",
+                ),
+            )
+            for name, ids in new_by_provider:
+                self._alerted_stale.update((name, mid) for mid in ids)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
+                note="stale_model_alert_dispatch_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _load_cycle_inputs(
         self,

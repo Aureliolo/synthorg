@@ -267,7 +267,10 @@ def build_proposer(
         provider=provider,
         config=config
         or ChiefOfStaffConfig(
-            propose_enabled=True, routing_enabled=role_router is not None
+            propose_enabled=True,
+            propose_model="example-small-001",
+            routing_enabled=role_router is not None,
+            routing_model="example-small-001",
         ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,

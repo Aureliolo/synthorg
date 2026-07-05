@@ -1,9 +1,11 @@
-import { Calendar, Shield, Tag, User, type LucideIcon } from 'lucide-react'
+import { Calendar, Shield, Tag, User, Wrench, type LucideIcon } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ApprovalTimeline } from './ApprovalTimeline'
 import { getRiskLevelLabel, formatUrgency } from '@/utils/approvals'
 import { formatDateTime } from '@/utils/format'
 import type { ApprovalResponse } from '@/api/types/approvals'
+
+const TOOL_CREATION_ACTION_TYPE = 'proposal:tool_creation'
 
 function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
   const isStripped = !!approval.metadata['stripped_description']
@@ -85,6 +87,35 @@ function ApprovalMetaGrid({
   )
 }
 
+/**
+ * Reviewable summary of the concrete tool a `proposal:tool_creation` approval
+ * would author. The backend stamps these fields into the approval metadata, so
+ * an operator sees the tool name, capability, and description before approving
+ * (approving makes it go live via the toolsmith approve-to-live consumer).
+ */
+function ProposedToolSection({ approval }: { approval: ApprovalResponse }) {
+  if (approval.action_type !== TOOL_CREATION_ACTION_TYPE) return null
+  const name = approval.metadata['tool_name']
+  const capability = approval.metadata['tool_capability']
+  const description = approval.metadata['tool_description']
+  if (!name && !capability && !description) return null
+  return (
+    <div className="rounded-lg border border-border p-card">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Wrench className="size-3.5" aria-hidden="true" />
+        Proposed tool
+      </span>
+      <div className="mt-2 space-y-1">
+        {name && <MetaField icon={Tag} label="Tool" value={name} />}
+        {capability && <MetaField icon={Shield} label="Capability" value={capability} />}
+        {description && (
+          <p className="mt-1 text-sm text-text-secondary">{description}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function metadataValue(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'object' && value !== null) return JSON.stringify(value)
@@ -150,6 +181,7 @@ export function ApprovalDetailContent({
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Timeline</span>
         <ApprovalTimeline approval={approval} className="mt-2" />
       </div>
+      <ProposedToolSection approval={approval} />
       <ApprovalMetaGrid approval={approval} confidenceLabel={confidenceLabel} />
       <ApprovalExtraSections approval={approval} />
     </div>

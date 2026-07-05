@@ -7,6 +7,12 @@ import pytest
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.models import (
+    Notification,
+    NotificationCategory,
+    NotificationSeverity,
+)
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
 )
@@ -48,6 +54,7 @@ def _build_service(
     repo: UpgradeRecommendationRepository,
     agents: tuple[AgentConfig, ...] = (),
     probe: LiveDiscoveryProbe | None = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ModelRefreshService:
     probe = probe or mock_of[LiveDiscoveryProbe](
         discover_report=AsyncMock(
@@ -71,6 +78,7 @@ def _build_service(
         recommender=UpgradeRecommender(),
         repo=repo,
         config_resolver=resolver,
+        notification_dispatcher=notification_dispatcher,
         clock=FakeClock(),
     )
 
@@ -144,6 +152,109 @@ class TestModelRefreshService:
         )
         assert report.auto_applied_count == 1
         assert len(applied) == 1
+
+    async def test_stale_configured_model_dispatches_operator_alert(self) -> None:
+        """A configured model no longer served fires a HEALTH/WARNING alert."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        # The live catalogue no longer advertises "old", so it is stale.
+        stale_probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(
+                return_value=LiveCatalogReport(
+                    provider_name="example-provider",
+                    discovered=(_NEW,),
+                    missing_ids=("old",),
+                    checked_ids=("old", "new"),
+                ),
+            ),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(
+            repo=repo,
+            probe=stale_probe,
+            notification_dispatcher=dispatcher,
+        )
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        dispatcher.dispatch.assert_awaited_once()
+        note = dispatcher.dispatch.await_args.args[0]
+        assert isinstance(note, Notification)
+        assert note.category is NotificationCategory.HEALTH
+        assert note.severity is NotificationSeverity.WARNING
+        assert "old" in note.body
+
+    async def test_persistently_stale_model_alerts_once_across_cycles(self) -> None:
+        """A stale model persisting across cycles alerts once, not every cycle."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        stale_probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(
+                return_value=LiveCatalogReport(
+                    provider_name="example-provider",
+                    discovered=(_NEW,),
+                    missing_ids=("old",),
+                    checked_ids=("old", "new"),
+                ),
+            ),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(
+            repo=repo,
+            probe=stale_probe,
+            notification_dispatcher=dispatcher,
+        )
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        # The same stale model in the second cycle is deduped, not re-alerted.
+        dispatcher.dispatch.assert_awaited_once()
+
+    async def test_healed_then_restale_model_alerts_again(self) -> None:
+        """A model that recovers and later goes stale again alerts afresh."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        stale = LiveCatalogReport(
+            provider_name="example-provider",
+            discovered=(_NEW,),
+            missing_ids=("old",),
+            checked_ids=("old", "new"),
+        )
+        healed = LiveCatalogReport(
+            provider_name="example-provider",
+            discovered=(_NEW,),
+            missing_ids=(),
+            checked_ids=("old", "new"),
+        )
+        probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(side_effect=[stale, healed, stale]),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(
+            repo=repo,
+            probe=probe,
+            notification_dispatcher=dispatcher,
+        )
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)  # stale: alert
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)  # healed: prune
+        await service.run_cycle(
+            mode=RefreshMode.RECONCILE_RECOMMEND
+        )  # stale: alert again
+        assert dispatcher.dispatch.await_count == 2
+
+    async def test_no_stale_models_dispatches_nothing(self) -> None:
+        """A clean cycle (no stale models) raises no operator alert."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(repo=repo, notification_dispatcher=dispatcher)
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        dispatcher.dispatch.assert_not_called()
 
     async def test_provider_failure_isolated(self) -> None:
         repo = mock_of[UpgradeRecommendationRepository](

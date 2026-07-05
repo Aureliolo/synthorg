@@ -7,18 +7,35 @@ import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
-import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
+import type { SettingEntry } from '@/api/types/settings'
 import type { SetupModelRecommendationsResponse } from '@/api/types/setup'
 
 // Per-feature model pickers. Each writes straight through the settings API,
 // so a choice survives independently of the wizard and stays editable in
-// dashboard Settings. Research + Chief-of-Staff pick from the full catalogue
-// (the decomposition candidate list); embedding has its own capable subset.
-type ModelKey = 'decomposition' | 'embedding' | 'research' | 'cos'
+// dashboard Settings. All non-embedding pickers select from the full
+// catalogue (the decomposition candidate list); embedding has its own subset.
+type ModelKey =
+  | 'decomposition'
+  | 'embedding'
+  | 'research'
+  | 'cos'
+  | 'propose'
+  | 'routing'
+  | 'narrative'
+  | 'charter'
+
+// The subset of namespaces these pickers write to. Narrower than
+// ``SettingNamespace`` so ``NamespaceEntries`` can be indexed by it directly.
+type PickerNamespace =
+  | 'coordination'
+  | 'memory'
+  | 'research'
+  | 'chief_of_staff'
+  | 'charter'
 
 interface PickerSpec {
   key: ModelKey
-  namespace: SettingNamespace
+  namespace: PickerNamespace
   settingKey: string
   label: string
   hint: string
@@ -53,9 +70,44 @@ const PICKERS: readonly PickerSpec[] = [
     label: 'Chief of Staff model',
     hint: 'Powers the conversational Chief-of-Staff turns.',
   },
+  {
+    key: 'propose',
+    namespace: 'chief_of_staff',
+    settingKey: 'propose_model',
+    label: 'Request-work model',
+    hint: 'Turns natural-language requests into concrete work proposals.',
+  },
+  {
+    key: 'routing',
+    namespace: 'chief_of_staff',
+    settingKey: 'routing_model',
+    label: 'Concern-routing model',
+    hint: 'Classifies which role should handle an incoming concern.',
+  },
+  {
+    key: 'narrative',
+    namespace: 'chief_of_staff',
+    settingKey: 'narrative_model',
+    label: 'Run-narrative model',
+    hint: 'Writes the documentary-style narrative of a run.',
+  },
+  {
+    key: 'charter',
+    namespace: 'charter',
+    settingKey: 'interview_model',
+    label: 'Project-charter model',
+    hint: "Interviews you and drafts a new project's charter.",
+  },
 ]
 
 type ModelChoices = Record<ModelKey, string>
+
+function emptyChoices(): ModelChoices {
+  return PICKERS.reduce<ModelChoices>(
+    (acc, spec) => ({ ...acc, [spec.key]: '' }),
+    {} as ModelChoices,
+  )
+}
 
 function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
   // A partial/garbled recommendations payload can leave a candidate list
@@ -79,15 +131,33 @@ function candidatesFor(
   return key === 'embedding' ? recs.embedding_candidates : recs.decomposition_candidates
 }
 
+function recommendedFor(
+  recs: SetupModelRecommendationsResponse,
+  key: ModelKey,
+): string | null {
+  const byKey: Record<ModelKey, string | null> = {
+    decomposition: recs.decomposition_recommended,
+    embedding: recs.embedding_recommended,
+    research: recs.research_recommended,
+    cos: recs.cos_recommended,
+    propose: recs.propose_recommended,
+    routing: recs.routing_recommended,
+    narrative: recs.narrative_recommended,
+    charter: recs.charter_recommended,
+  }
+  return byKey[key]
+}
+
 interface NamespaceEntries {
   coordination: readonly SettingEntry[]
   memory: readonly SettingEntry[]
   research: readonly SettingEntry[]
   chief_of_staff: readonly SettingEntry[]
+  charter: readonly SettingEntry[]
 }
 
 // Prefer a persisted operator choice, then the backend recommendation,
-// then empty. Extracted so ``buildChoices`` stays under the complexity cap.
+// then empty.
 function pickModel(
   persisted: string | undefined,
   recommended: string | null | undefined,
@@ -99,18 +169,16 @@ function buildChoices(
   recs: SetupModelRecommendationsResponse,
   ns: NamespaceEntries,
 ): ModelChoices {
-  return {
-    decomposition: pickModel(
-      valueOf(ns.coordination, 'decomposition_model'),
-      recs.decomposition_recommended,
-    ),
-    embedding: pickModel(
-      valueOf(ns.memory, 'embedder_model'),
-      recs.embedding_recommended,
-    ),
-    research: pickModel(valueOf(ns.research, 'model'), recs.research_recommended),
-    cos: pickModel(valueOf(ns.chief_of_staff, 'chat_model'), recs.cos_recommended),
-  }
+  return PICKERS.reduce<ModelChoices>(
+    (acc, spec) => ({
+      ...acc,
+      [spec.key]: pickModel(
+        valueOf(ns[spec.namespace], spec.settingKey),
+        recommendedFor(recs, spec.key),
+      ),
+    }),
+    {} as ModelChoices,
+  )
 }
 
 interface LoadHandlers {
@@ -125,18 +193,25 @@ async function loadModelSelection(
   handlers: LoadHandlers,
 ): Promise<void> {
   try {
-    const [recs, coordination, memory, research, chief_of_staff] =
+    const [recs, coordination, memory, research, chief_of_staff, charter] =
       await Promise.all([
         getModelRecommendations(),
         getNamespaceSettings('coordination'),
         getNamespaceSettings('memory'),
         getNamespaceSettings('research'),
         getNamespaceSettings('chief_of_staff'),
+        getNamespaceSettings('charter'),
       ])
     if (isCancelled()) return
     handlers.setRecs(recs)
     handlers.setModels(
-      buildChoices(recs, { coordination, memory, research, chief_of_staff }),
+      buildChoices(recs, {
+        coordination,
+        memory,
+        research,
+        chief_of_staff,
+        charter,
+      }),
     )
   } catch (caught) {
     if (!isCancelled()) handlers.setError(getErrorMessage(caught))
@@ -145,12 +220,7 @@ async function loadModelSelection(
   }
 }
 
-const EMPTY_MODELS: ModelChoices = {
-  decomposition: '',
-  embedding: '',
-  research: '',
-  cos: '',
-}
+const EMPTY_MODELS: ModelChoices = emptyChoices()
 
 interface ModelSelectionState {
   recs: SetupModelRecommendationsResponse | null
@@ -164,12 +234,12 @@ interface ModelSelectionState {
 // allowed to roll back on failure, so a slow earlier request that fails after a
 // faster later one succeeded cannot clobber the newer value.
 function useRequestIdRefs() {
-  return useRef<Record<ModelKey, number>>({
-    decomposition: 0,
-    embedding: 0,
-    research: 0,
-    cos: 0,
-  })
+  return useRef<Record<ModelKey, number>>(
+    PICKERS.reduce<Record<ModelKey, number>>(
+      (acc, spec) => ({ ...acc, [spec.key]: 0 }),
+      {} as Record<ModelKey, number>,
+    ),
+  )
 }
 
 function useWizardModelSelection(): ModelSelectionState {
@@ -233,10 +303,11 @@ export interface WizardModelSelectionProps {
 /**
  * Per-feature model-default pickers for the wizard Capabilities step.
  *
- * Surfaces the coordinator's decomposition model, the embedding model (which
- * powers memory + knowledge), the research model, and the Chief-of-Staff
- * model. Each is prefilled with a sensible recommendation and overridable from
- * the catalogue; every change writes straight through the settings API. The
+ * Surfaces every per-feature model whose live default is blank: the
+ * coordinator's decomposition model, the embedding model (memory + knowledge),
+ * the research model, and each Chief-of-Staff and charter model. Each is
+ * prefilled with a tier-appropriate recommendation and overridable from the
+ * catalogue; every change writes straight through the settings API. The
  * research picker is shown only while research is enabled.
  */
 export function WizardModelSelection({ researchEnabled }: WizardModelSelectionProps) {

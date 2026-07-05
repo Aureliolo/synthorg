@@ -10,8 +10,6 @@ The nested ``meta/charter`` and ``meta/toolsmith`` packages declare
 their own manifests.
 """
 
-from collections.abc import Mapping
-
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.analytics.forecast import AnalyticsForecastController
 from synthorg.api.controllers.analytics.overview import AnalyticsOverviewController
@@ -24,46 +22,17 @@ from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_alerts import MetaAlertsController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.meta_evolution import MetaEvolutionController
+from synthorg.meta._mcp_loaders import (
+    load_analytics_mcp_handlers,
+    load_meta_mcp_handlers,
+    load_signals_mcp_handlers,
+)
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
 from synthorg.meta.mcp.domains.meta import META_TOOLS
 from synthorg.meta.mcp.domains.signals import SIGNAL_MCP_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
 from synthorg.meta.state import MetaStateSlice
 from synthorg.settings.enums import SettingNamespace
-
-
-def _meta_mcp_handlers() -> Mapping[str, object]:
-    """Deferred loader for the meta MCP handler map.
-
-    Returns:
-        The meta ``{tool_name: ToolHandler}`` map.
-    """
-    from synthorg.meta.mcp.handlers.meta import META_HANDLERS  # noqa: PLC0415
-
-    return META_HANDLERS
-
-
-def _analytics_mcp_handlers() -> Mapping[str, object]:
-    """Deferred loader for the analytics MCP handler map.
-
-    Returns:
-        The analytics ``{tool_name: ToolHandler}`` map.
-    """
-    from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS  # noqa: PLC0415
-
-    return ANALYTICS_HANDLERS
-
-
-def _signals_mcp_handlers() -> Mapping[str, object]:
-    """Deferred loader for the signals MCP handler map.
-
-    Returns:
-        The signals ``{tool_name: ToolHandler}`` map.
-    """
-    from synthorg.meta.mcp.handlers.signals import SIGNAL_HANDLERS  # noqa: PLC0415
-
-    return SIGNAL_HANDLERS
-
 
 FEATURE: FeatureModule = FeatureManifest(
     name="meta",
@@ -86,17 +55,17 @@ FEATURE: FeatureModule = FeatureManifest(
         mcp_descriptor(
             domain="meta",
             tool_defs=META_TOOLS,
-            handlers=_meta_mcp_handlers,
+            handlers=load_meta_mcp_handlers,
         ),
         mcp_descriptor(
             domain="analytics",
             tool_defs=ANALYTICS_TOOLS,
-            handlers=_analytics_mcp_handlers,
+            handlers=load_analytics_mcp_handlers,
         ),
         mcp_descriptor(
             domain="signals",
             tool_defs=SIGNAL_MCP_TOOLS,
-            handlers=_signals_mcp_handlers,
+            handlers=load_signals_mcp_handlers,
         ),
     ),
     lifecycle_hooks=(),
@@ -113,6 +82,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "PostgresAlertRepository",
         "PersistentAlertSink",
         "resolve_chat_answer",
+        "ToolApprovalConsumer",
     ),
     depends_on=(),
 )

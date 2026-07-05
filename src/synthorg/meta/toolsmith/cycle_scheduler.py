@@ -5,7 +5,10 @@ detects a recurring capability gap automatically, rather than only when an
 operator triggers a cycle by hand. Each tick polls the gap store for
 recurring gaps and, for any found, authors + guards a new-tool proposal (the
 guard chain still enqueues every proposal for human approval, so the periodic
-driver proposes but never auto-applies).
+driver proposes but never auto-applies). The same tick then runs the
+approve-to-live consumer, which applies any tool an operator has since approved
+in the Approvals queue: human approval is the sole apply trigger, so this is a
+consume-on-approval step, not an auto-apply.
 
 The delicate loop-bound lifecycle (primitives rebound to the running loop,
 bounded stop-drain, per-tick kill-switch read) lives once in
@@ -16,9 +19,11 @@ kill-switch read.
 
 from typing import Final, override
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.scheduler import AsyncCycleScheduler
+from synthorg.meta.toolsmith.approval_consumer import ToolApprovalConsumer
 from synthorg.meta.toolsmith.service import ToolsmithService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_CYCLE_SCHEDULER_FAILED,
     TOOLSMITH_CYCLE_SCHEDULER_RAN,
@@ -43,6 +48,7 @@ class ToolsmithCycleScheduler(AsyncCycleScheduler):
         *,
         interval_seconds: float,
         config_resolver: ConfigResolver | None = None,
+        approval_consumer: ToolApprovalConsumer | None = None,
     ) -> None:
         """Initialise the scheduler.
 
@@ -55,6 +61,9 @@ class ToolsmithCycleScheduler(AsyncCycleScheduler):
                 cycle at runtime; without a resolver the loop runs
                 unconditionally (matching the registered default of
                 ``False`` / not-paused).
+            approval_consumer: Optional approve-to-live consumer run after each
+                detection cycle; ``None`` disables it (detection still runs,
+                approved tools simply wait for a consumer to be wired).
 
         Raises:
             ValueError: If ``interval_seconds`` is below the minimum.
@@ -68,6 +77,7 @@ class ToolsmithCycleScheduler(AsyncCycleScheduler):
         )
         self._service = service
         self._config_resolver = config_resolver
+        self._approval_consumer = approval_consumer
 
     @override
     async def _resolve_cycle_enabled(self) -> bool:
@@ -92,16 +102,40 @@ class ToolsmithCycleScheduler(AsyncCycleScheduler):
 
     @override
     async def _run_cycle_once(self) -> None:
-        """Run one detection cycle, logging how many proposals it produced.
+        """Run one detection cycle, then the approve-to-live consumer.
 
         ``run_cycle`` catches per-gap authoring errors internally, so this
-        only sees a systemic failure (which the base logs and survives).
+        only sees a systemic failure (which the base logs and survives). The
+        consumer is best-effort: an approval-store hiccup logs and is skipped
+        so it never turns a healthy detection tick into a failed one.
         """
         proposals = await self._service.run_cycle()
+        applied = await self._consume_approved()
         logger.info(
             TOOLSMITH_CYCLE_SCHEDULER_RAN,
             proposals=len(proposals),
+            approved_tools_applied=applied,
         )
+
+    async def _consume_approved(self) -> int:
+        """Run the approve-to-live consumer if wired (best-effort).
+
+        Returns:
+            The number of approved tools registered live this tick.
+        """
+        if self._approval_consumer is None:
+            return 0
+        try:
+            return await self._approval_consumer.consume()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_CYCLE_SCHEDULER_FAILED,
+                note="approve_to_live_consume_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return 0
 
     @override
     def _log_cycle_paused(self) -> None:

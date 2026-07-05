@@ -320,7 +320,9 @@ class TestBuildRoleRouter:
         """
         registry = await _registry(_identity(name="Casey", role="CFO"))
         router = build_role_router(
-            config=ChiefOfStaffConfig(routing_enabled=False),
+            config=ChiefOfStaffConfig(
+                routing_enabled=False, routing_model="example-small-001"
+            ),
             provider_registry=ProviderRegistry(
                 {"p": mock_of[BaseCompletionProvider]()}
             ),
@@ -367,7 +369,11 @@ class TestBuildRoleRouter:
     async def test_llm_strategy_builds_llm_router(self) -> None:
         registry = await _registry(_identity(name="Casey", role="CFO"))
         router = build_role_router(
-            config=ChiefOfStaffConfig(routing_enabled=True, routing_strategy="llm"),
+            config=ChiefOfStaffConfig(
+                routing_enabled=True,
+                routing_strategy="llm",
+                routing_model="example-small-001",
+            ),
             provider_registry=ProviderRegistry(
                 {"p": mock_of[BaseCompletionProvider]()}
             ),

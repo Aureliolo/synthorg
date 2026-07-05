@@ -32,6 +32,28 @@ class TestGitHubAuthenticator:
 
 
 @pytest.mark.unit
+class TestTunnelAuthenticator:
+    """Tunnel connections back a token OR a no-secret device login."""
+
+    def test_token_credentials_accepted(self) -> None:
+        auth = get_authenticator(ConnectionType.TUNNEL)
+        auth.validate_credentials({"auth_token": "tok-123"})
+
+    def test_empty_credentials_accepted_for_device_login(self) -> None:
+        auth = get_authenticator(ConnectionType.TUNNEL)
+        auth.validate_credentials({})
+
+    def test_blank_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.TUNNEL)
+        with pytest.raises(InvalidConnectionAuthError, match="auth_token"):
+            auth.validate_credentials({"auth_token": "  "})
+
+    def test_no_field_universally_required(self) -> None:
+        auth = get_authenticator(ConnectionType.TUNNEL)
+        assert auth.required_fields() == ()
+
+
+@pytest.mark.unit
 class TestLLMProviderAuthenticator:
     """Tests for LLM-provider credential validation."""
 

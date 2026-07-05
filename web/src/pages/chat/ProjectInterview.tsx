@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { CharterEditRequest } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { useCharterStore } from '@/stores/charter'
 import { CharterDraftCard } from './CharterDraftCard'
@@ -12,6 +13,7 @@ function useCharterInterview() {
   const sending = useCharterStore((s) => s.sending)
   const conversationClosed = useCharterStore((s) => s.conversationClosed)
   const draftCharter = useCharterStore((s) => s.draftCharter)
+  const turnError = useCharterStore((s) => s.turnError)
   const runTurn = useCharterStore((s) => s.runTurn)
   const editDraft = useCharterStore((s) => s.editDraft)
   const approve = useCharterStore((s) => s.approve)
@@ -55,8 +57,9 @@ function useCharterInterview() {
   }, [draftCharter, cancel])
 
   return {
-    messages, sending, conversationClosed, draftCharter, resetInterview,
-    mutating, handleSend, handleSave, handleApprove, handleCancel,
+    messages, sending, conversationClosed, draftCharter, turnError,
+    resetInterview, mutating, handleSend, handleSave, handleApprove,
+    handleCancel,
   }
 }
 
@@ -72,6 +75,7 @@ export function ProjectInterview() {
     sending,
     conversationClosed,
     draftCharter,
+    turnError,
     resetInterview,
     mutating,
     handleSend,
@@ -82,6 +86,14 @@ export function ProjectInterview() {
 
   return (
     <div className="space-y-section-gap">
+      {turnError !== null && (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="The charter interview could not continue"
+          description={turnError}
+        />
+      )}
       <div className="flex justify-end">
         <Button
           variant="outline"

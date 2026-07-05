@@ -257,6 +257,67 @@ class TestApprovalGateGuard:
         assert item.metadata["proposal_id"] == str(proposal.id)
         assert item.metadata["altitude"] == proposal.altitude.value
 
+    async def test_tool_creation_metadata_carries_blueprint_detail(self) -> None:
+        """A tool-creation proposal enriches metadata with blueprint detail."""
+        from datetime import UTC, datetime
+        from unittest.mock import AsyncMock
+
+        from synthorg.approval.protocol import ApprovalStoreProtocol
+        from synthorg.meta.models import (
+            ProposalRationale,
+            RollbackOperation,
+            RollbackPlan,
+        )
+        from synthorg.meta.toolsmith.models import ToolBlueprint
+
+        blueprint = ToolBlueprint(
+            id="bp-9",
+            name="synthorg_textkit_slugify",
+            description="Slugify text.",
+            capability="textkit:slugify",
+            parameters_schema={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+            },
+            script_body="print('{}')",
+            action_type="code:read",
+            created_at=datetime(2026, 6, 29, 12, 0, tzinfo=UTC),
+        )
+        proposal = ImprovementProposal(
+            altitude=ProposalAltitude.TOOL_CREATION,
+            title="Author tool for textkit:slugify",
+            description="An authored tool.",
+            rationale=ProposalRationale(
+                signal_summary="textkit:slugify requested 3x",
+                pattern_detected="recurring capability gap",
+                expected_impact="org can slugify",
+                confidence_reasoning="threshold met",
+            ),
+            tool_changes=(blueprint,),
+            rollback_plan=RollbackPlan(
+                operations=(
+                    RollbackOperation(
+                        operation_type="retire_tool",
+                        target="synthorg_textkit_slugify",
+                        description="Retire the tool.",
+                    ),
+                ),
+                validation_check="tool is no longer registered",
+            ),
+            confidence=0.5,
+        )
+        store = AsyncMock(spec=ApprovalStoreProtocol)
+        guard = ApprovalGateGuard(approval_store=store)
+
+        result = await guard.evaluate(proposal)
+        assert result.verdict == GuardVerdict.PASSED
+        (item,) = store.add.await_args.args
+        assert item.metadata["blueprint_id"] == "bp-9"
+        assert item.metadata["tool_name"] == "synthorg_textkit_slugify"
+        assert item.metadata["tool_capability"] == "textkit:slugify"
+        assert item.metadata["tool_description"] == "Slugify text."
+
     async def test_replay_treated_as_idempotent_pass(self) -> None:
         """ConflictError from replay is treated as idempotent PASSED."""
         from unittest.mock import AsyncMock

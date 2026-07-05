@@ -231,7 +231,9 @@ class ProceduralMemoryConfig(BaseModel):
 
     Attributes:
         enabled: Whether procedural memory generation is active.
-        model: Model identifier for the proposer LLM call.
+        model: Model for the proposer LLM call; unset (``None``) until an
+            operator or setup selects one (never a placeholder default). The
+            proposer skips (makes no LLM call) while it is unset.
         temperature: Sampling temperature for the proposer.
         max_tokens: Maximum tokens for the proposer response.
         min_confidence: Discard proposals below this confidence
@@ -249,9 +251,11 @@ class ProceduralMemoryConfig(BaseModel):
         default=True,
         description="Whether procedural memory generation is active",
     )
-    model: NotBlankStr = Field(
-        default="example-small-001",
-        description="Model identifier for the proposer LLM call",
+    model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the proposer LLM call; unset until an operator "
+        "or setup selects one (never a placeholder default). The proposer "
+        "skips (makes no LLM call) while it is unset",
     )
     temperature: float = Field(
         default=0.3,

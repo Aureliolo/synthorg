@@ -30,6 +30,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",
+        "ToolInvocationTracker",
     ),
     depends_on=(),
 )

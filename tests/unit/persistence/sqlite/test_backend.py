@@ -9,8 +9,12 @@ from unittest.mock import patch
 
 import aiosqlite
 import pytest
+import structlog
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
+from synthorg.observability.events.persistence.backend import (
+    PERSISTENCE_BACKEND_NOT_CONNECTED,
+)
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
@@ -132,6 +136,22 @@ class TestSQLitePersistenceBackend:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         with pytest.raises(PersistenceConnectionError, match="Not connected"):
             _ = backend.tasks
+
+    async def test_not_connected_logs_at_debug_not_warning(self) -> None:
+        """Boot-ordering access (SQLite implements every repo) logs at DEBUG.
+
+        Two-phase boot touches a repository accessor before ``connect()``; a
+        WARNING here is expected steady-state noise, so it must stay DEBUG.
+        """
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(PersistenceConnectionError),
+        ):
+            _ = backend.tasks
+        events = [e for e in logs if e["event"] == PERSISTENCE_BACKEND_NOT_CONNECTED]
+        assert len(events) == 1
+        assert events[0]["log_level"] == "debug"
 
     async def test_cost_records_before_connect_raises(self) -> None:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))

@@ -38,6 +38,10 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
+from synthorg.observability.events.stakes_routing import (
+    STAKES_ROUTING_PROVIDER_SWITCHED,
+    STAKES_ROUTING_PROVIDER_UNRESOLVED,
+)
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
@@ -106,6 +110,62 @@ class AgentEngineErrorsMixin:
                 prompt_tokens=metrics.prompt_tokens,
                 total_tokens=metrics.tokens_per_task,
             )
+
+    def _resolve_provider_instance(
+        self,
+        routed: AgentIdentity,
+        fallback_identity: AgentIdentity,
+        fallback_provider: CompletionProvider,
+    ) -> tuple[CompletionProvider, AgentIdentity]:
+        """Return the client that serves the routed model's provider.
+
+        Stakes routing can pick a model owned by a provider other than the
+        engine default. Cost attribution reads ``identity.model.provider``,
+        so the dispatched client must be that same provider or a call would
+        hit one provider's API while the cost lands on another. Mirrors
+        :meth:`_apply_degradation`'s registry lookup.
+
+        When the routed provider matches the pre-routing one, the instance is
+        unchanged (only the model id/tier moved). When it cannot be resolved
+        (no registry wired, or a name the registry does not know), the
+        pre-routing ``fallback_identity`` + ``fallback_provider`` are kept so
+        instance and attribution stay in lockstep: a routing miss is never a
+        mis-attribution.
+
+        Returns:
+            ``(provider, identity)``: the resolved client + routed identity,
+            or the fallback pair when the routed provider is unresolvable.
+        """
+        target = routed.model.provider
+        if target == fallback_identity.model.provider:
+            return fallback_provider, routed
+        if self._provider_registry is None:
+            logger.warning(
+                STAKES_ROUTING_PROVIDER_UNRESOLVED,
+                routed_provider=target,
+                reason="no_provider_registry",
+                result="kept_default",
+            )
+            return fallback_provider, fallback_identity
+        try:
+            new_provider = self._provider_registry.get(target)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                STAKES_ROUTING_PROVIDER_UNRESOLVED,
+                routed_provider=target,
+                reason="not_in_registry",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                result="kept_default",
+            )
+            return fallback_provider, fallback_identity
+        logger.info(
+            STAKES_ROUTING_PROVIDER_SWITCHED,
+            from_provider=fallback_identity.model.provider,
+            to_provider=target,
+            model_id=routed.model.model_id,
+        )
+        return new_provider, routed
 
     def _apply_degradation(
         self,
