@@ -219,10 +219,18 @@ class CompanyReadService:
             "company_versions_get",
             "company version history requires a durable persistence backend",
         )
-        try:
-            version_num = int(version_id)
-        except ValueError:
+        # ``isascii() and isdigit()`` rejects the values ``int()`` would
+        # silently mis-parse (grouped ``"1_0"`` -> 10, signed ``"+4"``,
+        # whitespace-padded ``" 3"``, Unicode-digit exotics), so a garbled
+        # id resolves to ``not_found`` rather than a wrong version.
+        if not (version_id.isascii() and version_id.isdigit()):
+            logger.debug(
+                API_VALIDATION_FAILED,
+                resource="company_version",
+                reason="non_numeric_version_id",
+            )
             return None
+        version_num = int(version_id)
         if version_num < 1:
             return None
         return await versions.get_version(_COMPANY_ENTITY_ID, version_num)
@@ -326,6 +334,11 @@ class DepartmentService:
         try:
             key = UUID(department_id)
         except ValueError:
+            logger.debug(
+                API_VALIDATION_FAILED,
+                resource="department",
+                reason="malformed_department_id",
+            )
             return None
         async with self._lock:
             record = self._departments.get(key)
@@ -335,7 +348,7 @@ class DepartmentService:
         self,
         *,
         name: NotBlankStr,
-        description: NotBlankStr,
+        description: str = "",
         actor_id: NotBlankStr,
         department_id: UUID | None = None,
     ) -> _DepartmentRecord:
@@ -343,7 +356,8 @@ class DepartmentService:
 
         Args:
             name: Department display name (UNIQUE in the durable store).
-            description: Human-readable description.
+            description: Human-readable description (optional free text,
+                matching the persisted :class:`DepartmentRecord`).
             actor_id: Auditing actor identifier.
             department_id: Optional explicit primary key. Supplied by
                 rollback paths so a re-created department keeps its
@@ -379,7 +393,7 @@ class DepartmentService:
         department_id: NotBlankStr,
         actor_id: NotBlankStr,
         name: NotBlankStr | None = None,
-        description: NotBlankStr | None = None,
+        description: str | None = None,
     ) -> _DepartmentRecord | None:
         """Patch a department's ``name`` / ``description`` in place.
 
@@ -390,6 +404,11 @@ class DepartmentService:
         try:
             key = UUID(department_id)
         except ValueError:
+            logger.debug(
+                API_VALIDATION_FAILED,
+                resource="department",
+                reason="malformed_department_id",
+            )
             return None
         async with self._lock:
             current = self._departments.get(key)
@@ -433,6 +452,11 @@ class DepartmentService:
         try:
             key = UUID(department_id)
         except ValueError:
+            logger.debug(
+                API_VALIDATION_FAILED,
+                resource="department",
+                reason="malformed_department_id",
+            )
             return False
         async with self._lock:
             removed = key in self._departments
@@ -555,10 +579,18 @@ class RoleVersionService:
             "role_versions_get",
             "role version history requires a durable persistence backend",
         )
-        try:
-            version_num = int(version_id)
-        except ValueError:
+        # ``isascii() and isdigit()`` rejects the values ``int()`` would
+        # silently mis-parse (grouped ``"1_0"`` -> 10, signed ``"+4"``,
+        # whitespace-padded ``" 3"``, Unicode-digit exotics), so a garbled
+        # id resolves to ``not_found`` rather than a wrong version.
+        if not (version_id.isascii() and version_id.isdigit()):
+            logger.debug(
+                API_VALIDATION_FAILED,
+                resource="role_version",
+                reason="non_numeric_version_id",
+            )
             return None
+        version_num = int(version_id)
         if version_num < 1:
             return None
         return await repo.get_version(role_name, version_num)

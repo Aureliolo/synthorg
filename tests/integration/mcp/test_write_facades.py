@@ -5,9 +5,7 @@ that:
 
 - the envelope is ``{"status": "ok", ...}`` (or ``capability_gap`` when
   the optional service is intentionally not wired);
-- the underlying service method was invoked with the right arguments;
-- ``MCP_HANDLER_SERVICE_FALLBACK`` is never emitted (the legacy event
-  must stay at zero call sites).
+- the underlying service method was invoked with the right arguments.
 
 The fixtures wire fully-mocked services so the test exercises the
 handler -> service path end-to-end without touching persistence.
@@ -39,10 +37,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.meta.models import ImprovementCycleResult
 from synthorg.meta.service import SelfImprovementService
-from synthorg.observability.events.mcp import (
-    MCP_ADMIN_OP_EXECUTED,
-    MCP_HANDLER_SERVICE_FALLBACK,
-)
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests._shared import JsonDict, make_app_state, sid
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -224,8 +219,8 @@ def _minimal_workflow_definition_dict(
     }
 
 
-class TestNoFallbackEventsEmitted:
-    """Live facades never emit the legacy MCP_HANDLER_SERVICE_FALLBACK event."""
+class TestLiveFacadesReturnWellFormedEnvelopes:
+    """Every live facade returns a recognised ok/error envelope shape."""
 
     @pytest.mark.parametrize(
         "tool_name",
@@ -253,7 +248,7 @@ class TestNoFallbackEventsEmitted:
             "synthorg_meta_trigger_cycle",
         ],
     )
-    async def test_tool_emits_no_fallback(
+    async def test_tool_returns_recognised_envelope(
         self,
         tool_name: str,
         app_state: AppState,
@@ -265,7 +260,7 @@ class TestNoFallbackEventsEmitted:
         # Minimal, mostly-valid args for each tool.  Where Pydantic
         # validation is strict (e.g. ``identity``, ``definition``), the
         # handler returns ``invalid_argument`` -- still an ``error``
-        # envelope, still no fallback emission.
+        # envelope, which is a recognised shape.
         args: JsonDict = {
             "agent_id": "agent-1",
             "agent_name": "alpha",
@@ -285,18 +280,16 @@ class TestNoFallbackEventsEmitted:
             "project": "default",
             "context": {},
         }
-        with structlog.testing.capture_logs() as logs:
-            result = await handler(
-                app_state=app_state,
-                arguments=args,
-                actor=actor,
-            )
+        result = await handler(
+            app_state=app_state,
+            arguments=args,
+            actor=actor,
+        )
         body = _parse(result)
-        # Every tool must produce a recognised envelope shape.
+        # Every tool must produce a recognised envelope shape; a bare
+        # ``not_implemented`` status (the removed dead-scaffold shape) is
+        # never valid.
         assert body["status"] in {"ok", "error"}
-        # Critical invariant: never emit the legacy fallback event.
-        for event in logs:
-            assert event.get("event") != MCP_HANDLER_SERVICE_FALLBACK
 
 
 class TestHappyPathServiceInvocations:
@@ -714,11 +707,10 @@ class TestCapabilityGapFallbacks:
     """Optional services missing from AppState surface ``capability_gap``.
 
     Locks in the contract that handlers gated on ``has_<service>`` /
-    ``getattr(..., None)`` checks return the dedicated
-    ``capability_gap`` envelope -- not ``service_fallback`` -- when the
-    optional service is intentionally not wired. Prevents a regression
-    where a future refactor accidentally drops the guard and either
-    crashes (``AttributeError``) or surfaces ``MCP_HANDLER_SERVICE_FALLBACK``.
+    ``getattr(..., None)`` checks return the dedicated ``capability_gap``
+    envelope when the optional service is intentionally not wired.
+    Prevents a regression where a future refactor accidentally drops the
+    guard and crashes (``AttributeError``) instead of surfacing the gap.
     """
 
     async def test_activities_list_returns_capability_gap_when_unwired(
@@ -728,7 +720,7 @@ class TestCapabilityGapFallbacks:
     ) -> None:
         # Build an AppState that wires every service EXCEPT the
         # activity feed; the handler must take the capability-gap path
-        # rather than crash or emit ``MCP_HANDLER_SERVICE_FALLBACK``.
+        # rather than crash.
         bare_state = make_app_state(
             agent_registry=services.agent_registry,
             performance_tracker=services.performance_tracker,

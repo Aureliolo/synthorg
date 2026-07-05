@@ -9,7 +9,10 @@ construction. The settings-backed ``TeamService`` (which both reads and
 writes ``company.departments[*].teams``) wires here too but is gated only on
 a composed settings service, independently of persistence. Each wire is
 best-effort + idempotent: a missing dependency leaves the facade absent and
-its MCP tools 503 until the operator fixes the boot.
+its MCP tools 503 until the operator fixes the boot. An absent dependency
+returns early (silent); a construction that *throws* is logged at ERROR, not
+WARNING, since it is a real boot defect the operator must fix rather than
+routine degradation.
 """
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -68,7 +71,7 @@ async def _wire_team_service(app_state: AppState) -> None:
         logger.info(API_SERVICE_AUTO_WIRED, service="team_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="team_service",
             error_type=type(exc).__name__,
@@ -105,7 +108,7 @@ async def _wire_company_read_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="company_read_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="company_read_service",
             error_type=type(exc).__name__,
@@ -131,7 +134,7 @@ async def _wire_role_version_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="role_version_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="role_version_service",
             error_type=type(exc).__name__,

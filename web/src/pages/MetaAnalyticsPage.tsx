@@ -7,6 +7,7 @@
  * this page wraps them in a single cohesive read-only surface.
  */
 import { Sparkles } from 'lucide-react'
+import type { ReactElement } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -14,6 +15,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { StatusBadge } from '@/components/ui/status-badge'
 import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { formatNumber } from '@/utils/format'
 
@@ -47,7 +49,7 @@ function deriveDisplayState(
   }
 }
 
-export default function MetaAnalyticsPage() {
+export default function MetaAnalyticsPage(): ReactElement {
   const data = useMetaAnalyticsData()
   const display = deriveDisplayState(data)
 
@@ -188,9 +190,11 @@ function SignalsByDomainSection({ signals }: SignalsByDomainSectionProps) {
         {signals.domains.map((domain) => (
           <li key={domain.name} className="flex items-center gap-4 py-2 text-sm">
             <span className="flex-1 font-medium text-foreground">{domain.name}</span>
-            <span className="rounded-md border border-border bg-card px-2 py-0.5 text-xs uppercase text-text-secondary">
-              {domain.status}
-            </span>
+            <StatusBadge
+              status={domain.status === 'available' ? 'active' : 'idle'}
+              ariaLabel={`${domain.name}: ${domain.status}`}
+            />
+            <span className="text-xs uppercase text-text-secondary">{domain.status}</span>
           </li>
         ))}
       </ul>

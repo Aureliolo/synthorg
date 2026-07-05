@@ -4,7 +4,8 @@ import { getSignals, listProposals } from '@/api/endpoints/meta'
 import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorMessage, unavailableMessage } from '@/utils/errors'
+import { SIGNALS_UNAVAILABLE_MESSAGE } from '@/stores/meta'
 import { createCancellationToken } from '@/utils/cancellation'
 
 const log = createLogger('MetaAnalyticsPage')
@@ -63,7 +64,10 @@ function handleSignalsResult(
     setSignals(result.value)
     return
   }
-  const message = getErrorMessage(result.reason)
+  // A fail-closed 503 (signals disabled for this deployment) gets the same
+  // specific guidance the meta store renders, not the generic fetch-error
+  // copy; any other failure falls through to the generic message.
+  const message = unavailableMessage(result.reason, SIGNALS_UNAVAILABLE_MESSAGE)
   log.error('getSignals failed', { error: sanitizeForLog(message) })
   setError(message)
 }

@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -27,14 +27,11 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_BUDGET_REBALANCED,
     TEMPLATE_PACK_BUDGET_REJECTED,
     TEMPLATE_PACK_LIST,
-    TEMPLATE_PACK_SETTING_NOT_FOUND,
 )
 from synthorg.organization.team_navigation import (
-    persist_company_departments,
     read_company_departments_versioned,
     with_company_departments_cas,
 )
-from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
@@ -117,35 +114,32 @@ def _pack_info_to_response(info: PackInfo) -> PackInfoResponse:
     )
 
 
-async def _read_setting_list(
+async def _read_setting_list_versioned(
     app_state: AppState,
     key: str,
-) -> list[dict[str, object]]:
-    """Read a JSON list setting from the company namespace.
+) -> tuple[list[dict[str, object]], str]:
+    """Read a company JSON-list setting plus its compare-and-set version.
+
+    Reads the authoritative DB version token so the value can be written
+    back under compare-and-set alongside the sibling ``departments`` key.
 
     Returns:
-        Parsed list, or ``[]`` if the setting is missing or empty.
+        A ``(parsed, version)`` pair. ``parsed`` is ``[]`` when the setting
+        is missing or empty; ``version`` is the setting's ``updated_at``
+        CAS token (``""`` for a never-written key).
 
     Raises:
         DomainError: If the stored JSON is corrupted (invalid JSON or
             not a list of objects).
     """
+    settings_svc = require_service(
+        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+    )
+    value, version = await settings_svc.get_versioned("company", key)
+    if not value:
+        return [], version
     try:
-        settings_svc = require_service(
-            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
-        )
-        entry = await settings_svc.get("company", key)
-    except SettingNotFoundError:
-        logger.debug(
-            TEMPLATE_PACK_SETTING_NOT_FOUND,
-            setting_namespace="company",
-            setting_key=key,
-        )
-        return []
-    if not entry.value:
-        return []
-    try:
-        parsed = json.loads(entry.value)
+        parsed = json.loads(value)
     except json.JSONDecodeError as exc:
         logger.warning(
             TEMPLATE_PACK_APPLY_ERROR,
@@ -168,7 +162,21 @@ async def _read_setting_list(
         )
         msg = f"Setting 'company/{key}' is not a list of objects"
         raise DomainError(msg)
-    return parsed
+    return parsed, version
+
+
+class _PendingPackWrite(NamedTuple):
+    """The full state a winning pack-apply attempt commits in one CAS batch.
+
+    ``agents`` and ``departments`` are written together under per-key
+    compare-and-set so a losing attempt commits neither key (they land
+    atomically), and a concurrent writer of *either* key forces a full
+    re-read + recompute rather than a lost update on the un-guarded key.
+    """
+
+    departments: list[dict[str, object]]
+    agents: list[dict[str, object]]
+    agents_version: str
 
 
 def _serialize_departments(
@@ -234,7 +242,7 @@ async def _apply_pack_to_settings(
     app_state: AppState,
     data: ApplyTemplatePackRequest,
 ) -> ApplyTemplatePackResponse:
-    """Core pack application logic under the agent lock.
+    """Core pack application logic, applied via the shared company-settings CAS.
 
     Args:
         app_state: Application state.
@@ -261,16 +269,19 @@ async def _apply_pack_to_settings(
 
     pack_agents = expand_template_agents(loaded)
 
-    # ``departments`` is the contended key (team + department CRUD write it
-    # under compare-and-set), so the whole read-rebalance-write runs through
-    # the shared departments CAS handler + lock: on a conflicting concurrent
-    # write the dedup + rebalance is recomputed against fresh state rather
-    # than clobbering it. ``agents`` has no other CAS writer, so it is
-    # written unconditionally within the same guarded section.
-    captured: dict[str, tuple[list[dict[str, object]], ApplyTemplatePackResponse]] = {}
+    # ``agents`` and ``departments`` are both contended (team + department
+    # CRUD and the org-mutation controllers all compare-and-set them), so the
+    # whole read-rebalance-write runs through the shared departments CAS
+    # handler + lock and commits both keys in one per-key CAS batch: on a
+    # conflicting concurrent write to *either* key the dedup + rebalance is
+    # recomputed against fresh state, and a losing attempt commits neither key
+    # rather than clobbering the un-guarded one.
+    captured: dict[str, ApplyTemplatePackResponse] = {}
 
-    async def read() -> tuple[list[dict[str, object]], str]:
-        current_agents = await _read_setting_list(app_state, "agents")
+    async def read() -> tuple[_PendingPackWrite, str]:
+        current_agents, agents_version = await _read_setting_list_versioned(
+            app_state, "agents"
+        )
         current_depts, version = await read_company_departments_versioned(app_state)
 
         new_agents = _deduplicate_agents(pack_agents, current_agents)
@@ -311,32 +322,41 @@ async def _apply_pack_to_settings(
             )
 
         final_depts = list(rebalance_result.departments)
-        captured["result"] = (
-            current_agents + new_agents,
-            ApplyTemplatePackResponse(
-                pack_name=data.pack_name,
-                agents_added=len(new_agents),
-                departments_added=len(new_depts),
-                budget_before=rebalance_result.old_total,
-                budget_after=rebalance_result.new_total,
-                rebalance_mode=data.rebalance_mode,
-                scale_factor=rebalance_result.scale_factor,
-            ),
+        captured["result"] = ApplyTemplatePackResponse(
+            pack_name=data.pack_name,
+            agents_added=len(new_agents),
+            departments_added=len(new_depts),
+            budget_before=rebalance_result.old_total,
+            budget_after=rebalance_result.new_total,
+            rebalance_mode=data.rebalance_mode,
+            scale_factor=rebalance_result.scale_factor,
         )
-        return final_depts, version
+        return (
+            _PendingPackWrite(
+                departments=final_depts,
+                agents=current_agents + new_agents,
+                agents_version=agents_version,
+            ),
+            version,
+        )
 
-    async def write(final_depts: list[dict[str, object]], version: str) -> None:
-        agents = captured["result"][0]
+    async def write(pending: _PendingPackWrite, version: str) -> None:
         settings_svc = require_service(
             app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
         )
-        await settings_svc.set("company", "agents", json.dumps(agents))
-        await persist_company_departments(
-            app_state, final_depts, expected_updated_at=version
+        await settings_svc.set_many(
+            [
+                ("company", "agents", json.dumps(pending.agents)),
+                ("company", "departments", json.dumps(pending.departments)),
+            ],
+            expected_updated_at_map={
+                ("company", "agents"): pending.agents_version,
+                ("company", "departments"): version,
+            },
         )
 
-    await with_company_departments_cas(read, write)
-    return captured["result"][1]
+    await with_company_departments_cas(app_state, read, write)
+    return captured["result"]
 
 
 # ---- Controller -----------------------------------------------------------
@@ -400,8 +420,8 @@ class TemplatePackController(Controller):
         except ConflictError:
             raise
         except DomainError:
-            # ``_read_setting_list`` already logs corrupt-settings paths
-            # with structured context (``key`` + ``action``); re-raising
+            # ``_read_setting_list_versioned`` already logs corrupt-settings
+            # paths with structured context (``key`` + ``action``); re-raising
             # here without logging avoids the duplicate generic
             # ``apply_failed`` trace the outer ``except Exception`` would
             # otherwise emit for the same expected error.

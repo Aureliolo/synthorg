@@ -5,11 +5,7 @@ already asserts parity between the registry and the handler map, and
 guardrail rejection shape for the destructive subset.  This integration
 sweep layers the acceptance criteria on top:
 
-1. **Zero ``MCP_HANDLER_SERVICE_FALLBACK`` emissions** for any read or
-   invoke path. The legacy ``service_fallback()`` helper stays in
-   ``common.py`` for future surgical use, but it must have zero call
-   sites in the handler tree.
-2. **Typed capability events are the only ``not_supported`` sources**.
+1. **Typed capability events are the only ``not_supported`` sources**.
    Every ``not_supported`` wire envelope must be paired with either
    - ``MCP_HANDLER_CAPABILITY_GAP`` (INFO): handler is wired but the
      underlying primitive does not yet expose the required method, or
@@ -20,8 +16,10 @@ sweep layers the acceptance criteria on top:
      :class:`MemoryService` refuses a lifecycle call.
 
    Both events carry the same ``domain_code="not_supported"`` wire
-   envelope and must ship a matching ``tool_name`` for telemetry.
-3. **Every tool returns a well-formed envelope** -- ``status`` is
+   envelope and must ship a matching ``tool_name`` for telemetry. A tool
+   returning ``not_supported`` from any other source (a silent
+   ``err(..., not_supported)`` or an untyped path) fails the pairing.
+2. **Every tool returns a well-formed envelope** -- ``status`` is
    always ``"ok"`` or ``"error"``, never ``"not_implemented"``.
 """
 
@@ -47,7 +45,6 @@ from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_NOT_IMPLEMENTED,
-    MCP_HANDLER_SERVICE_FALLBACK,
 )
 from synthorg.security.autonomy.models import AutonomyUpdateResult
 from tests._shared import JsonDict
@@ -211,30 +208,8 @@ _BLAST_ARGS: JsonDict = {
 }
 
 
-class TestNoServiceFallbackEvents:
-    """Acceptance gate: zero MCP_HANDLER_SERVICE_FALLBACK events."""
-
-    async def test_invoking_every_tool_emits_no_service_fallback_event(
-        self,
-        fake_app_state: AppState,
-        actor: AgentIdentity,
-    ) -> None:
-        handlers = build_handler_map()
-        with structlog.testing.capture_logs() as events:
-            for handler in handlers.values():
-                await handler(
-                    app_state=fake_app_state,
-                    arguments=dict(_BLAST_ARGS),
-                    actor=actor,
-                )
-        fallback_events = [
-            e for e in events if e.get("event") == MCP_HANDLER_SERVICE_FALLBACK
-        ]
-        assert not fallback_events, (
-            f"MCP_HANDLER_SERVICE_FALLBACK must be unused, "
-            f"but {len(fallback_events)} emissions fired: "
-            f"{[e.get('tool_name') for e in fallback_events]}"
-        )
+class TestNotSupportedEnvelopeSources:
+    """Acceptance gate: every not_supported envelope has a typed source."""
 
     async def test_capability_gap_is_the_not_supported_source(
         self,
@@ -248,8 +223,8 @@ class TestNoServiceFallbackEvents:
         never expose evaluation-config tables, etc.), so at least a few
         tools should hit the capability-gap path.  This test pins the
         invariant: every ``not_supported`` wire envelope must be paired
-        with a ``MCP_HANDLER_CAPABILITY_GAP`` event -- never a bare
-        ``MCP_HANDLER_SERVICE_FALLBACK`` or silent ``err(..., not_supported)``.
+        with a ``MCP_HANDLER_CAPABILITY_GAP`` (or ``MCP_HANDLER_NOT_IMPLEMENTED``)
+        event -- never a silent ``err(..., not_supported)``.
         """
         handlers = build_handler_map()
         with structlog.testing.capture_logs() as events:

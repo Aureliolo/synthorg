@@ -156,10 +156,13 @@ class SignalsService:
             An ordered mapping of domain name to whether its aggregator is
             wired and can produce signals.
         """
-        return {
-            domain: self._scaling is not None if domain == _SCALING_DOMAIN else True
-            for domain in _SIGNAL_DOMAINS
-        }
+
+        def _available(domain: str) -> bool:
+            if domain == _SCALING_DOMAIN:
+                return self._scaling is not None
+            return True
+
+        return {domain: _available(domain) for domain in _SIGNAL_DOMAINS}
 
     async def get_org_snapshot(
         self,

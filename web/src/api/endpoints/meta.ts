@@ -60,6 +60,11 @@ export interface AlertSummary {
   emitted_at: string
 }
 
+// Signals wire shape. The backend serialises ``get_signals`` to a plain dict
+// (``{"enabled": bool, "domains": [{"name", "status"}]}`` -- not a named
+// OpenAPI schema), so this interface is hand-maintained against the
+// ``get_signals`` handler in ``api/controllers/meta.py``; a new backend
+// status literal must be added to ``SignalDomainStatus`` here in the same PR.
 export type SignalDomainStatus = 'available' | 'unavailable'
 
 export interface SignalDomain {

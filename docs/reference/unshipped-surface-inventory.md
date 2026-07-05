@@ -26,8 +26,7 @@ brand-new never-wired service.
 - **INTENTIONAL-BACKEND-DEPENDENT**: a genuine backend-primitive gap
   surfaced through `CapabilityNotSupportedError` (a fail-loud, documented
   path distinct from the `None`-slice `capability_gap`).
-- **DEAD / OWNED-ELSEWHERE**: dead code or stale strings; removed, or owned
-  by the companion boot-warning audit (#2533).
+- **DEAD**: dead code or stale strings; removed.
 
 ## UNFINISHED (now wired)
 
@@ -58,8 +57,8 @@ owning `feature.py` `ghost_wired_symbols` claim.
 | `SettingsReadService` | `api/lifecycle_helpers/settings_dependent_services.py::_wire_settings_read_facade` | `synthorg_settings_*` |
 
 `SettingsReadService` (slice `SettingsStateSlice`, class in
-`infrastructure/services/_read_facades.py`) was the last hold-out, found by
-the new discovery gate rather than by hand.
+`infrastructure/services/_read_facades.py`) wires in
+`_wire_settings_read_facade`; the discovery gate covers it.
 
 ### Org domain (`OrganizationStateSlice`)
 
@@ -100,7 +99,7 @@ Each already has a construction site (so the discovery gate passes it) and
 | `WorkflowVersionService` | persistence lacks the workflow-version repo |
 | `AgentVersionService` | persistence lacks the agent-version repo |
 | `TrainingService` | the training feature prerequisite is absent |
-| `SelfImprovementService` (`meta.py::_WHY_SELF_IMPROVEMENT`, `synthorg_meta_*`) | the self-improvement meta loop is not enabled for the deployment; its constructor-param cleanup is owned by the companion boot-warning audit (#2533, D2) |
+| `SelfImprovementService` (`meta.py::_WHY_SELF_IMPROVEMENT`, `synthorg_meta_*`) | the self-improvement meta loop is not enabled for the deployment |
 
 ## INTENTIONAL-BACKEND-DEPENDENT (documented)
 
@@ -109,26 +108,25 @@ Each already has a construction site (so the discovery gate passes it) and
 | gRPC-OTLP export | `observability/otlp_handler.py` | Fail-loud + already documented; unavailable without the gRPC exporter. |
 | Role-version history on a backend without it | `_map_capability` path | Surfaced via `CapabilityNotSupportedError`, distinct from the `None`-slice `capability_gap`. |
 
-## Dead or owned elsewhere
+## Dead (removed) and corrected strings
 
-Classification **DEAD / OWNED-ELSEWHERE**.
+Classification **DEAD**: the scaffold is removed; the reason strings now
+report the real runtime condition.
 
-| Item | Disposition |
+| Item | Current state |
 | --- | --- |
-| `service_fallback` + `MCP_HANDLER_SERVICE_FALLBACK` | Zero call sites. Owned by #2533 / WS-G0 (the `capability_gap` routing rework); recorded here only. |
-| `SelfImprovementService` dead constructor params (`memory_backend`, `provider`, `config_provider`, `snapshot_builder`) | Owned by #2533 (D2); recorded here only. |
-| `ToolInvocationTracker` construction | Owned by #2533 (D4). |
-| `api/controllers/meta.py::get_signals` placeholder data | Fixed: now reports real per-domain availability from the wired `SignalsService`. |
-| `agents_training.py` stale `_WHY_*` capability reasons | Fixed: corrected to the "service not wired" reason once the training / personality services were wired. |
-| `agents_crud.py` stale `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Fixed: the sibling defect. The strings claimed permanent architectural gaps ("no streaming endpoint", "no dedicated service method"), but the activity-feed / agent-version / agent-health services are now wired, so each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment"). |
-| `communication/meeting/enums.py` `EMBEDDING` docstring | Fixed: `EmbeddingSimilarityDetector` is fully implemented; the "placeholder / NotImplementedError" claim was stale. |
+| `service_fallback` + `MCP_HANDLER_SERVICE_FALLBACK` | Removed: the helper and its event had zero `src/` call sites. Live handlers route through `not_supported` (backend cannot perform the op) or `capability_gap` (wired handler, primitive gap). |
+| `ToolInvocationTracker` construction | Constructed only in tests, not wired at boot; a separate dead-construction cleanup, outside the `capability_gap` surface this inventory covers. |
+| `api/controllers/meta.py::get_signals` | Reports real per-domain availability from the wired `SignalsService`. |
+| `agents_training.py` `_WHY_*` capability reasons | Read the "service not wired in this deployment" runtime condition for the training / personality services. |
+| `agents_crud.py` `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment") for the activity-feed / agent-version / agent-health services. |
+| `communication/meeting/enums.py` `EMBEDDING` docstring | Describes the implemented `EmbeddingSimilarityDetector`. |
 
 ## Idioms 3-7 sweep of `src/synthorg`
 
-The issue mandates auditing not only the `capability_gap` handler surface
-(idioms 1-2, resolved above) but also the wider "declared but unshipped"
-idioms 3-7 across the source tree. That sweep found no unshipped concrete
-surface beyond what the tables above already resolve:
+Beyond the `capability_gap` handler surface (idioms 1-2, in the tables
+above), this inventory covers the wider "declared but unshipped" idioms 3-7
+across `src/synthorg`. No unshipped concrete surface remains:
 
 - **Idiom 3 (`NotImplementedError` in a concrete class).** Every one of the
   31 `raise NotImplementedError` sites (across 11 modules, e.g. the

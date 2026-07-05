@@ -32,7 +32,7 @@ import type {
 import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorDetail, getErrorMessage } from '@/utils/errors'
+import { getErrorDetail, getErrorMessage, unavailableMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
@@ -40,6 +40,14 @@ const log = createLogger('meta')
 type MetaSet = StoreApi<MetaState>['setState']
 
 const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
+
+/**
+ * Fail-closed 503 copy for a signals fetch, shared with the meta-analytics
+ * page (`pages/meta/useMetaAnalyticsData.ts`) so both surfaces render the
+ * same "signals not enabled for this deployment" guidance.
+ */
+export const SIGNALS_UNAVAILABLE_MESSAGE =
+  'Signal reporting is not enabled for this deployment. Ask your administrator to enable it.'
 
 /**
  * Build the toast title + description for a conversational action failure.
@@ -54,13 +62,13 @@ function describeConversationalError(
   err: unknown,
   fallbackTitle: string,
 ): { title: string; description: string } {
-  const detail = getErrorDetail(err)
-  if (detail?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
+  if (getErrorDetail(err)?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
     return {
       title: FEATURE_UNAVAILABLE_TITLE,
-      description:
-        detail.detail ||
+      description: unavailableMessage(
+        err,
         'This conversational mode is not enabled. Ask your administrator to enable it.',
+      ),
     }
   }
   return { title: fallbackTitle, description: getErrorMessage(err) }
@@ -220,32 +228,13 @@ async function runFetchAlerts(set: MetaSet): Promise<void> {
   }
 }
 
-/**
- * Message for a failed signals fetch.
- *
- * A SERVICE_UNAVAILABLE (503) here is the deliberate fail-closed state (the
- * signals service is not configured for this deployment), not a transient
- * outage, so it surfaces the backend's specific reason instead of the
- * generic fetch-error copy.
- */
-function describeSignalsError(err: unknown): string {
-  const detail = getErrorDetail(err)
-  if (detail?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
-    return (
-      detail.detail ||
-      'Signal reporting is not enabled for this deployment. Ask your administrator to enable it.'
-    )
-  }
-  return getErrorMessage(err)
-}
-
 async function runFetchSignals(set: MetaSet): Promise<void> {
   set({ error: null })
   try {
     set({ signals: await getSignals() })
   } catch (err) {
     log.error('Failed to fetch signals', sanitizeForLog(err))
-    set({ error: describeSignalsError(err) })
+    set({ error: unavailableMessage(err, SIGNALS_UNAVAILABLE_MESSAGE) })
   }
 }
 

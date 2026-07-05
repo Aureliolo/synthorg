@@ -17,7 +17,7 @@ here; MCP callers are already admin-scoped.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.tracker_protocol import (
@@ -64,14 +64,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_WINDOW_HOURS: int = 168  # 7 days -- matches API controller cap.
+_DEFAULT_WINDOW_HOURS: Final[int] = 168  # 7 days -- matches API controller cap.
 # Safety rail for the lifecycle-events fetch so a pathological agent
 # (runaway status churn, accidental event replay) cannot swamp the
 # merge step. Set well above any expected production load; when the
 # cap is hit the service emits ``HR_ACTIVITY_LIFECYCLE_CAP_HIT`` so
 # operators know the merged ``total`` is a lower bound for that
 # window, and the caller should tighten the window to see more.
-_LIFECYCLE_CAP: int = 10_000
+_LIFECYCLE_CAP: Final[int] = 10_000
 
 
 def _collect_result[ResultT](

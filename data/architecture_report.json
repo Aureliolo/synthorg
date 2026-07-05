@@ -122,8 +122,8 @@
     },
     "src/synthorg/api/controllers/meta.py": {
       "cap": 500,
-      "loc": 496,
-      "ratio": 0.992,
+      "loc": 495,
+      "ratio": 0.99,
       "tier": "code"
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
@@ -194,8 +194,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/persistence_autowire.py": {
       "cap": 500,
-      "loc": 411,
-      "ratio": 0.822,
+      "loc": 413,
+      "ratio": 0.826,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
@@ -930,12 +930,6 @@
       "ratio": 1.0,
       "tier": "feature"
     },
-    "src/synthorg/meta/mcp/handlers/common.py": {
-      "cap": 500,
-      "loc": 403,
-      "ratio": 0.806,
-      "tier": "code"
-    },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
       "loc": 472,
@@ -1034,8 +1028,8 @@
     },
     "src/synthorg/organization/services.py": {
       "cap": 600,
-      "loc": 483,
-      "ratio": 0.805,
+      "loc": 507,
+      "ratio": 0.845,
       "tier": "service"
     },
     "src/synthorg/persistence/migrations.py": {
@@ -1525,7 +1519,7 @@
     "synthorg.api.pagination": 62,
     "synthorg.api.path_params": 81,
     "synthorg.api.rate_limits": 92,
-    "synthorg.api.state": 289,
+    "synthorg.api.state": 288,
     "synthorg.api.state_slices": 34,
     "synthorg.api.ws_models": 20,
     "synthorg.approval.enums": 78,
@@ -1556,7 +1550,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 62,
     "synthorg.core.clock": 213,
-    "synthorg.core.critical_errors": 628,
+    "synthorg.core.critical_errors": 629,
     "synthorg.core.domain_errors": 228,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1609,7 +1603,7 @@
     "synthorg.meta.errors": 20,
     "synthorg.meta.mcp.domains._remaining_args": 25,
     "synthorg.meta.mcp.errors": 56,
-    "synthorg.meta.mcp.handler_protocol": 46,
+    "synthorg.meta.mcp.handler_protocol": 45,
     "synthorg.meta.mcp.handlers._mcp_handler_common": 47,
     "synthorg.meta.mcp.handlers.common": 54,
     "synthorg.meta.mcp.handlers.common_args": 40,
@@ -1667,7 +1661,7 @@
     "synthorg.security.models": 28,
     "synthorg.settings.bridge_configs": 24,
     "synthorg.settings.enums": 169,
-    "synthorg.settings.errors": 30,
+    "synthorg.settings.errors": 29,
     "synthorg.settings.kill_switch": 21,
     "synthorg.settings.mirrors": 38,
     "synthorg.settings.models": 44,

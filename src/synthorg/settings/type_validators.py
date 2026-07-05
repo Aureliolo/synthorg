@@ -19,7 +19,10 @@ from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import SettingType
 from synthorg.settings.errors import SettingValidationError
-from synthorg.settings.json_validators import get_json_validator
+from synthorg.settings.json_validators import (
+    get_json_validator,
+    reject_raw_json_over_depth,
+)
 from synthorg.settings.models import SettingDefinition
 
 _SENSITIVE_MASK: Final[str] = "********"
@@ -111,8 +114,15 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
             per-setting shape validator rejects the parsed payload.
     """
     try:
+        # Bound nesting on the raw text first: ``json.loads`` recurses per
+        # level and would raise an uncaught ``RecursionError`` (a 500, not a
+        # clean validation error) on a pathologically deep payload, so the
+        # parse must never see one. ``JSONDecodeError`` is itself a
+        # ``ValueError``, so one ``except`` covers both the depth guard and a
+        # parse failure with the same masked, uniform error surface.
+        reject_raw_json_over_depth(value)
         parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         if definition.sensitive:
             msg = (
                 f"Invalid JSON for sensitive setting"

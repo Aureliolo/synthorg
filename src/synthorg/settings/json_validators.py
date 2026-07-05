@@ -33,6 +33,50 @@ from typing import Final
 #: model validation walks it.
 _MAX_JSON_DEPTH: Final[int] = 32
 
+#: Universal raw-text nesting ceiling for ANY JSON setting, checked on the
+#: unparsed string *before* ``json.loads`` runs. ``json.loads`` recurses once
+#: per nesting level and raises an uncaught ``RecursionError`` on a
+#: pathologically deep payload, so the parse itself -- not just the post-parse
+#: :func:`_reject_deep_nesting` company guard -- must be shielded. Sits far
+#: above any legitimate setting's nesting yet far below the depth at which
+#: ``json.loads`` recurses dangerously.
+_MAX_RAW_JSON_DEPTH: Final[int] = 64
+
+
+def reject_raw_json_over_depth(text: str, max_depth: int = _MAX_RAW_JSON_DEPTH) -> None:
+    """Reject a raw JSON string nesting past *max_depth* before it is parsed.
+
+    Scans the unparsed text counting ``[`` / ``{`` nesting (ignoring brackets
+    inside string literals), so ``json.loads`` is never handed a payload deep
+    enough to raise ``RecursionError``. A single O(n) pass, no recursion, so
+    the guard itself cannot blow the stack on the input it defends against.
+
+    Raises:
+        ValueError: If bracket/brace nesting exceeds *max_depth*.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            depth += 1
+            if depth > max_depth:
+                msg = f"JSON nests deeper than {max_depth} levels"
+                raise ValueError(msg)
+        elif ch in "]}":
+            depth -= 1
+
+
 #: Keys every persisted ``company.agents`` element must carry as a non-empty
 #: string (mirrors ``setup_agents._REQUIRED_AGENT_KEYS`` without importing up
 #: into the controller layer).

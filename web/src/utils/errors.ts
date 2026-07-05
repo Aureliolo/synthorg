@@ -470,6 +470,23 @@ export function getErrorCode(error: unknown): ErrorCode | null {
 }
 
 /**
+ * Message for a fail-closed 503 (SERVICE_UNAVAILABLE): the deliberate
+ * "this capability is not enabled for this deployment" state rather than a
+ * transient outage. Surfaces the backend's specific reason
+ * (`error_detail.detail`) when present, else *fallback*; any other error
+ * falls through to the generic {@link getErrorMessage} copy. Shared by the
+ * meta store and the meta-analytics page so both render the same
+ * fail-closed guidance for a disabled feature.
+ */
+export function unavailableMessage(error: unknown, fallback: string): string {
+  const detail = getErrorDetail(error)
+  if (detail?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
+    return detail.detail || fallback
+  }
+  return getErrorMessage(error)
+}
+
+/**
  * Pick a category-aware toast title prefix for CRUD failures.
  *
  * Auth / validation / conflict / rate-limit failures get specific

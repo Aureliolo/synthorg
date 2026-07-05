@@ -368,10 +368,9 @@ class MetaController(Controller):
     ) -> ApiResponse[dict[str, object]]:
         """Get per-domain signal availability + the improvement-cycle toggle.
 
-        Reflects each domain's real availability from the wired
-        :class:`SignalsService` (the ``scaling`` domain reports
-        ``unavailable`` when no scaling service is wired) rather than a
-        blanket placeholder.
+        Reports each domain's availability from the wired
+        :class:`SignalsService`; the ``scaling`` domain reports
+        ``unavailable`` when no scaling service is wired.
 
         Returns:
             The improvement ``enabled`` flag and each signal domain's status.

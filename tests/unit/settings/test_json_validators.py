@@ -5,11 +5,29 @@ from collections.abc import Callable
 import pytest
 from pydantic import JsonValue
 
-from synthorg.settings.json_validators import get_json_validator
+from synthorg.settings.json_validators import (
+    _MAX_JSON_DEPTH,
+    _MAX_RAW_JSON_DEPTH,
+    _reject_deep_nesting,
+    get_json_validator,
+    reject_raw_json_over_depth,
+)
 
 pytestmark = pytest.mark.unit
 
 _Validator = Callable[[JsonValue], None]
+
+
+def _nest_lists(depth: int) -> JsonValue:
+    """Return ``depth`` nested single-element lists around a scalar leaf.
+
+    The leaf sits at nesting depth ``depth + 1`` (the outer list is depth 1),
+    so ``_nest_lists(n)`` exceeds a ``max_depth`` cap of ``n`` at the leaf.
+    """
+    node: JsonValue = 0
+    for _ in range(depth):
+        node = [node]
+    return node
 
 
 class TestCspDocsExternalOriginsJsonValidator:
@@ -74,6 +92,110 @@ class TestCspDocsExternalOriginsJsonValidator:
     ) -> None:
         with pytest.raises(ValueError, match="csp_docs_external_origins"):
             validator(["https://cdn.example.com", bad_origin])
+
+
+class TestCompanyDepartmentsJsonValidator:
+    """Write-time validation for ``company.departments``.
+
+    Closes the generic-settings-write bypass of the ``Team`` validation the
+    team CRUD path applies.
+    """
+
+    @pytest.fixture
+    def validator(self) -> _Validator:
+        v = get_json_validator("company", "departments")
+        assert v is not None, "company/departments validator missing"
+        return v
+
+    def test_accepts_valid_departments(self, validator: _Validator) -> None:
+        validator(
+            [
+                {"name": "Engineering", "teams": [{"name": "Core", "lead": "alice"}]},
+                {"name": "Design"},
+            ]
+        )
+
+    def test_rejects_non_array_payload(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="must be a JSON array"):
+            validator({"name": "Engineering"})
+
+    def test_rejects_department_without_name(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match=r"\.name must be a non-empty string"):
+            validator([{"teams": []}])
+
+    def test_rejects_blank_department_name(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match=r"\.name must be a non-empty string"):
+            validator([{"name": "  "}])
+
+    def test_rejects_non_list_teams(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="teams must be an array"):
+            validator([{"name": "Engineering", "teams": {"not": "a list"}}])
+
+    def test_rejects_invalid_team(self, validator: _Validator) -> None:
+        # Missing the required ``lead`` field -> ``Team`` validation fails.
+        with pytest.raises(ValueError, match="is not a valid team"):
+            validator([{"name": "Engineering", "teams": [{"name": "Core"}]}])
+
+    def test_rejects_deeply_nested_payload(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="nests deeper"):
+            validator(_nest_lists(_MAX_JSON_DEPTH + 1))
+
+
+class TestCompanyAgentsJsonValidator:
+    """Write-time validation for ``company.agents``."""
+
+    @pytest.fixture
+    def validator(self) -> _Validator:
+        v = get_json_validator("company", "agents")
+        assert v is not None, "company/agents validator missing"
+        return v
+
+    def test_accepts_valid_agents(self, validator: _Validator) -> None:
+        validator([{"name": "alice", "role": "engineer"}])
+
+    def test_rejects_non_array_payload(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="must be a JSON array"):
+            validator({"name": "alice"})
+
+    def test_rejects_missing_required_keys(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="missing required keys"):
+            validator([{"name": "alice"}])
+
+    def test_rejects_blank_required_field(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="must be a non-empty string"):
+            validator([{"name": "alice", "role": "  "}])
+
+
+class TestDeepNestingGuards:
+    """The post-parse (``_reject_deep_nesting``) and pre-parse
+    (``reject_raw_json_over_depth``) depth guards.
+    """
+
+    def test_reject_deep_nesting_accepts_at_cap(self) -> None:
+        # Leaf at exactly the cap must pass.
+        _reject_deep_nesting(_nest_lists(_MAX_JSON_DEPTH - 1), "departments")
+
+    def test_reject_deep_nesting_rejects_over_cap(self) -> None:
+        with pytest.raises(ValueError, match="nests deeper"):
+            _reject_deep_nesting(_nest_lists(_MAX_JSON_DEPTH + 1), "departments")
+
+    def test_raw_guard_accepts_at_cap(self) -> None:
+        reject_raw_json_over_depth(
+            "[" * _MAX_RAW_JSON_DEPTH + "]" * _MAX_RAW_JSON_DEPTH
+        )
+
+    def test_raw_guard_rejects_over_cap(self) -> None:
+        with pytest.raises(ValueError, match="nests deeper"):
+            reject_raw_json_over_depth("[" * (_MAX_RAW_JSON_DEPTH + 1))
+
+    def test_raw_guard_ignores_brackets_inside_strings(self) -> None:
+        # Brackets inside a JSON string literal are not nesting.
+        reject_raw_json_over_depth('["' + "[" * 200 + '"]')
+
+    def test_raw_guard_ignores_escaped_quote_in_string(self) -> None:
+        # An escaped quote must not prematurely close the string, so the
+        # bracket run after it stays inside the string and uncounted.
+        reject_raw_json_over_depth('["a\\"' + "[" * 200 + '"]')
 
 
 def test_unregistered_namespace_returns_none() -> None:

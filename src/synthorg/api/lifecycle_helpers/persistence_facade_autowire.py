@@ -9,10 +9,12 @@ after those, so they live alongside the other persistence-gated
 auto-wirers but split into their own module to keep each under the
 module-size budget.
 
-Every helper keeps its own ``try``/``except`` + ``reraise_critical`` +
-warning log so a transient failure in one facade never aborts the
-others; the MCP read tools behind an unwired facade surface 503 until
-the operator fixes the underlying configuration and reboots.
+Every helper keeps its own ``try``/``except`` + ``reraise_critical`` so a
+failure in one facade never aborts the others; the MCP read tools behind an
+unwired facade surface 503 until the operator fixes the underlying
+configuration and reboots. An absent dependency returns early (silent); a
+construction that *throws* is logged at ERROR, since it is a real boot
+defect the operator must fix rather than routine degradation.
 """
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -67,7 +69,7 @@ async def _wire_user_facade_service(app_state: AppState) -> None:
         logger.info(API_SERVICE_AUTO_WIRED, service="user_facade_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="user_facade_service",
             error_type=type(exc).__name__,
@@ -101,7 +103,7 @@ async def _wire_backup_facade_service(app_state: AppState) -> None:
         logger.info(API_SERVICE_AUTO_WIRED, service="backup_facade_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="backup_facade_service",
             error_type=type(exc).__name__,
@@ -134,7 +136,7 @@ async def _wire_ontology_facade_service(app_state: AppState) -> None:
         logger.info(API_SERVICE_AUTO_WIRED, service="ontology_facade_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="ontology_facade_service",
             error_type=type(exc).__name__,
@@ -171,7 +173,7 @@ async def _wire_mcp_catalog_facade_service(app_state: AppState) -> None:
         logger.info(API_SERVICE_AUTO_WIRED, service="mcp_catalog_facade_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="mcp_catalog_facade_service",
             error_type=type(exc).__name__,

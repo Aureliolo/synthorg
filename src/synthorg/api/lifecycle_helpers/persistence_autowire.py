@@ -7,10 +7,12 @@ state slice. They run once at ``on_startup`` (after ``persistence.connect()``)
 and are idempotent: a slice field already set short-circuits, so a
 re-entered lifespan (shared-app test fixtures) does not double-wire.
 
-Every helper keeps its own ``try``/``except`` + ``reraise_critical`` +
-warning log so a transient failure in one service never aborts the
-others; the controllers behind an unwired service surface 503 until the
-operator fixes the underlying configuration and reboots.
+Every helper keeps its own ``try``/``except`` + ``reraise_critical`` so a
+failure in one service never aborts the others; the controllers behind an
+unwired service surface 503 until the operator fixes the underlying
+configuration and reboots. An absent dependency returns early (silent); a
+construction that *throws* is logged at ERROR, since it is a real boot
+defect the operator must fix rather than routine degradation.
 """
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -59,7 +61,7 @@ async def _wire_oauth_state_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_state_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="oauth_state_service",
             error_type=type(exc).__name__,
@@ -99,7 +101,7 @@ async def _wire_training_plan_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="training_plan_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="training_plan_service",
             error_type=type(exc).__name__,
@@ -140,7 +142,7 @@ async def _wire_workflow_rollback_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="workflow_rollback_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="workflow_rollback_service",
             error_type=type(exc).__name__,
@@ -183,7 +185,7 @@ async def _wire_workflow_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="workflow_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="workflow_service",
             error_type=type(exc).__name__,
@@ -223,7 +225,7 @@ async def _wire_workflow_version_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="workflow_version_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="workflow_version_service",
             error_type=type(exc).__name__,
@@ -260,7 +262,7 @@ async def _wire_agent_version_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="agent_version_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="agent_version_service",
             error_type=type(exc).__name__,
@@ -301,7 +303,7 @@ async def _wire_subworkflow_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="subworkflow_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="subworkflow_service",
             error_type=type(exc).__name__,
@@ -340,7 +342,7 @@ async def _wire_evaluation_version_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="evaluation_version_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="evaluation_version_service",
             error_type=type(exc).__name__,
@@ -383,7 +385,7 @@ async def _wire_personality_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="personality_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="personality_service",
             error_type=type(exc).__name__,
@@ -429,7 +431,7 @@ async def _wire_activity_feed_service(
         logger.info(API_SERVICE_AUTO_WIRED, service="activity_feed_service")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             API_SERVICE_AUTO_WIRE_FAILED,
             service="activity_feed_service",
             error_type=type(exc).__name__,

@@ -10,6 +10,7 @@ real optimistic-concurrency path through
 the settings persistence stack.
 """
 
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 
 from synthorg.core.domain_errors import VersionConflictError
@@ -75,6 +76,44 @@ class FakeSettingsService:
             raise VersionConflictError(msg)
         self._counter += 1
         self._store[namespace, key] = (value, str(self._counter))
+
+    async def set_many(
+        self,
+        items: Sequence[tuple[str, str, str]],
+        *,
+        expected_updated_at_map: Mapping[tuple[str, str], str],
+    ) -> str:
+        """Atomically store multiple values with per-key compare-and-set.
+
+        Validates every key's expected version *before* writing any, so a
+        single stale token rolls the whole batch back (matching
+        ``SettingsService.set_many``), and assigns all rows one shared
+        version token.
+
+        Returns:
+            The shared version token applied to every written key.
+
+        Raises:
+            VersionConflictError: When any key's expected version is stale;
+                nothing is written.
+        """
+        for namespace, key, _value in items:
+            expected = expected_updated_at_map.get((namespace, key))
+            if expected is None:
+                continue
+            current = self._store.get((namespace, key))
+            current_version = current[1] if current is not None else ""
+            if expected != current_version:
+                msg = (
+                    f"Version conflict on {namespace}/{key}: "
+                    f"expected {expected!r}, have {current_version!r}"
+                )
+                raise VersionConflictError(msg)
+        self._counter += 1
+        shared = str(self._counter)
+        for namespace, key, value in items:
+            self._store[namespace, key] = (value, shared)
+        return shared
 
     def force_version_bump(self, namespace: str, key: str) -> None:
         """Bump a key's version token in place, leaving its value unchanged.

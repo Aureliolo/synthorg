@@ -133,6 +133,28 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="company_departments_cas_retry_attempts",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Maximum compare-and-swap retry attempts for the"
+            " company.departments / company.agents JSON blob (team and"
+            " template-pack writers). A losing CAS writer re-reads,"
+            " mutates, and re-attempts up to this many times before"
+            " surfacing a VersionConflictError to the caller (HTTP 409)."
+            " Resolved per mutation so a runtime change applies to the"
+            " next request."
+        ),
+        group="Concurrency",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10,
+    )
+)
+
 # ── Ceremony Policy ──────────────────────────────────────────
 
 _r.register(

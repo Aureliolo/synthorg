@@ -45,7 +45,10 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **Sites**:
 
-- `src/synthorg/persistence/postgres/decision_repo.py` `_execute_insert`: version-race retry for the decision-history append path.
+- `src/synthorg/persistence/postgres/decision_repo.py` `_execute_insert`: version-race retry for the decision-history append path (inline constraint-name branch).
+- `src/synthorg/core/concurrency/cas_retry.py` `CASRetryHandler`: the shared version-token (`expected_updated_at`) compare-and-set retry handler. Retries a read-modify-write on `VersionConflictError` and re-raises after a bounded attempt count; the settings-blob sites below drive it rather than hand-rolling the loop.
+- `src/synthorg/organization/team_navigation.py` (`mutate_company_departments` / `with_company_departments_cas`) and `src/synthorg/api/controllers/template_packs.py` (`_apply_pack_to_settings`): CAS over the `company.departments` / `company.agents` settings blob through `CASRetryHandler`; the retry budget resolves per call from `coordination.company_departments_cas_retry_attempts`.
+- `src/synthorg/api/controllers/departments/_shared.py`: CAS over the `dept_ceremony_policies` setting through `CASRetryHandler`.
 
 ### C/Sync -- Sync retry where `GeneralRetryHandler` is unreachable
 
