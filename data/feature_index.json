@@ -876,7 +876,8 @@
         "SQLiteAlertRepository",
         "PostgresAlertRepository",
         "PersistentAlertSink",
-        "resolve_chat_answer"
+        "resolve_chat_answer",
+        "ToolApprovalConsumer"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -1239,7 +1240,10 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "CosCharterModelSettingsSubscriber",
+        "DirectMcpActorSettingsSubscriber"
+      ],
       "mcp_tool_names": [],
       "name": "settings",
       "protocol_exports": [
@@ -1296,7 +1300,8 @@
         "ExternalApiTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
-        "create_lifecycle_strategy"
+        "create_lifecycle_strategy",
+        "ToolInvocationTracker"
       ],
       "mcp_tool_names": [],
       "name": "tools",
@@ -1369,6 +1374,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-05T09:26:01.394452Z",
+  "generated_at": "2026-07-05T09:34:12.892660Z",
   "schema_version": 1
 }
