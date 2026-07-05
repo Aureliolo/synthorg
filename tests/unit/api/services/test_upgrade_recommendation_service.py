@@ -9,7 +9,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.organization.models import UpdateAgentOrgRequest
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
@@ -253,4 +253,28 @@ class TestUpgradeRecommendationService:
         with pytest.raises(NotFoundError):
             await service.approve(stored.id, decided_by="op")
         # The apply stopped at the first agent, not silently skipping on.
+        assert org.update_agent.await_count == 1
+
+    async def test_reassign_reraises_when_model_vanishes_mid_loop(self) -> None:
+        # Companion to the provider-vanish case: the recommended model (not
+        # the provider) disappears mid-loop, so the in-except re-validation
+        # raises ValidationError rather than NotFoundError. That must also
+        # propagate and stop the apply, never be swallowed as a stale skip.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=NotFoundError("stale?")),
+            validate_model_assignment=AsyncMock(
+                side_effect=[
+                    None,
+                    ValidationError("Model 'new' not found in provider"),
+                ]
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(ValidationError):
+            await service.approve(stored.id, decided_by="op")
         assert org.update_agent.await_count == 1
