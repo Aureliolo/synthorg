@@ -1,14 +1,21 @@
 """Tests for budget rebalancing on template pack application."""
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import override
 from unittest.mock import patch
 
 import httpx
 import pytest
 
+from synthorg.api.controllers.template_packs import (
+    ApplyTemplatePackRequest,
+    _apply_pack_to_settings,
+)
+from synthorg.budget.rebalance import RebalanceMode
 from synthorg.templates.schema import TemplateDepartmentConfig
-from tests._shared import LoopAsyncClient
+from tests._shared import FakeSettingsService, LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -211,3 +218,95 @@ class TestPackApplyRebalance:
             _FAKE_PACK_DEPT_BUDGET,
             abs=0.1,
         )
+
+
+class _ConcurrentAgentInjector(FakeSettingsService):
+    """A settings fake that lands a racing ``company.agents`` write once.
+
+    On the first ``set_many`` (the pack apply's first CAS write attempt) it
+    commits a concurrent ``company.agents`` value and bumps that key's
+    version, so the attempt's CAS token goes stale and the handler must
+    re-read + re-apply. Lets a unit test prove the apply does not clobber a
+    concurrent agent change on the un-guarded sibling key.
+    """
+
+    def __init__(
+        self,
+        initial: dict[tuple[str, str], str],
+        injected_agents: str,
+    ) -> None:
+        super().__init__(initial)
+        self._injected_agents = injected_agents
+        self.fired = False
+
+    @override
+    async def set_many(
+        self,
+        items: Sequence[tuple[str, str, str]],
+        *,
+        expected_updated_at_map: Mapping[tuple[str, str], str],
+    ) -> str:
+        if not self.fired:
+            self.fired = True
+            self._counter += 1
+            self._store["company", "agents"] = (
+                self._injected_agents,
+                str(self._counter),
+            )
+        return await super().set_many(
+            items, expected_updated_at_map=expected_updated_at_map
+        )
+
+
+@pytest.mark.unit
+class TestPackApplyCasConflict:
+    """The dual-key CAS write survives a concurrent sibling-key write."""
+
+    async def test_concurrent_agents_write_forces_reread_no_lost_update(
+        self,
+    ) -> None:
+        settings = _ConcurrentAgentInjector(
+            initial={
+                ("company", "departments"): json.dumps([_dept("eng", 60.0)]),
+                ("company", "agents"): json.dumps(
+                    [{"name": "alice", "role": "engineer"}]
+                ),
+            },
+            # A rival writer adds ``carol`` between the apply's read and write.
+            injected_agents=json.dumps(
+                [
+                    {"name": "alice", "role": "engineer"},
+                    {"name": "carol", "role": "designer"},
+                ]
+            ),
+        )
+        app_state = make_app_state(settings_service=settings)
+        data = ApplyTemplatePackRequest(
+            pack_name=_FAKE_PACK_NAME,
+            rebalance_mode=RebalanceMode.SCALE_EXISTING,
+        )
+        with (
+            patch(
+                "synthorg.api.controllers.template_packs.load_pack",
+                return_value=_make_fake_loaded(),
+            ),
+            patch(
+                "synthorg.api.controllers.template_packs.expand_template_agents",
+                return_value=[{"name": "bob", "role": "engineer"}],
+            ),
+        ):
+            result = await _apply_pack_to_settings(app_state, data)
+
+        assert settings.fired, "the concurrent write was never injected"
+        # No lost update: the concurrent ``carol`` survives, the pack's
+        # ``bob`` is added, and ``alice`` is retained -- both keys committed
+        # atomically against the re-read state.
+        stored_agents, _ = await settings.get_versioned("company", "agents")
+        agent_names = {a["name"] for a in json.loads(stored_agents)}
+        assert agent_names == {"alice", "carol", "bob"}
+        # ``agents_added`` is recomputed against the winning re-read (carol
+        # already present), so only ``bob`` counts as new.
+        assert result.agents_added == 1
+        stored_depts, _ = await settings.get_versioned("company", "departments")
+        dept_names = {d["name"] for d in json.loads(stored_depts)}
+        assert "test-dept" in dept_names

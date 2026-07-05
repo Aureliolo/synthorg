@@ -8,10 +8,7 @@ import structlog.testing
 from synthorg.api.state import AppState
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
-from synthorg.meta.mcp.handlers.common import (
-    make_handlers_for_tools,
-    make_placeholder_handler,
-)
+from synthorg.meta.mcp.handlers.common import not_supported
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.observability.events.mcp import MCP_HANDLER_NOT_IMPLEMENTED
 from tests._shared import mock_of
@@ -19,67 +16,29 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-class TestPlaceholderHandler:
-    """Tests for the placeholder handler factory.
+class TestNotSupported:
+    """Tests for the ``not_supported`` envelope helper.
 
-    The scaffold now delegates to the canonical ``not_supported()``
-    envelope so unwired tools emit ``status="error"`` /
-    ``domain_code="not_supported"`` -- the same contract every real
-    handler ships.  The ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event
-    continues to fire so ops alerting keeps working.
+    Concrete handlers whose backing service is wired but whose selected
+    backend cannot perform an operation return this envelope. Ops alerting
+    depends on the ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event's level +
+    name staying stable.
     """
 
-    async def test_returns_not_supported_envelope(self) -> None:
-        handler = make_placeholder_handler("synthorg_test_get")
-        result = await handler(app_state=mock_of[AppState](), arguments={})
-        body = json.loads(result)
+    def test_returns_not_supported_envelope(self) -> None:
+        body = json.loads(not_supported("synthorg_test_get", "backend lacks fine-tune"))
         assert body["status"] == "error"
         assert body["domain_code"] == "not_supported"
-        assert "synthorg_test_get" in body["message"]
+        assert body["message"] == "backend lacks fine-tune"
 
-    async def test_logs_warning_with_handler_not_implemented_event(self) -> None:
-        """Placeholder log stays at WARNING + keeps the HYG-1 event name.
-
-        Ops alerting depends on this level + name being stable.
-        """
-        handler = make_placeholder_handler("synthorg_test_get")
+    def test_logs_warning_with_handler_not_implemented_event(self) -> None:
+        """Log stays at WARNING + keeps the event name ops alerting depends on."""
         with structlog.testing.capture_logs() as logs:
-            await handler(app_state=mock_of[AppState](), arguments={})
+            not_supported("synthorg_test_get", "backend lacks fine-tune")
         events = [e for e in logs if e.get("event") == MCP_HANDLER_NOT_IMPLEMENTED]
         assert len(events) == 1
         assert events[0]["log_level"] == "warning"
         assert events[0]["tool_name"] == "synthorg_test_get"
-
-    async def test_accepts_actor_kwarg(self) -> None:
-        """Handler protocol now includes ``actor``; placeholder ignores it."""
-        handler = make_placeholder_handler("synthorg_test_get")
-        result = await handler(
-            app_state=mock_of[AppState](),
-            arguments={},
-            actor=None,
-        )
-        body = json.loads(result)
-        assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
-
-
-class TestMakeHandlersForTools:
-    """Tests for batch handler creation."""
-
-    def test_creates_handlers_for_all_tools(self) -> None:
-        handlers = make_handlers_for_tools(("tool_a", "tool_b", "tool_c"))
-        assert len(handlers) == 3
-        assert "tool_a" in handlers
-        assert "tool_b" in handlers
-        assert "tool_c" in handlers
-
-    async def test_all_handlers_are_callable(self) -> None:
-        handlers = make_handlers_for_tools(("tool_a",))
-        result = await handlers["tool_a"](app_state=mock_of[AppState](), arguments={})
-        body = json.loads(result)
-        assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
-        assert "tool_a" in body["message"]
 
 
 class TestBuildHandlerMap:
@@ -115,41 +74,6 @@ class TestBuildHandlerMap:
 
 class TestEndToEndInvocation:
     """End-to-end test: registry + handlers + invoker."""
-
-    async def test_invoke_placeholder_via_invoker(self) -> None:
-        """End-to-end dispatch test with a synthetic placeholder tool.
-
-        Uses an explicit synthetic tool registered into an ad-hoc
-        registry so the test stays stable as domain handlers migrate
-        off the placeholder scaffold.
-        """
-        from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
-
-        synth_tool = MCPToolDef(
-            name="synthorg_synth_placeholder",
-            description="test placeholder",
-            parameters={"type": "object", "properties": {}},
-            capability="synth:read",
-            handler_key="synthorg_synth_placeholder",
-        )
-        registry = DomainToolRegistry()
-        registry.register(synth_tool)
-        registry.freeze()
-
-        placeholder = make_placeholder_handler("synthorg_synth_placeholder")
-        handlers = {"synthorg_synth_placeholder": placeholder}
-        invoker = MCPToolInvoker(registry, handlers)
-
-        result = await invoker.invoke(
-            "synthorg_synth_placeholder",
-            {"offset": 0, "limit": 10},
-            app_state=mock_of[AppState](),
-        )
-        assert result.is_error is False
-        body = json.loads(result.content)
-        assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
-        assert "synthorg_synth_placeholder" in body["message"]
 
     async def test_invoke_unknown_tool(self) -> None:
         registry = build_full_registry()

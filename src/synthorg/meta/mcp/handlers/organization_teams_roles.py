@@ -8,13 +8,11 @@ actor), emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._workflows_org_args import (
     RoleVersionsGetArgs,
     RoleVersionsListArgs,
@@ -53,7 +51,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.organization.services import UNSET, UnsetType
 from synthorg.organization.state import (
     OrganizationStateSlice,
     role_version_service_of,
@@ -65,8 +62,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_TEAM_ID = "team_id"
-_TY_UUID = "UUID string"
 _WHY_TEAM_NOT_WIRED = "team_service is not wired on app_state in this deployment"
 _WHY_ROLE_NOT_WIRED = (
     "role_version_service is not wired on app_state in this deployment"
@@ -97,7 +92,7 @@ async def _teams_list(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return a paginated slice of teams.
+    """Return a paginated slice of every team across departments.
 
     Returns:
         Resulting string.
@@ -121,7 +116,7 @@ async def _teams_list(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok([t.to_dict() for t in page], pagination=pagination)
+    return ok([_to_jsonable(team) for team in page], pagination=pagination)
 
 
 async def _teams_get(
@@ -130,24 +125,20 @@ async def _teams_get(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single team by UUID.
+    """Fetch a single team by ``(department, team_name)``.
 
     Returns:
         Resulting string.
-
-    Raises:
-        ArgumentValidationError: When ``team_id`` is not a UUID string.
     """
     tool = "synthorg_teams_get"
     if not _team_service_wired(app_state):
         return capability_gap(tool, _WHY_TEAM_NOT_WIRED)
     try:
-        team_id = typed_args(arguments, TeamsGetArgs).team_id
-        try:
-            UUID(team_id)
-        except ValueError as uuid_exc:
-            raise ArgumentValidationError(_ARG_TEAM_ID, _TY_UUID) from uuid_exc
-        record = await team_service_of(app_state).get_team(team_id)
+        args = typed_args(arguments, TeamsGetArgs)
+        record = await team_service_of(app_state).get_team(
+            department=args.department,
+            team_name=args.team_name,
+        )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -156,11 +147,15 @@ async def _teams_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        missing = NotFoundError(f"Team {team_id} not found")
-        log_handler_invoke_failed(tool, missing, team_id=team_id)
+        missing = NotFoundError(
+            f"Team {args.team_name!r} not found in department {args.department!r}"
+        )
+        log_handler_invoke_failed(
+            tool, missing, department=args.department, team_name=args.team_name
+        )
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(record.to_dict())
+    return ok(_to_jsonable(record))
 
 
 async def _teams_create(
@@ -169,7 +164,7 @@ async def _teams_create(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Create a new team record (non-destructive write).
+    """Create a team within a department (non-destructive write).
 
     Returns:
         Resulting string.
@@ -180,9 +175,11 @@ async def _teams_create(
     try:
         args = typed_args(arguments, TeamsCreateArgs)
         record = await team_service_of(app_state).create_team(
+            department=args.department,
             name=args.name,
+            lead=args.lead,
+            members=args.members,
             actor_id=require_actor_id(actor),
-            department_id=args.department_id,
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -192,7 +189,7 @@ async def _teams_create(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(record.to_dict())
+    return ok(_to_jsonable(record))
 
 
 async def _teams_update(
@@ -201,7 +198,7 @@ async def _teams_update(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update name / department on an existing team (partial patch).
+    """Update a team (rename, change lead, replace members).
 
     Returns:
         Resulting string.
@@ -211,18 +208,13 @@ async def _teams_update(
         return capability_gap(tool, _WHY_TEAM_NOT_WIRED)
     try:
         args = typed_args(arguments, TeamsUpdateArgs)
-        # The MCP invoker re-materialises every field via ``model_dump`` before
-        # the handler runs, so omitted-vs-explicit-null cannot be recovered
-        # here. A non-blank ``department_id`` reassigns the team; a missing /
-        # null value leaves the assignment untouched (``UNSET``).
-        department_id: NotBlankStr | None | UnsetType = (
-            args.department_id if args.department_id is not None else UNSET
-        )
         record = await team_service_of(app_state).update_team(
-            team_id=args.team_id,
-            actor_id=require_actor_id(actor),
+            department=args.department,
+            team_name=args.team_name,
             name=args.name,
-            department_id=department_id,
+            lead=args.lead,
+            members=args.members,
+            actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -232,11 +224,15 @@ async def _teams_update(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        missing = NotFoundError(f"Team {args.team_id} not found")
-        log_handler_invoke_failed(tool, missing, team_id=str(args.team_id))
+        missing = NotFoundError(
+            f"Team {args.team_name!r} not found in department {args.department!r}"
+        )
+        log_handler_invoke_failed(
+            tool, missing, department=args.department, team_name=args.team_name
+        )
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(record.to_dict())
+    return ok(_to_jsonable(record))
 
 
 async def _teams_delete(
@@ -253,7 +249,7 @@ async def _teams_delete(
     tool = "synthorg_teams_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        team_id = typed_args(arguments, TeamsDeleteArgs).team_id
+        args = typed_args(arguments, TeamsDeleteArgs)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -265,7 +261,8 @@ async def _teams_delete(
     actor_id = require_actor_id(resolved_actor)
     try:
         removed = await team_service_of(app_state).delete_team(
-            team_id=team_id,
+            department=args.department,
+            team_name=args.team_name,
             actor_id=actor_id,
             reason=reason,
         )
@@ -275,7 +272,8 @@ async def _teams_delete(
                 tool_name=tool,
                 actor_agent_id=actor_id,
                 reason=reason,
-                team_id=team_id,
+                department=args.department,
+                team_name=args.team_name,
                 removed=removed,
             )
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
@@ -292,7 +290,7 @@ async def _role_versions_list(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List role-version snapshots, optionally filtered by role name.
+    """List a single role's version snapshots (role name is required).
 
     Returns:
         Resulting string.
@@ -336,8 +334,11 @@ async def _role_versions_get(
     if not _role_version_service_wired(app_state):
         return capability_gap(tool, _WHY_ROLE_NOT_WIRED)
     try:
-        version_id = typed_args(arguments, RoleVersionsGetArgs).version_id
-        version = await role_version_service_of(app_state).get_version(version_id)
+        args = typed_args(arguments, RoleVersionsGetArgs)
+        version = await role_version_service_of(app_state).get_version(
+            role_name=args.role_name,
+            version_id=args.version_id,
+        )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -348,8 +349,12 @@ async def _role_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        missing = NotFoundError(f"Version {version_id} not found")
-        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        missing = NotFoundError(
+            f"Version {args.version_id} not found for role {args.role_name!r}"
+        )
+        log_handler_invoke_failed(
+            tool, missing, role_name=args.role_name, version_id=args.version_id
+        )
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(version))

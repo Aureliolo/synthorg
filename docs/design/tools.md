@@ -375,23 +375,18 @@ placeholder factories:
   through `safe_error_description(exc)` (SEC-1) and `domain_code` falls back
   to `exc.domain_code` when present.
 - `not_supported(tool_name, reason)`: stable `status="error"` /
-  `domain_code="not_supported"` envelope for tools whose service facade
-  is not wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
-  operators can alert on unwired tools. Every tool registered today is
-  wired; this path fires only for newly registered tools that have not
-  been given a concrete handler.
-- `service_fallback(tool_name, reason)`: helper retained in `common.py`
-  for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
-  META-MCP-2 removed every call site and the integration sweep at
-  `tests/integration/mcp/test_tool_surface.py` asserts zero emissions of
-  this event across the full <!--RS:mcp_tools-->245<!--/RS-->-tool surface.
-- `capability_gap(tool_name, reason)`: live handler whose underlying
-  primitive does not yet expose the required method (e.g. agent
-  `activity_feed`, memory fine-tune orchestrator on a backend that
-  lacks fine-tune support). Identical wire envelope to `not_supported`
+  `domain_code="not_supported"` envelope for a wired handler whose selected
+  backend cannot perform the operation (e.g. a memory backend that does not
+  support fine-tuning or checkpoints). Emits the `MCP_HANDLER_NOT_IMPLEMENTED`
+  WARNING event so operators can alert on unsupported calls.
+- `capability_gap(tool_name, reason)`: a wired handler whose backing service
+  is absent in this deployment, or whose primitive does not yet expose the
+  required method (a `None`-slice gap; see
+  [unshipped-surface-inventory.md](../reference/unshipped-surface-inventory.md)
+  for the classification). Identical wire envelope to `not_supported`
   (`domain_code="not_supported"`) but emits the dedicated
-  `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
-  "primitive missing method" from "handler unwired".
+  `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes it
+  from a backend that simply cannot perform the operation.
 - `require_admin_guardrails(arguments, actor)`: single source of
   truth for the admin-op precondition triple: non-`None` `actor`,
   literal `confirm=True`, non-blank `reason`. Raises

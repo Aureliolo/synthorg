@@ -62,9 +62,9 @@ class ConflictDetectorType(StrEnum):
             deterministic, requires position JSON in responses.
         LLM_JUDGE: Parse a structured judgment from the leader's
             response (JSON ``conflicts`` field or ``JUDGE:`` markers).
-        EMBEDDING: Embedding-similarity-based detection (placeholder
-            implementation; raises NotImplementedError until embedding
-            infrastructure is available).
+        EMBEDDING: Embedding-similarity detection over agent positions;
+            flags a conflict when any pair falls below the cosine-similarity
+            threshold (needs a wired :class:`TextEmbedder`).
         HYBRID: Combine embedding similarity with a keyword fallback.
         AUTO: Pick STRUCTURED when JSON is present, fall back to
             KEYWORD otherwise.

@@ -145,6 +145,22 @@ describe('fetchSignals', () => {
     expect(useMetaStore.getState().error).toBe('boom')
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
+
+  it('surfaces the backend reason on a 503 (fail-closed, not a generic error)', async () => {
+    server.use(
+      http.get('/api/v1/meta/signals', () =>
+        HttpResponse.json(
+          serviceUnavailable('Signal reporting is not enabled.'),
+          { status: 503 },
+        ),
+      ),
+    )
+
+    await useMetaStore.getState().fetchSignals()
+
+    expect(useMetaStore.getState().error).toBe('Signal reporting is not enabled.')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
 })
 
 describe('sendChat', () => {

@@ -4,8 +4,8 @@ Every real handler imports from this module.  The file provides three
 concerns in one place:
 
 1. **Response envelope** (``ok``, ``err``, ``PaginationMeta``,
-   ``not_supported``, ``capability_gap``, ``service_fallback``) -- builds
-   the JSON string the handler returns to the invoker.
+   ``not_supported``, ``capability_gap``) -- builds the JSON string the
+   handler returns to the invoker.
 2. **Output helpers** (``dump_many``, ``paginate_sequence``):
    Pydantic batch serialisation and in-memory pagination of an
    already-materialised sequence.
@@ -19,18 +19,13 @@ Argument-validation helpers (``require_arg``, ``require_non_blank``,
 helpers for the three handler-side log paths (argument-invalid,
 invoke-failed, guardrail-violated) live in
 :mod:`synthorg.meta.mcp.handlers.common_logging`.
-
-The placeholder scaffold (``make_placeholder_handler``,
-``make_handlers_for_tools``) stays in this module; real handlers never
-call it.  The placeholder logs at WARNING via the
-``MCP_HANDLER_NOT_IMPLEMENTED`` event so ops can alert on unwired tools.
 """
 
 import asyncio
 import json
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,9 +34,6 @@ from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import GuardrailViolationError
-from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,
-)
 from synthorg.meta.mcp.handlers.common_args import (
     PAGINATION_ARG_LIMIT as _ARG_LIMIT,
 )
@@ -56,11 +48,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_NOT_IMPLEMENTED,
-    MCP_HANDLER_SERVICE_FALLBACK,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -306,13 +294,14 @@ def _not_supported_envelope(reason: str) -> str:
 
 
 def not_supported(tool_name: str, reason: str) -> str:
-    """Build a ``not_supported`` envelope for unwired placeholder tools.
+    """Build a ``not_supported`` envelope for an operation a backend cannot do.
 
-    Used by :func:`make_placeholder_handler` for tools that are
-    registered but have no concrete handler implementation yet.  Emits
-    :data:`MCP_HANDLER_NOT_IMPLEMENTED` so ops alerting can distinguish
-    pure placeholders from concrete handlers that happen to lack a
-    service facade (the latter use :func:`service_fallback`).
+    Used by concrete handlers whose backing service is wired but whose
+    selected backend legitimately cannot perform the operation (e.g. a
+    memory backend that does not support fine-tuning or checkpoints).
+    Emits :data:`MCP_HANDLER_NOT_IMPLEMENTED` so ops alerting surfaces the
+    unsupported call; distinct from :func:`capability_gap`, which marks a
+    wired handler whose primitive does not yet expose the required method.
 
     Args:
         tool_name: Full ``synthorg_<domain>_<action>`` name.
@@ -331,48 +320,14 @@ def not_supported(tool_name: str, reason: str) -> str:
     return _not_supported_envelope(reason)
 
 
-def service_fallback(tool_name: str, reason: str) -> str:
-    """Build a ``not_supported`` envelope for concrete service-fallback handlers.
-
-    Used by real handler implementations whose underlying service layer
-    does not yet expose a matching method.  Emits
-    :data:`MCP_HANDLER_SERVICE_FALLBACK` so ops telemetry can
-    distinguish these "live handler, missing facade" events from pure
-    placeholder handlers (which emit
-    :data:`MCP_HANDLER_NOT_IMPLEMENTED` via :func:`not_supported`).
-    The response envelope is byte-for-byte identical to
-    :func:`not_supported`; only the emitted event differs.
-
-    Args:
-        tool_name: Full ``synthorg_<domain>_<action>`` name.
-        reason: Short operator-readable reason (which method / backlog
-            link).
-
-    Returns:
-        JSON-encoded error envelope with
-        ``status="error"``, ``domain_code="not_supported"``.
-    """
-    logger.warning(
-        MCP_HANDLER_SERVICE_FALLBACK,
-        tool_name=tool_name,
-        reason=reason,
-    )
-    return _not_supported_envelope(reason)
-
-
 def capability_gap(tool_name: str, reason: str) -> str:
     """Build a ``not_supported`` envelope for a wired handler with a primitive gap.
 
-    Identical wire shape to :func:`service_fallback`, but emits the
-    dedicated :data:`MCP_HANDLER_CAPABILITY_GAP` event so ops telemetry
-    can distinguish "handler wired, primitive does not yet expose the
-    required method" from "handler unwired"
-    (:func:`make_placeholder_handler`) and from "live handler, but the
-    service facade is still a placeholder" (:func:`service_fallback`).
-
-    ``MCP_HANDLER_SERVICE_FALLBACK`` is reserved for the legacy
-    ``service_fallback`` helper and must never be emitted at runtime;
-    every live handler routes through a real service.
+    Identical wire shape to :func:`not_supported`, but emits the dedicated
+    :data:`MCP_HANDLER_CAPABILITY_GAP` event so ops telemetry can
+    distinguish "handler wired, primitive does not yet expose the required
+    method" from an operation the backend simply cannot perform
+    (:func:`not_supported`, :data:`MCP_HANDLER_NOT_IMPLEMENTED`).
 
     Args:
         tool_name: Full ``synthorg_<domain>_<action>`` name.
@@ -454,50 +409,3 @@ def _on_gap_task_done(task: asyncio.Task[None]) -> None:
             error=safe_error_description(exc),
             note="gap_record_failed",
         )
-
-
-def make_placeholder_handler(tool_name: str) -> ToolHandler:
-    """Build a placeholder that returns the standard ``not_supported`` envelope.
-
-    Used for tools registered in the catalog without a wired handler.
-    The returned callable delegates to :func:`not_supported` so the
-    call returns ``status="error"`` / ``domain_code="not_supported"``
-    instead of failing the dispatcher. ``not_supported`` also emits the
-    ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event so operations alerting
-    surfaces unwired tools.
-
-    Args:
-        tool_name: Tool name for the envelope + log payload.
-
-    Returns:
-        ``ToolHandler`` conforming async handler function.
-    """
-    reason = (
-        f"Tool {tool_name!r} is registered but its service layer "
-        "handler is not yet implemented."
-    )
-
-    async def handler(
-        *,
-        app_state: AppState,  # noqa: ARG001
-        arguments: dict[str, object],  # noqa: ARG001
-        actor: AgentIdentity | None = None,  # noqa: ARG001
-    ) -> str:
-        """Return handler."""
-        return not_supported(tool_name, reason)
-
-    return handler
-
-
-def make_handlers_for_tools(
-    tool_names: tuple[str, ...],
-) -> dict[str, ToolHandler]:
-    """Create placeholder handlers for a set of tool names.
-
-    Args:
-        tool_names: Tuple of tool name strings.
-
-    Returns:
-        Dict mapping tool names to placeholder handlers.
-    """
-    return {name: make_placeholder_handler(name) for name in tool_names}

@@ -23,7 +23,11 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.settings.state import (
+    SettingsStateSlice,
+    config_resolver_of,
+    settings_read_service_of,
+)
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -49,6 +53,9 @@ class TestComposeSettingsDependentServices:
         assert app_state.slice(SettingsStateSlice).settings_service is settings_service
         assert app_state.slice(ProvidersStateSlice).management is not None
         assert app_state.slice(ApiCoreStateSlice).org_mutation_service is not None
+        # The settings-read MCP facade wraps the composed settings service;
+        # without it the synthorg_settings_* tools 503 in every deployment.
+        assert settings_read_service_of(app_state) is not None
 
 
 class TestIdempotencyServiceLazyInit:

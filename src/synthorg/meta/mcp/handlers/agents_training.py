@@ -53,17 +53,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_WHY_PERSONALITIES = (
-    "personality registry is not exposed on app_state; personalities "
-    "are stored on AgentIdentity.personality"
+_WHY_PERSONALITY_NOT_WIRED = (
+    "personality_service is not wired on app_state in this deployment"
 )
-_WHY_TRAINING_LIST = (
-    "training_service.execute() is the only public entry point; "
-    "list/get session metadata is not materialised"
-)
-_WHY_TRAINING_START = (
-    "training_service.execute() requires a TrainingPlan -- not "
-    "representable in the current MCP tool schema"
+_WHY_TRAINING_NOT_WIRED = (
+    "training_service is not wired on app_state in this deployment"
 )
 
 
@@ -86,7 +80,7 @@ async def _personalities_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).personality_service is None:
-        return capability_gap(tool, _WHY_PERSONALITIES)
+        return capability_gap(tool, _WHY_PERSONALITY_NOT_WIRED)
     try:
         entries, total = await personality_service_of(app_state).list_personalities(
             offset=offset,
@@ -119,7 +113,7 @@ async def _personalities_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).personality_service is None:
-        return capability_gap(tool, _WHY_PERSONALITIES)
+        return capability_gap(tool, _WHY_PERSONALITY_NOT_WIRED)
     try:
         entry = await personality_service_of(app_state).get_personality(
             NotBlankStr(name),
@@ -155,7 +149,7 @@ async def _training_list_sessions(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).training_service is None:
-        return capability_gap(tool, _WHY_TRAINING_LIST)
+        return capability_gap(tool, _WHY_TRAINING_NOT_WIRED)
     try:
         sessions, total = await training_service_of(app_state).list_sessions(
             offset=offset,
@@ -188,7 +182,7 @@ async def _training_get_session(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).training_service is None:
-        return capability_gap(tool, _WHY_TRAINING_LIST)
+        return capability_gap(tool, _WHY_TRAINING_NOT_WIRED)
     try:
         session = await training_service_of(app_state).get_session(
             NotBlankStr(plan_id),
@@ -225,7 +219,7 @@ async def _training_start_session(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).training_service is None:
-        return capability_gap(tool, _WHY_TRAINING_START)
+        return capability_gap(tool, _WHY_TRAINING_NOT_WIRED)
     try:
         result = await training_service_of(app_state).start_session(plan)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary

@@ -10,6 +10,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 # resolves that annotation at runtime when the manager's bind_runtime
 # checks the callable argument (PEP 649 __annotate__).
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.mcp_service import ConnectionService
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.tunnel.manager import TunnelManager
 from synthorg.integrations.tunnel.mcp_service import TunnelService
@@ -31,6 +32,13 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
         IntegrationsStateSlice.model_construct(
             connection_catalog=integrations.connection_catalog,
             provider_credential_catalog=integrations.provider_credential_catalog,
+            # The MCP connection facade wraps the enabled-gated catalog, so it
+            # wires only when the integrations connection surface is present.
+            connection_service=(
+                ConnectionService(catalog=integrations.connection_catalog)
+                if integrations.connection_catalog is not None
+                else None
+            ),
             oauth_token_manager=integrations.oauth_token_manager,
             health_prober_service=integrations.health_prober_service,
             tunnel_provider=tunnel,

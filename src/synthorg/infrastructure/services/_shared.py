@@ -9,6 +9,10 @@ string literals passed straight to :class:`CapabilityNotSupportedError`.
 from typing import Any, Final
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.observability import get_logger
+from synthorg.observability.events.infrastructure import INFRA_CAPABILITY_UNSUPPORTED
+
+logger = get_logger(__name__)
 
 _DEFAULT_LIMIT: Final[int] = 100
 
@@ -31,6 +35,13 @@ def _require_callable(  # type: ignore[explicit-any]  # dynamic capability probe
     """
     fn = getattr(target, method_name, None)
     if not callable(fn):
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability=capability,
+            reason="method_absent_or_not_callable",
+            method=method_name,
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(capability, detail)
     return fn
 
@@ -53,6 +64,12 @@ def _split_setting_key(key: str) -> tuple[str, str]:
     """
     namespace, dot, leaf = key.partition(".")
     if not dot or not namespace or not leaf:
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="settings_key_format",
+            reason="missing_namespace_separator",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "settings_key_format",
             f"setting key must be 'namespace.key' (got {key!r})",

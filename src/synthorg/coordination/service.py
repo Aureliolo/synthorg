@@ -86,8 +86,8 @@ class CoordinationService:
         *,
         offset: int,
         limit: int,
-        task_id: str | None = None,
-        agent_id: str | None = None,
+        task_id: NotBlankStr | None = None,
+        agent_id: NotBlankStr | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[tuple[CoordinationMetricsRecord, ...], int]:

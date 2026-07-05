@@ -3,10 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.controllers.meta import (
-    ConversationalProposeRequest,
-    MetaController,
-)
+from synthorg.api.controllers._meta_requests import ConversationalProposeRequest
+from synthorg.api.controllers.meta import MetaController
 from synthorg.api.rate_limits.policies import RATE_LIMIT_POLICIES
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig

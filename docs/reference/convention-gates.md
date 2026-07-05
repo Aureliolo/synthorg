@@ -54,6 +54,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_logger_exception_str_exc.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_long_running_loops_have_kill_switch.py` | push | `src/synthorg/` | full | no | `long_running_loops_kill_switch_baseline.txt` | keep |
 | `check_mcp_admin_tool_guardrails.py` | push | `meta/mcp/` | full | no | none | keep |
+| `check_mcp_capability_gap_documented.py` | push | `meta/mcp/handlers/` + `*state*.py` slices + `src/synthorg/` construction sites + `*_of` accessors + manifest | full | no | manifest | add |
 | `check_mock_spec.py` | commit+push | `tests/` | staged | yes | none | keep (zero-tolerance) |
 | `check_module_depth.py` | push | `src/synthorg/` | full | no | `_module_depth_baseline.txt` | keep |
 | `check_module_size_budget.py` | push | `src/synthorg/` | full | no | `_module_size_baseline.json` (drained) | keep |
@@ -96,6 +97,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
+| `check_setting_restart_required_justified.py` | push | `settings/definitions/` | full | no | `setting_restart_required_baseline.txt` | keep |
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
@@ -108,7 +110,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->87<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->88<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

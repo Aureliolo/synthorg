@@ -99,6 +99,10 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=("MCPToolFactory",),
+    ghost_wired_symbols=(
+        "MCPToolFactory",
+        "ConnectionService",
+        "WebhookService",
+    ),
     depends_on=(),
 )

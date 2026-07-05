@@ -1,11 +1,9 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
 from typing import Final
-from uuid import UUID
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
-from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
 from synthorg.api._feature_gate import ensure_feature_enabled
@@ -16,6 +14,10 @@ from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_win
 from synthorg.api.controllers._meta_proposal_helpers import (
     PROPOSAL_ACTION_TYPES,
     proposal_to_dict,
+)
+from synthorg.api.controllers._meta_requests import (
+    ChatRequest,
+    ConversationalProposeRequest,
 )
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -29,6 +31,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
@@ -40,6 +43,7 @@ from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeR
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.meta.rollout.ab_models import AbTestRecord
+from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.state import (
     MetaStateSlice,
     ab_test_repo_of,
@@ -54,48 +58,33 @@ from synthorg.observability.events.meta import (
 )
 from synthorg.persistence.state import persistence_of
 
-
-class ChatRequest(BaseModel):
-    """Request body for the Chief of Staff chat endpoint."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    question: NotBlankStr = Field(
-        max_length=2000,
-        description="Free-text question for the Chief of Staff agent.",
-    )
-    proposal_id: UUID | None = Field(
-        default=None,
-        description="Improvement proposal the question is scoped to, if any.",
-    )
-    alert_id: UUID | None = Field(
-        default=None,
-        description="Proactive alert the question is scoped to, if any.",
-    )
-
-
-class ConversationalProposeRequest(BaseModel):
-    """Request body for the Chief of Staff clarify-and-propose endpoint."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    message: NotBlankStr = Field(
-        max_length=2000,
-        description="Human message for the clarify-and-propose turn.",
-    )
-    conversation_id: NotBlankStr | None = Field(
-        default=None,
-        description="Existing conversation to append to; None starts a new one.",
-    )
-    project: NotBlankStr | None = Field(
-        default=None,
-        description="Project the proposal should be scoped to, if any.",
-    )
-
-
 logger = get_logger(__name__)
 
 _DEFAULT_PAGE_SIZE: Final[int] = 50
+
+
+def _require_signals_service(app_state: AppState, msg: str) -> SignalsService:
+    """Resolve the signals service, logging + raising 503 when unwired.
+
+    Shared by the ``get_signals`` and ``chat`` handlers so both emit the
+    same ``META_CHAT_DEPENDENCY_UNAVAILABLE`` warning; *msg* is the
+    call-site-specific operator message carried on the raised error.
+
+    Returns:
+        The wired signals service.
+
+    Raises:
+        ServiceUnavailableError: When no signals service is wired.
+    """
+    signals_service = app_state.slice(MetaStateSlice).signals_service
+    if signals_service is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="signals_service",
+            hint="SignalsService must be wired during AppState startup.",
+        )
+        raise ServiceUnavailableError(msg)
+    return signals_service
 
 
 class MetaController(Controller):
@@ -366,28 +355,31 @@ class MetaController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, object]]:
-        """Get signal domain summaries.
+        """Get per-domain signal availability + the improvement-cycle toggle.
 
-        Returns domain names with placeholder data -- real signal
-        aggregation runs during the improvement cycle, not on demand.
+        Reports each domain's availability from the wired
+        :class:`SignalsService`; the ``scaling`` domain reports
+        ``unavailable`` when no scaling service is wired.
 
         Returns:
-            Signal domain summaries.
+            The improvement ``enabled`` flag and each signal domain's status.
+
+        Raises:
+            ServiceUnavailableError: When the signals service is not wired.
         """
         config = await self_improvement_config_of(state.app_state)
-        domains = [
-            "performance",
-            "budget",
-            "coordination",
-            "scaling",
-            "errors",
-            "evolution",
-            "telemetry",
-        ]
+        signals_service = _require_signals_service(
+            state.app_state,
+            "SignalsService is not configured; cannot report signal domains.",
+        )
+        availability = signals_service.domain_availability()
         return ApiResponse[dict[str, object]](
             data={
                 "enabled": config.enabled,
-                "domains": [{"name": d, "status": "available"} for d in domains],
+                "domains": [
+                    {"name": name, "status": "available" if ok else "unavailable"}
+                    for name, ok in availability.items()
+                ],
             },
         )
 
@@ -449,15 +441,10 @@ class MetaController(Controller):
                 "ensure an LLM provider is registered."
             )
             raise ServiceUnavailableError(msg)
-        signals_service = app_state.slice(MetaStateSlice).signals_service
-        if signals_service is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="signals_service",
-                hint="SignalsService must be wired during AppState startup.",
-            )
-            msg = "SignalsService is not configured; cannot build a snapshot."
-            raise ServiceUnavailableError(msg)
+        signals_service = _require_signals_service(
+            app_state,
+            "SignalsService is not configured; cannot build a snapshot.",
+        )
         snapshot = await signals_service.get_org_snapshot(
             since=app_state.clock.now() - await resolve_chat_snapshot_window(app_state),
         )

@@ -23,13 +23,16 @@ from synthorg.observability.events.setup import (
     SETUP_FEATURE_REWIRE_FAILED,
     SETUP_PROVIDER_RELOAD_FAILED,
 )
+from synthorg.organization.settings_write_lock import ORG_SETTINGS_WRITE_LOCK
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
-# Module-level lock: serializes read-modify-write on agents settings.
-AGENT_LOCK = asyncio.Lock()
+# Serializes read-modify-write on the company-structure settings blob. The
+# canonical instance lives in the organization layer so the MCP TeamService
+# shares it; re-exported here as AGENT_LOCK for the setup + team controllers.
+AGENT_LOCK = ORG_SETTINGS_WRITE_LOCK
 
 # Module-level lock: serializes the entire /setup/complete flow so two
 # concurrent clients cannot both pass the ``setup_complete=false`` check

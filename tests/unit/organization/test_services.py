@@ -6,12 +6,16 @@ Covers :class:`DepartmentService`, :class:`TeamService`, and
 and is already exercised via the MCP handler tests.
 """
 
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.organization._team_service import TeamService
 from synthorg.organization.services import (
@@ -20,7 +24,9 @@ from synthorg.organization.services import (
     RoleVersionService,
 )
 from synthorg.persistence.department_protocol import DepartmentRepository
-from tests._shared import mock_of
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import FakeSettingsService, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -169,190 +175,355 @@ class TestDepartmentService:
         assert health["reason"] == "not_found"
 
 
-# ── TeamService ───────────────────────────────────────────────────
+# ── TeamService (settings-backed, keyed by (department, name)) ──────
+
+
+def _team_service(*departments: dict[str, object]) -> TeamService:
+    """Build a settings-backed ``TeamService`` seeded with *departments*."""
+    settings = FakeSettingsService(
+        {("company", "departments"): json.dumps(list(departments))}
+    )
+    app_state = make_app_state(settings_service=settings)
+    return TeamService(app_state=app_state)
+
+
+def _dept(name: str, teams: list[dict[str, object]] | None = None) -> dict[str, object]:
+    """Build a department dict with an optional teams list."""
+    return {"name": name, "teams": teams or []}
 
 
 class TestTeamService:
     async def test_create_then_get_round_trip(self) -> None:
-        service = TeamService()
+        service = _team_service(_dept("engineering"))
         created = await service.create_team(
-            name=NotBlankStr("platform"),
+            department=NotBlankStr("engineering"),
+            name=NotBlankStr("backend"),
+            lead=NotBlankStr("alice"),
             actor_id=NotBlankStr("alice"),
-            department_id=NotBlankStr("infra"),
+            members=["bob", "carol"],
         )
-        fetched = await service.get_team(NotBlankStr(str(created.id)))
-        assert fetched is not None
-        assert fetched.name == "platform"
-        assert fetched.department_id == "infra"
+        assert created["department"] == "engineering"
+        assert created["name"] == "backend"
+        assert created["lead"] == "alice"
+        assert created["members"] == ["bob", "carol"]
+        fetched = await service.get_team(
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("backend"),
+        )
+        assert fetched == created
 
-    async def test_list_returns_newest_first(self) -> None:
-        service = TeamService()
-        first = await service.create_team(
-            name=NotBlankStr("first"),
-            actor_id=NotBlankStr("alice"),
+    async def test_create_in_missing_department_raises(self) -> None:
+        service = _team_service(_dept("engineering"))
+        with pytest.raises(NotFoundError):
+            await service.create_team(
+                department=NotBlankStr("marketing"),
+                name=NotBlankStr("brand"),
+                lead=NotBlankStr("alice"),
+                actor_id=NotBlankStr("alice"),
+            )
+
+    async def test_create_duplicate_name_conflicts(self) -> None:
+        service = _team_service(
+            _dept("engineering", [{"name": "backend", "lead": "alice"}])
         )
-        second = await service.create_team(
-            name=NotBlankStr("second"),
-            actor_id=NotBlankStr("alice"),
+        with pytest.raises(ConflictError):
+            await service.create_team(
+                department=NotBlankStr("engineering"),
+                name=NotBlankStr("Backend"),
+                lead=NotBlankStr("bob"),
+                actor_id=NotBlankStr("bob"),
+            )
+
+    async def test_list_sorts_by_department_then_name(self) -> None:
+        service = _team_service(
+            _dept("platform", [{"name": "sre", "lead": "z"}]),
+            _dept(
+                "engineering",
+                [{"name": "frontend", "lead": "y"}, {"name": "backend", "lead": "x"}],
+            ),
         )
         page, total = await service.list_teams()
-        assert total == 2
-        assert page[0].id == second.id
-        assert page[1].id == first.id
+        assert total == 3
+        assert [(t["department"], t["name"]) for t in page] == [
+            ("engineering", "backend"),
+            ("engineering", "frontend"),
+            ("platform", "sre"),
+        ]
 
-    async def test_update_reassigns_department(self) -> None:
-        service = TeamService()
-        created = await service.create_team(
-            name=NotBlankStr("migrators"),
-            actor_id=NotBlankStr("alice"),
+    async def test_list_paginates(self) -> None:
+        service = _team_service(
+            _dept(
+                "engineering",
+                [
+                    {"name": "backend", "lead": "x"},
+                    {"name": "frontend", "lead": "y"},
+                    {"name": "mobile", "lead": "z"},
+                ],
+            )
+        )
+        page, total = await service.list_teams(offset=1, limit=1)
+        assert total == 3
+        assert [t["name"] for t in page] == ["frontend"]
+
+    async def test_update_rename(self) -> None:
+        service = _team_service(
+            _dept("engineering", [{"name": "backend", "lead": "alice"}])
         )
         updated = await service.update_team(
-            team_id=NotBlankStr(str(created.id)),
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("backend"),
             actor_id=NotBlankStr("bob"),
-            department_id=NotBlankStr("new-home"),
+            name=NotBlankStr("core"),
         )
         assert updated is not None
-        assert updated.department_id == "new-home"
-        assert updated.name == "migrators"
-
-    async def test_update_clears_department_when_none_passed(self) -> None:
-        service = TeamService()
-        created = await service.create_team(
-            name=NotBlankStr("keepers"),
-            actor_id=NotBlankStr("alice"),
-            department_id=NotBlankStr("legacy"),
+        assert updated["name"] == "core"
+        assert updated["lead"] == "alice"
+        assert (
+            await service.get_team(
+                department=NotBlankStr("engineering"),
+                team_name=NotBlankStr("backend"),
+            )
+            is None
         )
-        cleared = await service.update_team(
-            team_id=NotBlankStr(str(created.id)),
+
+    async def test_update_change_lead_and_members(self) -> None:
+        service = _team_service(
+            _dept("engineering", [{"name": "backend", "lead": "alice"}])
+        )
+        updated = await service.update_team(
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("backend"),
             actor_id=NotBlankStr("bob"),
-            department_id=None,
+            lead=NotBlankStr("carol"),
+            members=["dave"],
         )
-        assert cleared is not None
-        assert cleared.department_id is None
+        assert updated is not None
+        assert updated["lead"] == "carol"
+        assert updated["members"] == ["dave"]
 
-    async def test_update_preserves_department_when_unset(self) -> None:
-        service = TeamService()
-        created = await service.create_team(
-            name=NotBlankStr("keepers"),
-            actor_id=NotBlankStr("alice"),
-            department_id=NotBlankStr("legacy"),
-        )
-        preserved = await service.update_team(
-            team_id=NotBlankStr(str(created.id)),
-            actor_id=NotBlankStr("bob"),
-            name=NotBlankStr("renamed"),
-        )
-        assert preserved is not None
-        assert preserved.department_id == "legacy"
-        assert preserved.name == "renamed"
-
-    async def test_update_missing_returns_none(self) -> None:
-        service = TeamService()
+    async def test_update_missing_team_returns_none(self) -> None:
+        service = _team_service(_dept("engineering"))
         result = await service.update_team(
-            team_id=NotBlankStr(str(uuid4())),
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("ghost"),
             actor_id=NotBlankStr("alice"),
+            lead=NotBlankStr("bob"),
         )
         assert result is None
 
-    async def test_update_invalid_uuid_returns_none(self) -> None:
-        service = TeamService()
+    async def test_update_missing_department_returns_none(self) -> None:
+        service = _team_service(_dept("engineering"))
         result = await service.update_team(
-            team_id=NotBlankStr("nope"),
+            department=NotBlankStr("marketing"),
+            team_name=NotBlankStr("brand"),
             actor_id=NotBlankStr("alice"),
+            lead=NotBlankStr("bob"),
         )
         assert result is None
+
+    async def test_update_rename_conflict(self) -> None:
+        service = _team_service(
+            _dept(
+                "engineering",
+                [{"name": "backend", "lead": "a"}, {"name": "frontend", "lead": "b"}],
+            )
+        )
+        with pytest.raises(ConflictError):
+            await service.update_team(
+                department=NotBlankStr("engineering"),
+                team_name=NotBlankStr("backend"),
+                actor_id=NotBlankStr("bob"),
+                name=NotBlankStr("Frontend"),
+            )
 
     async def test_delete_present(self) -> None:
-        service = TeamService()
-        created = await service.create_team(
-            name=NotBlankStr("doomed"),
-            actor_id=NotBlankStr("alice"),
+        service = _team_service(
+            _dept("engineering", [{"name": "backend", "lead": "alice"}])
         )
         removed = await service.delete_team(
-            team_id=NotBlankStr(str(created.id)),
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("backend"),
             actor_id=NotBlankStr("alice"),
             reason=NotBlankStr("cleanup"),
         )
         assert removed is True
+        assert (
+            await service.get_team(
+                department=NotBlankStr("engineering"),
+                team_name=NotBlankStr("backend"),
+            )
+            is None
+        )
 
-    async def test_delete_absent_returns_false(self) -> None:
-        service = TeamService()
+    async def test_delete_absent_team_returns_false(self) -> None:
+        service = _team_service(_dept("engineering"))
         removed = await service.delete_team(
-            team_id=NotBlankStr(str(uuid4())),
+            department=NotBlankStr("engineering"),
+            team_name=NotBlankStr("ghost"),
             actor_id=NotBlankStr("alice"),
             reason=NotBlankStr("cleanup"),
         )
         assert removed is False
 
-    async def test_delete_invalid_uuid_returns_false(self) -> None:
-        service = TeamService()
+    async def test_delete_absent_department_returns_false(self) -> None:
+        service = _team_service(_dept("engineering"))
         removed = await service.delete_team(
-            team_id=NotBlankStr("bad"),
+            department=NotBlankStr("marketing"),
+            team_name=NotBlankStr("brand"),
             actor_id=NotBlankStr("alice"),
             reason=NotBlankStr("cleanup"),
         )
         assert removed is False
 
-    async def test_get_invalid_uuid_returns_none(self) -> None:
-        service = TeamService()
-        assert await service.get_team(NotBlankStr("bad")) is None
+    async def test_get_missing_department_returns_none(self) -> None:
+        service = _team_service(_dept("engineering"))
+        assert (
+            await service.get_team(
+                department=NotBlankStr("marketing"),
+                team_name=NotBlankStr("brand"),
+            )
+            is None
+        )
 
 
-# ── CompanyReadService capability paths ────────────────────────────
+# ── CompanyReadService (durable-source reads) ──────────────────────
+
+
+def _company_read_service(
+    *,
+    company_versions: object | None = None,
+) -> CompanyReadService:
+    """Build a CompanyReadService over a resolver stub with no company data."""
+    resolver = mock_of[ConfigResolver](
+        get_str=AsyncMock(return_value="Acme"),
+        get_agents=AsyncMock(return_value=()),
+        get_departments=AsyncMock(return_value=()),
+    )
+    return CompanyReadService(
+        org_mutation=mock_of[OrgMutationService](),
+        config_resolver=resolver,
+        company_versions=company_versions,  # type: ignore[arg-type]
+    )
 
 
 class TestCompanyReadService:
-    async def test_list_departments_capability_gap(self) -> None:
-        class _NoLister:
-            pass
+    async def test_get_company_reads_config_resolver(self) -> None:
+        service = _company_read_service()
+        company = await service.get_company()
+        assert company["company_name"] == "Acme"
+        assert company["agents"] == []
+        assert company["departments"] == []
 
-        service = CompanyReadService(org_mutation=_NoLister())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_departments()
+    async def test_list_departments_reads_config_resolver(self) -> None:
+        service = _company_read_service()
+        assert await service.list_departments() == ()
 
-    async def test_list_versions_capability_gap(self) -> None:
-        class _NoVersions:
-            pass
-
-        service = CompanyReadService(org_mutation=_NoVersions())  # type: ignore[arg-type]
+    async def test_list_versions_without_repo_raises(self) -> None:
+        service = _company_read_service(company_versions=None)
         with pytest.raises(CapabilityNotSupportedError):
             await service.list_versions()
 
-    async def test_get_version_capability_gap(self) -> None:
-        class _NoGet:
-            pass
-
-        service = CompanyReadService(org_mutation=_NoGet())  # type: ignore[arg-type]
+    async def test_get_version_without_repo_raises(self) -> None:
+        service = _company_read_service(company_versions=None)
         with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
+            await service.get_version(NotBlankStr("1"))
+
+    async def test_list_versions_with_repo_drains_pages(self) -> None:
+        snap1, snap2 = SimpleNamespace(v=1), SimpleNamespace(v=2)
+        repo = mock_of[VersionRepository](
+            list_versions=AsyncMock(return_value=(snap1, snap2)),
+        )
+        service = _company_read_service(company_versions=repo)
+        assert list(await service.list_versions()) == [snap1, snap2]
+
+    async def test_get_version_with_repo_resolves_by_number(self) -> None:
+        snap = SimpleNamespace(v=3)
+        repo = mock_of[VersionRepository](
+            get_version=AsyncMock(return_value=snap),
+        )
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("3")) is snap
+        assert repo.get_version.await_args.args[1] == 3
+
+    async def test_get_version_non_numeric_returns_none_without_repo_call(
+        self,
+    ) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("abc")) is None
+        repo.get_version.assert_not_awaited()
+
+    async def test_get_version_below_one_returns_none_without_repo_call(self) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = _company_read_service(company_versions=repo)
+        assert await service.get_version(NotBlankStr("0")) is None
+        repo.get_version.assert_not_awaited()
 
 
-# ── RoleVersionService capability paths ────────────────────────────
+# ── RoleVersionService (durable-source reads) ──────────────────────
 
 
 class TestRoleVersionService:
-    async def test_list_versions_capability_gap_unwired(self) -> None:
+    async def test_list_versions_without_repo_raises(self) -> None:
         service = RoleVersionService()
         with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
+            await service.list_versions(role_name=NotBlankStr("engineer"))
 
-    async def test_get_version_capability_gap_unwired(self) -> None:
+    async def test_get_version_without_repo_raises(self) -> None:
         service = RoleVersionService()
         with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
+            await service.get_version(
+                role_name=NotBlankStr("engineer"),
+                version_id=NotBlankStr("1"),
+            )
 
-    async def test_list_versions_capability_gap_missing_method(self) -> None:
-        class _PartialOrg:
-            pass
+    async def test_list_versions_with_limit_forwards_page_and_total(self) -> None:
+        snap1, snap2 = SimpleNamespace(v=1), SimpleNamespace(v=2)
+        repo = mock_of[VersionRepository](
+            count_versions=AsyncMock(return_value=5),
+            list_versions=AsyncMock(return_value=(snap1, snap2)),
+        )
+        service = RoleVersionService(role_versions=repo)
+        page, total = await service.list_versions(
+            role_name=NotBlankStr("engineer"), offset=3, limit=2
+        )
+        assert total == 5
+        assert list(page) == [snap1, snap2]
+        call = repo.list_versions.await_args
+        assert call.kwargs["limit"] == 2
+        assert call.kwargs["offset"] == 3
 
-        service = RoleVersionService(org_mutation=_PartialOrg())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
+    async def test_list_versions_without_limit_drains_all(self) -> None:
+        snap = SimpleNamespace(v=1)
+        repo = mock_of[VersionRepository](
+            count_versions=AsyncMock(return_value=1),
+            list_versions=AsyncMock(return_value=(snap,)),
+        )
+        service = RoleVersionService(role_versions=repo)
+        page, total = await service.list_versions(
+            role_name=NotBlankStr("engineer"), limit=None
+        )
+        assert total == 1
+        assert list(page) == [snap]
 
-    async def test_get_version_capability_gap_missing_method(self) -> None:
-        class _PartialOrg:
-            pass
+    async def test_get_version_with_repo_resolves_by_number(self) -> None:
+        snap = SimpleNamespace(v=4)
+        repo = mock_of[VersionRepository](
+            get_version=AsyncMock(return_value=snap),
+        )
+        service = RoleVersionService(role_versions=repo)
+        result = await service.get_version(
+            role_name=NotBlankStr("engineer"),
+            version_id=NotBlankStr("4"),
+        )
+        assert result is snap
 
-        service = RoleVersionService(org_mutation=_PartialOrg())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
+    async def test_get_version_non_numeric_returns_none(self) -> None:
+        repo = mock_of[VersionRepository](get_version=AsyncMock(return_value=None))
+        service = RoleVersionService(role_versions=repo)
+        result = await service.get_version(
+            role_name=NotBlankStr("engineer"),
+            version_id=NotBlankStr("nope"),
+        )
+        assert result is None
+        repo.get_version.assert_not_awaited()

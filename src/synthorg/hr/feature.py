@@ -88,6 +88,12 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=("build_promotion_service",),
+    ghost_wired_symbols=(
+        "build_promotion_service",
+        "AgentHealthService",
+        "PersonalityService",
+        "ActivityFeedService",
+        "ScalingDecisionService",
+    ),
     depends_on=(),
 )

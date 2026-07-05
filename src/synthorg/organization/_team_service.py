@@ -1,208 +1,285 @@
 # module-kind: service
-"""In-memory team CRUD for the organization MCP surface.
+"""Settings-backed team CRUD for the organization MCP surface.
 
-``TeamService`` holds the operator-authored team records the MCP handlers
-mutate. Kept beside the company/department/role services in
-:mod:`synthorg.organization.services` (which still owns the ``UNSET``
-sentinel this module reuses) so that module stays within its size budget.
+Teams are sub-documents of ``company.departments[*].teams`` (the same durable,
+dashboard-visible structure the REST ``TeamController`` mutates), so
+``TeamService`` reads and writes them through the shared settings path under
+:data:`~synthorg.organization.settings_write_lock.ORG_SETTINGS_WRITE_LOCK`. Each
+team is addressed by its ``(department, name)`` pair; there is no separate
+durable team store or team id.
 """
 
-import asyncio
-import copy
-from datetime import datetime
-from uuid import UUID, uuid4
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.company import (
     TEAM_CREATED_VIA_MCP,
     TEAM_DELETED_VIA_MCP,
     TEAM_UPDATED_VIA_MCP,
 )
-from synthorg.organization.services import UNSET, UnsetType
+from synthorg.organization.team_navigation import (
+    check_team_name_unique,
+    find_department,
+    find_team,
+    mutate_company_departments,
+    persisted_name,
+    read_company_departments,
+    teams_of,
+    validate_team_model,
+)
+
+if TYPE_CHECKING:
+    from synthorg.api.state_slices import AppStateSliceMixin
 
 logger = get_logger(__name__)
 
 
-class _TeamRecord:
-    __slots__ = ("created_at", "department_id", "id", "name", "updated_at")
+def _team_view(*, department: str, team: dict[str, object]) -> dict[str, object]:
+    """Project a persisted team dict + its department into a stable MCP view.
 
-    def __init__(
-        self,
-        *,
-        id: UUID,  # noqa: A002
-        name: str,
-        department_id: str | None,
-        created_at: datetime,
-        updated_at: datetime | None = None,
-    ) -> None:
-        self.id = id
-        self.name = name
-        self.department_id = department_id
-        self.created_at = created_at
-        self.updated_at = updated_at if updated_at is not None else created_at
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "id": str(self.id),
-            "name": self.name,
-            "department_id": self.department_id,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        }
+    Returns:
+        A JSON-safe mapping of ``department`` + validated ``name`` / ``lead`` /
+        ``members``.
+    """
+    model = validate_team_model(team)
+    return {
+        "department": department,
+        "name": model.name,
+        "lead": model.lead,
+        "members": list(model.members),
+    }
 
 
 class TeamService:
-    """Team CRUD.
+    """Settings-backed team CRUD over ``company.departments[*].teams``.
 
-    Mutations are serialised through a single :class:`asyncio.Lock` so
-    concurrent MCP handler calls cannot race on the in-memory dict.
+    Teams are addressed by ``(department, name)``. Reads project the durable
+    settings structure; writes take the shared company-structure lock so they
+    cannot lose updates against the REST setup / team controllers.
     """
 
-    def __init__(self, *, clock: Clock | None = None) -> None:
-        self._teams: dict[UUID, _TeamRecord] = {}
-        self._lock = asyncio.Lock()
-        self._clock = clock or SystemClock()
+    def __init__(self, *, app_state: AppStateSliceMixin) -> None:
+        self._app_state = app_state
 
     async def list_teams(
         self,
         *,
         offset: int = 0,
         limit: int | None = None,
-    ) -> tuple[tuple[_TeamRecord, ...], int]:
-        """Return paginated teams newest-first plus unfiltered total.
+    ) -> tuple[tuple[dict[str, object], ...], int]:
+        """Return a paginated slice of every team plus the unfiltered total.
 
-        Args:
-            offset: Non-negative page offset.
-            limit: Optional positive page size; ``None`` returns every
-                team from ``offset`` onwards.
+        Teams are ordered by ``(department, name)`` case-insensitively so
+        pagination is deterministic across calls.
+
+        A corrupt / legacy department or team record (missing or
+        non-string ``name``, or otherwise failing validation) is skipped
+        and logged, not raised, so one bad record never fails the whole
+        listing for every other, valid team.
+
+        Returns:
+            A ``(page, total)`` pair of department-tagged team views.
 
         Raises:
-            ValueError: If ``offset`` is negative, or ``limit`` is
+            ValidationError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
         """
         if offset < 0:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="team",
+                reason="negative_offset",
+                offset=offset,
+            )
             msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         if limit is not None and limit < 1:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="team",
+                reason="non_positive_limit",
+                limit=limit,
+            )
             msg = f"limit must be >= 1 when provided, got {limit}"
-            raise ValueError(msg)
-        async with self._lock:
-            snapshot = tuple(copy.deepcopy(t) for t in self._teams.values())
-        ordered = tuple(
-            sorted(snapshot, key=lambda t: (t.created_at, t.id), reverse=True),
+            raise ValidationError(msg)
+        depts = await read_company_departments(self._app_state)
+        views: list[dict[str, object]] = []
+        for dept in depts:
+            try:
+                dept_name = persisted_name(dept, "Department")
+            except ValidationError:
+                continue
+            for team in teams_of(dept):
+                try:
+                    views.append(_team_view(department=dept_name, team=team))
+                except ValidationError:
+                    continue
+        views.sort(
+            key=lambda view: (
+                normalize_identifier(str(view["department"])),
+                normalize_identifier(str(view["name"])),
+            )
         )
-        total = len(ordered)
+        total = len(views)
         end = total if limit is None else offset + limit
-        return ordered[offset:end], total
+        return tuple(views[offset:end]), total
 
-    async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
-        """Fetch a single team by UUID or ``None`` if not found.
+    async def get_team(
+        self,
+        *,
+        department: NotBlankStr,
+        team_name: NotBlankStr,
+    ) -> dict[str, object] | None:
+        """Fetch a single team by ``(department, name)`` or ``None`` if absent.
 
         Returns:
-            A deep copy of the stored team, or ``None`` when the id is
-            malformed or no such team exists.
+            The department-tagged team view, or ``None`` when the department
+            or the team does not exist.
         """
+        depts = await read_company_departments(self._app_state)
         try:
-            key = UUID(team_id)
-        except ValueError:
+            _, dept = find_department(depts, department)
+            _, team = find_team(teams_of(dept), team_name)
+        except NotFoundError:
             return None
-        async with self._lock:
-            record = self._teams.get(key)
-            return copy.deepcopy(record) if record is not None else None
+        return _team_view(department=persisted_name(dept, "Department"), team=team)
 
     async def create_team(
         self,
         *,
+        department: NotBlankStr,
         name: NotBlankStr,
+        lead: NotBlankStr,
         actor_id: NotBlankStr,
-        department_id: NotBlankStr | None = None,
-    ) -> _TeamRecord:
-        """Create a team, auditing the event on success.
+        members: Sequence[str] = (),
+    ) -> dict[str, object]:
+        """Create a team within a department, auditing the event.
 
         Returns:
-            A deep copy of the newly created team record.
+            The newly created department-tagged team view.
+
+        Raises:
+            NotFoundError: If the department does not exist.
+            ConflictError: If a team with this name already exists there.
+            ValidationError: If the team data is invalid.
         """
-        record = _TeamRecord(
-            id=uuid4(),
-            name=name,
-            department_id=department_id,
-            created_at=self._clock.now(),
-        )
-        async with self._lock:
-            self._teams[record.id] = record
+
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
+            dept_idx, dept = find_department(depts, department)
+            teams = teams_of(dept)
+            check_team_name_unique(teams, name)
+            team_dict: dict[str, object] = {
+                "name": name,
+                "lead": lead,
+                "members": list(members),
+            }
+            validate_team_model(team_dict)
+            teams.append(team_dict)
+            depts[dept_idx] = {**dept, "teams": teams}
+            return _team_view(
+                department=persisted_name(dept, "Department"), team=team_dict
+            )
+
+        view = await mutate_company_departments(self._app_state, _mutate)
         logger.info(
             TEAM_CREATED_VIA_MCP,
-            team_id=str(record.id),
+            department=view["department"],
+            team=name,
             actor_id=actor_id,
         )
-        return copy.deepcopy(record)
+        return view
 
-    async def update_team(
+    async def update_team(  # noqa: PLR0913 -- one kwarg per patchable team field
         self,
         *,
-        team_id: NotBlankStr,
+        department: NotBlankStr,
+        team_name: NotBlankStr,
         actor_id: NotBlankStr,
         name: NotBlankStr | None = None,
-        department_id: NotBlankStr | None | UnsetType = UNSET,
-    ) -> _TeamRecord | None:
-        """Update a team; ``department_id=None`` clears the field.
+        lead: NotBlankStr | None = None,
+        members: Sequence[str] | None = None,
+    ) -> dict[str, object] | None:
+        """Patch a team (rename / change lead / replace members).
 
-        The default ``department_id=UNSET`` sentinel means "leave
-        unchanged"; pass ``department_id=None`` explicitly to clear a
-        team's department assignment.
+        Only provided fields change. Returns ``None`` when the department or
+        team is absent so the handler maps onto ``not_found``.
 
         Returns:
-            A deep copy of the updated team, or ``None`` when the id is
-            malformed or no such team exists.
+            The updated department-tagged team view, or ``None``.
+
+        Raises:
+            ConflictError: If a rename collides with an existing team name.
+            ValidationError: If the updated team data is invalid.
         """
-        try:
-            key = UUID(team_id)
-        except ValueError:
-            return None
-        async with self._lock:
-            record = self._teams.get(key)
-            if record is None:
-                return None
+
+        def _mutate(depts: list[dict[str, object]]) -> dict[str, object]:
+            dept_idx, dept = find_department(depts, department)
+            teams = teams_of(dept)
+            team_idx, team = find_team(teams, team_name)
+            updated = {**team}
             if name is not None:
-                record.name = name
-            if not isinstance(department_id, UnsetType):
-                record.department_id = department_id
-            record.updated_at = self._clock.now()
-            returned = copy.deepcopy(record)
+                check_team_name_unique(teams, name, exclude_index=team_idx)
+                updated["name"] = name
+            if lead is not None:
+                updated["lead"] = lead
+            if members is not None:
+                updated["members"] = list(members)
+            validate_team_model(updated)
+            teams[team_idx] = updated
+            depts[dept_idx] = {**dept, "teams": teams}
+            return _team_view(
+                department=persisted_name(dept, "Department"), team=updated
+            )
+
+        try:
+            view = await mutate_company_departments(self._app_state, _mutate)
+        except NotFoundError:
+            return None
         logger.info(
             TEAM_UPDATED_VIA_MCP,
-            team_id=team_id,
+            department=view["department"],
+            team=view["name"],
             actor_id=actor_id,
         )
-        return returned
+        return view
 
     async def delete_team(
         self,
         *,
-        team_id: NotBlankStr,
+        department: NotBlankStr,
+        team_name: NotBlankStr,
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a team; emit the audit event only on real removal.
+        """Remove a team, auditing only on an actual removal.
 
         Returns:
-            ``True`` when a team was removed, ``False`` when the id is
-            malformed or no such team exists.
+            ``True`` when a team was removed, ``False`` when the department
+            or team does not exist.
         """
+
+        def _mutate(depts: list[dict[str, object]]) -> str:
+            dept_idx, dept = find_department(depts, department)
+            teams = teams_of(dept)
+            team_idx, _ = find_team(teams, team_name)
+            teams.pop(team_idx)
+            depts[dept_idx] = {**dept, "teams": teams}
+            return persisted_name(dept, "Department")
+
         try:
-            key = UUID(team_id)
-        except ValueError:
+            dept_name = await mutate_company_departments(self._app_state, _mutate)
+        except NotFoundError:
             return False
-        async with self._lock:
-            removed = self._teams.pop(key, None) is not None
-        if removed:
-            logger.info(
-                TEAM_DELETED_VIA_MCP,
-                team_id=team_id,
-                actor_id=actor_id,
-                reason=reason,
-                removed=removed,
-            )
-        return removed
+        logger.info(
+            TEAM_DELETED_VIA_MCP,
+            department=dept_name,
+            team=team_name,
+            actor_id=actor_id,
+            reason=reason,
+        )
+        return True

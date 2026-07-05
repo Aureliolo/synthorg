@@ -56,6 +56,7 @@ _GATES: tuple[str, ...] = (
     "check_no_stdlib_logging",
     "check_no_ghost_wiring",
     "check_no_hardcoded_model_default",
+    "check_mcp_capability_gap_documented",
     "check_runtime_reachability",
     "check_no_raw_playwright_imports",
     "check_forbidden_literals",
