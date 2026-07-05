@@ -15,6 +15,17 @@ export type {
   RequestWorkSteering,
 } from './chat-types'
 
+// Live send-block read: an in-flight propose or a conversation the last
+// response closed. Evaluated at call time (not the render-time closure) so a
+// fast second submit can't race ahead of React's re-render, and shared by both
+// send paths so the guard stays in one place.
+function workSendBlocked(): boolean {
+  return (
+    useMetaStore.getState().proposeLoading ||
+    useConversationsStore.getState().work.closed
+  )
+}
+
 export interface RequestWorkState {
   messages: readonly RequestWorkMessage[]
   input: string
@@ -40,15 +51,7 @@ export function useRequestWorkState(): RequestWorkState {
 
   const sendMessage = useCallback(
     async (message: string, idempotencyKey?: string) => {
-      // Read the live loading + closed flags (not the render-time closures)
-      // so a rapid second submit in the same render window can't slip past a
-      // propose already in flight or a conversation the last response closed.
-      if (
-        !message ||
-        useMetaStore.getState().proposeLoading ||
-        useConversationsStore.getState().work.closed
-      )
-        return
+      if (!message || workSendBlocked()) return
       // Mint the key once per logical turn; a manual retry reuses it so a
       // parked proposal that actually succeeded is deduped, not re-parked.
       const key = idempotencyKey ?? crypto.randomUUID()
@@ -80,14 +83,9 @@ export function useRequestWorkState(): RequestWorkState {
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
-    // Guard before clearing: Enter during an in-flight propose (or on a
-    // closed conversation) must not wipe the composed text.
-    if (
-      !message ||
-      useMetaStore.getState().proposeLoading ||
-      useConversationsStore.getState().work.closed
-    )
-      return
+    // Guard before clearing so an Enter during an in-flight propose or on a
+    // closed conversation does not wipe the composed text.
+    if (!message || workSendBlocked()) return
     setInput('')
     void sendMessage(message)
   }, [input, sendMessage])
