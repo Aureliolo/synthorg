@@ -253,6 +253,11 @@ class ModelRefreshService:
         """
         if self._notification_dispatcher is None:
             return
+        # Drop healed entries from the suppression set first, so a model that
+        # recovers (leaves the stale set) and later goes stale again alerts
+        # afresh instead of staying permanently muted.
+        current_stale = {(name, mid) for name, ids in stale_by_provider for mid in ids}
+        self._alerted_stale &= current_stale
         # Only alert on stale (provider, model) tuples not already reported, so
         # a stale model persisting across cycles does not re-notify every pass.
         new_by_provider = [

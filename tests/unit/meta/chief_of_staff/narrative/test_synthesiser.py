@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
@@ -17,6 +18,7 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     RunMetric,
 )
 from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesiser
+from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_PROSE_FALLBACK
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
@@ -129,6 +131,22 @@ class TestWriteProse:
         # The decision rationale (agent-authored) flows through the fenced
         # record block, so it appears in the prompt too.
         assert "Auditability wins." in content
+
+    async def test_unset_model_falls_back_with_distinct_reason(self) -> None:
+        # An unset narrative_model is a config gap, not a provider outage: it
+        # degrades to the fallback without ever calling the provider and logs a
+        # distinct reason so ops don't read it as an outage.
+        provider = mock_of[CompletionProvider](complete=AsyncMock())
+        synth = NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+        with structlog.testing.capture_logs() as events:
+            prose = await synth.write_prose(_run())
+        assert prose.summary == FALLBACK_SUMMARY
+        provider.complete.assert_not_called()
+        assert any(
+            e["event"] == COS_NARRATIVE_PROSE_FALLBACK
+            and e.get("reason") == "narrative_model_unset"
+            for e in events
+        )
 
     async def test_provider_error_falls_back(self) -> None:
         prose = await _synth_raising(RuntimeError("provider down")).write_prose(_run())

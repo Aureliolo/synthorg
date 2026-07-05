@@ -1,3 +1,4 @@
+# module-kind: service
 """Toolsmith orchestration service.
 
 Ties the self-extending toolkit together: it is the capability-gap sink,
@@ -390,9 +391,12 @@ class ToolsmithService:
     async def _persist_pending_blueprint(self, blueprint: ToolBlueprint) -> None:
         """Durably store a PENDING blueprint (best-effort).
 
-        A store failure is logged and swallowed: the proposal + approval still
-        stand, and the consumer simply skips a blueprint it cannot rehydrate,
-        so a transient persistence error never aborts the cycle.
+        A store failure is logged and swallowed so a transient persistence
+        error never aborts the cycle. The guard chain has already registered an
+        approval item referencing this blueprint's id, so a failed save leaves
+        that approval unfulfillable (the consumer retires it and warns) -- an
+        operator alert lets the operator re-propose rather than discovering it
+        by log-grep, matching the other failure paths in this file.
         """
         if self._blueprint_repo is None:
             return
@@ -404,6 +408,48 @@ class ToolsmithService:
                 TOOLSMITH_AUTHOR_SKIPPED,
                 capability=blueprint.capability,
                 note="pending_blueprint_persist_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await self._notify_persist_failed(blueprint, safe_error_description(exc))
+
+    async def _notify_persist_failed(
+        self, blueprint: ToolBlueprint, reason: str
+    ) -> None:
+        """Surface a failed durable blueprint save to the operator (best-effort).
+
+        A no-op when no dispatcher is wired; a dispatch failure is logged
+        (criticals re-raised) and never aborts the cycle.
+        """
+        if self._notification_dispatcher is None:
+            return
+        from synthorg.notifications.models import (  # noqa: PLC0415
+            Notification,
+            NotificationCategory,
+            NotificationSeverity,
+        )
+
+        body = (
+            f"Blueprint for capability {blueprint.capability!r} could not be "
+            f"durably saved: {reason}. Any approval referencing it is "
+            "unfulfillable; re-propose the tool to try again."
+        )
+        try:
+            await self._notification_dispatcher.dispatch(
+                Notification(
+                    category=NotificationCategory.SYSTEM,
+                    severity=NotificationSeverity.WARNING,
+                    title="Tool blueprint failed to persist",
+                    body=body,
+                    source="meta.toolsmith",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_AUTHOR_SKIPPED,
+                capability=blueprint.capability,
+                note="persist_failed_alert_dispatch_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

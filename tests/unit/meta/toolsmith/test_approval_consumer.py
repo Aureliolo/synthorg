@@ -120,7 +120,8 @@ async def test_item_without_blueprint_id_is_skipped() -> None:
 
     assert await consumer.consume() == 0
     _asmock(service.apply).assert_not_called()
-    _asmock(store.consume_if_approved).assert_not_called()
+    # The orphaned grant is claimed so it stops being re-listed + re-warned.
+    _asmock(store.consume_if_approved).assert_awaited_once()
 
 
 async def test_missing_blueprint_is_skipped() -> None:
@@ -128,17 +129,20 @@ async def test_missing_blueprint_is_skipped() -> None:
     service = mock_of[ToolsmithService](
         apply=AsyncMock(return_value=ApplyResult(success=True, changes_applied=1))
     )
+    store = mock_of[ApprovalStoreProtocol](
+        list_items=AsyncMock(return_value=(item,)),
+        consume_if_approved=AsyncMock(return_value=item),
+    )
     consumer = ToolApprovalConsumer(
         service=service,
         blueprint_repo=mock_of[DynamicToolRepository](get=AsyncMock(return_value=None)),
-        approval_store=mock_of[ApprovalStoreProtocol](
-            list_items=AsyncMock(return_value=(item,)),
-            consume_if_approved=AsyncMock(return_value=item),
-        ),
+        approval_store=store,
     )
 
     assert await consumer.consume() == 0
     _asmock(service.apply).assert_not_called()
+    # A blueprint that never resolves retires the grant so it stops re-listing.
+    _asmock(store.consume_if_approved).assert_awaited_once()
 
 
 async def test_lost_claim_never_applies() -> None:

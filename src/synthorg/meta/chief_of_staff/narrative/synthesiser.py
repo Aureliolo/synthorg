@@ -15,6 +15,7 @@ from typing import ClassVar
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -135,10 +136,10 @@ class NarrativeSynthesiser:
             temperature=self._config.narrative_temperature,
             max_tokens=self._config.narrative_max_tokens,
         )
-        # Model resolution stays inside the fallback-protected block: run
-        # narration is a best-effort post-run documentary, so an unset
-        # ``narrative_model`` (ServiceUnavailableError) must degrade to the
-        # deterministic fallback prose, never abort run finalisation.
+        # Run narration is a best-effort post-run documentary: both an unset
+        # ``narrative_model`` (a config gap) and a provider failure degrade to
+        # the deterministic fallback rather than aborting run finalisation, but
+        # they log distinct reasons so a config gap is not read as an outage.
         try:
             model = require_configured_model(
                 await resolve_model_with_fallback(
@@ -151,6 +152,13 @@ class NarrativeSynthesiser:
                 key="narrative_model",
                 feature_label="Chief of Staff run narrator",
             )
+        except ServiceUnavailableError:
+            logger.warning(
+                COS_NARRATIVE_PROSE_FALLBACK,
+                reason="narrative_model_unset",
+            )
+            return None
+        try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=_NARRATOR_AGENT,

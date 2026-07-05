@@ -211,6 +211,40 @@ class TestModelRefreshService:
         # The same stale model in the second cycle is deduped, not re-alerted.
         dispatcher.dispatch.assert_awaited_once()
 
+    async def test_healed_then_restale_model_alerts_again(self) -> None:
+        """A model that recovers and later goes stale again alerts afresh."""
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        stale = LiveCatalogReport(
+            provider_name="example-provider",
+            discovered=(_NEW,),
+            missing_ids=("old",),
+            checked_ids=("old", "new"),
+        )
+        healed = LiveCatalogReport(
+            provider_name="example-provider",
+            discovered=(_NEW,),
+            missing_ids=(),
+            checked_ids=("old", "new"),
+        )
+        probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(side_effect=[stale, healed, stale]),
+        )
+        dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+        service = _build_service(
+            repo=repo,
+            probe=probe,
+            notification_dispatcher=dispatcher,
+        )
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)  # stale: alert
+        await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)  # healed: prune
+        await service.run_cycle(
+            mode=RefreshMode.RECONCILE_RECOMMEND
+        )  # stale: alert again
+        assert dispatcher.dispatch.await_count == 2
+
     async def test_no_stale_models_dispatches_nothing(self) -> None:
         """A clean cycle (no stale models) raises no operator alert."""
         repo = mock_of[UpgradeRecommendationRepository](
