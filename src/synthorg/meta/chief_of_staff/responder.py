@@ -16,13 +16,13 @@ which role agent is speaking.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_persona_body
-from synthorg.meta.chief_of_staff.enums import ConversationKind
+from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -89,6 +89,43 @@ class RoutingDecision(BaseModel):
     responder: Responder
     topic: NotBlankStr
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class RoutingOutcome(BaseModel):
+    """The result of a routing attempt: a decision plus why it landed.
+
+    ``decision`` is the routed :class:`RoutingDecision` when a role agent
+    was selected, or ``None`` when the turn falls back to the generic
+    Chief of Staff. ``reason`` explains the outcome either way (``ROUTED``
+    on success, or the specific fallback cause), so the surface can report
+    why the generic persona answered.
+
+    Attributes:
+        decision: The routed decision, or ``None`` on fallback.
+        reason: Why this outcome landed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    reason: RoutingReason
+    decision: RoutingDecision | None = None
+
+    @model_validator(mode="after")
+    def _validate_decision_reason(self) -> RoutingOutcome:
+        """Keep ``decision`` and ``reason`` consistent.
+
+        Returns:
+            The validated outcome.
+
+        Raises:
+            ValueError: When a decision is present without ``ROUTED``, or
+                ``ROUTED`` is set without a decision.
+        """
+        routed = self.reason is RoutingReason.ROUTED
+        if routed != (self.decision is not None):
+            msg = "RoutingOutcome.decision is set iff reason is ROUTED"
+            raise ValueError(msg)
+        return self
 
 
 def generic_responder(*, model: NotBlankStr) -> Responder:
@@ -220,6 +257,7 @@ __all__ = [
     "GENERIC_RESPONDER_PERSONA",
     "Responder",
     "RoutingDecision",
+    "RoutingOutcome",
     "build_attributed_assistant_turn",
     "generic_responder",
     "mark_conversation_routed",

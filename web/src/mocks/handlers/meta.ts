@@ -8,6 +8,8 @@ import type {
   listAlerts,
   listEvolutionOutcomes,
   listProposals,
+  getConversationTurns,
+  listConversations,
   postChat,
   postChatAct,
   postChatGroup,
@@ -19,6 +21,25 @@ function _hasBlankField(body: unknown, field: string): boolean {
   if (!body || typeof body !== 'object') return true
   const value = (body as Record<string, unknown>)[field]
   return typeof value !== 'string' || !value.trim()
+}
+
+/** Render one ``event:``/``data:`` SSE frame for a mock stream. */
+export function sseFrame(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+}
+
+/** Build a ``text/event-stream`` response body from pre-rendered frames. */
+export function sseStream(frames: readonly string[]): HttpResponse<ReadableStream<Uint8Array>> {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(frame))
+      controller.close()
+    },
+  })
+  return new HttpResponse(body, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
 }
 
 export const metaHandlers = [
@@ -114,6 +135,7 @@ export const metaHandlers = [
         responder_name: null,
         routed_topic: null,
         routing_confidence: null,
+        routing_reason: 'no_role_router',
         steering: [],
       }),
     )
@@ -240,4 +262,17 @@ export const metaHandlers = [
       }),
     )
   }),
+  http.post('/api/v1/meta/chat/stream', () =>
+    sseStream([
+      sseFrame('progress', { delta: 'default ' }),
+      sseFrame('progress', { delta: 'response' }),
+      sseFrame('complete', { answer: 'default response', sources: [], confidence: 0 }),
+    ]),
+  ),
+  http.get('/api/v1/meta/chat/conversations', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof listConversations>([])),
+  ),
+  http.get('/api/v1/meta/chat/conversations/:id', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof getConversationTurns>([])),
+  ),
 ]

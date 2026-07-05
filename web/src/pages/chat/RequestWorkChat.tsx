@@ -1,12 +1,16 @@
 import { ClipboardList } from 'lucide-react'
+import { Link } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useRequestWorkState, type RequestWorkMessage } from './useRequestWorkState'
 
 const INPUT_LABEL = 'Work request'
@@ -23,8 +27,37 @@ interface ProposeBubbleProps {
   onRetry: () => void
 }
 
+function ApprovalLink({ id, label }: { id: string; label: string }) {
+  return (
+    <li>
+      <Link
+        to={`/approvals?selected=${encodeURIComponent(id)}`}
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        {label}
+      </Link>
+    </li>
+  )
+}
+
+function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
+  if (msg.role !== 'assistant') return null
+  const proposals = msg.proposals ?? []
+  const steering = msg.steering ?? []
+  if (proposals.length === 0 && steering.length === 0) return null
+  return (
+    <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
+      {proposals.map((p) => (
+        <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
+      ))}
+      {steering.map((s) => (
+        <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
+      ))}
+    </ul>
+  )
+}
+
 function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
-  const isAttributed = Boolean(msg.responderRole && msg.responderName)
   return (
     <div
       className={cn(
@@ -33,26 +66,21 @@ function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      {msg.proposals && msg.proposals.length > 0 && (
-        <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
-          {msg.proposals.map((title) => (
-            <li key={title}>{title}</li>
-          ))}
-        </ul>
-      )}
-      {isAttributed && (
-        <ResponderAttribution
-          name={msg.responderName ?? ''}
-          role={msg.responderRole ?? ''}
-          topic={msg.routedTopic}
-        />
-      )}
+      <QueuedApprovals msg={msg} />
+      {msg.role === 'assistant' &&
+        hasAttribution(msg.responderName, msg.responderRole) && (
+          <ResponderAttribution
+            name={msg.responderName ?? ''}
+            role={msg.responderRole ?? ''}
+            topic={msg.routedTopic}
+          />
+        )}
     </div>
   )
 }
 
 function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
-  if (msg.isError === true) {
+  if (msg.role === 'assistant' && msg.isError === true) {
     return (
       <div className="mr-8">
         <ChatErrorNotice message={msg.content} onRetry={onRetry} />
@@ -64,6 +92,7 @@ function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
 
 export function RequestWorkChat() {
   const ctrl = useRequestWorkState()
+  const sendDisabled = ctrl.proposeLoading || ctrl.conversationClosed
 
   if (ctrl.messages.length === 0 && !ctrl.proposeLoading) {
     return (
@@ -107,18 +136,26 @@ export function RequestWorkChat() {
             }}
           />
         ))}
-        {ctrl.proposeLoading && (
-          <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-            Working on it...
-          </div>
-        )}
+        {ctrl.proposeLoading && <ChatThinkingIndicator label="Working on it" />}
       </div>
+
+      {ctrl.conversationClosed && (
+        <div className="flex items-center justify-between gap-3">
+          <p role="status" className="text-xs text-text-secondary">
+            This request-work conversation is closed.
+          </p>
+          <Button variant="outline" size="sm" onClick={ctrl.startNew}>
+            Start new conversation
+          </Button>
+        </div>
+      )}
 
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}
         onSend={ctrl.triggerSend}
-        disabled={ctrl.proposeLoading}
+        disabled={sendDisabled}
+        inputDisabled={ctrl.conversationClosed}
         label={INPUT_LABEL}
         placeholder={INPUT_PLACEHOLDER}
       />

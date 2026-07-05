@@ -1,4 +1,4 @@
-"""Request bodies for the Chief of Staff meta endpoints."""
+"""Request bodies for the Chief of Staff chat + propose endpoints."""
 
 from uuid import UUID
 
@@ -43,3 +43,6 @@ class ConversationalProposeRequest(BaseModel):
         default=None,
         description="Project the proposal should be scoped to, if any.",
     )
+
+
+__all__ = ["ChatRequest", "ConversationalProposeRequest"]

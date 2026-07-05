@@ -5,10 +5,11 @@ Classifies each human turn to the best-fit role agent so a budget
 question reaches the CFO, a strategy question reaches the CEO, and a
 technical question reaches the senior technical role the company has
 actually hired. A :class:`RoleRouter` returns a
-:class:`~synthorg.meta.chief_of_staff.responder.RoutingDecision` when it
-routes confidently; a ``None`` route means the caller answers with the
-generic Chief of Staff persona (routing off, no active agents, classifier
-below the confidence floor, or an unresolvable role).
+:class:`~synthorg.meta.chief_of_staff.responder.RoutingOutcome`: a routed
+decision when it routes confidently, else a fallback outcome whose
+``reason`` explains why the generic Chief of Staff persona answers (no
+active agents, classifier below the confidence floor, an unresolvable
+role, and so on).
 
 Two pluggable strategies, selected by ``ChiefOfStaffConfig.routing_strategy``:
 
@@ -44,6 +45,7 @@ from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import (
     CONCERN_ROUTING_SYSTEM,
@@ -51,6 +53,7 @@ from synthorg.meta.chief_of_staff.prompts import (
 )
 from synthorg.meta.chief_of_staff.responder import (
     RoutingDecision,
+    RoutingOutcome,
     responder_for_identity,
 )
 from synthorg.meta.chief_of_staff.transcript import render_turns_transcript
@@ -127,15 +130,14 @@ class ConcernClassification(BaseModel):
 class RoleRouter(Protocol):
     """Routes one human turn to a role agent, or to the generic persona.
 
-    Implementations are best-effort: any uncertainty (no active agents,
-    low confidence, unresolvable role, classifier error) yields a
-    ``None`` route so the conversation is still answered by the generic
-    Chief of Staff.
+    Implementations are best-effort: ``route()`` always returns a
+    :class:`RoutingOutcome`. Any uncertainty (no active agents, low
+    confidence, unresolvable role, classifier error) yields an outcome
+    with ``decision=None`` so the conversation is still answered by the
+    generic Chief of Staff.
     """
 
-    async def route(
-        self, history: tuple[ConversationTurn, ...]
-    ) -> RoutingDecision | None:
+    async def route(self, history: tuple[ConversationTurn, ...]) -> RoutingOutcome:
         """Decide the responder for the latest human turn.
 
         Args:
@@ -143,8 +145,9 @@ class RoleRouter(Protocol):
                 human turn to route.
 
         Returns:
-            A :class:`RoutingDecision` to a role agent, or ``None`` to
-            fall back to the generic Chief of Staff responder.
+            A :class:`RoutingOutcome` carrying the routed decision (or
+            ``None`` to fall back to the generic Chief of Staff) plus the
+            reason the outcome landed.
         """
         ...
 
@@ -282,22 +285,20 @@ class LlmConcernRouter:
         self._cost_tracker = cost_tracker
         self._config_resolver = config_resolver
 
-    async def route(
-        self, history: tuple[ConversationTurn, ...]
-    ) -> RoutingDecision | None:
+    async def route(self, history: tuple[ConversationTurn, ...]) -> RoutingOutcome:
         """Classify the latest human turn and resolve a role agent.
 
         Returns:
-            A routed decision, or ``None`` to fall back to the generic
-            Chief of Staff responder.
+            The routed outcome, or a fallback outcome carrying the reason
+            the generic Chief of Staff answers instead.
         """
         active = await self._agent_registry.list_active()
         if not active:
             logger.info(COS_ROUTING_FALLBACK, detail="no_active_agents")
-            return None
+            return RoutingOutcome(reason=RoutingReason.NO_ACTIVE_AGENTS)
         classification = await self._classify(history, active)
-        if classification is None:
-            return None
+        if isinstance(classification, RoutingReason):
+            return RoutingOutcome(reason=classification)
         if classification.confidence < self._confidence_floor:
             logger.info(
                 COS_ROUTING_FALLBACK,
@@ -306,7 +307,7 @@ class LlmConcernRouter:
                 role=classification.role,
                 confidence=classification.confidence,
             )
-            return None
+            return RoutingOutcome(reason=RoutingReason.BELOW_CONFIDENCE_FLOOR)
         agent = _resolve_agent_for_role(active, classification.role)
         if agent is None:
             agent = _resolve_agent_for_role(active, self._default_role)
@@ -317,7 +318,7 @@ class LlmConcernRouter:
                 topic=classification.topic,
                 role=classification.role,
             )
-            return None
+            return RoutingOutcome(reason=RoutingReason.ROLE_UNRESOLVED)
         logger.info(
             COS_ROUTING_ROUTED,
             topic=classification.topic,
@@ -325,25 +326,31 @@ class LlmConcernRouter:
             agent_id=str(agent.id),
             confidence=classification.confidence,
         )
-        return RoutingDecision(
-            responder=responder_for_identity(agent),
-            topic=classification.topic,
-            confidence=classification.confidence,
+        return RoutingOutcome(
+            reason=RoutingReason.ROUTED,
+            decision=RoutingDecision(
+                responder=responder_for_identity(agent),
+                topic=classification.topic,
+                confidence=classification.confidence,
+            ),
         )
 
     async def _classify(
         self,
         history: tuple[ConversationTurn, ...],
         active: tuple[AgentIdentity, ...],
-    ) -> ConcernClassification | None:
+    ) -> ConcernClassification | RoutingReason:
         """Run one classification call and parse its structured output.
 
-        Returns ``None`` on any provider error or invalid output: routing
-        is best-effort, so a classifier hiccup degrades to the generic
-        responder rather than blocking the conversation.
+        Routing is best-effort, so a classifier hiccup degrades to the
+        generic responder rather than blocking the conversation; the
+        specific failure is returned as a :class:`RoutingReason` so the
+        caller can surface why.
 
         Returns:
-            The parsed classification, or ``None`` to fall back.
+            The parsed classification, or the fallback reason on a call
+            failure (``CLASSIFY_CALL_FAILED``) or invalid response
+            (``RESPONSE_INVALID``).
         """
         user = CONCERN_ROUTING_USER.format(
             candidate_roles=_render_candidate_roles(active),
@@ -383,13 +390,20 @@ class LlmConcernRouter:
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Routing is best-effort: any classifier failure degrades to the
+            # generic responder rather than propagating. Preserve the
+            # provider-error classification (error_type) plus any backoff
+            # hint (retry_after) so a repeated rate-limit driving the
+            # fallback stays diagnosable instead of collapsing to an
+            # untyped signal.
             logger.warning(
                 COS_ROUTING_FALLBACK,
                 detail="classify_call_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                retry_after=getattr(exc, "retry_after", None),
             )
-            return None
+            return RoutingReason.CLASSIFY_CALL_FAILED
         raw = (response.content or "").strip()
         parsed = extract_json_from_llm_response(
             raw,
@@ -398,7 +412,7 @@ class LlmConcernRouter:
             ),
         )
         if parsed is None:
-            return None
+            return RoutingReason.RESPONSE_INVALID
         try:
             return ConcernClassification.model_validate(parsed)
         except ValidationError as exc:
@@ -408,7 +422,7 @@ class LlmConcernRouter:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return None
+            return RoutingReason.RESPONSE_INVALID
 
 
 class KeywordRoleRouter:
@@ -438,23 +452,21 @@ class KeywordRoleRouter:
         self._default_role = default_role
         self._keyword_map = keyword_map
 
-    async def route(
-        self, history: tuple[ConversationTurn, ...]
-    ) -> RoutingDecision | None:
+    async def route(self, history: tuple[ConversationTurn, ...]) -> RoutingOutcome:
         """Map keywords in the latest human turn to a role agent.
 
         Returns:
-            A routed decision with confidence ``1.0`` on a keyword match,
-            or ``None`` to fall back to the generic responder.
+            A routed outcome with confidence ``1.0`` on a keyword match,
+            or a fallback outcome carrying the reason otherwise.
         """
         text = _latest_human_text(history)
         if text is None:
-            return None
+            return RoutingOutcome(reason=RoutingReason.NO_KEYWORD_MATCH)
         lowered = text.casefold()
         active = await self._agent_registry.list_active()
         if not active:
             logger.info(COS_ROUTING_FALLBACK, detail="no_active_agents")
-            return None
+            return RoutingOutcome(reason=RoutingReason.NO_ACTIVE_AGENTS)
         for keywords, role in self._keyword_map:
             matched = next((kw for kw in keywords if kw in lowered), None)
             if matched is None:
@@ -471,13 +483,16 @@ class KeywordRoleRouter:
                 agent_id=str(agent.id),
                 strategy="keyword",
             )
-            return RoutingDecision(
-                responder=responder_for_identity(agent),
-                topic=NotBlankStr(matched),
-                confidence=1.0,
+            return RoutingOutcome(
+                reason=RoutingReason.ROUTED,
+                decision=RoutingDecision(
+                    responder=responder_for_identity(agent),
+                    topic=NotBlankStr(matched),
+                    confidence=1.0,
+                ),
             )
         logger.info(COS_ROUTING_FALLBACK, detail="no_keyword_match")
-        return None
+        return RoutingOutcome(reason=RoutingReason.NO_KEYWORD_MATCH)
 
 
 def _resolve_router_provider(

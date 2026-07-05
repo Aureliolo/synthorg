@@ -14,7 +14,11 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.communication.conversation.enums import ConversationStatus
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    QueryError,
+    TurnSequenceConflictError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
@@ -80,6 +84,21 @@ _TURN_NEXT_SEQUENCE_SQL = """
 
 # Postgres exposes the named constraint via diag.constraint_name.
 _TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
+
+
+def _log_append_failure(
+    conversation_id: str, exc: BaseException, *, phase: str | None = None
+) -> None:
+    """Log an append-turn failure with the shared redacted-error shape."""
+    extra = {"phase": phase} if phase is not None else {}
+    logger.warning(
+        PERSISTENCE_CONVERSATION_TURN_FAILED,
+        operation="append",
+        conversation_id=conversation_id,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+        **extra,
+    )
 
 
 class PostgresConversationRepository:
@@ -172,6 +191,7 @@ class PostgresConversationRepository:
     async def list_items(
         self,
         *,
+        created_by: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Conversation, ...]:
@@ -182,22 +202,29 @@ class PostgresConversationRepository:
                 are invalid.
 
         Returns:
-            The matching entities.
+            The matching entities, scoped to ``created_by`` when set.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        where = "WHERE created_by = %s " if created_by is not None else ""
+        params: tuple[object, ...] = (
+            (created_by, effective_limit, offset)
+            if created_by is not None
+            else (effective_limit, offset)
+        )
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed column list
-                    "FROM conversations ORDER BY created_at DESC, id DESC "
+                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed cols + WHERE
+                    f"FROM conversations {where}"
+                    "ORDER BY created_at DESC, id DESC "
                     "LIMIT %s OFFSET %s",
-                    (effective_limit, offset),
+                    params,
                 )
                 rows = await cur.fetchall()
                 items = tuple(row_to_conversation(r) for r in rows)
@@ -330,11 +357,17 @@ class PostgresConversationTurnRepository:
         ``ConstraintViolationError``.
 
         Raises:
+            TurnSequenceConflictError: On a sequence collision that still
+                conflicts after the retry budget (retryable 409).
             ConstraintViolationError: On non-sequence constraint
-                violations, or a sequence collision that still
-                conflicts after the retry budget.
+                violations (FK / CHECK).
             QueryError: On other database errors.
         """
+        # See docs/reference/retry-patterns.md: Pattern C/CAS. This is a
+        # constraint-branch resequence on the (conversation_id, sequence)
+        # uniqueness race, not a transient-I/O backoff; it stays in the
+        # repository and must not move to GeneralRetryHandler.
+        #
         # Unlike the SQLite sibling, which holds one serialising write
         # lock (``_write_context``) across the whole read-then-insert,
         # each Postgres attempt below takes a fresh pool connection for
@@ -391,40 +424,40 @@ class PostgresConversationTurnRepository:
                             f"turn {current.id!r} "
                             f"(conversation {current.conversation_id!r})"
                         )
-                        logger.warning(
-                            PERSISTENCE_CONVERSATION_TURN_FAILED,
-                            operation="append",
+                        _log_append_failure(
+                            current.conversation_id,
+                            resequence_exc,
                             phase="resequence",
-                            conversation_id=current.conversation_id,
-                            error_type=type(resequence_exc).__name__,
-                            error=safe_error_description(resequence_exc),
                         )
                         raise QueryError(msg) from resequence_exc
                     current = current.model_copy(
                         update={"sequence": next_sequence},
                     )
                     continue
+                if constraint == _TURN_SEQUENCE_UNIQUE_CONSTRAINT:
+                    # Retry budget exhausted on a genuine sequence race
+                    # (a cross-process append past the in-process lock):
+                    # transient and retryable, so surface a 409 rather
+                    # than a mislabelled non-retryable 400.
+                    msg = (
+                        "Turn sequence conflict appending turn "
+                        f"{current.id!r} (conversation {current.conversation_id!r})"
+                    )
+                    _log_append_failure(current.conversation_id, exc)
+                    raise TurnSequenceConflictError(
+                        msg, constraint=constraint, sqlstate=exc.sqlstate
+                    ) from exc
                 msg = (
                     "Constraint violation appending turn "
                     f"{current.id!r} (conversation {current.conversation_id!r})"
                 )
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=current.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise ConstraintViolationError(msg, constraint=constraint) from exc
+                _log_append_failure(current.conversation_id, exc)
+                raise ConstraintViolationError(
+                    msg, constraint=constraint, sqlstate=exc.sqlstate
+                ) from exc
             except psycopg.Error as exc:
                 msg = f"Failed to append turn {current.id!r}"
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=current.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                _log_append_failure(current.conversation_id, exc)
                 raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CONVERSATION_TURN_APPENDED,

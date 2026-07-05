@@ -3,28 +3,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActiveAgentSummary,
   ConversationalActResult,
-  ExecutedToolCall,
+  TerminationReason,
 } from '@/api/types'
+import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
-import { resolveScopedRetryContent } from './scoped-retry'
+import type { ActMessage } from './chat-types'
+import { nextMessageId } from './message-id'
+import { resolveScopedRetryTarget } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
-export interface ActMessage {
-  id: number
-  /** ``human`` = the operator's instruction, ``action`` = the agent's
-   *  outcome (executed tools + message, or a parked approval),
-   *  ``notice`` = a system line (request failure). */
-  kind: 'human' | 'action' | 'notice'
-  /** Bubble body: the instruction, the agent's final message, or a notice. */
-  content: string
-  /** Acting agent's name, on ``action`` bubbles. */
-  agentName?: string | undefined
-  /** Tools the action executed, on ``action`` bubbles. */
-  toolCalls?: readonly ExecutedToolCall[] | undefined
-  /** Approval id, on ``action`` bubbles when the action parked for consent. */
-  parkedApprovalId?: string | undefined
-  /** Renders the notice as a distinct error state with a Try-again. */
-  isError?: boolean
-}
+export type { ActMessage } from './chat-types'
 
 export interface DirectActionState {
   activeAgents: readonly ActiveAgentSummary[]
@@ -39,50 +27,64 @@ export interface DirectActionState {
   retryLast: (beforeMsgId?: number) => void
 }
 
-export function useDirectActionState(): DirectActionState {
-  const activeAgents = useMetaStore((s) => s.activeAgents)
-  const loading = useMetaStore((s) => s.actionLoading)
-  const runAction = useMetaStore((s) => s.runAction)
-  const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
+type SetAction = ReturnType<typeof useConversationsStore.getState>['setAction']
+type RunAction = ReturnType<typeof useMetaStore.getState>['runAction']
 
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<readonly ActMessage[]>([])
-  const [input, setInput] = useState('')
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
+interface ActionSendDeps {
+  runAction: RunAction
+  activeAgents: readonly ActiveAgentSummary[]
+  setAction: SetAction
+  messages: readonly ActMessage[]
+  input: string
+  setInput: (value: string) => void
+}
 
-  const fetchRef = useRef(fetchActiveAgents)
-  fetchRef.current = fetchActiveAgents
-  useEffect(() => {
-    void fetchRef.current()
-  }, [])
-
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
-
-  const selectAgent = useCallback((id: string) => {
-    setSelectedAgentId((prev) => (prev === id ? null : id))
-  }, [])
+function useDirectActionSend(deps: ActionSendDeps): {
+  triggerSend: () => void
+  retryLast: (beforeMsgId?: number) => void
+} {
+  const { runAction, activeAgents, setAction } = deps
+  const { messages, input, setInput } = deps
 
   const sendInstruction = useCallback(
-    async (instruction: string) => {
-      if (!instruction || loading || !selectedAgentId) return
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), kind: 'human', content: instruction },
-      ])
-      const result = await runAction(
-        instruction,
-        selectedAgentId,
-        conversationIdRef.current,
-      )
-      setMessages((prev) => [...prev, buildActMessage(result, nextMsgId)])
-      if (result) {
-        conversationIdRef.current = result.conversation_id ?? undefined
-      }
-      scrollToBottom(scrollRef)
+    async (instruction: string, idempotencyKey?: string, agentIdOverride?: string) => {
+      // A retry replays the agent the turn was minted against; a fresh send
+      // reads the live selection (not the render-time closure) so a quick
+      // agent switch before the re-render can't route the instruction at a
+      // stale agent or mint the idempotency key for the wrong one.
+      const agentId =
+        agentIdOverride ?? useConversationsStore.getState().action.selectedAgentId
+      // Read the live loading flag (not the render-time closure) so a rapid
+      // second submit in the same render window can't slip past an action
+      // that is already in flight.
+      if (!instruction || useMetaStore.getState().actionLoading || !agentId) return
+      // Mint the key once per logical turn; a manual retry reuses it so an
+      // action that actually ran server-side is deduped, not re-run.
+      const key = idempotencyKey ?? crypto.randomUUID()
+      setAction((s) => ({
+        messages: [
+          ...s.messages,
+          {
+            id: nextMessageId(),
+            kind: 'human',
+            content: instruction,
+            idempotencyKey: key,
+            agentId,
+          },
+        ],
+      }))
+      const conversationId =
+        useConversationsStore.getState().action.conversationId
+      const result = await runAction(instruction, agentId, conversationId, key)
+      // The acting agent is the one this turn was bound to; resolve its role
+      // from the roster rather than mislabelling every action as "acting".
+      const actingRole = activeAgents.find((a) => a.id === agentId)?.role
+      setAction((s) => ({
+        messages: [...s.messages, buildActMessage(result, actingRole)],
+        ...(result && { conversationId: result.conversation_id ?? undefined }),
+      }))
     },
-    [loading, selectedAgentId, runAction, nextMsgId],
+    [runAction, activeAgents, setAction],
   )
 
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
@@ -90,21 +92,73 @@ export function useDirectActionState(): DirectActionState {
   const triggerSend = useCallback(() => {
     // Mirror sendInstruction's preconditions before clearing the input, so a
     // send blocked by an in-flight action or a missing agent selection does not
-    // discard the operator's composed text.
-    if (loading || !selectedAgentId) return
+    // discard the operator's composed text. Read the selection live for the
+    // same reason sendInstruction does.
+    if (
+      useMetaStore.getState().actionLoading ||
+      !useConversationsStore.getState().action.selectedAgentId
+    )
+      return
     const instruction = input.trim()
     if (!instruction) return
     setInput('')
     void sendInstruction(instruction)
-  }, [loading, selectedAgentId, input, sendInstruction])
+  }, [input, setInput, sendInstruction])
 
-  // Retry the human instruction that precedes the clicked error bubble (see
-  // ``resolveScopedRetryContent``); an unscoped retry would replay the
-  // transcript tail rather than the instruction the operator clicked on.
-  const retryLast = useCallback((beforeMsgId?: number) => {
-    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.kind === 'human')
-    if (content !== null) void sendInstruction(content)
-  }, [messages, sendInstruction])
+  // Retry the human instruction that precedes the clicked error bubble; an
+  // unscoped retry would replay the transcript tail rather than the
+  // instruction the operator clicked on.
+  const retryLast = useCallback(
+    (beforeMsgId?: number) => {
+      const target = resolveScopedRetryTarget(
+        messages,
+        beforeMsgId,
+        (m) => m.kind === 'human',
+      )
+      if (target && target.kind === 'human') {
+        void sendInstruction(target.content, target.idempotencyKey, target.agentId)
+      }
+    },
+    [messages, sendInstruction],
+  )
+
+  return { triggerSend, retryLast }
+}
+
+export function useDirectActionState(): DirectActionState {
+  const activeAgents = useMetaStore((s) => s.activeAgents)
+  const loading = useMetaStore((s) => s.actionLoading)
+  const runAction = useMetaStore((s) => s.runAction)
+  const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
+
+  const messages = useConversationsStore((s) => s.action.messages)
+  const selectedAgentId = useConversationsStore((s) => s.action.selectedAgentId)
+  const setAction = useConversationsStore((s) => s.setAction)
+  const [input, setInput] = useState('')
+  const scrollRef = useScrollToBottom(messages)
+
+  const fetchRef = useRef(fetchActiveAgents)
+  fetchRef.current = fetchActiveAgents
+  useEffect(() => {
+    void fetchRef.current()
+  }, [])
+
+  const selectAgent = useCallback(
+    (id: string) =>
+      setAction((s) => ({
+        selectedAgentId: s.selectedAgentId === id ? null : id,
+      })),
+    [setAction],
+  )
+
+  const { triggerSend, retryLast } = useDirectActionSend({
+    runAction,
+    activeAgents,
+    setAction,
+    messages,
+    input,
+    setInput,
+  })
 
   return {
     activeAgents,
@@ -120,36 +174,52 @@ export function useDirectActionState(): DirectActionState {
   }
 }
 
+// Copy for a non-clean stop. ``completed``/``parked`` already carry their
+// own message or approval block, so they render nothing extra; the rest
+// keep an action bubble from ever appearing blank.
+const TERMINATION_REASON_COPY: Readonly<
+  Record<TerminationReason, string | null>
+> = {
+  completed: null,
+  parked: null,
+  max_turns: 'Stopped: reached the turn limit.',
+  budget_exhausted: 'Stopped: the action budget was exhausted.',
+  stagnation: 'Stopped: no further progress was possible.',
+  shutdown: 'Stopped: the runtime shut down.',
+  cancelled: 'Stopped: the action was cancelled.',
+  error: 'Stopped: an error interrupted the action.',
+}
+
 function buildActMessage(
   result: ConversationalActResult | null,
-  nextMsgId: () => number,
+  actingRole: string | undefined,
 ): ActMessage {
   if (!result) {
     return {
-      id: nextMsgId(),
+      id: nextMessageId(),
       kind: 'notice',
       content: 'The action could not be completed. Please try again.',
       isError: true,
     }
   }
   const action = result.action
+  const finalMessage = action.final_message ?? ''
+  // Never render an empty action bubble: fall back to the stop-reason copy
+  // and then a generic line so there is always something to read.
+  const content =
+    finalMessage !== ''
+      ? finalMessage
+      : (TERMINATION_REASON_COPY[action.termination_reason] ??
+        'The action finished with no message.')
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     kind: 'action',
-    content: action.final_message ?? '',
+    content,
     agentName: result.agent_name,
+    agentRole: actingRole,
     toolCalls: action.tool_calls,
     parkedApprovalId: action.parked
       ? (action.approval_id ?? undefined)
       : undefined,
   }
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

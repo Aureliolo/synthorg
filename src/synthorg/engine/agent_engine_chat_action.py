@@ -21,7 +21,11 @@ from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+    TurnObserver,
+)
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
@@ -66,6 +70,7 @@ class AgentEngineChatActionMixin:
         instruction: str,
         effective_autonomy: EffectiveAutonomy | None = None,
         max_turns: int = DEFAULT_CHAT_ACTION_MAX_TURNS,
+        turn_observer: TurnObserver | None = None,
     ) -> ChatActionResult:
         """Drive a real MCP action from a chat instruction under trust.
 
@@ -82,6 +87,9 @@ class AgentEngineChatActionMixin:
                 ``None`` to leave the rule engine governing without the
                 autonomy-tier layer.
             max_turns: Hard turn cap for the action loop.
+            turn_observer: Optional per-turn progress callback, invoked
+                after each turn with the tools it requested; used by the
+                streaming ``/act`` endpoint to emit incremental progress.
 
         Returns:
             A :class:`ChatActionResult` reporting the executed tools and
@@ -105,7 +113,9 @@ class AgentEngineChatActionMixin:
                 agent_id=agent_id,
                 max_turns=max_turns,
             )
-            result = await self._run_chat_loop(ctx, effective_autonomy)
+            result = await self._run_chat_loop(
+                ctx, effective_autonomy, turn_observer=turn_observer
+            )
         return self._to_chat_action_result(result, agent_id=agent_id)
 
     async def resume_parked_chat_action(
@@ -169,6 +179,8 @@ class AgentEngineChatActionMixin:
         self,
         ctx: AgentContext,
         effective_autonomy: EffectiveAutonomy | None,
+        *,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Run the governed ReAct loop over a chat-action context.
 
@@ -186,7 +198,10 @@ class AgentEngineChatActionMixin:
             task_id=None,
             effective_autonomy=effective_autonomy,
         )
-        loop = ReactLoop(approval_gate=self._approval_gate)
+        loop = ReactLoop(
+            approval_gate=self._approval_gate,
+            turn_observer=turn_observer,
+        )
         return await loop.execute(
             context=ctx,
             provider=self._provider,

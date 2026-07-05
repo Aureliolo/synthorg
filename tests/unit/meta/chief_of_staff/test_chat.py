@@ -8,9 +8,15 @@ import pytest
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.chief_of_staff.models import Alert, ChatQuery
+from synthorg.meta.chief_of_staff.models import (
+    Alert,
+    ChatAnswerComplete,
+    ChatAnswerDelta,
+    ChatQuery,
+)
 from synthorg.meta.chief_of_staff.prompts import (
     ALERT_EXPLANATION_SYSTEM,
     ALERT_EXPLANATION_USER,
@@ -36,10 +42,11 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleSeverity,
 )
-from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.enums import MessageRole, StreamEventType
+from synthorg.providers.models import CompletionResponse, StreamChunk, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
+from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
 
@@ -218,6 +225,62 @@ class TestExplainProposal:
             await chat.explain_proposal(_proposal(), _snap())
 
 
+class TestAskStream:
+    """ChiefOfStaffChat.ask_stream tests."""
+
+    async def test_streams_deltas_then_complete(self) -> None:
+        chunks = [
+            StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="Runway is "),
+            StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="14 months."),
+            StreamChunk(event_type=StreamEventType.DONE),
+        ]
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(stream_chunks=chunks),
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
+        )
+        events = [
+            event
+            async for event in chat.ask_stream(ChatQuery(question="runway?"), _snap())
+        ]
+        deltas = [e.delta for e in events if isinstance(e, ChatAnswerDelta)]
+        completes = [e for e in events if isinstance(e, ChatAnswerComplete)]
+        assert deltas == ["Runway is ", "14 months."]
+        assert len(completes) == 1
+        # The terminal event assembles the deltas under the free-form
+        # contract (empty sources, default confidence).
+        assert completes[0].answer == "Runway is 14 months."
+        assert completes[0].sources == ()
+        assert completes[0].confidence == pytest.approx(0.5)
+
+    async def test_empty_stream_yields_fallback_answer(self) -> None:
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(
+                stream_chunks=[StreamChunk(event_type=StreamEventType.DONE)],
+            ),
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
+        )
+        events = [
+            event async for event in chat.ask_stream(ChatQuery(question="hi"), _snap())
+        ]
+        completes = [e for e in events if isinstance(e, ChatAnswerComplete)]
+        assert [e for e in events if isinstance(e, ChatAnswerDelta)] == []
+        assert len(completes) == 1
+        assert completes[0].answer == "Unable to generate explanation."
+
+    async def test_fail_closed_when_no_model_configured(self) -> None:
+        chat = ChiefOfStaffChat(
+            provider=ScriptedProvider(
+                stream_chunks=[StreamChunk(event_type=StreamEventType.DONE)],
+            ),
+            config=ChiefOfStaffConfig(),
+        )
+        with pytest.raises(ServiceUnavailableError):
+            _ = [
+                event
+                async for event in chat.ask_stream(ChatQuery(question="hi"), _snap())
+            ]
+
+
 class TestExplainAlert:
     """ChiefOfStaffChat.explain_alert tests."""
 
@@ -283,8 +346,7 @@ class TestAsk:
             ChatQuery(question="Status?"),
             _snap(),
         )
-        call_args = provider.complete.call_args
-        config = call_args.kwargs.get("config") or call_args[1].get("config")
+        config = provider.complete.call_args.kwargs["config"]
         assert config.temperature == pytest.approx(0.3)
         assert config.max_tokens == 500
 

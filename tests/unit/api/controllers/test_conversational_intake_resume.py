@@ -24,6 +24,10 @@ from synthorg.persistence.conversation_invite_protocol import (
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantRepository,
 )
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
@@ -143,6 +147,8 @@ def _make_app_state(
             proposal_repo=proposal_repo,
             invite_repo=mock_of[ConversationInviteRepository](),
             participant_repo=mock_of[ConversationParticipantRepository](),
+            conversation_repo=mock_of[ConversationRepository](),
+            turn_repo=mock_of[ConversationTurnRepository](),
         )
     return make_app_state(
         approval_store=approval_store,

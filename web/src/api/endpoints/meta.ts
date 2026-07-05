@@ -298,6 +298,7 @@ export async function postChatPropose(
   message: string,
   conversationId?: string,
   project?: string,
+  idempotencyKey?: string,
 ): Promise<ConversationalProposeResponse> {
   const trimmed = message.trim()
   if (!trimmed) {
@@ -307,7 +308,8 @@ export async function postChatPropose(
   // ``per_op_rate_limit_from_policy("meta.chat.propose", key="user")``
   // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
   // interceptor retries after Retry-After; server replays of the same
-  // key are no-ops, so a retry never duplicates the parked proposal.
+  // key are no-ops, so a retry never duplicates the parked proposal. A
+  // caller-supplied key (a manual retry) reuses the original.
   const body: ConversationalProposeRequest = {
     message: trimmed,
     conversation_id: conversationId ?? null,
@@ -317,7 +319,7 @@ export async function postChatPropose(
     ApiResponse<ConversationalProposeResponse>
   >(`${BASE}/chat/propose`, body, {
     headers: {
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
     },
   })
   return unwrap(response)
@@ -327,6 +329,7 @@ export async function postChatGroup(
   message: string,
   agentIds: readonly string[],
   conversationId?: string,
+  idempotencyKey?: string,
 ): Promise<GroupConverseResult> {
   const trimmed = message.trim()
   if (!trimmed) {
@@ -336,7 +339,9 @@ export async function postChatGroup(
   // ``per_op_rate_limit_from_policy("meta.chat.group", key="user")``
   // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
   // interceptor retries after Retry-After; a server replay of the same
-  // key is a no-op, so a retry never double-runs a round.
+  // key is a no-op, so a retry never double-runs a round. A caller-supplied
+  // key (a manual retry of a turn) reuses the original key so a turn that
+  // actually succeeded server-side is deduped rather than re-run.
   const body: GroupChatRequest = {
     message: trimmed,
     conversation_id: conversationId ?? null,
@@ -349,7 +354,7 @@ export async function postChatGroup(
     body,
     {
       headers: {
-        'Idempotency-Key': crypto.randomUUID(),
+        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
     },
   )
@@ -360,6 +365,7 @@ export async function postChatAct(
   instruction: string,
   agent: string,
   conversationId?: string,
+  idempotencyKey?: string,
 ): Promise<ConversationalActResult> {
   const trimmedInstruction = instruction.trim()
   const trimmedAgent = agent.trim()
@@ -373,7 +379,8 @@ export async function postChatAct(
   // ``per_op_rate_limit_from_policy("meta.chat.act", key="user")``
   // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
   // interceptor retries after Retry-After; a server replay of the same
-  // key is a no-op, so a retry never double-runs an action.
+  // key is a no-op, so a retry never double-runs an action. A caller-supplied
+  // key (a manual retry) reuses the original so a succeeded action is deduped.
   const body: ChatActRequest = {
     instruction: trimmedInstruction,
     agent: trimmedAgent,
@@ -384,7 +391,7 @@ export async function postChatAct(
     body,
     {
       headers: {
-        'Idempotency-Key': crypto.randomUUID(),
+        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
     },
   )
@@ -399,9 +406,81 @@ export type ChatScope =
   | { kind: 'proposal'; id: string }
   | { kind: 'alert'; id: string }
 
+/** One of the three conversation shapes (mirrors backend ``ConversationKind``). */
+export type ConversationKind = 'direct' | 'routed' | 'group'
+
+/** Conversation lifecycle state (mirrors backend ``ConversationStatus``). */
+export type ConversationStatus = 'active' | 'proposed' | 'closed'
+
+/** Turn author role (mirrors backend ``ConversationRole``). */
+export type ConversationTurnRole = 'user' | 'assistant' | 'agent'
+
+/** Summary of one of the caller's resumable conversations. */
+export interface ConversationSummary {
+  id: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  status: ConversationStatus
+  /** ``direct`` / ``routed`` resume into Request work; ``group`` into Group. */
+  kind: ConversationKind
+}
+
+/** One persisted turn of a conversation, for reconstructing a transcript. */
+export interface ConversationTurnRecord {
+  id: string
+  conversation_id: string
+  sequence: number
+  role: ConversationTurnRole
+  content: string
+  author_agent_id: string | null
+  author_name: string | null
+  routed_topic: string | null
+  routing_confidence: number | null
+  created_at: string
+}
+
+async function fetchConversationsPage(
+  cursor: string | null,
+): Promise<PaginatedResult<ConversationSummary>> {
+  const response = await apiClient.get<PaginatedResponse<ConversationSummary>>(
+    `${BASE}/chat/conversations`,
+    { params: _pageParams(cursor) },
+  )
+  return unwrapPaginated<ConversationSummary>(response)
+}
+
+/** List the caller's conversations (newest-first), walking every page. */
+export async function listConversations(): Promise<ConversationSummary[]> {
+  return paginateAll<ConversationSummary>(fetchConversationsPage)
+}
+
+/** Fetch every turn of one conversation (oldest-first), walking every page. */
+export async function getConversationTurns(
+  conversationId: string,
+): Promise<ConversationTurnRecord[]> {
+  const turns = await paginateAll<ConversationTurnRecord>((cursor) =>
+    fetchConversationTurnsPage(conversationId, cursor),
+  )
+  return [...turns].sort((a, b) => a.sequence - b.sequence)
+}
+
+async function fetchConversationTurnsPage(
+  conversationId: string,
+  cursor: string | null,
+): Promise<PaginatedResult<ConversationTurnRecord>> {
+  const response = await apiClient.get<
+    PaginatedResponse<ConversationTurnRecord>
+  >(`${BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    params: _pageParams(cursor),
+  })
+  return unwrapPaginated<ConversationTurnRecord>(response)
+}
+
 export async function postChat(
   question: string,
   scope?: ChatScope,
+  idempotencyKey?: string,
 ): Promise<ChatResponse> {
   const trimmed = question.trim()
   if (!trimmed) {
@@ -412,7 +491,8 @@ export async function postChat(
   // (5 req / 60 s / user).  Attach an ``Idempotency-Key`` so the
   // axios 429 interceptor retries after ``Retry-After`` instead of
   // surfacing a hard failure on ratelimit bursts -- the server treats
-  // replays of the same key as a no-op, so the retry is safe.
+  // replays of the same key as a no-op, so the retry is safe. A
+  // caller-supplied key (a manual retry) reuses the original.
   const body: ChatRequest = {
     question: trimmed,
     proposal_id: scope?.kind === 'proposal' ? scope.id : null,
@@ -423,7 +503,7 @@ export async function postChat(
     body,
     {
       headers: {
-        'Idempotency-Key': crypto.randomUUID(),
+        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
     },
   )

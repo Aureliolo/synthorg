@@ -27,6 +27,13 @@ _PROPOSE_TEMPERATURE_MAX: float = 2.0
 # clarifying question would not fit.
 _PROPOSE_MAX_TOKENS_DEFAULT: int = 2000
 _PROPOSE_MAX_TOKENS_MIN: int = 100
+# The rendered transcript injected as prompt history is windowed to this
+# many tokens, dropping the oldest turns first, so a long-running thread
+# cannot grow the input prompt without bound. 4000 keeps roughly the last
+# dozen short turns; 200 is the floor below which even one recent turn plus
+# the pending message would not survive.
+_CONVERSATIONAL_HISTORY_TOKEN_BUDGET_DEFAULT: int = 4000
+_CONVERSATIONAL_HISTORY_TOKEN_BUDGET_MIN: int = 200
 # Five proposals per turn bounds the approval-queue fan-out a single
 # conversation turn can create; the 1..20 envelope is the same range
 # the model_validator on ProposeDecision enforces for the model's own
@@ -193,6 +200,9 @@ class ChiefOfStaffConfig(BaseModel):
         propose_model: LLM model identifier for clarify/propose turns.
         propose_temperature: Sampling temperature for propose turns.
         propose_max_tokens: Token budget for a propose turn.
+        conversational_history_token_budget: Token budget for the windowed
+            conversation history injected into a propose/group prompt;
+            oldest turns are dropped first.
         propose_max_proposals_per_turn: Upper bound on work items a
             single turn may emit (bounds approval-queue fan-out).
         propose_max_clarification_turns: Maximum clarifying questions
@@ -304,6 +314,14 @@ class ChiefOfStaffConfig(BaseModel):
     propose_max_tokens: int = Field(
         default=_PROPOSE_MAX_TOKENS_DEFAULT,
         ge=_PROPOSE_MAX_TOKENS_MIN,
+    )
+    conversational_history_token_budget: int = Field(
+        default=_CONVERSATIONAL_HISTORY_TOKEN_BUDGET_DEFAULT,
+        ge=_CONVERSATIONAL_HISTORY_TOKEN_BUDGET_MIN,
+        description=(
+            "Token budget for the windowed conversation history injected "
+            "into a propose/group prompt; oldest turns are dropped first."
+        ),
     )
     propose_max_proposals_per_turn: int = Field(
         default=_PROPOSE_MAX_PROPOSALS_DEFAULT,

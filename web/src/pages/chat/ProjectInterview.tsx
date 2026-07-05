@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import type { CharterEditRequest } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -11,6 +11,7 @@ import { InterviewChat } from './InterviewChat'
 function useCharterInterview() {
   const messages = useCharterStore((s) => s.messages)
   const sending = useCharterStore((s) => s.sending)
+  const mutating = useCharterStore((s) => s.mutating)
   const conversationClosed = useCharterStore((s) => s.conversationClosed)
   const draftCharter = useCharterStore((s) => s.draftCharter)
   const turnError = useCharterStore((s) => s.turnError)
@@ -19,8 +20,6 @@ function useCharterInterview() {
   const approve = useCharterStore((s) => s.approve)
   const cancel = useCharterStore((s) => s.cancel)
   const resetInterview = useCharterStore((s) => s.resetInterview)
-
-  const [mutating, setMutating] = useState(false)
 
   const handleSend = useCallback(
     (message: string) => {
@@ -32,28 +31,19 @@ function useCharterInterview() {
   const handleSave = useCallback(
     (data: CharterEditRequest) => {
       if (!draftCharter) return
-      setMutating(true)
-      void editDraft(draftCharter.id, data).finally(() => {
-        setMutating(false)
-      })
+      void editDraft(draftCharter.id, data)
     },
     [draftCharter, editDraft],
   )
 
   const handleApprove = useCallback(() => {
     if (!draftCharter) return
-    setMutating(true)
-    void approve(draftCharter.id).finally(() => {
-      setMutating(false)
-    })
+    void approve(draftCharter.id)
   }, [draftCharter, approve])
 
   const handleCancel = useCallback(() => {
     if (!draftCharter) return
-    setMutating(true)
-    void cancel(draftCharter.id).finally(() => {
-      setMutating(false)
-    })
+    void cancel(draftCharter.id)
   }, [draftCharter, cancel])
 
   return {

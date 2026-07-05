@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   ClipboardList,
+  History,
   MessageCircle,
   MessagesSquare,
   Rocket,
@@ -10,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
@@ -22,6 +24,10 @@ import type { ChiefOfStaffFlags, MetaConfig } from '@/api/endpoints/meta'
 import { useMetaStore } from '@/stores/meta'
 
 import { ChiefOfStaffChat } from './chat/ChiefOfStaffChat'
+import {
+  ConversationHistoryDrawer,
+  type ResumableMode,
+} from './chat/ConversationHistoryDrawer'
 import { DirectActionChat } from './chat/DirectActionChat'
 import { GroupChat } from './chat/GroupChat'
 import { ProjectInterview } from './chat/ProjectInterview'
@@ -164,11 +170,16 @@ function ChatPageHeader() {
 }
 
 function DisabledModeNotice({ settingKey }: { settingKey: string }) {
+  // A dotted key like ``chief_of_staff.explain_chat_enabled`` maps to the
+  // ``chief_of_staff`` settings namespace; link there instead of quoting the
+  // raw key at the operator.
+  const namespace = settingKey.split('.')[0] ?? ''
   return (
     <EmptyState
       icon={MessagesSquare}
       title="This conversation mode is switched off"
-      description={`Enable the ${settingKey} setting to use it. The other modes stay available.`}
+      description="Enable it in settings to use it. The other modes stay available."
+      learnMore={{ label: 'Open settings', href: `/settings/${namespace}` }}
     />
   )
 }
@@ -295,6 +306,7 @@ export default function ChatPage() {
   const mode = parseMode(searchParams.get('mode'))
   const config = useMetaStore((s) => s.config)
   const error = useMetaStore((s) => s.error)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     if (useMetaStore.getState().config === null) {
@@ -302,24 +314,40 @@ export default function ChatPage() {
     }
   }, [])
 
+  const setMode = useCallback(
+    (next: ChatMode) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev)
+        params.set('mode', next)
+        return params
+      })
+    },
+    [setSearchParams],
+  )
+
   const active = MODES_BY_VALUE[mode]
 
   return (
     <div className="space-y-section-gap">
       <ChatPageHeader />
-      <SegmentedControl
-        label="Conversation mode"
-        options={MODE_OPTIONS}
-        value={mode}
-        onChange={(next) => {
-          setSearchParams((prev) => {
-            const params = new URLSearchParams(prev)
-            params.set('mode', next)
-            return params
-          })
-        }}
-      />
+      <div className="flex items-center justify-between gap-4">
+        <SegmentedControl
+          label="Conversation mode"
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={setMode}
+        />
+        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History className="size-4" aria-hidden />
+          History
+        </Button>
+      </div>
       <ModeBody active={active} config={config} error={error} />
+      <ConversationHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onResume={(resumeMode: ResumableMode) => setMode(resumeMode)}
+      />
     </div>
   )
 }

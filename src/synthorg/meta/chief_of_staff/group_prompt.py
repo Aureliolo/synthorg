@@ -7,6 +7,14 @@ Untrusted-content fencing: the shared transcript and this round's peer contribut
 are fenced (``<task-data>`` / ``<peer-contribution>``) before injection,
 and the peer block is scanned for authority cues (detect-and-log, the
 :class:`AuthorityDeferenceGuard` contract).
+
+The authority scan is deliberately detect-and-log only; the
+``<peer-contribution>`` fence is the actual injection defence (the model
+treats fenced content as inert data regardless of its wording).
+Redaction of matched cues is intentionally out of scope: an authority
+phrase is often legitimate business content (a manager writing "I need
+this by Friday"), so stripping it would cost signal for no security gain
+over the fence. This is the terminal design, not a stopgap.
 """
 
 from synthorg.communication.conversation.enums import ConversationRole
@@ -17,6 +25,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     wrap_untrusted,
 )
+from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.meta.chief_of_staff.group_models import (
     AttributedContribution,
     ConversationParticipant,
@@ -30,6 +39,24 @@ from synthorg.observability.events.chief_of_staff import (
 logger = get_logger(__name__)
 
 
+def render_group_turn(turn: ConversationTurn) -> str:
+    """Render one group turn as an attributed ``Speaker: content`` line.
+
+    The human speaks as ``Human``; an agent turn is attributed to its
+    stored name; anything else renders as ``Assistant``.
+
+    Returns:
+        The attributed transcript line for *turn*.
+    """
+    if turn.role is ConversationRole.USER:
+        speaker = "Human"
+    elif turn.role is ConversationRole.AGENT:
+        speaker = turn.author_name or "Agent"
+    else:
+        speaker = "Assistant"
+    return f"{speaker}: {turn.content}"
+
+
 def render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
     """Render attributed transcript lines for the group history.
 
@@ -37,16 +64,38 @@ def render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
         One ``Speaker: content`` line per turn (the human as ``Human``,
         each agent by its attributed name).
     """
-    lines: list[str] = []
-    for turn in turns:
-        if turn.role is ConversationRole.USER:
-            speaker = "Human"
-        elif turn.role is ConversationRole.AGENT:
-            speaker = turn.author_name or "Agent"
-        else:
-            speaker = "Assistant"
-        lines.append(f"{speaker}: {turn.content}")
-    return "\n".join(lines)
+    return "\n".join(render_group_turn(turn) for turn in turns)
+
+
+def estimate_history_tokens(
+    history: tuple[ConversationTurn, ...],
+    *,
+    estimator: PromptTokenEstimator,
+) -> int:
+    """Estimate the tokens the rendered history block will use.
+
+    The history is frozen for the round, so a caller running many turns
+    can size it once and reuse the result rather than re-rendering it per
+    turn.
+
+    Returns:
+        The estimated token count of the rendered history block.
+    """
+    return estimator.estimate_tokens(render_group_history(history))
+
+
+def estimate_peer_tokens(
+    prior_contributions: list[AttributedContribution],
+    *,
+    estimator: PromptTokenEstimator,
+) -> int:
+    """Estimate the tokens this round's peer-contribution block will use.
+
+    Returns:
+        The estimated token count of the rendered peer block, the only
+        part that grows as participants contribute within a round.
+    """
+    return estimator.estimate_tokens(render_round_contributions(prior_contributions))
 
 
 def render_round_contributions(contributions: list[AttributedContribution]) -> str:
@@ -130,6 +179,9 @@ def audit_authority(
 __all__ = [
     "audit_authority",
     "build_group_prompt",
+    "estimate_history_tokens",
+    "estimate_peer_tokens",
     "render_group_history",
+    "render_group_turn",
     "render_round_contributions",
 ]

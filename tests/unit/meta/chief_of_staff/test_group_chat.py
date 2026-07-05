@@ -224,6 +224,33 @@ class TestGroupChatBounds:
         )
         assert result.participants_skipped == tuple(ids[1:])
 
+    async def test_input_budget_exhaustion_truncates_before_dispatch(self) -> None:
+        # A large human message makes the estimated INPUT alone exceed the
+        # round budget minus the output reserve, so the round must stop
+        # before dispatching the first agent (not react only once output
+        # has been spent).
+        config = ChiefOfStaffConfig(
+            group_chat_enabled=True,
+            group_chat_round_token_budget=1000,
+            group_chat_token_reserve_ratio=0.2,
+        )
+        service, _, _, _, _, ids = await _three_agent_service(config=config)
+        # ~4000 chars renders to ~1000 estimated input tokens, which alone
+        # exceeds the 1000-token budget minus the 200-token output reserve.
+        long_message = NotBlankStr("word " * 800)
+        result = await service.converse(
+            GroupConverseArgs(
+                message=long_message,
+                created_by=NotBlankStr("user-1"),
+                participants=tuple(ids),
+            )
+        )
+        assert result.contributions == ()
+        assert (
+            result.truncated_reason is GroupChatTruncationReason.INPUT_BUDGET_EXHAUSTED
+        )
+        assert result.participants_skipped == tuple(ids)
+
     async def test_max_total_turns_truncates_round(self) -> None:
         config = ChiefOfStaffConfig(
             group_chat_enabled=True,

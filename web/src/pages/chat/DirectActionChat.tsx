@@ -8,7 +8,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useDirectActionState, type ActMessage } from './useDirectActionState'
 
 const INPUT_LABEL = 'Instruction'
@@ -35,7 +37,7 @@ function ToolCallRow({ call }: ToolCallRowProps) {
 }
 
 interface ActionBubbleProps {
-  msg: ActMessage
+  msg: Extract<ActMessage, { kind: 'action' }>
 }
 
 function ActionBubble({ msg }: ActionBubbleProps) {
@@ -61,7 +63,9 @@ function ActionBubble({ msg }: ActionBubbleProps) {
           </Button>
         </div>
       )}
-      {msg.agentName && <ResponderAttribution name={msg.agentName} role="acting" />}
+      {hasAttribution(msg.agentName, msg.agentRole) && (
+        <ResponderAttribution name={msg.agentName ?? ''} role={msg.agentRole ?? ''} />
+      )}
     </div>
   )
 }
@@ -185,11 +189,7 @@ export function DirectActionChat() {
           {ctrl.messages.map((msg) => (
             <ActBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
           ))}
-          {ctrl.loading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-              The agent is acting...
-            </div>
-          )}
+          {ctrl.loading && <ChatThinkingIndicator label="The agent is acting" />}
         </div>
       )}
 

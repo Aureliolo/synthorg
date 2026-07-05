@@ -13,6 +13,7 @@ WORKERS_WORKER_STARTED: Final[str] = "workers.worker.started"
 WORKERS_WORKER_STOPPED: Final[str] = "workers.worker.stopped"
 WORKERS_POOL_STARTED: Final[str] = "workers.pool.started"
 WORKERS_POOL_STOP_FAILED: Final[str] = "workers.pool.stop_failed"
+WORKERS_SUBTASK_JOIN_TIMEOUT: Final[str] = "workers.worker.subtask_join_timeout"
 
 # Claim execution
 WORKERS_CLAIM_RECEIVED: Final[str] = "workers.worker.claim_received"

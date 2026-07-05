@@ -138,6 +138,53 @@ class TestApprovalRepository:
         assert fetched is not None
         assert fetched.source is source
 
+    async def test_backend_supports_conversational_approvals(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Both backends advertise conversational-approval durability.
+
+        Guards against the SQLite flag regressing to ``False`` while the
+        schema and the park/read/decide cycle below actually support it.
+        """
+        assert backend.supports_conversational_approvals is True
+
+    async def test_conversational_intake_park_read_decide(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A conversational-intake approval survives park, reconnect, decide.
+
+        Proves the ``supports_conversational_approvals`` flag agrees with
+        the data model end-to-end (not just that the CHECK accepts the
+        insert): the parked row is visible to a fresh repo and its
+        approve transition sticks, identically on both backends.
+        """
+        item = _make_item(
+            approval_id="conv-intake-decide",
+            source=ApprovalSource.CONVERSATIONAL_INTAKE,
+            status=ApprovalStatus.PENDING,
+        )
+        await _approval_repo(backend).save(item)
+
+        parked = await _approval_repo(backend).get(str(item.id))
+        assert parked is not None
+        assert parked.source is ApprovalSource.CONVERSATIONAL_INTAKE
+        assert parked.status is ApprovalStatus.PENDING
+
+        decided_at = datetime(2026, 4, 1, 9, 0, tzinfo=UTC)
+        transitioned = await _approval_repo(backend).transition_if(
+            str(item.id),
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.APPROVED,
+            decided_at=decided_at,
+            decided_by="ceo",
+        )
+        assert transitioned is True
+
+        final = await _approval_repo(backend).get(str(item.id))
+        assert final is not None
+        assert final.status is ApprovalStatus.APPROVED
+        assert final.source is ApprovalSource.CONVERSATIONAL_INTAKE
+
     async def test_get_returns_none_when_absent(
         self, backend: PersistenceBackend
     ) -> None:

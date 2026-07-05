@@ -29,6 +29,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
@@ -36,6 +40,7 @@ from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous
 from synthorg.meta.chief_of_staff._propose_parking import ProposeParkingMixin
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
+from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationTurn,
@@ -50,13 +55,14 @@ from synthorg.meta.chief_of_staff.prompts import (
 from synthorg.meta.chief_of_staff.responder import (
     Responder,
     RoutingDecision,
+    RoutingOutcome,
     build_attributed_assistant_turn,
     mark_conversation_routed,
     resolve_responder_provider,
     select_responder,
 )
 from synthorg.meta.chief_of_staff.routing import RoleRouter
-from synthorg.meta.chief_of_staff.transcript import render_turns_transcript
+from synthorg.meta.chief_of_staff.transcript import windowed_transcript
 from synthorg.meta.errors import (
     ConversationalProposeResponseInvalidError,
     ConversationClosedError,
@@ -86,6 +92,7 @@ from synthorg.persistence.conversational_proposal_protocol import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -159,6 +166,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         role_router: RoleRouter | None = None,
         provider_registry: ProviderRegistry | None = None,
         config_resolver: ConfigResolver | None = None,
+        estimator: PromptTokenEstimator | None = None,
         master_enabled: bool = True,
     ) -> None:
         self._provider = provider
@@ -172,6 +180,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._role_router = role_router
         self._provider_registry = provider_registry
         self._config_resolver = config_resolver
+        self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         self._master_enabled = master_enabled
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
@@ -317,11 +326,8 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             return await self._cap_conversation(conversation, next_sequence + 1, now)
 
         history = (*prior_turns, user_turn)
-        routing = (
-            await self._role_router.route(history)
-            if self._role_router is not None and await self._routing_enabled()
-            else None
-        )
+        outcome = await self._resolve_routing(history)
+        routing = outcome.decision
         responder = select_responder(
             routing, propose_model=await self._resolve_propose_model()
         )
@@ -335,11 +341,36 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
 
         if decision.needs_clarification:
             return await self._record_clarification(
-                conversation, decision, routing, next_sequence + 1, now
+                conversation, decision, routing, outcome.reason, next_sequence + 1, now
             )
         return await self._record_proposals(
-            conversation, args, decision, routing, next_sequence + 1, now
+            conversation,
+            args,
+            decision,
+            routing,
+            outcome.reason,
+            next_sequence + 1,
+            now,
         )
+
+    async def _resolve_routing(
+        self, history: tuple[ConversationTurn, ...]
+    ) -> RoutingOutcome:
+        """Resolve the routing outcome for this turn, gated live.
+
+        Returns a fallback outcome (never calls the router) when no router
+        is wired or the live ``routing_enabled`` gate is off, so the
+        ``routing_reason`` on the result always explains why the generic
+        Chief of Staff answered.
+
+        Returns:
+            The routing outcome for this turn.
+        """
+        if self._role_router is None:
+            return RoutingOutcome(reason=RoutingReason.NO_ROLE_ROUTER)
+        if not await self._routing_enabled():
+            return RoutingOutcome(reason=RoutingReason.ROUTING_DISABLED)
+        return await self._role_router.route(history)
 
     async def _resolve_conversation(
         self, args: ProposeArgs, now: datetime
@@ -427,6 +458,8 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             ``ProposeDecision`` instance.
 
         Raises:
+            ProviderTimeoutError: The provider call exceeded the turn
+                timeout (surfaced as a retryable 504).
             Exception: Provider call failed.
             ConversationalProposeResponseInvalidError: Provider
                 response failed validation.
@@ -437,7 +470,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         )
         user = CONVERSATIONAL_PROPOSE_USER.format(
             conversation_history=wrap_untrusted(
-                TAG_TASK_DATA, render_turns_transcript(history)
+                TAG_TASK_DATA,
+                windowed_transcript(
+                    history,
+                    token_budget=self._config.conversational_history_token_budget,
+                    estimator=self._estimator,
+                ),
             ),
         )
         messages = [
@@ -469,6 +507,13 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
                     ),
                     timeout=self._config.agent_call_timeout_seconds,
                 )
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, which is not
+            # a DomainError: type it so the client sees a retryable 504
+            # rather than an opaque 500 while the user turn already persisted.
+            log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
+            msg = "Chief of Staff propose call timed out"
+            raise ProviderTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
@@ -498,11 +543,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             )
             raise ConversationalProposeResponseInvalidError from exc
 
-    async def _record_clarification(
+    async def _record_clarification(  # noqa: PLR0913 -- one turn's record context
         self,
         conversation: Conversation,
         decision: ProposeDecision,
         routing: RoutingDecision | None,
+        routing_reason: RoutingReason,
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
@@ -536,6 +582,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             responder_name=routing.responder.name if routing is not None else None,
             routed_topic=routing.topic if routing is not None else None,
             routing_confidence=routing.confidence if routing is not None else None,
+            routing_reason=routing_reason,
         )
 
     async def _cap_conversation(

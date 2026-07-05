@@ -854,6 +854,7 @@
         "MetaEvolutionController",
         "MetaAlertsController",
         "ConversationalController",
+        "ConversationHistoryController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
         "AnalyticsTrendsController",
@@ -1374,6 +1375,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-05T09:34:12.892660Z",
+  "generated_at": "2026-07-05T13:18:21.682766Z",
   "schema_version": 1
 }

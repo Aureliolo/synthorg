@@ -14,7 +14,6 @@ agent runtime plugs into; the caller provides it (typically
 """
 
 import asyncio
-import contextlib
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Final
 
@@ -45,6 +44,7 @@ from synthorg.observability.events.workers import (
     WORKERS_WORKER_STOPPED,
 )
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.workers._join import join_cancelled
 from synthorg.workers.claim import (
     JetStreamTaskQueue,
     TaskClaim,
@@ -204,8 +204,7 @@ class Worker:
                 await self._run_once()
         finally:
             heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeat_task
+            await join_cancelled(heartbeat_task, self._worker_id, "heartbeat")
             async with self._lifecycle_lock:
                 self._running = False
                 logger.info(WORKERS_WORKER_STOPPED, worker_id=self._worker_id)
@@ -462,8 +461,7 @@ class Worker:
             return await self._invoke_executor(claim)
         finally:
             extender.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await extender
+            await join_cancelled(extender, self._worker_id, "ack-extender")
 
     async def _invoke_executor(self, claim: TaskClaim) -> TaskClaimStatus:
         """Run the injected executor, translating exceptions into RETRY.

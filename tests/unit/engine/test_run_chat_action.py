@@ -18,6 +18,7 @@ SecOps interceptor has no prior-approval recognition and would
 re-escalate a re-issued autonomy-gated tool).
 """
 
+import asyncio
 from datetime import date
 from typing import cast
 from uuid import uuid4
@@ -171,6 +172,80 @@ class TestRunChatAction:
         assert result.final_message == "Revenue is up 4%."
         assert [tc.tool_name for tc in result.tool_calls] == ["query_metrics"]
         assert tool.calls == [{"window": "7d"}]
+
+    async def test_turn_observer_fires_per_turn(self) -> None:
+        tool = QueryTool()
+        engine, _ = _build_engine(
+            responses=[
+                _tool_call("query_metrics", window="7d"),
+                _final("Revenue is up 4%."),
+            ],
+            tool=tool,
+        )
+        observed: list[tuple[int, tuple[str, ...]]] = []
+
+        async def _observe(turn: int, tools: tuple[str, ...]) -> None:
+            observed.append((turn, tools))
+
+        await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="What is revenue doing this week?",
+            turn_observer=_observe,
+        )
+
+        # The observer fires per continuing turn: turn 1 executed the tool
+        # and the loop went round again. The terminal turn (the final text)
+        # returns before the hook, since its content is the ``complete``
+        # frame, not a progress event.
+        assert observed == [(1, ("query_metrics",))]
+
+    async def test_turn_observer_failure_does_not_corrupt_run(self) -> None:
+        tool = QueryTool()
+        engine, _ = _build_engine(
+            responses=[
+                _tool_call("query_metrics", window="7d"),
+                _final("Revenue is up 4%."),
+            ],
+            tool=tool,
+        )
+
+        async def _boom(_turn: int, _tools: tuple[str, ...]) -> None:
+            msg = "observer sink is down"
+            raise RuntimeError(msg)
+
+        # A purely observational hook must never break the run: the
+        # non-cancellation failure is swallowed (and logged) so the action
+        # still completes normally.
+        result = await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="What is revenue doing this week?",
+            turn_observer=_boom,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.final_message == "Revenue is up 4%."
+
+    async def test_turn_observer_cancellation_propagates(self) -> None:
+        tool = QueryTool()
+        engine, _ = _build_engine(
+            responses=[
+                _tool_call("query_metrics", window="7d"),
+                _final("Revenue is up 4%."),
+            ],
+            tool=tool,
+        )
+
+        async def _cancel(_turn: int, _tools: tuple[str, ...]) -> None:
+            raise asyncio.CancelledError
+
+        # Cancellation is not a sink failure to swallow: a disconnect that
+        # cancels the observer must tear the run down, not be absorbed.
+        with pytest.raises(asyncio.CancelledError):
+            await engine.run_chat_action(
+                identity=_acting_identity(),
+                instruction="What is revenue doing this week?",
+                turn_observer=_cancel,
+            )
 
     async def test_instruction_is_untrusted_fenced(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])

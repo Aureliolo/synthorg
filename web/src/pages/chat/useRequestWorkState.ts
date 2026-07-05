@@ -1,88 +1,131 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
+import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
 
-import { resolveScopedRetryContent } from './scoped-retry'
+import type { RequestWorkMessage } from './chat-types'
+import { nextMessageId } from './message-id'
+import { resolveScopedRetryTarget } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
-export interface RequestWorkMessage {
-  id: number
-  role: 'user' | 'assistant'
-  content: string
-  /** Role of the routed agent that answered, when concern-routed. */
-  responderRole?: string | undefined
-  /** Display name of the routed agent, when concern-routed. */
-  responderName?: string | undefined
-  /** Concern topic that selected the role, when routed. */
-  routedTopic?: string | undefined
-  /** Titles of parked work items, on the "proposed" branch. */
-  proposals?: readonly string[] | undefined
-  /** Renders as a distinct error notice (not a normal assistant reply). */
-  isError?: boolean | undefined
+export type {
+  RequestWorkMessage,
+  RequestWorkProposal,
+  RequestWorkSteering,
+} from './chat-types'
+
+// Live send-block read: an in-flight propose or a conversation the last
+// response closed. Evaluated at call time (not the render-time closure) so a
+// fast second submit can't race ahead of React's re-render, and shared by both
+// send paths so the guard stays in one place.
+function workSendBlocked(): boolean {
+  return (
+    useMetaStore.getState().proposeLoading ||
+    useConversationsStore.getState().work.closed
+  )
 }
 
 export interface RequestWorkState {
   messages: readonly RequestWorkMessage[]
   input: string
   proposeLoading: boolean
+  /** True once the backend closes the conversation; the input is disabled. */
+  conversationClosed: boolean
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
   retryBefore: (beforeMsgId: number) => void
+  /** Clear a closed conversation so the next send opens a fresh one. */
+  startNew: () => void
 }
 
 export function useRequestWorkState(): RequestWorkState {
-  const [messages, setMessages] = useState<RequestWorkMessage[]>([])
+  const messages = useConversationsStore((s) => s.work.messages)
+  const conversationClosed = useConversationsStore((s) => s.work.closed)
+  const setWork = useConversationsStore((s) => s.setWork)
   const [input, setInput] = useState('')
   const proposeLoading = useMetaStore((s) => s.proposeLoading)
   const propose = useMetaStore((s) => s.proposeConversation)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
-
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
+  const scrollRef = useScrollToBottom(messages)
 
   const sendMessage = useCallback(
-    async (message: string) => {
-      if (!message || proposeLoading) return
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), role: 'user', content: message },
-      ])
-      const result = await propose(message, conversationIdRef.current)
-      if (result) conversationIdRef.current = result.conversation_id
-      setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
-      scrollToBottom(scrollRef)
+    async (message: string, idempotencyKey?: string) => {
+      if (!message || workSendBlocked()) return
+      // Mint the key once per logical turn; a manual retry reuses it so a
+      // parked proposal that actually succeeded is deduped, not re-parked.
+      const key = idempotencyKey ?? crypto.randomUUID()
+      setWork((s) => ({
+        messages: [
+          ...s.messages,
+          {
+            id: nextMessageId(),
+            role: 'user',
+            content: message,
+            idempotencyKey: key,
+          },
+        ],
+      }))
+      const conversationId = useConversationsStore.getState().work.conversationId
+      const result = await propose(message, conversationId, key)
+      if (result) {
+        setWork({
+          conversationId: result.conversation_id,
+          closed: result.conversation_closed,
+        })
+      }
+      setWork((s) => ({
+        messages: [...s.messages, buildAssistantMessage(result)],
+      }))
     },
-    [proposeLoading, propose, nextMsgId],
+    [propose, setWork],
   )
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
-    // Guard before clearing: Enter during an in-flight propose must
-    // not wipe the composed text (sendMessage would drop it anyway).
-    if (!message || proposeLoading) return
+    // Guard before clearing so an Enter during an in-flight propose or on a
+    // closed conversation does not wipe the composed text.
+    if (!message || workSendBlocked()) return
     setInput('')
     void sendMessage(message)
-  }, [input, proposeLoading, sendMessage])
+  }, [input, sendMessage])
 
   const retryBefore = useCallback(
     (beforeMsgId: number) => {
-      const content = resolveScopedRetryContent(
+      const target = resolveScopedRetryTarget(
         messages,
         beforeMsgId,
         (m) => m.role === 'user',
       )
-      if (content !== null) void sendMessage(content)
+      if (target && target.role === 'user') {
+        void sendMessage(target.content, target.idempotencyKey)
+      }
     },
     [messages, sendMessage],
   )
 
-  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend, retryBefore }
+  const startNew = useCallback(() => {
+    setInput('')
+    // A fresh conversation: dropping conversationId makes the next send
+    // open a new one server-side, and clearing closed re-enables the input.
+    setWork({ messages: [], conversationId: undefined, closed: false })
+  }, [setWork])
+
+  return {
+    messages,
+    input,
+    proposeLoading,
+    conversationClosed,
+    scrollRef,
+    setInput,
+    triggerSend,
+    retryBefore,
+    startNew,
+  }
 }
 
 type Attribution = Pick<
-  RequestWorkMessage,
+  Extract<RequestWorkMessage, { role: 'assistant' }>,
   'responderRole' | 'responderName' | 'routedTopic'
 >
 
@@ -94,9 +137,9 @@ function toAttribution(result: ConversationalProposeResponse): Attribution {
   }
 }
 
-function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
+function buildFailureMessage(): RequestWorkMessage {
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     role: 'assistant',
     content: 'The assistant could not respond. Please try again.',
     isError: true,
@@ -105,35 +148,36 @@ function buildFailureMessage(nextMsgId: () => number): RequestWorkMessage {
 
 function buildAssistantMessage(
   result: ConversationalProposeResponse | null,
-  nextMsgId: () => number,
 ): RequestWorkMessage {
   if (!result) {
-    return buildFailureMessage(nextMsgId)
+    return buildFailureMessage()
   }
   if (result.status === 'needs_clarification') {
     return {
-      id: nextMsgId(),
+      id: nextMessageId(),
       role: 'assistant',
       content: result.clarifying_question ?? 'Could you clarify?',
       ...toAttribution(result),
     }
   }
-  const titles = result.proposals.map((p) => p.title)
-  const plural = titles.length === 1 ? '' : 's'
+  const proposals = result.proposals.map((p) => ({
+    title: p.title,
+    approvalId: p.approval_id,
+  }))
+  const steering = result.steering.map((s) => ({
+    text: s.text,
+    approvalId: s.approval_id,
+  }))
+  // Count both branches: a turn that parks only steering directives would
+  // otherwise read "Queued 0 work items" and hide real queued work.
+  const total = proposals.length + steering.length
+  const plural = total === 1 ? '' : 's'
   return {
-    id: nextMsgId(),
+    id: nextMessageId(),
     role: 'assistant',
-    content: `Queued ${titles.length} work item${plural} for your approval.`,
-    proposals: titles,
+    content: `Queued ${total} item${plural} for your approval.`,
+    proposals,
+    steering,
     ...toAttribution(result),
   }
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

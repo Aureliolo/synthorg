@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import * as charterApi from '@/api/endpoints/charter'
 import type { CharterFilters } from '@/api/endpoints/charter'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -32,6 +32,8 @@ interface CharterState {
   messages: InterviewMessage[]
   draftCharter: ProjectCharter | null
   sending: boolean
+  /** True while an edit / approve / cancel mutation is in flight. */
+  mutating: boolean
   conversationClosed: boolean
   // Persists the last interview-turn failure so a config error (e.g. a blank
   // ``charter.interview_model`` 503) stays surfaced inline after the toast
@@ -144,6 +146,77 @@ async function runTurnImpl(
   }
 }
 
+async function editDraftImpl(
+  set: CharterSet,
+  id: string,
+  data: CharterEditRequest,
+): Promise<ProjectCharter | null> {
+  set({ mutating: true })
+  try {
+    const updated = await charterApi.editCharter(id, data)
+    set({ draftCharter: updated })
+    useToastStore.getState().add({ variant: 'success', title: 'Charter updated' })
+    return updated
+  } catch (err) {
+    log.error('Charter edit failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not update the charter'),
+      description: getErrorMessage(err),
+    })
+    return null
+  } finally {
+    set({ mutating: false })
+  }
+}
+
+async function approveImpl(
+  set: CharterSet,
+  id: string,
+): Promise<CharterApprovalResult | null> {
+  set({ mutating: true })
+  try {
+    const result = await charterApi.approveCharter(id)
+    set({ draftCharter: result.charter, conversationClosed: true })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Charter approved',
+      description: 'The project run has started.',
+    })
+    return result
+  } catch (err) {
+    log.error('Charter approval failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not approve the charter'),
+      description: getErrorMessage(err),
+    })
+    return null
+  } finally {
+    set({ mutating: false })
+  }
+}
+
+async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
+  set({ mutating: true })
+  try {
+    const cancelled = await charterApi.cancelCharter(id)
+    set({ draftCharter: cancelled, conversationClosed: true })
+    useToastStore.getState().add({ variant: 'success', title: 'Charter cancelled' })
+    return true
+  } catch (err) {
+    log.error('Charter cancel failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not cancel the charter'),
+      description: getErrorMessage(err),
+    })
+    return false
+  } finally {
+    set({ mutating: false })
+  }
+}
+
 export const useCharterStore = create<CharterState>()((set, get) => ({
   charters: [],
   loading: false,
@@ -154,6 +227,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   messages: [],
   draftCharter: null,
   sending: false,
+  mutating: false,
   conversationClosed: false,
   turnError: null,
 
@@ -161,60 +235,9 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
   runTurn: (message) => runTurnImpl(set, get, message),
 
-  editDraft: async (id, data) => {
-    try {
-      const updated = await charterApi.editCharter(id, data)
-      set({ draftCharter: updated })
-      useToastStore.getState().add({ variant: 'success', title: 'Charter updated' })
-      return updated
-    } catch (err) {
-      log.error('Charter edit failed', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not update the charter',
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  approve: async (id) => {
-    try {
-      const result = await charterApi.approveCharter(id)
-      set({ draftCharter: result.charter, conversationClosed: true })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Charter approved',
-        description: 'The project run has started.',
-      })
-      return result
-    } catch (err) {
-      log.error('Charter approval failed', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not approve the charter',
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  cancel: async (id) => {
-    try {
-      const cancelled = await charterApi.cancelCharter(id)
-      set({ draftCharter: cancelled, conversationClosed: true })
-      useToastStore.getState().add({ variant: 'success', title: 'Charter cancelled' })
-      return true
-    } catch (err) {
-      log.error('Charter cancel failed', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not cancel the charter',
-        description: getErrorMessage(err),
-      })
-      return false
-    }
-  },
+  editDraft: (id, data) => editDraftImpl(set, id, data),
+  approve: (id) => approveImpl(set, id),
+  cancel: (id) => cancelImpl(set, id),
 
   resetInterview: () => {
     set({
@@ -222,6 +245,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
       messages: [],
       draftCharter: null,
       sending: false,
+      mutating: false,
       conversationClosed: false,
       turnError: null,
     })

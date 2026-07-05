@@ -301,11 +301,12 @@ class PersistenceBackend(Protocol):
     def supports_conversational_approvals(self) -> bool:
         """Whether this backend can durably persist conversational approvals.
 
-        ``True`` only for backends that can durably retain a parked
-        approval produced mid-conversation (Chief of Staff propose /
-        invite). SQLite returns ``False`` until that limitation is
-        resolved. Wiring guards read this capability predicate rather
-        than comparing ``kind``/``backend_name`` against a literal.
+        ``True`` for backends that can durably retain a parked approval
+        produced mid-conversation (Chief of Staff propose / invite). Both
+        SQLite and Postgres carry the conversational tables and the
+        ``approvals.source`` CHECK that admit these rows, so both return
+        ``True``. Wiring guards read this capability predicate rather than
+        comparing ``kind``/``backend_name`` against a literal.
         """
         ...
 

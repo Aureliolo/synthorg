@@ -88,10 +88,48 @@ class GroupChatTruncationReason(StrEnum):
             before the remaining participants could contribute.
         MAX_TOTAL_TURNS_REACHED: Appending a further contribution would
             exceed the conversation's total-turn cap.
+        INPUT_BUDGET_EXHAUSTED: The next participant's estimated input
+            prompt would not leave room for its reserved output within the
+            round budget, so the round stops before dispatching it (rather
+            than only reacting once output has been consumed).
     """
 
     TOKEN_BUDGET_EXHAUSTED = "token_budget_exhausted"  # noqa: S105 -- enum label, not a secret
     MAX_TOTAL_TURNS_REACHED = "max_total_turns_reached"
+    INPUT_BUDGET_EXHAUSTED = "input_budget_exhausted"
+
+
+class RoutingReason(StrEnum):
+    """Why a propose turn was, or was not, routed to a role agent.
+
+    Surfaced on the propose result so a human can see whether the generic
+    Chief of Staff answered because routing is off, no agent fit, or the
+    classifier was unsure -- rather than the outcome being indistinguishable
+    from a routed answer that happened to pick the default role.
+
+    Attributes:
+        ROUTING_DISABLED: The live ``routing_enabled`` gate is off.
+        NO_ROLE_ROUTER: No router is wired (no classifier provider).
+        NO_ACTIVE_AGENTS: The roster has no active agent to route to.
+        BELOW_CONFIDENCE_FLOOR: The classifier's best fit was below the
+            confidence floor.
+        ROLE_UNRESOLVED: A confident role did not resolve to an active
+            agent (nor did the default role).
+        CLASSIFY_CALL_FAILED: The classifier call errored or timed out.
+        RESPONSE_INVALID: The classifier reply failed to parse/validate.
+        NO_KEYWORD_MATCH: The keyword strategy found no matching group.
+        ROUTED: A role agent answered this turn.
+    """
+
+    ROUTING_DISABLED = "routing_disabled"
+    NO_ROLE_ROUTER = "no_role_router"
+    NO_ACTIVE_AGENTS = "no_active_agents"
+    BELOW_CONFIDENCE_FLOOR = "below_confidence_floor"
+    ROLE_UNRESOLVED = "role_unresolved"
+    CLASSIFY_CALL_FAILED = "classify_call_failed"
+    RESPONSE_INVALID = "response_invalid"
+    NO_KEYWORD_MATCH = "no_keyword_match"
+    ROUTED = "routed"
 
 
 __all__ = [
@@ -99,4 +137,5 @@ __all__ = [
     "ConversationKind",
     "ConversationParticipantStatus",
     "GroupChatTruncationReason",
+    "RoutingReason",
 ]

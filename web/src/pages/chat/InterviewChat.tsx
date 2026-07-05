@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 const EXAMPLE_IDEAS: readonly string[] = [
   'A weekly customer-feedback digest summarised for the whole team.',
@@ -46,6 +47,7 @@ export function InterviewChat({
   onSend,
 }: InterviewChatProps) {
   const [draft, setDraft] = useState('')
+  const scrollRef = useScrollToBottom(messages)
   const canSend = draft.trim().length > 0 && !sending && !conversationClosed
 
   const handleSend = () => {
@@ -57,7 +59,12 @@ export function InterviewChat({
   return (
     <SectionCard title="CEO interview">
       <div className="space-y-4">
-        <div className="space-y-3" aria-live="polite" aria-atomic="true">
+        <div
+          ref={scrollRef}
+          role="log"
+          aria-label="CEO interview transcript"
+          className="max-h-80 space-y-3 overflow-y-auto"
+        >
           {messages.length === 0 ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">

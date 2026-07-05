@@ -50,6 +50,10 @@ from synthorg.meta.state import MetaStateSlice
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
 )
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
@@ -161,6 +165,8 @@ def _resume_service(
         proposal_repo=mock_of[ConversationalProposalRepository](),
         invite_repo=invite_repo,
         participant_repo=participant_repo,
+        conversation_repo=mock_of[ConversationRepository](),
+        turn_repo=mock_of[ConversationTurnRepository](),
     )
 
 

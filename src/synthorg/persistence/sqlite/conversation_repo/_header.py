@@ -149,13 +149,14 @@ class SQLiteConversationRepository:
     async def list_items(
         self,
         *,
+        created_by: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Conversation, ...]:
         """List conversations newest-first (``created_at DESC, id DESC``).
 
         Returns:
-            The matching entities.
+            The matching entities, scoped to ``created_by`` when set.
 
         Raises:
             QueryError: If the database query fails or pagination args
@@ -165,14 +166,21 @@ class SQLiteConversationRepository:
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        where = "WHERE created_by = ?" if created_by is not None else ""
         sql = f"""
             SELECT {_CONVERSATION_COLUMNS}
             FROM conversations
+            {where}
             ORDER BY created_at DESC, id DESC
             LIMIT ? OFFSET ?
-        """  # noqa: S608 -- _CONVERSATION_COLUMNS is a fixed column list
+        """  # noqa: S608 -- _CONVERSATION_COLUMNS + WHERE are fixed
+        params: tuple[object, ...] = (
+            (created_by, effective_limit, offset)
+            if created_by is not None
+            else (effective_limit, offset)
+        )
         try:
-            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+            async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
             items = tuple(row_to_conversation(r) for r in rows)
         except QueryError:

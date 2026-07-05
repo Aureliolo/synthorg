@@ -179,19 +179,21 @@ def _guard_conversational_persistence(
     persistence: PersistenceBackend | None,
     approval_store: ApprovalStoreProtocol,
 ) -> None:
-    """Fail fast on conversational features over a persistent SQLite store.
+    """Fail fast on conversational features over a non-supporting store.
 
-    The SQLite ``approvals.source`` CHECK deliberately omits the
-    conversational sources (they stay in-memory there), so a propose- or
-    invite-produced approval cannot durably persist on SQLite. Block at
-    startup with an actionable message rather than letting a parked
-    approval silently fail to persist mid-conversation -- the invite
-    park's compensation would quietly drop it, which is worse than a
-    clear boot error the operator can fix.
+    A backend whose ``supports_conversational_approvals`` predicate is
+    ``False`` cannot durably persist a propose- or invite-produced
+    approval. Block at startup with an actionable message rather than
+    letting a parked approval silently fail to persist mid-conversation:
+    the invite park's compensation would quietly drop it, which is worse
+    than a clear boot error the operator can fix. Both shipped backends
+    (SQLite and Postgres) advertise support, so this is a forward-looking
+    capability guard rather than a live constraint on either of them.
 
     Raises:
         ServiceUnavailableError: When propose or invite is enabled
-            against a persistent SQLite ``ApprovalStore``.
+            against a persistent ``ApprovalStore`` on a backend that does
+            not support conversational approvals.
     """
     store_has_persistent_repo = (
         isinstance(approval_store, ApprovalStore) and approval_store.has_persistent_repo
@@ -204,9 +206,9 @@ def _guard_conversational_persistence(
     ):
         msg = (
             "Chief of Staff propose/invite is enabled with a persistent "
-            "SQLite ApprovalStore. This combination cannot durably persist "
-            "conversational approvals. Switch the backend to Postgres, or "
-            "keep ApprovalStore in-memory on SQLite."
+            f"ApprovalStore on backend '{persistence.backend_name}', which "
+            "cannot durably persist conversational approvals. Use a backend "
+            "that supports them, or keep the ApprovalStore in-memory."
         )
         logger.error(
             API_APP_STARTUP,
@@ -259,6 +261,8 @@ async def _wire_conversational_repositories_and_reconcile(
             proposal_repo=repositories.proposal_repo,
             invite_repo=repositories.invite_repo,
             participant_repo=repositories.participant_repo,
+            conversation_repo=repositories.conversation_repo,
+            turn_repo=repositories.turn_repo,
         ),
     )
     logger.info(
@@ -348,8 +352,8 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
 
     Raises:
         ServiceUnavailableError: When propose or invite is enabled against
-            a persistent SQLite ApprovalStore (a combination that cannot
-            durably persist conversational approvals).
+            a persistent ApprovalStore on a backend that does not support
+            conversational approvals.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -358,9 +362,10 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     repositories = await _wire_conversational_repositories_and_reconcile(
         app_state, persistence, effective_approval_store
     )
-    # Validate the persistence invariant before the provider gate: an
-    # unsupported persistent-SQLite conversational config must fail the
-    # boot whether or not a provider is configured yet.
+    # Validate the persistence invariant before the provider gate: a
+    # persistent ApprovalStore on a backend that does not support
+    # conversational approvals must fail the boot whether or not a provider
+    # is configured yet.
     _guard_conversational_persistence(
         si_config.chief_of_staff, persistence, effective_approval_store
     )

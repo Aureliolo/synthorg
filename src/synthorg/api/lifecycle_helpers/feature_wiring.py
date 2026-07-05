@@ -48,6 +48,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -502,7 +503,12 @@ async def _wire_chief_of_staff_chat(
     cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
-    """Wire the Chief of Staff chat backend behind chief_of_staff.chat_enabled."""
+    """Ghost-wire the Chief of Staff chat backend whenever a provider exists.
+
+    Enablement is gated live per request on ``POST /meta/chat`` via
+    ``explain_chat_enabled``, not at build time, so the toggle takes
+    effect without a restart.
+    """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).chief_of_staff_chat is not None:
@@ -574,14 +580,29 @@ async def wire_features_on_startup(
         cost_tracker=cost_tracker,
         si_config=si_config,
     )
-    await wire_chief_of_staff_proposer(
-        app_state,
-        provider_registry=provider_registry,
-        persistence=persistence,
-        cost_tracker=cost_tracker,
-        effective_approval_store=effective_approval_store,
-        si_config=si_config,
-    )
+    try:
+        await wire_chief_of_staff_proposer(
+            app_state,
+            provider_registry=provider_registry,
+            persistence=persistence,
+            cost_tracker=cost_tracker,
+            effective_approval_store=effective_approval_store,
+            si_config=si_config,
+        )
+    except ServiceUnavailableError as exc:
+        # A propose/invite misconfiguration (e.g. enabled over a persistent
+        # SQLite ApprovalStore) makes the guard raise. Degrade to an unwired
+        # proposer (the controller 503s) rather than failing the whole ASGI
+        # startup and taking every other feature down with it. Any OTHER
+        # exception is a genuine wiring fault and must fail the boot rather
+        # than silently leaving the proposer unwired.
+        logger.warning(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="proposer wiring blocked; degrading to unwired",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
     # After the proposer: the refinement router wraps it and attaches to
     # the work pipeline so team-bound work with no definition of done is
     # refined rather than blocked by the coordinator's clarification gate.

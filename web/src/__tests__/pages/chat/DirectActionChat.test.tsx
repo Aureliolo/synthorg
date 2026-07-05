@@ -99,6 +99,8 @@ describe('DirectActionChat', () => {
     expect(screen.getByText('query_metrics')).toBeInTheDocument()
     // The human instruction is echoed into the transcript.
     expect(screen.getByText('how is revenue?')).toBeInTheDocument()
+    // Attribution uses the acting agent's real role, not a hardcoded "acting".
+    expect(screen.queryByText('acting')).not.toBeInTheDocument()
   })
 
   it('surfaces a parked action with a consent CTA to approvals', async () => {
@@ -145,5 +147,40 @@ describe('DirectActionChat', () => {
     })
     const link = screen.getByRole('link', { name: /Review in Approvals/ })
     expect(link).toHaveAttribute('href', '/approvals')
+  })
+
+  it('explains a non-clean stop with no final message', async () => {
+    _useRoster()
+    server.use(
+      http.post('/api/v1/meta/chat/act', () =>
+        HttpResponse.json(
+          apiSuccess(
+            _actResult({
+              termination_reason: 'budget_exhausted',
+              final_message: null,
+              tool_calls: [],
+              approval_id: null,
+              parked: false,
+            }),
+          ),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<DirectActionChat />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Casey/ })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Casey/ }))
+    await user.type(screen.getByLabelText('Instruction'), 'crunch everything')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      // A blank action bubble would leave the operator with no explanation.
+      expect(
+        screen.getByText('Stopped: the action budget was exhausted.'),
+      ).toBeInTheDocument()
+    })
   })
 })

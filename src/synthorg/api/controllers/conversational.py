@@ -8,18 +8,32 @@ tier. Mounted under ``/meta/chat`` alongside the explain-only and
 clarify-and-propose endpoints that live on ``MetaController``.
 """
 
-from litestar import Controller, post
+from litestar import Controller, Request, post
 from litestar.datastructures import State
+from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api._feature_gate import ensure_feature_enabled
+from synthorg.api.controllers._chat_idempotency import (
+    ChatIdempotencyKeyHeader,
+    chat_request_fingerprint,
+    run_chat_idempotent,
+)
+from synthorg.api.controllers._conversational_stream import (
+    act_progress_stream,
+    chat_answer_stream,
+    resolve_act_stream_actor,
+    resolve_chat_stream_backends,
+)
+from synthorg.api.controllers.events._sse import revalidated_sse_stream
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
     ConversationalActResult,
@@ -73,6 +87,46 @@ class ChatActRequest(BaseModel):
     )
 
 
+class ChatStreamRequest(BaseModel):
+    """Request body for the streaming free-form Chief-of-Staff endpoint.
+
+    Streaming serves only the free-form path (proposal / alert
+    deep-explain stays on the buffered endpoint), so it carries no
+    scoping ids.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    question: NotBlankStr = Field(
+        max_length=2000,
+        description="Free-text question for the Chief of Staff agent.",
+    )
+
+
+def _require_stream_user(request: Request[object, object, State]) -> AuthenticatedUser:
+    """Bind the authenticated user so a long stream can be revalidated.
+
+    The route guards already require an authenticated caller; this
+    re-checks defensively because :func:`revalidated_sse_stream` needs the
+    user to tear the stream down on mid-flight revocation.
+
+    Returns:
+        The connection's :class:`AuthenticatedUser`.
+
+    Raises:
+        ValidationError: When no authenticated user is attached.
+    """
+    # Read the raw ASGI scope rather than the ``request.user`` property:
+    # Litestar's property raises ``ImproperlyConfiguredException`` when no
+    # auth middleware populated the scope, which would escape this
+    # defensive check as a 500 instead of the intended ValidationError.
+    user = request.scope.get("user")
+    if not isinstance(user, AuthenticatedUser):
+        msg = "streaming chat requires an authenticated user"
+        raise ValidationError(msg)
+    return user
+
+
 class ConversationalController(Controller):
     """Multi-agent conversational write-path API endpoints."""
 
@@ -95,6 +149,7 @@ class ConversationalController(Controller):
         self,
         data: GroupChatRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[GroupConverseResult]:
         """Run one round-robin round across the group's active agents.
 
@@ -138,18 +193,33 @@ class ConversationalController(Controller):
             )
             raise ServiceUnavailableError(msg)
         actor = require_actor()
-        # Fence the human-supplied message at the API boundary in a
-        # ``<task-data>`` envelope so the model treats it as data, not
-        # instructions, before it reaches the round loop.
-        result = await service.converse(
-            GroupConverseArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
-                created_by=NotBlankStr(actor.actor_id),
-                conversation_id=data.conversation_id,
-                participants=data.participants,
+
+        async def _build() -> ApiResponse[GroupConverseResult]:
+            # The human message is persisted raw and fenced only at the LLM
+            # boundary: ``build_group_prompt`` wraps the whole transcript in
+            # a ``<task-data>`` envelope, so fencing here would double-fence
+            # it and store the envelope markup in the turn (and the resume
+            # view).
+            result = await service.converse(
+                GroupConverseArgs(
+                    message=data.message,
+                    created_by=NotBlankStr(actor.actor_id),
+                    conversation_id=data.conversation_id,
+                    participants=data.participants,
+                )
             )
+            return ApiResponse[GroupConverseResult](data=result)
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat.group",
+            actor_id=actor.actor_id,
+            key=idempotency_key,
+            endpoint="/meta/chat/group",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        return ApiResponse[GroupConverseResult](data=result)
+        return ApiResponse[GroupConverseResult].model_validate(dumped)
 
     @post(
         "/act",
@@ -166,6 +236,7 @@ class ConversationalController(Controller):
         self,
         data: ChatActRequest,
         state: State,
+        idempotency_key: ChatIdempotencyKeyHeader = None,
     ) -> ApiResponse[ConversationalActResult]:
         """Drive a real MCP action from a chat instruction under trust.
 
@@ -183,6 +254,13 @@ class ConversationalController(Controller):
         ``run_chat_action`` itself, so -- unlike the group endpoint --
         the controller passes it through raw to avoid a double fence.
 
+        ``conversation_id`` is opaque caller-supplied correlation
+        metadata: it is echoed back on the response but never resolved,
+        ownership-checked, or persisted (an ``/act`` turn drives the
+        shared engine, not a conversation thread). Unlike ``/propose``
+        and ``/group``, a caller must not assume foreign-conversation
+        isolation from this field.
+
         Returns:
             ``ApiResponse[ConversationalActResult]`` instance.
 
@@ -190,6 +268,15 @@ class ConversationalController(Controller):
             ServiceUnavailableError: When the actor is not configured.
         """
         app_state = state.app_state
+        # Live gate: a security kill-switch must take effect on the next
+        # request. Flipping direct_mcp_enabled off 503s here immediately
+        # rather than waiting for a restart to unwire the actor.
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "direct_mcp_enabled",
+            feature_label="Direct MCP acting",
+        )
         actor_service = app_state.slice(MetaStateSlice).conversational_actor
         if actor_service is None:
             logger.warning(
@@ -209,12 +296,123 @@ class ConversationalController(Controller):
             )
             raise ServiceUnavailableError(msg)
         operator = require_actor()
-        result = await actor_service.act(
-            ConversationalActArgs(
-                instruction=data.instruction,
-                agent=data.agent,
-                conversation_id=data.conversation_id,
-                requested_by=operator.actor_id,
+
+        async def _build() -> ApiResponse[ConversationalActResult]:
+            result = await actor_service.act(
+                ConversationalActArgs(
+                    instruction=data.instruction,
+                    agent=data.agent,
+                    conversation_id=data.conversation_id,
+                    requested_by=operator.actor_id,
+                )
             )
+            return ApiResponse[ConversationalActResult](data=result)
+
+        dumped = await run_chat_idempotent(
+            app_state,
+            scope="meta.chat.act",
+            actor_id=operator.actor_id,
+            key=idempotency_key,
+            endpoint="/meta/chat/act",
+            request_fingerprint=chat_request_fingerprint(data),
+            build=_build,
         )
-        return ApiResponse[ConversationalActResult](data=result)
+        return ApiResponse[ConversationalActResult].model_validate(dumped)
+
+    @post(
+        "/stream",
+        media_type="text/event-stream",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat", key="user"),
+        ],
+    )
+    async def chat_stream(
+        self,
+        request: Request[object, object, State],
+        data: ChatStreamRequest,
+        state: State,
+    ) -> ServerSentEvent:
+        """Stream a free-form Chief-of-Staff answer token-by-token (SSE).
+
+        The SSE variant of ``POST /meta/chat`` for the unscoped free-form
+        path: emits a ``progress`` frame per token delta then one
+        ``complete`` frame carrying the assembled answer. Streaming and
+        idempotency are mutually exclusive, so this endpoint takes no
+        ``Idempotency-Key`` (a token stream cannot be replayed from cache).
+
+        Returns 503 (before any frame) when the chat backend or signals
+        service is not configured, so the failure still surfaces as a
+        normal RFC 9457 body rather than an in-stream error.
+
+        Returns:
+            An SSE response of ``progress`` / ``complete`` / ``error`` frames.
+
+        Raises:
+            ServiceUnavailableError: When a required dependency is unwired.
+        """
+        app_state: AppState = state.app_state
+        chat_backend, signals_service = await resolve_chat_stream_backends(app_state)
+        user = _require_stream_user(request)
+        return ServerSentEvent(
+            content=revalidated_sse_stream(
+                chat_answer_stream(
+                    app_state=app_state,
+                    chat_backend=chat_backend,
+                    signals_service=signals_service,
+                    question=data.question,
+                ),
+                app_state=app_state,
+                user=user,
+            ),
+        )
+
+    @post(
+        "/act/stream",
+        media_type="text/event-stream",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat.act", key="user"),
+        ],
+    )
+    async def chat_act_stream(
+        self,
+        request: Request[object, object, State],
+        data: ChatActRequest,
+        state: State,
+    ) -> ServerSentEvent:
+        """Stream a direct MCP action's per-turn progress then result (SSE).
+
+        The SSE variant of ``POST /meta/chat/act``: emits a ``progress``
+        frame after each continuing action turn (one that requested tools
+        and looped again, carrying those tools) then one ``complete`` frame
+        carrying the full result of the terminal turn (executed tools +
+        final message, or the parked ``approval_id``).
+        Aborting the request (client disconnect) cancels the running
+        action. Live-gated on ``direct_mcp_enabled`` so the kill-switch
+        takes effect on the next request; no ``Idempotency-Key`` (a stream
+        cannot be replayed).
+
+        Returns:
+            An SSE response of ``progress`` / ``complete`` / ``error`` frames.
+
+        Raises:
+            ServiceUnavailableError: When the actor is not configured.
+        """
+        app_state: AppState = state.app_state
+        actor_service = await resolve_act_stream_actor(app_state)
+        operator = require_actor()
+        user = _require_stream_user(request)
+        args = ConversationalActArgs(
+            instruction=data.instruction,
+            agent=data.agent,
+            conversation_id=data.conversation_id,
+            requested_by=operator.actor_id,
+        )
+        return ServerSentEvent(
+            content=revalidated_sse_stream(
+                act_progress_stream(actor=actor_service, args=args),
+                app_state=app_state,
+                user=user,
+            ),
+        )

@@ -269,4 +269,97 @@ describe('GroupChat', () => {
       expect(screen.getByText(/token budget was exhausted/)).toBeInTheDocument()
     })
   })
+
+  it('names agents that did not respond this round', async () => {
+    _useRoster()
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(
+          apiSuccess(
+            _roundResult({
+              contributions: [
+                {
+                  agent_id: 'a-ceo',
+                  agent_name: 'Dana',
+                  participant_role: 'CEO',
+                  content: 'Prioritise enterprise.',
+                  sequence: 1,
+                  input_tokens: 80,
+                  output_tokens: 30,
+                },
+              ],
+              participants_skipped: ['a-cfo'],
+            }),
+          ),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<GroupChat />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Dana/ }))
+    await user.click(screen.getByRole('button', { name: /Casey/ }))
+    await user.type(screen.getByLabelText('Message'), 'go')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      // The skipped agent is resolved to its name, not left as a bare id.
+      expect(
+        screen.getByText(/Casey did not respond this round\./),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('marks a removed participant in the roster strip', async () => {
+    _useRoster()
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(
+          apiSuccess(
+            _roundResult({
+              participants: [
+                {
+                  id: 'p-ceo',
+                  conversation_id: 'conv-grp-1',
+                  agent_id: 'a-ceo',
+                  agent_name: 'Dana',
+                  participant_role: 'CEO',
+                  status: 'active',
+                  added_by: 'user-1',
+                  added_at: '2026-05-19T09:00:00Z',
+                },
+                {
+                  id: 'p-cfo',
+                  conversation_id: 'conv-grp-1',
+                  agent_id: 'a-cfo',
+                  agent_name: 'Casey',
+                  participant_role: 'CFO',
+                  status: 'removed',
+                  added_by: 'user-1',
+                  added_at: '2026-05-19T09:00:00.000001Z',
+                },
+              ],
+            }),
+          ),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<GroupChat />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Dana/ }))
+    await user.click(screen.getByRole('button', { name: /Casey/ }))
+    await user.type(screen.getByLabelText('Message'), 'go')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('(removed)')).toBeInTheDocument()
+    })
+  })
 })

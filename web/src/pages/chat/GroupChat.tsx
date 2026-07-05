@@ -9,7 +9,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import { useGroupChatState, type GroupMessage } from './useGroupChatState'
 
 const INPUT_LABEL = 'Message'
@@ -22,11 +24,17 @@ interface GroupBubbleProps {
   onRetry?: () => void
 }
 
+interface InviteBubbleProps {
+  msg: Extract<GroupMessage, { kind: 'invite' }>
+  resolvingInvites: ReadonlySet<string>
+  onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
+}
+
 function InviteBubble({
   msg,
   resolvingInvites,
   onResolveInvite,
-}: GroupBubbleProps) {
+}: InviteBubbleProps) {
   const target = msg.targetRole
     ? `${msg.targetName} (${msg.targetRole})`
     : msg.targetName
@@ -77,7 +85,13 @@ function InviteBubble({
   )
 }
 
-function NoticeBubble({ msg, onRetry }: { msg: GroupMessage; onRetry?: (() => void) | undefined }) {
+function NoticeBubble({
+  msg,
+  onRetry,
+}: {
+  msg: Extract<GroupMessage, { kind: 'notice' }>
+  onRetry?: (() => void) | undefined
+}) {
   if (msg.isError === true && onRetry) {
     return (
       <div className="mx-4">
@@ -106,7 +120,6 @@ function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupB
     )
   }
   const isHuman = msg.kind === 'human'
-  const isAttributed = Boolean(msg.agentName && msg.role)
   return (
     <div
       className={cn(
@@ -115,7 +128,7 @@ function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupB
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      {isAttributed && (
+      {msg.kind === 'agent' && hasAttribution(msg.agentName, msg.role) && (
         <ResponderAttribution name={msg.agentName ?? ''} role={msg.role ?? ''} />
       )}
     </div>
@@ -184,15 +197,26 @@ interface RosterStripProps {
 }
 
 function RosterStrip({ roster }: RosterStripProps) {
+  // A resumed group conversation starts with an empty roster (it repopulates
+  // on the next round), so render nothing rather than an empty strip.
+  if (roster.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {roster.map((p) => (
-        <ResponderAttribution
-          key={p.id}
-          name={p.agent_name}
-          role={p.participant_role}
-        />
-      ))}
+      {roster.map((p) => {
+        const removed = p.status === 'removed'
+        return (
+          <div key={p.id} className="flex items-center gap-1.5">
+            <ResponderAttribution
+              name={p.agent_name}
+              role={p.participant_role}
+              className={removed ? 'opacity-60' : undefined}
+            />
+            {removed && (
+              <span className="text-xs text-muted-foreground">(removed)</span>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -240,11 +264,7 @@ export function GroupChat() {
               onRetry={() => ctrl.retryLast(msg.id)}
             />
           ))}
-          {ctrl.loading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-              Agents are responding...
-            </div>
-          )}
+          {ctrl.loading && <ChatThinkingIndicator label="Agents are responding" />}
         </div>
       )}
 

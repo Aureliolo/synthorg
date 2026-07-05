@@ -1,5 +1,6 @@
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle, Square } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
@@ -7,6 +8,7 @@ import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
 import { ChatScopePicker } from './ChatScopePicker'
+import { ChatThinkingIndicator } from './ChatThinkingIndicator'
 import {
   useChiefOfStaffChatState,
   type ChiefOfStaffMessage,
@@ -23,8 +25,29 @@ interface MessageBubbleProps {
   onRetry: () => void
 }
 
+function AssistantMeta({
+  msg,
+}: {
+  msg: Extract<ChiefOfStaffMessage, { role: 'assistant' }>
+}) {
+  return (
+    <>
+      {msg.sources && msg.sources.length > 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Sources: {msg.sources.join(', ')}
+        </p>
+      )}
+      {typeof msg.confidence === 'number' && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Confidence: {Math.round(msg.confidence * 100)}%
+        </p>
+      )}
+    </>
+  )
+}
+
 function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
-  if (msg.isError === true) {
+  if (msg.role === 'assistant' && msg.isError === true) {
     return (
       <div className="mr-8">
         <ChatErrorNotice message={msg.content} onRetry={onRetry} />
@@ -39,11 +62,7 @@ function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      {msg.sources && msg.sources.length > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Sources: {msg.sources.join(', ')}
-        </p>
-      )}
+      {msg.role === 'assistant' && <AssistantMeta msg={msg} />}
     </div>
   )
 }
@@ -98,19 +117,24 @@ export function ChiefOfStaffChat() {
         {ctrl.messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
         ))}
-        {ctrl.chatLoading && (
-          <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-            Thinking...
-          </div>
-        )}
+        {ctrl.chatLoading && <ChatThinkingIndicator label="Thinking" />}
       </div>
+
+      {ctrl.isStreaming && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={ctrl.cancel}>
+            <Square className="size-3.5" aria-hidden />
+            Stop
+          </Button>
+        </div>
+      )}
 
       {scopePicker}
       <ChatInputArea
         value={ctrl.input}
         onChange={ctrl.setInput}
         onSend={ctrl.triggerSend}
-        disabled={ctrl.chatLoading}
+        disabled={ctrl.chatLoading || ctrl.isStreaming}
         label="Chat message"
         placeholder="Ask about signals, proposals..."
       />

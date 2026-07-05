@@ -3,40 +3,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ActiveAgentSummary,
   ConversationParticipant,
+  GroupChatTruncationReason,
   GroupConverseResult,
 } from '@/api/types'
 import { useApprovalsStore } from '@/stores/approvals'
+import { useConversationsStore } from '@/stores/conversations'
 import { useMetaStore } from '@/stores/meta'
-import { resolveScopedRetryContent } from './scoped-retry'
+import type { GroupMessage } from './chat-types'
+import { nextMessageId } from './message-id'
+import { resolveScopedRetryTarget } from './scoped-retry'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
-export interface GroupMessage {
-  id: number
-  /** ``human`` = the operator's turn, ``agent`` = an attributed
-   *  contribution, ``notice`` = a system line (truncation / failure),
-   *  ``invite`` = an agent-initiated invite awaiting human consent. */
-  kind: 'human' | 'agent' | 'notice' | 'invite'
-  /** Bubble body. For ``invite`` bubbles this is the stated reason. */
-  content: string
-  /** Attributed agent name, on ``agent`` bubbles. */
-  agentName?: string | undefined
-  /** Attributed agent role, on ``agent`` bubbles. */
-  role?: string | undefined
-  /** Inviting agent's name, on ``invite`` bubbles. */
-  requestedByName?: string | undefined
-  /** Invite target's name, on ``invite`` bubbles. */
-  targetName?: string | undefined
-  /** Invite target's role, on ``invite`` bubbles (``undefined`` when the
-   *  target was named directly rather than by role). */
-  targetRole?: string | undefined
-  /** Backing approval id, on ``invite`` bubbles: the in-context
-   *  Approve/Reject buttons resolve this approval. */
-  approvalId?: string | undefined
-  /** Set once the operator resolves an ``invite`` in context. The
-   *  invited agent joins on the next round after ``approved``. */
-  resolved?: 'approved' | 'declined'
-  /** Renders the notice as a distinct error state with a Try-again. */
-  isError?: boolean
-}
+export type { GroupMessage } from './chat-types'
 
 export interface GroupChatState {
   activeAgents: readonly ActiveAgentSummary[]
@@ -57,19 +35,119 @@ export interface GroupChatState {
   resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
 
-const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
+// Keyed by the generated enum so a new (or renamed) truncation reason fails
+// the build here until it gets a copy line, rather than silently falling back.
+const TRUNCATION_NOTICE = {
   token_budget_exhausted:
     'Round stopped early: the per-round token budget was exhausted before every agent could respond.',
   max_total_turns_reached:
     'Round stopped early: the conversation reached its total-turn limit.',
-}
+  input_budget_exhausted:
+    'Round stopped early: the conversation history grew too large to fit the remaining round budget.',
+} satisfies Record<GroupChatTruncationReason, string>
 
 const TRUNCATION_FALLBACK =
   'The round stopped early for an unspecified reason. You can start a new round.'
 
-function useInviteResolution(
-  setMessages: React.Dispatch<React.SetStateAction<readonly GroupMessage[]>>,
-): {
+type SetGroup = ReturnType<typeof useConversationsStore.getState>['setGroup']
+type ConverseGroup = ReturnType<typeof useMetaStore.getState>['converseGroup']
+
+interface GroupSendDeps {
+  converse: ConverseGroup
+  setGroup: SetGroup
+  messages: readonly GroupMessage[]
+  input: string
+  setInput: (value: string) => void
+}
+
+function useGroupSend(deps: GroupSendDeps): {
+  triggerSend: () => void
+  retryLast: (beforeMsgId?: number) => void
+} {
+  const { converse, setGroup, messages, input, setInput } = deps
+
+  const sendMessage = useCallback(
+    async (
+      message: string,
+      idempotencyKey?: string,
+      participantsOverride?: readonly string[],
+    ) => {
+      const group = useConversationsStore.getState().group
+      const conversationId = group.conversationId
+      // A first-round retry replays the participant set the turn was minted
+      // against; a fresh send reads the live selection (not the render-time
+      // closure) so a quick selection change before the re-render still opens
+      // the group with the roster the operator meant and mints the idempotency
+      // key for that exact payload.
+      const participants = participantsOverride ?? group.selectedIds
+      const canStart = conversationId !== undefined || participants.length > 0
+      // Read the live loading flag (not the render-time closure) so a rapid
+      // second submit in the same render window can't slip past a turn that
+      // is already in flight.
+      if (!message || useMetaStore.getState().groupChatLoading || !canStart) return
+      // Mint the key once per logical turn; a manual retry reuses it so a
+      // round that actually ran server-side is deduped, not re-run.
+      const key = idempotencyKey ?? crypto.randomUUID()
+      setGroup((s) => ({
+        messages: [
+          ...s.messages,
+          {
+            id: nextMessageId(),
+            kind: 'human',
+            content: message,
+            idempotencyKey: key,
+            participants,
+          },
+        ],
+      }))
+      const result = await converse(message, participants, conversationId, key)
+      setGroup((s) => ({ messages: [...s.messages, ...buildRoundMessages(result)] }))
+      if (result) {
+        setGroup({
+          conversationId: result.conversation_id,
+          roster: result.participants,
+          started: true,
+        })
+      }
+    },
+    [converse, setGroup],
+  )
+
+  const triggerSend = useCallback(() => {
+    // Mirror sendMessage's preconditions before clearing the input, so a send
+    // blocked by an in-flight turn or an unstartable conversation does not
+    // discard the operator's composed text. Read the selection live for the
+    // same reason sendMessage does.
+    const group = useConversationsStore.getState().group
+    const canStart =
+      group.conversationId !== undefined || group.selectedIds.length > 0
+    const message = input.trim()
+    if (useMetaStore.getState().groupChatLoading || !canStart || !message) return
+    setInput('')
+    void sendMessage(message)
+  }, [input, setInput, sendMessage])
+
+  // Retry the human message that precedes the clicked error bubble (see
+  // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
+  // turn when multiple failures exist.
+  const retryLast = useCallback(
+    (beforeMsgId?: number) => {
+      const target = resolveScopedRetryTarget(
+        messages,
+        beforeMsgId,
+        (m) => m.kind === 'human',
+      )
+      if (target && target.kind === 'human') {
+        void sendMessage(target.content, target.idempotencyKey, target.participants)
+      }
+    },
+    [messages, sendMessage],
+  )
+
+  return { triggerSend, retryLast }
+}
+
+function useInviteResolution(setGroup: SetGroup): {
   resolvingInvites: ReadonlySet<string>
   resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 } {
@@ -94,16 +172,16 @@ function useInviteResolution(
         return next
       })
       if (result) {
-        setMessages((prev) =>
-          prev.map((m) =>
+        setGroup((s) => ({
+          messages: s.messages.map((m) =>
             m.id === msgId
               ? { ...m, resolved: accept ? 'approved' : 'declined' }
               : m,
           ),
-        )
+        }))
       }
     },
-    [setMessages],
+    [setGroup],
   )
 
   const resolveInvite = useCallback(
@@ -121,14 +199,13 @@ export function useGroupChatState(): GroupChatState {
   const converse = useMetaStore((s) => s.converseGroup)
   const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
 
-  const [selectedIds, setSelectedIds] = useState<readonly string[]>([])
-  const [roster, setRoster] = useState<readonly ConversationParticipant[]>([])
-  const [messages, setMessages] = useState<readonly GroupMessage[]>([])
+  const messages = useConversationsStore((s) => s.group.messages)
+  const selectedIds = useConversationsStore((s) => s.group.selectedIds)
+  const roster = useConversationsStore((s) => s.group.roster)
+  const started = useConversationsStore((s) => s.group.started)
+  const setGroup = useConversationsStore((s) => s.setGroup)
   const [input, setInput] = useState('')
-  const [started, setStarted] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
+  const scrollRef = useScrollToBottom(messages)
 
   const fetchRef = useRef(fetchActiveAgents)
   fetchRef.current = fetchActiveAgents
@@ -136,67 +213,25 @@ export function useGroupChatState(): GroupChatState {
     void fetchRef.current()
   }, [])
 
-  // Keep the transcript pinned to the latest turn. Driving the scroll
-  // from an effect (rather than a fire-and-forget call in the send
-  // handler) lets the cleanup cancel a pending frame on unmount, so no
-  // animation-frame handle survives the component.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [messages])
-
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
-
-  const toggleParticipant = useCallback((id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }, [])
-
-  const sendMessage = useCallback(
-    async (message: string) => {
-      const canStart = conversationIdRef.current !== undefined || selectedIds.length > 0
-      if (!message || loading || !canStart) return
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMsgId(), kind: 'human', content: message },
-      ])
-      const result = await converse(message, selectedIds, conversationIdRef.current)
-      setMessages((prev) => [...prev, ...buildRoundMessages(result, nextMsgId)])
-      if (result) {
-        conversationIdRef.current = result.conversation_id
-        setRoster(result.participants)
-        setStarted(true)
-      }
-    },
-    [loading, selectedIds, converse, nextMsgId],
+  const toggleParticipant = useCallback(
+    (id: string) =>
+      setGroup((s) => ({
+        selectedIds: s.selectedIds.includes(id)
+          ? s.selectedIds.filter((x) => x !== id)
+          : [...s.selectedIds, id],
+      })),
+    [setGroup],
   )
 
-  const triggerSend = useCallback(() => {
-    // Mirror sendMessage's preconditions before clearing the input, so a send
-    // blocked by an in-flight turn or an unstartable conversation does not
-    // discard the operator's composed text.
-    const canStart = conversationIdRef.current !== undefined || selectedIds.length > 0
-    const message = input.trim()
-    if (loading || !canStart || !message) return
-    setInput('')
-    void sendMessage(message)
-  }, [loading, selectedIds, input, sendMessage])
+  const { triggerSend, retryLast } = useGroupSend({
+    converse,
+    setGroup,
+    messages,
+    input,
+    setInput,
+  })
 
-  // Retry the human message that precedes the clicked error bubble (see
-  // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
-  // turn when multiple failures exist.
-  const retryLast = useCallback((beforeMsgId?: number) => {
-    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.kind === 'human')
-    if (content !== null) void sendMessage(content)
-  }, [messages, sendMessage])
-
-  const { resolvingInvites, resolveInvite } = useInviteResolution(setMessages)
+  const { resolvingInvites, resolveInvite } = useInviteResolution(setGroup)
 
   return {
     activeAgents,
@@ -216,14 +251,11 @@ export function useGroupChatState(): GroupChatState {
   }
 }
 
-function buildRoundMessages(
-  result: GroupConverseResult | null,
-  nextMsgId: () => number,
-): GroupMessage[] {
+function buildRoundMessages(result: GroupConverseResult | null): GroupMessage[] {
   if (!result) {
     return [
       {
-        id: nextMsgId(),
+        id: nextMessageId(),
         kind: 'notice',
         content: 'The group could not respond. Please try again.',
         isError: true,
@@ -231,22 +263,40 @@ function buildRoundMessages(
     ]
   }
   const bubbles: GroupMessage[] = result.contributions.map((c) => ({
-    id: nextMsgId(),
+    id: nextMessageId(),
     kind: 'agent',
     content: c.content,
     agentName: c.agent_name,
     role: c.participant_role,
   }))
   if (result.truncated_reason) {
+    // Widen the lookup so a backend that is briefly ahead of this build (a
+    // reason not yet in the map) still degrades to the fallback copy.
+    const notice: string | undefined = (
+      TRUNCATION_NOTICE as Record<string, string | undefined>
+    )[result.truncated_reason]
     bubbles.push({
-      id: nextMsgId(),
+      id: nextMessageId(),
       kind: 'notice',
-      content: TRUNCATION_NOTICE[result.truncated_reason] ?? TRUNCATION_FALLBACK,
+      content: notice ?? TRUNCATION_FALLBACK,
+    })
+  }
+  if (result.participants_skipped.length > 0) {
+    // A per-agent dispatch failure skips that agent without a truncated_reason;
+    // name who stayed silent so a missing contribution is never unexplained.
+    const nameById = new Map(
+      result.participants.map((p) => [p.agent_id, p.agent_name]),
+    )
+    const names = result.participants_skipped.map((id) => nameById.get(id) ?? id)
+    bubbles.push({
+      id: nextMessageId(),
+      kind: 'notice',
+      content: `${names.join(', ')} did not respond this round.`,
     })
   }
   for (const invite of result.pending_invites) {
     bubbles.push({
-      id: nextMsgId(),
+      id: nextMessageId(),
       kind: 'invite',
       content: invite.reason,
       requestedByName: invite.requested_by_name,

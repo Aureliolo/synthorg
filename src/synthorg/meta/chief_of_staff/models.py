@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Domain models for Chief of Staff advanced capabilities.
 
 Defines proposal outcomes, outcome statistics, org-level
@@ -28,7 +29,7 @@ from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
-from synthorg.meta.chief_of_staff.enums import ConversationKind
+from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 
 # ── Proposal outcome learning ─────────────────────────────────────
@@ -255,6 +256,32 @@ class ChatResponse(BaseModel):
     answer: NotBlankStr
     sources: tuple[NotBlankStr, ...] = ()
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class ChatAnswerDelta(BaseModel):
+    """One incremental text delta from a streaming chat answer.
+
+    Attributes:
+        delta: The next fragment of the answer, in arrival order. Never
+            empty (the stream only emits a delta for non-empty content),
+            but may be whitespace: a standalone space or newline is a
+            legitimate token, so this is ``min_length=1``, not
+            ``NotBlankStr``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    delta: str = Field(min_length=1)
+
+
+class ChatAnswerComplete(ChatResponse):
+    """Terminal event of a streaming chat answer: the assembled result.
+
+    A :class:`ChatResponse` under a distinct type so the streaming union
+    (``ChatAnswerDelta | ChatAnswerComplete``) discriminates the terminal
+    event from a delta by class, while carrying the identical ``answer`` /
+    ``sources`` / ``confidence`` contract as the buffered endpoint.
+    """
 
 
 # ── Conversational clarify + propose ──────────────────────────────
@@ -565,6 +592,9 @@ class ProposeResult(BaseModel):
             responding role; ``None`` when not routed.
         routing_confidence: Classifier confidence (0-1) for the routed
             topic; ``None`` when not routed.
+        routing_reason: Why this turn was, or was not, routed to a role
+            agent (``ROUTED`` on success, else the fallback cause).
+            ``None`` only on a force-closed turn, where routing is moot.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -579,6 +609,7 @@ class ProposeResult(BaseModel):
     responder_name: NotBlankStr | None = None
     routed_topic: NotBlankStr | None = None
     routing_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    routing_reason: RoutingReason | None = None
 
     @model_validator(mode="after")
     def _validate_status_payload(self) -> Self:
@@ -620,4 +651,37 @@ class ProposeResult(BaseModel):
             if self.clarifying_question is not None:
                 msg = "clarifying_question must be None when status is 'proposed'"
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_routing_attribution(self) -> Self:
+        """Keep the routing attribution consistent with ``routing_reason``.
+
+        The four attribution fields (responder role/name, routed topic,
+        confidence) are populated together from a routed decision, so they
+        are all present iff ``routing_reason`` is ``ROUTED`` and all absent
+        otherwise. Mirrors :class:`RoutingOutcome`'s decision/reason
+        invariant so a construction bug cannot present a "routed" turn with
+        no responder (or a generic turn wearing a role agent's name).
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: When the attribution and ``routing_reason``
+                disagree.
+        """
+        routed = self.routing_reason is RoutingReason.ROUTED
+        attribution = (
+            self.responder_role,
+            self.responder_name,
+            self.routed_topic,
+            self.routing_confidence,
+        )
+        if routed and any(field is None for field in attribution):
+            msg = "responder attribution is required when routing_reason is ROUTED"
+            raise ValueError(msg)
+        if not routed and any(field is not None for field in attribution):
+            msg = "responder attribution must be empty unless routing_reason is ROUTED"
+            raise ValueError(msg)
         return self

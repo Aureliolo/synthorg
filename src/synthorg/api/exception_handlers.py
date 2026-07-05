@@ -69,6 +69,7 @@ from synthorg.core.persistence_errors import (
     JsonbQueryUnsupportedError,
     PersistenceError,
     RecordNotFoundError,
+    TurnSequenceConflictError,
 )
 from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.engine.errors import EngineError
@@ -1146,6 +1147,11 @@ def handle_http_exception(
 _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (RecordNotFoundError, handle_record_not_found),
     (DuplicateRecordError, handle_duplicate_record),
+    # An exhausted turn-sequence race carries its own 409 / retryable
+    # ClassVars; register it above the generic ``ConstraintViolationError``
+    # handler (whose sqlstate-less path would mislabel it a non-retryable
+    # 400) so ``handle_domain_error`` reads the narrower conflict mapping.
+    (TurnSequenceConflictError, handle_domain_error),
     (ConstraintViolationError, handle_persistence_integrity_error),
     # A capability mismatch (SQLite asked for a Postgres-only JSONB query)
     # is a client-facing 422, not an internal 500: register it above the

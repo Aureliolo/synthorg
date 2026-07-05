@@ -83,10 +83,11 @@ def _make_conversation(
     conversation_id: str = "conv-001",
     status: ConversationStatus = ConversationStatus.ACTIVE,
     kind: ConversationKind = ConversationKind.DIRECT,
+    created_by: str = "user-001",
 ) -> Conversation:
     return Conversation(
         id=as_uuid(conversation_id),
-        created_by="user-001",
+        created_by=created_by,
         created_at=_NOW,
         updated_at=_NOW,
         status=status,
@@ -171,6 +172,18 @@ class TestConversationRepository:
 
         ids = {c.id for c in await repo.list_items()}
         assert {as_uuid("a"), as_uuid("b")} <= ids
+
+    async def test_list_items_scopes_by_created_by(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _conversation_repo(backend)
+        await repo.save(_make_conversation(conversation_id="mine", created_by="alice"))
+        await repo.save(_make_conversation(conversation_id="theirs", created_by="bob"))
+
+        mine = await repo.list_items(created_by=NotBlankStr("alice"))
+        ids = {c.id for c in mine}
+        assert as_uuid("mine") in ids
+        assert as_uuid("theirs") not in ids
 
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend

@@ -150,6 +150,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4028 | `SCALING_COOLDOWN_ACTIVE` | Scaling action blocked by an active cooldown window |
 | 4029 | `ROLLBACK_MUTATION_DENIED` | Rollback mutator's underlying store refused the write |
 | 4030 | `UPGRADE_RECOMMENDATION_ALREADY_DECIDED` | Approving/rejecting an already-decided recommendation |
+| 4031 | `TURN_SEQUENCE_CONFLICT` | Conversation-turn append lost the `(conversation_id, sequence)` uniqueness race after the retry budget (retryable) |
 
 ## Rate Limit (5xxx)
 

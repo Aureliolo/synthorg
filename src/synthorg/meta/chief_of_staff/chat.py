@@ -1,3 +1,4 @@
+# module-kind: service
 """Chief of Staff chat interface for natural language explanations.
 
 Provides LLM-powered explanations of proposals, alerts, and
@@ -5,6 +6,8 @@ free-form signal questions. Uses ``CompletionProvider`` for
 LLM calls (retry + rate limiting handled by the provider).
 """
 
+import asyncio
+from collections.abc import AsyncGenerator
 from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -29,6 +32,8 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Alert,
+    ChatAnswerComplete,
+    ChatAnswerDelta,
     ChatQuery,
     ChatResponse,
 )
@@ -52,7 +57,8 @@ from synthorg.observability.events.chief_of_staff import (
     COS_CHAT_RESPONSE,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.enums import MessageRole, StreamEventType
+from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.enums import SettingNamespace
@@ -235,16 +241,112 @@ class ChiefOfStaffChat:
             has_proposal_id=query.proposal_id is not None,
             has_alert_id=query.alert_id is not None,
         )
+        user = await self._build_query_user(query, snapshot, scoped_proposal)
+        return await self._call_llm(CHAT_QUERY_SYSTEM, user, sources=())
+
+    async def ask_stream(
+        self,
+        query: ChatQuery,
+        snapshot: OrgSignalSnapshot,
+    ) -> AsyncGenerator[ChatAnswerDelta | ChatAnswerComplete]:
+        """Stream a free-form answer token-by-token, then a terminal event.
+
+        The streamed path mirrors :meth:`ask`'s free-form prompt (proposal
+        / alert deep-explain stays on the buffered endpoint, since those
+        produce short structured answers where streaming buys nothing). It
+        yields a :class:`ChatAnswerDelta` per content chunk in arrival
+        order, then one :class:`ChatAnswerComplete` carrying the assembled
+        answer. The free-form path attributes no ``sources`` and computes
+        no ``confidence``, so the terminal event carries the empty-sources /
+        default-confidence defaults (the buffered free-form ``ask`` behaves
+        identically; only the scoped deep-explain paths populate them).
+
+        Yields:
+            Zero or more deltas, then exactly one terminal complete event.
+
+        Raises:
+            ProviderTimeoutError: When the provider stalls past
+                ``agent_call_timeout_seconds`` opening the stream or
+                between two content chunks (retryable 504).
+            Exception: Propagated from the provider stream (criticals
+                re-raised; others redacted-logged before re-raise).
+        """
+        logger.info(
+            COS_CHAT_QUERY,
+            query_type="free_form_stream",
+            question_length=len(query.question),
+        )
+        user = await self._build_query_user(query, snapshot, scoped_proposal=None)
+        messages, config, model = await self._prepare_messages(CHAT_QUERY_SYSTEM, user)
+        timeout = self._config.agent_call_timeout_seconds
+        parts: list[str] = []
+        try:
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr("system:cos:chat"),
+                purpose=self.metadata.prompt_class_id,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                stream = await asyncio.wait_for(
+                    self._provider.stream(messages, model, config=config),
+                    timeout=timeout,
+                )
+                # Per-chunk (inter-token) timeout, not one bound on the whole
+                # stream: a slow-but-live provider must not trip, only a stall.
+                # lint-allow: long-running-loop-kill-switch -- bounded by StopAsyncIteration; the per-chunk asyncio.wait_for trips on a stall and aclosing cancels the generator on client disconnect  # noqa: E501
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(anext(stream), timeout=timeout)
+                    except StopAsyncIteration:
+                        break
+                    if (
+                        chunk.event_type == StreamEventType.CONTENT_DELTA
+                        and chunk.content
+                    ):
+                        parts.append(chunk.content)
+                        yield ChatAnswerDelta(delta=chunk.content)
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, not a
+            # DomainError: type it so the client sees a retryable 504 rather
+            # than an opaque in-stream fault while the stream stays open.
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            msg = "Chief of Staff chat stream timed out"
+            raise ProviderTimeoutError(msg) from exc
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            raise
+        answer = "".join(parts).strip()
+        if not answer:
+            logger.warning(COS_CHAT_FAILED, reason="provider_returned_empty_content")
+            answer = "Unable to generate explanation."
+        logger.info(COS_CHAT_RESPONSE, answer_length=len(answer), sources=[])
+        yield ChatAnswerComplete(answer=NotBlankStr(answer))
+
+    async def _build_query_user(
+        self,
+        query: ChatQuery,
+        snapshot: OrgSignalSnapshot,
+        scoped_proposal: ApprovalItem | None,
+    ) -> str:
+        """Render the fenced USER message for a free-form question.
+
+        Reads recent outcomes for context (degrading to a placeholder on
+        a store read failure) and folds a resolved ``scoped_proposal``
+        summary ahead of them, then fences every attacker-controllable
+        field in a ``<task-data>`` envelope.
+
+        Returns:
+            The rendered, fully fenced USER-role message.
+        """
         recent_context = "No recent proposals or alerts."
         if self._outcome_store is not None:
             try:
                 recent = await self._outcome_store.recent_outcomes(limit=5)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                logger.warning(
-                    COS_CHAT_FAILED,
-                    reason="outcome_store_read_failed",
-                )
+                logger.warning(COS_CHAT_FAILED, reason="outcome_store_read_failed")
                 recent = ()
             if recent:
                 lines = [
@@ -256,15 +358,46 @@ class ChiefOfStaffChat:
             recent_context = (
                 f"{_format_scoped_proposal(scoped_proposal)}\n\n{recent_context}"
             )
-        user = CHAT_QUERY_USER.format(
-            snapshot_summary=wrap_untrusted(
-                TAG_TASK_DATA,
-                _format_snapshot(snapshot),
-            ),
+        return CHAT_QUERY_USER.format(
+            snapshot_summary=wrap_untrusted(TAG_TASK_DATA, _format_snapshot(snapshot)),
             recent_context=wrap_untrusted(TAG_TASK_DATA, recent_context),
             user_question=wrap_untrusted(TAG_TASK_DATA, query.question),
         )
-        return await self._call_llm(CHAT_QUERY_SYSTEM, user, sources=())
+
+    async def _prepare_messages(
+        self,
+        system: str,
+        user: str,
+    ) -> tuple[list[ChatMessage], CompletionConfig, str]:
+        """Assemble the messages, completion config, and resolved model.
+
+        Shared by the buffered (:meth:`_call_llm`) and streaming
+        (:meth:`ask_stream`) paths so both resolve the ``chat_model``
+        kill-switch identically.
+
+        Returns:
+            A ``(messages, config, model)`` triple.
+        """
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=system),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
+        config = CompletionConfig(
+            temperature=self._config.chat_temperature,
+            max_tokens=self._config.chat_max_tokens,
+        )
+        model = require_configured_model(
+            await resolve_model_with_fallback(
+                resolver=self._config_resolver,
+                namespace=SettingNamespace.CHIEF_OF_STAFF,
+                key="chat_model",
+                fallback=self._config.chat_model or "",
+            ),
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="chat_model",
+            feature_label="Chief of Staff chat",
+        )
+        return messages, config, model
 
     async def _call_llm(
         self,
@@ -288,27 +421,11 @@ class ChiefOfStaffChat:
             Wrapped ChatResponse.
 
         Raises:
+            ProviderTimeoutError: When the provider call exceeds
+                ``agent_call_timeout_seconds`` (retryable 504).
             Exception: Raised on the corresponding failure path.
         """
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=system),
-            ChatMessage(role=MessageRole.USER, content=user),
-        ]
-        config = CompletionConfig(
-            temperature=self._config.chat_temperature,
-            max_tokens=self._config.chat_max_tokens,
-        )
-        model = require_configured_model(
-            await resolve_model_with_fallback(
-                resolver=self._config_resolver,
-                namespace=SettingNamespace.CHIEF_OF_STAFF,
-                key="chat_model",
-                fallback=self._config.chat_model or "",
-            ),
-            namespace=SettingNamespace.CHIEF_OF_STAFF,
-            key="chat_model",
-            feature_label="Chief of Staff chat",
-        )
+        messages, config, model = await self._prepare_messages(system, user)
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -317,11 +434,21 @@ class ChiefOfStaffChat:
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
-                    messages,
-                    model,
-                    config=config,
+                response = await asyncio.wait_for(
+                    self._provider.complete(
+                        messages,
+                        model,
+                        config=config,
+                    ),
+                    timeout=self._config.agent_call_timeout_seconds,
                 )
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, not a
+            # DomainError: type it so the client sees a retryable 504 rather
+            # than an opaque 500.
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            msg = "Chief of Staff chat call timed out"
+            raise ProviderTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)

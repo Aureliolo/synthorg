@@ -24,6 +24,10 @@ from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
     ConversationParticipantRepository,
 )
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
     ConversationalProposalRepository,
@@ -38,6 +42,8 @@ def _service(
     proposal_repo: ConversationalProposalRepository | None = None,
     invite_repo: ConversationInviteRepository | None = None,
     participant_repo: ConversationParticipantRepository | None = None,
+    conversation_repo: ConversationRepository | None = None,
+    turn_repo: ConversationTurnRepository | None = None,
 ) -> ConversationalResumeService:
     """Build the service, defaulting any unsupplied repo to a typed mock."""
     return ConversationalResumeService(
@@ -45,6 +51,8 @@ def _service(
         invite_repo=invite_repo or mock_of[ConversationInviteRepository](),
         participant_repo=participant_repo
         or mock_of[ConversationParticipantRepository](),
+        conversation_repo=conversation_repo or mock_of[ConversationRepository](),
+        turn_repo=turn_repo or mock_of[ConversationTurnRepository](),
     )
 
 

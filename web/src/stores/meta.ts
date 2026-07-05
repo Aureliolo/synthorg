@@ -78,17 +78,20 @@ async function runProposeConversation(
   set: MetaSet,
   message: string,
   conversationId?: string,
+  idempotencyKey?: string,
 ): Promise<ConversationalProposeResponse | null> {
-  set({ proposeLoading: true, error: null })
+  set({ proposeLoading: true })
   try {
-    return await postChatPropose(message, conversationId)
+    return await postChatPropose(message, conversationId, undefined, idempotencyKey)
   } catch (err) {
     const { title, description } = describeConversationalError(
       err,
       'Propose request failed',
     )
     log.error('Propose request failed', sanitizeForLog(err))
-    set({ error: description })
+    // Surface via toast + the null sentinel only; the shared ``error`` slice
+    // belongs to the data-fetch/config reads, so a chat failure must not
+    // leak into it.
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -101,17 +104,17 @@ async function runConverseGroup(
   message: string,
   agentIds: readonly string[],
   conversationId?: string,
+  idempotencyKey?: string,
 ): Promise<GroupConverseResult | null> {
-  set({ groupChatLoading: true, error: null })
+  set({ groupChatLoading: true })
   try {
-    return await postChatGroup(message, agentIds, conversationId)
+    return await postChatGroup(message, agentIds, conversationId, idempotencyKey)
   } catch (err) {
     const { title, description } = describeConversationalError(
       err,
       'Group chat request failed',
     )
     log.error('Group chat request failed', sanitizeForLog(err))
-    set({ error: description })
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -124,17 +127,17 @@ async function runAct(
   instruction: string,
   agent: string,
   conversationId?: string,
+  idempotencyKey?: string,
 ): Promise<ConversationalActResult | null> {
-  set({ actionLoading: true, error: null })
+  set({ actionLoading: true })
   try {
-    return await postChatAct(instruction, agent, conversationId)
+    return await postChatAct(instruction, agent, conversationId, idempotencyKey)
   } catch (err) {
     const { title, description } = describeConversationalError(
       err,
       'Direct action request failed',
     )
     log.error('Direct action request failed', sanitizeForLog(err))
-    set({ error: description })
     useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
@@ -252,14 +255,14 @@ async function runSendChat(
   set: MetaSet,
   question: string,
   scope?: ChatScope,
+  idempotencyKey?: string,
 ): Promise<ChatResponse | null> {
-  set({ chatLoading: true, error: null })
+  set({ chatLoading: true })
   try {
-    return await postChat(question, scope)
+    return await postChat(question, scope, idempotencyKey)
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('Chat request failed', sanitizeForLog(err))
-    set({ error: msg })
     useToastStore.getState().add({
       variant: 'error',
       title: 'Chat request failed',
@@ -298,20 +301,27 @@ interface MetaState {
   fetchAlerts: () => Promise<void>
   fetchSignals: () => Promise<void>
   fetchActiveAgents: () => Promise<void>
-  sendChat: (question: string, scope?: ChatScope) => Promise<ChatResponse | null>
+  sendChat: (
+    question: string,
+    scope?: ChatScope,
+    idempotencyKey?: string,
+  ) => Promise<ChatResponse | null>
   proposeConversation: (
     message: string,
     conversationId?: string,
+    idempotencyKey?: string,
   ) => Promise<ConversationalProposeResponse | null>
   converseGroup: (
     message: string,
     agentIds: readonly string[],
     conversationId?: string,
+    idempotencyKey?: string,
   ) => Promise<GroupConverseResult | null>
   runAction: (
     instruction: string,
     agent: string,
     conversationId?: string,
+    idempotencyKey?: string,
   ) => Promise<ConversationalActResult | null>
 }
 
@@ -337,15 +347,23 @@ export const useMetaStore = create<MetaState>((set) => ({
   fetchAlerts: () => runFetchAlerts(set),
   fetchSignals: () => runFetchSignals(set),
   fetchActiveAgents: () => runFetchActiveAgents(set),
-  sendChat: (question: string, scope?: ChatScope) =>
-    runSendChat(set, question, scope),
-  proposeConversation: (message: string, conversationId?: string) =>
-    runProposeConversation(set, message, conversationId),
+  sendChat: (question: string, scope?: ChatScope, idempotencyKey?: string) =>
+    runSendChat(set, question, scope, idempotencyKey),
+  proposeConversation: (
+    message: string,
+    conversationId?: string,
+    idempotencyKey?: string,
+  ) => runProposeConversation(set, message, conversationId, idempotencyKey),
   converseGroup: (
     message: string,
     agentIds: readonly string[],
     conversationId?: string,
-  ) => runConverseGroup(set, message, agentIds, conversationId),
-  runAction: (instruction: string, agent: string, conversationId?: string) =>
-    runAct(set, instruction, agent, conversationId),
+    idempotencyKey?: string,
+  ) => runConverseGroup(set, message, agentIds, conversationId, idempotencyKey),
+  runAction: (
+    instruction: string,
+    agent: string,
+    conversationId?: string,
+    idempotencyKey?: string,
+  ) => runAct(set, instruction, agent, conversationId, idempotencyKey),
 }))

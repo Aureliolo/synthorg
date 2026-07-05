@@ -10,10 +10,6 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
-    ConversationStatus,
-)
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -25,22 +21,18 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
-    Conversation,
-    ConversationalProposal,
-    ConversationTurn,
-    ProposeArgs,  # noqa: F401 -- re-exported for the proposer test suites
+    ProposeArgs,
 )
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.meta.chief_of_staff.routing import RoleRouter
-from synthorg.persistence.conversation_protocol import (
-    ConversationTurnFilterSpec,
-)
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-)
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock
+from tests._shared.conversation_fakes import (
+    FakeConversationRepo,
+    FakeProposalRepo,
+    FakeTurnRepo,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
@@ -98,145 +90,6 @@ async def build_registry(*identities: AgentIdentity) -> AgentRegistryService:
     return registry
 
 
-class FakeConversationRepo:
-    """In-memory ``ConversationRepository`` double."""
-
-    def __init__(self) -> None:
-        self.items: dict[str, Conversation] = {}
-
-    async def save(self, entity: Conversation) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> Conversation | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[Conversation, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationStatus,
-        to_state: ConversationStatus,
-        **updates: object,
-    ) -> bool:
-        # Mirror the real ConversationRepository contract: ``updated_at``
-        # (an ISO-8601 string) is the only supported update key. Reject
-        # any other key rather than silently dropping it, matching the
-        # group-chat participant/invite doubles' strictness.
-        unexpected = set(updates) - {"updated_at"}
-        if unexpected:
-            msg = (
-                "conversation transition_if got unsupported update keys: "
-                f"{sorted(unexpected)}"
-            )
-            raise ValueError(msg)
-        current = self.items.get(entity_id)
-        if current is None or current.status is not from_state:
-            return False
-        changes: dict[str, object] = {"status": to_state}
-        raw_updated_at = updates.get("updated_at")
-        if raw_updated_at is not None:
-            changes["updated_at"] = datetime.fromisoformat(str(raw_updated_at))
-        self.items[entity_id] = current.model_copy(update=changes)
-        return True
-
-
-class FakeTurnRepo:
-    """In-memory append-only ``ConversationTurnRepository`` double."""
-
-    def __init__(self) -> None:
-        self.turns: list[ConversationTurn] = []
-
-    async def append(self, event: ConversationTurn) -> None:
-        self.turns.append(event)
-
-    async def query(
-        self,
-        filter_spec: ConversationTurnFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationTurn, ...]:
-        rows = [
-            t
-            for t in self.turns
-            if filter_spec.conversation_id is None
-            or t.conversation_id == filter_spec.conversation_id
-        ]
-        rows.sort(key=lambda t: t.sequence, reverse=True)
-        return tuple(rows[offset : offset + limit])
-
-    async def purge_before(self, threshold: datetime) -> int:
-        before = len(self.turns)
-        self.turns = [t for t in self.turns if t.created_at >= threshold]
-        return before - len(self.turns)
-
-
-class FakeProposalRepo:
-    """In-memory ``ConversationalProposalRepository`` double."""
-
-    def __init__(self) -> None:
-        self.items: dict[str, ConversationalProposal] = {}
-
-    async def save(self, entity: ConversationalProposal) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> ConversationalProposal | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ConversationalProposal, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationalProposalStatus,
-        to_state: ConversationalProposalStatus,
-        **updates: object,
-    ) -> bool:
-        current = self.items.get(entity_id)
-        if current is None or current.status is not from_state:
-            return False
-        self.items[entity_id] = current.model_copy(update={"status": to_state})
-        return True
-
-    async def query(
-        self,
-        filter_spec: ConversationalProposalFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationalProposal, ...]:
-        rows = [
-            p
-            for p in self.items.values()
-            if (
-                filter_spec.approval_id is None
-                or p.approval_id == filter_spec.approval_id
-            )
-            and (
-                filter_spec.conversation_id is None
-                or p.conversation_id == filter_spec.conversation_id
-            )
-            and (filter_spec.status is None or p.status is filter_spec.status)
-        ]
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
-        return len(await self.query(filter_spec))
-
-
 def build_proposer(
     *,
     provider: ScriptedProvider,
@@ -282,3 +135,18 @@ def build_proposer(
         config_resolver=config_resolver,
     )
     return proposer, conv_repo, turn_repo, proposal_repo, approval_store
+
+
+# The repo doubles live in ``tests._shared.conversation_fakes`` now; they are
+# re-exported here (explicitly, for mypy's no-implicit-reexport) so the suites
+# that already import them from this module keep working.
+__all__ = [
+    "START",
+    "FakeConversationRepo",
+    "FakeProposalRepo",
+    "FakeTurnRepo",
+    "ProposeArgs",
+    "build_proposer",
+    "build_registry",
+    "make_identity",
+]
