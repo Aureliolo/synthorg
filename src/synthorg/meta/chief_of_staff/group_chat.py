@@ -129,6 +129,14 @@ class GroupChatService:
         invite_coordinator: Agent-initiated invite coordinator;
             present only when the invite feature is on. When ``None`` the
             round runs the plain-text contribution path unchanged.
+        config_resolver: Optional live-config resolver used to gate the
+            invite feature per round; when ``None`` the static ``config``
+            snapshot decides.
+        estimator: Token estimator used to size the windowed history and
+            per-round input/output budgets; defaults to
+            ``DefaultTokenEstimator``.
+        master_enabled: Chief-of-Staff persona master-switch fallback used
+            when the resolver cannot answer; gates the invite path.
     """
 
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators

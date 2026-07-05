@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Never, cast, override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog
@@ -495,8 +495,7 @@ class TestFeatureWiringProposerDegradation:
         monkeypatch.setattr(feature_wiring, "wire_group_chat_service", after_group)
         monkeypatch.setattr(feature_wiring, "wire_conversational_actor", after_actor)
 
-        mock_state = MagicMock()
-        app_state = cast("AppState", mock_state)
+        app_state = _make_state()
         with suppress_type_checks():
             await feature_wiring.wire_features_on_startup(
                 app_state,

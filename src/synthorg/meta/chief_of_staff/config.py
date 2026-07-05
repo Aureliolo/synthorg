@@ -200,6 +200,9 @@ class ChiefOfStaffConfig(BaseModel):
         propose_model: LLM model identifier for clarify/propose turns.
         propose_temperature: Sampling temperature for propose turns.
         propose_max_tokens: Token budget for a propose turn.
+        propose_history_token_budget: Token budget for the windowed
+            conversation history injected into a propose/group prompt;
+            oldest turns are dropped first.
         propose_max_proposals_per_turn: Upper bound on work items a
             single turn may emit (bounds approval-queue fan-out).
         propose_max_clarification_turns: Maximum clarifying questions

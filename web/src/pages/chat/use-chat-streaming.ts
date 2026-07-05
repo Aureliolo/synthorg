@@ -99,6 +99,14 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
         if (abortRef.current === controller) {
           setStreaming(false)
           abortRef.current = null
+          // A stream that resolves without an onComplete frame (SSE closed
+          // after deltas with no terminal event) never cleared the bubble's
+          // own flag; clear it here so the typing indicator cannot stick.
+          updateAssistant(assistantId, (m) =>
+            m.role === 'assistant' && m.isStreaming
+              ? { ...m, isStreaming: false }
+              : m,
+          )
         }
       }
     },

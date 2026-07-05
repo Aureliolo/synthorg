@@ -34,7 +34,6 @@ from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
-    ConversationStatus,
 )
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
@@ -53,7 +52,6 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
-    Conversation,
     ConversationalProposal,
     ConversationTurn,
     ProposeArgs,
@@ -91,6 +89,9 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
 from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
+from tests._shared.conversation_fakes import (
+    FakeConversationRepo as _FakeConversationRepo,
+)
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -156,43 +157,6 @@ class _TaskCreatingIntakeStrategy:
             request_id=request.request_id,
             task_id=str(created.id),
         )
-
-
-class _FakeConversationRepo:
-    def __init__(self) -> None:
-        self.items: dict[str, Conversation] = {}
-
-    async def save(self, entity: Conversation) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> Conversation | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, created_by: str | None = None, limit: int = 100, offset: int = 0
-    ) -> tuple[Conversation, ...]:
-        rows = [
-            c
-            for c in self.items.values()
-            if created_by is None or c.created_by == created_by
-        ]
-        return tuple(rows)[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationStatus,
-        to_state: ConversationStatus,
-        **updates: object,
-    ) -> bool:
-        cur = self.items.get(entity_id)
-        if cur is None or cur.status is not from_state:
-            return False
-        self.items[entity_id] = cur.model_copy(update={"status": to_state})
-        return True
 
 
 class _FakeTurnRepo:

@@ -130,10 +130,11 @@ class ConcernClassification(BaseModel):
 class RoleRouter(Protocol):
     """Routes one human turn to a role agent, or to the generic persona.
 
-    Implementations are best-effort: any uncertainty (no active agents,
-    low confidence, unresolvable role, classifier error) yields a
-    ``None`` route so the conversation is still answered by the generic
-    Chief of Staff.
+    Implementations are best-effort: ``route()`` always returns a
+    :class:`RoutingOutcome`. Any uncertainty (no active agents, low
+    confidence, unresolvable role, classifier error) yields an outcome
+    with ``decision=None`` so the conversation is still answered by the
+    generic Chief of Staff.
     """
 
     async def route(self, history: tuple[ConversationTurn, ...]) -> RoutingOutcome:

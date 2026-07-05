@@ -103,6 +103,11 @@ class ReactLoop:
             turn-based with no step boundary, so a single whole-run
             signal is emitted at natural termination; ``None`` disables
             quality classification.
+        steering_inbox: Optional inbox polled at turn boundaries for
+            mid-run steering messages; ``None`` disables steering.
+        turn_observer: Optional async callback invoked after each
+            continuing turn with the tools it requested; ``None``
+            disables it. Purely observational.
     """
 
     def __init__(  # noqa: PLR0913

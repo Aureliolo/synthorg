@@ -107,4 +107,28 @@ describe('ConversationHistoryDrawer', () => {
       await screen.findByText(/could not load conversation history/i),
     ).toBeInTheDocument()
   })
+
+  it('shows a resume-failure banner and keeps the list when a resume fails', async () => {
+    // A failed resume (turns fetch 503s) must not clear the picker the way a
+    // failed list-load does: the banner appears and the list stays for a retry.
+    useList([conversation({ status: 'active' })])
+    server.use(
+      http.get('/api/v1/meta/chat/conversations/:id', () =>
+        HttpResponse.json({ detail: 'nope' }, { status: 503 }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <ConversationHistoryDrawer open onClose={vi.fn()} onResume={vi.fn()} />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /request work/i }))
+
+    expect(
+      await screen.findByText(/could not resume that conversation/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /request work/i }),
+    ).toBeInTheDocument()
+  })
 })
