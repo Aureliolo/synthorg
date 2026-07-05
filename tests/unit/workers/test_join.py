@@ -13,7 +13,7 @@ import asyncio
 
 import pytest
 
-from synthorg.workers._join import join_cancelled
+from synthorg.workers._join import _ABANDONED_TASKS, join_cancelled
 
 pytestmark = pytest.mark.unit
 
@@ -70,6 +70,39 @@ async def test_join_reraises_finished_task_exception() -> None:
     task = asyncio.create_task(boom())
     with pytest.raises(ValueError, match="boom"):
         await join_cancelled(task, "worker-0", "boom")
+
+
+async def test_abandoned_task_late_failure_is_reaped() -> None:
+    # An abandoned orphan that later settles with a real exception must have
+    # that exception consumed by the reap callback (and the task dropped from
+    # the strong-ref set), so asyncio's handler never logs a context-free
+    # "exception was never retrieved" warning.
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def wedged_then_fails() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+            msg = "late boom"
+            raise ValueError(msg) from None
+
+    task = asyncio.create_task(wedged_then_fails())
+    await started.wait()
+    task.cancel()
+    async with asyncio.timeout(1):
+        await join_cancelled(task, "worker-0", "wedged", timeout_seconds=0.05)
+    assert not task.done()
+    assert task in _ABANDONED_TASKS  # retained so it is not GC'd mid-flight
+    release.set()
+    # ``_reap`` is registered before gather's own waiter, so asyncio's FIFO
+    # done-callback order guarantees it has run (dropped the ref, consumed the
+    # exception) by the time this await returns.
+    await asyncio.gather(task, return_exceptions=True)
+    assert task not in _ABANDONED_TASKS  # reap callback dropped the strong ref
+    assert isinstance(task.exception(), ValueError)  # exception was consumable
 
 
 async def test_external_cancel_is_not_swallowed() -> None:

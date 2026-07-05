@@ -15,7 +15,7 @@ deadline stays effective.
 import asyncio
 from typing import Final
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import WORKERS_SUBTASK_JOIN_TIMEOUT
 
 logger = get_logger(__name__)
@@ -59,9 +59,26 @@ async def join_cancelled(
     _done, pending = await asyncio.wait({task}, timeout=timeout_seconds)
     if pending:
         # Wedged past the deadline: abandon it, but retain a strong reference
-        # so the orphan is not garbage-collected before its await unwinds.
+        # so the orphan is not garbage-collected before its await unwinds. The
+        # reap callback both drops that reference and consumes any exception the
+        # orphan later raises, so a late failure does not surface as a noisy,
+        # context-free unretrieved-exception warning from asyncio's handler.
+        def _reap(finished: asyncio.Task[None]) -> None:
+            _ABANDONED_TASKS.discard(finished)
+            if finished.cancelled():
+                return
+            late_exc = finished.exception()
+            if late_exc is not None:
+                logger.warning(
+                    WORKERS_SUBTASK_JOIN_TIMEOUT,
+                    worker_id=worker_id,
+                    subtask=label,
+                    error_type=type(late_exc).__name__,
+                    error=safe_error_description(late_exc),
+                )
+
         _ABANDONED_TASKS.add(task)
-        task.add_done_callback(_ABANDONED_TASKS.discard)
+        task.add_done_callback(_reap)
         logger.warning(
             WORKERS_SUBTASK_JOIN_TIMEOUT,
             worker_id=worker_id,
