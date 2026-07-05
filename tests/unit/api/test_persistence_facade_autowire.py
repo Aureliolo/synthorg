@@ -1,8 +1,8 @@
 """Unit tests for persistence-gated infrastructure read-facade auto-wiring.
 
-Covers ``wire_persistence_facades`` and its user / backup branches: each
-facade wires only once its backing service reached its slice during startup,
-and re-running the sweep never replaces a live facade.
+Covers ``wire_persistence_facades`` and its user / backup / ontology /
+MCP-catalog branches: each facade wires only once its backing service reached
+its slice during startup, and re-running the sweep never replaces a live facade.
 """
 
 import pytest
@@ -17,25 +17,58 @@ from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.infrastructure.services import BackupFacadeService, UserFacadeService
 from synthorg.infrastructure.state import FacadesStateSlice
+from synthorg.integrations.mcp_catalog.installations import McpInstallationRepository
+from synthorg.integrations.mcp_catalog.service import CatalogService
+from synthorg.integrations.mcp_facades import (
+    MCPCatalogFacadeService,
+    OntologyFacadeService,
+)
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.ontology.service import OntologyService
+from synthorg.ontology.state import OntologyStateSlice
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _app_state(*, with_auth: bool = False, with_backup: bool = False) -> AppState:
+def _app_state(
+    *,
+    with_auth: bool = False,
+    with_backup: bool = False,
+    with_ontology: bool = False,
+    with_catalog: bool = False,
+    with_installations: bool = False,
+) -> AppState:
     """Compose an app state with the requested backing services present.
+
+    ``with_catalog`` and ``with_installations`` are independent so the
+    MCP-catalog facade's two-dependency gate can be exercised with either
+    half absent.
 
     Returns:
         The composed ``AppState``.
     """
     api_core: dict[str, object] = {}
     backup: dict[str, object] = {}
+    ontology: dict[str, object] = {}
+    integrations: dict[str, object] = {}
     if with_auth:
         api_core["auth_service"] = mock_of[AuthService]()
     if with_backup:
         backup["service"] = mock_of[BackupService]()
+    if with_ontology:
+        ontology["service"] = mock_of[OntologyService]()
+    if with_catalog:
+        integrations["mcp_catalog_service"] = mock_of[CatalogService]()
+    if with_installations:
+        integrations["mcp_installations_repo"] = mock_of[McpInstallationRepository]()
     return make_app_state(
-        slices={ApiCoreStateSlice: api_core, BackupStateSlice: backup},
+        slices={
+            ApiCoreStateSlice: api_core,
+            BackupStateSlice: backup,
+            OntologyStateSlice: ontology,
+            IntegrationsStateSlice: integrations,
+        },
     )
 
 
@@ -75,3 +108,49 @@ class TestBackupFacadeWiring:
         app_state.wire(FacadesStateSlice, backup_facade_service=existing)
         await wire_persistence_facades(app_state)
         assert app_state.slice(FacadesStateSlice).backup_facade_service is existing
+
+
+class TestOntologyFacadeWiring:
+    async def test_wired_when_ontology_service_present(self) -> None:
+        app_state = _app_state(with_ontology=True)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).ontology_facade_service is not None
+
+    async def test_absent_without_ontology_service(self) -> None:
+        app_state = _app_state(with_ontology=False)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).ontology_facade_service is None
+
+    async def test_idempotent_keeps_existing(self) -> None:
+        app_state = _app_state(with_ontology=True)
+        existing = OntologyFacadeService(ontology=mock_of[OntologyService]())
+        app_state.wire(FacadesStateSlice, ontology_facade_service=existing)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).ontology_facade_service is existing
+
+
+class TestMcpCatalogFacadeWiring:
+    async def test_wired_when_catalog_and_repo_present(self) -> None:
+        app_state = _app_state(with_catalog=True, with_installations=True)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is not None
+
+    async def test_absent_without_catalog_or_repo(self) -> None:
+        app_state = _app_state(with_catalog=False, with_installations=False)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
+
+    async def test_absent_when_only_catalog_present(self) -> None:
+        app_state = _app_state(with_catalog=True, with_installations=False)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
+
+    async def test_idempotent_keeps_existing(self) -> None:
+        app_state = _app_state(with_catalog=True, with_installations=True)
+        existing = MCPCatalogFacadeService(
+            catalog=mock_of[CatalogService](),
+            installations=mock_of[McpInstallationRepository](),
+        )
+        app_state.wire(FacadesStateSlice, mcp_catalog_facade_service=existing)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is existing

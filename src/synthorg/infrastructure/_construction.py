@@ -19,31 +19,22 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     template-pack, client) and the events-read facade always wire; the
     events-read facade takes the always-present event-stream hub, and
     ``OAuthFacadeService`` accepts a ``None`` token manager, so both wire
-    unconditionally. The construction-dependent facades wire only when their
-    backing primitive is present: quality projects the performance tracker;
-    audit / artifact / integration-health read their construction-time
-    primitives; simulation reads the client feature's simulation state (the
-    source of the ``depends_on=("client",)`` edge). Partial ``wire`` preserves
-    the facade fields that sibling wirers populate at the persistence and
-    settings phases (user, backup, ontology, mcp-catalog, provider-read).
+    unconditionally. The construction-dependent facades are wired by
+    :func:`_wire_optional_facades`. Partial ``wire`` preserves the facade
+    fields that sibling wirers populate at the persistence and settings
+    phases (user, backup, ontology, mcp-catalog, provider-read).
     """
-    from synthorg.client.state import ClientStateSlice  # noqa: PLC0415
     from synthorg.engine.quality.mcp_services import (  # noqa: PLC0415
-        QualityFacadeService,
         ReviewFacadeService,
     )
     from synthorg.infrastructure.services import (  # noqa: PLC0415
-        AuditReadService,
         EventsReadService,
-        IntegrationHealthFacadeService,
         ProjectFacadeService,
         RequestsFacadeService,
         SetupFacadeService,
-        SimulationFacadeService,
         TemplatePackFacadeService,
     )
     from synthorg.integrations.mcp_facades import (  # noqa: PLC0415
-        ArtifactFacadeService,
         ClientFacadeService,
         OAuthFacadeService,
     )
@@ -61,6 +52,31 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             token_manager=deps.integrations.oauth_token_manager,
         ),
     )
+    _wire_optional_facades(app_state, deps)
+
+
+def _wire_optional_facades(app_state: AppState, deps: ConstructionDeps) -> None:
+    """Wire the construction-dependent facades present for this deployment.
+
+    Each facade wires only when its backing primitive is present: quality
+    projects the performance tracker; audit / artifact / integration-health
+    read their construction-time primitives; simulation reads the client
+    feature's simulation state (the source of the ``depends_on=("client",)``
+    edge). Partial ``wire`` preserves the sibling-populated facade fields.
+    """
+    from synthorg.client.state import ClientStateSlice  # noqa: PLC0415
+    from synthorg.engine.quality.mcp_services import (  # noqa: PLC0415
+        QualityFacadeService,
+    )
+    from synthorg.infrastructure.services import (  # noqa: PLC0415
+        AuditReadService,
+        IntegrationHealthFacadeService,
+        SimulationFacadeService,
+    )
+    from synthorg.integrations.mcp_facades import (  # noqa: PLC0415
+        ArtifactFacadeService,
+    )
+
     if deps.performance_tracker is not None:
         app_state.wire(
             FacadesStateSlice,

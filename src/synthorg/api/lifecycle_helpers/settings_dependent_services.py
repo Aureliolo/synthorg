@@ -17,6 +17,7 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.preset_override_service import (
@@ -101,35 +102,10 @@ def compose_settings_dependent_services(
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
 
     resolver = ConfigResolver(settings_service=settings_service, config=config)
-    # Provider audit log: wired only when the persistence backend actually
-    # exposes the repo accessor, so a backend rig that lacks it stays a
-    # no-op for emission rather than erroring.
-    provider_audit_repo = (
-        getattr(persistence, "provider_audit_events", None)
-        if persistence is not None
-        else None
-    )
-    audit_service = (
-        ProviderAuditService(provider_audit_repo)
-        if provider_audit_repo is not None
-        else None
-    )
-    # Preset overrides depend on the audit service (they emit audit rows
-    # on each write), so they are absent whenever audit is absent.
-    preset_override_repo = (
-        getattr(persistence, "preset_overrides", None)
-        if persistence is not None
-        else None
-    )
-    preset_override_service = (
-        PresetOverrideService(preset_override_repo, audit_service=audit_service)
-        if preset_override_repo is not None and audit_service is not None
-        else None
-    )
-    # Resolve the API bind port here (bootstrap) and inject it so the
-    # service performs no env read of its own. ``resolve_init_int`` threads
-    # ``parse_int`` so a non-integer env value falls through to the
-    # registered default instead of raising at construction time.
+    audit_service, preset_override_service = _build_provider_audit_services(persistence)
+    # Resolve the API bind port at bootstrap and inject it so the service reads
+    # no env itself; ``resolve_init_int`` falls back to the registered default
+    # on a non-integer value rather than raising at construction time.
     backend_port = resolve_init_int(SettingNamespace.API, "server_port")
     management = ProviderManagementService(
         settings_service=settings_service,
@@ -165,6 +141,43 @@ def compose_settings_dependent_services(
         provider_audit=audit_service is not None,
         preset_override=preset_override_service is not None,
     )
+
+
+def _build_provider_audit_services(
+    persistence: PersistenceBackend | None,
+) -> tuple[ProviderAuditService | None, PresetOverrideService | None]:
+    """Build the provider-audit + preset-override services from the backend.
+
+    Both are wired only when the connected backend exposes the backing repo,
+    so a backend rig that lacks the accessor stays a no-op rather than
+    erroring. Preset overrides emit an audit row on each write, so they are
+    additionally absent whenever the audit service is absent.
+
+    Returns:
+        The ``(audit_service, preset_override_service)`` pair, each ``None``
+        when its backing repo (or, for presets, the audit service) is absent.
+    """
+    provider_audit_repo = (
+        getattr(persistence, "provider_audit_events", None)
+        if persistence is not None
+        else None
+    )
+    audit_service = (
+        ProviderAuditService(provider_audit_repo)
+        if provider_audit_repo is not None
+        else None
+    )
+    preset_override_repo = (
+        getattr(persistence, "preset_overrides", None)
+        if persistence is not None
+        else None
+    )
+    preset_override_service = (
+        PresetOverrideService(preset_override_repo, audit_service=audit_service)
+        if preset_override_repo is not None and audit_service is not None
+        else None
+    )
+    return audit_service, preset_override_service
 
 
 def _wire_settings_read_facade(

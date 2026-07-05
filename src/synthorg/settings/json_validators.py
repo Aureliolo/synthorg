@@ -73,7 +73,10 @@ def reject_raw_json_over_depth(text: str, max_depth: int = _MAX_RAW_JSON_DEPTH) 
             if depth > max_depth:
                 msg = f"JSON nests deeper than {max_depth} levels"
                 raise ValueError(msg)
-        elif ch in "]}":
+        elif ch in "]}" and depth > 0:
+            # Clamp at zero: unmatched closing brackets must not drive the
+            # counter negative, else a later run of openers could reach a
+            # genuine deep nesting while the counter stays under max_depth.
             depth -= 1
 
 
