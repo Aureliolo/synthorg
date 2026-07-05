@@ -54,7 +54,11 @@ class FakeConversationRepo:
             for c in self.items.values()
             if created_by is None or c.created_by == created_by
         ]
-        return tuple(rows)[offset : offset + limit]
+        # Match the real repositories' newest-first ordering
+        # (``ORDER BY created_at DESC, id DESC``) so pagination behaviour
+        # in tests reflects production rather than dict insertion order.
+        rows.sort(key=lambda c: (c.created_at, str(c.id)), reverse=True)
+        return tuple(rows[offset : offset + limit])
 
     async def transition_if(
         self,

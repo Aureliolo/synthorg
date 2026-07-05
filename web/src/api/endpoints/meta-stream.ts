@@ -10,6 +10,7 @@
 
 import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
+import { sanitizeForLog } from '@/utils/logging'
 
 import { apiClient } from '../client'
 import type { ChatStreamRequest } from '../types'
@@ -46,7 +47,7 @@ function parseSseLines(
         data = JSON.parse(raw)
       } catch {
         log.warn('Malformed JSON in meta stream frame', {
-          event: carry.event || 'message',
+          event: sanitizeForLog(carry.event || 'message'),
           length: raw.length,
         })
         carry.event = ''

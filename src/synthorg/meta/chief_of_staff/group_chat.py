@@ -71,6 +71,7 @@ from synthorg.meta.chief_of_staff.group_models import (
 from synthorg.meta.chief_of_staff.group_prompt import (
     audit_authority,
     build_group_prompt,
+    estimate_history_tokens,
     render_group_turn,
 )
 from synthorg.meta.chief_of_staff.group_roster import (
@@ -420,6 +421,12 @@ class GroupChatService:
             estimator=self._estimator,
             render_turn=render_group_turn,
         )
+        # The windowed history is frozen for the round; size it once here
+        # rather than re-estimating it inside every per-participant budget
+        # call below.
+        history_tokens = estimate_history_tokens(
+            render_history, estimator=self._estimator
+        )
         for index, participant in enumerate(participants):
             truncated = round_bound(
                 tracker,
@@ -435,7 +442,7 @@ class GroupChatService:
             # remaining budget on one call. Stop the round if the estimated
             # input leaves no room for the output reserve.
             call_max_tokens = bounded_call_max_tokens(
-                render_history,
+                history_tokens,
                 contributions,
                 estimator=self._estimator,
                 remaining=tracker.remaining,

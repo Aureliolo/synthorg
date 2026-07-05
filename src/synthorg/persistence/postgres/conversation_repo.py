@@ -86,6 +86,21 @@ _TURN_NEXT_SEQUENCE_SQL = """
 _TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
 
 
+def _log_append_failure(
+    conversation_id: str, exc: BaseException, *, phase: str | None = None
+) -> None:
+    """Log an append-turn failure with the shared redacted-error shape."""
+    extra = {"phase": phase} if phase is not None else {}
+    logger.warning(
+        PERSISTENCE_CONVERSATION_TURN_FAILED,
+        operation="append",
+        conversation_id=conversation_id,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+        **extra,
+    )
+
+
 class PostgresConversationRepository:
     """Postgres-backed conversation header repository.
 
@@ -409,13 +424,10 @@ class PostgresConversationTurnRepository:
                             f"turn {current.id!r} "
                             f"(conversation {current.conversation_id!r})"
                         )
-                        logger.warning(
-                            PERSISTENCE_CONVERSATION_TURN_FAILED,
-                            operation="append",
+                        _log_append_failure(
+                            current.conversation_id,
+                            resequence_exc,
                             phase="resequence",
-                            conversation_id=current.conversation_id,
-                            error_type=type(resequence_exc).__name__,
-                            error=safe_error_description(resequence_exc),
                         )
                         raise QueryError(msg) from resequence_exc
                     current = current.model_copy(
@@ -431,37 +443,21 @@ class PostgresConversationTurnRepository:
                         "Turn sequence conflict appending turn "
                         f"{current.id!r} (conversation {current.conversation_id!r})"
                     )
-                    logger.warning(
-                        PERSISTENCE_CONVERSATION_TURN_FAILED,
-                        operation="append",
-                        conversation_id=current.conversation_id,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-                    raise TurnSequenceConflictError(msg, constraint=constraint) from exc
+                    _log_append_failure(current.conversation_id, exc)
+                    raise TurnSequenceConflictError(
+                        msg, constraint=constraint, sqlstate=exc.sqlstate
+                    ) from exc
                 msg = (
                     "Constraint violation appending turn "
                     f"{current.id!r} (conversation {current.conversation_id!r})"
                 )
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=current.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                _log_append_failure(current.conversation_id, exc)
                 raise ConstraintViolationError(
                     msg, constraint=constraint, sqlstate=exc.sqlstate
                 ) from exc
             except psycopg.Error as exc:
                 msg = f"Failed to append turn {current.id!r}"
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=current.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                _log_append_failure(current.conversation_id, exc)
                 raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CONVERSATION_TURN_APPENDED,

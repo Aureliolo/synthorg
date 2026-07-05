@@ -48,6 +48,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -588,12 +589,13 @@ async def wire_features_on_startup(
             effective_approval_store=effective_approval_store,
             si_config=si_config,
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except ServiceUnavailableError as exc:
         # A propose/invite misconfiguration (e.g. enabled over a persistent
         # SQLite ApprovalStore) makes the guard raise. Degrade to an unwired
         # proposer (the controller 503s) rather than failing the whole ASGI
-        # startup and taking every other feature down with it.
-        reraise_critical(exc)
+        # startup and taking every other feature down with it. Any OTHER
+        # exception is a genuine wiring fault and must fail the boot rather
+        # than silently leaving the proposer unwired.
         logger.warning(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",

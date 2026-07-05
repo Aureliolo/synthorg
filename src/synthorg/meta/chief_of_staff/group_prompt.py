@@ -67,27 +67,35 @@ def render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
     return "\n".join(render_group_turn(turn) for turn in turns)
 
 
-def estimate_group_input_tokens(
+def estimate_history_tokens(
     history: tuple[ConversationTurn, ...],
+    *,
+    estimator: PromptTokenEstimator,
+) -> int:
+    """Estimate the tokens the rendered history block will use.
+
+    The history is frozen for the round, so a caller running many turns
+    can size it once and reuse the result rather than re-rendering it per
+    turn.
+
+    Returns:
+        The estimated token count of the rendered history block.
+    """
+    return estimator.estimate_tokens(render_group_history(history))
+
+
+def estimate_peer_tokens(
     prior_contributions: list[AttributedContribution],
     *,
     estimator: PromptTokenEstimator,
 ) -> int:
-    """Estimate the input tokens the next contribution prompt will use.
-
-    Sizes the two variable blocks (the rendered history and this round's
-    peer contributions) that dominate the prompt; the fixed template
-    boilerplate is a small constant deliberately excluded so the estimate
-    tracks the parts that actually grow with the conversation.
+    """Estimate the tokens this round's peer-contribution block will use.
 
     Returns:
-        The combined estimated token count of the history and peer blocks.
+        The estimated token count of the rendered peer block, the only
+        part that grows as participants contribute within a round.
     """
-    history_tokens = estimator.estimate_tokens(render_group_history(history))
-    peer_tokens = estimator.estimate_tokens(
-        render_round_contributions(prior_contributions)
-    )
-    return history_tokens + peer_tokens
+    return estimator.estimate_tokens(render_round_contributions(prior_contributions))
 
 
 def render_round_contributions(contributions: list[AttributedContribution]) -> str:
@@ -171,7 +179,8 @@ def audit_authority(
 __all__ = [
     "audit_authority",
     "build_group_prompt",
-    "estimate_group_input_tokens",
+    "estimate_history_tokens",
+    "estimate_peer_tokens",
     "render_group_history",
     "render_group_turn",
     "render_round_contributions",

@@ -11,8 +11,7 @@ from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.meta.chief_of_staff.enums import GroupChatTruncationReason
 from synthorg.meta.chief_of_staff.group_models import AttributedContribution
-from synthorg.meta.chief_of_staff.group_prompt import estimate_group_input_tokens
-from synthorg.meta.chief_of_staff.models import ConversationTurn
+from synthorg.meta.chief_of_staff.group_prompt import estimate_peer_tokens
 
 
 def round_bound(
@@ -36,7 +35,7 @@ def round_bound(
 
 
 def bounded_call_max_tokens(  # noqa: PLR0913 -- budget inputs, all independent
-    render_history: tuple[ConversationTurn, ...],
+    history_tokens: int,
     prior_contributions: list[AttributedContribution],
     *,
     estimator: PromptTokenEstimator,
@@ -51,12 +50,15 @@ def bounded_call_max_tokens(  # noqa: PLR0913 -- budget inputs, all independent
     call. A non-positive result means the input alone leaves no room for
     the output reserve and the round should stop.
 
+    *history_tokens* is the round-frozen history estimate the caller
+    computed once; only the growing peer block is re-estimated here.
+
     Returns:
         The output-token cap for the next call; ``<= 0`` when the round
         should stop instead of dispatching.
     """
-    estimated_input = estimate_group_input_tokens(
-        render_history, prior_contributions, estimator=estimator
+    estimated_input = history_tokens + estimate_peer_tokens(
+        prior_contributions, estimator=estimator
     )
     return min(per_agent_max, remaining - reserve - estimated_input)
 

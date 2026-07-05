@@ -409,13 +409,19 @@ export type ChatScope =
 /** One of the three conversation shapes (mirrors backend ``ConversationKind``). */
 export type ConversationKind = 'direct' | 'routed' | 'group'
 
+/** Conversation lifecycle state (mirrors backend ``ConversationStatus``). */
+export type ConversationStatus = 'active' | 'proposed' | 'closed'
+
+/** Turn author role (mirrors backend ``ConversationRole``). */
+export type ConversationTurnRole = 'user' | 'assistant' | 'agent'
+
 /** Summary of one of the caller's resumable conversations. */
 export interface ConversationSummary {
   id: string
   created_by: string
   created_at: string
   updated_at: string
-  status: string
+  status: ConversationStatus
   /** ``direct`` / ``routed`` resume into Request work; ``group`` into Group. */
   kind: ConversationKind
 }
@@ -425,7 +431,7 @@ export interface ConversationTurnRecord {
   id: string
   conversation_id: string
   sequence: number
-  role: string
+  role: ConversationTurnRole
   content: string
   author_agent_id: string | null
   author_name: string | null

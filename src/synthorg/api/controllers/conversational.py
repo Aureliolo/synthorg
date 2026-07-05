@@ -116,7 +116,11 @@ def _require_stream_user(request: Request[object, object, State]) -> Authenticat
     Raises:
         ValidationError: When no authenticated user is attached.
     """
-    user = getattr(request, "user", None)
+    # Read the raw ASGI scope rather than the ``request.user`` property:
+    # Litestar's property raises ``ImproperlyConfiguredException`` when no
+    # auth middleware populated the scope, which would escape this
+    # defensive check as a 500 instead of the intended ValidationError.
+    user = request.scope.get("user")
     if not isinstance(user, AuthenticatedUser):
         msg = "streaming chat requires an authenticated user"
         raise ValidationError(msg)
