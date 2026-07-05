@@ -262,3 +262,23 @@ async def test_whitespace_blueprint_id_is_skipped() -> None:
     assert await consumer.consume() == 0
     # A whitespace-only id is not a real blueprint reference; never look it up.
     _asmock(repo.get).assert_not_called()
+
+
+async def test_retire_failure_does_not_abort_the_batch() -> None:
+    # A transient store failure while retiring an unfulfillable grant is
+    # best-effort: it is swallowed, not propagated out of consume().
+    item = _approval(blueprint_id=None)
+    store = mock_of[ApprovalStoreProtocol](
+        list_items=AsyncMock(return_value=(item,)),
+        consume_if_approved=AsyncMock(side_effect=RuntimeError("store down")),
+    )
+    consumer = ToolApprovalConsumer(
+        service=mock_of[ToolsmithService](apply=AsyncMock()),
+        blueprint_repo=mock_of[DynamicToolRepository](
+            get=AsyncMock(return_value=_blueprint())
+        ),
+        approval_store=store,
+    )
+
+    assert await consumer.consume() == 0
+    _asmock(store.consume_if_approved).assert_awaited_once()

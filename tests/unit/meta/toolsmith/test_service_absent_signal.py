@@ -18,7 +18,7 @@ from synthorg.meta.toolsmith.applier import ToolCreationApplier
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.meta.toolsmith.errors import ToolAuthoringError
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
-from synthorg.meta.toolsmith.models import GapKind
+from synthorg.meta.toolsmith.models import CapabilityGap, GapKind
 from synthorg.meta.toolsmith.protocol import ToolBlueprintGenerator
 from synthorg.meta.toolsmith.service import ToolsmithService
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -119,6 +119,27 @@ async def test_missing_tool_gap_still_reaches_authoring(
     assert proposals == ()
     generator.author.assert_awaited_once()
     dispatcher.dispatch.assert_not_called()
+
+
+async def test_service_absent_alert_deduped_per_capability(
+    settings: SettingsService,
+) -> None:
+    generator = AsyncMock(spec=ToolBlueprintGenerator)
+    dispatcher = mock_of[NotificationDispatcher](dispatch=AsyncMock())
+    svc = _service(settings, generator=generator, dispatcher=dispatcher)
+    gap = CapabilityGap(
+        signature=_CAP,
+        kind=GapKind.SERVICE_ABSENT,
+        occurrences=2,
+        first_seen=_NOW,
+        last_seen=_NOW,
+    )
+
+    await svc._signal_service_absent(gap)
+    await svc._signal_service_absent(gap)
+
+    # The same unresolved capability alerts once, not every cycle.
+    dispatcher.dispatch.assert_awaited_once()
 
 
 async def test_service_absent_without_dispatcher_is_safe(

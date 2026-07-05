@@ -134,8 +134,22 @@ class ToolApprovalConsumer:
         re-warning about it on every poll. The operator is alerted to the
         underlying cause on the service side (a failed durable save dispatches
         an ops notification) and can re-propose to try again.
+
+        Best-effort: a transient store failure is logged and swallowed rather
+        than aborting ``consume()``'s batch (the item is re-listed and retried
+        next poll), matching the other best-effort paths in this file.
         """
-        await self._approval_store.consume_if_approved(NotBlankStr(str(item.id)))
+        try:
+            await self._approval_store.consume_if_approved(NotBlankStr(str(item.id)))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                TOOLSMITH_APPLY_FAILED,
+                note="approve_to_live_retire_failed",
+                approval_id=str(item.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _apply_claimed(self, blueprint: ToolBlueprint) -> bool:
         """Apply a claimed blueprint through the service (best-effort).

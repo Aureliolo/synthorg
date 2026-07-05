@@ -154,6 +154,10 @@ class ToolsmithService:
         self._clock = clock or SystemClock()
         self._config_resolver = config_resolver
         self._notification_dispatcher = notification_dispatcher
+        # Capability signatures already alerted as service-absent, so a gap that
+        # recurs every cycle raises a single actionable ops alert rather than
+        # re-notifying the operator until the backing service is implemented.
+        self._alerted_service_absent: set[str] = set()
 
     async def record_gap(
         self,
@@ -471,6 +475,11 @@ class ToolsmithService:
         )
         if self._notification_dispatcher is None:
             return
+        # One alert per capability until the backing service is implemented: the
+        # gap recurs every cycle, so re-dispatching would spam the operator with
+        # the same actionable signal (the dispatcher only fans out, never dedups).
+        if gap.signature in self._alerted_service_absent:
+            return
         from synthorg.notifications.models import (  # noqa: PLC0415
             Notification,
             NotificationCategory,
@@ -493,6 +502,7 @@ class ToolsmithService:
                     source="meta.toolsmith",
                 ),
             )
+            self._alerted_service_absent.add(gap.signature)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
