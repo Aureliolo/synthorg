@@ -23,6 +23,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_FLAGGED_STALE,
     PROVIDER_MODEL_REFRESH_ADD_FAILED,
+    PROVIDER_MODEL_REFRESH_RECOMMEND_FAILED,
 )
 from synthorg.providers.management.capability_dtos import AddModelRequest
 from synthorg.providers.management.live_discovery_probe import LiveDiscoveryProbe
@@ -238,9 +239,8 @@ class ReconcileRecommendStrategy:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
-                PROVIDER_MODEL_REFRESH_ADD_FAILED,
+                PROVIDER_MODEL_REFRESH_RECOMMEND_FAILED,
                 provider=provider_name,
-                note="recommend_reread_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

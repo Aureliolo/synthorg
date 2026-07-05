@@ -9,6 +9,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.organization.models import UpdateAgentOrgRequest
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
@@ -145,17 +146,18 @@ class TestUpgradeRecommendationService:
         await service.apply_auto(stored)
         org.update_agent.assert_not_called()
 
-    async def test_reassign_tolerates_failed_agent(self) -> None:
+    async def test_reassign_tolerates_stale_agent(self) -> None:
         stored = _stored(agents=(sid("a"), sid("b")))
         repo = mock_of[UpgradeRecommendationRepository](
             get=AsyncMock(return_value=stored),
             transition_if=AsyncMock(return_value=True),
         )
         org = mock_of[OrgMutationService](
-            update_agent=AsyncMock(side_effect=[RuntimeError("gone"), None]),
+            update_agent=AsyncMock(side_effect=[NotFoundError("gone"), None]),
         )
         service = _service(repo=repo, org_mutations=org)
-        # One agent fails; the apply still completes for the other.
+        # A stale (renamed / deleted) agent is skipped; the apply still
+        # completes for the other.
         await service.approve(stored.id, decided_by="op")
         assert org.update_agent.await_count == 2
         # Both agents were attempted with the recommended model, in order.
@@ -169,3 +171,18 @@ class TestUpgradeRecommendationService:
         assert all(
             call.args[1] == expected for call in org.update_agent.await_args_list
         )
+
+    async def test_reassign_propagates_non_stale_failure(self) -> None:
+        # Only a stale-agent NotFoundError is tolerated; any other failure
+        # (here a conflict) must surface rather than be swallowed per agent.
+        stored = _stored(agents=(sid("a"), sid("b")))
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(RuntimeError, match="boom"):
+            await service.approve(stored.id, decided_by="op")

@@ -13,7 +13,7 @@ from uuid import UUID
 
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
@@ -222,8 +222,10 @@ class UpgradeRecommendationService:
                         model_id=rec.recommended_model_id,
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
+            except NotFoundError as exc:
+                # A stale agent id (renamed / deleted since the recommendation
+                # was produced) is the only tolerated per-agent failure; any
+                # other error propagates so it is not silently swallowed.
                 logger.warning(
                     PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED,
                     agent=agent_name,

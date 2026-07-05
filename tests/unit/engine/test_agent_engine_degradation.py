@@ -233,7 +233,7 @@ class TestEngineDegradation:
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Registry.get() raising an error results in BUDGET_EXHAUSTED."""
+        """An unresolvable degradation fallback provider -> BUDGET_EXHAUSTED."""
         from synthorg.providers.errors import DriverNotRegisteredError
 
         enforcer = _make_enforcer()
@@ -241,10 +241,17 @@ class TestEngineDegradation:
             [make_completion_response(content="Done.")],
         )
 
+        # The agent's own provider resolves (per-agent dispatch at run start);
+        # only the degradation *fallback* provider is missing, so the miss
+        # surfaces from ``_apply_degradation`` as the budget-exhausted path.
+        def _get(name: str) -> MockCompletionProvider:
+            if name == "test-provider":
+                return provider
+            msg = f"No driver for {name!r}"
+            raise DriverNotRegisteredError(msg)
+
         mock_registry = AsyncMock(spec=ProviderRegistry)
-        mock_registry.get = lambda name: (_ for _ in ()).throw(
-            DriverNotRegisteredError(f"No driver for {name!r}"),
-        )
+        mock_registry.get = _get
 
         engine = AgentEngine(
             provider=provider,

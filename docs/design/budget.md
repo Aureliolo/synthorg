@@ -125,12 +125,18 @@ models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 Both paths converge on the same `CostTracker.record()` API and the same
 same-currency invariants apply.
 
-Streaming completions (`BaseCompletionProvider.stream()`) currently bypass the
-chokepoint -- usage arrives as a terminal `StreamEventType.USAGE` chunk that the
-chokepoint would have to consume from the iterator, conflating cost recording
-with the stream-consumption contract. No call site uses `stream()` for paid LLM
-work today; when streaming becomes a mainstream call path the chokepoint will
-be extended.
+Streaming completions (`BaseCompletionProvider.stream()`) route through the
+same chokepoint. Token counts surface only on the terminal
+`StreamEventType.USAGE` chunk, so `stream()` wraps the driver's iterator in a
+lazy pass-through generator (`_cost_recording_stream`) that yields each chunk
+unchanged, captures the usage chunk, and -- once the consumer fully drains the
+stream -- fires the same `record_cost_if_in_scope` chokepoint `complete()` uses.
+Because draining happens in the consumer's scope, the `CostRecord` lands in the
+caller's `cost_recording_scope`, not at connection-setup time. A stream that
+never yields a usage chunk records nothing, matching the no-scope no-op
+contract. The scope's teardown is context-safe (a plain context-var restore, so
+an SSE response body that drives the generator's close in a different `anyio`
+context than its open cannot raise).
 
 The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
 summaries (aggregated from **all** matching records, not just the current page):

@@ -111,6 +111,37 @@ class AgentEngineErrorsMixin:
                 total_tokens=metrics.tokens_per_task,
             )
 
+    def _dispatch_client_for(
+        self,
+        identity: AgentIdentity,
+        fallback_provider: CompletionProvider,
+    ) -> CompletionProvider:
+        """Return the client that serves ``identity.model.provider``.
+
+        The engine holds a single default client, but each agent can be
+        pinned to any registered provider. Cost attribution and the budget
+        preflight both read ``identity.model.provider``, so the dispatched
+        client must be that same provider or a call hits one provider's API
+        while the cost/quota lands on another. Resolving strictly against the
+        registry keeps the client and the identity in lockstep; a miss (an
+        agent pinned to an unregistered provider) raises
+        ``DriverNotRegisteredError`` so the run fails cleanly here instead of
+        silently dispatching a mismatched pair to the engine default. Falls
+        back to ``fallback_provider`` only when no registry is wired at all
+        (a degraded / test context with no catalogue to resolve against).
+
+        Returns:
+            The registry client for ``identity.model.provider``, or
+            ``fallback_provider`` when no provider registry is wired.
+
+        Raises:
+            DriverNotRegisteredError: When a registry is wired but does not
+                know ``identity.model.provider``.
+        """
+        if self._provider_registry is None:
+            return fallback_provider
+        return self._provider_registry.get(identity.model.provider)
+
     def _resolve_provider_instance(
         self,
         routed: AgentIdentity,
@@ -138,6 +169,9 @@ class AgentEngineErrorsMixin:
         """
         target = routed.model.provider
         if target == fallback_identity.model.provider:
+            # Same provider as before routing. ``fallback_provider`` was
+            # resolved for that provider at run start (``_dispatch_client_for``),
+            # so it already serves ``target``; only the model id/tier moved.
             return fallback_provider, routed
         if self._provider_registry is None:
             logger.warning(

@@ -253,7 +253,18 @@ async run(
    plan-execute), and `hybrid_loop_config` (for hybrid), along with the
    approval gate and stagnation detector.
 10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
-   provider, tool invoker, budget checker, and completion config. If
+   provider, tool invoker, budget checker, and completion config. The
+   provider client is dispatched **per agent**, not fixed to the engine
+   default: `_dispatch_client_for(identity)` resolves the client serving
+   the agent's own `identity.model.provider` from the provider registry, so
+   an agent pinned to a non-default provider runs on its own API and its cost
+   is attributed to that provider. A wired registry that does not know the
+   provider fails closed (`DriverNotRegisteredError`) rather than silently
+   dispatching to the wrong API; only a fully unwired registry falls back to
+   the engine default. Because budget auto-downgrade (`resolve_model`, step 2)
+   and stakes routing can re-point `identity.model.provider` mid-pipeline, the
+   client is re-dispatched after any such change so it stays in lockstep with
+   the resolved model. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
    post-execution processing still occur.

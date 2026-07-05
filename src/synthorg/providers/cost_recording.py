@@ -200,14 +200,18 @@ async def cost_recording_scope(  # noqa: PLR0913
         # trackerless; it counts these to attribute spend signal by purpose).
         logger.debug(PROVIDER_PROMPT_PURPOSE_INVOKED, prompt_class_id=str(purpose))
     if cost_tracker is None:
-        # Shadow the outer context with ``None`` so nested calls
-        # don't silently inherit a wired outer tracker.  Reset on
-        # exit to restore whatever was active before.
-        token = _cost_context.set(None)
+        # Shadow the outer context with ``None`` so nested calls don't
+        # silently inherit a wired outer tracker; restore the prior value on
+        # exit. A plain ``set(previous)`` is used rather than ``Token.reset``
+        # because streaming scopes wrap an SSE async generator whose enter and
+        # exit can run in different asyncio contexts, where ``Token.reset``
+        # raises; ``set`` is valid in any context.
+        previous = _cost_context.get()
+        _cost_context.set(None)
         try:
             yield
         finally:
-            _cost_context.reset(token)
+            _cost_context.set(previous)
         return
     resolved_currency = (
         currency if currency is not None else resolve_currency(cost_tracker)
@@ -224,11 +228,16 @@ async def cost_recording_scope(  # noqa: PLR0913
         call_category=call_category,
         currency=resolved_currency,
     )
-    token = _cost_context.set(ctx)
+    # Restore the prior value with a plain ``set`` (not ``Token.reset``): a
+    # streaming scope's enter and exit can run in different asyncio contexts
+    # (an SSE body generator's drive step vs its teardown), where
+    # ``Token.reset`` raises ``ValueError``; ``set`` is context-safe.
+    previous = _cost_context.get()
+    _cost_context.set(ctx)
     try:
         yield
     finally:
-        _cost_context.reset(token)
+        _cost_context.set(previous)
 
 
 def resolve_currency(cost_tracker: CostTrackerProtocol) -> CurrencyCode:

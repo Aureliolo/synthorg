@@ -10,6 +10,7 @@ exercised through the chokepoint via the same minimal stub harness.
 """
 
 import asyncio
+import contextvars
 from collections.abc import AsyncIterator
 from typing import override
 
@@ -34,7 +35,7 @@ from synthorg.providers.cost_recording import (
     emit_cost_record_from_usage,
     resolve_currency,
 )
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -53,6 +54,7 @@ class _StubProvider(BaseCompletionProvider):
         *,
         usage: TokenUsage | None = None,
         finish_reason: FinishReason = FinishReason.STOP,
+        emit_stream_usage: bool = False,
     ) -> None:
         super().__init__()
         self._usage = usage or TokenUsage(
@@ -61,6 +63,7 @@ class _StubProvider(BaseCompletionProvider):
             cost=0.001,
         )
         self._finish_reason = finish_reason
+        self._emit_stream_usage = emit_stream_usage
 
     @override
     async def _do_complete(
@@ -88,13 +91,16 @@ class _StubProvider(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
+        emit_usage = self._emit_stream_usage
+        usage = self._usage
+
         async def _gen() -> AsyncIterator[StreamChunk]:
-            # Empty async generator: the unconditional-False guard
-            # keeps the function's coroutine-shape (so ``async for``
-            # on it works) without producing any chunks.  ``yield``
-            # is unreachable on purpose -- mypy gets the silencer.
-            if False:
-                yield  # type: ignore[unreachable]
+            # Drivers surface token counts only on a terminal USAGE chunk;
+            # emit one when the test opts in so the drain-time chokepoint has
+            # usage to record. Without it the generator yields nothing, which
+            # exercises the no-usage no-op contract.
+            if emit_usage:
+                yield StreamChunk(event_type=StreamEventType.USAGE, usage=usage)
 
         return _gen()
 
@@ -434,24 +440,19 @@ class TestCostRecordingChokepoint:
 
 
 @pytest.mark.unit
-class TestStreamingBypassesChokepoint:
-    """Documented limitation: ``stream()`` does not fire the chokepoint.
+class TestStreamingCostRecording:
+    """``stream()`` records cost on drain, through the same chokepoint.
 
-    Streaming responses surface usage as a terminal
-    ``StreamEventType.USAGE`` chunk, so the chokepoint cannot inspect
-    ``response.usage`` synchronously.  Instead of half-implementing
-    cost recording for streams (which would require consuming the
-    iterator inside the chokepoint and conflating recording with the
-    stream-consumption contract), streaming is explicitly out of scope
-    for cost recording.  This test pins that contract so any later
-    streaming-aware recording must update the assertion.
-
-    No call site in the current codebase uses ``stream()`` for paid
-    LLM work; all 23 cost-attributable LLM call sites use ``complete()``.
+    Streaming responses surface usage only on a terminal
+    ``StreamEventType.USAGE`` chunk, so ``stream()`` wraps the driver's
+    iterator in a lazy pass-through generator that captures that chunk and
+    fires ``record_cost_if_in_scope`` once the consumer fully drains the
+    stream. A stream that never yields a usage chunk records nothing,
+    matching the no-scope / no-usage no-op contract.
     """
 
-    async def test_stream_inside_scope_does_not_record(self) -> None:
-        provider = _StubProvider()
+    async def test_stream_without_usage_chunk_records_nothing(self) -> None:
+        provider = _StubProvider(emit_stream_usage=False)
         tracker = CostTracker()
         async with cost_recording_scope(
             cost_tracker=tracker,
@@ -461,13 +462,29 @@ class TestStreamingBypassesChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             stream = await provider.stream([_msg()], "test-model")
-            # Drain the stream so resilience cleanup runs.
             async for _ in stream:
                 pass
-        # The chokepoint fires only inside complete(), never inside
-        # stream(). When this assertion changes, update the docstring
-        # in BaseCompletionProvider.stream and the migration plan.
         assert await tracker.get_records() == ()
+
+    async def test_stream_with_usage_chunk_records_on_drain(self) -> None:
+        provider = _StubProvider(emit_stream_usage=True)
+        tracker = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            stream = await provider.stream([_msg()], "test-model")
+            # Nothing is recorded until the terminal USAGE chunk is drained.
+            async for _ in stream:
+                pass
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].agent_id == "agent-1"
+        assert records[0].task_id == "task-1"
 
 
 @pytest.mark.unit
@@ -654,3 +671,51 @@ class TestPendingRecordIsolation:
         assert "budget.pending_record.drain_unexpected" not in events, (
             f"cancelled drain must not WARN-log; got {events}"
         )
+
+
+@pytest.mark.unit
+class TestCostScopeCrossContextTeardown:
+    """The scope enters and exits cleanly across different asyncio contexts.
+
+    A streaming scope wraps an SSE body async generator whose enter (set) and
+    exit (teardown) can run in different asyncio contexts. Restoring via a
+    ``Token`` from ``ContextVar.set`` would raise ``ValueError`` there, so the
+    scope restores with a context-safe ``set(previous)`` and its teardown must
+    neither raise nor leave a wired context bound.
+    """
+
+    async def test_teardown_in_a_foreign_context_does_not_raise(self) -> None:
+        cm = cost_recording_scope(
+            cost_tracker=None,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test"),
+            call_category=LLMCallCategory.SYSTEM,
+        )
+        await cm.__aenter__()
+        # Drive __aexit__ from a different context than __aenter__ ran in --
+        # the exact SSE-generator topology that made Token.reset raise.
+        foreign = contextvars.copy_context()
+        suppressed = await asyncio.create_task(
+            cm.__aexit__(None, None, None), context=foreign
+        )
+        assert suppressed is not True  # no exception was raised or suppressed
+
+    async def test_nested_scope_restores_outer_on_exit(self) -> None:
+        outer = CostTracker()
+        async with cost_recording_scope(
+            cost_tracker=outer,
+            agent_id=NotBlankStr("outer-agent"),
+            task_id=NotBlankStr("outer-task"),
+            call_category=LLMCallCategory.SYSTEM,
+            currency=CurrencyCode(DEFAULT_CURRENCY),
+        ):
+            outer_ctx = current_cost_context()
+            async with cost_recording_scope(
+                cost_tracker=None,
+                agent_id=NotBlankStr("inner-agent"),
+                task_id=NotBlankStr("inner-task"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                assert current_cost_context() is None
+            # The outer wired context is restored, not cleared to None.
+            assert current_cost_context() is outer_ctx

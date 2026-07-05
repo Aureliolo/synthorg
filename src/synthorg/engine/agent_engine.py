@@ -486,6 +486,11 @@ class AgentEngine(
             provider: CompletionProvider = self._provider
             _project_budget: float = 0.0
             try:
+                # Dispatch to the provider serving this agent's own model
+                # before stakes routing may re-point it; a registry miss
+                # (agent pinned to an unregistered provider) fails the run
+                # here rather than mis-dispatching to the engine default.
+                provider = self._dispatch_client_for(identity, self._provider)
                 loop_mode = (
                     "auto"
                     if self._auto_loop_config is not None
@@ -525,9 +530,11 @@ class AgentEngine(
                         identity,
                         provider,
                     )
-                    identity = await self._budget_enforcer.resolve_model(
-                        identity,
-                    )
+                    identity = await self._budget_enforcer.resolve_model(identity)
+                    # resolve_model may downgrade to a model owned by another
+                    # provider; re-dispatch so the client matches the new
+                    # identity.model.provider for cost/budget attribution.
+                    provider = self._dispatch_client_for(identity, provider)
 
                 if self._project_repo is not None:
                     _project_budget = await self._validate_project(

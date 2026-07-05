@@ -109,7 +109,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
 
 Every successful **scoped** `provider.complete()` call attributes a `CostRecord` to the agent and task that originated the work. Attribution flows through a `ContextVar` middleware rather than through per-call kwargs, which keeps the provider interface uniform across cloud APIs, OpenRouter, Ollama, and custom adapters. Calls made outside any `cost_recording_scope` -- infrastructure probes, model discovery, the engine turn loop, tests -- read `None` for the active context and are intentionally **not** attributed: the engine's post-execution recorder owns engine turns, and probe / discovery traffic is not user spend.
 
-- **Scope contract**: callers wrap a `provider.complete()` invocation in `cost_recording_scope(cost_tracker, agent_id, task_id, project_id, call_category, currency)` from `synthorg.providers.cost_recording`. The scope is an `@asynccontextmanager` that sets a per-`asyncio.Task` `ContextVar`, yields, and resets on exit. Nested scopes shadow the outer one and are restored on exit; concurrent tasks see independent scopes.
+- **Scope contract**: callers wrap a `provider.complete()` invocation in `cost_recording_scope(cost_tracker, agent_id, task_id, project_id, call_category, currency)` from `synthorg.providers.cost_recording`. The scope is an `@asynccontextmanager` that captures the current `ContextVar` value, sets the new context, yields, and restores the captured value on exit. It restores by plain `set(previous)` rather than `Token.reset` on purpose: a streaming or SSE body can drive the enter and the exit in different `asyncio` contexts, and `Token.reset` raises `ValueError` when the token is reset in a context other than the one that created it, whereas a plain set is always context-safe. Nested scopes shadow the outer one and are restored on exit; concurrent tasks see independent scopes.
 - **Chokepoint**: `BaseCompletionProvider.complete()` reads the scope's context after a successful response, builds a `CostRecord` from `result.usage` + `result.provider_metadata` (`_synthorg_latency_ms`, `_synthorg_cache_hit`, `_synthorg_retry_count`, `_synthorg_retry_reason`) + `result.finish_reason`, and submits it via `cost_tracker.record(record)`. Calls outside any scope (probes, model discovery, tests) are no-ops.
 - **Skip rule**: usage with both zero tokens and zero cost is skipped (matches the engine post-execution recorder). Free-tier providers with non-zero tokens still record.
 - **Failure isolation**: any exception from `cost_tracker.record(...)` other than `MemoryError` / `RecursionError` is logged at WARNING (`PROVIDER_COST_FAILED`) and swallowed -- the user-visible provider response never depends on recording success.
@@ -217,6 +217,20 @@ The recommendation store, scheduler, and service form a both-or-neither paired
 invariant on `ModelRefreshStateSlice`; the controllers 503 when the store is unwired.
 Recommendations only PROPOSE; human approval still gates apply unless a strictly
 in-family upgrade matches the auto-apply flag.
+
+**In-family selection** (`UpgradeRecommender`): models are grouped by
+`(metadata.family, metadata.supports_embeddings)`, not by family alone. A family
+label can span two incompatible classes -- an embedding model (vector output) and
+a chat model are not drop-in replacements -- so grouping on the embedding flag
+prevents a newer-generation chat model from being recommended as the upgrade for
+an embedding model (or vice versa). Within a group, every model older than the
+newest generation is a candidate; the recommendation targets the newest-generation
+sibling with no capability regression (it must not drop a tool / vision / reasoning
+capability the current model has). When several newest-generation candidates
+qualify, the strongest is chosen by upgrade score (capability fit + context
+headroom + generation delta, from the registered matcher weights), with model id
+as a deterministic tie-break, so a larger / more capable variant is preferred over
+an arbitrary alphabetical pick.
 
 ## Model Routing Strategy
 
