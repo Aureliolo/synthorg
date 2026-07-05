@@ -145,6 +145,11 @@ class TestMcpCatalogFacadeWiring:
         await wire_persistence_facades(app_state)
         assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
 
+    async def test_absent_when_only_installations_present(self) -> None:
+        app_state = _app_state(with_catalog=False, with_installations=True)
+        await wire_persistence_facades(app_state)
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
+
     async def test_idempotent_keeps_existing(self) -> None:
         app_state = _app_state(with_catalog=True, with_installations=True)
         existing = MCPCatalogFacadeService(
