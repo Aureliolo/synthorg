@@ -103,6 +103,48 @@ class TestUpgradeRecommendationService:
             await service.approve(stored.id, decided_by="op")
         org.update_agent.assert_not_called()
 
+    async def test_approve_gone_provider_stays_pending(self) -> None:
+        # The recommended provider was removed since the recommendation was
+        # produced. Preflight must fail loudly BEFORE the decide transition,
+        # so the recommendation stays PENDING (retryable) and no agent is
+        # touched, rather than the provider-gone NotFoundError being swallowed
+        # per agent inside _reassign as a benign stale-agent skip.
+        stored = _stored()
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(),
+            validate_model_assignment=AsyncMock(
+                side_effect=NotFoundError("Provider 'example-provider' not found")
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.approve(stored.id, decided_by="op")
+        repo.transition_if.assert_not_called()
+        org.update_agent.assert_not_called()
+
+    async def test_apply_auto_gone_provider_does_not_decide(self) -> None:
+        # Same guard on the auto-apply path: a gone provider fails preflight
+        # before the CAS transition, so nothing is decided or reassigned.
+        stored = _stored()
+        repo = mock_of[UpgradeRecommendationRepository](
+            transition_if=AsyncMock(return_value=True),
+        )
+        org = mock_of[OrgMutationService](
+            update_agent=AsyncMock(),
+            validate_model_assignment=AsyncMock(
+                side_effect=NotFoundError("Provider 'example-provider' not found")
+            ),
+        )
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(NotFoundError):
+            await service.apply_auto(stored)
+        repo.transition_if.assert_not_called()
+        org.update_agent.assert_not_called()
+
     async def test_reject_transitions_without_reassign(self) -> None:
         stored = _stored()
         repo = mock_of[UpgradeRecommendationRepository](

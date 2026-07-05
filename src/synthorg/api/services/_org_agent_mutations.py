@@ -279,6 +279,23 @@ class OrgAgentMutationsMixin:
                 str(data.model_id),
             )
 
+    async def validate_model_assignment(
+        self, provider_name: str, model_id: str
+    ) -> None:
+        """Validate a provider/model pair against the live catalogue.
+
+        Public pre-flight for callers (e.g. the upgrade-recommendation
+        apply flow) that need to reject a gone provider/model *before*
+        looping over agents, so a removed provider surfaces once as a
+        catalogue error instead of being mistaken for a per-agent skip.
+
+        Raises:
+            NotFoundError: When the provider is not in the catalogue.
+            ValidationError: When the provider does not expose the model.
+        """
+        providers = await self._read_provider_configs()
+        validate_provider_model_pair(providers, provider_name, model_id)
+
     async def update_agent(
         self,
         name: str,

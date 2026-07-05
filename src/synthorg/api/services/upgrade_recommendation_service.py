@@ -114,6 +114,7 @@ class UpgradeRecommendationService:
             UpgradeRecommendationAlreadyDecidedError: When not pending.
         """
         stored = await self.get_or_404(rec_id)
+        await self._preflight_provider(stored)
         await self._decide(
             stored,
             to_state=RecommendationStatus.APPROVED,
@@ -162,6 +163,7 @@ class UpgradeRecommendationService:
         Transitions ``PENDING -> AUTO_APPLIED`` and reassigns pinned
         agents. A lost CAS (already decided) is a no-op.
         """
+        await self._preflight_provider(stored)
         moved = await self._repo.transition_if(
             stored.id,
             from_state=RecommendationStatus.PENDING,
@@ -205,12 +207,38 @@ class UpgradeRecommendationService:
             logger.warning(API_RESOURCE_CONFLICT, reason=msg, rec_id=str(stored.id))
             raise UpgradeRecommendationAlreadyDecidedError(msg)
 
+    async def _preflight_provider(self, stored: StoredUpgradeRecommendation) -> None:
+        """Validate the recommendation's provider/model before deciding.
+
+        Every pinned agent is reassigned to the *same* recommended
+        provider/model, and ``update_agent`` raises ``NotFoundError`` both
+        when an agent is missing and when the target provider is gone. If
+        the recommended provider was removed since the recommendation was
+        produced, that would surface once per agent inside ``_reassign`` and
+        be silently swallowed as a stale-agent skip, leaving the whole apply
+        a no-op. Validating the pair once up front makes a gone provider a
+        loud failure that keeps the recommendation ``PENDING`` (retryable)
+        rather than decided-but-unapplied, and leaves any ``NotFoundError``
+        inside ``_reassign`` unambiguously an agent-missing skip.
+
+        Raises:
+            NotFoundError: When the recommended provider is gone.
+            ValidationError: When the provider no longer exposes the model.
+        """
+        rec = stored.recommendation
+        await self._org_mutations.validate_model_assignment(
+            rec.provider_name, rec.recommended_model_id
+        )
+
     async def _reassign(self, stored: StoredUpgradeRecommendation) -> None:
         """Re-point each pinned agent at the recommended model.
 
         Best-effort per agent: a stale agent id (renamed / deleted since
         the recommendation was produced) is logged and skipped so one
-        missing agent never fails the whole apply.
+        missing agent never fails the whole apply. The recommended
+        provider/model is pre-validated by ``_preflight_provider``, so a
+        ``NotFoundError`` here is unambiguously a missing agent, never a
+        gone provider.
         """
         rec = stored.recommendation
         for agent_name in stored.agent_ids:
