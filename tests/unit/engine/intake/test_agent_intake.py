@@ -9,6 +9,7 @@ LLM message and invokes ``provider.complete`` with a pinned
 from typing import override
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.task import Task
@@ -85,13 +86,18 @@ def _request(
     *,
     title: str = "Build feature",
     description: str = "Ship a new reporting page.",
+    project: str | None = None,
 ) -> ClientRequest:
+    metadata: dict[str, JsonValue] = {}
+    if project is not None:
+        metadata["project"] = project
     return ClientRequest(
         client_id="client-1",
         requirement=TaskRequirement(
             title=title,
             description=description,
         ),
+        metadata=metadata,
     )
 
 
@@ -147,6 +153,26 @@ class TestAgentIntakeBaseline:
         # Assert the absence of the side effect: on reject, no task is
         # created.
         assert task_engine.captured_data is None
+
+    async def test_files_task_under_request_metadata_project(self) -> None:
+        # The pipeline stamps the resolved project on the request metadata;
+        # the strategy must file the task there, not under its bound default,
+        # or a charter/objective run lands in the wrong project.
+        provider = _StubProvider(content='{"accepted": true}')
+        task_engine = _FakeTaskEngine()
+        intake = _intake(provider, task_engine=task_engine)
+        await intake.process(_request(project="tetris-project"))
+        assert task_engine.captured_data is not None
+        assert task_engine.captured_data.project == "tetris-project"
+
+    async def test_falls_back_to_default_project_without_metadata(self) -> None:
+        provider = _StubProvider(content='{"accepted": true}')
+        task_engine = _FakeTaskEngine()
+        intake = _intake(provider, task_engine=task_engine)
+        await intake.process(_request())
+        assert task_engine.captured_data is not None
+        # ``AgentIntake`` defaults its bound project to "simulation".
+        assert task_engine.captured_data.project == "simulation"
 
 
 # -- Untrusted-content fence + CompletionConfig contract -------------------
