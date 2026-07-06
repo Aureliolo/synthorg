@@ -195,7 +195,18 @@ class ModelRefreshService:
             stale += len(outcome.stale_ids)
             if outcome.stale_ids:
                 stale_by_provider.append((provider_name, tuple(outcome.stale_ids)))
-            for rec in outcome.recommendations:
+            # Only recommend upgrades for a model an agent actually runs: a rec
+            # whose current model has no pinned agent reassigns nobody on
+            # approve, so the whole catalogue of unused models would otherwise
+            # surface as no-op recommendations. Gating on pinned agents also
+            # drives retirement below -- an existing pending rec whose model
+            # fell out of use is no longer "produced" and gets superseded.
+            usable = [
+                (rec, ids)
+                for rec in outcome.recommendations
+                if (ids := _pinned_agent_ids(agents, rec))
+            ]
+            for rec, agent_ids in usable:
                 key = (
                     rec.provider_name,
                     rec.current_model_id,
@@ -205,7 +216,7 @@ class ModelRefreshService:
                     continue
                 seen_pending.add(key)
                 try:
-                    stored = await self._persist(rec, agents)
+                    stored = await self._persist(rec, agent_ids)
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
@@ -243,7 +254,9 @@ class ModelRefreshService:
             reconciling = mode is RefreshMode.RECONCILE_RECOMMEND
             if reconciling and outcome.recommendations_valid:
                 superseded += await self._retire_obsolete(
-                    provider_name, outcome.recommendations, pending_rows
+                    provider_name,
+                    tuple(rec for rec, _ in usable),
+                    pending_rows,
                 )
 
         await self._alert_stale_models(stale_by_provider)
@@ -461,14 +474,16 @@ class ModelRefreshService:
     async def _persist(
         self,
         rec: UpgradeRecommendation,
-        agents: tuple[AgentConfig, ...],
+        agent_ids: tuple[str, ...],
     ) -> StoredUpgradeRecommendation:
-        """Persist *rec* as a pending recommendation with pinned agents.
+        """Persist *rec* as a pending recommendation with its pinned agents.
+
+        *agent_ids* is the non-empty set of agents pinned to *rec*'s current
+        model (the caller only persists usage-backed recommendations).
 
         Returns:
             The stored recommendation.
         """
-        agent_ids = _pinned_agent_ids(agents, rec)
         stored = StoredUpgradeRecommendation(
             recommendation=rec,
             agent_ids=agent_ids,

@@ -47,12 +47,21 @@ _NEW = _model("new", generation=2.0)
 _PROVIDER = ProviderConfig(
     connection_name="conn-test", base_url="http://localhost:11434", models=(_OLD, _NEW)
 )
+# A default consumer pinned to the old model, so the old->new upgrade is
+# usage-backed: the recommender only surfaces upgrades for models an agent
+# actually runs, so a service with no agents would otherwise recommend nothing.
+_DEFAULT_AGENT = AgentConfig(
+    name="default-consumer",
+    role="Worker",
+    department="Engineering",
+    model={"provider": "example-provider", "model_id": "old"},
+)
 
 
 def _build_service(
     *,
     repo: UpgradeRecommendationRepository,
-    agents: tuple[AgentConfig, ...] = (),
+    agents: tuple[AgentConfig, ...] = (_DEFAULT_AGENT,),
     probe: LiveDiscoveryProbe | None = None,
     notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ModelRefreshService:
@@ -133,6 +142,47 @@ class TestModelRefreshService:
         report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
         assert report.recommended_count == 0
         repo.save.assert_not_called()
+
+    async def test_unused_model_yields_no_recommendation(self) -> None:
+        # The catalogue has an old->new upgrade, but no agent runs the old
+        # model, so there is nothing to reassign: no recommendation is produced.
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=()),
+            save=AsyncMock(),
+        )
+        service = _build_service(repo=repo, agents=())
+        report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        assert report.recommended_count == 0
+        repo.save.assert_not_called()
+
+    async def test_pending_for_unused_model_is_superseded(self) -> None:
+        # A pending rec whose current model no longer has any consumer is
+        # retired: the recommender stops producing it once it is unused.
+        orphan = StoredUpgradeRecommendation(
+            recommendation=UpgradeRecommendation(
+                provider_name="example-provider",
+                current_model_id="old",
+                recommended_model_id="new",
+                family="fam",
+                current_generation=1.0,
+                recommended_generation=2.0,
+                score=0.5,
+                reason="x",
+            ),
+            created_at=FakeClock().now(),
+        )
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=(orphan,)),
+            save=AsyncMock(),
+            transition_if=AsyncMock(return_value=True),
+        )
+        service = _build_service(repo=repo, agents=())
+        report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        assert report.recommended_count == 0
+        assert report.superseded_count == 1
+        assert repo.transition_if.await_args.kwargs["to_state"] is (
+            RecommendationStatus.SUPERSEDED
+        )
 
     @staticmethod
     def _obsolete_pending() -> StoredUpgradeRecommendation:
