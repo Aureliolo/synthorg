@@ -11,6 +11,7 @@ from typing import override
 import pytest
 
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.domain_errors import NotFoundError, ValidationError
@@ -34,16 +35,47 @@ class _Harness(OrgAgentMutationsMixin):
         return _PROVIDERS
 
 
-async def _validate(provider: str, model_id: str) -> dict[str, object]:
+async def _validate(
+    provider: str,
+    model_id: str,
+    existing: AgentConfig | None = None,
+) -> dict[str, object]:
     data = UpdateAgentOrgRequest(model_provider=provider, model_id=model_id)
-    return await _Harness()._validate_agent_update("writer", data, ())
+    return await _Harness()._validate_agent_update("writer", data, (), existing)
 
 
 class TestPatchAgentModelValidation:
-    async def test_valid_pair_passes(self) -> None:
+    async def test_valid_pair_builds_nested_model(self) -> None:
+        # The reassignment must land in the nested ``model`` dict (keyed
+        # ``provider`` / ``model_id``), not as flat fields that serialisation
+        # would drop -- otherwise the update silently no-ops.
         updates = await _validate("example-provider", "example-large-002")
-        assert updates["model_provider"] == "example-provider"
-        assert updates["model_id"] == "example-large-002"
+        assert updates["model"] == {
+            "provider": "example-provider",
+            "model_id": "example-large-002",
+        }
+        assert "model_provider" not in updates
+        assert "model_id" not in updates
+
+    async def test_reassignment_preserves_sibling_model_keys(self) -> None:
+        existing = AgentConfig(
+            name="writer",
+            role="Writer",
+            department="eng",
+            model={
+                "provider": "example-provider",
+                "model_id": "example-large-001",
+                "model_tier": "medium",
+            },
+        )
+        updates = await _validate(
+            "example-provider", "example-large-002", existing=existing
+        )
+        assert updates["model"] == {
+            "provider": "example-provider",
+            "model_id": "example-large-002",
+            "model_tier": "medium",
+        }
 
     async def test_unknown_provider_raises_not_found(self) -> None:
         with pytest.raises(NotFoundError):

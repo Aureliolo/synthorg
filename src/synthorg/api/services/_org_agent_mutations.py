@@ -229,8 +229,13 @@ class OrgAgentMutationsMixin:
         name: str,
         data: UpdateAgentOrgRequest,
         agents: _AgentRoster,
+        existing: AgentConfig | None = None,
     ) -> dict[str, object]:
         """Validate agent update and collect field changes.
+
+        *existing* is the agent being updated (resolved by the caller); it
+        seeds the model merge so a reassignment preserves the model dict's
+        sibling keys.
 
         Returns:
             Mapping with the declared key/value types.
@@ -254,10 +259,19 @@ class OrgAgentMutationsMixin:
             updates["level"] = data.level
         if "autonomy_level" in fields_set:
             updates["autonomy_level"] = data.autonomy_level
-        if "model_provider" in fields_set:
-            updates["model_provider"] = data.model_provider
-        if "model_id" in fields_set:
-            updates["model_id"] = data.model_id
+        # The model lives in the nested ``model`` dict (keyed ``provider`` /
+        # ``model_id``), not as flat ``AgentConfig`` fields. Writing flat
+        # ``model_provider`` / ``model_id`` keys into a ``model_copy`` update
+        # sets extra attributes that ``extra="forbid"`` drops on serialisation,
+        # silently no-opping the reassignment. Merge into the existing model so
+        # sibling keys (e.g. ``model_tier``) survive the change.
+        if "model_provider" in fields_set or "model_id" in fields_set:
+            model_dict = dict(existing.model) if existing is not None else {}
+            if data.model_provider is not None:
+                model_dict["provider"] = str(data.model_provider)
+            if data.model_id is not None:
+                model_dict["model_id"] = str(data.model_id)
+            updates["model"] = model_dict
 
         await self._validate_model_pair(data)
         return updates
@@ -360,7 +374,7 @@ class OrgAgentMutationsMixin:
             cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
             check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
 
-        updates = await self._validate_agent_update(name, data, agents)
+        updates = await self._validate_agent_update(name, data, agents, existing)
         if "name" in updates:
             # ``model_copy`` bypasses the before-validator that derives the
             # stable id from the name, so a rename would otherwise return
