@@ -242,6 +242,7 @@ PROVIDER_MODEL_UPGRADE_RECOMMENDED: Final[str] = "provider.model.upgrade_recomme
 PROVIDER_MODEL_UPGRADE_AUTO_APPLIED: Final[str] = "provider.model.upgrade_auto_applied"
 PROVIDER_MODEL_UPGRADE_APPROVED: Final[str] = "provider.model.upgrade_approved"
 PROVIDER_MODEL_UPGRADE_REJECTED: Final[str] = "provider.model.upgrade_rejected"
+PROVIDER_MODEL_UPGRADE_SUPERSEDED: Final[str] = "provider.model.upgrade_superseded"
 PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED: Final[str] = (
     "provider.model.upgrade_reassign_failed"
 )

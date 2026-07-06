@@ -2308,7 +2308,7 @@ CREATE TABLE upgrade_recommendations (
     recommendation_json TEXT NOT NULL CHECK (LENGTH(TRIM(recommendation_json)) > 0),
     agent_ids_json TEXT NOT NULL CHECK (LENGTH(TRIM(agent_ids_json)) > 0),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'approved', 'rejected', 'auto_applied')
+        status IN ('pending', 'approved', 'rejected', 'auto_applied', 'superseded')
     ),
     created_at TEXT NOT NULL CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
@@ -2321,7 +2321,8 @@ CREATE TABLE upgrade_recommendations (
     decided_by TEXT,
     -- Decision metadata is coupled to status: a pending recommendation
     -- stamps neither column; a decided one (approved / rejected /
-    -- auto_applied) stamps both, with a non-blank principal.
+    -- auto_applied) or one retired by a reconcile pass (superseded) stamps
+    -- both, with a non-blank principal (the system actor for superseded).
     CHECK (
         (
             status = 'pending'
@@ -2329,7 +2330,7 @@ CREATE TABLE upgrade_recommendations (
             AND decided_by IS NULL
         )
         OR (
-            status IN ('approved', 'rejected', 'auto_applied')
+            status IN ('approved', 'rejected', 'auto_applied', 'superseded')
             AND decided_at IS NOT NULL
             AND decided_by IS NOT NULL
             AND LENGTH(TRIM(decided_by)) > 0

@@ -715,6 +715,7 @@ export const RECOMMENDATION_STATUS_VALUES = [
     'approved',
     'rejected',
     'auto_applied',
+    'superseded',
 ] as const
 export type RecommendationStatus = (typeof RECOMMENDATION_STATUS_VALUES)[number]
 

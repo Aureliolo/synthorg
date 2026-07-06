@@ -18,13 +18,17 @@ class RecommendationStatus(StrEnum):
 
     ``PENDING`` awaits a human decision; ``APPROVED`` / ``REJECTED`` are
     operator decisions; ``AUTO_APPLIED`` was applied automatically by the
-    in-family auto-apply flow without human review.
+    in-family auto-apply flow without human review; ``SUPERSEDED`` was
+    retired by a later reconcile cycle that no longer produces it (e.g. the
+    current model was removed, or the recommender's newest-in-family pick
+    changed), so a stale pending row never lingers on the review surface.
     """
 
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
     AUTO_APPLIED = "auto_applied"
+    SUPERSEDED = "superseded"
 
 
 class MessageRole(StrEnum):

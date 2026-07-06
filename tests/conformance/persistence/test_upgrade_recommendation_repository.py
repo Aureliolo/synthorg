@@ -148,6 +148,37 @@ class TestUpgradeRecommendationRepository:
         assert fetched.decided_by == "operator-001"
         assert fetched.decided_at == decided
 
+    async def test_transition_if_supersede(self, backend: PersistenceBackend) -> None:
+        repo = _repo(backend)
+        entity = _make(rec_id="rec-supersede")
+        await repo.save(entity)
+        decided = datetime(2026, 6, 3, 9, 0, tzinfo=UTC)
+        result = await repo.transition_if(
+            entity.id,
+            from_state=RecommendationStatus.PENDING,
+            to_state=RecommendationStatus.SUPERSEDED,
+            decided_at=decided,
+            decided_by="reconcile",
+        )
+        assert result is True
+        fetched = await repo.get(entity.id)
+        assert fetched is not None
+        assert fetched.status is RecommendationStatus.SUPERSEDED
+        assert fetched.decided_by == "reconcile"
+        assert fetched.decided_at == decided
+
+    async def test_save_and_query_superseded_status(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make(rec_id="rec-sup", status=RecommendationStatus.SUPERSEDED),
+        )
+        rows = await repo.query(
+            UpgradeRecommendationFilterSpec(status=RecommendationStatus.SUPERSEDED),
+        )
+        assert as_uuid("rec-sup") in {r.id for r in rows}
+
     async def test_transition_if_returns_false_on_mismatch(
         self, backend: PersistenceBackend
     ) -> None:

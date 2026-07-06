@@ -14441,10 +14441,13 @@ export type components = {
          *
          *     ``PENDING`` awaits a human decision; ``APPROVED`` / ``REJECTED`` are
          *     operator decisions; ``AUTO_APPLIED`` was applied automatically by the
-         *     in-family auto-apply flow without human review.
+         *     in-family auto-apply flow without human review; ``SUPERSEDED`` was
+         *     retired by a later reconcile cycle that no longer produces it (e.g. the
+         *     current model was removed, or the recommender's newest-in-family pick
+         *     changed), so a stale pending row never lingers on the review surface.
          * @enum {string}
          */
-        readonly RecommendationStatus: "pending" | "approved" | "rejected" | "auto_applied";
+        readonly RecommendationStatus: "pending" | "approved" | "rejected" | "auto_applied" | "superseded";
         /** RecommendedAction */
         readonly RecommendedAction: {
             /** @description Semantic action key */
@@ -14554,6 +14557,8 @@ export type components = {
             readonly recommended_count: number;
             /** @description Number of models marked stale during the cycle. */
             readonly stale_count: number;
+            /** @description Number of pending recommendations retired during the cycle because the recommender no longer produces them. */
+            readonly superseded_count: number;
         };
         /**
          * RefreshMode
@@ -26804,7 +26809,7 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | null;
+                readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | "superseded" | null;
             };
             readonly header?: never;
             readonly path?: never;

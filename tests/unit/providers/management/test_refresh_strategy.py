@@ -98,24 +98,27 @@ class TestDetectOnlyStrategy:
 
 
 class TestReconcileRecommendStrategy:
-    async def test_persists_new_models_and_recommends(self) -> None:
-        old = _model("old", generation=1.0)
-        new = _model("new", generation=2.0)
+    async def test_adds_new_refreshes_metadata_and_recommends(self) -> None:
+        # 'old' is persisted with a stale family; the live catalogue advertises
+        # it with a fresh family (a parser improvement) plus a new model.
+        old_stale = _model("old", family="stale-fam", generation=1.0)
+        old_fresh = _model("old", family="fresh-fam", generation=1.0)
+        new = _model("new", family="fresh-fam", generation=2.0)
         probe = mock_of[LiveDiscoveryProbe](
             discover_report=AsyncMock(
                 return_value=LiveCatalogReport(
                     provider_name="local",
-                    discovered=(old, new),
+                    discovered=(old_fresh, new),
                     added_ids=("new",),
                     checked_ids=("old",),
                 ),
             ),
         )
-        # After adding the new model, the refreshed provider has both.
+        # The refresh persists the merged set; the read-back reflects it.
         mgmt = mock_of[ProviderManagementService](
-            add_model=AsyncMock(),
+            update_provider=AsyncMock(),
             flag_models_stale=AsyncMock(),
-            get_provider=AsyncMock(return_value=_provider(old, new)),
+            get_provider=AsyncMock(return_value=_provider(old_fresh, new)),
         )
         strategy = ReconcileRecommendStrategy(
             probe=probe,
@@ -123,9 +126,67 @@ class TestReconcileRecommendStrategy:
             recommender=UpgradeRecommender(),
             clock=FakeClock(),
         )
-        outcome = await strategy.reconcile("local", _provider(old))
+        outcome = await strategy.reconcile("local", _provider(old_stale))
         assert outcome.added_ids == ("new",)
-        mgmt.add_model.assert_awaited_once()
+        assert outcome.recommendations_valid is True
+        mgmt.update_provider.assert_awaited_once()
+        persisted = {m.id: m for m in mgmt.update_provider.await_args.args[1].models}
+        # Existing model's metadata is refreshed and the new one is added.
+        assert persisted["old"].metadata.family == "fresh-fam"
+        assert persisted["new"].metadata.family == "fresh-fam"
         # The refreshed provider yields an old->new in-family recommendation.
         assert len(outcome.recommendations) == 1
         assert outcome.recommendations[0].recommended_model_id == "new"
+
+    async def test_skips_persist_when_catalogue_unchanged(self) -> None:
+        model = _model("m", generation=1.0)
+        probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(
+                return_value=LiveCatalogReport(
+                    provider_name="local",
+                    discovered=(model,),
+                    checked_ids=("m",),
+                ),
+            ),
+        )
+        mgmt = mock_of[ProviderManagementService](
+            update_provider=AsyncMock(),
+            flag_models_stale=AsyncMock(),
+            get_provider=AsyncMock(return_value=_provider(model)),
+        )
+        strategy = ReconcileRecommendStrategy(
+            probe=probe,
+            mgmt_service=mgmt,
+            recommender=UpgradeRecommender(),
+            clock=FakeClock(),
+        )
+        outcome = await strategy.reconcile("local", _provider(model))
+        assert outcome.added_ids == ()
+        mgmt.update_provider.assert_not_called()
+
+    async def test_recommend_failure_marks_recommendations_invalid(self) -> None:
+        model = _model("m", generation=1.0)
+        probe = mock_of[LiveDiscoveryProbe](
+            discover_report=AsyncMock(
+                return_value=LiveCatalogReport(
+                    provider_name="local",
+                    discovered=(model,),
+                    checked_ids=("m",),
+                ),
+            ),
+        )
+        # The post-refresh re-read (used only by the recommend step) fails.
+        mgmt = mock_of[ProviderManagementService](
+            update_provider=AsyncMock(),
+            flag_models_stale=AsyncMock(),
+            get_provider=AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        strategy = ReconcileRecommendStrategy(
+            probe=probe,
+            mgmt_service=mgmt,
+            recommender=UpgradeRecommender(),
+            clock=FakeClock(),
+        )
+        outcome = await strategy.reconcile("local", _provider(model))
+        assert outcome.recommendations == ()
+        assert outcome.recommendations_valid is False

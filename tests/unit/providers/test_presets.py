@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.providers.family_parser import get_family_parser
 from synthorg.providers.presets import (
     PROVIDER_PRESETS,
     CloudPreset,
@@ -15,6 +16,55 @@ from synthorg.providers.presets import (
     list_probable_presets,
     list_soft_presets,
 )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("provider", ["ollama", "ollama-cloud"])
+class TestOllamaFamilyRules:
+    """The ollama rules fold a specialisation suffix into the family label.
+
+    The generic heuristic keeps only the leading stem + first version token,
+    so coder / embedding / code variants collapse into the base family and the
+    upgrade recommender cross-recommends them. These rules split each
+    specialisation into its own lineage while leaving tier (-pro / -flash) and
+    size (:480b) in one family.
+    """
+
+    def test_coder_is_its_own_family(self, provider: str) -> None:
+        parser = get_family_parser()
+        coder = parser.parse("qwen3-coder:480b", litellm_provider=provider)
+        general = parser.parse("qwen3.5:397b", litellm_provider=provider)
+        assert coder.family == "qwen-coder"
+        assert general.family == "qwen"
+        assert coder.family != general.family
+
+    def test_coder_upgrades_within_the_coder_lineage(self, provider: str) -> None:
+        parser = get_family_parser()
+        gen3 = parser.parse("qwen3-coder:480b", litellm_provider=provider)
+        gen4 = parser.parse("qwen4-coder:500b", litellm_provider=provider)
+        assert gen3.family == gen4.family == "qwen-coder"
+        assert gen3.generation == 3.0
+        assert gen4.generation == 4.0
+
+    def test_embedding_is_its_own_family(self, provider: str) -> None:
+        parser = get_family_parser()
+        embedding = parser.parse("qwen3-embedding:8b", litellm_provider=provider)
+        chat = parser.parse("qwen3.6:27b-q4_K_M", litellm_provider=provider)
+        assert embedding.family == "qwen-embedding"
+        assert chat.family == "qwen"
+
+    def test_code_variant_splits_from_general(self, provider: str) -> None:
+        parser = get_family_parser()
+        general = parser.parse("kimi-k2.5", litellm_provider=provider)
+        code = parser.parse("kimi-k2.7-code", litellm_provider=provider)
+        assert general.family != code.family
+
+    def test_tier_suffixes_stay_in_one_family(self, provider: str) -> None:
+        parser = get_family_parser()
+        pro = parser.parse("deepseek-v4-pro", litellm_provider=provider)
+        flash = parser.parse("deepseek-v4-flash", litellm_provider=provider)
+        assert pro.family == flash.family
+        assert pro.generation == flash.generation == 4.0
 
 
 @pytest.mark.unit

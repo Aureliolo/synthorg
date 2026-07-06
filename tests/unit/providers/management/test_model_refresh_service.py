@@ -134,6 +134,59 @@ class TestModelRefreshService:
         assert report.recommended_count == 0
         repo.save.assert_not_called()
 
+    @staticmethod
+    def _obsolete_pending() -> StoredUpgradeRecommendation:
+        # A pending row the recommender no longer produces: its current model
+        # ("ancient") is not in the provider catalogue, so the reconcile's
+        # authoritative set (old->new) never re-surfaces it.
+        return StoredUpgradeRecommendation(
+            recommendation=UpgradeRecommendation(
+                provider_name="example-provider",
+                current_model_id="ancient",
+                recommended_model_id="new",
+                family="fam",
+                current_generation=0.5,
+                recommended_generation=2.0,
+                score=0.5,
+                reason="stale pick",
+            ),
+            created_at=FakeClock().now(),
+        )
+
+    async def test_obsolete_pending_is_superseded(self) -> None:
+        obsolete = self._obsolete_pending()
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=(obsolete,)),
+            save=AsyncMock(),
+            transition_if=AsyncMock(return_value=True),
+        )
+        service = _build_service(repo=repo)
+        report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        # The recommender still produces old->new (persisted anew) ...
+        assert report.recommended_count == 1
+        # ... and the obsolete ancient->new pending row is retired.
+        assert report.superseded_count == 1
+        repo.transition_if.assert_awaited_once()
+        call = repo.transition_if.await_args
+        assert call.args[0] == obsolete.id
+        assert call.kwargs["from_state"] is RecommendationStatus.PENDING
+        assert call.kwargs["to_state"] is RecommendationStatus.SUPERSEDED
+        assert call.kwargs["decided_by"] == "reconcile"
+
+    async def test_detect_only_does_not_supersede(self) -> None:
+        obsolete = self._obsolete_pending()
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=(obsolete,)),
+            save=AsyncMock(),
+            transition_if=AsyncMock(return_value=True),
+        )
+        service = _build_service(repo=repo)
+        report = await service.run_cycle(mode=RefreshMode.DETECT_ONLY)
+        # Detect-only produces no recommendations; its empty set must NOT be
+        # read as "retire everything".
+        assert report.superseded_count == 0
+        repo.transition_if.assert_not_called()
+
     async def test_auto_apply_invokes_hook(self) -> None:
         repo = mock_of[UpgradeRecommendationRepository](
             query=AsyncMock(return_value=()),

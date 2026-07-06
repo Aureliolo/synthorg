@@ -885,6 +885,26 @@ MODEL_VERSION_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = MappingPr
 # ``family_template``.  Providers absent here fall back to the parser's
 # generic heuristic.  Vendor names are allowed in this module per CLAUDE.md.
 
+# Ollama (local + hosted) advertises a shared lineage stem with a trailing
+# specialisation token -- ``qwen3-coder``, ``qwen3-embedding``,
+# ``kimi-k2.7-code`` -- that is NOT a drop-in replacement for the same
+# lineage's general chat model. The generic heuristic captures only the
+# leading stem + first version token, collapsing coder / embedding into the
+# base family, which lets the upgrade recommender surface a general (or
+# embedding) model as the "newer" upgrade for a coder pin. Folding the
+# specialisation into the family keeps each specialisation its own lineage;
+# tier suffixes (``-pro`` / ``-flash``) and size (``:480b``) are deliberately
+# left in one family so the recommender's scorer ranks within it.
+_OLLAMA_FAMILY_RULES: Final[tuple[FamilyRule, ...]] = (
+    FamilyRule(
+        capture=re.compile(
+            r"^(?P<family>[a-z][a-z._-]*?)-?(?P<gen>\d+(?:[.-]\d+)?)"
+            r"-(?P<variant>coder|code|embedding|embed)",
+        ),
+        family_template="{family}-{variant}",
+    ),
+)
+
 MODEL_FAMILY_RULES: Final[MappingProxyType[str, tuple[FamilyRule, ...]]] = (
     MappingProxyType(
         {
@@ -948,6 +968,8 @@ MODEL_FAMILY_RULES: Final[MappingProxyType[str, tuple[FamilyRule, ...]]] = (
                     family_template="moonshot",
                 ),
             ),
+            "ollama": _OLLAMA_FAMILY_RULES,
+            "ollama-cloud": _OLLAMA_FAMILY_RULES,
         }
     )
 )

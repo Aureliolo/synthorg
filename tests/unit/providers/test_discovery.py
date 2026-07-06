@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 
+from synthorg.config.schema import ProviderConfig
 from synthorg.providers._discovery_ssrf import (
     SsrfCheckResult,
     validate_discovery_url,
@@ -455,6 +456,46 @@ class TestInferPresetHint:
         from synthorg.providers.management._discovery_auth import infer_preset_hint
 
         assert infer_preset_hint(url) == expected
+
+
+class TestResolveDiscoveryHint:
+    """Tests for the discovery-hint resolution precedence."""
+
+    @staticmethod
+    def _config(*, preset_name: str | None, base_url: str | None) -> ProviderConfig:
+        return ProviderConfig(
+            connection_name="conn-test",
+            base_url=base_url,
+            preset_name=preset_name,
+        )
+
+    def test_explicit_hint_wins(self) -> None:
+        from synthorg.providers.management._discovery_auth import resolve_discovery_hint
+
+        config = self._config(preset_name="ollama-cloud", base_url="http://x:11434")
+        assert resolve_discovery_hint(config, "override") == "override"
+
+    def test_stored_preset_preferred_over_url_inference(self) -> None:
+        from synthorg.providers.management._discovery_auth import resolve_discovery_hint
+
+        # ollama.com exposes no port; without the preset preference this would
+        # degrade to the generic parser.
+        config = self._config(
+            preset_name="ollama-cloud", base_url="https://ollama.com/v1"
+        )
+        assert resolve_discovery_hint(config, None) == "ollama-cloud"
+
+    def test_falls_back_to_url_heuristic(self) -> None:
+        from synthorg.providers.management._discovery_auth import resolve_discovery_hint
+
+        config = self._config(preset_name=None, base_url="http://localhost:11434")
+        assert resolve_discovery_hint(config, None) == "ollama"
+
+    def test_none_when_nothing_resolves(self) -> None:
+        from synthorg.providers.management._discovery_auth import resolve_discovery_hint
+
+        config = self._config(preset_name=None, base_url="https://ollama.com/v1")
+        assert resolve_discovery_hint(config, None) is None
 
 
 class TestProbePresetUrls:
