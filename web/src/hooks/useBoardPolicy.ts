@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getBoard } from '@/api/endpoints/board'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
@@ -26,28 +26,50 @@ export interface BoardPolicy {
   enforceWip: boolean
 }
 
+export interface BoardPolicyResult {
+  /** The fetched policy, or ``null`` until the first fetch resolves / on error. */
+  policy: BoardPolicy | null
+  /** Re-fetch the board policy so occupancy badges stay live after a move. */
+  refresh: () => void
+}
+
 /**
  * Fetch the org's board WIP policy (limits + enforcement + per-column
- * occupancy) from the backend. Returns ``null`` until the first fetch
- * resolves; a failed fetch degrades to ``null`` (the board renders with
- * no WIP badges rather than erroring).
+ * occupancy) from the backend. ``policy`` is ``null`` until the first
+ * fetch resolves; a failed fetch degrades to ``null`` (the board renders
+ * with no WIP badges rather than erroring). ``refresh`` re-fetches so the
+ * occupancy counts stay live after a card moves.
+ *
+ * Fetching is gated on ``enabled`` (board view) so the list view does not
+ * issue a board request it never displays.
  */
-export function useBoardPolicy(): BoardPolicy | null {
+export function useBoardPolicy(enabled: boolean): BoardPolicyResult {
   const [policy, setPolicy] = useState<BoardPolicy | null>(null)
-  useEffect(() => {
-    let active = true
+
+  const load = useCallback((signal: { active: boolean }) => {
     void getBoard()
       .then((view) => {
-        if (active) setPolicy(toPolicy(view.columns, view.enforce_wip))
+        if (signal.active) setPolicy(toPolicy(view.columns, view.enforce_wip))
       })
       .catch((err: unknown) => {
         log.warn('board policy fetch failed', sanitizeForLog(err))
       })
-    return () => {
-      active = false
-    }
   }, [])
-  return policy
+
+  useEffect(() => {
+    if (!enabled) return undefined
+    const signal = { active: true }
+    load(signal)
+    return () => {
+      signal.active = false
+    }
+  }, [enabled, load])
+
+  const refresh = useCallback(() => {
+    if (enabled) load({ active: true })
+  }, [enabled, load])
+
+  return { policy, refresh }
 }
 
 function toPolicy(

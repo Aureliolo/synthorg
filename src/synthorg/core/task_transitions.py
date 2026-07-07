@@ -2,16 +2,17 @@
 
 Defines the valid state transitions for the task lifecycle, based on
 the Engine design page, extended with BLOCKED, CANCELLED,
-FAILED, INTERRUPTED, SUSPENDED, REJECTED, and AUTH_REQUIRED
-transitions for completeness::
+FAILED, INTERRUPTED, SUSPENDED, REJECTED, AUTH_REQUIRED, and
+AWAITING_INPUT transitions for completeness::
 
     CREATED -> ASSIGNED | REJECTED
     ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
                | FAILED | INTERRUPTED | SUSPENDED
-    IN_PROGRESS -> IN_REVIEW | AUTH_REQUIRED | BLOCKED | CANCELLED
-                   | FAILED | INTERRUPTED | SUSPENDED
+    IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED
+                   | CANCELLED | FAILED | INTERRUPTED | SUSPENDED
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
+    AWAITING_INPUT -> IN_PROGRESS (answer received) | CANCELLED
     BLOCKED -> ASSIGNED (unblocked)
     FAILED -> ASSIGNED (reassignment for retry)
     INTERRUPTED -> ASSIGNED (reassignment on restart)
@@ -19,8 +20,9 @@ transitions for completeness::
 
 COMPLETED, CANCELLED, and REJECTED are terminal states with no
 outgoing transitions.  FAILED, INTERRUPTED, and SUSPENDED are
-non-terminal (can be reassigned).  AUTH_REQUIRED is non-terminal
-(waiting for authorization).
+non-terminal (can be reassigned).  AUTH_REQUIRED (waiting for
+authorization) and AWAITING_INPUT (paused for a human's answer to a
+mid-task clarification) are non-terminal.
 """
 
 from typing import Final

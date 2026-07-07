@@ -19,7 +19,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_COMPLETED,
@@ -202,6 +202,7 @@ class AgentEngineResumeMixin:
                 task_id=task_id,
                 note="AWAITING_INPUT -> IN_PROGRESS transition failed on resume",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _build_resume_runtime(

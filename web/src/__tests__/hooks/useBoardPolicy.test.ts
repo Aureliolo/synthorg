@@ -7,9 +7,9 @@ import type { getBoard } from '@/api/endpoints/board'
 
 describe('useBoardPolicy', () => {
   it('maps backend flow-limited columns onto frontend column ids', async () => {
-    const { result } = renderHook(() => useBoardPolicy())
-    await waitFor(() => expect(result.current).not.toBeNull())
-    const policy = result.current
+    const { result } = renderHook(() => useBoardPolicy(true))
+    await waitFor(() => expect(result.current.policy).not.toBeNull())
+    const policy = result.current.policy
     expect(policy?.enforceWip).toBe(false)
     expect(policy?.wipByColumn.in_progress).toEqual({
       count: 2,
@@ -47,19 +47,37 @@ describe('useBoardPolicy', () => {
         ),
       ),
     )
-    const { result } = renderHook(() => useBoardPolicy())
-    await waitFor(() => expect(result.current).not.toBeNull())
-    expect(result.current?.enforceWip).toBe(true)
-    expect(result.current?.wipByColumn.in_progress?.overLimit).toBe(true)
+    const { result } = renderHook(() => useBoardPolicy(true))
+    await waitFor(() => expect(result.current.policy).not.toBeNull())
+    expect(result.current.policy?.enforceWip).toBe(true)
+    expect(result.current.policy?.wipByColumn.in_progress?.overLimit).toBe(true)
+  })
+
+  it('does not fetch while disabled (list view)', async () => {
+    let hits = 0
+    server.use(
+      http.get('/api/v1/board', () => {
+        hits += 1
+        return new HttpResponse(null, { status: 500 })
+      }),
+    )
+    const { result } = renderHook(() => useBoardPolicy(false))
+    await waitFor(() => expect(hits).toBe(0))
+    expect(result.current.policy).toBeNull()
   })
 
   it('degrades to null when the board fetch fails', async () => {
+    let hits = 0
     server.use(
-      http.get('/api/v1/board', () => new HttpResponse(null, { status: 503 })),
+      http.get('/api/v1/board', () => {
+        hits += 1
+        return new HttpResponse(null, { status: 503 })
+      }),
     )
-    const { result } = renderHook(() => useBoardPolicy())
-    // The hook swallows the error and stays null (board renders sans badges).
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(result.current).toBeNull()
+    const { result } = renderHook(() => useBoardPolicy(true))
+    // Wait until the failing fetch has actually been attempted, then confirm
+    // the hook swallowed it and kept policy null (board renders sans badges).
+    await waitFor(() => expect(hits).toBeGreaterThan(0))
+    expect(result.current.policy).toBeNull()
   })
 })

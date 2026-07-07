@@ -329,8 +329,8 @@ class TestApprove:
         assert result.charter.approved_by == "user-1"
         assert result.charter.task_id == "task-1"
         assert result.charter.forecast_id is not None
-        # RC3: the charter records the project it became; the proposed name
-        # is cleared so the run is filed under a concrete project_id.
+        # The charter records the project it became; the proposed name is
+        # cleared so the run is filed under a concrete project_id.
         assert result.charter.project_id == _EXPECTED_NEW_PROJECT_ID
         assert result.charter.proposed_project_name is None
 

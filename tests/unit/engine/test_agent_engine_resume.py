@@ -149,8 +149,8 @@ class TestResumeParkedRun:
             decision_message=_DECISION_MESSAGE,
         )
 
-        targets = [call.args[1] for call in task_engine.transition_task.await_args_list]
-        assert TaskStatus.IN_PROGRESS in targets
+        task_engine.transition_task.assert_awaited_once()
+        assert task_engine.transition_task.await_args.args[1] is TaskStatus.IN_PROGRESS
 
     async def test_in_progress_task_not_transitioned_on_resume(
         self,

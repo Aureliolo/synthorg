@@ -100,14 +100,25 @@ async def try_plan_review_resume(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception as exc:  # noqa: BLE001 -- dispatch failure: don't 5xx
+    except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
         reraise_critical(exc)
         log_exception_redacted(
             logger,
             APPROVAL_GATE_RESUME_FAILED,
             exc,
             approval_id=approval_id,
-            note="approved plan dispatch failed",
+            note="approved plan dispatch failed; marking task failed for visibility",
+        )
+        # The approval is already persisted APPROVED, so a swallowed dispatch
+        # failure would leave the parent silently stuck in its pre-approval
+        # status with no board-visible signal. Move it to FAILED so the stuck
+        # plan surfaces and stays re-runnable (FAILED -> ASSIGNED is valid).
+        await _mark_task(
+            app_state,
+            task_id,
+            decided_by,
+            target=TaskStatus.FAILED,
+            reason="approved plan failed to dispatch",
         )
     return True
 
@@ -118,21 +129,47 @@ async def _cancel_task(
     decided_by: str,
 ) -> None:
     """Cancel the parent task of a rejected plan, best-effort."""
+    await _mark_task(
+        app_state,
+        task_id,
+        decided_by,
+        target=TaskStatus.CANCELLED,
+        reason="plan rejected at human approval gate",
+    )
+
+
+async def _mark_task(
+    app_state: AppState,
+    task_id: str | None,
+    decided_by: str,
+    *,
+    target: TaskStatus,
+    reason: str,
+) -> None:
+    """Transition the plan's parent task, surfacing a failure at ERROR.
+
+    A failure here means the approval decision and the task's real status
+    diverge (a rejected plan whose task stays live, or a failed dispatch whose
+    task never reached FAILED), which is operationally meaningful: log ERROR so
+    the divergence is visible, but do not raise (the decision is already
+    persisted; a 5xx here would mislabel an already-recorded decision).
+    """
     if task_id is None:
         return
     try:
         await task_engine_of(app_state).transition_task(
             task_id,
-            TaskStatus.CANCELLED,
+            target,
             requested_by=decided_by,
-            reason="plan rejected at human approval gate",
+            reason=reason,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             APPROVAL_GATE_RESUME_FAILED,
             task_id=task_id,
+            target_status=target.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            note="rejected plan's task could not be cancelled",
+            note="plan-decision task transition failed; status may diverge",
         )
