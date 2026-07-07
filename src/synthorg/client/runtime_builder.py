@@ -51,7 +51,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
-from synthorg.providers.errors import DriverNotRegisteredError
+from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
@@ -93,43 +93,6 @@ def _select_provider(app_state: AppState) -> CompletionProvider | None:
     if not names:
         return None
     return registry.get(names[0])
-
-
-def _resolve_intake_binding(
-    app_state: AppState,
-    raw_model: str | None,
-    *,
-    active: CompletionProvider | None,
-) -> tuple[CompletionProvider | None, str | None]:
-    """Resolve the intake ``intake_model`` MODEL_REF to ``(provider, model_id)``.
-
-    ``intake_model`` is a model-assignment setting storing a ``ModelRef``: an
-    explicit provider binds the agent intake to *that* driver rather than the
-    first registered one (which is what *active* is). A provider-less (bare)
-    value keeps the historic first-provider behaviour. Returns *active* + the
-    bare model id, substituting the ref's provider when it names a registered
-    driver.
-
-    Returns:
-        The provider backing the agent intake strategy and the bare model id
-        (``None`` when unset), for :func:`build_intake_strategy`.
-    """
-    if raw_model is None:
-        return active, None
-    ref = parse_model_ref(raw_model)
-    model_id = ref.model_id or None
-    if not ref.provider:
-        return active, model_id
-    try:
-        return provider_registry_of(app_state).get(ref.provider), model_id
-    except DriverNotRegisteredError:
-        logger.warning(
-            CLIENT_SIMULATION_RUNTIME_WIRED,
-            note="intake model's selected provider is not registered;"
-            " falling back to the active provider",
-            provider=ref.provider,
-        )
-        return active, model_id
 
 
 def _resolve_intake_settings(
@@ -389,8 +352,14 @@ def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choi
     # The agent intake honours the model ref's provider; the verification
     # stage keeps the active provider (its grader/decomposer models are their
     # own settings, not the intake model).
-    intake_provider, intake_model = _resolve_intake_binding(
-        app_state, model, active=provider
+    intake_ref = parse_model_ref(model or "")
+    intake_model = intake_ref.model_id or None
+    intake_provider = resolve_ref_provider(
+        app_state,
+        intake_ref,
+        active=provider,
+        event=CLIENT_SIMULATION_RUNTIME_WIRED,
+        subject="intake",
     )
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     strategy, effective_strategy = _build_intake_with_fallback(

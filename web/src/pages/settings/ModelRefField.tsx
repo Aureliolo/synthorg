@@ -43,7 +43,7 @@ function encodeModelRef(provider: string, modelId: string): string {
   return JSON.stringify({ provider, model_id: modelId })
 }
 
-export interface ModelRefFieldProps {
+interface ModelRefFieldProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean | undefined

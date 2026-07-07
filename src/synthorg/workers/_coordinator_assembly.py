@@ -40,8 +40,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import persistence_of
-from synthorg.providers.errors import DriverNotRegisteredError
-from synthorg.providers.state import provider_registry_of
+from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers.execution_service import WorkerExecutionService
@@ -254,43 +253,6 @@ def _build_coordination_chain(
     )
 
 
-def _resolve_decomposition_binding(
-    app_state: AppState,
-    active_provider: CompletionProvider,
-    raw_model_ref: str,
-) -> tuple[CompletionProvider, str]:
-    """Resolve a MODEL_REF decomposition setting to a ``(provider, model_id)``.
-
-    The stored value is a :class:`~synthorg.settings.model_ref.ModelRef`. An
-    explicit provider binds the model to *that* provider's catalogue rather
-    than the active (first-registered) one: the class of "model not found on
-    the resolved provider" boot failures the picker exists to prevent. A
-    provider-less (bare) value keeps the historic behaviour of resolving the
-    model against the active provider.
-
-    Returns:
-        The provider the decomposition model resolves against and the bare
-        model id to pass to the coordinator and the ``llm-judged`` policy.
-    """
-    ref = parse_model_ref(raw_model_ref)
-    if not ref.provider.strip():
-        return active_provider, ref.model_id
-    try:
-        return provider_registry_of(app_state).get(ref.provider), ref.model_id
-    except DriverNotRegisteredError:
-        logger.warning(
-            API_APP_STARTUP,
-            service="coordinator",
-            context="decomposition_provider_unregistered",
-            provider=ref.provider,
-            note=(
-                "decomposition model's selected provider is not registered;"
-                " falling back to the active provider"
-            ),
-        )
-        return active_provider, ref.model_id
-
-
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
@@ -328,8 +290,21 @@ async def _build_runtime_coordinator(
         (workspace_strategy, workspace_config),
         middleware_enabled,
     ) = await _resolve_coordinator_dependencies(app_state)
-    decomp_provider, decomposition_model = _resolve_decomposition_binding(
-        app_state, provider, raw_decomposition_ref
+    # ``decomposition_model`` is a MODEL_REF: the provider travels with the
+    # model, so it binds to the provider it was selected on rather than the
+    # first registered one. An empty / unregistered ref provider falls back to
+    # the active *provider*.
+    decomp_ref = parse_model_ref(raw_decomposition_ref)
+    decomposition_model = decomp_ref.model_id
+    decomp_provider = (
+        resolve_ref_provider(
+            app_state,
+            decomp_ref,
+            active=provider,
+            event=API_APP_STARTUP,
+            subject="decomposition",
+        )
+        or provider
     )
     if not decomposition_model.strip():
         msg = (
