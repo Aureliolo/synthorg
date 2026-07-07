@@ -1,0 +1,45 @@
+# module-kind: declarative
+"""Port the work pipeline uses to gate a decomposed plan on human approval.
+
+Dependency inversion: the pipeline depends on this port, not on the
+approval / conversational machinery that implements it, so the engine
+never imports the meta or persistence layers. When splittable team work
+is decomposed into a plan and the org runs with a plan-approval gate, the
+spine hands the plan to the gate instead of dispatching the team; the gate
+persists the plan and parks a plan-approval item, returning a
+:class:`~synthorg.engine.pipeline.models.PlanReviewHandoff` the caller can
+surface. Nothing builds until the plan is approved, at which point the
+exact approved plan is dispatched (no re-decomposition).
+"""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
+
+
+@runtime_checkable
+class PlanReviewGate(Protocol):
+    """Parks a decomposed plan for human approval before a team builds."""
+
+    async def request_plan_approval(
+        self,
+        *,
+        work_item: WorkItem,
+        task: Task,
+        plan: DecompositionResult,
+    ) -> PlanReviewHandoff:
+        """Park *plan* for human approval instead of dispatching the team.
+
+        Args:
+            work_item: The originating entry envelope.
+            task: The persisted parent task that was decomposed.
+            plan: The decomposed subtask tree awaiting approval; the gate
+                persists it so the exact approved plan is what later builds.
+
+        Returns:
+            A :class:`PlanReviewHandoff` the caller surfaces so the human
+            can approve the plan.
+        """
+        ...

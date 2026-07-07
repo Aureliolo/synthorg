@@ -20,11 +20,13 @@ from synthorg.engine.pipeline.errors import (
 )
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    PlanReviewHandoff,
     RoutingVerdict,
     WorkItem,
     WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.routing.models import RoutingCandidate
@@ -259,6 +261,64 @@ class TestTeamPath:
         )
         with pytest.raises(WorkPipelineTeamPathUnavailableError):
             await pipeline.run(_work_item())
+
+
+class TestPlanReviewGate:
+    async def test_splittable_gates_plan_when_gate_wired(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=3,
+                    detail="3 subtasks awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        result = await pipeline.run(_work_item())
+
+        assert result.execution_path is ExecutionPath.PLAN_REVIEW
+        assert result.plan_review_handoff is not None
+        assert result.plan_review_handoff.approval_id == "appr-1"
+        assert result.plan_review_handoff.subtask_count == 3
+        # The plan is decomposed for review, but NOT dispatched: nothing
+        # builds until the human approves the parked plan.
+        coordinator.plan_preview.assert_awaited_once()
+        coordinator.coordinate.assert_not_called()
+
+    async def test_splittable_dispatches_team_without_gate(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+            post_task=_post_task(TaskStatus.COMPLETED),
+        )
+        # No plan-review gate attached: splittable work dispatches straight
+        # to the team (the gate is opt-in, wired only when enabled).
+        result = await pipeline.run(_work_item())
+
+        assert result.execution_path is ExecutionPath.TEAM
+        coordinator.coordinate.assert_awaited_once()
+        coordinator.plan_preview.assert_not_called()
 
 
 class TestNarratorTrigger:

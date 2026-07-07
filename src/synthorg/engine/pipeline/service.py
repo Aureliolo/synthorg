@@ -33,6 +33,7 @@ from synthorg.engine.pipeline.errors import (
 )
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    PlanReviewHandoff,
     RefinementHandoff,
     RoutingVerdict,
     WorkItem,
@@ -41,6 +42,7 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.engine.routing.scorer import AgentTaskScorer
@@ -56,6 +58,7 @@ from synthorg.observability.events.chief_of_staff import (
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
+    PIPELINE_PLAN_REVIEW_REQUESTED,
     PIPELINE_PROJECT_NOT_FOUND,
     PIPELINE_REFINEMENT_REQUESTED,
     PIPELINE_ROUTING_UNDECIDABLE,
@@ -82,6 +85,7 @@ _PHASE_DECOMPOSE = "decompose"
 _PHASE_SOLO = "solo_execution"
 _PHASE_TEAM = "team_execution"
 _PHASE_REFINE = "refinement_handoff"
+_PHASE_PLAN_REVIEW = "plan_review_handoff"
 _PHASE_METRICS = "coordination_metrics"
 
 #: Work sources whose ``requested_by`` is a human user id (not an agent or
@@ -117,6 +121,7 @@ class DefaultWorkPipeline:
         "_coordinator",
         "_intake_engine",
         "_narrator",
+        "_plan_review_gate",
         "_project_repository",
         "_refinement_router",
         "_routing_policy",
@@ -158,6 +163,7 @@ class DefaultWorkPipeline:
         self._assignment_service = assignment_service
         self._narrator: RunNarrator | None = None
         self._refinement_router: WorkRefinementRouter | None = None
+        self._plan_review_gate: PlanReviewGate | None = None
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
         """Attach the post-run narrator (documentary mode).
@@ -178,6 +184,18 @@ class DefaultWorkPipeline:
         through to the coordinator, where the clarification gate blocks it.
         """
         self._refinement_router = router
+
+    def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
+        """Attach the human plan-approval gate for splittable team work.
+
+        Late-bind seam: the gate wraps the approval/conversational surface,
+        which wires only after persistence is available, so it is attached to
+        the already-built pipeline by the startup hook. Absent, splittable
+        team work dispatches straight to the coordinator (no human plan gate);
+        present, the decomposed plan is parked for approval before any team
+        builds, and the approved plan is dispatched verbatim on approval.
+        """
+        self._plan_review_gate = gate
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Drive *work_item* through the full spine (see module docstring).
@@ -214,6 +232,7 @@ class DefaultWorkPipeline:
                 phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
             refinement_handoff: RefinementHandoff | None = None
+            plan_review_handoff: PlanReviewHandoff | None = None
             if verdict is RoutingVerdict.LEAF:
                 path = ExecutionPath.SOLO
                 final_status = await self._phase(
@@ -228,6 +247,18 @@ class DefaultWorkPipeline:
                 path = ExecutionPath.REFINEMENT
                 refinement_handoff = await self._phase(
                     phases, _PHASE_REFINE, self._refine(work_item, task)
+                )
+                final_status = task.status
+            elif self._should_gate_plan():
+                # Splittable team work under a human plan-approval gate:
+                # decompose into a plan, park it for approval, and stop.
+                # Nothing builds until the plan is approved, at which point
+                # the approved plan is dispatched verbatim.
+                path = ExecutionPath.PLAN_REVIEW
+                plan_review_handoff = await self._phase(
+                    phases,
+                    _PHASE_PLAN_REVIEW,
+                    self._plan_review(work_item, task, agents),
                 )
                 final_status = task.status
             else:
@@ -254,6 +285,7 @@ class DefaultWorkPipeline:
             final_task_status=final_status,
             phases=tuple(phases),
             refinement_handoff=refinement_handoff,
+            plan_review_handoff=plan_review_handoff,
             total_duration_seconds=total,
         )
         logger.info(
@@ -555,6 +587,57 @@ class DefaultWorkPipeline:
             task_id=str(task.id),
             conversation_id=handoff.conversation_id,
             needs_clarification=handoff.needs_clarification,
+        )
+        return handoff
+
+    def _should_gate_plan(self) -> bool:
+        """Whether splittable team work is gated on human plan approval.
+
+        The gate applies only when both a plan-review gate and a coordinator
+        are wired: the gate needs the coordinator to decompose the plan, and
+        without the gate the work dispatches straight to the team.
+
+        Returns:
+            ``True`` when the plan-approval gate should run instead of
+            immediate team dispatch.
+        """
+        return self._plan_review_gate is not None and self._coordinator is not None
+
+    async def _plan_review(
+        self,
+        work_item: WorkItem,
+        task: Task,
+        agents: tuple[AgentIdentity, ...],
+    ) -> PlanReviewHandoff:
+        """Decompose the plan and park it for human approval.
+
+        Runs the decompose-only half of coordination to produce the subtask
+        tree, then hands it to the plan-review gate, which persists the plan
+        and parks a plan-approval item. Nothing is dispatched; the approved
+        plan is dispatched verbatim on approval.
+
+        Returns:
+            The :class:`PlanReviewHandoff` the caller surfaces so the human
+            can approve the plan.
+        """
+        coordinator = self._coordinator
+        gate = self._plan_review_gate
+        assert coordinator is not None  # noqa: S101 -- guarded by _should_gate_plan
+        assert gate is not None  # noqa: S101 -- guarded by _should_gate_plan
+        plan = await coordinator.plan_preview(
+            CoordinationContext(task=task, available_agents=agents)
+        )
+        handoff = await gate.request_plan_approval(
+            work_item=work_item,
+            task=task,
+            plan=plan,
+        )
+        logger.info(
+            PIPELINE_PLAN_REVIEW_REQUESTED,
+            correlation_id=work_item.correlation_id,
+            task_id=str(task.id),
+            approval_id=handoff.approval_id,
+            subtask_count=handoff.subtask_count,
         )
         return handoff
 

@@ -469,10 +469,19 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
                 ``SUPERVISED`` or ``LOCKED``: dispatch is blocked and
                 the plan is logged for review.
         """
+        task = ctx.coordination_context.task
+
+        # An approved-plan resume (coordinate(precomputed_plan=...)) has already
+        # cleared the human gate; never re-gate the dispatch it is resuming.
+        if ctx.metadata.get("plan_review_approved") is True:
+            return ctx.with_metadata(
+                "plan_review_gate",
+                {"gated": False, "reason": "plan_already_approved"},
+            )
+
         # Read autonomy from context config if available
         config = getattr(ctx.coordination_context, "config", None)
         level = getattr(config, "autonomy_level", None) or self._default_level
-        task = ctx.coordination_context.task
 
         if level in (AutonomyLevel.SUPERVISED, AutonomyLevel.LOCKED):
             logger.info(
