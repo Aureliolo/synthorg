@@ -439,6 +439,7 @@
         "SubworkflowController",
         "EvaluationConfigVersionController",
         "DecompositionController",
+        "BoardController",
         "ObjectiveController",
         "BrownfieldController"
       ],
@@ -529,6 +530,7 @@
         "error_taxonomy_store",
         "evolution_service",
         "ceremony_scheduler",
+        "kanban_board_service",
         "intake_entry_adapter",
         "objective_entry_adapter",
         "brownfield_entry_adapter",
@@ -1375,6 +1377,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-05T13:18:21.682766Z",
+  "generated_at": "2026-07-07T22:24:35.303737Z",
   "schema_version": 1
 }
