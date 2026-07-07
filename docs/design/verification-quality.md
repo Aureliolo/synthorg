@@ -130,6 +130,19 @@ Key design decisions:
   `IN_PROGRESS` for rework with the stage name and reason in metadata.
 - **Default fallback**: when no pipeline is configured, the existing
   `ReviewGateService` single-stage behaviour runs.
+- **Automatic vs human-gated**: `engine.auto_review_on_completion` (default off)
+  controls who acts on a task reaching `IN_REVIEW`. Off, a human opens the review
+  and decides; on, the staged pipeline runs automatically at boot-wiring time and
+  applies its verdict without waiting for a human.
+
+Beyond the review pipeline, the lifecycle exposes additional human gates that all
+route through the same `signal_resume_intent` approvals-resume path, each off by
+default: the **plan-approval gate** (`ApprovalSource.PLAN_REVIEW`,
+`coordination.plan_approval_required`) parks a decomposed team plan before any team
+builds; the **mid-task clarification pause** (`AWAITING_INPUT`,
+`engine.clarification_enabled`) lets an agent ask a human an open-ended question; and
+the **project-decision gate** (`engine.scoping_enabled`) records the human's choice as
+a project-brain `DECISION` entry.
 
 ## Intake Engine
 

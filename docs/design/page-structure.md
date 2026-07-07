@@ -515,6 +515,7 @@ Every backend controller has a home in the page structure. No orphans.
 | ActivityController | Dashboard |
 | AgentController | Agents, Org Chart |
 | TaskController | Task Board |
+| BoardController | Task Board (WIP-limited Kanban view: `GET /board`, `POST /board/move`) |
 | MessageController | Messages |
 | MeetingController | Meetings |
 | BudgetController | Budget, Dashboard |

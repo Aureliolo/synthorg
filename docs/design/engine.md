@@ -35,6 +35,7 @@ stateDiagram-v2
     ASSIGNED --> SUSPENDED : checkpoint shutdown
 
     IN_PROGRESS --> IN_REVIEW : agent done
+    IN_PROGRESS --> AWAITING_INPUT : asks a human
     IN_PROGRESS --> AUTH_REQUIRED : requires authorization
     IN_PROGRESS --> FAILED : runtime crash
     IN_PROGRESS --> CANCELLED : cancelled
@@ -45,6 +46,9 @@ stateDiagram-v2
     IN_REVIEW --> IN_PROGRESS : rework
     IN_REVIEW --> BLOCKED : blocked
     IN_REVIEW --> CANCELLED : cancelled
+
+    AWAITING_INPUT --> IN_PROGRESS : answer received
+    AWAITING_INPUT --> CANCELLED : cancelled
 
     AUTH_REQUIRED --> ASSIGNED : approved
     AUTH_REQUIRED --> CANCELLED : denied/timeout
@@ -63,8 +67,8 @@ stateDiagram-v2
 ```
 
 !!! info "Non-terminal states"
-    `BLOCKED`, `FAILED`, `INTERRUPTED`, `SUSPENDED`, and `AUTH_REQUIRED` are
-    non-terminal:
+    `BLOCKED`, `FAILED`, `INTERRUPTED`, `SUSPENDED`, `AUTH_REQUIRED`, and
+    `AWAITING_INPUT` are non-terminal:
 
     - **BLOCKED** returns to `ASSIGNED` when unblocked.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
@@ -75,6 +79,11 @@ stateDiagram-v2
       (see [Graceful Shutdown](coordination.md#graceful-shutdown-protocol), Strategy 4).
     - **AUTH_REQUIRED** returns to `ASSIGNED` when approved or to `CANCELLED`
       when denied or timed out.
+    - **AWAITING_INPUT** pauses an executing task while it waits for a human to
+      answer a mid-task clarification (the `request_clarification` /
+      `request_project_decision` tools, gated by `engine.clarification_enabled` /
+      `engine.scoping_enabled`); it returns to `IN_PROGRESS` when the answer
+      arrives, or to `CANCELLED`. Off-board while paused (see the Kanban board).
     - **COMPLETED**, **CANCELLED**, and **REJECTED** are terminal states with no
       outgoing transitions.
 
@@ -186,10 +195,17 @@ exclusive file access, error isolation, and progress tracking.
 The `KanbanColumn` enum defines five columns that map bidirectionally to
 `TaskStatus` (Backlog=CREATED, Ready=ASSIGNED, In Progress=IN_PROGRESS,
 Review=IN_REVIEW, Done=COMPLETED).  Off-board statuses (BLOCKED, FAILED,
-INTERRUPTED, SUSPENDED, CANCELLED) map to `None`.  `KanbanConfig` provides per-column
-WIP limits with strict (hard-reject) or advisory (log-warning) enforcement.
-Column transitions are validated independently and resolved to the underlying
-task status transition path.
+INTERRUPTED, SUSPENDED, CANCELLED, REJECTED, AUTH_REQUIRED, AWAITING_INPUT)
+map to `None`.  Column transitions are validated independently and resolved to
+the underlying task status transition path.
+
+Only the two flow columns carry a runtime WIP limit: `engine.kanban_wip_in_progress`
+(default 5) and `engine.kanban_wip_review` (default 3); Backlog / Ready / Done are
+unlimited (Done is validator-forbidden from ever carrying one). `engine.kanban_enforce_wip`
+(default off) selects hard-reject vs advisory enforcement, and the live setting always
+wins over the `KanbanConfig` model default. The dashboard's board reads these via
+`GET /board` (the `BoardController`), surfaces per-column occupancy / over-limit badges,
+and rejects a drop into a full flow column when enforcement is on.
 
 ### Agile Kanban
 
