@@ -64,9 +64,9 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
    If a PR exists, ask the user via AskUserQuestion:
    - Option A: "Run review + push to existing PR #N"
-   - Option B: "Redirect to /aurelio-review-pr (for external feedback triage)"
+   - Option B: "Redirect to the `babysit-pr` skill (for CI + external-feedback triage)"
 
-   If user picks B, stop and tell them to run `/aurelio-review-pr`.
+   If user picks B, stop and tell them to run the `babysit-pr` skill.
 
 4. **Check if branch is behind main:**
 
@@ -1024,7 +1024,7 @@ Report:
 - **Files modified**
 - **Test results**: pass/fail, coverage %
 - **PR URL** (or "pushed to existing PR #N")
-- **Reminder**: "Run `/aurelio-review-pr` after external reviewers provide feedback"
+- **Reminder**: "Once the PR exists, run the `babysit-pr` skill until squash-merge. Do NOT run `/aurelio-review-pr` after a `/pre-pr-review` pass -- it runs the same local review agents, so it would be redundant. `/aurelio-review-pr` is only for PRs that never went through `/pre-pr-review`."
 
 ---
 
