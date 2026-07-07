@@ -49,6 +49,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.IN_PROGRESS: frozenset(
         {
             TaskStatus.IN_REVIEW,
+            TaskStatus.AWAITING_INPUT,
             TaskStatus.AUTH_REQUIRED,
             TaskStatus.BLOCKED,
             TaskStatus.CANCELLED,
@@ -64,6 +65,11 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.BLOCKED,
             TaskStatus.CANCELLED,
         }
+    ),
+    # Mid-execution clarification pause: the agent asked a question and waits
+    # for a human answer, then resumes (-> IN_PROGRESS) or is abandoned.
+    TaskStatus.AWAITING_INPUT: frozenset(
+        {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED}
     ),
     TaskStatus.AUTH_REQUIRED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED}),

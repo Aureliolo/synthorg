@@ -52,6 +52,7 @@ _STATUS_MAP: dict[TaskStatus, AsyncTaskStatus] = {
     TaskStatus.IN_REVIEW: AsyncTaskStatus.RUNNING,
     TaskStatus.BLOCKED: AsyncTaskStatus.RUNNING,
     TaskStatus.AUTH_REQUIRED: AsyncTaskStatus.PENDING,
+    TaskStatus.AWAITING_INPUT: AsyncTaskStatus.PENDING,
     TaskStatus.COMPLETED: AsyncTaskStatus.COMPLETED,
     TaskStatus.FAILED: AsyncTaskStatus.FAILED,
     TaskStatus.CANCELLED: AsyncTaskStatus.CANCELLED,

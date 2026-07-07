@@ -168,7 +168,7 @@ export function TaskColumn({
         >
           {column.label}
         </span>
-        <ColumnCountBadge count={tasks.length} wip={wip} />
+        <ColumnCountBadge count={tasks.length} {...(wip ? { wip } : {})} />
         {estimatedHours > 0 && (
           <span
             className="ml-auto text-[length:var(--so-text-micro)] font-mono text-text-muted"

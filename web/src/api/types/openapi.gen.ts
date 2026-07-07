@@ -16299,9 +16299,10 @@ export type components = {
          *         CREATED -> ASSIGNED | REJECTED
          *         ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
          *                     | FAILED | INTERRUPTED | SUSPENDED
-         *         IN_PROGRESS -> IN_REVIEW | AUTH_REQUIRED | BLOCKED | CANCELLED
-         *                        | FAILED | INTERRUPTED | SUSPENDED
+         *         IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED
+         *                        | CANCELLED | FAILED | INTERRUPTED | SUSPENDED
          *         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
+         *         AWAITING_INPUT -> IN_PROGRESS (answer supplied) | CANCELLED (abandoned)
          *         AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
          *         BLOCKED -> ASSIGNED (unblocked)
          *         FAILED -> ASSIGNED (reassignment for retry)
@@ -16309,11 +16310,11 @@ export type components = {
          *         SUSPENDED -> ASSIGNED (resume from checkpoint)
          *         COMPLETED, CANCELLED, and REJECTED are terminal states.
          *         FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
-         *         AUTH_REQUIRED is non-terminal (waiting for authorization).
+         *         AUTH_REQUIRED and AWAITING_INPUT are non-terminal (waiting on a human).
          * @default created
          * @enum {string}
          */
-        readonly TaskStatus: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required";
+        readonly TaskStatus: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input";
         /**
          * TaskStructure
          * @description Classification of how a task's subtasks relate to each other.
@@ -29237,7 +29238,7 @@ export interface operations {
                 /** @description Filter to tasks scoped to this project. */
                 readonly project?: string | null;
                 /** @description Filter to tasks in this status. */
-                readonly status?: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | null;
+                readonly status?: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
             };
             readonly header?: never;
             readonly path?: never;

@@ -303,9 +303,10 @@ class Task(BaseModel):
 
         ``CREATED`` status must have ``assigned_to=None``.  Statuses beyond
         ``CREATED`` (``ASSIGNED``, ``IN_PROGRESS``, ``IN_REVIEW``,
-        ``COMPLETED``, ``AUTH_REQUIRED``) require ``assigned_to`` to be set.
-        ``BLOCKED``, ``FAILED``, ``CANCELLED``, and ``REJECTED`` may or may
-        not have an assignee.
+        ``COMPLETED``, ``AUTH_REQUIRED``, ``AWAITING_INPUT``) require
+        ``assigned_to`` to be set (``AWAITING_INPUT`` pauses a task an agent
+        is mid-execution on). ``BLOCKED``, ``FAILED``, ``CANCELLED``, and
+        ``REJECTED`` may or may not have an assignee.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
@@ -320,6 +321,7 @@ class Task(BaseModel):
             TaskStatus.IN_REVIEW,
             TaskStatus.COMPLETED,
             TaskStatus.AUTH_REQUIRED,
+            TaskStatus.AWAITING_INPUT,
         }
         if self.status is TaskStatus.CREATED and self.assigned_to is not None:
             msg = "assigned_to must be None when status is 'created'"
