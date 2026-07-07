@@ -496,6 +496,15 @@ export const INTERVENTION_KIND_VALUES = [
 ] as const
 export type InterventionKind = (typeof INTERVENTION_KIND_VALUES)[number]
 
+export const KANBAN_COLUMN_VALUES = [
+    'backlog',
+    'ready',
+    'in_progress',
+    'review',
+    'done',
+] as const
+export type KanbanColumn = (typeof KANBAN_COLUMN_VALUES)[number]
+
 export const KNOWLEDGE_CLAIM_TYPE_VALUES = [
     'fact',
     'analysis',

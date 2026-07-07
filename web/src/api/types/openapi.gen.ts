@@ -1029,6 +1029,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/board": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetBoard */
+        readonly get: operations["ApiV1BoardGetBoard"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/board/move": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** MoveCard */
+        readonly post: operations["ApiV1BoardMoveMoveCard"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/brownfield/import": {
         readonly parameters: {
             readonly query?: never;
@@ -6701,6 +6735,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[KanbanBoardView] */
+        readonly ApiResponse_KanbanBoardView_: {
+            readonly data: components["schemas"]["KanbanBoardView"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[KnowledgeAnswer] */
         readonly ApiResponse_KnowledgeAnswer_: {
             readonly data: components["schemas"]["KnowledgeAnswer"] | null;
@@ -8017,6 +8059,12 @@ export type components = {
              */
             readonly tags: readonly string[];
             readonly workflow_type: components["schemas"]["WorkflowType"];
+        };
+        /** BoardMovePayload */
+        readonly BoardMovePayload: {
+            readonly target_column: components["schemas"]["KanbanColumn"];
+            /** @description The card's task id */
+            readonly task_id: string;
         };
         /** BrainEntry */
         readonly BrainEntry: {
@@ -11263,6 +11311,42 @@ export type components = {
             readonly supersede_task_ids: readonly string[];
             /** @description The operator directive text */
             readonly text: string;
+        };
+        /** KanbanBoardView */
+        readonly KanbanBoardView: {
+            /** @description Ordered columns */
+            readonly columns: readonly components["schemas"]["KanbanColumnView"][];
+            /** @description Whether WIP limits hard-block moves */
+            readonly enforce_wip: boolean;
+            readonly workflow_type: components["schemas"]["WorkflowType"];
+        };
+        /**
+         * KanbanColumn
+         * @description Kanban board columns matching the Engine design page.
+         *
+         *     Members:
+         *         BACKLOG: Tasks waiting to be prioritized.
+         *         READY: Prioritized and ready for assignment.
+         *         IN_PROGRESS: Actively being worked on.
+         *         REVIEW: Work complete, awaiting review.
+         *         DONE: Finished and accepted.
+         * @enum {string}
+         */
+        readonly KanbanColumn: "backlog" | "ready" | "in_progress" | "review" | "done";
+        /** KanbanColumnView */
+        readonly KanbanColumnView: {
+            readonly column: components["schemas"]["KanbanColumn"];
+            /** @description Card count */
+            readonly count: number;
+            /** @description WIP limit (None = unlimited) */
+            readonly limit: number | null;
+            /**
+             * @description Whether the column is over its WIP limit
+             * @default false
+             */
+            readonly over_limit: boolean;
+            /** @description Cards in this column */
+            readonly tasks: readonly components["schemas"]["Task"][];
         };
         /** KillInterventionRequest */
         readonly KillInterventionRequest: {
@@ -20205,6 +20289,65 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_WsTicketResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BoardGetBoard: {
+        readonly parameters: {
+            readonly query?: {
+                readonly project?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_KanbanBoardView_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BoardMoveMoveCard: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BoardMovePayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
