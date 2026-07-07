@@ -90,6 +90,27 @@ _r.register(
     )
 )
 
+# ── Mid-task clarification ──────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="clarification_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let an executing agent pause to ask a human a question via the"
+            " request_clarification tool, parking its context and moving the"
+            " task to AWAITING_INPUT until the human answers, then resuming with"
+            " the answer injected. Off by default (agents proceed on their own"
+            " judgement); when on, the tool is added to every agent toolset at"
+            " boot, so a change applies on the next runtime-services rebuild."
+        ),
+        group="Clarification",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Health judge ────────────────────────────────────────────────
 
 _r.register(

@@ -868,3 +868,71 @@ class TestAutoReview:
 
         assert out.context.task_execution is not None
         assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+
+@pytest.mark.unit
+class TestClarificationPark:
+    """A clarification park moves an executing task to AWAITING_INPUT."""
+
+    def _parked_result(
+        self,
+        identity: AgentIdentity,
+        task: Task,
+        *,
+        clarification: bool,
+    ) -> ExecutionResult:
+        ctx = AgentContext.from_identity(identity, task=task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        return ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.PARKED,
+            metadata={"approval_id": "appr-1", "clarification": clarification},
+        )
+
+    async def test_clarification_park_transitions_to_awaiting_input(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        result = self._parked_result(
+            sample_agent_with_personality, sample_task_with_criteria, clarification=True
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.AWAITING_INPUT
+        synced = [call.args[0].target_status for call in mock_te.submit.call_args_list]
+        assert synced == [TaskStatus.AWAITING_INPUT]
+
+    async def test_plain_approval_park_leaves_task_unchanged(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        # A binary approval park (no clarification marker) leaves the task
+        # IN_PROGRESS -- distinct from the clarification pause.
+        result = self._parked_result(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+            clarification=False,
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+        )
+
+        assert out is result
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_PROGRESS
+        mock_te.submit.assert_not_called()

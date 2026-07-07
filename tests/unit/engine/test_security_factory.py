@@ -7,6 +7,7 @@ import pytest
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
+    registry_with_clarification_tool,
 )
 from synthorg.engine.errors import ExecutionStateError
 
@@ -299,3 +300,35 @@ class TestRegistryWithApprovalTool:
             task_id="task-1",
         )
         assert result is not registry
+
+
+class TestRegistryWithClarificationTool:
+    """registry_with_clarification_tool() factory function."""
+
+    def test_returns_original_when_no_store(self) -> None:
+        from synthorg.core.agent import AgentIdentity
+
+        registry = MagicMock()
+        result = registry_with_clarification_tool(
+            registry,
+            None,
+            MagicMock(spec=AgentIdentity, id="agent-1"),
+        )
+        assert result is registry
+
+    def test_appends_clarification_tool_when_store_present(self) -> None:
+        registry = MagicMock()
+        registry.all_tools.return_value = []
+        store = MagicMock()
+        identity = MagicMock()
+        identity.id = "agent-1"
+
+        result = registry_with_clarification_tool(
+            registry,
+            store,
+            identity,
+            task_id="task-1",
+        )
+        assert result is not registry
+        names = {tool.name for tool in result.all_tools()}
+        assert "request_clarification" in names

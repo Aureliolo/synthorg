@@ -222,6 +222,14 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
+    if (
+        reason == TerminationReason.PARKED
+        and execution_result.metadata.get("clarification") is True
+    ):
+        return await _transition_to_awaiting_input(
+            execution_result, ctx, agent_id, task_id, task_engine
+        )
+
     if reason != TerminationReason.COMPLETED:
         return execution_result
 
@@ -440,6 +448,51 @@ async def _transition_to_interrupted(
             agent_id=agent_id,
             task_id=task_id,
             context="Post-execution INTERRUPTED transition failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return execution_result
+
+
+async def _transition_to_awaiting_input(
+    execution_result: ExecutionResult,
+    ctx: AgentContext,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+) -> ExecutionResult:
+    """Transition task to AWAITING_INPUT on a clarification park.
+
+    Only the IN_PROGRESS entry status is moved; any other status is
+    left untouched (the park may have happened before the ASSIGNED ->
+    IN_PROGRESS transition landed, in which case there is nothing to
+    pause). The resume path moves AWAITING_INPUT back to IN_PROGRESS
+    before re-entering the loop.
+
+    Returns:
+        A copy of ``execution_result`` with the context updated to
+        ``AWAITING_INPUT``; the original is returned unchanged when the
+        task is not IN_PROGRESS or when the transition raises.
+    """
+    te = ctx.task_execution
+    if te is None or te.status != TaskStatus.IN_PROGRESS:
+        return execution_result
+    try:
+        ctx = await _transition_and_sync(
+            ctx,
+            target_status=TaskStatus.AWAITING_INPUT,
+            reason="Agent paused for human clarification",
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+        )
+        return execution_result.model_copy(update={"context": ctx})
+    except (ValueError, ExecutionStateError) as exc:
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            context="Post-execution AWAITING_INPUT transition failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

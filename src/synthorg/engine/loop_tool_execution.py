@@ -236,6 +236,10 @@ async def _park_for_approval(
         metadata={
             "approval_id": escalation.approval_id,
             "parking_failed": False,
+            # Carried so the post-execution pipeline can move the task to
+            # AWAITING_INPUT for a clarification park (distinct from the
+            # binary approval park, which leaves the task IN_PROGRESS).
+            "clarification": escalation.clarification,
         },
     )
 

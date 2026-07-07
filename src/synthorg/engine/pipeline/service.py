@@ -1,4 +1,4 @@
-# module-kind: service
+# module-kind: complex_service
 """Default work pipeline implementation.
 
 Composes the already-wired runtime services into the single spine:

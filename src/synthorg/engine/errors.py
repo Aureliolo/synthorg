@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Engine-layer error hierarchy."""
 
 from typing import TYPE_CHECKING, ClassVar

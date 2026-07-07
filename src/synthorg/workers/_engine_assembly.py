@@ -561,6 +561,9 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         ),
         review_gate=app_state.slice(ApprovalStateSlice).review_gate,
         review_pipeline=await _build_auto_review_pipeline_or_none(app_state),
+        clarification_enabled=await config_resolver_of(app_state).get_bool(
+            "engine", "clarification_enabled"
+        ),
         cost_forecast_repo=app_state.slice(BudgetStateSlice).cost_forecast_repo,
         approval_gate=app_state.slice(ApprovalStateSlice).gate,
         trust_service=app_state.slice(SecurityStateSlice).trust_service,

@@ -2,6 +2,7 @@
 
 from .approval_tool import RequestHumanApprovalTool
 from .base import BaseTool, ToolExecutionResult
+from .clarification_tool import RequestClarificationTool
 from .code_runner import CodeRunnerTool
 from .database import (
     BaseDatabaseTool,
@@ -106,6 +107,7 @@ __all__ = [
     "NetworkPolicy",
     "PathValidator",
     "ReadFileTool",
+    "RequestClarificationTool",
     "RequestHumanApprovalTool",
     "SandboxBackend",
     "SandboxError",

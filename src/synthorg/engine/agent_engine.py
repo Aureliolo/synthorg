@@ -1,4 +1,4 @@
-# module-kind: adapter
+# module-kind: complex_service
 """Agent engine -- top-level orchestrator.
 
 Ties together prompt construction, execution context, execution loop,
@@ -193,6 +193,7 @@ class AgentEngine(
         approval_store: ApprovalStoreProtocol | None = None,
         review_gate: ReviewGateService | None = None,
         review_pipeline: ReviewPipeline | None = None,
+        clarification_enabled: bool = False,
         parked_context_repo: ParkedContextRepository | None = None,
         cost_forecast_repo: CostForecastRepository | None = None,
         approval_gate: ApprovalGate | None = None,
@@ -262,6 +263,7 @@ class AgentEngine(
         self._approval_store = approval_store
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
+        self._clarification_enabled = clarification_enabled
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
