@@ -35,6 +35,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.observability import get_logger, safe_error_description
@@ -148,6 +149,10 @@ class ForecastGate:
     def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
         """Forward the refinement router to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_refinement_router(router)
+
+    def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
+        """Forward the plan-review gate to the wrapped pipeline (passthrough)."""
+        self._work_pipeline.attach_plan_review_gate(gate)
 
     async def _gated_dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
         """Run the forecast-gated dispatch branches.

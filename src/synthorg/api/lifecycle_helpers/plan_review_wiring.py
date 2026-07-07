@@ -9,6 +9,7 @@ behaviour is unchanged unless an operator opts in.
 """
 
 import uuid
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -31,7 +32,7 @@ _PLAN_ACTION_TYPE = "plan:approve"
 PLAN_METADATA_KEY = "plan"
 PROJECT_METADATA_KEY = "project"
 
-_PREVIEW_SUBTASKS = 3
+_PREVIEW_SUBTASKS: Final[int] = 3
 
 
 def _plan_detail(plan: DecompositionResult) -> str:

@@ -20303,9 +20303,7 @@ export interface operations {
     };
     readonly ApiV1BoardGetBoard: {
         readonly parameters: {
-            readonly query?: {
-                readonly project?: string | null;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
@@ -20321,7 +20319,6 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ApiResponse_KanbanBoardView_"];
                 };
             };
-            readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];

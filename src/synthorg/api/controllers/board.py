@@ -41,19 +41,17 @@ class BoardController(Controller):
     async def get_board(
         self,
         state: State,
-        project: str | None = None,
     ) -> ApiResponse[KanbanBoardView]:
-        """Project current tasks onto the org's board.
+        """Project current tasks onto the org's board (spanning every project).
 
         Args:
             state: Litestar app state carrying the wired board service.
-            project: Optional project filter; omit to span every project.
 
         Returns:
             ``ApiResponse[KanbanBoardView]`` with per-column cards + WIP state.
         """
         app_state: AppState = state.app_state
-        view = await kanban_board_service_of(app_state).board_snapshot(project=project)
+        view = await kanban_board_service_of(app_state).board_snapshot()
         return ApiResponse(data=view)
 
     @post(

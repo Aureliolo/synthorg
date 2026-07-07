@@ -362,6 +362,36 @@ def registry_with_decision_tool(
     return _ToolRegistry([*existing, decision_tool])
 
 
+def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
+    tool_registry: ToolRegistry,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    *,
+    clarification_enabled: bool,
+    scoping_enabled: bool,
+) -> ToolRegistry:
+    """Add the enabled mid-task human-input tools to the registry.
+
+    Composes the clarification and project-decision tools per their gate
+    flags (``engine.clarification_enabled`` / ``engine.scoping_enabled``), so
+    the per-run factory attaches them in one call.
+
+    Returns:
+        The registry extended with whichever human-input tools are enabled.
+    """
+    registry = tool_registry
+    if clarification_enabled:
+        registry = registry_with_clarification_tool(
+            registry, approval_store, identity, task_id
+        )
+    if scoping_enabled:
+        registry = registry_with_decision_tool(
+            registry, approval_store, identity, task_id
+        )
+    return registry
+
+
 def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runtime: ExternalApiRuntime | None,
