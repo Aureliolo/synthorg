@@ -18,6 +18,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.model_ref import parse_model_ref
 
 if TYPE_CHECKING:
     from synthorg.knowledge.synthesis.protocol import Synthesizer
@@ -183,7 +184,14 @@ async def _maybe_build_knowledge_synthesizer(
             note="settings service or provider registry unavailable; retrieval-only",
         )
         return None
-    model = (await runtime_settings.get("knowledge", "synthesis_model")).value.strip()
+    # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``:
+    # the provider travels with the model (the picker writes both), so the
+    # separate provider read is gone; an empty ref provider still means
+    # "first registered provider".
+    ref = parse_model_ref(
+        (await runtime_settings.get("knowledge", "synthesis_model")).value
+    )
+    model = ref.model_id.strip()
     if not model:
         logger.info(
             API_APP_STARTUP,
@@ -191,10 +199,7 @@ async def _maybe_build_knowledge_synthesizer(
             note="synthesis model unset; retrieval-only",
         )
         return None
-    provider_name = (
-        await runtime_settings.get("knowledge", "synthesis_provider")
-    ).value.strip()
-    provider = _resolve_synthesis_provider(provider_registry, provider_name)
+    provider = _resolve_synthesis_provider(provider_registry, ref.provider.strip())
     if provider is None:
         return None
     kind = (

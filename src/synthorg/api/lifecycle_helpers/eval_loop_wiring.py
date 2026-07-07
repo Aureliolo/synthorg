@@ -56,6 +56,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_float
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import SettingsStateSlice
 
@@ -100,7 +101,7 @@ def _select_provider(
         logger.warning(
             API_APP_STARTUP,
             service="eval_loop",
-            note="configured eval_loop_llm_provider absent; degrading to deterministic",
+            note="eval-loop model provider absent; degrading to deterministic",
             requested_provider=requested,
         )
         return None
@@ -124,20 +125,29 @@ async def _resolve_eval_loop_modes(
         The ``(identifier_mode, proposer_mode, model, provider_name)`` tuple
         with ``model`` / ``provider_name`` stripped.
     """
+    # ``eval_loop_llm_model`` is a model-assignment setting storing a
+    # ``ModelRef``: the provider travels with the model (the picker writes
+    # both), so the separate provider read is gone.
     if resolver is None:
+        boot_ref = parse_model_ref(_resolve_hr_str("eval_loop_llm_model"))
         return (
             _resolve_hr_str("eval_loop_pattern_identifier_mode"),
             _resolve_hr_str("eval_loop_fix_proposer_mode"),
-            _resolve_hr_str("eval_loop_llm_model").strip(),
-            _resolve_hr_str("eval_loop_llm_provider").strip(),
+            boot_ref.model_id.strip(),
+            boot_ref.provider.strip(),
         )
     namespace = SettingNamespace.HR.value
     try:
+        identifier_mode = await resolver.get_str(
+            namespace, "eval_loop_pattern_identifier_mode"
+        )
+        proposer_mode = await resolver.get_str(namespace, "eval_loop_fix_proposer_mode")
+        ref = parse_model_ref(await resolver.get_str(namespace, "eval_loop_llm_model"))
         return (
-            await resolver.get_str(namespace, "eval_loop_pattern_identifier_mode"),
-            await resolver.get_str(namespace, "eval_loop_fix_proposer_mode"),
-            (await resolver.get_str(namespace, "eval_loop_llm_model")).strip(),
-            (await resolver.get_str(namespace, "eval_loop_llm_provider")).strip(),
+            identifier_mode,
+            proposer_mode,
+            ref.model_id.strip(),
+            ref.provider.strip(),
         )
     except Exception as exc:
         # Identify the failing subsystem before propagating: the reload-helper

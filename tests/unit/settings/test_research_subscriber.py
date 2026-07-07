@@ -47,7 +47,6 @@ class TestProtocol:
         watched = _make_subscriber(_make_state()).watched_keys
         for key in (
             "model",
-            "provider",
             "query_planner",
             "credibility_triage",
             "deduplicator",
@@ -113,7 +112,7 @@ class TestRebuild:
         )
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("research", "provider")
+            await sub.on_settings_changed("research", "model")
 
     async def test_memory_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch

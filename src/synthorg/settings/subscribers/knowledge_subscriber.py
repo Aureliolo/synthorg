@@ -34,7 +34,6 @@ logger = get_logger(__name__)
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("knowledge", "synthesis_model"),
-        ("knowledge", "synthesis_provider"),
         ("knowledge", "synthesis_synthesizer"),
         ("knowledge", "synthesis_max_chunks"),
         # A registry rebuild (driven by ProviderSettingsSubscriber, registered

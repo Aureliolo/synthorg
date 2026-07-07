@@ -69,30 +69,14 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.KNOWLEDGE,
-        key="synthesis_provider",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Name of the registered completion provider the knowledge"
-            " synthesis step uses. Empty selects the first registered"
-            " provider."
-        ),
-        group="Synthesis",
-        level=SettingLevel.ADVANCED,
-        restart_required=False,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.KNOWLEDGE,
         key="synthesis_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier the knowledge synthesis step uses. Must be set"
-            " for the ask surface to answer; until then ask returns a"
-            " configure-a-model error and retrieval stays available. A change"
+            "Provider + model the knowledge synthesis step uses, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Must be set for the ask surface to answer; until then ask returns"
+            " a configure-a-model error and retrieval stays available. A change"
             " rebuilds and swaps the synthesiser live with no restart. This is"
             " knowledge's own model, distinct from the embedding model (which"
             " powers retrieval) and decomposition."

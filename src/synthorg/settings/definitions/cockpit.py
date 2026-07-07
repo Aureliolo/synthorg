@@ -169,28 +169,14 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COCKPIT,
         key="steering_proposer_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model id the LLM supersession proposer calls when enabled."
-            " Empty falls back to the no-op proposer (operator selection"
-            " unchanged)."
-        ),
-        group="Intervention",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COCKPIT,
-        key="steering_proposer_provider",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Provider name the LLM supersession proposer calls when enabled."
-            " Empty falls back to the first registered provider, matching the"
-            " research and chief-of-staff provider-selection convention."
+            "Provider + model the LLM supersession proposer calls when"
+            " enabled, selected through the model picker (a `{provider,"
+            " model_id}` reference). Empty falls back to the no-op proposer"
+            " (operator selection unchanged); an empty ref provider selects"
+            " the first registered provider."
         ),
         group="Intervention",
         level=SettingLevel.ADVANCED,

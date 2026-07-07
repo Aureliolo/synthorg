@@ -557,8 +557,9 @@ class TestWireFineTuneOrchestrator:
 
         async def _get_str(_namespace: object, key: str) -> str:
             return {
-                "fine_tune_query_model": "test-model",
-                "fine_tune_query_provider": "ghost-provider",
+                "fine_tune_query_model": (
+                    '{"provider": "ghost-provider", "model_id": "test-model"}'
+                ),
             }.get(key, "")
 
         resolver = mock_of[ConfigResolver](

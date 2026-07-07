@@ -53,7 +53,6 @@ class TestProtocol:
         watched = _make_subscriber(_make_state()).watched_keys
         for key in (
             "eval_loop_llm_model",
-            "eval_loop_llm_provider",
             "eval_loop_pattern_identifier_mode",
             "eval_loop_fix_proposer_mode",
         ):

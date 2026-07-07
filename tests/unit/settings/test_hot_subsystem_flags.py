@@ -18,7 +18,6 @@ pytestmark = pytest.mark.unit
 _HOT_KEYS: tuple[tuple[str, str], ...] = (
     # Research (enabled + 10 tuning/strategy keys).
     ("research", "enabled"),
-    ("research", "provider"),
     ("research", "model"),
     ("research", "query_planner"),
     ("research", "credibility_triage"),
@@ -32,7 +31,6 @@ _HOT_KEYS: tuple[tuple[str, str], ...] = (
     ("knowledge", "enabled"),
     ("knowledge", "synthesis_enabled"),
     ("knowledge", "synthesis_model"),
-    ("knowledge", "synthesis_provider"),
     ("knowledge", "synthesis_synthesizer"),
     ("knowledge", "synthesis_max_chunks"),
     # HR ops loops (eval-loop master/cadence/window + scaling switch).

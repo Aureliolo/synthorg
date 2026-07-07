@@ -348,8 +348,13 @@ async def _build_and_wire_research(
     from synthorg.research.tool_factory import (  # noqa: PLC0415
         build_research_tool_factory,
     )
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
-    model = (await runtime_settings.get("research", "model")).value.strip()
+    # ``research.model`` is a model-assignment setting storing a ``ModelRef``:
+    # the provider travels with the model (the picker writes both). An empty
+    # ref provider still means "first registered provider".
+    ref = parse_model_ref((await runtime_settings.get("research", "model")).value)
+    model = ref.model_id.strip()
     if not model:
         logger.info(
             API_APP_STARTUP,
@@ -365,7 +370,7 @@ async def _build_and_wire_research(
             note="no providers registered; wiring skipped",
         )
         return
-    provider_name = (await runtime_settings.get("research", "provider")).value.strip()
+    provider_name = ref.provider.strip()
     provider = (
         provider_registry.get(provider_name)
         if provider_name and provider_name in provider_registry
