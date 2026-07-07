@@ -103,6 +103,8 @@ if TYPE_CHECKING:
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.recovery import RecoveryStrategy
+    from synthorg.engine.review.pipeline import ReviewPipeline
+    from synthorg.engine.review_gate import ReviewGateService
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
@@ -189,6 +191,8 @@ class AgentEngine(
         security_config: SecurityConfig | None = None,
         security_config_provider: Callable[[], SecurityConfig | None] | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
+        review_gate: ReviewGateService | None = None,
+        review_pipeline: ReviewPipeline | None = None,
         parked_context_repo: ParkedContextRepository | None = None,
         cost_forecast_repo: CostForecastRepository | None = None,
         approval_gate: ApprovalGate | None = None,
@@ -256,6 +260,8 @@ class AgentEngine(
         self._provider_configs = provider_configs
         self._model_resolver = model_resolver
         self._approval_store = approval_store
+        self._review_gate = review_gate
+        self._review_pipeline = review_pipeline
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider

@@ -8,7 +8,7 @@ execution is never blocked by a ``TaskEngine`` issue.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -21,6 +21,13 @@ from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
+
+if TYPE_CHECKING:
+    # Cycle breaker: ``review_gate`` imports this module (``sync_to_task_engine``),
+    # so the auto-review types are resolved only for annotations. The runtime
+    # call site duck-types through the passed-in gate.
+    from synthorg.engine.review.pipeline import ReviewPipeline
+    from synthorg.engine.review_gate import ReviewGateService
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_CREATED,
 )
@@ -177,12 +184,14 @@ async def transition_task_if_needed(
     return ctx
 
 
-async def apply_post_execution_transitions(
+async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
     approval_store: ApprovalStoreProtocol | None = None,
+    review_gate: ReviewGateService | None = None,
+    review_pipeline: ReviewPipeline | None = None,
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
@@ -248,10 +257,58 @@ async def apply_post_execution_transitions(
         await _create_review_approval(
             approval_store, agent_id=agent_id, task_id=task_id
         )
+        await _maybe_auto_review(
+            review_gate,
+            review_pipeline,
+            agent_id=agent_id,
+            task_id=task_id,
+        )
 
     if ctx is execution_result.context:
         return execution_result
     return execution_result.model_copy(update={"context": ctx})
+
+
+async def _maybe_auto_review(
+    review_gate: ReviewGateService | None,
+    review_pipeline: ReviewPipeline | None,
+    *,
+    agent_id: str,
+    task_id: str,
+) -> None:
+    """Run the staged review pipeline on completion, if auto-review is wired.
+
+    Best-effort: a wired gate + pipeline (only present when the operator
+    enabled ``engine.auto_review_on_completion``) drives the task's verdict
+    without waiting for a human. A failure is logged and swallowed so a
+    review-pipeline fault never discards the agent's completed work -- the
+    task simply stays in IN_REVIEW for a human, exactly as when auto-review
+    is off.
+
+    Raises:
+        MemoryError: Propagated unconditionally (non-recoverable).
+        RecursionError: Propagated unconditionally (non-recoverable).
+    """
+    if review_gate is None or review_pipeline is None:
+        return
+    try:
+        await review_gate.run_pipeline(
+            task_id=task_id,
+            pipeline=review_pipeline,
+            decided_by="system:auto-review",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- best-effort: never block completion
+        reraise_critical(exc)
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            context="Automatic review pipeline failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _transition_and_sync(  # noqa: PLR0913

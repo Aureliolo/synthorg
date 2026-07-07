@@ -69,6 +69,27 @@ _r.register(
     )
 )
 
+# ── Automatic review ────────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_review_on_completion",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Automatically run the staged review pipeline when an agent"
+            " completes a task (reaching IN_REVIEW), applying its verdict"
+            " without waiting for a human to open the review. Off by default"
+            " (a human decides at the review gate); when on, the pipeline is"
+            " wired into the agent runtime at boot, so a change applies on the"
+            " next runtime-services rebuild (provider re-init)."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Health judge ────────────────────────────────────────────────
 
 _r.register(
