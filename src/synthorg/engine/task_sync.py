@@ -474,8 +474,8 @@ async def _transition_to_awaiting_input(
         ``AWAITING_INPUT``; the original is returned unchanged when the
         task is not IN_PROGRESS or when the transition raises.
     """
-    te = ctx.task_execution
-    if te is None or te.status != TaskStatus.IN_PROGRESS:
+    task_exec = ctx.task_execution
+    if task_exec is None or task_exec.status != TaskStatus.IN_PROGRESS:
         return execution_result
     try:
         ctx = await _transition_and_sync(
