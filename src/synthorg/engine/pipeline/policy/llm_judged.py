@@ -2,8 +2,10 @@
 
 Asks a completion provider for a binary leaf/splittable verdict over
 the (untrusted-wrapped) task title and description. Falls back to an
-injected deterministic policy when the model response cannot be
-parsed, so the spine never stalls on an ambiguous answer.
+injected deterministic policy when the model response cannot be parsed
+OR the model call itself fails (unavailable / misconfigured model,
+rate limit, transport error), so the spine never stalls or hard-fails
+on the routing decision.
 """
 
 import re
@@ -12,6 +14,7 @@ from typing import Final
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import RoutingVerdict
@@ -21,7 +24,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.pipeline import PIPELINE_ROUTING_DECIDED
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
@@ -53,8 +56,9 @@ class LlmJudgedRoutingPolicy:
     Args:
         provider: The completion provider (shared boot provider).
         model: Model identifier for the classification call.
-        fallback: Deterministic policy used when the model response
-            is unparseable (keeps the decision total and reproducible).
+        fallback: Deterministic policy used when the model response is
+            unparseable or the model call fails (keeps the decision total,
+            reproducible, and resilient to model outages).
         cost_tracker: Optional cost tracker; when wired the call is
             recorded through the cost chokepoint.
     """
@@ -104,18 +108,40 @@ class LlmJudgedRoutingPolicy:
             temperature=_LLM_TEMPERATURE,
             max_tokens=_LLM_MAX_OUTPUT_TOKENS,
         )
-        async with cost_recording_scope(
-            cost_tracker=self._cost_tracker,
-            agent_id=NotBlankStr("system"),
-            task_id=str(task.id),
-            # Per-task pipeline routing, not a system prompt class.
-            purpose=None,
-            call_category=LLMCallCategory.SYSTEM,
-        ):
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                config=config,
+        try:
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=str(task.id),
+                # Per-task pipeline routing, not a system prompt class.
+                purpose=None,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    config=config,
+                )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            # A routing decision must always be produced: an unavailable or
+            # misconfigured classification model (e.g. ModelNotFoundError,
+            # a rate limit, a transport failure) degrades to the deterministic
+            # fallback rather than hard-failing the whole run. Without this the
+            # llm-judged default would turn every approve into a 404 when the
+            # decomposition model is not resolvable on its provider.
+            reraise_critical(exc)
+            logger.warning(
+                PIPELINE_ROUTING_DECIDED,
+                task_id=str(task.id),
+                policy="llm-judged",
+                verdict="model_call_failed",
+                note="falling back to deterministic policy",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return await self._fallback.decide(
+                task=task,
+                available_agents=available_agents,
             )
 
         verdict = self._parse_verdict(response.content)
