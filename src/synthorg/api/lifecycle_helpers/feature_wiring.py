@@ -43,6 +43,7 @@ from synthorg.api.lifecycle_helpers.org_memory_wiring import (
 from synthorg.api.lifecycle_helpers.organization_wiring import (
     wire_organization_read_services,
 )
+from synthorg.api.lifecycle_helpers.plan_review_wiring import wire_plan_review_gate
 from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -612,6 +613,9 @@ async def wire_features_on_startup(
     # the work pipeline so team-bound work with no definition of done is
     # refined rather than blocked by the coordinator's clarification gate.
     await wire_refinement_router(app_state)
+    # Opt-in human plan-approval gate: when enabled, splittable team work is
+    # parked for approval before it builds. No-op unless the setting is on.
+    await wire_plan_review_gate(app_state)
     await wire_group_chat_service(
         app_state,
         provider_registry=provider_registry,

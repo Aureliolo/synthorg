@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 
 
@@ -52,5 +53,15 @@ class WorkPipeline(Protocol):
         so the startup hook attaches it to the already-built pipeline.
         Absent, team-bound work with no definition of done is blocked by
         the coordinator's clarification gate instead of being refined.
+        """
+        ...
+
+    def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
+        """Attach the human plan-approval gate for splittable team work.
+
+        Late-bind seam: the gate wraps the approval surface, which wires
+        only after persistence is available, so the startup hook attaches
+        it to the already-built pipeline. Absent, splittable team work
+        dispatches straight to the coordinator (no human plan gate).
         """
         ...

@@ -16,6 +16,7 @@ from synthorg.api.controllers._conversational_resume import (
     try_conversational_intake_resume,
     try_conversational_invite_resume,
 )
+from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
@@ -374,6 +375,17 @@ async def signal_resume_intent(  # noqa: PLR0913
     # non-invite approval. Repo-direct + ungated, so consent resolves
     # even after the invite feature is toggled off.
     if await try_conversational_invite_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+    ):
+        return
+
+    # Flow 0.7: plan approval. Inert for every non-plan-review approval.
+    # On approval dispatches the exact parked plan; on rejection cancels
+    # the parent task.
+    if await try_plan_review_resume(
         app_state,
         approval_id,
         approved=approved,

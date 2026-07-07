@@ -98,6 +98,25 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_approval_required",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Gate splittable team work on human plan approval: when set, the"
+            " coordinator decomposes the brief into a plan and parks it for"
+            " approval before any agent builds; the approved plan is then"
+            " dispatched verbatim (no re-decomposition). Off by default, so"
+            " team work dispatches straight to the coordinator. Applied on the"
+            " next runtime-services rebuild (the gate is attached at boot)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="leaf_subtask_threshold",
         type=SettingType.INTEGER,
         default="1",

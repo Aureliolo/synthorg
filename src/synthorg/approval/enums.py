@@ -39,9 +39,13 @@ class ApprovalSource(StrEnum):
         CONVERSATIONAL_INVITE: An agent's request to add another agent
             to a group conversation; approval adds the participant +
             hands over the transcript, rejection leaves membership.
+        PLAN_REVIEW: A decomposed plan awaiting human approval before a
+            team builds; approval dispatches the exact approved plan
+            (``coordinate(precomputed_plan=...)``), rejection cancels it.
     """
 
     PARKED_CONTEXT = "parked_context"
     REVIEW_GATE = "review_gate"
     CONVERSATIONAL_INTAKE = "conversational_intake"
     CONVERSATIONAL_INVITE = "conversational_invite"
+    PLAN_REVIEW = "plan_review"

@@ -7650,10 +7650,13 @@ export type components = {
          *         CONVERSATIONAL_INVITE: An agent's request to add another agent
          *             to a group conversation; approval adds the participant +
          *             hands over the transcript, rejection leaves membership.
+         *         PLAN_REVIEW: A decomposed plan awaiting human approval before a
+         *             team builds; approval dispatches the exact approved plan
+         *             (``coordinate(precomputed_plan=...)``), rejection cancels it.
          * @default review_gate
          * @enum {string}
          */
-        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite";
+        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite" | "plan_review";
         /**
          * ApprovalStatus
          * @description Status of a human approval item.

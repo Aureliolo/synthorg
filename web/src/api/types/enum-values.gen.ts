@@ -56,6 +56,7 @@ export const APPROVAL_SOURCE_VALUES = [
     'review_gate',
     'conversational_intake',
     'conversational_invite',
+    'plan_review',
 ] as const
 export type ApprovalSource = (typeof APPROVAL_SOURCE_VALUES)[number]
 
