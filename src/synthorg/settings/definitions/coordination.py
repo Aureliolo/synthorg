@@ -57,18 +57,18 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "LLM model identifier the coordinator's task decomposition"
-            " strategy invokes against the first registered provider."
-            " Required (non-blank) whenever a provider is configured: a"
-            " provider-present boot builds the coordinator eagerly and"
-            " validates this value, raising a startup error when it is"
-            " blank. The empty default forces operators to set a model"
-            " id from their own catalogue. Resolved at boot; a runtime"
-            " change applies on the next coordinator rebuild (provider"
-            " re-init)."
+            "Provider + model the coordinator's task decomposition strategy"
+            " and the llm-judged routing policy invoke. A model reference"
+            " (`{provider, model_id}`) so the model resolves against the"
+            " provider it was selected on, not the first registered one."
+            " Required whenever a provider is configured: a provider-present"
+            " boot builds the coordinator eagerly and validates this value,"
+            " raising a startup error when it is unset. Resolved at boot; a"
+            " runtime change applies on the next coordinator rebuild"
+            " (provider re-init)."
         ),
         group="General",
     )

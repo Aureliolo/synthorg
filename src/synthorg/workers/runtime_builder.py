@@ -365,7 +365,12 @@ async def build_runtime_services(
         registry=ActionTypeRegistry(),
         config=app_state.config.config.autonomy,
     )
-    coordinator, scorer, decomposition_model = await _build_runtime_coordinator(
+    (
+        coordinator,
+        scorer,
+        decomposition_provider,
+        decomposition_model,
+    ) = await _build_runtime_coordinator(
         app_state,
         engine,
         provider,
@@ -418,7 +423,7 @@ async def build_runtime_services(
         scorer=scorer,
         coordinator=coordinator,
         worker_execution_service=worker_execution_service,
-        provider=provider,
+        provider=decomposition_provider,
         decomposition_model=decomposition_model,
     )
     red_team_runtime = build_red_team_runtime_or_none(

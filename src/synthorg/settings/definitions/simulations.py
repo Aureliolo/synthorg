@@ -52,13 +52,14 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
         key="intake_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default=None,
         description=(
-            "Model identifier passed to the agent intake strategy. Only"
-            " consulted when simulations.intake_strategy is 'agent';"
-            " ignored by the 'direct' strategy. A change rebuilds and swaps"
-            " the simulation runtime live with no restart."
+            "Provider + model for the agent intake strategy, selected through"
+            " the model picker (a `{provider, model_id}` reference). Only"
+            " consulted when simulations.intake_strategy is 'agent'; ignored"
+            " by the 'direct' strategy. A change rebuilds and swaps the"
+            " simulation runtime live with no restart."
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,

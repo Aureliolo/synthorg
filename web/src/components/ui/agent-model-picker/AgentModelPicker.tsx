@@ -8,7 +8,7 @@ export interface AgentModelPickerProps {
   currentModelId: string
   providers: Readonly<Record<string, ProviderConfig>>
   onChange: (provider: string, modelId: string) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
   /**
    * Accessible (and visible, unless hidden) field label. Row callers pass a
    * row-specific label like ``Model for ${agent.name}`` so a hidden label still

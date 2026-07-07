@@ -57,9 +57,9 @@ def parse_model_ref(value: str) -> ModelRef:
         try:
             data = json.loads(text)
         except ValueError:
-            # Unparseable JSON: fall back to the raw text as a model-only
+            # Unparseable JSON: fall back to the raw value as a model-only
             # value rather than discarding the assignment entirely.
-            return ModelRef(model_id=text)
+            return ModelRef(model_id=value)
         if isinstance(data, dict):
             provider = data.get("provider")
             model_id = data.get("model_id")
@@ -67,10 +67,12 @@ def parse_model_ref(value: str) -> ModelRef:
                 provider=provider if isinstance(provider, str) else "",
                 model_id=model_id if isinstance(model_id, str) else "",
             )
-        return ModelRef(model_id=text)
+        return ModelRef(model_id=value)
     # A bare model string (e.g. "glm-5.2") carries no provider: read it as
-    # model-only so the picker can prompt for a provider selection.
-    return ModelRef(model_id=text)
+    # model-only so the picker can prompt for a provider selection. The raw
+    # value is preserved (not the classification-stripped ``text``) so a
+    # downstream structural guard still sees any untrimmed / control content.
+    return ModelRef(model_id=value)
 
 
 def serialize_model_ref(ref: ModelRef) -> str:

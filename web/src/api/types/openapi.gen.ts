@@ -15416,7 +15416,7 @@ export type components = {
          *     drives validation and type coercion in the service layer.
          * @enum {string}
          */
-        readonly SettingType: "str" | "int" | "float" | "bool" | "enum" | "json";
+        readonly SettingType: "str" | "int" | "float" | "bool" | "enum" | "json" | "model_ref";
         /** SetupAgentRequest */
         readonly SetupAgentRequest: {
             /**

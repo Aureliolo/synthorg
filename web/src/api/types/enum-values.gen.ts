@@ -894,6 +894,7 @@ export const SETTING_TYPE_VALUES = [
     'bool',
     'enum',
     'json',
+    'model_ref',
 ] as const
 export type SettingType = (typeof SETTING_TYPE_VALUES)[number]
 

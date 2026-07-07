@@ -43,6 +43,7 @@ def resolve_feature_provider(
         DriverNotRegisteredError,
         ModelNotFoundError,
     )
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
     if not model:
         logger.info(
@@ -52,14 +53,52 @@ def resolve_feature_provider(
         )
         return None
 
+    # A model-assignment setting stores a ``ModelRef``: an explicit provider
+    # binds the model to *that* driver's catalogue rather than the first that
+    # happens to serve the model id. A legacy bare string parses to a
+    # provider-less ref and keeps the historic resolve-by-model behaviour.
+    ref = parse_model_ref(model)
+    if not ref.model_id:
+        logger.info(
+            API_APP_STARTUP,
+            note="feature model not configured; feature stays unwired",
+            feature=feature,
+        )
+        return None
+
+    if ref.provider:
+        try:
+            driver = provider_registry.get(ref.provider)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                note="feature provider (from model ref) not registered;"
+                " feature stays unwired",
+                feature=feature,
+                provider=ref.provider,
+                model=ref.model_id,
+                available=list(provider_registry.list_providers()),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        logger.info(
+            API_APP_STARTUP,
+            note="feature provider resolved",
+            feature=feature,
+            provider=ref.provider,
+            model=ref.model_id,
+        )
+        return driver
+
     try:
-        name, driver = provider_registry.resolve_for_model(model)
+        name, driver = provider_registry.resolve_for_model(ref.model_id)
     except (DriverNotRegisteredError, ModelNotFoundError) as exc:
         logger.warning(
             API_APP_STARTUP,
             note="feature provider resolution failed; feature stays unwired",
             feature=feature,
-            model=model,
+            model=ref.model_id,
             available=list(provider_registry.list_providers()),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -70,6 +109,6 @@ def resolve_feature_provider(
         note="feature provider resolved",
         feature=feature,
         provider=name,
-        model=model,
+        model=ref.model_id,
     )
     return driver

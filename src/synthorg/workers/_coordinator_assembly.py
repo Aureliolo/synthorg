@@ -40,6 +40,9 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import persistence_of
+from synthorg.providers.errors import DriverNotRegisteredError
+from synthorg.providers.state import provider_registry_of
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers.execution_service import WorkerExecutionService
 
@@ -251,45 +254,87 @@ def _build_coordination_chain(
     )
 
 
+def _resolve_decomposition_binding(
+    app_state: AppState,
+    active_provider: CompletionProvider,
+    raw_model_ref: str,
+) -> tuple[CompletionProvider, str]:
+    """Resolve a MODEL_REF decomposition setting to a ``(provider, model_id)``.
+
+    The stored value is a :class:`~synthorg.settings.model_ref.ModelRef`. An
+    explicit provider binds the model to *that* provider's catalogue rather
+    than the active (first-registered) one: the class of "model not found on
+    the resolved provider" boot failures the picker exists to prevent. A
+    provider-less (bare) value keeps the historic behaviour of resolving the
+    model against the active provider.
+
+    Returns:
+        The provider the decomposition model resolves against and the bare
+        model id to pass to the coordinator and the ``llm-judged`` policy.
+    """
+    ref = parse_model_ref(raw_model_ref)
+    if not ref.provider.strip():
+        return active_provider, ref.model_id
+    try:
+        return provider_registry_of(app_state).get(ref.provider), ref.model_id
+    except DriverNotRegisteredError:
+        logger.warning(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="decomposition_provider_unregistered",
+            provider=ref.provider,
+            note=(
+                "decomposition model's selected provider is not registered;"
+                " falling back to the active provider"
+            ),
+        )
+        return active_provider, ref.model_id
+
+
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
     provider: CompletionProvider,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
-) -> tuple[MultiAgentCoordinator, AgentTaskScorer, str]:
-    """Build the coordinator and the shared scorer + decomposition model.
+) -> tuple[MultiAgentCoordinator, AgentTaskScorer, CompletionProvider, str]:
+    """Build the coordinator and the shared scorer + decomposition binding.
 
-    Resolves the operator-tuned decomposition model and routing-scorer
-    weights, wires real git-worktree workspace isolation, then delegates
-    to the unit-tested :func:`build_coordinator` factory. The four
-    resolution steps are independent, so they run concurrently under a
+    Resolves the operator-tuned decomposition model reference and
+    routing-scorer weights, wires real git-worktree workspace isolation,
+    then delegates to the unit-tested :func:`build_coordinator` factory. The
+    four resolution steps are independent, so they run concurrently under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The ``AgentTaskScorer``
     is constructed here and injected into the coordinator so the work
     pipeline's solo-path selection can share the very same instance
     (one routing surface, no divergence). The resolved decomposition
-    model is returned so the ``llm-judged`` routing policy reuses it.
+    provider + model are returned so the ``llm-judged`` routing policy
+    reuses the very same binding the coordinator decomposes with.
 
     Returns:
-        A ``(coordinator, scorer, decomposition_model)`` triple sharing
-        the boot engine and a single ``AgentTaskScorer``.
+        A ``(coordinator, scorer, decomposition_provider, decomposition_model)``
+        tuple sharing the boot engine and a single ``AgentTaskScorer``.
 
     Raises:
         CoordinationConfigError: If the resolved
-            ``coordination.decomposition_model`` is blank while a
-            provider is configured (the coordinator builds eagerly and
-            its decomposition strategy requires a non-blank model).
+            ``coordination.decomposition_model`` reference carries no model
+            id while a provider is configured (the coordinator builds
+            eagerly and its decomposition strategy requires a non-blank
+            model).
     """
     (
-        decomposition_model,
+        raw_decomposition_ref,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
         middleware_enabled,
     ) = await _resolve_coordinator_dependencies(app_state)
+    decomp_provider, decomposition_model = _resolve_decomposition_binding(
+        app_state, provider, raw_decomposition_ref
+    )
     if not decomposition_model.strip():
         msg = (
-            "coordination.decomposition_model must be set to a model id from"
-            " your provider catalogue when a provider is configured: the"
+            "coordination.decomposition_model must select a model from your"
+            " provider catalogue when a provider is configured: the"
             " coordinator builds eagerly at boot and its decomposition"
             " strategy requires a non-blank model."
         )
@@ -320,7 +365,7 @@ async def _build_runtime_coordinator(
         config=app_state.config.coordination,
         engine=engine,
         task_assignment_config=app_state.config.task_assignment,
-        provider=provider,
+        provider=decomp_provider,
         decomposition_model=decomposition_model,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
@@ -344,7 +389,7 @@ async def _build_runtime_coordinator(
         decomposition_model=decomposition_model,
         topology=app_state.config.coordination.topology.value,
     )
-    return coordinator, scorer, decomposition_model
+    return coordinator, scorer, decomp_provider, decomposition_model
 
 
 async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI

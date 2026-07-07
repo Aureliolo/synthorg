@@ -19,6 +19,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -274,17 +275,24 @@ async def resolve_model_with_fallback(
     resolved = await resolve_str_with_fallback(
         resolver=resolver, namespace=namespace, key=key, fallback=fallback
     )
-    if resolved == fallback or _is_clean_model_id(resolved):
-        return resolved
+    # A model-assignment setting stores a ``ModelRef`` -- canonical
+    # ``{"provider", "model_id"}`` JSON -- so the provider hint travels with
+    # the model. The provider call needs only the bare model id, so project
+    # both the resolved value and the fallback (either may be a stored
+    # ``ModelRef`` or a legacy bare model string) through the same parse.
+    model_id = parse_model_ref(resolved).model_id
+    fallback_id = parse_model_ref(fallback).model_id
+    if model_id == fallback_id or _is_clean_model_id(model_id):
+        return model_id
     logger.warning(
         SETTINGS_FETCH_FAILED,
         namespace=namespace,
         key=key,
         error_type="MalformedModelIdentifier",
         error="resolved model identifier failed structural validation",
-        fallback=fallback,
+        fallback=fallback_id,
     )
-    return fallback
+    return fallback_id
 
 
 def require_configured_model(
@@ -313,8 +321,14 @@ def require_configured_model(
     Raises:
         ServiceUnavailableError: When *model* is blank or ``None``.
     """
-    if model:
-        return model
+    # The final gate before a provider call: a caller may hand a stored
+    # ``ModelRef`` (canonical ``{"provider", "model_id"}`` JSON) or an
+    # already-projected bare model id. Projecting here is idempotent with
+    # ``resolve_model_with_fallback`` (a bare id parses to itself), so every
+    # completion path lands on the bare model id whichever gate it came from.
+    resolved = parse_model_ref(model).model_id if model else ""
+    if resolved:
+        return resolved
     # Plain quotes, not RST double-backticks: this message is surfaced verbatim
     # in the dashboard (e.g. the charter interview error banner), where markup
     # would render literally.
