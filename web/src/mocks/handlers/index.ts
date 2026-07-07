@@ -49,6 +49,7 @@ import { artifactsHandlers } from './artifacts'
 import { auditHandlers } from './audit'
 import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
+import { boardHandlers } from './board'
 import { brownfieldHandlers } from './brownfield'
 import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
@@ -120,6 +121,7 @@ export const defaultHandlers = [
   ...auditHandlers,
   ...authHandlers,
   ...backupHandlers,
+  ...boardHandlers,
   ...brownfieldHandlers,
   ...budgetHandlers,
   ...capabilitiesHandlers,

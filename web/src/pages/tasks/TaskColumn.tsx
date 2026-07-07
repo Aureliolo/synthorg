@@ -30,6 +30,18 @@ const COMPLEXITY_HOURS: Record<string, number> = {
   epic: 24,
 }
 
+/**
+ * Backend-sourced WIP state for a column: the configured limit and
+ * whether the column's true (unfiltered) occupancy exceeds it. Absent
+ * for columns the board does not flow-limit (backlog / ready / done).
+ */
+export interface ColumnWip {
+  /** True (unfiltered) occupancy of the column, from the backend board. */
+  count: number
+  limit: number
+  overLimit: boolean
+}
+
 export interface TaskColumnProps {
   column: KanbanColumn
   tasks: Task[]
@@ -40,7 +52,50 @@ export interface TaskColumnProps {
    * detail-drawer-open task back to its lifecycle phase on the board.
    */
   highlighted?: boolean
+  /** Backend WIP limit + over-limit state, when the column is flow-limited. */
+  wip?: ColumnWip
 }
+
+/**
+ * Column header count pill. When the column is WIP-limited it renders
+ * ``count / limit`` (backend occupancy) and turns danger-coloured when
+ * over the limit; otherwise it shows the plain card count.
+ */
+const BADGE_BASE =
+  'rounded-full px-1.5 py-0.5 text-[length:var(--so-text-micro)] font-mono'
+
+const ColumnCountBadge = memo(function ColumnCountBadge({
+  count,
+  wip,
+}: {
+  count: number
+  wip?: ColumnWip
+}) {
+  if (!wip) {
+    return (
+      <span
+        className={cn(BADGE_BASE, 'bg-surface text-text-muted')}
+        aria-label={`${count} task${count === 1 ? '' : 's'}`}
+      >
+        {formatNumber(count)}
+      </span>
+    )
+  }
+  const suffix = wip.overLimit ? ' (over limit)' : ''
+  const label = `${wip.count} of ${wip.limit} WIP limit${suffix}`
+  return (
+    <span
+      className={cn(
+        BADGE_BASE,
+        wip.overLimit ? 'bg-danger/15 text-danger' : 'bg-surface text-text-muted',
+      )}
+      aria-label={label}
+      title={label}
+    >
+      {formatNumber(wip.count)} / {formatNumber(wip.limit)}
+    </span>
+  )
+})
 
 const SortableTaskCard = memo(function SortableTaskCard({
   task,
@@ -70,7 +125,13 @@ const SortableTaskCard = memo(function SortableTaskCard({
   )
 })
 
-export function TaskColumn({ column, tasks, onSelectTask, highlighted }: TaskColumnProps) {
+export function TaskColumn({
+  column,
+  tasks,
+  onSelectTask,
+  highlighted,
+  wip,
+}: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
     data: { columnId: column.id, statuses: column.statuses },
@@ -107,12 +168,7 @@ export function TaskColumn({ column, tasks, onSelectTask, highlighted }: TaskCol
         >
           {column.label}
         </span>
-        <span
-          className="rounded-full bg-surface px-1.5 py-0.5 text-[length:var(--so-text-micro)] font-mono text-text-muted"
-          aria-label={`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
-        >
-          {formatNumber(tasks.length)}
-        </span>
+        <ColumnCountBadge count={tasks.length} wip={wip} />
         {estimatedHours > 0 && (
           <span
             className="ml-auto text-[length:var(--so-text-micro)] font-mono text-text-muted"

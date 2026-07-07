@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { ToggleField } from '@/components/ui/toggle-field'
+import { useBoardPolicy } from '@/hooks/useBoardPolicy'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { formatNumber } from '@/utils/format'
 import { KANBAN_COLUMNS, type TaskBoardFilters } from '@/utils/tasks'
@@ -211,6 +212,7 @@ function TaskBoardKanbanEmptyState({ ctrl }: TaskBoardCtrlProps) {
 }
 
 function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
+  const boardPolicy = useBoardPolicy()
   if (ctrl.viewMode === 'list') {
     return (
       <TaskListView tasks={ctrl.filteredTasks} onSelectTask={ctrl.handleSelectTask} />
@@ -235,6 +237,7 @@ function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
           const containsSelected =
             ctrl.selectedTaskId !== null &&
             columnTasks.some((t) => t.id === ctrl.selectedTaskId)
+          const wip = boardPolicy?.wipByColumn[col.id]
           return (
             <TaskColumn
               key={col.id}
@@ -242,6 +245,7 @@ function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
               tasks={columnTasks}
               onSelectTask={ctrl.handleSelectTask}
               highlighted={containsSelected}
+              {...(wip ? { wip } : {})}
             />
           )
         })}
