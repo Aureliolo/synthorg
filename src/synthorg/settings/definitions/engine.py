@@ -111,6 +111,28 @@ _r.register(
     )
 )
 
+# ── Scoping + decision gate ─────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="scoping_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let a lead agent surface project-shaping decisions to a human via"
+            " the request_project_decision tool: it parks the run (like a"
+            " clarification), and on the human's answer records a DECISION"
+            " entry in the project brain and resumes with the choice injected."
+            " Off by default (agents decide on their own); when on, the tool is"
+            " added to every agent toolset at boot, so a change applies on the"
+            " next runtime-services rebuild."
+        ),
+        group="Scoping",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Health judge ────────────────────────────────────────────────
 
 _r.register(

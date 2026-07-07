@@ -326,6 +326,42 @@ def registry_with_clarification_tool(
     return _ToolRegistry([*existing, clarification_tool])
 
 
+def registry_with_decision_tool(
+    tool_registry: ToolRegistry,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+) -> ToolRegistry:
+    """Add the project-decision tool when scoping is enabled.
+
+    Gated by the caller (``engine.scoping_enabled``); this helper only checks
+    that an approval store is available to persist the parked decision.
+    Returns the registry unchanged when no store is wired.
+
+    Returns:
+        A :class:`ToolRegistry` with the decision tool appended when an
+        approval store is configured; the original registry unchanged
+        otherwise.
+    """
+    if approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.decision_tool import (  # noqa: PLC0415
+        RequestProjectDecisionTool,
+    )
+    from synthorg.tools.registry import (  # noqa: PLC0415
+        ToolRegistry as _ToolRegistry,
+    )
+
+    decision_tool = RequestProjectDecisionTool(
+        approval_store=approval_store,
+        agent_id=str(identity.id),
+        task_id=task_id,
+    )
+    existing = list(tool_registry.all_tools())
+    return _ToolRegistry([*existing, decision_tool])
+
+
 def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runtime: ExternalApiRuntime | None,

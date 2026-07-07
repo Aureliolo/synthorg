@@ -194,6 +194,7 @@ class AgentEngine(
         review_gate: ReviewGateService | None = None,
         review_pipeline: ReviewPipeline | None = None,
         clarification_enabled: bool = False,
+        scoping_enabled: bool = False,
         parked_context_repo: ParkedContextRepository | None = None,
         cost_forecast_repo: CostForecastRepository | None = None,
         approval_gate: ApprovalGate | None = None,
@@ -264,6 +265,7 @@ class AgentEngine(
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
         self._clarification_enabled = clarification_enabled
+        self._scoping_enabled = scoping_enabled
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider

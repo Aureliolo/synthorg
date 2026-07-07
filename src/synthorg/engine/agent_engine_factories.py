@@ -9,6 +9,7 @@ from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
     registry_with_clarification_tool,
+    registry_with_decision_tool,
     registry_with_external_api_tool,
 )
 from synthorg.engine.approval_gate import ApprovalGate
@@ -82,6 +83,7 @@ class AgentEngineFactoriesMixin:
 
     _approval_store: ApprovalStoreProtocol | None
     _clarification_enabled: bool
+    _scoping_enabled: bool
     _clock: Clock
     _external_api_runtime: ExternalApiRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
@@ -369,6 +371,13 @@ class AgentEngineFactoriesMixin:
         )
         if self._clarification_enabled:
             registry = registry_with_clarification_tool(
+                registry,
+                self._approval_store,
+                identity,
+                task_id=task_id,
+            )
+        if self._scoping_enabled:
+            registry = registry_with_decision_tool(
                 registry,
                 self._approval_store,
                 identity,

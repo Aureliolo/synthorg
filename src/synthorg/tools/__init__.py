@@ -11,6 +11,7 @@ from .database import (
     SchemaInspectTool,
     SqlQueryTool,
 )
+from .decision_tool import RequestProjectDecisionTool
 from .disclosure_config import ToolDisclosureConfig
 from .disclosure_metrics import ToolDisclosureMetrics
 from .discovery import (
@@ -109,6 +110,7 @@ __all__ = [
     "ReadFileTool",
     "RequestClarificationTool",
     "RequestHumanApprovalTool",
+    "RequestProjectDecisionTool",
     "SandboxBackend",
     "SandboxError",
     "SandboxResult",
