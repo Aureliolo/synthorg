@@ -79,14 +79,16 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="routing_policy",
         type=SettingType.ENUM,
-        default="leaf-threshold",
+        default="llm-judged",
         enum_values=("leaf-threshold", "always-team", "llm-judged"),
         description=(
-            "Work pipeline solo-vs-team routing policy. 'leaf-threshold'"
-            " (default) classifies small sequential work as single-agent;"
-            " 'always-team' forces the coordinator; 'llm-judged' asks the"
-            " decomposition model. Resolved at boot; a runtime change"
-            " applies on the next pipeline rebuild (provider re-init)."
+            "Work pipeline solo-vs-team routing policy. 'llm-judged'"
+            " (default) asks the decomposition model whether a brief needs"
+            " a team, falling back to the leaf-threshold heuristic on model"
+            " error; 'leaf-threshold' classifies small sequential work as"
+            " single-agent by expected-artifact count; 'always-team' forces"
+            " the coordinator. Resolved at boot; a runtime change applies on"
+            " the next pipeline rebuild (provider re-init)."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
