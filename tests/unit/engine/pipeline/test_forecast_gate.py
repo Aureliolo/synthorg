@@ -97,6 +97,9 @@ class _StubWorkPipeline:
     def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
         self.refinement_router = router
 
+    def attach_plan_review_gate(self, gate: object) -> None:
+        self.plan_review_gate = gate
+
 
 class _FakeForecastRepo:
     """In-memory CostForecastRepository double for the gate tests."""

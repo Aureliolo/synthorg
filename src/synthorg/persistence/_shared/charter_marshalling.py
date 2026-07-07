@@ -52,6 +52,7 @@ _ALLOWED_TRANSITION_KEYS = frozenset(
         "forecast_id",
         "correlation_id",
         "task_id",
+        "project_id",
     }
 )
 

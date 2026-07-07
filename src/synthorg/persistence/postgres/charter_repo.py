@@ -317,10 +317,15 @@ class PostgresCharterRepository:
             "approved_by = COALESCE(%s, approved_by), "
             "forecast_id = COALESCE(%s, forecast_id), "
             "correlation_id = COALESCE(%s, correlation_id), "
-            "task_id = COALESCE(%s, task_id) "
+            "task_id = COALESCE(%s, task_id), "
+            "project_id = COALESCE(%s::text, project_id), "
+            "proposed_project_name = "
+            "CASE WHEN %s::text IS NOT NULL THEN NULL "
+            "ELSE proposed_project_name END "
             "WHERE id = %s AND status = %s"
         )
         forecast_update = updates.get("forecast_id")
+        project_update = updates.get("project_id")
         params = (
             to_state.value,
             as_iso(updates.get("updated_at"), serialize_dt=passthrough_dt),
@@ -329,6 +334,8 @@ class PostgresCharterRepository:
             (str(forecast_update) if forecast_update is not None else None),
             updates.get("correlation_id"),
             updates.get("task_id"),
+            project_update,
+            project_update,
             entity_id,
             from_state.value,
         )

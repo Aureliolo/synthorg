@@ -316,7 +316,10 @@ class SQLiteCharterRepository:
         (``updated_at`` plus the approval provenance on approval). Each
         is applied via ``COALESCE`` so a missing key leaves the column
         unchanged (a drafted row's approval columns are NULL, so a
-        cancel keeps them NULL while an approve sets them).
+        cancel keeps them NULL while an approve sets them). When
+        ``project_id`` is supplied (approval binds the run to a project),
+        it is stamped AND ``proposed_project_name`` is cleared to NULL, so
+        the existing-vs-new XOR holds once the project exists.
 
         Returns:
             ``True`` when the operation succeeded, ``False`` otherwise.
@@ -334,10 +337,14 @@ class SQLiteCharterRepository:
             "approved_by = COALESCE(?, approved_by), "
             "forecast_id = COALESCE(?, forecast_id), "
             "correlation_id = COALESCE(?, correlation_id), "
-            "task_id = COALESCE(?, task_id) "
+            "task_id = COALESCE(?, task_id), "
+            "project_id = COALESCE(?, project_id), "
+            "proposed_project_name = "
+            "CASE WHEN ? IS NOT NULL THEN NULL ELSE proposed_project_name END "
             "WHERE id = ? AND status = ?"
         )
         forecast_update = updates.get("forecast_id")
+        project_update = updates.get("project_id")
         params = (
             to_state.value,
             as_iso(updates.get("updated_at")),
@@ -346,6 +353,8 @@ class SQLiteCharterRepository:
             (str(forecast_update) if forecast_update is not None else None),
             updates.get("correlation_id"),
             updates.get("task_id"),
+            project_update,
+            project_update,
             entity_id,
             from_state.value,
         )
