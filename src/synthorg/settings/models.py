@@ -206,9 +206,9 @@ def _validate_default_type(
 ) -> None:
     """Check that *default* is parseable as *setting_type*.
 
-    STRING needs no parse check; ENUM is a membership check against
-    ``defn.enum_values``. Both are resolved inline so they never reach
-    ``_DEFAULT_TYPE_CHECK_REGISTRY.get`` (a registry miss logs
+    STRING and MODEL_REF need no default parse check; ENUM is a membership
+    check against ``defn.enum_values``. These are resolved inline so they
+    never reach ``_DEFAULT_TYPE_CHECK_REGISTRY.get`` (a registry miss logs
     ``REGISTRY_FACTORY_NOT_FOUND`` at ERROR before raising, which at
     boot fired once per STRING/ENUM-with-default definition). Scalar
     parse checks for INTEGER/FLOAT/BOOLEAN/JSON dispatch through the
@@ -220,6 +220,10 @@ def _validate_default_type(
             scalar type.
     """
     if setting_type == SettingType.STRING:
+        return
+    if setting_type == SettingType.MODEL_REF:
+        # Model-ref defaults are the unset empty string; a structured
+        # default's shape is checked at set-time by validate_by_type.
         return
     if setting_type == SettingType.ENUM:
         if default not in defn.enum_values:
