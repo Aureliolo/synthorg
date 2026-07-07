@@ -25,6 +25,7 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.kanban_wiring import wire_kanban_board
 from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engine
 from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
 from synthorg.api.lifecycle_helpers.meta_wiring import (
@@ -616,6 +617,9 @@ async def wire_features_on_startup(
     # Opt-in human plan-approval gate: when enabled, splittable team work is
     # parked for approval before it builds. No-op unless the setting is on.
     await wire_plan_review_gate(app_state)
+    # Kanban board service: projects tasks onto the org's board and drives
+    # column moves. Wired whenever the task engine + persistence exist.
+    await wire_kanban_board(app_state)
     await wire_group_chat_service(
         app_state,
         provider_registry=provider_registry,

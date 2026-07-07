@@ -140,6 +140,9 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
         _wire_chief_of_staff_chat,
         _wire_research_engine,
     )
+    from synthorg.api.lifecycle_helpers.kanban_wiring import (  # noqa: PLC0415
+        wire_kanban_board,
+    )
     from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
         wire_knowledge_engine,
     )
@@ -206,6 +209,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
             await wire_refinement_router(app_state)
             await wire_conversational_actor(app_state, si_config=si_config)
         await wire_plan_review_gate(app_state)
+        await wire_kanban_board(app_state)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

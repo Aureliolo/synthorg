@@ -94,6 +94,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "auth.api_keys_issue": (10, 60),
     "auth.api_keys_list": (30, 60),
     "auth.api_keys_revoke": (30, 60),
+    # kanban board
+    "board.move": (100, 60),
     # brain (project brain)
     "brain.search": (30, 60),
     # brownfield
