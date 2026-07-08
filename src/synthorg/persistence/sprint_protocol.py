@@ -25,8 +25,6 @@ from synthorg.persistence._generics import (
 )
 
 if TYPE_CHECKING:
-    from typing import Unpack
-
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):
@@ -123,15 +121,21 @@ class SprintRepository(
         entity_id: NotBlankStr,
         from_state: SprintStatus,
         to_state: SprintStatus,
-        **updates: Unpack[TransitionKwargs],
+        **updates: object,
     ) -> bool:
         """Atomic compare-and-set for the sprint lifecycle state.
 
         ``**updates`` MAY carry the date columns stamped at the
         transition (``start_date`` on activation, ``end_date`` on
-        completion). Each is applied via ``COALESCE`` so a missing key
-        leaves the column unchanged. Implementations validate types at
-        the boundary and reject unknown keys with :class:`QueryError`.
+        completion), per the :class:`TransitionKwargs` shape. Each is
+        applied via ``COALESCE`` so a missing key leaves the column
+        unchanged. It stays typed ``object`` rather than
+        ``Unpack[TransitionKwargs]`` because this ``@runtime_checkable``
+        protocol is signature-introspected by typeguard, which under
+        PEP 649 evaluates the annotation at runtime where the
+        ``TYPE_CHECKING``-only ``Unpack`` name is undefined.
+        Implementations validate types at the boundary and reject
+        unknown keys with :class:`QueryError`.
 
         Returns:
             ``True`` iff the row was in ``from_state`` and is now in
