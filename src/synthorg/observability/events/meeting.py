@@ -27,12 +27,12 @@ MEETING_CONTRIBUTION_RECORDED: Final[str] = "meeting.contribution.recorded"
 MEETING_CONFLICT_DETECTED: Final[str] = "meeting.conflict.detected"
 
 # Conflict escalation (post-meeting bridge into the conflict-resolution service)
-MEETING_CONFLICT_ESCALATION_STARTED: Final[str] = "meeting.conflict_escalation.started"
+MEETING_CONFLICT_ESCALATION_STARTED: Final[str] = "meeting.conflict.escalation.started"
 MEETING_CONFLICT_ESCALATION_RESOLVED: Final[str] = (
-    "meeting.conflict_escalation.resolved"
+    "meeting.conflict.escalation.resolved"
 )
-MEETING_CONFLICT_ESCALATION_SKIPPED: Final[str] = "meeting.conflict_escalation.skipped"
-MEETING_CONFLICT_ESCALATION_FAILED: Final[str] = "meeting.conflict_escalation.failed"
+MEETING_CONFLICT_ESCALATION_SKIPPED: Final[str] = "meeting.conflict.escalation.skipped"
+MEETING_CONFLICT_ESCALATION_FAILED: Final[str] = "meeting.conflict.escalation.failed"
 
 # Strategy dispatch (premortem / consensus-velocity)
 MEETING_CONSENSUS_VELOCITY_FORCED: Final[str] = "meeting.consensus_velocity.forced"

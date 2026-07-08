@@ -8,9 +8,13 @@ strategy a clear conflict auto-resolves and an ambiguous one escalates to the
 human queue; either way dissent records and events flow through the already
 wired dissent pipeline.
 
-The bridge is best-effort: its ``__call__`` never raises, because the meeting
-orchestrator invokes it with no surrounding ``try/except`` and an escaping
-exception would turn a completed meeting into an unhandled failure.
+The bridge is best-effort: ``__call__`` contains every ordinary failure (only
+``MemoryError``/``RecursionError`` propagate) so an already-completed meeting
+is never turned into an unhandled error. It adds no timeout of its own: the
+judge LLM call is bounded by the provider layer's retry/timeout, and a
+human-escalation wait is bounded by the resolver's configured
+``timeout_seconds``. Bounding ``resolve()`` here would instead cancel an
+in-flight escalation, dropping the queued row the bridge exists to create.
 """
 
 from typing import Final
@@ -45,8 +49,12 @@ logger = get_logger(__name__)
 _MIN_POSITIONS: Final[int] = 2
 
 #: Upper bound on the one-line ``position`` summary derived from a
-#: contribution; the full text is preserved verbatim as ``reasoning``.
+#: contribution.
 _POSITION_SUMMARY_MAX_CHARS: Final[int] = 200
+
+#: Upper bound on the free-text ``reasoning`` carried per position into the
+#: judge prompt, so a runaway contribution cannot amplify prompt cost.
+_MAX_REASONING_CHARS: Final[int] = 4000
 
 _SETTINGS_NAMESPACE: Final[str] = "communication"
 _KILL_SWITCH_KEY: Final[str] = "meeting_conflict_escalation_enabled"
@@ -68,12 +76,24 @@ class MeetingConflictEscalationBridge:
         self._agent_registry = agent_registry
         self._config_resolver = config_resolver
 
-    async def __call__(self, minutes: MeetingMinutes) -> None:
-        """Resolve a conflicted meeting, containing every failure.
+    def set_config_resolver(self, resolver: ConfigResolverProtocol) -> None:
+        """Inject the live config resolver after construction.
 
-        Never raises: a resolution failure (including the hybrid strategy's
-        hard-fail on a judge/provider outage) is logged and swallowed so the
-        already-completed meeting is not turned into an unhandled error.
+        The bridge is built during the construction phase with the placeholder
+        resolver on the settings slice; the persistence-backed resolver only
+        exists at startup, so the composition root rebinds it here (mirroring
+        the escalation notify subscriber). Without the rebind the
+        ``meeting_conflict_escalation_enabled`` kill switch would never see a
+        dashboard-set override.
+        """
+        self._config_resolver = resolver
+
+    async def __call__(self, minutes: MeetingMinutes) -> None:
+        """Resolve a conflicted meeting, containing every ordinary failure.
+
+        Contains all failures except ``MemoryError``/``RecursionError``: a
+        resolution error is logged and swallowed so an already-completed
+        meeting is never turned into an unhandled error.
         """
         try:
             await self._escalate(minutes)
@@ -162,7 +182,7 @@ class MeetingConflictEscalationBridge:
                     agent_department=identity.department,
                     agent_level=identity.level,
                     position=_summarise(contribution.content),
-                    reasoning=contribution.content,
+                    reasoning=_cap_reasoning(contribution.content),
                     timestamp=contribution.timestamp,
                 )
             )
@@ -172,7 +192,7 @@ class MeetingConflictEscalationBridge:
         self,
         minutes: MeetingMinutes,
     ) -> dict[str, MeetingContribution]:
-        """Pick each participant's stance, discussion turn over input paper.
+        """Pick each participant's stance, discussion phase over input-gathering.
 
         The leader's conflict-check turn is excluded automatically: the
         leader is never in ``participant_ids``. Blank contributions are
@@ -212,6 +232,19 @@ def _summarise(content: str) -> NotBlankStr:
     if len(first_line) > _POSITION_SUMMARY_MAX_CHARS:
         return NotBlankStr(first_line[:_POSITION_SUMMARY_MAX_CHARS].rstrip())
     return NotBlankStr(first_line)
+
+
+def _cap_reasoning(content: str) -> NotBlankStr:
+    """Cap a contribution's reasoning to bound judge-prompt cost.
+
+    Returns:
+        The stripped content, truncated to ``_MAX_REASONING_CHARS`` and
+        guaranteed non-blank (callers only pass non-blank content).
+    """
+    trimmed = content.strip()
+    if len(trimmed) > _MAX_REASONING_CHARS:
+        return NotBlankStr(trimmed[:_MAX_REASONING_CHARS].rstrip())
+    return NotBlankStr(trimmed)
 
 
 __all__ = ["MeetingConflictEscalationBridge"]

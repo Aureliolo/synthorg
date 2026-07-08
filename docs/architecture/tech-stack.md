@@ -155,5 +155,5 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Communication foundation** | Adopted | `MessageBus` protocol with pull-model `receive()`, `MessageDispatcher` for concurrent handler routing, `AgentMessenger` per-agent facade. |
 | **Delegation and loop prevention** | Adopted | `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence with short-circuit on first rejection. |
 | **Task assignment** | Adopted | `TaskAssignmentStrategy` protocol with six strategies: Manual, RoleBased, LoadBalanced, CostOptimized, Hierarchical, and Auction. |
-| **Conflict resolution** | Adopted | `ConflictResolver` protocol with four strategies: Authority, Debate, Human Escalation, and Hybrid. |
+| **Conflict resolution** | Adopted | `ConflictResolver` protocol with five strategies: Authority, Debate, Human Escalation, Hybrid, and Evidence-Weighted. |
 | **Pydantic alias for YAML directives** | Adopted | `Field(alias="_remove")` in `TemplateAgentConfig`: YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps YAML human-readable while avoiding leading-underscore attributes. |

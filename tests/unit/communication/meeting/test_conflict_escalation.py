@@ -5,7 +5,9 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
+import synthorg.settings.definitions.communication  # noqa: F401 -- register defs
 from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
@@ -18,6 +20,9 @@ from synthorg.communication.conflict_resolution.service import (
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.errors import ConflictResolutionError
 from synthorg.communication.meeting.conflict_escalation import (
+    _KILL_SWITCH_KEY,
+    _MAX_REASONING_CHARS,
+    _SETTINGS_NAMESPACE,
     MeetingConflictEscalationBridge,
 )
 from synthorg.communication.meeting.enums import MeetingPhase, MeetingProtocolType
@@ -34,6 +39,7 @@ from synthorg.core.agent import (
 )
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import mock_of
 from tests._shared.ids import as_uuid
@@ -342,3 +348,142 @@ async def test_skips_when_all_agents_missing_from_registry() -> None:
     await bridge(minutes)
 
     service.create_conflict.assert_not_called()
+
+
+async def test_leader_and_non_participant_contributions_excluded() -> None:
+    service = _service()
+    registry = _registry(_both_identities())
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=registry,
+    )
+    # The leader's conflict-check turn and a stray non-participant turn must
+    # never leak into the judge input: only participant stances are built.
+    minutes = _minutes(
+        contributions=(
+            _contribution(
+                "leader",
+                content="leader internal commentary",
+                phase=MeetingPhase.DISCUSSION,
+                turn=1,
+            ),
+            _contribution(
+                "carol",
+                content="uninvited opinion",
+                phase=MeetingPhase.DISCUSSION,
+                turn=2,
+            ),
+            _contribution(
+                "alice", content="REST", phase=MeetingPhase.DISCUSSION, turn=3
+            ),
+            _contribution("bob", content="gRPC", phase=MeetingPhase.DISCUSSION, turn=4),
+        ),
+    )
+
+    await bridge(minutes)
+
+    requested = set(registry.get_by_ids.await_args.args[0])
+    assert requested == {"alice", "bob"}
+    positions = service.create_conflict.call_args.kwargs["positions"]
+    assert {p.agent_id for p in positions} == {"alice", "bob"}
+
+
+async def test_discussion_turn_wins_over_input_gathering_for_same_agent() -> None:
+    service = _service()
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=_registry(_both_identities()),
+    )
+    minutes = _minutes(
+        contributions=(
+            _contribution(
+                "alice",
+                content="alice gathering draft",
+                phase=MeetingPhase.INPUT_GATHERING,
+                turn=0,
+            ),
+            _contribution(
+                "alice",
+                content="alice final stance",
+                phase=MeetingPhase.DISCUSSION,
+                turn=1,
+            ),
+            _contribution("bob", content="gRPC", phase=MeetingPhase.DISCUSSION, turn=2),
+        ),
+    )
+
+    await bridge(minutes)
+
+    positions = service.create_conflict.call_args.kwargs["positions"]
+    alice = next(p for p in positions if p.agent_id == "alice")
+    assert alice.reasoning == "alice final stance"
+
+
+async def test_no_registry_lookup_when_no_contributions() -> None:
+    service = _service()
+    registry = _registry(_both_identities())
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=registry,
+    )
+
+    await bridge(_minutes(contributions=()))
+
+    registry.get_by_ids.assert_not_awaited()
+    service.create_conflict.assert_not_called()
+
+
+async def test_reasoning_is_capped() -> None:
+    service = _service()
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=_registry(_both_identities()),
+    )
+    long_content = "x" * (_MAX_REASONING_CHARS + 500)
+    minutes = _minutes(
+        contributions=(
+            _contribution(
+                "alice", content=long_content, phase=MeetingPhase.DISCUSSION, turn=1
+            ),
+            _contribution("bob", content="gRPC", phase=MeetingPhase.DISCUSSION, turn=2),
+        ),
+    )
+
+    await bridge(minutes)
+
+    positions = service.create_conflict.call_args.kwargs["positions"]
+    alice = next(p for p in positions if p.agent_id == "alice")
+    assert len(alice.reasoning) <= _MAX_REASONING_CHARS
+
+
+async def test_resolver_error_logs_failed_event() -> None:
+    service = _service()
+    service.resolve = AsyncMock(side_effect=ConflictResolutionError("boom"))
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=_registry(_both_identities()),
+    )
+    minutes = _minutes(
+        contributions=(
+            _contribution("alice", content="a", phase=MeetingPhase.DISCUSSION, turn=1),
+            _contribution("bob", content="b", phase=MeetingPhase.DISCUSSION, turn=2),
+        ),
+    )
+
+    with capture_logs() as logs:
+        await bridge(minutes)
+
+    failed = [e for e in logs if e["event"] == "meeting.conflict.escalation.failed"]
+    assert len(failed) == 1
+    assert failed[0]["error_type"] == "ConflictResolutionError"
+    assert failed[0]["meeting_id"] == "meeting-1"
+
+
+def test_kill_switch_key_is_a_registered_setting() -> None:
+    # Guards the literal namespace/key against drift from the registered
+    # SettingDefinition: a typo on either side would silently disable the
+    # dashboard kill switch with no other test catching it.
+    definition = get_registry().get(_SETTINGS_NAMESPACE, _KILL_SWITCH_KEY)
+
+    assert definition is not None
+    assert definition.default == "true"

@@ -349,7 +349,7 @@ _r.register(
 # visibility; applied at protocol construction so changes take effect
 # on next restart.
 
-# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+# ── Kill switches ────────────────────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -382,7 +382,7 @@ _r.register(
     )
 )
 
-# ── Escalation queue + sweeper (CFG-1 audit) ─────────────────────
+# ── Escalation queue + sweeper ───────────────────────────────────
 
 _r.register(
     SettingDefinition(

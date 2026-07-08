@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from synthorg.communication.meeting._meeting_utils import (
     format_exception,
+    run_conflict_escalation_hook,
     validate_meeting_inputs,
 )
 from synthorg.communication.meeting.config import MeetingProtocolConfig
@@ -142,6 +143,16 @@ class MeetingOrchestrator:
         # the dict serves point lookups so controller endpoints don't
         # need to scan every record on every fetch.
         self._records_by_id: dict[str, MeetingRecord] = {}
+
+    def set_conflict_escalation_hook(self, hook: ConflictEscalationHook) -> None:
+        """Install the post-meeting conflict-escalation hook.
+
+        Post-construction injection: the conflict-resolution service the
+        hook drives is built later in the same wiring pass than the
+        orchestrator, so the composition root sets the hook here rather
+        than at construction.
+        """
+        self._conflict_escalation_hook = hook
 
     async def run_meeting(  # noqa: PLR0913
         self,
@@ -311,8 +322,9 @@ class MeetingOrchestrator:
             return result
 
         self._create_tasks(meeting_id, protocol_config, result)
-        if self._conflict_escalation_hook is not None:
-            await self._conflict_escalation_hook(result)
+        await run_conflict_escalation_hook(
+            self._conflict_escalation_hook, result, meeting_id=meeting_id
+        )
         return self._record_success(
             meeting_id,
             meeting_type_name,

@@ -732,7 +732,7 @@ def _orchestrator_with_hook(
     minutes: MeetingMinutes,
     hook: object,
 ) -> MeetingOrchestrator:
-    mock_protocol = MagicMock()
+    mock_protocol = MagicMock(spec=MeetingProtocol)
     mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
     mock_protocol.run = AsyncMock(return_value=minutes)
     registry: dict[MeetingProtocolType, MeetingProtocol] = {
@@ -807,3 +807,44 @@ class TestMeetingOrchestratorConflictEscalation:
         )
 
         assert record.status == MeetingStatus.COMPLETED
+
+    async def test_raising_hook_does_not_sink_completed_meeting(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        # A hook that violates its "must not raise" contract is contained at
+        # the call site: the meeting still records COMPLETED and stays
+        # retrievable, rather than being lost to an unhandled error.
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        hook = AsyncMock(side_effect=RuntimeError("hook boom"))
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a", "agent-b"),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED
+        assert orchestrator.get_record(record.meeting_id) is not None
+
+    async def test_raising_hook_still_propagates_critical(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        hook = AsyncMock(side_effect=MemoryError())
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        with pytest.raises(MemoryError):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=simple_agenda,
+                leader_id="leader",
+                participant_ids=("agent-a", "agent-b"),
+                token_budget=10000,
+            )

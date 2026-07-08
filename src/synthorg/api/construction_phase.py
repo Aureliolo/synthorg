@@ -264,10 +264,11 @@ def _wire_meeting_conflict_bridge(
 ) -> None:
     """Install the meeting-to-conflict-resolution bridge on the orchestrator.
 
-    Post-construction attribute injection (mirroring the meeting-scheduler
-    event-publisher wiring): the conflict-resolution service is built later
-    in this same wiring pass than the orchestrator is constructed. A no-op
-    when either the orchestrator or the service is absent.
+    The conflict-resolution service is built later in this same wiring pass
+    than the orchestrator is constructed, so the bridge is installed via the
+    orchestrator's setter here. The bridge is also stored on the slice so the
+    startup resolver rebind (``_wire_resolver_dependents``) can reach it. A
+    no-op when either the orchestrator or the service is absent.
     """
     from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
 
@@ -280,12 +281,15 @@ def _wire_meeting_conflict_bridge(
         MeetingConflictEscalationBridge,
     )
 
-    meeting_orchestrator._conflict_escalation_hook = (  # noqa: SLF001
-        MeetingConflictEscalationBridge(
-            conflict_service=conflict_service,
-            agent_registry=agent_registry,
-            config_resolver=config_resolver,
-        )
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=conflict_service,
+        agent_registry=agent_registry,
+        config_resolver=config_resolver,
+    )
+    meeting_orchestrator.set_conflict_escalation_hook(bridge)
+    app_state.wire(
+        CommunicationStateSlice,
+        conflict_escalation_bridge=bridge,
     )
 
 

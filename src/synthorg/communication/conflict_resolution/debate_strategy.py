@@ -23,6 +23,7 @@ from synthorg.communication.conflict_resolution.config import (
 )
 from synthorg.communication.conflict_resolution.models import (
     Conflict,
+    ConflictPosition,
     ConflictResolution,
     ConflictResolutionOutcome,
     DissentRecord,
@@ -37,7 +38,7 @@ from synthorg.communication.delegation.hierarchy import (
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_AMBIGUOUS_RESULT,
     CONFLICT_AUTHORITY_FALLBACK,
@@ -84,11 +85,11 @@ class DebateResolver:
             conflict: The conflict to resolve.
 
         Returns:
-            Resolution with ``RESOLVED_BY_DEBATE`` outcome.
+            Resolution with the ``RESOLVED_BY_DEBATE`` outcome, or
+            ``RESOLVED_BY_AUTHORITY`` when no evaluator is wired, the
+            evaluator fails, or its verdict is ambiguous/non-participant.
 
         Raises:
-            ConflictStrategyError: If the judge returns a winning
-                agent ID not found in the conflict positions.
             ConflictHierarchyError: If LCM lookup fails when needed.
         """
         judge_id = self._determine_judge(conflict)
@@ -156,12 +157,15 @@ class DebateResolver:
             decision = await self._judge_evaluator.evaluate(conflict, judge_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            log_exception_redacted(
-                logger,
+            # WARNING, not ERROR: this is a recovered fallback to authority
+            # (like the no-evaluator and ambiguous-verdict siblings), not a
+            # failed resolution.
+            logger.warning(
                 CONFLICT_DEBATE_EVALUATOR_FAILED,
-                exc,
                 conflict_id=str(conflict.id),
                 judge=judge_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         if find_position(conflict, decision.winning_agent_id) is None:
@@ -196,11 +200,7 @@ class DebateResolver:
             best = pick_highest_seniority(conflict, hierarchy=None)
             return JudgeDecision(
                 winning_agent_id=best.agent_id,
-                reasoning=(
-                    f"Debate fallback: authority-based judging (no hierarchy) "
-                    f"-- {best.agent_id} ({best.agent_level}) has highest "
-                    f"seniority"
-                ),
+                reasoning=_seniority_reasoning(best, no_hierarchy=True),
             )
 
     def build_dissent_records(
@@ -250,41 +250,7 @@ class DebateResolver:
                 configured but no LCM exists.
         """
         if self._config.judge == "shared_manager":
-            lcm: str | None = self._hierarchy.get_lowest_common_manager(
-                conflict.positions[0].agent_id,
-                conflict.positions[1].agent_id,
-            )
-            for pos in conflict.positions[2:]:
-                if lcm is None:
-                    break
-                lcm = self._hierarchy.get_lowest_common_manager(
-                    lcm,
-                    pos.agent_id,
-                )
-            logger.debug(
-                CONFLICT_LCM_LOOKUP,
-                conflict_id=str(conflict.id),
-                agents=[p.agent_id for p in conflict.positions],
-                lcm=lcm,
-            )
-            if lcm is None:
-                msg = (
-                    "No shared manager for conflict participants -- cannot select judge"
-                )
-                logger.warning(
-                    CONFLICT_HIERARCHY_ERROR,
-                    conflict_id=str(conflict.id),
-                    agents=[p.agent_id for p in conflict.positions],
-                    error=msg,
-                )
-                raise ConflictHierarchyError(
-                    msg,
-                    context={
-                        "conflict_id": conflict.id,
-                        "agents": [p.agent_id for p in conflict.positions],
-                    },
-                )
-            return lcm
+            return self._shared_manager_judge(conflict)
 
         if self._config.judge == "ceo":
             # Walk from any position to hierarchy root
@@ -306,6 +272,46 @@ class DebateResolver:
         # invalid names surface at evaluation time.
         return self._config.judge
 
+    def _shared_manager_judge(self, conflict: Conflict) -> str:
+        """Find the lowest common manager of all participants, iteratively.
+
+        Returns:
+            The shared-manager agent id to act as judge.
+
+        Raises:
+            ConflictHierarchyError: If no lowest common manager exists.
+        """
+        lcm: str | None = self._hierarchy.get_lowest_common_manager(
+            conflict.positions[0].agent_id,
+            conflict.positions[1].agent_id,
+        )
+        for pos in conflict.positions[2:]:
+            if lcm is None:
+                break
+            lcm = self._hierarchy.get_lowest_common_manager(lcm, pos.agent_id)
+        logger.debug(
+            CONFLICT_LCM_LOOKUP,
+            conflict_id=str(conflict.id),
+            agents=[p.agent_id for p in conflict.positions],
+            lcm=lcm,
+        )
+        if lcm is None:
+            msg = "No shared manager for conflict participants -- cannot select judge"
+            logger.warning(
+                CONFLICT_HIERARCHY_ERROR,
+                conflict_id=str(conflict.id),
+                agents=[p.agent_id for p in conflict.positions],
+                error=msg,
+            )
+            raise ConflictHierarchyError(
+                msg,
+                context={
+                    "conflict_id": conflict.id,
+                    "agents": [p.agent_id for p in conflict.positions],
+                },
+            )
+        return lcm
+
     def _authority_fallback(
         self,
         conflict: Conflict,
@@ -323,9 +329,19 @@ class DebateResolver:
         best = pick_highest_seniority(conflict, hierarchy=self._hierarchy)
         return JudgeDecision(
             winning_agent_id=best.agent_id,
-            reasoning=(
-                f"Debate fallback: authority-based judging -- "
-                f"{best.agent_id} ({best.agent_level}) has highest "
-                f"seniority"
-            ),
+            reasoning=_seniority_reasoning(best, no_hierarchy=False),
         )
+
+
+def _seniority_reasoning(best: ConflictPosition, *, no_hierarchy: bool) -> str:
+    """Build the authority-fallback reasoning line.
+
+    Returns:
+        The seniority-based reasoning, noting when no hierarchy tiebreaker
+        was available.
+    """
+    qualifier = " (no hierarchy)" if no_hierarchy else ""
+    return (
+        f"Debate fallback: authority-based judging{qualifier} -- "
+        f"{best.agent_id} ({best.agent_level}) has highest seniority"
+    )

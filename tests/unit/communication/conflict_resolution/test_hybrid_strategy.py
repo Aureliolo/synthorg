@@ -50,33 +50,54 @@ class RaisingReviewEvaluator:
         raise RuntimeError(msg)
 
 
+def _two_positions() -> Conflict:
+    return make_conflict(
+        positions=(
+            make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+            make_position(
+                agent_id="jr_dev",
+                level=SeniorityLevel.JUNIOR,
+                position="Other",
+            ),
+        ),
+    )
+
+
 @pytest.mark.unit
 class TestHybridResolverEvaluatorError:
-    async def test_evaluator_failure_is_logged_and_reraised(
+    async def test_evaluator_failure_escalates_to_human(
         self,
         hierarchy: HierarchyResolver,
     ) -> None:
         resolver = HybridResolver(
             hierarchy=hierarchy,
-            config=HybridConfig(),
+            config=HybridConfig(escalate_on_ambiguity=True),
             human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=RaisingReviewEvaluator(),
         )
-        conflict = make_conflict(
-            positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
-                make_position(
-                    agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
-                    position="Other",
-                ),
-            ),
+
+        # An evaluator/provider outage is a "no clear winner" case: with
+        # escalation on, it routes to the human queue rather than dropping
+        # the conflict or re-raising into the caller.
+        resolution = await resolver.resolve(_two_positions())
+
+        assert resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN
+
+    async def test_evaluator_failure_without_escalation_uses_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        resolver = HybridResolver(
+            hierarchy=hierarchy,
+            config=HybridConfig(escalate_on_ambiguity=False),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
+            review_evaluator=RaisingReviewEvaluator(),
         )
 
-        # A non-critical evaluator failure is logged with context and
-        # re-raised (the hybrid resolver does not silently swallow it).
-        with pytest.raises(RuntimeError, match="evaluate boom"):
-            await resolver.resolve(conflict)
+        resolution = await resolver.resolve(_two_positions())
+
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_HYBRID
+        assert resolution.winning_agent_id == "sr_dev"
 
 
 @pytest.mark.unit

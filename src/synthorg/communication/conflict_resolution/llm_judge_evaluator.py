@@ -4,8 +4,10 @@ Presents each disputing agent's position to an impartial model judge and
 asks it to pick the winning agent (or declare the dispute genuinely
 ambiguous). The concrete implementation of the ``JudgeEvaluator`` injection
 surface the debate/hybrid resolvers accept: a non-participant verdict is
-mapped to the empty-string sentinel so the resolvers' existing ambiguity
-branch escalates to human review.
+mapped to the empty-string sentinel so each resolver takes its ambiguity
+path -- the hybrid resolver escalates to the human queue (when configured),
+while the debate resolver, which has no human-escalation arm, falls back to
+authority.
 """
 
 import json
@@ -135,7 +137,7 @@ class LlmJudgeEvaluator:
         try:
             obj = json.loads(extract_json_object(content))
             verdict = parse_typed(_JUDGE_BOUNDARY, obj, JudgeVerdictOut)
-        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
+        except (ValidationError, ValueError) as exc:  # JSONDecodeError is a ValueError
             logger.warning(
                 CONFLICT_JUDGE_OUTPUT_INVALID,
                 conflict_id=str(conflict.id),

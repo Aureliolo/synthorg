@@ -167,6 +167,24 @@ kill switch and is best-effort (a resolution failure never fails the meeting).
     - Most complex to implement; review agent itself needs careful prompt
       design
 
+=== "Strategy 5: Evidence-Weighted"
+
+    A deterministic, no-LLM synthesizer
+    (`communication/conflict_resolution/evidence_strategy.py`). Every position
+    is scored by the strength of its reasoning (`._evidence.score_position`)
+    and the best-supported one wins. Ties break toward the more senior agent,
+    then stably toward the first-stated position. Each overruled position's
+    weighted evidence is preserved on its dissent record.
+
+    ```yaml
+    conflict_resolution:
+      strategy: "evidence_weighted"
+    ```
+
+    - Fully deterministic and provider-free: no LLM call, so it is cheap and
+      reproducible
+    - Only as good as the evidence heuristic; carries no human-escalation arm
+
 ---
 
 ## Meeting Protocol
@@ -433,7 +451,7 @@ action items. See #1115.
 
 ### Conflict Resolution Termination
 
-All four conflict resolution strategies terminate with bounded resource use:
+All five conflict resolution strategies terminate with bounded resource use:
 
 - **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
 - **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
@@ -488,7 +506,13 @@ All four conflict resolution strategies terminate with bounded resource use:
     WHERE status = 'pending'`` enforces "at most one active escalation
     per conflict", and a ``(status, expires_at)`` index backs the
     sweeper's hot ``mark_expired`` query.
-- **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
+- **HybridResolver**: Single LLM review call (no retry loop). A clear winner
+  auto-resolves; an ambiguous verdict OR an evaluator/provider outage both
+  route through `escalate_on_ambiguity` (human queue when set, else Authority),
+  so a review that named no clear winner never silently drops or auto-decides
+  the conflict.
+- **EvidenceWeightedResolver**: Deterministic evidence scoring over each
+  position's reasoning; no LLM call, always terminates.
 
 ### Delegation Guard
 

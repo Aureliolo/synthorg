@@ -22,12 +22,12 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
 )
+from synthorg.communication.conflict_resolution.protocol import JudgeEvaluator
 from synthorg.config.schema import RootConfig
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.communication.conflict_resolution.protocol import JudgeEvaluator
 
 
 def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collaborator DI
@@ -84,30 +84,42 @@ def _build_judge_evaluator(
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
 ) -> JudgeEvaluator | None:
-    """Build the LLM judge from the first registered provider, if any.
+    """Build the LLM judge from the provider serving the pinned model.
 
-    Mirrors the "first registered provider" selection the client-simulation
-    runtime builder uses: the judge is a system actor, not a company agent,
-    so no per-agent provider identity applies.
+    The judge is a system actor, not a company agent, so it resolves its
+    provider by the pinned ``CONFLICT_JUDGE`` model through the shared
+    model-aware helper (:func:`resolve_feature_provider`). A naive
+    first-registered pick would route the call to a driver that does not serve
+    the provider-agnostic pinned model once more than one provider is
+    registered, surfacing as a request-time model-not-found error.
 
     Returns:
-        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no provider is
-        registered (the debate/hybrid resolvers then fall back to authority).
+        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no registered
+        provider serves the pinned model (the debate/hybrid resolvers then
+        fall back to authority).
     """
     if provider_registry is None:
         return None
-    names = provider_registry.list_providers()
-    if not names:
-        return None
+    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
+        resolve_feature_provider,
+    )
     from synthorg.communication.conflict_resolution.llm_judge_evaluator import (  # noqa: PLC0415
         LlmJudgeEvaluator,
     )
     from synthorg.llm.model_pins import pin_for  # noqa: PLC0415
     from synthorg.llm.prompt_purpose import PromptPurposeId  # noqa: PLC0415
 
+    model = pin_for(PromptPurposeId.CONFLICT_JUDGE).model
+    provider = resolve_feature_provider(
+        provider_registry,
+        model,
+        feature="conflict_judge",
+    )
+    if provider is None:
+        return None
     return LlmJudgeEvaluator(
-        provider=provider_registry.get(names[0]),
-        model=pin_for(PromptPurposeId.CONFLICT_JUDGE).model,
+        provider=provider,
+        model=model,
         cost_tracker=cost_tracker,
     )
 

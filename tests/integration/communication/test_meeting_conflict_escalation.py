@@ -1,8 +1,8 @@
 """Integration: meeting conflict -> conflict resolution -> escalation queue.
 
-Exercises the wiring added for #2543 end to end with real components: the
-meeting orchestrator invokes the escalation bridge, which builds a conflict
-from participant positions and drives it through a real
+Exercises the meeting-to-conflict-resolution wiring end to end with real
+components: the meeting orchestrator invokes the escalation bridge, which
+builds a conflict from participant positions and drives it through a real
 ``ConflictResolutionService``. The meeting protocol itself is stubbed (its
 LLM-heavy flow is covered by the meeting unit suites); everything downstream
 of the bridge is real.
@@ -51,6 +51,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
 )
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.protocol import MeetingProtocol
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -152,7 +153,7 @@ async def test_meeting_conflict_reaches_human_escalation_queue() -> None:
     )
     minutes = _minutes((alice, bob))
 
-    mock_protocol = MagicMock()
+    mock_protocol = MagicMock(spec=MeetingProtocol)
     mock_protocol.get_protocol_type.return_value = MeetingProtocolType.STRUCTURED_PHASES
     mock_protocol.run = AsyncMock(return_value=minutes)
     orchestrator = MeetingOrchestrator(
@@ -209,6 +210,49 @@ async def test_hybrid_clear_winner_auto_resolves_without_escalation() -> None:
     _escalations, total = await store.list_items(status=None)
     assert total == 0
     # A resolution was produced and the losing position was recorded as dissent.
+    dissents = service.get_dissent_records()
+    assert len(dissents) == 1
+    assert dissents[0].dissenting_agent_id == bob
+
+
+async def test_debate_strategy_uses_the_shared_judge_through_factory() -> None:
+    from synthorg.communication.conflict_resolution.config import DebateConfig
+    from synthorg.communication.enums import ConflictResolutionStrategy
+    from synthorg.core.types import NotBlankStr
+    from tests.unit.communication.conflict_resolution.conftest import make_company
+
+    store = InMemoryEscalationStore()
+    registry = AgentRegistryService()
+    alice = await _register(
+        registry, "alice", department="Engineering", level=SeniorityLevel.SENIOR
+    )
+    bob = await _register(
+        registry, "bob", department="Platform", level=SeniorityLevel.MID
+    )
+    service = build_conflict_resolution_service(
+        # A named judge sidesteps shared-manager lookup for cross-dept agents;
+        # the point here is that the shared evaluator reaches the debate arm.
+        config=ConflictResolutionConfig(
+            strategy=ConflictResolutionStrategy.DEBATE,
+            debate=DebateConfig(judge=NotBlankStr(alice)),
+        ),
+        company=make_company(),
+        escalation_store=store,
+        escalation_processor=WinnerOnlyDecisionProcessor(),
+        escalation_registry=PendingFuturesRegistry(),
+        judge_evaluator=_FakeJudge(winner_id=alice),
+    )
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=service,
+        agent_registry=registry,
+    )
+
+    await bridge(_minutes((alice, bob)))
+
+    # The shared judge reached the debate resolver: the conflict resolved by
+    # debate (no human escalation) with the loser recorded as dissent.
+    _escalations, total = await store.list_items(status=None)
+    assert total == 0
     dissents = service.get_dissent_records()
     assert len(dissents) == 1
     assert dissents[0].dissenting_agent_id == bob
