@@ -934,6 +934,15 @@ export const SOURCE_TYPE_VALUES = [
 ] as const
 export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
 
+export const SPRINT_STATUS_VALUES = [
+    'planning',
+    'active',
+    'in_review',
+    'retrospective',
+    'completed',
+] as const
+export type SprintStatus = (typeof SPRINT_STATUS_VALUES)[number]
+
 export const SSRF_VIOLATION_STATUS_VALUES = [
     'pending',
     'allowed',

@@ -898,3 +898,27 @@ _r.register(
         max_value=100,
     )
 )
+
+# ── Agile Sprints ───────────────────────────────────────────────
+# Gates the sprint service for agile_kanban orgs: when on, delivery
+# creates a real sprint, pulls tasks into its backlog, and advances the
+# lifecycle through the ceremony scheduler. Read per task-state event so a
+# runtime change applies to the next event with no restart.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="sprint_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Run real agile sprints for an 'agile_kanban' org: create + advance"
+            " a sprint as delivery proceeds, pull tasks into its backlog, and"
+            " gate board moves to backlog tasks. No effect for other workflow"
+            " types. Read per task-state event so a runtime change applies to"
+            " the next event with no restart."
+        ),
+        group="Agile Sprints",
+        level=SettingLevel.ADVANCED,
+    )
+)

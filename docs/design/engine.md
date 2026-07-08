@@ -232,6 +232,18 @@ protocol system (`MeetingProtocolType` and `MeetingFrequency`).
 `VelocityRecord` captures delivery metrics from completed sprints with a
 rolling average calculation.
 
+Sprints are persisted via the dual-backend `SprintRepository` (a `sprints`
+table composing the id-keyed + state-transition + filtered-query generics)
+and driven at runtime by the `SprintService`. For an org whose
+`engine.workflow_type` is `agile_kanban` (with `engine.sprint_enabled` on),
+the service registers as a `TaskEngine` observer: it auto-creates and starts
+a sprint when work begins, pulls the project's open tasks into the backlog,
+and on each task completion marks the task done and forwards to the
+`CeremonyScheduler`, which fires ceremonies and auto-transitions the sprint.
+The `/sprints` REST surface exposes explicit create / add-task / start /
+advance control, and the Kanban board applies an advisory gate: a move into
+In-Progress is rejected for a task outside the active sprint backlog.
+
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration, ceremonies).
 The template renderer maps these into the root `WorkflowConfig` during

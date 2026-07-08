@@ -28,6 +28,7 @@ from synthorg.api.controllers.evaluation_config_versions import (
 )
 from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.projects import ProjectController
+from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.workflow_executions import WorkflowExecutionController
@@ -56,6 +57,7 @@ FEATURE: FeatureModule = FeatureManifest(
         EvaluationConfigVersionController,
         DecompositionController,
         BoardController,
+        SprintController,
         # Mounted unconditionally: their work-entry adapters wire during
         # startup (after route assembly), so a predicate read at mount
         # time would always be False and the controller would never mount

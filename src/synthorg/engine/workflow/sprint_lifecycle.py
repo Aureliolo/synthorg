@@ -102,6 +102,7 @@ class Sprint(BaseModel):
 
     Attributes:
         id: Unique sprint identifier.
+        project: Owning project id, or ``None`` for an org-wide sprint.
         name: Sprint display name.
         goal: Sprint goal statement.
         status: Current lifecycle status.
@@ -118,6 +119,10 @@ class Sprint(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique sprint identifier")
+    project: NotBlankStr | None = Field(
+        default=None,
+        description="Owning project id; None denotes an org-wide sprint",
+    )
     name: NotBlankStr = Field(description="Sprint display name")
     goal: str = Field(default="", description="Sprint goal statement")
     status: SprintStatus = Field(

@@ -699,6 +699,62 @@ class KanbanWipLimitError(EngineError):
     default_message: ClassVar[str] = "Kanban column is at its WIP limit"
 
 
+class SprintError(EngineError):
+    """Base for agile-sprint service failures."""
+
+
+class SprintNotFoundError(SprintError, NotFoundError):
+    """Raised when a sprint id resolves to no persisted row.
+
+    Maps to 404: the requested sprint does not exist.
+    """
+
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Sprint not found"
+
+
+class SprintBacklogFullError(SprintError):
+    """Raised when adding a task would exceed ``max_tasks_per_sprint``.
+
+    Maps to 409 (conflict): the sprint backlog is at capacity, so the
+    task belongs in a later sprint until a slot frees.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_BACKLOG_FULL
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Sprint backlog is full"
+
+
+class SprintTransitionConflictError(SprintError):
+    """Raised when a lifecycle CAS finds the sprint in an unexpected state.
+
+    Maps to 409 (conflict): the sprint moved out of the expected
+    ``from`` state before the transition landed (a concurrent advance or
+    an illegal explicit hop).
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_TRANSITION_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Sprint is not in the expected state"
+
+
+class SprintTaskNotInBacklogError(SprintError):
+    """Raised when work is requested on a task outside the active sprint.
+
+    Maps to 400: the board move targets a task that is not in the active
+    sprint's backlog, so the sprint gate rejects pulling it into flow.
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_TASK_NOT_IN_BACKLOG
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Task is not in the active sprint backlog"
+
+
 class WorkflowExecutionAlreadyTerminalError(VersionConflictError):
     """Raised when cancel targets an execution already in a terminal status.
 

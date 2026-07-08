@@ -39,6 +39,12 @@ KANBAN_TASK_PLACED: str = "workflow.kanban.task_placed"
 SPRINT_CREATED: str = "workflow.sprint.created"
 """New sprint created."""
 
+SPRINT_SERVICE_OBSERVER_FAILED: str = "workflow.sprint.service_observer_failed"
+"""SprintService task-state observer swallowed a non-critical error."""
+
+SPRINT_GATE_BLOCKED: str = "workflow.sprint.gate_blocked"
+"""Sprint gate rejected working a task outside the active sprint backlog."""
+
 SPRINT_LIFECYCLE_TRANSITION: str = "workflow.sprint.lifecycle_transition"
 """Sprint transitioned between lifecycle statuses."""
 

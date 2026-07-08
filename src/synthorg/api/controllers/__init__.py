@@ -148,6 +148,7 @@ from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
 from synthorg.api.controllers.simulations import SimulationController
+from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.api.controllers.steering import SteeringController
 from synthorg.api.controllers.subworkflows import SubworkflowController
@@ -212,6 +213,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     GlobalKnowledgeController,
     TaskController,
     BoardController,
+    SprintController,
     DecompositionController,
     ExperimentsController,
     MessageController,
@@ -452,6 +454,7 @@ __all__ = [
     "SetupPersonalityController",
     "SetupStatusController",
     "SimulationController",
+    "SprintController",
     "SsrfViolationController",
     "SubworkflowController",
     "TaskController",
