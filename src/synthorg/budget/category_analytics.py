@@ -193,10 +193,11 @@ class OrchestrationRatio(BaseModel):
         """Ensure total_tokens >= sum of category tokens.
 
         Returns:
-            Result of type ``Self``.
+            The validated instance.
 
         Raises:
-            ValueError: If an argument fails domain validation.
+            ValueError: If ``total_tokens`` is less than the sum of the
+                productive, coordination, and system token counts.
         """
         category_sum = (
             self.productive_tokens + self.coordination_tokens + self.system_tokens
@@ -219,7 +220,8 @@ def build_category_breakdown(
     Uses :func:`math.fsum` for accurate floating-point summation.
 
     Returns:
-        Result of type ``CategoryBreakdown``.
+            Per-category cost, token, and count totals (image-generation
+            spend folded into the productive bucket).
 
     Raises:
         MixedCurrencyAggregationError: If two or more distinct currency
@@ -305,7 +307,7 @@ def compute_orchestration_ratio(
             ``OrchestrationAlertThresholds()`` (30/50/70%).
 
     Returns:
-        Result of type ``OrchestrationRatio``.
+            The orchestration-overhead ratio with its derived alert level.
     """
     if thresholds is None:
         thresholds = OrchestrationAlertThresholds()
@@ -344,7 +346,7 @@ def _ratio_to_alert(
     """Map a ratio to an alert level using the given thresholds.
 
     Returns:
-        Result of type ``OrchestrationAlertLevel``.
+            The alert level for the given ratio against the thresholds.
     """
     if ratio >= thresholds.critical:
         return OrchestrationAlertLevel.CRITICAL

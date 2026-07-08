@@ -5,7 +5,7 @@ tracks metadata for generated images, diagrams, and other
 design artifacts.
 """
 
-import copy
+import asyncio
 from typing import ClassVar, cast, override
 
 from pydantic import BaseModel, JsonValue
@@ -144,14 +144,14 @@ class AssetManagerTool(BaseDesignTool):
         """
         args = parse_typed("tool.execute", arguments, AssetManagerArgs)
         if args.action == "list":
-            return self._handle_list(args)
+            return await self._handle_list(args)
         if args.action == "get":
-            return self._handle_get(args)
+            return await self._handle_get(args)
         if args.action == "delete":
-            return self._handle_delete(args)
-        return self._handle_search(args)
+            return await self._handle_delete(args)
+        return await self._handle_search(args)
 
-    def _handle_list(
+    async def _handle_list(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -163,7 +163,9 @@ class AssetManagerTool(BaseDesignTool):
         tags = list(args.tags)
         tag_set = set(tags)
 
-        all_assets = self._store.items()
+        # Offloaded: a durable filesystem store globs + parses every sidecar,
+        # which would block the event loop for the whole scan.
+        all_assets = await asyncio.to_thread(self._store.items)
         if tag_set:
             matching = {
                 aid: meta
@@ -193,7 +195,7 @@ class AssetManagerTool(BaseDesignTool):
             metadata={"count": len(matching)},
         )
 
-    def _handle_get(
+    async def _handle_get(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -205,7 +207,7 @@ class AssetManagerTool(BaseDesignTool):
         # ``AssetManagerArgs._validate_action_fields`` guarantees asset_id is
         # present for get/delete; cast narrows the Optional for mypy.
         asset_id = cast("str", args.asset_id)
-        meta = self._store.get(asset_id)
+        meta = await self._safe_store_get(asset_id, action="get")
         if meta is None:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
@@ -226,12 +228,40 @@ class AssetManagerTool(BaseDesignTool):
         lines = [f"Asset: {asset_id}"]
         for key, value in sorted(meta.items()):
             lines.append(f"  {key}: {value}")
+        # ``store.get`` already returns an owned copy (deep copy in-memory,
+        # fresh JSON parse on disk), so no second defensive copy is needed.
         return ToolExecutionResult(
             content="\n".join(lines),
-            metadata=copy.deepcopy(meta),
+            metadata=meta,
         )
 
-    def _handle_delete(
+    async def _safe_store_get(
+        self,
+        asset_id: str,
+        *,
+        action: str,
+    ) -> dict[str, JsonValue] | None:
+        """Fetch metadata off-thread, treating an unsafe id as not-found.
+
+        The store raises ``ValueError`` for a path-unsafe ``asset_id``;
+        an agent-supplied id must degrade to a graceful not-found result
+        rather than an unhandled tool crash.
+
+        Returns:
+            The metadata, or ``None`` when absent or the id is unsafe.
+        """
+        try:
+            return await asyncio.to_thread(self._store.get, asset_id)
+        except ValueError:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action=action,
+                reason="unsafe_asset_id",
+                asset_id=asset_id,
+            )
+            return None
+
+    async def _handle_delete(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -242,7 +272,11 @@ class AssetManagerTool(BaseDesignTool):
         """
         # Guaranteed present for delete by the model validator; cast for mypy.
         asset_id = cast("str", args.asset_id)
-        if not self._store.delete(asset_id):
+        try:
+            deleted = await asyncio.to_thread(self._store.delete, asset_id)
+        except ValueError:
+            deleted = False
+        if not deleted:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="delete",
@@ -263,7 +297,7 @@ class AssetManagerTool(BaseDesignTool):
             content=f"Asset deleted: {asset_id}",
         )
 
-    def _handle_search(
+    async def _handle_search(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -277,7 +311,7 @@ class AssetManagerTool(BaseDesignTool):
         tags = list(args.tags)
         tag_set = set(tags)
 
-        all_assets = self._store.items()
+        all_assets = await asyncio.to_thread(self._store.items)
         matching: dict[str, dict[str, JsonValue]] = {}
         for aid, meta in all_assets.items():
             searchable = " ".join(str(v).lower() for v in meta.values())

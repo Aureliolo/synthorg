@@ -209,7 +209,7 @@ Registry listing of reusable subworkflow components. Card grid with search, I/O 
 
 #### Settings (`/settings`)
 
-Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Navigation uses a horizontal **namespace tab bar** across the top of the settings page, with each namespace as a clickable tab. Within each namespace, settings are displayed in a single-column layout with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
+Configuration for every setting namespace the backend registry exposes (api, memory, budget, security, coordination, observability, backup, design, and the rest), driven dynamically by the settings schema rather than a fixed list. Navigation uses a horizontal **namespace tab bar** across the top of the settings page, with each namespace as a clickable tab. Within each namespace, settings are displayed in a single-column layout with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
 
 The **Code edit mode** uses a **split-pane diff editor view**: the left pane shows the current persisted configuration (read-only), and the right pane is an editable CodeMirror editor for composing changes. This allows operators to see exactly what will change before saving.
 

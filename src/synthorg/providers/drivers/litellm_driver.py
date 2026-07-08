@@ -6,6 +6,7 @@ contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 
+import asyncio
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,  # runtime: isinstance guard on the stream result
@@ -190,6 +191,12 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         # the driver. The TTL is intentionally coarse -- it is a safety
         # net for rotation, not a token-refresh mechanism.
         self._credentials_cached_at: float | None = None
+        # Single-flight guard so concurrent calls on this driver (e.g. a
+        # completion and an image generation fanned out together) coalesce
+        # onto one credential resolution instead of a thundering herd of
+        # duplicate catalog fetches. Created lazily to keep asyncio
+        # primitives out of ``__init__``.
+        self._credentials_lock: asyncio.Lock | None = None
         self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
             MappingProxyType(build_model_lookup(config.models))
         )
@@ -251,26 +258,32 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             PROVIDER_CONNECTION_RESOLVED,
         )
 
-        now = self._clock.monotonic()
-        # Never serve cached OAuth credentials -- the token manager
-        # can rotate them at any moment and a stale bearer token
-        # would just fail auth on the next request with no way for
-        # the driver to recover. Always go back to the catalog and
-        # pick up the current access token.
-        if self._config.auth_type is not AuthType.OAUTH and (
-            self._resolved_credentials is not None
-            and self._credentials_cached_at is not None
-            and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
-        ):
-            return
-
-        creds = await self._connection_catalog.get_credentials(
-            self._config.connection_name,
-        )
-        # Snapshot so the caller's view is insulated from any
-        # subsequent mutation in the catalog layer.
-        self._resolved_credentials = dict(creds)
-        self._credentials_cached_at = now
+        # Lazy lock init is race-free: no ``await`` between the check and
+        # assignment, so the single-threaded event loop cannot interleave
+        # two creators. The lock is single-flight: concurrent callers
+        # coalesce onto one resolution instead of a duplicate-fetch herd.
+        lock = self._credentials_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._credentials_lock = lock
+        async with lock:
+            now = self._clock.monotonic()
+            # Never serve cached OAuth credentials -- the token manager can
+            # rotate them at any moment and a stale bearer token would just
+            # fail auth on the next request, so OAuth always re-resolves.
+            if self._config.auth_type is not AuthType.OAUTH and (
+                self._resolved_credentials is not None
+                and self._credentials_cached_at is not None
+                and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
+            ):
+                return
+            creds = await self._connection_catalog.get_credentials(
+                self._config.connection_name,
+            )
+            # Snapshot so the caller's view is insulated from any subsequent
+            # mutation in the catalog layer.
+            self._resolved_credentials = dict(creds)
+            self._credentials_cached_at = now
         logger.info(
             PROVIDER_CONNECTION_RESOLVED,
             provider=self._provider_name,

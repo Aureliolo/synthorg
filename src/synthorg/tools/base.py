@@ -11,6 +11,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_BASE_INVALID_NAME
@@ -82,6 +83,12 @@ class BaseTool(ABC):
     """
 
     args_model: ClassVar[type[BaseModel] | None] = None
+    # When a tool's ``execute`` triggers a provider call that bills cost
+    # (image generation, future tool-embedded LLM calls), it declares the
+    # category here so the invoker opens a ``cost_recording_scope`` around
+    # execution and the spend is attributed to the agent/task. ``None`` (the
+    # default) means the tool incurs no directly-billed provider cost.
+    cost_scope_category: ClassVar[LLMCallCategory | None] = None
 
     def __init__(
         self,

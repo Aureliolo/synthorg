@@ -606,6 +606,9 @@ async def _record_cost_in_background(
     # Only log success after the tracker has actually accepted the
     # record -- emitting at ``create_task`` time would produce a
     # misleading INFO log when the background submission later fails.
+    # The record's category, not the ambient scope's: an image call overrides
+    # the scope category, so ``ctx.call_category`` would misreport the row.
+    effective_category = record.call_category or ctx.call_category
     logger.info(
         PROVIDER_COST_RECORDED,
         agent_id=ctx.agent_id,
@@ -614,7 +617,7 @@ async def _record_cost_in_background(
         model=model,
         cost=record.cost,
         currency=ctx.currency,
-        call_category=ctx.call_category.value,
+        call_category=effective_category.value,
         prompt_class_id=record.prompt_class_id,
         success=record.success,
     )

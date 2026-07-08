@@ -95,9 +95,11 @@ def compute_image_cost(n: int, *, cost_per_image: float) -> TokenUsage:
     """Build a ``TokenUsage`` for a per-image-priced generation call.
 
     Image models bill per generated image, not per token, so the token
-    counts are zero and the whole charge lands in ``cost``. A non-zero
-    cost keeps the record out of the zero-usage skip path so it is still
-    attributed to the ambient cost scope.
+    counts are zero and the whole charge lands in ``cost``. When
+    ``cost_per_image > 0`` the resulting positive cost keeps the record
+    out of the zero-usage skip path so it is attributed to the ambient
+    cost scope; an unpriced (``0.0``) model produces a zero-usage record
+    that is skipped, exactly like a free-tier token call.
 
     Args:
         n: Number of images generated (must be >= 1).

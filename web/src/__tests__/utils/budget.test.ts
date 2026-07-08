@@ -240,6 +240,20 @@ describe('computeCategoryBreakdown', () => {
     expect(ratio.system.percent).toBeCloseTo(20)
   })
 
+  it('folds image_generation into the productive bucket', () => {
+    const records = [
+      makeRecord({ call_category: 'productive', cost: 10 }),
+      makeRecord({ call_category: 'image_generation', cost: 40 }),
+    ]
+    const ratio = computeCategoryBreakdown(records)
+    // Mirrors the backend: flat per-image spend is productive output, not a
+    // separate bucket and not "uncategorized".
+    expect(ratio.productive.cost).toBe(50)
+    expect(ratio.productive.count).toBe(2)
+    expect(ratio.uncategorized.cost).toBe(0)
+    expect(ratio.uncategorized.count).toBe(0)
+  })
+
   it('treats null call_category as uncategorized', () => {
     const records = [
       makeRecord({ call_category: null, cost: 10 }),

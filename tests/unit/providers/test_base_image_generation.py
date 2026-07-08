@@ -120,7 +120,11 @@ def test_compute_image_cost_zero_tokens_nonzero_cost() -> None:
     assert usage.cost == pytest.approx(0.08)
 
 
-@pytest.mark.parametrize(("n", "cost"), [(0, 0.04), (1, -0.01), (1, float("inf"))])
+@pytest.mark.parametrize(
+    ("n", "cost"),
+    [(0, 0.04), (1, -0.01), (1, float("inf"))],
+    ids=["zero_n", "negative_cost", "infinite_cost"],
+)
 def test_compute_image_cost_rejects_invalid(n: int, cost: float) -> None:
     with pytest.raises(InvalidRequestError):
         compute_image_cost(n, cost_per_image=cost)
@@ -134,6 +138,12 @@ def test_image_config_rejects_bad_size() -> None:
 def test_image_config_rejects_excessive_n() -> None:
     with pytest.raises(ValueError, match="n"):
         ImageGenerationConfig(n=999)
+
+
+def test_image_config_rejects_gigapixel_size() -> None:
+    # Passes the digit-count pattern but exceeds the per-side pixel cap.
+    with pytest.raises(ValueError, match="cap"):
+        ImageGenerationConfig(size="99999x99999")
 
 
 async def test_unsupported_provider_raises() -> None:
@@ -181,3 +191,30 @@ async def test_generate_image_records_cost_in_scope() -> None:
     records = await tracker.get_records()
     assert len(records) == 1
     assert records[0].call_category is LLMCallCategory.IMAGE_GENERATION
+
+
+async def test_generate_image_overrides_ambient_category() -> None:
+    # The ambient scope is PRODUCTIVE (a normal task turn), but the image
+    # call must still be attributed as IMAGE_GENERATION -- this is the
+    # override the whole cost-category plumbing exists to guarantee.
+    provider = _ImageProvider(cost_per_image=0.05)
+    tracker = CostTracker(budget_config=BudgetConfig())
+    async with cost_recording_scope(
+        cost_tracker=tracker,
+        agent_id=NotBlankStr("agent-1"),
+        task_id=NotBlankStr("task-1"),
+        call_category=LLMCallCategory.PRODUCTIVE,
+    ):
+        await provider.generate_image("a cat", "img-model")
+    await tracker.drain_pending_records()
+    records = await tracker.get_records()
+    assert len(records) == 1
+    assert records[0].call_category is LLMCallCategory.IMAGE_GENERATION
+
+
+async def test_generate_image_stamps_retry_telemetry() -> None:
+    # With no retry handler the count is zero, but the key must be present so
+    # provider-health observability of image calls matches completions.
+    provider = _ImageProvider()
+    result = await provider.generate_image("a cat", "img-model")
+    assert result.provider_metadata["_synthorg_retry_count"] == 0

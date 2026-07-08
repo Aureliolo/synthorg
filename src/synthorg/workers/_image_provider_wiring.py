@@ -23,6 +23,7 @@ from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.providers.registry import ProviderRegistry
     from synthorg.tools.design.image_generator import ImageProvider
 
 logger = get_logger(__name__)
@@ -46,11 +47,14 @@ async def build_image_provider_or_none(
         A :class:`ProviderImageProvider` bound to the selected image model, or
         ``None`` when image generation is off or unbuildable.
     """
+    logger.debug(API_APP_STARTUP, service="design_image", context="resolve_start")
     resolver = config_resolver_of(app_state)
     try:
         enabled = await resolver.get_bool(_DESIGN_NS, "image_generation_enabled")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        # Transient settings-resolve failure (distinct from a misconfig):
+        # WARNING, not ERROR.
         logger.warning(
             API_APP_STARTUP,
             service="design_image",
@@ -65,7 +69,9 @@ async def build_image_provider_or_none(
 
     registry = app_state.slice(ProvidersStateSlice).registry
     if registry is None:
-        logger.warning(
+        # Feature explicitly enabled but unbuildable: an operator misconfig
+        # that silently disables a paid capability, so ERROR not WARNING.
+        logger.error(
             API_APP_STARTUP,
             service="design_image",
             note="image generation enabled but no provider registry is wired",
@@ -73,13 +79,39 @@ async def build_image_provider_or_none(
         return None
     model_id = (await resolver.get_str(_DESIGN_NS, "image_model")).strip()
     if not model_id:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
             service="design_image",
             note="image generation enabled but no design.image_model is selected",
         )
         return None
 
+    provider = await _resolve_serving_provider(registry, model_id)
+    if provider is None:
+        return None
+
+    from synthorg.tools.design.provider_image_provider import (  # noqa: PLC0415
+        ProviderImageProvider,
+    )
+
+    logger.info(API_APP_STARTUP, service="design_image", note="wired", model=model_id)
+    return ProviderImageProvider(provider=provider, model=model_id)
+
+
+async def _resolve_serving_provider(
+    registry: ProviderRegistry,
+    model_id: str,
+) -> ImageGenerationProvider | None:
+    """Resolve ``model_id`` to an image-capable serving provider, or ``None``.
+
+    Returns ``None`` (logging the reason) when the model is not served by a
+    connected provider, is not image-capable, or the serving driver cannot
+    structurally generate images. Every miss after the feature was enabled
+    is a misconfiguration, so it logs at ERROR.
+
+    Returns:
+        The image-capable serving provider, or ``None`` when unbuildable.
+    """
     try:
         _, provider = registry.resolve_for_model(model_id)
         capabilities = await provider.get_model_capabilities(model_id)
@@ -95,7 +127,7 @@ async def build_image_provider_or_none(
         )
         return None
     if not capabilities.supports_image_generation:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
             service="design_image",
             note="design.image_model is not an image-generation model; tool off",
@@ -103,17 +135,11 @@ async def build_image_provider_or_none(
         )
         return None
     if not isinstance(provider, ImageGenerationProvider):
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
             service="design_image",
             note="serving provider cannot generate images; tool off",
             model=model_id,
         )
         return None
-
-    from synthorg.tools.design.provider_image_provider import (  # noqa: PLC0415
-        ProviderImageProvider,
-    )
-
-    logger.info(API_APP_STARTUP, service="design_image", note="wired", model=model_id)
-    return ProviderImageProvider(provider=provider, model=model_id)
+    return provider

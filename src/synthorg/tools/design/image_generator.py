@@ -1,8 +1,11 @@
 """Image generator tool -- generate images via an abstracted provider.
 
-The ``ImageProvider`` protocol defines a vendor-agnostic interface
-for image generation.  No concrete implementation is shipped -- users
-inject a provider at construction time.
+The ``ImageProvider`` protocol defines a vendor-agnostic interface for
+image generation.  ``ProviderImageProvider`` ships as the default
+in-tree implementation, routing generation through the normal provider
++ model-management layer; it is injected automatically at boot when
+``design.image_generation_enabled`` selects an image-capable model.
+Callers may inject any other ``ImageProvider`` at construction time.
 """
 
 import asyncio
@@ -12,10 +15,13 @@ from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.design import (
+    DESIGN_ASSET_PERSIST_FAILED,
     DESIGN_IMAGE_GENERATION_FAILED,
     DESIGN_IMAGE_GENERATION_START,
     DESIGN_IMAGE_GENERATION_SUCCESS,
@@ -33,6 +39,9 @@ from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig
 
 _ASSET_ID_HASH_LEN: Final[int] = 16
+# Base64 encodes 3 bytes as 4 characters, so decoded_len ~= b64_len * 3 / 4.
+_B64_NUMERATOR: Final[int] = 3
+_B64_DENOMINATOR: Final[int] = 4
 
 logger = get_logger(__name__)
 _DEFAULT_WIDTH: Final[int] = 1024
@@ -51,7 +60,7 @@ class ImageResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    data: str = Field(min_length=1, description="Base64-encoded image data")
+    data: NotBlankStr = Field(description="Base64-encoded image data")
     content_type: str = Field(
         default="image/png",
         description="MIME type of the generated image",
@@ -106,6 +115,9 @@ class ImageGeneratorTool(BaseDesignTool):
     """
 
     args_model: ClassVar[type[BaseModel] | None] = ImageGeneratorArgs
+    cost_scope_category: ClassVar[LLMCallCategory | None] = (
+        LLMCallCategory.IMAGE_GENERATION
+    )
 
     def __init__(
         self,
@@ -168,109 +180,43 @@ class ImageGeneratorTool(BaseDesignTool):
             )
 
         args = parse_typed("tool.execute", arguments, ImageGeneratorArgs)
-        prompt = args.prompt
-        style = args.style
-        width = args.width
-        height = args.height
-        quality = args.quality
-
         logger.info(
             DESIGN_IMAGE_GENERATION_START,
-            prompt_length=len(prompt),
-            style=style,
-            width=width,
-            height=height,
-            quality=quality,
+            prompt_length=len(args.prompt),
+            style=args.style,
+            width=args.width,
+            height=args.height,
+            quality=args.quality,
         )
 
-        try:
-            result = await asyncio.wait_for(
-                self._provider.generate(
-                    prompt=prompt,
-                    width=width,
-                    height=height,
-                    style=style,
-                    quality=quality,
-                ),
-                timeout=self._config.image_timeout,
-            )
-        except TimeoutError:
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_TIMEOUT,
-                timeout=self._config.image_timeout,
-                prompt_length=len(prompt),
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Image generation timed out after {self._config.image_timeout}s"
-                ),
-                is_error=True,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="provider_error",
-                prompt_length=len(prompt),
-                style=style,
-            )
-            return ToolExecutionResult(
-                content="Image generation failed.",
-                is_error=True,
-            )
+        result = await self._invoke_provider(args)
+        if isinstance(result, ToolExecutionResult):
+            return result
+        decoded = self._decode_and_check(result)
+        if isinstance(decoded, ToolExecutionResult):
+            return decoded
 
-        try:
-            decoded_bytes = base64.b64decode(result.data, validate=True)
-        except Exception as decode_exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(decode_exc)
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="invalid_base64",
-                error_type=type(decode_exc).__name__,
-                error_detail=safe_error_description(decode_exc),
-            )
-            return ToolExecutionResult(
-                content="Provider returned invalid base64 image data.",
-                is_error=True,
-            )
-        byte_size = len(decoded_bytes)
-        if byte_size > self._config.max_image_size_bytes:
-            logger.warning(
-                DESIGN_IMAGE_GENERATION_FAILED,
-                error="image_too_large",
-                byte_size=byte_size,
-                max_size=self._config.max_image_size_bytes,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Generated image exceeds size limit: "
-                    f"{byte_size} bytes "
-                    f"(max {self._config.max_image_size_bytes})"
-                ),
-                is_error=True,
-            )
-
-        digest = hashlib.sha256(decoded_bytes).hexdigest()[:_ASSET_ID_HASH_LEN]
+        digest = hashlib.sha256(decoded).hexdigest()[:_ASSET_ID_HASH_LEN]
         asset_id = f"img-{digest}"
+        byte_size = len(decoded)
         asset_metadata: dict[str, JsonValue] = {
             "type": "image",
             "content_type": result.content_type,
             "width": result.width,
             "height": result.height,
             "size_bytes": byte_size,
-            "prompt": prompt,
-            "style": style,
-            "tags": ["image", style],
+            "prompt": args.prompt,
+            "style": args.style,
+            "tags": ["image", args.style],
         }
-        # Content write can be large, so keep it off the event loop; the
-        # metadata registration is a small in-process/JSON write.
-        await asyncio.to_thread(
-            self._store.save_content,
-            asset_id,
-            decoded_bytes,
-            content_type=result.content_type,
+        failure = await self._persist_asset(
+            asset_id=asset_id,
+            decoded=decoded,
+            metadata=asset_metadata,
+            result=result,
         )
-        self._store.register(asset_id, asset_metadata)
+        if failure is not None:
+            return failure
 
         logger.info(
             DESIGN_IMAGE_GENERATION_SUCCESS,
@@ -280,7 +226,6 @@ class ImageGeneratorTool(BaseDesignTool):
             content_type=result.content_type,
             data_length=len(result.data),
         )
-
         return ToolExecutionResult(
             content=(
                 f"Image generated successfully.\n"
@@ -298,3 +243,166 @@ class ImageGeneratorTool(BaseDesignTool):
                 "size_bytes": byte_size,
             },
         )
+
+    async def _invoke_provider(
+        self,
+        args: ImageGeneratorArgs,
+    ) -> ImageResult | ToolExecutionResult:
+        """Call the provider under a timeout, mapping failures to a result.
+
+        Returns:
+            The provider's ``ImageResult``, or a ``ToolExecutionResult``
+            describing a timeout or provider error.
+        """
+        assert self._provider is not None  # noqa: S101 -- caller-guarded
+        try:
+            return await asyncio.wait_for(
+                self._provider.generate(
+                    prompt=args.prompt,
+                    width=args.width,
+                    height=args.height,
+                    style=args.style,
+                    quality=args.quality,
+                ),
+                timeout=self._config.image_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_TIMEOUT,
+                timeout=self._config.image_timeout,
+                prompt_length=len(args.prompt),
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Image generation timed out after {self._config.image_timeout}s"
+                ),
+                is_error=True,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="provider_error",
+                error_type=type(exc).__name__,
+                error_detail=safe_error_description(exc),
+                prompt_length=len(args.prompt),
+                style=args.style,
+            )
+            return ToolExecutionResult(
+                content="Image generation failed.",
+                is_error=True,
+            )
+
+    def _decode_and_check(
+        self,
+        result: ImageResult,
+    ) -> bytes | ToolExecutionResult:
+        """Decode the base64 payload and enforce the size cap.
+
+        The base64 length is checked before decoding so an oversized
+        payload is rejected without allocating the full decoded buffer.
+
+        Returns:
+            The decoded bytes, or a ``ToolExecutionResult`` on invalid
+            base64 or an over-cap image.
+        """
+        max_bytes = self._config.max_image_size_bytes
+        # Cheap upper bound: decoded size is ~3/4 of the base64 length.
+        if (len(result.data) * _B64_NUMERATOR) // _B64_DENOMINATOR > max_bytes:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="image_too_large",
+                base64_length=len(result.data),
+                max_size=max_bytes,
+            )
+            return ToolExecutionResult(
+                content=f"Generated image exceeds size limit (max {max_bytes} bytes)",
+                is_error=True,
+            )
+        try:
+            decoded = base64.b64decode(result.data, validate=True)
+        except Exception as decode_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(decode_exc)
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="invalid_base64",
+                error_type=type(decode_exc).__name__,
+                error_detail=safe_error_description(decode_exc),
+            )
+            return ToolExecutionResult(
+                content="Provider returned invalid base64 image data.",
+                is_error=True,
+            )
+        if len(decoded) > max_bytes:
+            logger.warning(
+                DESIGN_IMAGE_GENERATION_FAILED,
+                error="image_too_large",
+                byte_size=len(decoded),
+                max_size=max_bytes,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Generated image exceeds size limit: "
+                    f"{len(decoded)} bytes (max {max_bytes})"
+                ),
+                is_error=True,
+            )
+        return decoded
+
+    async def _persist_asset(
+        self,
+        *,
+        asset_id: str,
+        decoded: bytes,
+        metadata: dict[str, JsonValue],
+        result: ImageResult,
+    ) -> ToolExecutionResult | None:
+        """Persist content + metadata off-thread; return an error result or None.
+
+        Both writes run off the event loop. On any I/O failure the
+        already-generated (already-billed) image is not silently lost: a
+        best-effort cleanup drops a half-written asset and the returned
+        error result carries the image data inline so the caller can still
+        use it.
+
+        Returns:
+            ``None`` on success, or an error ``ToolExecutionResult`` when
+            persistence failed.
+        """
+        try:
+            await asyncio.to_thread(
+                self._store.save_content,
+                asset_id,
+                decoded,
+                content_type=result.content_type,
+            )
+            await asyncio.to_thread(self._store.register, asset_id, metadata)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.error(
+                DESIGN_ASSET_PERSIST_FAILED,
+                asset_id=asset_id,
+                content_type=result.content_type,
+                byte_size=len(decoded),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            try:
+                await asyncio.to_thread(self._store.delete, asset_id)
+            except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(cleanup_exc)
+            return ToolExecutionResult(
+                content=(
+                    "Image generated but could not be saved to storage. "
+                    "The image data is returned inline; it was not persisted."
+                ),
+                metadata={
+                    "data": result.data,
+                    "content_type": result.content_type,
+                    "width": result.width,
+                    "height": result.height,
+                    "size_bytes": len(decoded),
+                },
+                is_error=True,
+            )
+        return None

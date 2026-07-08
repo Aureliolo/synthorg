@@ -57,6 +57,12 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             cost_per_1k_output: 0.004
             max_context: 200000
             estimated_latency_ms: 200
+          - id: "example-image-001"
+            alias: "image"
+            cost_per_image: 0.04       # per-image billing for image-output models
+            max_context: 1             # nominal; image models are not token-metered
+            metadata:
+              supports_image_generation: true
 
       openrouter:
         auth_type: api_key           # api_key | oauth | custom_header | subscription | none

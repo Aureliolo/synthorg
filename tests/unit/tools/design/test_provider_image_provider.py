@@ -6,12 +6,22 @@ from typing import override
 import pytest
 
 from synthorg.providers.drivers.scripted import ScriptedDriver
+from synthorg.providers.errors import ProviderImageGenerationUnsupportedError
+from synthorg.providers.image_models import (
+    ImageGenerationConfig,
+    ImageGenerationResponse,
+)
 from synthorg.tools.design.image_generator import ImageProvider, ImageResult
 from synthorg.tools.design.provider_image_provider import ProviderImageProvider
 
 pytestmark = pytest.mark.unit
 
 _MODEL = "example-image-001"
+
+
+def test_rejects_blank_model() -> None:
+    with pytest.raises(ValueError, match="model"):
+        ProviderImageProvider(provider=ScriptedDriver(), model="   ")
 
 
 def test_adapter_satisfies_image_provider_protocol() -> None:
@@ -30,12 +40,6 @@ async def test_adapter_maps_provider_response_to_image_result() -> None:
 
 
 async def test_adapter_fails_closed_on_unsupported_provider() -> None:
-    from synthorg.providers.errors import ProviderImageGenerationUnsupportedError
-    from synthorg.providers.image_models import (
-        ImageGenerationConfig,
-        ImageGenerationResponse,
-    )
-
     class _NoImageDriver(ScriptedDriver):
         @override
         async def _do_generate_image(

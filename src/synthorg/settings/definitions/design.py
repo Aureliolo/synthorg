@@ -43,8 +43,8 @@ _r.register(
             " with, selected through the model picker (a `{provider, model_id}`"
             " reference). Must resolve to an image-capable model"
             " (``supports_image_generation``); unset until an operator selects"
-            " one. Connecting OpenAI or Gemini makes their image models"
-            " available here."
+            " one. Connecting an image-capable hosted provider makes its image"
+            " models available here."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

@@ -112,6 +112,14 @@ async def test_excludes_non_productive_categories() -> None:
                 cost=9.9,
                 category=LLMCallCategory.SYSTEM,
             ),
+            # Image generation is flat-per-image, not token-scaled turn cost:
+            # it must not contaminate the per-turn forecast prior.
+            _record(
+                agent_id="a1",
+                model="example-large-001",
+                cost=9.9,
+                category=LLMCallCategory.IMAGE_GENERATION,
+            ),
         ),
     )
 

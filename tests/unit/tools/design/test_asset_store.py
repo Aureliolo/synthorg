@@ -65,8 +65,28 @@ def test_rejects_unsafe_asset_ids(
     store: InMemoryDesignAssetStore | FilesystemDesignAssetStore,
     bad_id: str,
 ) -> None:
+    # Every entry point validates identically across both backends (Liskov):
+    # a malformed id raises rather than silently returning ``None`` on one
+    # backend and traversing on the other.
     with pytest.raises(ValueError, match="asset_id"):
         store.register(bad_id, {"type": "image"})
+    with pytest.raises(ValueError, match="asset_id"):
+        store.get(bad_id)
+    with pytest.raises(ValueError, match="asset_id"):
+        store.delete(bad_id)
+    with pytest.raises(ValueError, match="asset_id"):
+        store.load_content(bad_id)
+
+
+def test_corrupt_sidecar_degrades_gracefully(tmp_path: Path) -> None:
+    root = tmp_path / "assets"
+    store = FilesystemDesignAssetStore(root)
+    store.register("good", {"type": "image", "content_type": "image/png"})
+    # A truncated/corrupt sidecar (e.g. a crash mid-write) must not crash the
+    # calling tool: it is skipped in items() and read as absent in get().
+    (root / "broken.json").write_text("{not valid json", encoding="utf-8")
+    assert set(store.items()) == {"good"}
+    assert store.get("broken") is None
 
 
 def test_filesystem_persists_across_instances(tmp_path: Path) -> None:

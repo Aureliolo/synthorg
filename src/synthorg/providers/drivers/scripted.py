@@ -20,6 +20,7 @@ protocol.  Three strategies ship:
   every call, or raises one configured error.
 """
 
+import asyncio
 import base64
 import hashlib
 import threading
@@ -313,16 +314,26 @@ class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
             An ``ImageGenerationResponse`` carrying ``config.n`` PNG images.
         """
         cfg = config if config is not None else ImageGenerationConfig()
-        images = tuple(
-            GeneratedImage(
-                b64_data=NotBlankStr(
-                    base64.b64encode(
-                        render_deterministic_png(prompt, size=cfg.size, index=i)
-                    ).decode("ascii")
-                ),
+
+        def _render_all() -> tuple[GeneratedImage, ...]:
+            """Render every requested PNG (CPU-bound; run off the loop).
+
+            Returns:
+                The rendered images as ``GeneratedImage`` values.
+            """
+            return tuple(
+                GeneratedImage(
+                    b64_data=NotBlankStr(
+                        base64.b64encode(
+                            render_deterministic_png(prompt, size=cfg.size, index=i)
+                        ).decode("ascii")
+                    ),
+                )
+                for i in range(cfg.n)
             )
-            for i in range(cfg.n)
-        )
+
+        # PIL render + PNG encode are CPU-bound; keep them off the event loop.
+        images = await asyncio.to_thread(_render_all)
         return ImageGenerationResponse(
             images=images,
             usage=compute_image_cost(cfg.n, cost_per_image=_SCRIPTED_IMAGE_COST),

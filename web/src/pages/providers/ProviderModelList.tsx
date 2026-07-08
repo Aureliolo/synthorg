@@ -53,7 +53,7 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
           {
             label: 'image',
             show: model.supports_image_generation,
-            className: 'bg-primary/15 text-primary',
+            className: 'bg-accent/15 text-accent',
           },
         ]
 

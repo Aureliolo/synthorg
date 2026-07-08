@@ -199,8 +199,17 @@ describe("AgentsStep: unresolved-agent detection", () => {
 });
 
 describe("AgentsStep: empty-state copy", () => {
+  // ``reset()`` only restores data fields, not action bindings, so the
+  // no-op stubs below would leak into any later describe block. Capture the
+  // real actions and restore them in afterEach to keep the override local.
+  let realFetchAgents: () => Promise<void>;
+  let realFetchPersonalityPresets: () => Promise<void>;
+
   beforeEach(() => {
-    useSetupWizardStore.getState().reset();
+    const state = useSetupWizardStore.getState();
+    realFetchAgents = state.fetchAgents;
+    realFetchPersonalityPresets = state.fetchPersonalityPresets;
+    state.reset();
     // Stub the mount-time fetches to no-ops so the empty fallback renders
     // synchronously: the store keeps ``agents: []`` and no async refetch
     // fires, isolating the test to the empty-state copy branch.
@@ -215,6 +224,14 @@ describe("AgentsStep: empty-state copy", () => {
       agentsLoading: false,
       agentsError: null,
     });
+  });
+
+  afterEach(() => {
+    useSetupWizardStore.setState({
+      fetchAgents: realFetchAgents,
+      fetchPersonalityPresets: realFetchPersonalityPresets,
+    });
+    useSetupWizardStore.getState().reset();
   });
 
   it("points at the Company template step regardless of wizard mode", () => {

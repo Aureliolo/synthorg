@@ -18,9 +18,10 @@ image bytes should invoke :meth:`save_content` off the event loop.
 import copy
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
+from uuid import uuid4
 
 from pydantic import JsonValue
 
@@ -125,7 +126,7 @@ class InMemoryDesignAssetStore:
         Returns:
             The metadata copy, or ``None`` when absent.
         """
-        meta = self._meta.get(asset_id)
+        meta = self._meta.get(_require_safe_id(asset_id))
         return copy.deepcopy(meta) if meta is not None else None
 
     def delete(self, asset_id: str) -> bool:
@@ -134,8 +135,9 @@ class InMemoryDesignAssetStore:
         Returns:
             ``True`` if metadata existed and was removed.
         """
-        self._content.pop(asset_id, None)
-        return self._meta.pop(asset_id, None) is not None
+        safe_id = _require_safe_id(asset_id)
+        self._content.pop(safe_id, None)
+        return self._meta.pop(safe_id, None) is not None
 
     def items(self) -> Mapping[str, dict[str, JsonValue]]:
         """Return a deep-copied snapshot of all metadata.
@@ -161,7 +163,7 @@ class InMemoryDesignAssetStore:
         Returns:
             The content bytes, or ``None`` when absent.
         """
-        return self._content.get(asset_id)
+        return self._content.get(_require_safe_id(asset_id))
 
 
 class FilesystemDesignAssetStore:
@@ -184,24 +186,64 @@ class FilesystemDesignAssetStore:
         """
         return self._root / f"{_require_safe_id(asset_id)}{_METADATA_SUFFIX}"
 
+    def _read_meta(self, path: Path, asset_id: str) -> dict[str, JsonValue] | None:
+        """Parse one metadata sidecar, degrading a corrupt file to ``None``.
+
+        A truncated/corrupt sidecar (partial write from a prior crash,
+        disk corruption) is logged and treated as absent rather than
+        crashing the calling tool.
+
+        Returns:
+            The parsed metadata, or ``None`` when the file is missing or
+            unreadable.
+        """
+        if not path.is_file():
+            return None
+        try:
+            parsed: dict[str, JsonValue] = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DESIGN_ASSET_PERSIST_FAILED,
+                asset_id=asset_id,
+                reason="metadata_read_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        return parsed
+
+    def _atomic_write(self, path: Path, write: Callable[[Path], object]) -> None:
+        """Write ``path`` via a per-call-unique temp file then atomic rename.
+
+        The temp name carries a ``uuid4`` so two concurrent writers to the
+        same asset id cannot share (and clobber) one temp file before the
+        rename.
+
+        Raises:
+            OSError: If the write or rename fails (surfaced to the caller,
+                which logs ``DESIGN_ASSET_PERSIST_FAILED``).
+        """
+        tmp = path.with_suffix(f"{path.suffix}.{uuid4().hex}.tmp")
+        try:
+            write(tmp)
+            tmp.replace(path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
     def register(self, asset_id: str, metadata: dict[str, JsonValue]) -> None:
         """Write the metadata sidecar atomically."""
         path = self._meta_path(asset_id)
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
-        tmp.replace(path)
+        payload = json.dumps(metadata, sort_keys=True)
+        self._atomic_write(path, lambda tmp: tmp.write_text(payload, encoding="utf-8"))
 
     def get(self, asset_id: str) -> dict[str, JsonValue] | None:
-        """Read the metadata sidecar, or ``None`` when absent.
+        """Read the metadata sidecar, or ``None`` when absent/corrupt.
 
         Returns:
             The parsed metadata, or ``None``.
         """
-        path = self._meta_path(asset_id)
-        if not path.is_file():
-            return None
-        parsed: dict[str, JsonValue] = json.loads(path.read_text(encoding="utf-8"))
-        return parsed
+        return self._read_meta(self._meta_path(asset_id), asset_id)
 
     def delete(self, asset_id: str) -> bool:
         """Delete the sidecar + any content file; ``True`` if a row existed.
@@ -227,17 +269,9 @@ class FilesystemDesignAssetStore:
         result: dict[str, dict[str, JsonValue]] = {}
         for path in sorted(self._root.glob(f"*{_METADATA_SUFFIX}")):
             asset_id = path.name[: -len(_METADATA_SUFFIX)]
-            try:
-                result[asset_id] = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    DESIGN_ASSET_PERSIST_FAILED,
-                    asset_id=asset_id,
-                    reason="metadata_read_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+            meta = self._read_meta(path, asset_id)
+            if meta is not None:
+                result[asset_id] = meta
         return result
 
     def _content_path(self, asset_id: str, content_type: str) -> Path:
@@ -255,9 +289,7 @@ class FilesystemDesignAssetStore:
             Number of bytes written.
         """
         path = self._content_path(asset_id, content_type)
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_bytes(content)
-        tmp.replace(path)
+        self._atomic_write(path, lambda tmp: tmp.write_bytes(content))
         logger.info(
             DESIGN_ASSET_PERSISTED,
             asset_id=asset_id,
@@ -267,7 +299,7 @@ class FilesystemDesignAssetStore:
         return len(content)
 
     def load_content(self, asset_id: str) -> bytes | None:
-        """Return content bytes for an asset, or ``None`` when absent.
+        """Return content bytes for an asset, or ``None`` when absent/unreadable.
 
         Returns:
             The content bytes, or ``None``.
@@ -276,7 +308,20 @@ class FilesystemDesignAssetStore:
         if meta is None:
             return None
         path = self._content_path(asset_id, str(meta.get("content_type", "")))
-        return path.read_bytes() if path.is_file() else None
+        if not path.is_file():
+            return None
+        try:
+            return path.read_bytes()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                DESIGN_ASSET_PERSIST_FAILED,
+                asset_id=asset_id,
+                reason="content_read_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
 
 def build_design_asset_store(asset_storage_path: str | None) -> DesignAssetStore:

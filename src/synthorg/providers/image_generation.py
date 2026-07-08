@@ -25,7 +25,7 @@ from ._call_instrumentation import (
     record_call_success,
     record_image_cost_if_in_scope,
 )
-from ._resilience import rate_limited_call, resilient_execute
+from ._resilience import rate_limited_call
 from ._validation import validate_model
 from .errors import InvalidRequestError, ProviderImageGenerationUnsupportedError
 from .image_models import ImageGenerationConfig, ImageGenerationResponse
@@ -133,10 +133,16 @@ class ImageGenerationMixin:
             set_status_on_exception=False,
         ) as span:
             t_start = self._clock.monotonic()
+            retry_count = 0
+            retry_reason: str | None = None
             try:
-                result = await resilient_execute(
-                    _attempt, retry_handler=self._retry_handler
-                )
+                if self._retry_handler is not None:
+                    retry_result = await self._retry_handler.execute(_attempt)
+                    result = retry_result.value
+                    retry_count = max(0, retry_result.attempt_count - 1)
+                    retry_reason = retry_result.retry_reason
+                else:
+                    result = await _attempt()
             except Exception as exc:
                 reraise_critical(exc)
                 latency_ms = (
@@ -160,8 +166,13 @@ class ImageGenerationMixin:
                 latency_ms=latency_ms,
             )
 
+        # Mirror ``complete()``: stamp latency + retry telemetry so image
+        # calls feed provider-health observability like chat completions.
         merged = dict(result.provider_metadata or {})
         merged["_synthorg_latency_ms"] = latency_ms
+        merged["_synthorg_retry_count"] = retry_count
+        if retry_reason is not None:
+            merged["_synthorg_retry_reason"] = retry_reason
         result = result.model_copy(update={"provider_metadata": merged})
         await record_image_cost_if_in_scope(
             result.usage, model=model, provider=provider_label

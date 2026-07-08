@@ -25,3 +25,4 @@ DESIGN_ASSET_PERSIST_FAILED: Final[str] = "design.asset.persist_failed"
 
 # Provider
 DESIGN_PROVIDER_NOT_CONFIGURED: Final[str] = "design.provider.not_configured"
+DESIGN_IMAGE_PROVIDER_BOUND: Final[str] = "design.image.provider_bound"

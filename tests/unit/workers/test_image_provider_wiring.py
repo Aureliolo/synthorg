@@ -93,3 +93,44 @@ async def test_builds_provider_when_enabled_and_image_capable(
     _patch_resolver(monkeypatch, _resolver(enabled=True, model=_MODEL))
     result = await build_image_provider_or_none(_app_state(_registry(image=True)))
     assert isinstance(result, ProviderImageProvider)
+
+
+async def test_returns_none_when_enabled_flag_resolve_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = mock_of[ConfigResolver]()
+    resolver.get_bool.side_effect = RuntimeError("settings backend down")
+    _patch_resolver(monkeypatch, cast("ConfigResolver", resolver))
+    result = await build_image_provider_or_none(_app_state(_registry(image=True)))
+    assert result is None
+
+
+async def test_returns_none_when_model_resolve_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_resolver(monkeypatch, _resolver(enabled=True, model=_MODEL))
+    registry = mock_of[ProviderRegistry]()
+    registry.resolve_for_model.side_effect = KeyError(_MODEL)
+    result = await build_image_provider_or_none(
+        _app_state(cast("ProviderRegistry", registry))
+    )
+    assert result is None
+
+
+async def test_returns_none_when_provider_not_image_generation_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Capability-flagged image-capable, but the serving object structurally
+    # lacks ``generate_image`` -- the isinstance narrowing must fail open.
+    _patch_resolver(monkeypatch, _resolver(enabled=True, model=_MODEL))
+
+    async def _caps_call(*_args: object, **_kwargs: object) -> ModelCapabilities:
+        return _caps(image=True)
+
+    non_image_provider = SimpleNamespace(get_model_capabilities=_caps_call)
+    registry = mock_of[ProviderRegistry]()
+    registry.resolve_for_model.return_value = ("example-provider", non_image_provider)
+    result = await build_image_provider_or_none(
+        _app_state(cast("ProviderRegistry", registry))
+    )
+    assert result is None

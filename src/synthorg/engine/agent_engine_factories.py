@@ -558,6 +558,7 @@ class AgentEngineFactoriesMixin:
             invocation_tracker=self._tool_invocation_tracker,
             policy_engine=self._policy_engine,
             policy_evaluation_mode=self._policy_evaluation_mode,
+            cost_tracker=self._cost_tracker,
         )
         deferred.bind(invoker)
         return invoker

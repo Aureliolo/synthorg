@@ -3,6 +3,7 @@
 All tests mock ``litellm.aimage_generation`` -- no real API calls.
 """
 
+import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -65,6 +66,25 @@ def test_map_image_response_maps_b64_and_cost() -> None:
     assert mapped.model == "example-image-001"
 
 
+@pytest.mark.parametrize(
+    ("head", "expected"),
+    [
+        (b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0d", "image/png"),
+        (b"\xff\xd8\xff\xe0\x00\x10JFIF", "image/jpeg"),
+        (b"GIF89a\x01\x00\x01\x00\x00", "image/gif"),
+        (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp"),
+        (b"not-an-image-header-bytes", "image/png"),
+    ],
+    ids=["png", "jpeg", "gif", "webp", "unknown_defaults_png"],
+)
+def test_map_image_response_sniffs_content_type(head: bytes, expected: str) -> None:
+    b64 = base64.b64encode(head).decode("ascii")
+    mapped = map_image_response(
+        _fake_image_response(b64), model_id="m", cost_per_image=0.0
+    )
+    assert mapped.images[0].content_type == expected
+
+
 def test_map_image_response_rejects_url_only() -> None:
     response = SimpleNamespace(
         data=[
@@ -109,3 +129,17 @@ async def test_driver_maps_litellm_auth_error() -> None:
         with pytest.raises(AuthenticationError) as exc_info:
             await driver.generate_image("a cat", "img")
     assert isinstance(exc_info.value, ProviderError)
+
+
+async def test_driver_maps_litellm_rate_limit_error() -> None:
+    from litellm.exceptions import RateLimitError as LiteLLMRateLimitError
+
+    driver = _driver()
+    with patch(_PATCH_IMAGE, new_callable=AsyncMock) as mock_call:
+        mock_call.side_effect = LiteLLMRateLimitError(
+            "slow down", llm_provider="example-provider", model="img"
+        )
+        # The new call site must forward non-auth provider exceptions through
+        # the same mapper, not just the one exception type already covered.
+        with pytest.raises(ProviderError):
+            await driver.generate_image("a cat", "img")

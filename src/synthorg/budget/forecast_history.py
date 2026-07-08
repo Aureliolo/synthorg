@@ -42,11 +42,14 @@ _DEFAULT_TIER: Final[str] = "medium"
 
 #: Call categories excluded from per-turn observations: only direct task work
 #: (productive, or untagged legacy records) approximates an agent's turn cost.
+#: Image generation is flat-per-image spend, not token-scaled turn cost, so
+#: blending it into the per-turn history would poison the text-turn prior.
 _EXCLUDED_CATEGORIES: Final[frozenset[LLMCallCategory]] = frozenset(
     {
         LLMCallCategory.COORDINATION,
         LLMCallCategory.SYSTEM,
         LLMCallCategory.EMBEDDING,
+        LLMCallCategory.IMAGE_GENERATION,
     }
 )
 

@@ -162,6 +162,21 @@ describe("ProviderDetailPage", () => {
     expect(screen.getByText("tools")).toBeInTheDocument();
     // Streaming is universal, so it no longer earns a capability badge.
     expect(screen.queryByText("stream")).not.toBeInTheDocument();
+    // ``testModels`` is not image-capable, so no image badge shows.
+    expect(screen.queryByText("image")).not.toBeInTheDocument();
+  });
+
+  it("renders the image badge for an image-capable model", () => {
+    const provider = makeProvider("test-provider");
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [
+        { ...testModels[0]!, supports_image_generation: true, cost_per_image: 0.04 },
+      ],
+    };
+    renderDetail();
+    expect(screen.getByText("image")).toBeInTheDocument();
   });
 
   it("renders health metrics when health available", () => {

@@ -6,7 +6,10 @@ Isolates the mapping from LiteLLM's ``ImageResponse`` to the domain
 ``litellm_driver`` stays within its size budget and focused on dispatch.
 """
 
+import base64
+import binascii
 from collections.abc import Callable
+from typing import Final
 
 import litellm as _litellm
 
@@ -24,6 +27,35 @@ from synthorg.providers.image_models import (
 )
 
 _RESPONSE_FORMAT_B64: str = "b64_json"
+_DEFAULT_IMAGE_MIME: Final[str] = "image/png"
+# Enough base64 chars to decode the 12 bytes an image signature needs
+# (WEBP checks bytes 8-11); a multiple of 4 so the prefix decodes cleanly.
+_MAGIC_PREFIX_B64_CHARS: Final[int] = 16
+
+
+def _sniff_content_type(b64: str) -> str:
+    """Detect the image MIME type from a base64 payload's magic bytes.
+
+    Decodes only a short prefix (enough for the signature), not the whole
+    image, and falls back to PNG for an unrecognised signature so a
+    future JPEG/WEBP provider is not written with the wrong extension.
+
+    Returns:
+        The detected MIME type, or ``"image/png"`` when unrecognised.
+    """
+    try:
+        head = base64.b64decode(b64[:_MAGIC_PREFIX_B64_CHARS], validate=True)
+    except ValueError, binascii.Error:
+        return _DEFAULT_IMAGE_MIME
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if head.startswith(b"GIF8"):
+        return "image/gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return _DEFAULT_IMAGE_MIME
 
 
 async def generate_image_via_litellm(  # noqa: PLR0913 -- keyword-only driver state
@@ -160,7 +192,13 @@ def map_image_response(
         if not b64:
             continue
         revised = getattr(obj, "revised_prompt", None) or None
-        images.append(GeneratedImage(b64_data=NotBlankStr(b64), revised_prompt=revised))
+        images.append(
+            GeneratedImage(
+                b64_data=NotBlankStr(b64),
+                content_type=_sniff_content_type(b64),
+                revised_prompt=revised,
+            )
+        )
     if not images:
         msg = "Provider returned no inline base64 image data"
         raise errors.ProviderInternalError(msg, context={"model": model_id})

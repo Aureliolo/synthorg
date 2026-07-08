@@ -44,6 +44,7 @@ interface ManualModelInputs {
   alias: string;
   costInput: string;
   costOutput: string;
+  costImage: string;
   maxContext: string;
   latencyMs: string;
 }
@@ -54,6 +55,7 @@ interface ParsedModelValues {
   ctx: number | null;
   inCost: number | null;
   outCost: number | null;
+  imageCost: number | null;
   latency: number | null;
 }
 
@@ -63,7 +65,7 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
     alias: v.alias.trim() || null,
     cost_per_1k_input: v.inCost ?? 0,
     cost_per_1k_output: v.outCost ?? 0,
-    cost_per_image: null,
+    cost_per_image: v.imageCost,
     max_context: v.ctx ?? 200_000,
     estimated_latency_ms: v.latency ?? null,
     local_params: null,
@@ -102,6 +104,9 @@ function validateManualModel(fields: ManualModelInputs): ManualModelValidation {
   const outCost = parseOptionalField(fields.costOutput, parseNonNegFloat);
   if (!outCost.ok)
     return { error: "Output cost must be a non-negative number." };
+  const imageCost = parseOptionalField(fields.costImage, parseNonNegFloat);
+  if (!imageCost.ok)
+    return { error: "Cost per image must be a non-negative number." };
   const latency = parseOptionalField(fields.latencyMs, parsePositiveInt);
   if (!latency.ok)
     return { error: "Latency must be a positive integer (milliseconds)." };
@@ -112,6 +117,7 @@ function validateManualModel(fields: ManualModelInputs): ManualModelValidation {
       ctx: ctx.value,
       inCost: inCost.value,
       outCost: outCost.value,
+      imageCost: imageCost.value,
       latency: latency.value,
     }),
   };
@@ -123,6 +129,7 @@ interface ManualModelForm {
   setAlias: (value: string) => void;
   setCostInput: (value: string) => void;
   setCostOutput: (value: string) => void;
+  setCostImage: (value: string) => void;
   setMaxContext: (value: string) => void;
   setLatencyMs: (value: string) => void;
   submitting: boolean;
@@ -137,6 +144,7 @@ function useManualModelForm(): ManualModelForm {
   const [alias, setAlias] = useState("");
   const [costInput, setCostInput] = useState("");
   const [costOutput, setCostOutput] = useState("");
+  const [costImage, setCostImage] = useState("");
   const [maxContext, setMaxContext] = useState("");
   const [latencyMs, setLatencyMs] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -147,6 +155,7 @@ function useManualModelForm(): ManualModelForm {
     setAlias("");
     setCostInput("");
     setCostOutput("");
+    setCostImage("");
     setMaxContext("");
     setLatencyMs("");
     setSubmitting(false);
@@ -154,11 +163,20 @@ function useManualModelForm(): ManualModelForm {
   };
 
   return {
-    values: { modelId, alias, costInput, costOutput, maxContext, latencyMs },
+    values: {
+      modelId,
+      alias,
+      costInput,
+      costOutput,
+      costImage,
+      maxContext,
+      latencyMs,
+    },
     setModelId,
     setAlias,
     setCostInput,
     setCostOutput,
+    setCostImage,
     setMaxContext,
     setLatencyMs,
     submitting,
@@ -212,6 +230,16 @@ function ManualModelFields({
           onChange={(e) => form.setCostOutput(e.target.value)}
           min={0}
           step="0.0001"
+        />
+        <InputField
+          label="Cost / image"
+          hint={`${currency}; for image-output models`}
+          type="number"
+          inputMode="decimal"
+          value={values.costImage}
+          onChange={(e) => form.setCostImage(e.target.value)}
+          min={0}
+          step="0.001"
         />
       </div>
       <div className="grid grid-cols-2 gap-grid-gap">

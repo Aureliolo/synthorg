@@ -8,6 +8,7 @@ cost flows through the same recording chokepoint as completions.
 """
 
 import copy
+from collections.abc import Mapping
 from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -22,6 +23,11 @@ bounding memory and per-call cost."""
 
 _IMAGE_SIZE_PATTERN: Final[str] = r"^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$"
 """``<width>x<height>`` in pixels, each 1-5 digits (no leading zero)."""
+
+_MAX_IMAGE_DIMENSION: Final[int] = 8192
+"""Per-side pixel cap. The size *pattern* only bounds digit count, so
+``"99999x99999"`` (~10 gigapixels) would pass it; this bounds the actual
+magnitude to keep per-call memory and cost sane."""
 
 
 class ImageGenerationConfig(BaseModel):
@@ -62,6 +68,27 @@ class ImageGenerationConfig(BaseModel):
         gt=0.0,
         description="Request timeout in seconds",
     )
+
+    @model_validator(mode="after")
+    def _bound_pixels(self) -> Self:
+        """Reject a size whose sides exceed the per-dimension pixel cap.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If either side exceeds ``_MAX_IMAGE_DIMENSION``.
+        """
+        width_str, height_str = self.size.split("x")
+        if int(width_str) > _MAX_IMAGE_DIMENSION or int(height_str) > (
+            _MAX_IMAGE_DIMENSION
+        ):
+            msg = (
+                f"size {self.size!r} exceeds the per-side cap of "
+                f"{_MAX_IMAGE_DIMENSION}px"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class GeneratedImage(BaseModel):
@@ -114,7 +141,7 @@ class ImageGenerationResponse(BaseModel):
         default=None,
         description="Provider request ID",
     )
-    provider_metadata: dict[str, object] = Field(
+    provider_metadata: Mapping[str, object] = Field(
         default_factory=dict,
         description="Provider metadata injected by the base class (_synthorg_* keys).",
     )
