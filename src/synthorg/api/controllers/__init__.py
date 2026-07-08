@@ -27,6 +27,7 @@ from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
+from synthorg.api.controllers.board import BoardController
 from synthorg.api.controllers.brownfield import BrownfieldController
 from synthorg.api.controllers.budget import BudgetController
 from synthorg.api.controllers.budget_cfo import BudgetCfoController
@@ -210,6 +211,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProjectKnowledgeController,
     GlobalKnowledgeController,
     TaskController,
+    BoardController,
     DecompositionController,
     ExperimentsController,
     MessageController,
@@ -366,6 +368,7 @@ __all__ = [
     "AuthSessionsController",
     "AutonomyController",
     "BackupController",
+    "BoardController",
     "BrownfieldController",
     "BudgetCfoController",
     "BudgetConfigVersionController",

@@ -167,6 +167,14 @@ statuses is legal for its kind, so an open question can never be marked
 | `DEPENDENCY` | `depends_on: NotBlankStr`, `dependency_kind: DependencyKind` | `OPEN`, `RESOLVED` |
 | `PLAN_REVISION` | `summary: BrainRationale`, `supersedes_plan_entry_id: NotBlankStr \| None` | `ACTIVE`, `SUPERSEDED` |
 
+A `DECISION` entry is also written automatically at the project-decision gate:
+when a lead agent calls `request_project_decision` (gated by
+`engine.scoping_enabled`) and a human answers, the approvals-resume path
+appends an `ACCEPTED` `DECISION` entry whose `decision_outcome` is the chosen
+answer and whose `alternatives` are the offered options, with no explicit
+brain-write tool call. This is the actually-emitted successor to the dead
+`arch:decide` action type.
+
 `BrainPayload` is `Annotated[DecisionPayload | OpenQuestionPayload | ... ,
 Field(discriminator="entry_kind")]`. Each payload is frozen with `extra="forbid"`
 and carries a literal `entry_kind` so Pydantic resolves the union without

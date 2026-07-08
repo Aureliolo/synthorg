@@ -61,6 +61,7 @@ export const recommendationsHandlers = [
         stale_count: 0,
         recommended_count: 1,
         auto_applied_count: 0,
+        superseded_count: 0,
       }),
     ),
   ),

@@ -51,10 +51,12 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
+from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_bool
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
@@ -347,13 +349,25 @@ def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choi
     """
     task_engine = task_engine_of(app_state)
     provider = _select_provider(app_state)
+    # The agent intake honours the model ref's provider; the verification
+    # stage keeps the active provider (its grader/decomposer models are their
+    # own settings, not the intake model).
+    intake_ref = parse_model_ref(model or "")
+    intake_model = intake_ref.model_id or None
+    intake_provider = resolve_ref_provider(
+        app_state,
+        intake_ref,
+        active=provider,
+        event=CLIENT_SIMULATION_RUNTIME_WIRED,
+        subject="intake",
+    )
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     strategy, effective_strategy = _build_intake_with_fallback(
         requested_strategy=requested_strategy,
-        model=model,
+        model=intake_model,
         default_project=default_project,
         task_engine=task_engine,
-        provider=provider,
+        provider=intake_provider,
         cost_tracker=cost_tracker,
     )
     verification_stage = _build_verification_stage(

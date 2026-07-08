@@ -26,6 +26,7 @@ _TO_A2A: MappingProxyType[TaskStatus, A2ATaskState] = MappingProxyType(
         TaskStatus.CANCELLED: A2ATaskState.CANCELED,
         TaskStatus.REJECTED: A2ATaskState.REJECTED,
         TaskStatus.AUTH_REQUIRED: A2ATaskState.AUTH_REQUIRED,
+        TaskStatus.AWAITING_INPUT: A2ATaskState.INPUT_REQUIRED,
     }
 )
 

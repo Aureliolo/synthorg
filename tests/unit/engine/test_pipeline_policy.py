@@ -15,6 +15,7 @@ from synthorg.engine.pipeline.policy import (
     LlmJudgedRoutingPolicy,
     build_work_routing_policy,
 )
+from synthorg.providers.errors import ModelNotFoundError
 from tests._shared import as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
@@ -131,6 +132,33 @@ class TestLlmJudgedRoutingPolicy:
         # the leaf task falls back to the deterministic LEAF verdict.
         verdict = await policy.decide(task=_LEAF_TASK, available_agents=())
         assert verdict is RoutingVerdict.LEAF
+
+    async def test_model_call_failure_falls_back_to_deterministic(self) -> None:
+        # A model that is unavailable or misconfigured (e.g. the
+        # decomposition model not resolvable on its provider) must degrade
+        # to the deterministic policy, never hard-fail the run: otherwise the
+        # llm-judged default turns every approve into a routing failure.
+        provider = ScriptedProvider(
+            error=ModelNotFoundError(
+                "Model not found",
+                context={"provider": "test-provider", "model": "test-model-001"},
+            )
+        )
+        policy = LlmJudgedRoutingPolicy(
+            provider=provider,
+            model="test-model-001",
+            fallback=LeafThresholdRoutingPolicy(threshold=_THRESHOLD),
+        )
+        # The fallback runs for real: the leaf task -> LEAF, the parallel
+        # task -> SPLITTABLE (proves delegation, not a fixed verdict).
+        assert (
+            await policy.decide(task=_LEAF_TASK, available_agents=())
+            is RoutingVerdict.LEAF
+        )
+        assert (
+            await policy.decide(task=_TEAM_TASK, available_agents=())
+            is RoutingVerdict.SPLITTABLE
+        )
 
 
 class TestBuildWorkRoutingPolicy:

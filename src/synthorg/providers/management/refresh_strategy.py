@@ -15,7 +15,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -25,8 +25,11 @@ from synthorg.observability.events.provider import (
     PROVIDER_MODEL_REFRESH_ADD_FAILED,
     PROVIDER_MODEL_REFRESH_RECOMMEND_FAILED,
 )
-from synthorg.providers.management.capability_dtos import AddModelRequest
-from synthorg.providers.management.live_discovery_probe import LiveDiscoveryProbe
+from synthorg.providers.management.dtos import UpdateProviderRequest
+from synthorg.providers.management.live_discovery_probe import (
+    LiveCatalogReport,
+    LiveDiscoveryProbe,
+)
 from synthorg.providers.management.refresh_config import RefreshMode
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.management.upgrade_models import UpgradeRecommendation
@@ -43,6 +46,11 @@ class ProviderRefreshOutcome(BaseModel):
         added_ids: Newly-discovered model ids persisted this pass.
         stale_ids: Configured ids flagged stale this pass.
         recommendations: Upgrade recommendations produced this pass.
+        recommendations_valid: ``True`` when the recommend step ran to
+            completion (so ``recommendations`` is the authoritative current
+            set the caller may reconcile pending rows against); ``False``
+            when it failed, so an empty ``recommendations`` reflects an error
+            rather than "nothing to recommend" and must not drive retirement.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -51,6 +59,7 @@ class ProviderRefreshOutcome(BaseModel):
     added_ids: tuple[str, ...] = Field(default=())
     stale_ids: tuple[str, ...] = Field(default=())
     recommendations: tuple[UpgradeRecommendation, ...] = Field(default=())
+    recommendations_valid: bool = Field(default=True)
 
 
 @runtime_checkable
@@ -165,7 +174,8 @@ class ReconcileRecommendStrategy:
     ) -> ProviderRefreshOutcome:
         """Reconcile the catalogue and recommend in-family upgrades.
 
-        Persists newly-discovered models (stamped ``probe`` provenance),
+        Persists newly-discovered models (stamped ``probe`` provenance) and
+        refreshes the discovery-sourced metadata of models still advertised,
         flags removed configured ids stale, then recommends in-family
         upgrades against the refreshed provider config.
 
@@ -174,10 +184,7 @@ class ReconcileRecommendStrategy:
             recommendations.
         """
         report = await self._probe.discover_report(provider_name, provider)
-        discovered_by_id = {m.id: m for m in report.discovered}
-        added_ids = await self._add_discovered(
-            provider_name, report.added_ids, discovered_by_id
-        )
+        added_ids = await self._refresh_catalog(provider_name, provider, report)
         stale_ids = await self._flagger.flag(provider_name, report.missing_ids)
 
         recommendations = await self._recommend(provider_name)
@@ -185,46 +192,66 @@ class ReconcileRecommendStrategy:
             provider_name=provider_name,
             added_ids=added_ids,
             stale_ids=stale_ids,
-            recommendations=recommendations,
+            recommendations=recommendations or (),
+            recommendations_valid=recommendations is not None,
         )
 
-    async def _add_discovered(
+    async def _refresh_catalog(
         self,
         provider_name: str,
-        added_ids: tuple[str, ...],
-        discovered_by_id: dict[str, ProviderModelConfig],
+        provider: ProviderConfig,
+        report: LiveCatalogReport,
     ) -> tuple[str, ...]:
-        """Persist each newly-discovered model, isolating per-model failures.
+        """Persist new models and refresh live models' discovery metadata.
 
-        A single bad model id (validation error, transient persistence
-        error) must not abort the whole provider's reconcile, so each
-        ``add_model`` is guarded and the returned tuple reflects only the
-        ids that were actually persisted.
+        A configured model still advertised by the catalogue has its
+        discovery-sourced ``metadata`` (family / generation / capabilities)
+        refreshed, so parser or enrichment improvements propagate to the
+        matcher and the upgrade recommender without waiting for the model to
+        be removed and re-added; operator per-model fields (``local_params``,
+        cost overrides) and any stale marker are preserved. Configured models
+        absent from the catalogue are kept verbatim for the stale-flag pass.
+        The refresh is one atomic persist, skipped when nothing changed so an
+        unchanged catalogue never churns the config or the audit log.
 
         Returns:
-            The subset of *added_ids* that were successfully persisted.
+            The ids the catalogue surfaced as new (empty when discovery was a
+            no-op or the persist failed).
         """
-        persisted: list[str] = []
-        for added_id in added_ids:
-            try:
-                await self._mgmt.add_model(
-                    provider_name,
-                    AddModelRequest(model=discovered_by_id[added_id]),
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    PROVIDER_MODEL_REFRESH_ADD_FAILED,
-                    provider=provider_name,
-                    model=added_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                continue
-            persisted.append(added_id)
-        return tuple(persisted)
+        if not report.discovered:
+            return ()
+        discovered_by_id = {m.id: m for m in report.discovered}
+        configured_ids = {m.id for m in provider.models}
+        refreshed = tuple(
+            model.model_copy(update={"metadata": discovered_by_id[model.id].metadata})
+            if model.id in discovered_by_id and model.stale is None
+            else model
+            for model in provider.models
+        )
+        merged = refreshed + tuple(
+            m for m in report.discovered if m.id not in configured_ids
+        )
+        if merged == provider.models:
+            return report.added_ids
+        try:
+            await self._mgmt.update_provider(
+                provider_name, UpdateProviderRequest(models=merged)
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_MODEL_REFRESH_ADD_FAILED,
+                provider=provider_name,
+                note="catalog_refresh_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+        return report.added_ids
 
-    async def _recommend(self, provider_name: str) -> tuple[UpgradeRecommendation, ...]:
+    async def _recommend(
+        self, provider_name: str
+    ) -> tuple[UpgradeRecommendation, ...] | None:
         """Re-read the refreshed provider and recommend in-family upgrades.
 
         Isolates a failure of the post-add re-read / recommend step (e.g.
@@ -232,7 +259,10 @@ class ReconcileRecommendStrategy:
         flags already applied this pass.
 
         Returns:
-            The produced recommendations, or an empty tuple on failure.
+            The produced recommendations (possibly an empty tuple when the
+            catalogue has no in-family upgrade), or ``None`` when the step
+            failed -- distinguished so the caller never treats an error as an
+            authoritative empty set that would retire live recommendations.
         """
         try:
             refreshed = await self._mgmt.get_provider(provider_name)
@@ -244,7 +274,7 @@ class ReconcileRecommendStrategy:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ()
+            return None
         analysis = self._recommender.recommend({provider_name: refreshed})
         return analysis.recommendations
 

@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Engine-layer error hierarchy."""
 
 from typing import TYPE_CHECKING, ClassVar
@@ -668,6 +669,34 @@ class WorkflowYamlExportError(WorkflowExecutionError):
     error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_YAML_EXPORT_FAILED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Workflow YAML export failed"
+
+
+class KanbanInvalidMoveError(EngineError):
+    """Raised when a requested Kanban column move is not a legal transition.
+
+    Maps to 400: the target column is unreachable from the card's current
+    column under ``VALID_COLUMN_TRANSITIONS`` (e.g. a jump that skips the
+    board's flow), a request-shape failure surfaced by the board service.
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.KANBAN_INVALID_MOVE
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid Kanban board move"
+
+
+class KanbanWipLimitError(EngineError):
+    """Raised when a move would push a column past its enforced WIP limit.
+
+    Maps to 409 (conflict): the move is legal but the target column is at
+    capacity and WIP enforcement is on, so the board rejects it until a
+    slot frees. Advisory mode never raises this.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.KANBAN_WIP_LIMIT_EXCEEDED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Kanban column is at its WIP limit"
 
 
 class WorkflowExecutionAlreadyTerminalError(VersionConflictError):

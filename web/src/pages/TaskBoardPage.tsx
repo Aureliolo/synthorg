@@ -211,6 +211,7 @@ function TaskBoardKanbanEmptyState({ ctrl }: TaskBoardCtrlProps) {
 }
 
 function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
+  const boardPolicy = ctrl.boardPolicy
   if (ctrl.viewMode === 'list') {
     return (
       <TaskListView tasks={ctrl.filteredTasks} onSelectTask={ctrl.handleSelectTask} />
@@ -235,6 +236,7 @@ function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
           const containsSelected =
             ctrl.selectedTaskId !== null &&
             columnTasks.some((t) => t.id === ctrl.selectedTaskId)
+          const wip = boardPolicy?.wipByColumn[col.id]
           return (
             <TaskColumn
               key={col.id}
@@ -242,6 +244,7 @@ function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
               tasks={columnTasks}
               onSelectTask={ctrl.handleSelectTask}
               highlighted={containsSelected}
+              {...(wip ? { wip } : {})}
             />
           )
         })}

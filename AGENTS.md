@@ -57,8 +57,9 @@ Agents verify: correctness, security, type design, documentation consistency, AP
 ## OpenCode Commands
 
 Custom slash commands for common workflows:
-- `/pre-pr-review` - Automated PR creation with checks + review agents + fixes
-- `/aurelio-review-pr` - Handle external reviewer feedback on existing PRs
+- `/pre-pr-review` - Pre-PR local review: checks + review agents + fixes (then babysit the PR)
+- `babysit-pr` skill - Post-PR watchdog: CI + external-reviewer follow-up until squash-merge (the normal step after `/pre-pr-review`)
+- `/aurelio-review-pr` - Local review for PRs that skipped `/pre-pr-review` (same agents; do NOT run after a `/pre-pr-review` pass)
 - `/post-merge-cleanup` - Branch cleanup after squash merge
 - `/worktree` - Manage parallel git worktrees
 - `/codebase-audit` - Deep codebase audit with parallel agents

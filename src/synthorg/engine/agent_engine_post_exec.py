@@ -59,6 +59,8 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import CheckpointConfig
     from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.evolution.service import EvolutionService
+    from synthorg.engine.review.pipeline import ReviewPipeline
+    from synthorg.engine.review_gate import ReviewGateService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -87,6 +89,8 @@ class AgentEnginePostExecMixin:
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
     _approval_store: ApprovalStoreProtocol | None
+    _review_gate: ReviewGateService | None
+    _review_pipeline: ReviewPipeline | None
     _apply_recovery: ApplyRecovery
     _recovery_strategy: RecoveryStrategy | None
     _checkpoint_repo: CheckpointRepository | None
@@ -143,6 +147,8 @@ class AgentEnginePostExecMixin:
             task_id,
             self._task_engine,
             approval_store=self._approval_store,
+            review_gate=self._review_gate,
+            review_pipeline=self._review_pipeline,
         )
         recovery_result: RecoveryResult | None = None
         failed_result: ExecutionResult | None = None

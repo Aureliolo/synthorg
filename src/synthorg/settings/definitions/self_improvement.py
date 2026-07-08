@@ -121,12 +121,12 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="analysis_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for self-improvement proposal analysis. Empty"
-            " keeps the built-in default; set it to override. Read live per"
-            " analysis call."
+            "Provider + model for self-improvement proposal analysis, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the built-in default. Read live per analysis call."
         ),
         group=_GROUP,
         level=SettingLevel.ADVANCED,
@@ -137,12 +137,13 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="code_modification_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for code-modification proposals. Empty keeps"
-            " the built-in default; set it to override. Read live per"
-            " generation (the capability itself stays restart-required)."
+            "Provider + model for code-modification proposals, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the built-in default. Read live per generation"
+            " (the capability itself stays restart-required)."
         ),
         group=_GROUP,
         level=SettingLevel.ADVANCED,

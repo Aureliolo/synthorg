@@ -37,29 +37,15 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="fine_tune_query_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model id used to synthesise natural retrieval queries during"
-            " embedding fine-tune data generation. Empty (default) uses the"
-            " dependency-free extractive generator, so no LLM cost is"
-            " incurred unless an operator opts in."
-        ),
-        group="Fine-Tune",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.MEMORY,
-        key="fine_tune_query_provider",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Provider name routing the fine-tune query-generation model."
-            " Empty selects the first registered provider. Ignored when"
-            " ``fine_tune_query_model`` is unset."
+            "Provider + model used to synthesise natural retrieval queries"
+            " during embedding fine-tune data generation, selected through the"
+            " model picker (a `{provider, model_id}` reference). Empty (default)"
+            " uses the dependency-free extractive generator, so no LLM cost is"
+            " incurred unless an operator opts in; an empty ref provider selects"
+            " the first registered provider."
         ),
         group="Fine-Tune",
         level=SettingLevel.ADVANCED,

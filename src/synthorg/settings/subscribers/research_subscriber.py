@@ -33,7 +33,6 @@ logger = get_logger(__name__)
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("research", "model"),
-        ("research", "provider"),
         ("research", "query_planner"),
         ("research", "credibility_triage"),
         ("research", "deduplicator"),

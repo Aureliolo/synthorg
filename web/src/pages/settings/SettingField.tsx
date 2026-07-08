@@ -5,6 +5,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
+import { ModelRefField } from '@/pages/settings/ModelRefField'
 import { SIMPLE_ARRAY_SETTINGS } from '@/pages/settings/settings-constants'
 
 const log = createLogger('settings')
@@ -181,6 +182,9 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
   }
   if (definition.type === 'json') {
     return <JsonField value={value} onChange={onChange} disabled={disabled} />
+  }
+  if (definition.type === 'model_ref') {
+    return <ModelRefField value={value} onChange={onChange} disabled={disabled} />
   }
   return <TextSettingField definition={definition} value={value} onChange={onChange} disabled={disabled} />
 }

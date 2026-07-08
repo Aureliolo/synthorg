@@ -106,6 +106,12 @@ class _FakeCharterRepo:
         ):
             if key in updates:
                 patch[key] = updates[key]
+        # Mirror the real repo: stamping project_id clears the proposed name
+        # so the existing-vs-new XOR holds after approval.
+        project_id = updates.get("project_id")
+        if project_id is not None:
+            patch["project_id"] = project_id
+            patch["proposed_project_name"] = None
         self.items[entity_id] = current.model_copy(update=patch)
         return True
 
@@ -235,6 +241,9 @@ class _FakeWorkPipeline:
     def attach_refinement_router(self, router: object) -> None:
         raise NotImplementedError
 
+    def attach_plan_review_gate(self, gate: object) -> None:
+        raise NotImplementedError
+
 
 class SimpleResult:
     def __init__(self, *, task_id: NotBlankStr, is_success: bool) -> None:
@@ -320,6 +329,10 @@ class TestApprove:
         assert result.charter.approved_by == "user-1"
         assert result.charter.task_id == "task-1"
         assert result.charter.forecast_id is not None
+        # The charter records the project it became; the proposed name is
+        # cleared so the run is filed under a concrete project_id.
+        assert result.charter.project_id == _EXPECTED_NEW_PROJECT_ID
+        assert result.charter.proposed_project_name is None
 
     async def test_approve_emits_status_transition_log(self) -> None:
         """Approval logs charter.status_transitioned (DRAFTED -> APPROVED)."""
@@ -451,6 +464,9 @@ class TestApprove:
                 raise NotImplementedError
 
             def attach_refinement_router(self, router: object) -> None:
+                raise NotImplementedError
+
+            def attach_plan_review_gate(self, gate: object) -> None:
                 raise NotImplementedError
 
         charter_repo = _FakeCharterRepo(_charter())

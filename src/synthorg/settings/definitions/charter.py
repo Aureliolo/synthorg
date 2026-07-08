@@ -16,12 +16,13 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.CHARTER,
         key="interview_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
-        description="Model identifier for charter-interview turns. Unset until"
-        " an operator or setup selects one (never a placeholder default). This"
-        " is a deep, human-in-the-loop elicitation, so it should be a top-tier"
-        " reasoning-capable model -- not a small/cheap one.",
+        description="Provider + model for charter-interview turns, selected"
+        " through the model picker (a `{provider, model_id}` reference). Unset"
+        " until an operator or setup selects one (never a placeholder default)."
+        " This is a deep, human-in-the-loop elicitation, so it should be a"
+        " top-tier reasoning-capable model -- not a small/cheap one.",
         group="Charter",
         level=SettingLevel.ADVANCED,
         restart_required=False,

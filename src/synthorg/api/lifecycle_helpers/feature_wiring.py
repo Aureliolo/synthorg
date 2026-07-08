@@ -25,6 +25,7 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.kanban_wiring import wire_kanban_board
 from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engine
 from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
 from synthorg.api.lifecycle_helpers.meta_wiring import (
@@ -43,6 +44,7 @@ from synthorg.api.lifecycle_helpers.org_memory_wiring import (
 from synthorg.api.lifecycle_helpers.organization_wiring import (
     wire_organization_read_services,
 )
+from synthorg.api.lifecycle_helpers.plan_review_wiring import wire_plan_review_gate
 from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -348,8 +350,13 @@ async def _build_and_wire_research(
     from synthorg.research.tool_factory import (  # noqa: PLC0415
         build_research_tool_factory,
     )
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
-    model = (await runtime_settings.get("research", "model")).value.strip()
+    # ``research.model`` is a model-assignment setting storing a ``ModelRef``:
+    # the provider travels with the model (the picker writes both). An empty
+    # ref provider still means "first registered provider".
+    ref = parse_model_ref((await runtime_settings.get("research", "model")).value)
+    model = ref.model_id.strip()
     if not model:
         logger.info(
             API_APP_STARTUP,
@@ -365,7 +372,7 @@ async def _build_and_wire_research(
             note="no providers registered; wiring skipped",
         )
         return
-    provider_name = (await runtime_settings.get("research", "provider")).value.strip()
+    provider_name = ref.provider.strip()
     provider = (
         provider_registry.get(provider_name)
         if provider_name and provider_name in provider_registry
@@ -607,6 +614,12 @@ async def wire_features_on_startup(
     # the work pipeline so team-bound work with no definition of done is
     # refined rather than blocked by the coordinator's clarification gate.
     await wire_refinement_router(app_state)
+    # Opt-in human plan-approval gate: when enabled, splittable team work is
+    # parked for approval before it builds. No-op unless the setting is on.
+    await wire_plan_review_gate(app_state)
+    # Kanban board service: projects tasks onto the org's board and drives
+    # column moves. Wired whenever the task engine + persistence exist.
+    await wire_kanban_board(app_state)
     await wire_group_chat_service(
         app_state,
         provider_registry=provider_registry,

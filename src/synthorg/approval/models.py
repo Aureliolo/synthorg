@@ -23,6 +23,11 @@ class EscalationInfo(BaseModel):
         action_type: Security action type (``category:action`` format).
         risk_level: Assessed risk level for the action.
         reason: Human-readable explanation of why escalation is needed.
+        clarification: Whether this park is a mid-task clarification
+            (the agent asking a human a question) rather than an
+            approval. Drives the task's IN_PROGRESS -> AWAITING_INPUT
+            move so a clarification pause is distinct from the binary
+            approval park (which leaves the task IN_PROGRESS).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -33,6 +38,7 @@ class EscalationInfo(BaseModel):
     action_type: NotBlankStr
     risk_level: ApprovalRiskLevel
     reason: NotBlankStr
+    clarification: bool = False
 
 
 class ResumePayload(BaseModel):

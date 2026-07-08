@@ -1029,6 +1029,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/board": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetBoard */
+        readonly get: operations["ApiV1BoardGetBoard"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/board/move": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** MoveCard */
+        readonly post: operations["ApiV1BoardMoveMoveCard"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/brownfield/import": {
         readonly parameters: {
             readonly query?: never;
@@ -6701,6 +6735,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[KanbanBoardView] */
+        readonly ApiResponse_KanbanBoardView_: {
+            readonly data: components["schemas"]["KanbanBoardView"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[KnowledgeAnswer] */
         readonly ApiResponse_KnowledgeAnswer_: {
             readonly data: components["schemas"]["KnowledgeAnswer"] | null;
@@ -7650,10 +7692,13 @@ export type components = {
          *         CONVERSATIONAL_INVITE: An agent's request to add another agent
          *             to a group conversation; approval adds the participant +
          *             hands over the transcript, rejection leaves membership.
+         *         PLAN_REVIEW: A decomposed plan awaiting human approval before a
+         *             team builds; approval dispatches the exact approved plan
+         *             (``coordinate(precomputed_plan=...)``), rejection cancels it.
          * @default review_gate
          * @enum {string}
          */
-        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite";
+        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite" | "plan_review";
         /**
          * ApprovalStatus
          * @description Status of a human approval item.
@@ -8014,6 +8059,12 @@ export type components = {
              */
             readonly tags: readonly string[];
             readonly workflow_type: components["schemas"]["WorkflowType"];
+        };
+        /** BoardMovePayload */
+        readonly BoardMovePayload: {
+            readonly target_column: components["schemas"]["KanbanColumn"];
+            /** @description The card's task id */
+            readonly task_id: string;
         };
         /** BrainEntry */
         readonly BrainEntry: {
@@ -10261,7 +10312,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 4031 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -11260,6 +11311,39 @@ export type components = {
             readonly supersede_task_ids: readonly string[];
             /** @description The operator directive text */
             readonly text: string;
+        };
+        /** KanbanBoardView */
+        readonly KanbanBoardView: {
+            /** @description Ordered columns */
+            readonly columns: readonly components["schemas"]["KanbanColumnView"][];
+            /** @description Whether WIP limits hard-block moves */
+            readonly enforce_wip: boolean;
+            readonly workflow_type: components["schemas"]["WorkflowType"];
+        };
+        /**
+         * KanbanColumn
+         * @description Kanban board columns matching the Engine design page.
+         *
+         *     Members:
+         *         BACKLOG: Tasks waiting to be prioritized.
+         *         READY: Prioritized and ready for assignment.
+         *         IN_PROGRESS: Actively being worked on.
+         *         REVIEW: Work complete, awaiting review.
+         *         DONE: Finished and accepted.
+         * @enum {string}
+         */
+        readonly KanbanColumn: "backlog" | "ready" | "in_progress" | "review" | "done";
+        /** KanbanColumnView */
+        readonly KanbanColumnView: {
+            readonly column: components["schemas"]["KanbanColumn"];
+            /** @description Card count */
+            readonly count: number;
+            /** @description WIP limit (None = unlimited) */
+            readonly limit: number | null;
+            /** @description Whether the column is over its WIP limit */
+            readonly over_limit: boolean;
+            /** @description Cards in this column */
+            readonly tasks: readonly components["schemas"]["Task"][];
         };
         /** KillInterventionRequest */
         readonly KillInterventionRequest: {
@@ -14441,10 +14525,13 @@ export type components = {
          *
          *     ``PENDING`` awaits a human decision; ``APPROVED`` / ``REJECTED`` are
          *     operator decisions; ``AUTO_APPLIED`` was applied automatically by the
-         *     in-family auto-apply flow without human review.
+         *     in-family auto-apply flow without human review; ``SUPERSEDED`` was
+         *     retired by a later reconcile cycle that no longer produces it (e.g. the
+         *     current model was removed, or the recommender's newest-in-family pick
+         *     changed), so a stale pending row never lingers on the review surface.
          * @enum {string}
          */
-        readonly RecommendationStatus: "pending" | "approved" | "rejected" | "auto_applied";
+        readonly RecommendationStatus: "pending" | "approved" | "rejected" | "auto_applied" | "superseded";
         /** RecommendedAction */
         readonly RecommendedAction: {
             /** @description Semantic action key */
@@ -14554,6 +14641,8 @@ export type components = {
             readonly recommended_count: number;
             /** @description Number of models marked stale during the cycle. */
             readonly stale_count: number;
+            /** @description Number of pending recommendations retired during the cycle because the recommender no longer produces them. */
+            readonly superseded_count: number;
         };
         /**
          * RefreshMode
@@ -15411,7 +15500,7 @@ export type components = {
          *     drives validation and type coercion in the service layer.
          * @enum {string}
          */
-        readonly SettingType: "str" | "int" | "float" | "bool" | "enum" | "json";
+        readonly SettingType: "str" | "int" | "float" | "bool" | "enum" | "json" | "model_ref";
         /** SetupAgentRequest */
         readonly SetupAgentRequest: {
             /**
@@ -16207,9 +16296,10 @@ export type components = {
          *         CREATED -> ASSIGNED | REJECTED
          *         ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
          *                     | FAILED | INTERRUPTED | SUSPENDED
-         *         IN_PROGRESS -> IN_REVIEW | AUTH_REQUIRED | BLOCKED | CANCELLED
-         *                        | FAILED | INTERRUPTED | SUSPENDED
+         *         IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED
+         *                        | CANCELLED | FAILED | INTERRUPTED | SUSPENDED
          *         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
+         *         AWAITING_INPUT -> IN_PROGRESS (answer supplied) | CANCELLED (abandoned)
          *         AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
          *         BLOCKED -> ASSIGNED (unblocked)
          *         FAILED -> ASSIGNED (reassignment for retry)
@@ -16217,11 +16307,11 @@ export type components = {
          *         SUSPENDED -> ASSIGNED (resume from checkpoint)
          *         COMPLETED, CANCELLED, and REJECTED are terminal states.
          *         FAILED, INTERRUPTED, and SUSPENDED are non-terminal (can be reassigned).
-         *         AUTH_REQUIRED is non-terminal (waiting for authorization).
+         *         AUTH_REQUIRED and AWAITING_INPUT are non-terminal (waiting on a human).
          * @default created
          * @enum {string}
          */
-        readonly TaskStatus: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required";
+        readonly TaskStatus: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input";
         /**
          * TaskStructure
          * @description Classification of how a task's subtasks relate to each other.
@@ -20197,6 +20287,62 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_WsTicketResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BoardGetBoard: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_KanbanBoardView_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BoardMoveMoveCard: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BoardMovePayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -26804,7 +26950,7 @@ export interface operations {
                 readonly cursor?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | null;
+                readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | "superseded" | null;
             };
             readonly header?: never;
             readonly path?: never;
@@ -29086,7 +29232,7 @@ export interface operations {
                 /** @description Filter to tasks scoped to this project. */
                 readonly project?: string | null;
                 /** @description Filter to tasks in this status. */
-                readonly status?: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | null;
+                readonly status?: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
             };
             readonly header?: never;
             readonly path?: never;

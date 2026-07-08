@@ -59,10 +59,10 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
     ("chief_of_staff", "direct_mcp_enabled", SettingType.BOOLEAN, "false", False),
     # Per-feature models: blank by default (setup auto-selects); read live
     # per LLM call -> no restart.
-    ("chief_of_staff", "chat_model", SettingType.STRING, "", False),
-    ("chief_of_staff", "propose_model", SettingType.STRING, "", False),
-    ("chief_of_staff", "routing_model", SettingType.STRING, "", False),
-    ("chief_of_staff", "narrative_model", SettingType.STRING, "", False),
+    ("chief_of_staff", "chat_model", SettingType.MODEL_REF, "", False),
+    ("chief_of_staff", "propose_model", SettingType.MODEL_REF, "", False),
+    ("chief_of_staff", "routing_model", SettingType.MODEL_REF, "", False),
+    ("chief_of_staff", "narrative_model", SettingType.MODEL_REF, "", False),
     # Self-modification: every switch off (config_tuning only matters when
     # the master is on). The meta-loop re-reads them live -> no restart.
     ("self_improvement", "enabled", SettingType.BOOLEAN, "false", False),
@@ -86,8 +86,8 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
         True,
     ),
     ("self_improvement", "tool_creation_enabled", SettingType.BOOLEAN, "false", False),
-    ("self_improvement", "analysis_model", SettingType.STRING, "", False),
-    ("self_improvement", "code_modification_model", SettingType.STRING, "", False),
+    ("self_improvement", "analysis_model", SettingType.MODEL_REF, "", False),
+    ("self_improvement", "code_modification_model", SettingType.MODEL_REF, "", False),
     # Knowledge: on by default, no model of its own; ghost-wired and
     # live-gated at the knowledge tools, so a change applies with no restart.
     ("knowledge", "enabled", SettingType.BOOLEAN, "true", False),

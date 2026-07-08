@@ -814,6 +814,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
         raw_risk = result.metadata.get("risk_level", "high")
         risk_value = raw_risk if isinstance(raw_risk, str) else "high"
+        is_clarification = result.metadata.get("clarification") is True
         try:
             self._pending_escalations.append(
                 EscalationInfo(
@@ -824,7 +825,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                         result.metadata.get("action_type", tool.action_type),
                     ),
                     risk_level=ApprovalRiskLevel(risk_value),
-                    reason="Agent requested human approval",
+                    reason=(
+                        "Agent requested clarification"
+                        if is_clarification
+                        else "Agent requested human approval"
+                    ),
+                    clarification=is_clarification,
                 ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

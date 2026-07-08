@@ -92,7 +92,7 @@ from synthorg.providers.management._credential_helpers import (
 )
 from synthorg.providers.management._discovery_auth import (
     build_discovery_headers,
-    infer_preset_hint,
+    resolve_discovery_hint,
 )
 from synthorg.providers.management._persistence import apply_provider_change
 from synthorg.providers.management._preset_creation import create_provider_from_preset
@@ -875,7 +875,7 @@ class ProviderManagementService(
         if self._is_self_connection(config.base_url):
             return ()
 
-        resolved_hint = preset_hint or infer_preset_hint(config.base_url)
+        resolved_hint = resolve_discovery_hint(config, preset_hint)
         api_key = await resolve_provider_api_key(self._app_state, config)
         headers = build_discovery_headers(config, api_key)
         policy = await self._allowlist.load()

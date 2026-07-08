@@ -557,8 +557,9 @@ class TestWireFineTuneOrchestrator:
 
         async def _get_str(_namespace: object, key: str) -> str:
             return {
-                "fine_tune_query_model": "test-model",
-                "fine_tune_query_provider": "ghost-provider",
+                "fine_tune_query_model": (
+                    '{"provider": "ghost-provider", "model_id": "test-model"}'
+                ),
             }.get(key, "")
 
         resolver = mock_of[ConfigResolver](
@@ -588,7 +589,7 @@ class TestWireFineTuneOrchestrator:
             and "not registered" in str(e.get("note", ""))
         ]
         assert len(errors) == 1
-        assert errors[0]["fine_tune_query_provider"] == "ghost-provider"
+        assert errors[0]["provider_name"] == "ghost-provider"
 
     async def test_wires_orchestrator_and_runs_recovery(self) -> None:
         fake = FakePersistenceBackend()

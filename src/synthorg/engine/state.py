@@ -38,6 +38,7 @@ from synthorg.engine.workflow.ceremony_scheduler import (
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
+from synthorg.engine.workflow.kanban_service import KanbanBoardService
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowService,
@@ -65,6 +66,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     error_taxonomy_store: ErrorTaxonomyStore | None = None
     evolution_service: EvolutionService | None = None
     ceremony_scheduler: CeremonyScheduler | None = None
+    kanban_board_service: KanbanBoardService | None = None
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None
     brownfield_entry_adapter: WorkEntryAdapter[CodebaseImportSubmission] | None = None
@@ -89,6 +91,17 @@ def work_pipeline_of(app_state: AppStateSliceMixin) -> WorkPipeline:
     """
     return require_service(
         app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
+    )
+
+
+def kanban_board_service_of(app_state: AppStateSliceMixin) -> KanbanBoardService:
+    """Resolve the Kanban board service from its slice, or raise 503.
+
+    Returns:
+        The wired Kanban board service.
+    """
+    return require_service(
+        app_state.slice(EngineStateSlice).kanban_board_service, "Kanban Board"
     )
 
 

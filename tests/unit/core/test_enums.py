@@ -48,8 +48,8 @@ class TestEnumMemberCounts:
     def test_department_name_has_9_members(self) -> None:
         assert len(DepartmentName) == 9
 
-    def test_task_status_has_12_members(self) -> None:
-        assert len(TaskStatus) == 12
+    def test_task_status_has_13_members(self) -> None:
+        assert len(TaskStatus) == 13
 
     def test_task_type_has_7_members(self) -> None:
         assert len(TaskType) == 7
@@ -157,6 +157,7 @@ class TestEnumStringValues:
         assert TaskStatus.SUSPENDED.value == "suspended"
         assert TaskStatus.REJECTED.value == "rejected"
         assert TaskStatus.AUTH_REQUIRED.value == "auth_required"
+        assert TaskStatus.AWAITING_INPUT.value == "awaiting_input"
 
     def test_task_type_values(self) -> None:
         assert TaskType.DEVELOPMENT.value == "development"

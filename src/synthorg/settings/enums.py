@@ -59,6 +59,7 @@ class SettingType(StrEnum):
     BOOLEAN = "bool"
     ENUM = "enum"
     JSON = "json"
+    MODEL_REF = "model_ref"
 
 
 class SettingLevel(StrEnum):

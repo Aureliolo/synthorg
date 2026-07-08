@@ -69,6 +69,82 @@ _r.register(
     )
 )
 
+# ── Automatic review ────────────────────────────────────────────
+
+_r.register(
+    # lint-allow: restart-required -- the review pipeline is wired into the
+    # agent runtime at boot; a change applies on the next runtime-services
+    # rebuild, not per request.
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_review_on_completion",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Automatically run the staged review pipeline when an agent"
+            " completes a task (reaching IN_REVIEW), applying its verdict"
+            " without waiting for a human to open the review. Off by default"
+            " (a human decides at the review gate); when on, the pipeline is"
+            " wired into the agent runtime at boot, so a change applies on the"
+            " next runtime-services rebuild (provider re-init)."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+# ── Mid-task clarification ──────────────────────────────────────
+
+_r.register(
+    # lint-allow: restart-required -- the clarification tool is added to every
+    # agent toolset at boot; a change applies on the next runtime-services
+    # rebuild, not per request.
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="clarification_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let an executing agent pause to ask a human a question via the"
+            " request_clarification tool, parking its context and moving the"
+            " task to AWAITING_INPUT until the human answers, then resuming with"
+            " the answer injected. Off by default (agents proceed on their own"
+            " judgement); when on, the tool is added to every agent toolset at"
+            " boot, so a change applies on the next runtime-services rebuild."
+        ),
+        group="Clarification",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+# ── Scoping + decision gate ─────────────────────────────────────
+
+_r.register(
+    # lint-allow: restart-required -- the decision tool is added to every agent
+    # toolset at boot; a change applies on the next runtime-services rebuild,
+    # not per request.
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="scoping_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let a lead agent surface project-shaping decisions to a human via"
+            " the request_project_decision tool: it parks the run (like a"
+            " clarification), and on the human's answer records a DECISION"
+            " entry in the project brain and resumes with the choice injected."
+            " Off by default (agents decide on their own); when on, the tool is"
+            " added to every agent toolset at boot, so a change applies on the"
+            " next runtime-services rebuild."
+        ),
+        group="Scoping",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
 # ── Health judge ────────────────────────────────────────────────
 
 _r.register(
@@ -731,5 +807,94 @@ _r.register(
         ),
         group="Health",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Workflow board ──────────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="workflow_type",
+        type=SettingType.ENUM,
+        default="agile_kanban",
+        enum_values=(
+            "sequential_pipeline",
+            "parallel_execution",
+            "kanban",
+            "agile_kanban",
+        ),
+        description=(
+            "The org's declared delivery workflow. 'kanban' / 'agile_kanban'"
+            " render a WIP-limited board; the value is surfaced on the board"
+            " view. Read per board request so a runtime change applies to the"
+            " next board operation with no restart."
+        ),
+        group="Kanban Board",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Kanban Board WIP limits ─────────────────────────────────────
+# The board projects tasks onto columns (backlog / ready / in-progress /
+# review / done) via STATUS_TO_COLUMN; these knobs cap how much work sits
+# in the flow-limited columns. Read per board request / move so a runtime
+# change applies to the next board operation with no restart. Off by
+# default (advisory): counts + over-limit are surfaced but human moves are
+# not blocked until an operator opts into enforcement.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="kanban_enforce_wip",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Enforce Kanban WIP limits on human board moves: when set, a"
+            " drag-drop that would push a column over its limit is rejected."
+            " Off by default (advisory) so the board surfaces over-limit"
+            " columns without blocking. Read per board move so a runtime"
+            " change applies to the next move with no restart."
+        ),
+        group="Kanban Board",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="kanban_wip_in_progress",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Work-in-progress limit for the in-progress column: the maximum"
+            " number of tasks actively being worked before the column is"
+            " over-limit. Read per board request so a runtime change applies"
+            " to the next board operation."
+        ),
+        group="Kanban Board",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="kanban_wip_review",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Work-in-progress limit for the review column: the maximum number"
+            " of tasks awaiting review before the column is over-limit. Read"
+            " per board request so a runtime change applies to the next board"
+            " operation."
+        ),
+        group="Kanban Board",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
     )
 )

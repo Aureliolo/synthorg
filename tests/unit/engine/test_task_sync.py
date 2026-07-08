@@ -15,6 +15,8 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.review.pipeline import ReviewPipeline
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine_models import (
     TaskErrorCode,
     TaskMutationResult,
@@ -26,6 +28,7 @@ from synthorg.engine.task_sync import (
     transition_task_if_needed,
 )
 from synthorg.execution.turn import TurnRecord
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -774,3 +777,162 @@ class TestReviewApprovalCreation:
                 task_engine=None,
                 approval_store=mock_store,
             )
+
+
+# ===================================================================
+# Automatic review on completion
+# ===================================================================
+
+
+@pytest.mark.unit
+class TestAutoReview:
+    """Auto-run of the staged review pipeline when a task reaches IN_REVIEW."""
+
+    def _completed_result(self, identity: AgentIdentity, task: Task) -> ExecutionResult:
+        ctx = AgentContext.from_identity(identity, task=task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        return _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+    async def test_runs_pipeline_when_gate_and_pipeline_wired(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](run_pipeline=AsyncMock(return_value=None))
+        pipeline = mock_of[ReviewPipeline]()
+
+        await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=pipeline,
+        )
+
+        gate.run_pipeline.assert_awaited_once()
+        call = gate.run_pipeline.await_args
+        assert call.kwargs["task_id"] == str(sample_task_with_criteria.id)
+        assert call.kwargs["pipeline"] is pipeline
+        assert call.kwargs["decided_by"] == "system:auto-review"
+
+    async def test_no_pipeline_run_when_disabled(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        # Gate wired but no pipeline (auto-review off): the pipeline never runs.
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](run_pipeline=AsyncMock(return_value=None))
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=None,
+        )
+
+        gate.run_pipeline.assert_not_called()
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    async def test_pipeline_failure_does_not_discard_completion(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        # A review-pipeline fault must not lose the agent's completed work:
+        # the task stays IN_REVIEW for a human, exactly as when off.
+        result = self._completed_result(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        gate = mock_of[ReviewGateService](
+            run_pipeline=AsyncMock(side_effect=RuntimeError("pipeline boom"))
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+            review_gate=gate,
+            review_pipeline=mock_of[ReviewPipeline](),
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+
+@pytest.mark.unit
+class TestClarificationPark:
+    """A clarification park moves an executing task to AWAITING_INPUT."""
+
+    def _parked_result(
+        self,
+        identity: AgentIdentity,
+        task: Task,
+        *,
+        clarification: bool,
+    ) -> ExecutionResult:
+        ctx = AgentContext.from_identity(identity, task=task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        return ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.PARKED,
+            metadata={"approval_id": "appr-1", "clarification": clarification},
+        )
+
+    async def test_clarification_park_transitions_to_awaiting_input(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        result = self._parked_result(
+            sample_agent_with_personality, sample_task_with_criteria, clarification=True
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.AWAITING_INPUT
+        synced = [call.args[0].target_status for call in mock_te.submit.call_args_list]
+        assert synced == [TaskStatus.AWAITING_INPUT]
+
+    async def test_plain_approval_park_leaves_task_unchanged(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        # A binary approval park (no clarification marker) leaves the task
+        # IN_PROGRESS -- distinct from the clarification pause.
+        result = self._parked_result(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+            clarification=False,
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+        )
+
+        assert out is result
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_PROGRESS
+        mock_te.submit.assert_not_called()

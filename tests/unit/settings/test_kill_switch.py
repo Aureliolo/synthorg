@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.settings.kill_switch import (
+    require_configured_model,
     resolve_bool_with_fallback,
     resolve_float_with_fallback,
     resolve_int_with_fallback,
@@ -298,3 +300,53 @@ async def test_model_malformed_falls_back(malformed: str) -> None:
         fallback="baked-model",
     )
     assert result == "baked-model"
+
+
+async def test_model_ref_json_projects_to_bare_model_id() -> None:
+    """A stored ``ModelRef`` projects to the bare model id for the provider call."""
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(
+        return_value='{"provider": "ollama-cloud", "model_id": "glm-5.2"}'
+    )
+    result = await resolve_model_with_fallback(
+        resolver=resolver,
+        namespace="chief_of_staff",
+        key="chat_model",
+        fallback="baked-model",
+    )
+    assert result == "glm-5.2"
+
+
+async def test_model_ref_fallback_projects_when_resolver_blank() -> None:
+    """A ``ModelRef`` fallback also projects to its bare model id."""
+    resolver = AsyncMock()
+    resolver.get_str = AsyncMock(return_value="")
+    result = await resolve_model_with_fallback(
+        resolver=resolver,
+        namespace="charter",
+        key="interview_model",
+        fallback='{"provider": "ollama", "model_id": "baked-id"}',
+    )
+    assert result == "baked-id"
+
+
+def test_require_configured_model_projects_model_ref() -> None:
+    """The final gate projects a ``ModelRef`` JSON to the bare model id."""
+    result = require_configured_model(
+        '{"provider": "ollama-cloud", "model_id": "glm-5.2"}',
+        namespace="charter",
+        key="interview_model",
+        feature_label="Charter interview",
+    )
+    assert result == "glm-5.2"
+
+
+def test_require_configured_model_raises_on_provider_only_ref() -> None:
+    """A ref with a provider but no model id is unconfigured -> 503."""
+    with pytest.raises(ServiceUnavailableError, match="no model configured"):
+        require_configured_model(
+            '{"provider": "ollama-cloud", "model_id": ""}',
+            namespace="charter",
+            key="interview_model",
+            feature_label="Charter interview",
+        )

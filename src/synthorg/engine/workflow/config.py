@@ -6,7 +6,7 @@ single ``WorkflowConfig`` that plugs into the root configuration.
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.kanban_board import KanbanConfig
@@ -55,6 +55,12 @@ class WorkflowConfig(BaseModel):
         default_factory=SprintConfig,
         description="Agile sprint settings",
     )
+
+    @computed_field(description="Whether the active workflow type runs a board")
+    @property
+    def uses_kanban(self) -> bool:
+        """Whether the active workflow type consults kanban board semantics."""
+        return self.workflow_type in _KANBAN_TYPES
 
     @model_validator(mode="after")
     def _warn_unused_subconfigs(self) -> Self:

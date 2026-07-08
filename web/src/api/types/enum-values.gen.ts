@@ -56,6 +56,7 @@ export const APPROVAL_SOURCE_VALUES = [
     'review_gate',
     'conversational_intake',
     'conversational_invite',
+    'plan_review',
 ] as const
 export type ApprovalSource = (typeof APPROVAL_SOURCE_VALUES)[number]
 
@@ -495,6 +496,15 @@ export const INTERVENTION_KIND_VALUES = [
 ] as const
 export type InterventionKind = (typeof INTERVENTION_KIND_VALUES)[number]
 
+export const KANBAN_COLUMN_VALUES = [
+    'backlog',
+    'ready',
+    'in_progress',
+    'review',
+    'done',
+] as const
+export type KanbanColumn = (typeof KANBAN_COLUMN_VALUES)[number]
+
 export const KNOWLEDGE_CLAIM_TYPE_VALUES = [
     'fact',
     'analysis',
@@ -715,6 +725,7 @@ export const RECOMMENDATION_STATUS_VALUES = [
     'approved',
     'rejected',
     'auto_applied',
+    'superseded',
 ] as const
 export type RecommendationStatus = (typeof RECOMMENDATION_STATUS_VALUES)[number]
 
@@ -893,6 +904,7 @@ export const SETTING_TYPE_VALUES = [
     'bool',
     'enum',
     'json',
+    'model_ref',
 ] as const
 export type SettingType = (typeof SETTING_TYPE_VALUES)[number]
 
@@ -972,6 +984,7 @@ export const TASK_STATUS_VALUES = [
     'cancelled',
     'rejected',
     'auth_required',
+    'awaiting_input',
 ] as const
 export type TaskStatus = (typeof TASK_STATUS_VALUES)[number]
 

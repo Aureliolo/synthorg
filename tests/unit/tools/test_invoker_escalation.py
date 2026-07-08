@@ -280,3 +280,48 @@ class TestParkingToolMetadata:
         invoker = _make_invoker(_StubTool())
         await invoker.invoke(_make_tool_call())
         assert invoker.pending_escalations == ()
+
+    async def test_plain_parking_is_not_a_clarification(self) -> None:
+        invoker = _make_invoker(_ParkingTool())
+        await invoker.invoke(_make_tool_call("parking_tool"))
+        assert invoker.pending_escalations[0].clarification is False
+
+
+class _ClarificationTool(BaseTool):
+    """Tool that returns clarification parking metadata."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="clarify_tool",
+            description="A tool that asks a human",
+            category=ToolCategory.OTHER,
+            action_type="comms:internal",
+        )
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            content="Clarification required",
+            metadata={
+                "requires_parking": True,
+                "clarification": True,
+                "approval_id": "approval-clarify-1",
+                "action_type": "clarify:question",
+                "risk_level": "low",
+            },
+        )
+
+
+class TestClarificationMetadata:
+    """A clarification park flows a clarification-marked escalation."""
+
+    async def test_clarification_metadata_marks_escalation(self) -> None:
+        invoker = _make_invoker(_ClarificationTool())
+        await invoker.invoke(_make_tool_call("clarify_tool"))
+
+        escalations = invoker.pending_escalations
+        assert len(escalations) == 1
+        assert escalations[0].approval_id == "approval-clarify-1"
+        assert escalations[0].clarification is True
+        assert escalations[0].reason == "Agent requested clarification"
+        assert escalations[0].risk_level == ApprovalRiskLevel.LOW

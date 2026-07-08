@@ -202,31 +202,16 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.HR,
         key="eval_loop_llm_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for the eval-loop 'llm' identify/propose"
-            " strategies. Empty (the default) keeps both steps deterministic"
-            " regardless of their mode. EvalLoopSettingsSubscriber rebuilds the"
-            " strategies on a change, so it applies without a restart."
-        ),
-        group="Evaluation",
-        level=SettingLevel.ADVANCED,
-        restart_required=False,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.HR,
-        key="eval_loop_llm_provider",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Provider name resolving the eval-loop 'llm' strategy model."
-            " Empty selects the first registered provider."
-            " EvalLoopSettingsSubscriber rebuilds the strategies on a change,"
-            " so it applies without a restart."
+            "Provider + model for the eval-loop 'llm' identify/propose"
+            " strategies, selected through the model picker (a `{provider,"
+            " model_id}` reference). Empty (the default) keeps both steps"
+            " deterministic regardless of their mode; an empty ref provider"
+            " selects the first registered provider. EvalLoopSettingsSubscriber"
+            " rebuilds the strategies on a change, so it applies without a"
+            " restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,

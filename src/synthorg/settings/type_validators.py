@@ -156,6 +156,42 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
         raise SettingValidationError(msg) from exc
 
 
+def _validate_model_ref(definition: SettingDefinition, value: str) -> None:
+    """Validate a model-reference value's shape.
+
+    Accepts an empty value (unset) or a bare model string (provider-less);
+    a structured value must be ``{"provider": str, "model_id": str}`` JSON.
+    Catalogue resolution (does the model exist on the provider) is enforced
+    at the picker (only offers real pairs) and at boot, not here, since this
+    static validator has no provider-catalogue access.
+
+    Raises:
+        SettingValidationError: If a structured value is not the canonical
+            ``{provider, model_id}`` shape.
+    """
+    text = value.strip()
+    if not text or not text.startswith("{"):
+        return
+    try:
+        reject_raw_json_over_depth(value)
+        data = json.loads(value)
+    except ValueError as exc:
+        display = (
+            _SENSITIVE_MASK if definition.sensitive else safe_error_description(exc)
+        )
+        msg = f"Invalid model reference JSON: {display}"
+        raise SettingValidationError(msg) from exc
+    required = {"provider", "model_id"}
+    if (
+        not isinstance(data, dict)
+        or set(data) != required
+        or not isinstance(data["provider"], str)
+        or not isinstance(data["model_id"], str)
+    ):
+        msg = 'A model reference must be {"provider": str, "model_id": str}'
+        raise SettingValidationError(msg)
+
+
 def _check_range(definition: SettingDefinition, value: int | float) -> None:
     """Check numeric range constraints.
 
@@ -184,6 +220,7 @@ _TYPE_VALIDATOR_REGISTRY: Final[StrategyRegistry[None]] = StrategyRegistry(
         SettingType.BOOLEAN: _validate_boolean,
         SettingType.ENUM: _validate_enum,
         SettingType.JSON: _validate_json,
+        SettingType.MODEL_REF: _validate_model_ref,
     },
     kind="setting_type_validator",
 )

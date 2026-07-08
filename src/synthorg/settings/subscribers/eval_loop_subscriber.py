@@ -1,10 +1,10 @@
 """Eval-loop settings subscriber: hot-swaps the IDENTIFY/PROPOSE strategies.
 
 The closed-loop evaluation coordinator builds its provider-backed pattern
-identifier + fix proposer from the ``hr.eval_loop_llm_model`` /
-``eval_loop_llm_provider`` / ``eval_loop_pattern_identifier_mode`` /
+identifier + fix proposer from the ``hr.eval_loop_llm_model`` (a provider +
+model reference) / ``eval_loop_pattern_identifier_mode`` /
 ``eval_loop_fix_proposer_mode`` keys at boot. A change to any of those re-resolves
-those four choices from the live settings DB, rebuilds the strategies (degrading
+those choices from the live settings DB, rebuilds the strategies (degrading
 to deterministic when a model / provider is unavailable), and swaps them onto the
 wired coordinator so the next cycle uses them, with no restart. A no-op when the
 coordinator is not wired (the eval loop is off / unavailable). The cycle
@@ -25,7 +25,6 @@ logger = get_logger(__name__)
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("hr", "eval_loop_llm_model"),
-        ("hr", "eval_loop_llm_provider"),
         ("hr", "eval_loop_pattern_identifier_mode"),
         ("hr", "eval_loop_fix_proposer_mode"),
     }

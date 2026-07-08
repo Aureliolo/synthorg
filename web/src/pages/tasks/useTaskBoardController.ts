@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
@@ -11,11 +8,9 @@ import {
 
 import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
-import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
-import { useToastStore } from '@/stores/toast'
+import { useBoardPolicy, type BoardPolicy } from '@/hooks/useBoardPolicy'
+import { useTaskBoardDnd } from './useTaskBoardDnd'
 import {
-  KANBAN_COLUMNS,
-  canTransitionTo,
   filterTasks,
   groupTasksByColumn,
   type TaskBoardFilters,
@@ -42,6 +37,7 @@ export interface TaskBoardController {
   showTerminal: boolean
   showDeps: boolean
   activeTask: Task | null
+  boardPolicy: BoardPolicy | null
   sensors: ReturnType<typeof useSensors>
   setCreateOpen: (open: boolean) => void
   setShowTerminal: (open: boolean) => void
@@ -61,7 +57,6 @@ export function useTaskBoardController(): TaskBoardController {
   const [showTerminal, setShowTerminal] = useState(false)
   const [showDeps, setShowDeps] = useState(false)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const { execute: executeOptimistic } = useOptimisticUpdate()
 
   const viewMode: 'board' | 'list' =
     searchParams.get('view') === 'list' ? 'list' : 'board'
@@ -69,9 +64,12 @@ export function useTaskBoardController(): TaskBoardController {
 
   useSyncSelectedTaskFromUrl(selectedTaskId, data.fetchTask)
 
+  const { policy: boardPolicy, refresh: refreshBoard } = useBoardPolicy(
+    viewMode === 'board',
+  )
   const derived = useTaskBoardDerivedState(searchParams, data.tasks)
   const urlHandlers = useTaskBoardUrlHandlers(setSearchParams, data.fetchTask)
-  const dnd = useTaskBoardDnd(data, executeOptimistic, setActiveTask)
+  const dnd = useTaskBoardDnd(data, setActiveTask, boardPolicy, refreshBoard)
 
   useRegisterShortcuts([
     { keys: ['D'], label: 'Toggle dependencies overlay', group: 'Task board' },
@@ -96,6 +94,7 @@ export function useTaskBoardController(): TaskBoardController {
     showTerminal,
     showDeps,
     activeTask,
+    boardPolicy,
     sensors: dnd.sensors,
     setCreateOpen,
     setShowTerminal,
@@ -177,44 +176,6 @@ function useTaskBoardUrlHandlers(
     [setSearchParams],
   )
   return { handleFiltersChange, handleViewModeChange, handleSelectTask, handleClosePanel }
-}
-
-interface TaskBoardDnd {
-  sensors: ReturnType<typeof useSensors>
-  handleDragStart: (event: DragStartEvent) => void
-  handleDragEnd: (event: DragEndEvent) => Promise<void>
-}
-
-function useTaskBoardDnd(
-  data: ReturnType<typeof useTaskBoardData>,
-  executeOptimistic: ReturnType<typeof useOptimisticUpdate>['execute'],
-  setActiveTask: (task: Task | null) => void,
-): TaskBoardDnd {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  )
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const task = (event.active.data.current as { task?: Task } | undefined)?.task
-      if (task) setActiveTask(task)
-    },
-    [setActiveTask],
-  )
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      setActiveTask(null)
-      await processDragEnd(
-        event,
-        data.tasks,
-        data.optimisticTransition,
-        data.transitionTask,
-        executeOptimistic,
-      )
-    },
-    [data.tasks, data.optimisticTransition, data.transitionTask, executeOptimistic, setActiveTask],
-  )
-  return { sensors, handleDragStart, handleDragEnd }
 }
 
 function useSyncSelectedTaskFromUrl(
@@ -356,46 +317,4 @@ function extractAssignees(tasks: readonly Task[]): readonly string[] {
     if (task.assigned_to) set.add(task.assigned_to)
   }
   return Array.from(set).sort()
-}
-
-async function processDragEnd(
-  event: DragEndEvent,
-  tasks: readonly Task[],
-  optimisticTransition: ReturnType<typeof useTaskBoardData>['optimisticTransition'],
-  transitionTask: ReturnType<typeof useTaskBoardData>['transitionTask'],
-  executeOptimistic: ReturnType<typeof useOptimisticUpdate>['execute'],
-): Promise<void> {
-  const { active, over } = event
-  if (!over) return
-  const taskId = active.id as string
-  const targetColumnId = over.id as string
-  const targetColumn = KANBAN_COLUMNS.find((col) => col.id === targetColumnId)
-  if (!targetColumn) return
-  const targetStatus = targetColumn.statuses[0]
-  if (!targetStatus) return
-  const sourceTask = tasks.find((t) => t.id === taskId)
-  if (!sourceTask || sourceTask.status === targetStatus) return
-  if (!canTransitionTo(sourceTask.status, targetStatus)) {
-    useToastStore.getState().add({
-      variant: 'warning',
-      title: 'Invalid transition',
-      description: `Cannot move from "${sourceTask.status}" to "${targetStatus}".`,
-    })
-    return
-  }
-  const result = await executeOptimistic(
-    () => optimisticTransition(taskId, targetStatus),
-    () =>
-      transitionTask(taskId, {
-        target_status: targetStatus,
-        expected_version: sourceTask.version ?? null,
-      }),
-  )
-  if (result === null) {
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Could not move task',
-      description: 'It may have changed status. Refresh and try again.',
-    })
-  }
 }

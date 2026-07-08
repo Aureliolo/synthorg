@@ -96,11 +96,17 @@ Two blocking interrupt types:
 - Resume: `POST /api/v1/interrupts/{interrupt_id}/resume` with
   `{decision, feedback}`
 
-**Information Request Interrupt**: emitted when an agent needs
-mid-task clarification:
-
-- Payload: `interrupt_id`, `question`, `context_snippet`, `timeout_seconds`
-- Resume: `POST /api/v1/interrupts/{interrupt_id}/resume` with `{response}`
+**Mid-task clarification pause**: when an agent needs a human's answer
+mid-task, the `request_clarification` tool (gated by
+`engine.clarification_enabled`) does NOT mint a dedicated `INFO_REQUEST`
+interrupt. It parks the run through the same `ApprovalGate` machinery as a
+tool approval, creating an `ApprovalItem` (`source=PARKED_CONTEXT`,
+`metadata.clarification=true`) and moving the task to `AWAITING_INPUT`; the
+human's answer arrives through the standard approvals-decision endpoint and
+resumes the run with the answer injected. The `request_project_decision`
+tool (gated by `engine.scoping_enabled`) works the same way and additionally
+records the choice as a project-brain `DECISION` entry. `InterruptType.INFO_REQUEST`
+exists as scaffolding but is not currently emitted.
 
 Non-SSE polling fallback: `GET /api/v1/interrupts` +
 `POST /api/v1/interrupts/{id}/resume`. Used by CLI/integration tests and

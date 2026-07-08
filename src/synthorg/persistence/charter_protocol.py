@@ -116,6 +116,8 @@ class CharterRepository(
         ``**updates`` MAY carry the column values stamped at the
         transition (e.g. ``updated_at``, ``approved_at``, ``approved_by``,
         ``forecast_id``, ``correlation_id``, ``task_id`` on approval).
+        Supplying ``project_id`` also clears ``proposed_project_name`` so
+        the existing-vs-new project XOR holds once the project exists.
         Implementations validate types at the boundary and reject
         unknown keys with :class:`QueryError`.
 

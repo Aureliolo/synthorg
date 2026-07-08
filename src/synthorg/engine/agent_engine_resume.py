@@ -14,11 +14,12 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_COMPLETED,
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
         HandleFatalError,
         MakeToolInvoker,
     )
+    from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -65,6 +67,7 @@ class AgentEngineResumeMixin:
     _clock: Clock
     _provider: CompletionProvider
     _budget_enforcer: BudgetEnforcer | None
+    _task_engine: TaskEngine | None
     _make_tool_invoker: MakeToolInvoker
     _execute: Execute
     _handle_fatal_error: HandleFatalError
@@ -131,6 +134,7 @@ class AgentEngineResumeMixin:
                 task_id=task_id,
                 note="resuming parked context",
             )
+            await self._resume_from_awaiting_input(task_id, agent_id=agent_id)
             ctx = ctx.with_message(
                 ChatMessage(
                     role=MessageRole.SYSTEM,
@@ -155,6 +159,50 @@ class AgentEngineResumeMixin:
                 effective_autonomy=effective_autonomy,
                 start=start,
                 timeout_seconds=timeout_seconds,
+            )
+
+    async def _resume_from_awaiting_input(
+        self,
+        task_id: str,
+        *,
+        agent_id: str,
+    ) -> None:
+        """Move a clarification-paused task back to IN_PROGRESS.
+
+        A clarification park moves the task to AWAITING_INPUT while it
+        waits for the human's answer; the resumed loop then drives the
+        normal IN_PROGRESS -> IN_REVIEW completion path, which is invalid
+        from AWAITING_INPUT. So the authoritative DB status is read and,
+        when AWAITING_INPUT, transitioned to IN_PROGRESS before the loop
+        re-enters. Best-effort: a task engine is not always wired, and a
+        binary approval park leaves the task IN_PROGRESS (no-op here).
+
+        Raises:
+            MemoryError: Propagated unconditionally (non-recoverable).
+            RecursionError: Propagated unconditionally (non-recoverable).
+        """
+        task_engine = self._task_engine
+        if task_engine is None:
+            return
+        try:
+            current = await task_engine.get_task(task_id)
+            if current is None or current.status != TaskStatus.AWAITING_INPUT:
+                return
+            await task_engine.transition_task(
+                task_id,
+                TaskStatus.IN_PROGRESS,
+                requested_by=agent_id,
+                reason="Human clarification received; resuming execution",
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                APPROVAL_GATE_RESUME_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="AWAITING_INPUT -> IN_PROGRESS transition failed on resume",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _build_resume_runtime(

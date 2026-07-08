@@ -46,7 +46,7 @@ def test_intake_strategy_registered() -> None:
 def test_intake_model_registered() -> None:
     defn = get_registry().get("simulations", "intake_model")
     assert defn is not None
-    assert defn.type is SettingType.STRING
+    assert defn.type is SettingType.MODEL_REF
     assert defn.default is None
     assert defn.read_only_post_init is False
     assert defn.restart_required is False

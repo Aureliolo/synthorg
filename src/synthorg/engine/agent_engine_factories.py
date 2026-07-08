@@ -9,6 +9,7 @@ from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
     registry_with_external_api_tool,
+    registry_with_human_input_tools,
 )
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionLoop
@@ -80,6 +81,8 @@ class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
 
     _approval_store: ApprovalStoreProtocol | None
+    _clarification_enabled: bool
+    _scoping_enabled: bool
     _clock: Clock
     _external_api_runtime: ExternalApiRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
@@ -364,6 +367,14 @@ class AgentEngineFactoriesMixin:
             self._approval_store,
             identity,
             task_id=task_id,
+        )
+        registry = registry_with_human_input_tools(
+            registry,
+            self._approval_store,
+            identity,
+            task_id=task_id,
+            clarification_enabled=self._clarification_enabled,
+            scoping_enabled=self._scoping_enabled,
         )
         registry = registry_with_external_api_tool(
             registry,

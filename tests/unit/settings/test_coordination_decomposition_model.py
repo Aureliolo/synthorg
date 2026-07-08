@@ -41,6 +41,17 @@ def test_decomposition_model_registered_mutable() -> None:
     assert defn.restart_required is False
 
 
+def test_routing_policy_defaults_to_llm_judged() -> None:
+    # The intelligent policy is the shipped default: it asks the
+    # decomposition model whether a brief needs a team (so a whole project
+    # brief decomposes while a one-line fix stays solo), falling back to
+    # the leaf-threshold heuristic on model error.
+    defn = get_registry().get("coordination", "routing_policy")
+    assert defn is not None
+    assert defn.default == "llm-judged"
+    assert "llm-judged" in defn.enum_values
+
+
 async def test_decomposition_model_falls_back_to_default(
     service: SettingsService,
     monkeypatch: pytest.MonkeyPatch,

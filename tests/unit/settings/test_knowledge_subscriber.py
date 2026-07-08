@@ -48,7 +48,6 @@ class TestProtocol:
         watched = _make_subscriber(_make_state()).watched_keys
         for key in (
             "synthesis_model",
-            "synthesis_provider",
             "synthesis_synthesizer",
             "synthesis_max_chunks",
         ):
@@ -88,7 +87,7 @@ class TestRebuild:
         build = AsyncMock()
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("knowledge", "synthesis_provider")
+        await sub.on_settings_changed("knowledge", "synthesis_model")
         build.assert_not_awaited()
 
     async def test_rebuild_failure_propagates(

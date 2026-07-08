@@ -235,7 +235,9 @@ class CharterDispatcher:
             )
             raise
 
-        await self._stamp_approved(charter, forecast, result.task_id, approved_by, now)
+        await self._stamp_approved(
+            charter, forecast, result.task_id, project_id, approved_by, now
+        )
         await self._close_conversation(charter.conversation_id, now)
         logger.info(
             CHARTER_DISPATCHED,
@@ -403,15 +405,21 @@ class CharterDispatcher:
             hard_ceiling=charter.envelope.amount,
         )
 
-    async def _stamp_approved(
+    async def _stamp_approved(  # noqa: PLR0913 -- dispatch provenance columns
         self,
         charter: ProjectCharter,
         forecast: Forecast,
         task_id: NotBlankStr,
+        project_id: NotBlankStr,
         approved_by: NotBlankStr,
         now: datetime,
     ) -> None:
         """CAS the charter to APPROVED with full dispatch provenance.
+
+        Stamps ``project_id`` (the project the run was filed under, existing
+        or freshly created) and clears ``proposed_project_name`` so the
+        charter row records the project it became and the existing-vs-new
+        XOR still holds after approval.
 
         Raises:
             CharterAlreadyDecidedError: Raised on the corresponding failure path.
@@ -426,6 +434,7 @@ class CharterDispatcher:
             forecast_id=forecast.forecast_id,
             correlation_id=charter.conversation_id,
             task_id=task_id,
+            project_id=project_id,
         )
         if not transitioned:
             # A concurrent decider already moved the charter. The run we

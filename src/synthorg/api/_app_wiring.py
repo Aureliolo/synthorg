@@ -381,6 +381,7 @@ async def _build_steering_proposer(
     from synthorg.engine.intervention import (  # noqa: PLC0415
         build_supersession_proposer,
     )
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
     from synthorg.settings.state import (  # noqa: PLC0415
         SettingsStateSlice,
         config_resolver_of,
@@ -398,13 +399,15 @@ async def _build_steering_proposer(
         enabled = await config_resolver_of(app_state).get_bool(
             "cockpit", "steering_proposer_enabled"
         )
-        model = (
-            await settings.get("cockpit", "steering_proposer_model")
-        ).value.strip() or None
+        # ``steering_proposer_model`` is a model-assignment setting storing a
+        # ``ModelRef``: the provider travels with the model (the picker writes
+        # both). An empty ref provider still means "first registered provider".
+        ref = parse_model_ref(
+            (await settings.get("cockpit", "steering_proposer_model")).value
+        )
+        model = ref.model_id.strip() or None
         names = provider_registry.list_providers()
-        configured = (
-            await settings.get("cockpit", "steering_proposer_provider")
-        ).value.strip()
+        configured = ref.provider.strip()
         if configured and configured in names:
             provider = provider_registry.get(configured)
         elif names:

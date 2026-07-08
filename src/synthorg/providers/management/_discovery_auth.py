@@ -95,3 +95,24 @@ def infer_preset_hint(base_url: str) -> str | None:
     if port is None:
         return None
     return PORT_TO_PRESET.get(port)
+
+
+def resolve_discovery_hint(
+    config: ProviderConfig,
+    preset_hint: str | None,
+) -> str | None:
+    """Resolve the preset hint that drives discovery + capability enrichment.
+
+    Prefers an explicit *preset_hint*, then the provider's stored
+    ``preset_name`` (authoritative for a preset-created provider), then the
+    port-based URL heuristic. Preferring the stored preset over URL inference
+    is load-bearing: a hosted provider whose base URL exposes no recognisable
+    port (``ollama-cloud`` at ``ollama.com``) would otherwise fall to the
+    generic family parser instead of enriching under its preset's rules.
+
+    Returns:
+        The resolved preset name, or ``None`` when none applies.
+    """
+    if config.base_url is None:
+        return preset_hint or config.preset_name
+    return preset_hint or config.preset_name or infer_preset_hint(config.base_url)

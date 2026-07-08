@@ -195,12 +195,13 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="chat_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for Chief-of-Staff chat responses. Empty keeps"
-            " the built-in default until setup auto-selects one from your"
-            " provider catalogue; set it to override. Read live per call."
+            "Provider + model for Chief-of-Staff chat responses, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the built-in default until setup auto-selects one"
+            " from your provider catalogue. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
@@ -211,11 +212,12 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="propose_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for the clarify-and-propose turns. Empty keeps"
-            " the built-in default; set it to override. Read live per call."
+            "Provider + model for the clarify-and-propose turns, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the built-in default. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
@@ -226,11 +228,12 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="routing_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for the concern-routing classifier. Empty keeps"
-            " the built-in default; set it to override. Read live per call."
+            "Provider + model for the concern-routing classifier, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the built-in default. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
@@ -241,11 +244,12 @@ _r.register(
     SettingDefinition(
         namespace=_NS,
         key="narrative_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier for the run-narrative prose. Empty keeps the"
-            " built-in default; set it to override. Read live per call."
+            "Provider + model for the run-narrative prose, selected through"
+            " the model picker (a `{provider, model_id}` reference). Empty"
+            " keeps the built-in default. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,

@@ -238,11 +238,11 @@ async def test_board_filing_executes_through_pipeline(
         filing=filing,
     )
 
-    # The spine's intake creates a task; the solo execution path drives
-    # it past ASSIGNED. Read the task store directly: the controller's
-    # 202 ack only returns the correlation id, so we identify the task
-    # by its (single) presence in the engine's listing.
-    all_tasks, _total = await task_engine.list_tasks(project=sid(_INTAKE_PROJECT))
+    # Intake honours the filing's project, so the task lands under the
+    # filing's project, not the intake default. Read the task store
+    # directly: the controller's 202 ack only returns the correlation id,
+    # so we identify the task by its (single) presence in the listing.
+    all_tasks, _total = await task_engine.list_tasks(project=sid(_PROJECT))
     assert len(all_tasks) == 1
     task = all_tasks[0]
     # CREATED means no agent ran; the scripted provider drove the solo
@@ -257,11 +257,11 @@ async def test_board_filing_unknown_project_is_swallowed_by_background_task(
 ) -> None:
     """An unknown project surfaces as a swallowed pipeline failure.
 
-    The spine's projects-phase rejects an unknown project with
-    ``ProjectNotFoundError``. The controller's background
-    coroutine catches non-rejection failures, logs ERROR, and does
-    not propagate (the HTTP 202 was already returned to the caller).
-    No task is created.
+    Intake honours the filing's project and commits the task before the
+    spine's projects-phase runs, so an unknown project leaves an orphan
+    intake task and then rejects with ``ProjectNotFoundError``. The
+    controller's background coroutine catches the rejection, logs ERROR,
+    and does not propagate (the HTTP 202 was already returned).
     """
     sim_state = _sim_state(task_engine)
     app_state = await _build_app_state(
@@ -288,11 +288,11 @@ async def test_board_filing_unknown_project_is_swallowed_by_background_task(
         filing=filing,
     )
 
-    # Intake still ran (creates the task before projects-phase rejects),
-    # but no task lives in the unknown project. The intake-project task
-    # remains because intake commits before the projects phase.
+    # Intake commits the task under the filing's project before the
+    # projects phase rejects it, so the orphan intake task lives under the
+    # unknown project. The pipeline failure was swallowed (no raise above).
     unknown_tasks, _ = await task_engine.list_tasks(project="never-created-project")
-    assert len(unknown_tasks) == 0
+    assert len(unknown_tasks) == 1
 
 
 async def test_board_filing_propagates_memory_error(

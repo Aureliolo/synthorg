@@ -31,5 +31,8 @@ PIPELINE_TASK_MISSING: Final[str] = "pipeline.task.missing"
 PIPELINE_REFINEMENT_REQUESTED: Final[str] = "pipeline.refinement.requested"
 """Team-bound work lacked a definition of done; refinement was opened."""
 
+PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
+"""A decomposed plan was parked for human approval before team dispatch."""
+
 PIPELINE_ENTRY_UNKNOWN_SOURCE: Final[str] = "pipeline.entry.unknown_source"
 """No work-entry adapter is wired for the requested work source."""

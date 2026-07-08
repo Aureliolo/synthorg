@@ -15,6 +15,7 @@ from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.intake.protocol import TaskCreator
+from synthorg.engine.intake.strategies._shared import resolve_request_project
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -191,7 +192,8 @@ class AgentIntake:
 
         try:
             refined = self._refine_requirement(request.requirement, decision)
-            data = self._build_task_data(refined)
+            project = resolve_request_project(request, self._project)
+            data = self._build_task_data(refined, project)
         except ValidationError:
             logger.warning(
                 INTAKE_AGENT_REFINED_INVALID,
@@ -280,13 +282,15 @@ class AgentIntake:
         )
         return type(original).model_validate(payload)
 
-    def _build_task_data(self, requirement: TaskRequirement) -> CreateTaskData:
+    def _build_task_data(
+        self, requirement: TaskRequirement, project: NotBlankStr
+    ) -> CreateTaskData:
         return CreateTaskData(
             title=requirement.title,
             description=requirement.description,
             type=requirement.task_type,
             priority=requirement.priority,
-            project=self._project,
+            project=project,
             created_by=self._requested_by,
             estimated_complexity=requirement.estimated_complexity,
             acceptance_criteria=tuple(

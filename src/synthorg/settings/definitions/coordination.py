@@ -57,18 +57,18 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "LLM model identifier the coordinator's task decomposition"
-            " strategy invokes against the first registered provider."
-            " Required (non-blank) whenever a provider is configured: a"
-            " provider-present boot builds the coordinator eagerly and"
-            " validates this value, raising a startup error when it is"
-            " blank. The empty default forces operators to set a model"
-            " id from their own catalogue. Resolved at boot; a runtime"
-            " change applies on the next coordinator rebuild (provider"
-            " re-init)."
+            "Provider + model the coordinator's task decomposition strategy"
+            " and the llm-judged routing policy invoke. A model reference"
+            " (`{provider, model_id}`) so the model resolves against the"
+            " provider it was selected on, not the first registered one."
+            " Required whenever a provider is configured: a provider-present"
+            " boot builds the coordinator eagerly and validates this value,"
+            " raising a startup error when it is unset. Resolved at boot; a"
+            " runtime change applies on the next coordinator rebuild"
+            " (provider re-init)."
         ),
         group="General",
     )
@@ -79,14 +79,35 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="routing_policy",
         type=SettingType.ENUM,
-        default="leaf-threshold",
+        default="llm-judged",
         enum_values=("leaf-threshold", "always-team", "llm-judged"),
         description=(
-            "Work pipeline solo-vs-team routing policy. 'leaf-threshold'"
-            " (default) classifies small sequential work as single-agent;"
-            " 'always-team' forces the coordinator; 'llm-judged' asks the"
-            " decomposition model. Resolved at boot; a runtime change"
-            " applies on the next pipeline rebuild (provider re-init)."
+            "Work pipeline solo-vs-team routing policy. 'llm-judged'"
+            " (default) asks the decomposition model whether a brief needs"
+            " a team, falling back to the leaf-threshold heuristic on model"
+            " error; 'leaf-threshold' classifies small sequential work as"
+            " single-agent by expected-artifact count; 'always-team' forces"
+            " the coordinator. Resolved at boot; a runtime change applies on"
+            " the next pipeline rebuild (provider re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_approval_required",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Gate splittable team work on human plan approval: when set, the"
+            " coordinator decomposes the brief into a plan and parks it for"
+            " approval before any agent builds; the approved plan is then"
+            " dispatched verbatim (no re-decomposition). Off by default, so"
+            " team work dispatches straight to the coordinator. Applied on the"
+            " next runtime-services rebuild (the gate is attached at boot)."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

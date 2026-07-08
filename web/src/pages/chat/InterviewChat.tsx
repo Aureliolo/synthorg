@@ -40,6 +40,33 @@ function ChatBubble({ message }: { message: InterviewMessage }) {
   )
 }
 
+// Footer status line below the composer: a "still working" cue while a turn
+// is in flight (model calls can run for a minute), then a closed-interview
+// note. Extracted so the main component stays under the complexity cap.
+function InterviewStatusHint({
+  sending,
+  conversationClosed,
+}: {
+  sending: boolean
+  conversationClosed: boolean
+}) {
+  if (sending) {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        The CEO is thinking. This can take up to a minute on slower providers.
+      </p>
+    )
+  }
+  if (conversationClosed) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This interview is closed. Start a new one to draft another charter.
+      </p>
+    )
+  }
+  return null
+}
+
 export function InterviewChat({
   messages,
   sending,
@@ -96,11 +123,10 @@ export function InterviewChat({
             {sending ? 'Sending...' : 'Send'}
           </Button>
         </div>
-        {conversationClosed && (
-          <p className="text-sm text-muted-foreground">
-            This interview is closed. Start a new one to draft another charter.
-          </p>
-        )}
+        <InterviewStatusHint
+          sending={sending}
+          conversationClosed={conversationClosed}
+        />
       </div>
     </SectionCard>
   )

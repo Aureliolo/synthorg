@@ -52,6 +52,7 @@ class ExecutionPath(StrEnum):
     SOLO = "solo"
     TEAM = "team"
     REFINEMENT = "refinement"
+    PLAN_REVIEW = "plan_review"
 
 
 class WorkItem(BaseModel):
@@ -211,6 +212,36 @@ class RefinementHandoff(BaseModel):
     )
 
 
+class PlanReviewHandoff(BaseModel):
+    """A handoff to human plan approval before a team builds.
+
+    Produced when splittable team work is decomposed into a plan (subtask
+    tree) and the org runs with a human plan-approval gate: instead of
+    dispatching the team immediately, the spine parks the plan for review
+    and reports this handoff so the caller can point the human at the
+    approval. Nothing builds until the plan is approved; on approval the
+    exact approved plan is dispatched (no re-decomposition).
+
+    Attributes:
+        approval_id: The parked plan-approval item the human approves.
+        subtask_count: Number of subtasks in the decomposed plan.
+        detail: Human-readable summary of the plan awaiting approval.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approval_id: NotBlankStr = Field(
+        description="The parked plan-approval item to approve",
+    )
+    subtask_count: int = Field(
+        ge=0,
+        description="Number of subtasks in the decomposed plan",
+    )
+    detail: NotBlankStr = Field(
+        description="Human-readable summary of the plan awaiting approval",
+    )
+
+
 class WorkPipelineResult(BaseModel):
     """Terminal result of a single work pipeline run.
 
@@ -228,6 +259,9 @@ class WorkPipelineResult(BaseModel):
         refinement_handoff: Set iff ``execution_path`` is
             ``REFINEMENT`` -- the human-in-the-loop handoff that ran
             instead of team execution.
+        plan_review_handoff: Set iff ``execution_path`` is
+            ``PLAN_REVIEW`` -- the human plan-approval handoff parked
+            instead of dispatching the team.
         is_success: Whether every recorded phase succeeded.
         total_duration_seconds: Total wall-clock duration.
     """
@@ -249,21 +283,25 @@ class WorkPipelineResult(BaseModel):
         default=None,
         description="The refinement handoff (set iff path is REFINEMENT)",
     )
+    plan_review_handoff: PlanReviewHandoff | None = Field(
+        default=None,
+        description="The plan-approval handoff (set iff path is PLAN_REVIEW)",
+    )
     total_duration_seconds: float = Field(
         ge=0.0,
         description="Total wall-clock duration in seconds",
     )
 
     @model_validator(mode="after")
-    def _validate_refinement_path_consistency(self) -> Self:
-        """Ensure ``refinement_handoff`` and ``execution_path`` agree.
+    def _validate_handoff_path_consistency(self) -> Self:
+        """Ensure each handoff and ``execution_path`` agree.
 
         Returns:
-            ``self`` unchanged when the handoff matches the path.
+            ``self`` unchanged when the handoffs match the path.
 
         Raises:
-            ValueError: When a ``REFINEMENT`` path lacks a handoff, or a
-                non-refinement path carries one.
+            ValueError: When a ``REFINEMENT``/``PLAN_REVIEW`` path lacks its
+                handoff, or a path carries a handoff it should not.
         """
         is_refinement = self.execution_path is ExecutionPath.REFINEMENT
         if is_refinement and self.refinement_handoff is None:
@@ -271,6 +309,13 @@ class WorkPipelineResult(BaseModel):
             raise ValueError(msg)
         if not is_refinement and self.refinement_handoff is not None:
             msg = "refinement_handoff is only valid on the REFINEMENT path"
+            raise ValueError(msg)
+        is_plan_review = self.execution_path is ExecutionPath.PLAN_REVIEW
+        if is_plan_review and self.plan_review_handoff is None:
+            msg = "PLAN_REVIEW execution_path requires a plan_review_handoff"
+            raise ValueError(msg)
+        if not is_plan_review and self.plan_review_handoff is not None:
+            msg = "plan_review_handoff is only valid on the PLAN_REVIEW path"
             raise ValueError(msg)
         return self
 

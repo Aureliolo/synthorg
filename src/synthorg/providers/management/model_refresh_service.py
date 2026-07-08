@@ -12,6 +12,7 @@ service free of any upward api import).
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,6 +27,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_MODEL_REFRESH_CYCLE_RAN,
     PROVIDER_MODEL_REFRESH_PROVIDER_FAILED,
     PROVIDER_MODEL_UPGRADE_RECOMMENDED,
+    PROVIDER_MODEL_UPGRADE_SUPERSEDED,
 )
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationFilterSpec,
@@ -48,7 +50,12 @@ logger = get_logger(__name__)
 ApplyHook = Callable[[StoredUpgradeRecommendation], Awaitable[None]]
 """Api-layer callback that reassigns pinned agents for an auto-apply."""
 
+_RecKey = tuple[str, str, str]
+"""``(provider, current_model_id, recommended_model_id)`` recommendation key."""
+
 _PENDING_SCAN_PAGE_SIZE: int = 1_000
+_RECONCILE_ACTOR: str = "reconcile"
+"""System principal stamped on a recommendation retired by a reconcile pass."""
 
 
 class RefreshCycleReport(BaseModel):
@@ -60,6 +67,8 @@ class RefreshCycleReport(BaseModel):
         stale_count: Configured ids flagged stale.
         recommended_count: New recommendations persisted this cycle.
         auto_applied_count: Recommendations auto-applied this cycle.
+        superseded_count: Pending recommendations retired this cycle because
+            the recommender no longer produces them.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -69,6 +78,7 @@ class RefreshCycleReport(BaseModel):
     stale_count: int = Field(default=0, ge=0)
     recommended_count: int = Field(default=0, ge=0)
     auto_applied_count: int = Field(default=0, ge=0)
+    superseded_count: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _applied_within_recommended(self) -> Self:
@@ -159,9 +169,19 @@ class ModelRefreshService:
         setup = await self._load_cycle_inputs()
         if setup is None:
             return RefreshCycleReport()
-        providers, seen_pending, agents = setup
+        providers, pending_rows, agents = setup
+        # A pending row's key can only be re-created once, so dedup against a
+        # mutable set seeded from the snapshot; ``pending_rows`` keeps the ids
+        # for the retirement pass.
+        seen_pending: set[_RecKey] = {key for key, _ in pending_rows}
+        # Group pending rows by provider once so the per-provider retirement
+        # pass reads only its own subset (not a full re-scan per provider) and
+        # the removed-provider cleanup below can find orphaned rows directly.
+        pending_by_provider: dict[str, list[tuple[_RecKey, UUID]]] = {}
+        for key, rec_id in pending_rows:
+            pending_by_provider.setdefault(key[0], []).append((key, rec_id))
 
-        added = stale = recommended = auto_applied = 0
+        added = stale = recommended = auto_applied = superseded = 0
         scanned = 0
         stale_by_provider: list[tuple[str, tuple[str, ...]]] = []
         for provider_name, provider in providers.items():
@@ -181,7 +201,18 @@ class ModelRefreshService:
             stale += len(outcome.stale_ids)
             if outcome.stale_ids:
                 stale_by_provider.append((provider_name, tuple(outcome.stale_ids)))
-            for rec in outcome.recommendations:
+            # Only recommend upgrades for a model an agent actually runs: a rec
+            # whose current model has no pinned agent reassigns nobody on
+            # approve, so the whole catalogue of unused models would otherwise
+            # surface as no-op recommendations. Gating on pinned agents also
+            # drives retirement below -- an existing pending rec whose model
+            # fell out of use is no longer "produced" and gets superseded.
+            usable = [
+                (rec, ids)
+                for rec in outcome.recommendations
+                if (ids := _pinned_agent_ids(agents, rec))
+            ]
+            for rec, agent_ids in usable:
                 key = (
                     rec.provider_name,
                     rec.current_model_id,
@@ -191,7 +222,7 @@ class ModelRefreshService:
                     continue
                 seen_pending.add(key)
                 try:
-                    stored = await self._persist(rec, agents)
+                    stored = await self._persist(rec, agent_ids)
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
@@ -221,6 +252,30 @@ class ModelRefreshService:
                         continue
                     auto_applied += 1
 
+            # Retire this provider's pending rows the recommender no longer
+            # produces (current model removed, or a changed newest-in-family
+            # pick). Guarded on the recommend step having actually run and
+            # succeeded: a failed step or a detect-only pass yields an empty
+            # set that must NOT be read as "retire everything".
+            reconciling = mode is RefreshMode.RECONCILE_RECOMMEND
+            if reconciling and outcome.recommendations_valid:
+                superseded += await self._retire_obsolete(
+                    tuple(rec for rec, _ in usable),
+                    pending_by_provider.get(provider_name, []),
+                )
+
+        # Providers removed from configuration entirely are never visited by
+        # the loop above, so their lingering pending rows would never be
+        # retired. Supersede them here so a stale rec cannot outlive its
+        # provider on the review surface (reconcile passes only).
+        if mode is RefreshMode.RECONCILE_RECOMMEND:
+            for orphan_provider, rows in pending_by_provider.items():
+                if orphan_provider in providers:
+                    continue
+                for _key, rec_id in rows:
+                    if await self._supersede(rec_id):
+                        superseded += 1
+
         await self._alert_stale_models(stale_by_provider)
         report = RefreshCycleReport(
             providers_scanned=scanned,
@@ -228,6 +283,7 @@ class ModelRefreshService:
             stale_count=stale,
             recommended_count=recommended,
             auto_applied_count=auto_applied,
+            superseded_count=superseded,
         )
         logger.info(
             PROVIDER_MODEL_REFRESH_CYCLE_RAN,
@@ -236,8 +292,56 @@ class ModelRefreshService:
             stale_count=stale,
             recommended_count=recommended,
             auto_applied_count=auto_applied,
+            superseded_count=superseded,
         )
         return report
+
+    async def _retire_obsolete(
+        self,
+        recommendations: tuple[UpgradeRecommendation, ...],
+        provider_pending: list[tuple[_RecKey, UUID]],
+    ) -> int:
+        """Supersede a provider's pending rows the recommender no longer produces.
+
+        *recommendations* is the authoritative current set the recommender
+        produced for the provider this cycle; *provider_pending* holds only
+        that provider's pending rows (pre-grouped by the caller). Any pending
+        row whose key is absent from the produced set is obsolete and retired.
+
+        Returns:
+            The number of pending recommendations retired.
+        """
+        produced = {
+            (r.provider_name, r.current_model_id, r.recommended_model_id)
+            for r in recommendations
+        }
+        retired = 0
+        for key, rec_id in provider_pending:
+            if key in produced:
+                continue
+            if await self._supersede(rec_id):
+                retired += 1
+        return retired
+
+    async def _supersede(self, rec_id: UUID) -> bool:
+        """Transition a pending recommendation to ``SUPERSEDED``.
+
+        A lost CAS (already decided by a human, or already retired) is a
+        no-op, so a concurrent approve/reject is never clobbered.
+
+        Returns:
+            ``True`` iff this call moved the row ``PENDING -> SUPERSEDED``.
+        """
+        moved = await self._repo.transition_if(
+            rec_id,
+            from_state=RecommendationStatus.PENDING,
+            to_state=RecommendationStatus.SUPERSEDED,
+            decided_at=self._clock.now(),
+            decided_by=_RECONCILE_ACTOR,
+        )
+        if moved:
+            logger.info(PROVIDER_MODEL_UPGRADE_SUPERSEDED, rec_id=str(rec_id))
+        return moved
 
     async def _alert_stale_models(
         self, stale_by_provider: list[tuple[str, tuple[str, ...]]]
@@ -304,27 +408,27 @@ class ModelRefreshService:
     ) -> (
         tuple[
             Mapping[str, ProviderConfig],
-            set[tuple[str, str, str]],
+            tuple[tuple[_RecKey, UUID], ...],
             tuple[AgentConfig, ...],
         ]
         | None
     ):
         """Fetch the three independent cycle inputs concurrently.
 
-        The provider catalogue, the pending-recommendation dedup set, and
+        The provider catalogue, the pending recommendations (keys + ids), and
         the agent roster are independent reads, so they run in a
         ``TaskGroup``.  A failure in any read aborts the cycle cleanly
         (logged with ``phase="setup"``) rather than surfacing as an
         unattributed per-provider failure.
 
         Returns:
-            ``(providers, seen_pending, agents)`` on success, or ``None``
+            ``(providers, pending_rows, agents)`` on success, or ``None``
             when a setup read failed (the caller returns an empty report).
         """
         try:
             async with asyncio.TaskGroup() as tg:
                 providers_task = tg.create_task(self._mgmt.list_providers())
-                pending_task = tg.create_task(self._existing_pending_keys())
+                pending_task = tg.create_task(self._existing_pending())
                 agents_task = tg.create_task(self._config_resolver.get_agents())
             return (
                 providers_task.result(),
@@ -343,29 +447,35 @@ class ModelRefreshService:
             )
         return None
 
-    async def _existing_pending_keys(self) -> set[tuple[str, str, str]]:
-        """Return keys of pending recommendations to dedup against.
+    async def _existing_pending(self) -> tuple[tuple[_RecKey, UUID], ...]:
+        """Return every pending recommendation's key + id.
 
-        Pages through the full pending set so dedup stays correct beyond a
-        single page; an artificial row cap would silently drop keys and
-        let already-pending recommendations be re-created every cycle.
+        Pages through the full pending set so both dedup and retirement stay
+        correct beyond a single page; an artificial row cap would silently
+        drop keys, re-creating already-pending recommendations and leaving
+        obsolete ones unretired. Rows are returned as ``(key, id)`` pairs
+        (not a key set) so a retiring pass can transition each row by id, and
+        duplicate-key rows are each retired rather than collapsed.
 
         Returns:
-            A set of ``(provider, current_id, recommended_id)`` for every
-            currently-pending recommendation.
+            A tuple of ``((provider, current_id, recommended_id), id)`` for
+            every currently-pending recommendation.
         """
         spec = UpgradeRecommendationFilterSpec(status=RecommendationStatus.PENDING)
-        keys: set[tuple[str, str, str]] = set()
+        rows: list[tuple[_RecKey, UUID]] = []
         offset = 0
         page = await self._repo.query(
             spec, limit=_PENDING_SCAN_PAGE_SIZE, offset=offset
         )
         while page:
-            keys.update(
+            rows.extend(
                 (
-                    row.recommendation.provider_name,
-                    row.recommendation.current_model_id,
-                    row.recommendation.recommended_model_id,
+                    (
+                        row.recommendation.provider_name,
+                        row.recommendation.current_model_id,
+                        row.recommendation.recommended_model_id,
+                    ),
+                    row.id,
                 )
                 for row in page
             )
@@ -375,19 +485,21 @@ class ModelRefreshService:
             page = await self._repo.query(
                 spec, limit=_PENDING_SCAN_PAGE_SIZE, offset=offset
             )
-        return keys
+        return tuple(rows)
 
     async def _persist(
         self,
         rec: UpgradeRecommendation,
-        agents: tuple[AgentConfig, ...],
+        agent_ids: tuple[str, ...],
     ) -> StoredUpgradeRecommendation:
-        """Persist *rec* as a pending recommendation with pinned agents.
+        """Persist *rec* as a pending recommendation with its pinned agents.
+
+        *agent_ids* is the non-empty set of agents pinned to *rec*'s current
+        model (the caller only persists usage-backed recommendations).
 
         Returns:
             The stored recommendation.
         """
-        agent_ids = _pinned_agent_ids(agents, rec)
         stored = StoredUpgradeRecommendation(
             recommendation=rec,
             agent_ids=agent_ids,

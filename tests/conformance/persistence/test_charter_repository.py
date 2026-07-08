@@ -283,6 +283,7 @@ class TestCharterRepository:
             forecast_id=forecast_id,
             correlation_id="conv-1",
             task_id="task-1",
+            project_id="proj-created",
         )
         assert transitioned is True
 
@@ -294,6 +295,31 @@ class TestCharterRepository:
         assert fetched.forecast_id == forecast_id
         assert fetched.correlation_id == "conv-1"
         assert fetched.task_id == "task-1"
+        # Approval binds the run to a project: project_id is stamped and the
+        # proposed name is cleared, so the existing-vs-new XOR still holds.
+        assert fetched.project_id == "proj-created"
+        assert fetched.proposed_project_name is None
+
+    async def test_transition_to_cancelled_preserves_project_binding(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A cancel passes no project_id, so the proposed name is untouched
+        # (the CASE clause only clears it when a project_id is supplied).
+        repo = _repo(backend)
+        await repo.save(_make_charter())
+
+        transitioned = await repo.transition_if(
+            NotBlankStr("charter-1"),
+            CharterStatus.DRAFTED,
+            CharterStatus.CANCELLED,
+            updated_at=_NOW.replace(second=10),
+        )
+        assert transitioned is True
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.project_id is None
+        assert fetched.proposed_project_name == "memory-layer"
 
     async def test_transition_drafted_to_cancelled(
         self, backend: PersistenceBackend

@@ -37,6 +37,7 @@ from synthorg.security.rules.path_traversal_detector import (
 )
 from synthorg.security.rules.policy_validator import PolicyValidator
 from synthorg.security.service import SecOpsService
+from synthorg.tools.base import BaseTool
 from synthorg.tools.external_api._runtime import ExternalApiRuntime
 from synthorg.tools.registry import ToolRegistry
 
@@ -257,6 +258,17 @@ def _warn_disabled_features(cfg: SecurityConfig) -> None:
         )
 
 
+def _registry_with_tool_appended(
+    tool_registry: ToolRegistry, tool: BaseTool
+) -> ToolRegistry:
+    """Return a new registry carrying the existing tools plus *tool*.
+
+    Returns:
+        A :class:`ToolRegistry` with *tool* appended.
+    """
+    return ToolRegistry([*tool_registry.all_tools(), tool])
+
+
 def registry_with_approval_tool(
     tool_registry: ToolRegistry,
     approval_store: ApprovalStoreProtocol | None,
@@ -276,9 +288,6 @@ def registry_with_approval_tool(
     from synthorg.tools.approval_tool import (  # noqa: PLC0415
         RequestHumanApprovalTool,
     )
-    from synthorg.tools.registry import (  # noqa: PLC0415
-        ToolRegistry as _ToolRegistry,
-    )
 
     approval_tool = RequestHumanApprovalTool(
         approval_store=approval_store,
@@ -286,8 +295,101 @@ def registry_with_approval_tool(
         agent_id=str(identity.id),
         task_id=task_id,
     )
-    existing = list(tool_registry.all_tools())
-    return _ToolRegistry([*existing, approval_tool])
+    return _registry_with_tool_appended(tool_registry, approval_tool)
+
+
+def registry_with_clarification_tool(
+    tool_registry: ToolRegistry,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+) -> ToolRegistry:
+    """Add the mid-task clarification tool when clarification is enabled.
+
+    Gated by the caller (``engine.clarification_enabled``); this helper
+    only checks that an approval store is available to persist the parked
+    clarification. Returns the registry unchanged when no store is wired.
+
+    Returns:
+        A :class:`ToolRegistry` with the clarification tool appended when
+        an approval store is configured; the original registry unchanged
+        otherwise.
+    """
+    if approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.clarification_tool import (  # noqa: PLC0415
+        RequestClarificationTool,
+    )
+
+    clarification_tool = RequestClarificationTool(
+        approval_store=approval_store,
+        agent_id=str(identity.id),
+        task_id=task_id,
+    )
+    return _registry_with_tool_appended(tool_registry, clarification_tool)
+
+
+def registry_with_decision_tool(
+    tool_registry: ToolRegistry,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+) -> ToolRegistry:
+    """Add the project-decision tool when scoping is enabled.
+
+    Gated by the caller (``engine.scoping_enabled``); this helper only checks
+    that an approval store is available to persist the parked decision.
+    Returns the registry unchanged when no store is wired.
+
+    Returns:
+        A :class:`ToolRegistry` with the decision tool appended when an
+        approval store is configured; the original registry unchanged
+        otherwise.
+    """
+    if approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.decision_tool import (  # noqa: PLC0415
+        RequestProjectDecisionTool,
+    )
+
+    decision_tool = RequestProjectDecisionTool(
+        approval_store=approval_store,
+        agent_id=str(identity.id),
+        task_id=task_id,
+    )
+    return _registry_with_tool_appended(tool_registry, decision_tool)
+
+
+def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
+    tool_registry: ToolRegistry,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    *,
+    clarification_enabled: bool,
+    scoping_enabled: bool,
+) -> ToolRegistry:
+    """Add the enabled mid-task human-input tools to the registry.
+
+    Composes the clarification and project-decision tools per their gate
+    flags (``engine.clarification_enabled`` / ``engine.scoping_enabled``), so
+    the per-run factory attaches them in one call.
+
+    Returns:
+        The registry extended with whichever human-input tools are enabled.
+    """
+    registry = tool_registry
+    if clarification_enabled:
+        registry = registry_with_clarification_tool(
+            registry, approval_store, identity, task_id
+        )
+    if scoping_enabled:
+        registry = registry_with_decision_tool(
+            registry, approval_store, identity, task_id
+        )
+    return registry
 
 
 def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs

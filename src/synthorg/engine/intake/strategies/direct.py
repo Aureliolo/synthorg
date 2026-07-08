@@ -8,6 +8,7 @@ from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.intake.protocol import TaskCreator
+from synthorg.engine.intake.strategies._shared import resolve_request_project
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_pipeline import (
@@ -51,7 +52,8 @@ class DirectIntake:
             An :class:`IntakeResult` with ``accepted=True`` carrying
             the new task's id; this strategy never rejects.
         """
-        data = self._build_task_data(request.requirement)
+        project = resolve_request_project(request, self._project)
+        data = self._build_task_data(request.requirement, project)
         task = await self._task_engine.create_task(
             data,
             requested_by=self._requested_by,
@@ -66,13 +68,15 @@ class DirectIntake:
             task_id=str(task.id),
         )
 
-    def _build_task_data(self, requirement: TaskRequirement) -> CreateTaskData:
+    def _build_task_data(
+        self, requirement: TaskRequirement, project: NotBlankStr
+    ) -> CreateTaskData:
         return CreateTaskData(
             title=requirement.title,
             description=requirement.description,
             type=requirement.task_type,
             priority=requirement.priority,
-            project=self._project,
+            project=project,
             created_by=self._requested_by,
             estimated_complexity=requirement.estimated_complexity,
             acceptance_criteria=tuple(

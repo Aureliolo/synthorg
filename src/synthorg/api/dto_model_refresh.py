@@ -101,6 +101,13 @@ class RefreshCycleReportDTO(BaseModel):
         ge=0,
         description="Number of recommendations auto-applied within their family.",
     )
+    superseded_count: int = Field(
+        ge=0,
+        description=(
+            "Number of pending recommendations retired during the cycle because "
+            "the recommender no longer produces them."
+        ),
+    )
 
     @classmethod
     def from_report(cls, report: RefreshCycleReport) -> RefreshCycleReportDTO:
@@ -115,6 +122,7 @@ class RefreshCycleReportDTO(BaseModel):
             stale_count=report.stale_count,
             recommended_count=report.recommended_count,
             auto_applied_count=report.auto_applied_count,
+            superseded_count=report.superseded_count,
         )
 
 

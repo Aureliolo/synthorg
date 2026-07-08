@@ -9,6 +9,7 @@ from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.settings.model_ref import parse_model_ref
 
 logger = get_logger(__name__)
 
@@ -120,18 +121,18 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         # the orchestrator falls back to the extractive generator (no LLM
         # cost). Directory mode needs no memory backend, so resolve this
         # regardless of the trajectory source above.
+        # ``fine_tune_query_model`` is a model-assignment setting storing a
+        # ``ModelRef``: the provider travels with the model (the picker writes
+        # both), so the separate provider read is gone.
         query_generator = None
-        query_model = (
+        query_ref = parse_model_ref(
             await resolver.get_str(SettingNamespace.MEMORY, "fine_tune_query_model")
-        ).strip()
+        )
+        query_model = query_ref.model_id.strip()
         if query_model and has_active_provider(app_state):
             registry = provider_registry_of(app_state)
             provider_names = registry.list_providers()
-            provider_name = (
-                await resolver.get_str(
-                    SettingNamespace.MEMORY, "fine_tune_query_provider"
-                )
-            ).strip()
+            provider_name = query_ref.provider.strip()
             provider = None
             if not provider_name:
                 # No explicit choice: default to the first registered provider.
@@ -147,10 +148,11 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
                     API_APP_STARTUP,
                     service="fine_tune_orchestrator",
                     note=(
-                        "fine_tune_query_provider names a provider that is "
-                        "not registered; using the extractive query generator"
+                        "fine_tune_query_model's provider is not registered; "
+                        "using the extractive query generator"
                     ),
-                    fine_tune_query_provider=provider_name,
+                    provider_name=provider_name,
+                    fine_tune_query_model=query_model,
                 )
             if provider is not None:
                 query_generator = build_query_generator(

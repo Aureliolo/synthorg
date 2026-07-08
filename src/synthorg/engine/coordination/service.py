@@ -231,9 +231,33 @@ class MultiAgentCoordinator:
                 soft_limit=soft_limit,
             )
 
+    async def plan_preview(
+        self,
+        context: CoordinationContext,
+    ) -> DecompositionResult:
+        """Decompose the task into a plan WITHOUT routing or dispatching.
+
+        The decompose-only half of the pipeline: it produces the subtask
+        tree a human plan-approval gate surfaces for review before any agent
+        builds. Nothing is routed, dispatched, or persisted to the task tree;
+        the returned :class:`DecompositionResult` is the durable plan the
+        gate serialises and later feeds back to :meth:`coordinate` as
+        ``precomputed_plan`` so the built plan is exactly the approved one.
+
+        Returns:
+            The :class:`DecompositionResult` for the parent task.
+
+        Raises:
+            CoordinationPhaseError: When decomposition fails.
+        """
+        phases: list[CoordinationPhaseResult] = []
+        return await self._phase_decompose(context, phases)
+
     async def coordinate(
         self,
         context: CoordinationContext,
+        *,
+        precomputed_plan: DecompositionResult | None = None,
     ) -> CoordinationResultWithAttribution:
         """Run the full multi-agent coordination pipeline.
 
@@ -249,6 +273,13 @@ class MultiAgentCoordinator:
 
         Args:
             context: Coordination context with task, agents, and config.
+            precomputed_plan: An already-approved :class:`DecompositionResult`
+                (from :meth:`plan_preview`) to dispatch instead of
+                re-decomposing. Supplied by the plan-approval gate on resume
+                so the built plan matches exactly what the human approved; it
+                also marks the plan-review gate as satisfied so dispatch is
+                not re-gated. ``None`` runs the normal decompose-then-dispatch
+                flow.
 
         Returns:
             CoordinationResultWithAttribution wrapping the result
@@ -282,10 +313,30 @@ class MultiAgentCoordinator:
                 mw_ctx = CoordinationMiddlewareContext(
                     coordination_context=context,
                 )
-                mw_ctx = await mw_chain.run_before_decompose(mw_ctx)
+                if precomputed_plan is None:
+                    mw_ctx = await mw_chain.run_before_decompose(mw_ctx)
+                else:
+                    # Resumed dispatch of an approved plan: mark the
+                    # plan-review gate satisfied so ``before_dispatch`` does
+                    # not re-gate an already-approved plan.
+                    mw_ctx = mw_ctx.with_metadata(
+                        "plan_review_approved",
+                        True,  # noqa: FBT003 -- metadata value, not a flag param
+                    )
 
-            # Decompose
-            decomp_result = await self._phase_decompose(context, phases)
+            # Decompose -- skipped on an approved-plan resume: reuse the exact
+            # tree the human approved so the built plan cannot diverge from it.
+            if precomputed_plan is not None:
+                decomp_result = precomputed_plan
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase="decompose",
+                        success=True,
+                        duration_seconds=0.0,
+                    )
+                )
+            else:
+                decomp_result = await self._phase_decompose(context, phases)
 
             # Middleware hook: after_decompose
             if mw_chain is not None:

@@ -16,6 +16,8 @@ from synthorg.api.controllers._conversational_resume import (
     try_conversational_intake_resume,
     try_conversational_invite_resume,
 )
+from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
+from synthorg.api.controllers._project_decision_record import record_project_decision
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
@@ -338,6 +340,10 @@ async def signal_resume_intent(  # noqa: PLR0913
        run / reject a parked work proposal.
     0.5. **Agent invite** (:func:`try_conversational_invite_resume`):
        add / decline an agent-initiated invite on consent.
+    0.7. **Plan approval** (:func:`try_plan_review_resume`):
+       dispatch the parked plan on approval, or cancel the parent task.
+    0.8. **Project decision** (:func:`record_project_decision`):
+       record a project-shaping decision, then fall through.
     1. **Mid-execution parking** (:func:`try_mid_execution_resume`):
        resume a parked context if one exists.
     2. **Review gate** (:func:`try_review_gate_transition`):
@@ -380,6 +386,29 @@ async def signal_resume_intent(  # noqa: PLR0913
         decided_by=decided_by,
     ):
         return
+
+    # Flow 0.7: plan approval. Inert for every non-plan-review approval.
+    # On approval dispatches the exact parked plan; on rejection cancels
+    # the parent task.
+    if await try_plan_review_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+    ):
+        return
+
+    # Flow 0.8: project decision. Records an approved decision:project answer
+    # as a brain DECISION entry, then falls through so the parked agent still
+    # resumes with the choice injected (mid-execution flow below). Never
+    # short-circuits and never raises for a routine miss.
+    await record_project_decision(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+        decision_reason=decision_reason,
+    )
 
     # Flow 1: mid-execution parking.
     handled = await try_mid_execution_resume(

@@ -40,30 +40,15 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.RESEARCH,
-        key="provider",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Name of the registered completion provider used for the"
-            " research pipeline's LLM calls (planning / triage / synthesis)."
-            " Empty selects the first registered provider."
-        ),
-        group="General",
-        level=SettingLevel.ADVANCED,
-        restart_required=False,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.RESEARCH,
         key="model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default="",
         description=(
-            "Model identifier the research pipeline uses for its LLM calls."
-            " Must be set for the research service to be wired; a change"
-            " rebuilds and swaps the service live with no restart."
+            "Provider + model the research pipeline uses for its LLM calls"
+            " (planning / triage / synthesis), selected through the model"
+            " picker (a `{provider, model_id}` reference). Must be set for the"
+            " research service to be wired; a change rebuilds and swaps the"
+            " service live with no restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

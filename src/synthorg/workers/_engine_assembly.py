@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.quality.classifier import StepQualityClassifier
+    from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
@@ -302,6 +303,31 @@ async def _build_stakes_router_or_none(
     )
 
 
+async def _build_auto_review_pipeline_or_none(
+    app_state: AppState,
+) -> ReviewPipeline | None:
+    """Build the auto-review pipeline when the operator has opted in.
+
+    Returns ``None`` unless ``engine.auto_review_on_completion`` is set, so
+    the agent runtime is threaded a pipeline only when auto-review is enabled;
+    absent it, ``apply_post_execution_transitions`` leaves completed work in
+    IN_REVIEW for a human, exactly as before.
+
+    Returns:
+        A default (internal-only) :class:`ReviewPipeline`, or ``None``.
+    """
+    from synthorg.engine.review.factory import (  # noqa: PLC0415
+        build_review_pipeline,
+    )
+
+    enabled = await config_resolver_of(app_state).get_bool(
+        "engine", "auto_review_on_completion"
+    )
+    if not enabled:
+        return None
+    return build_review_pipeline()
+
+
 async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
     """Bridge configured external MCP servers into the boot tool registry.
 
@@ -532,6 +558,14 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         task_engine=task_engine_of(app_state),
         approval_store=require_service(
             app_state.slice(ApprovalStateSlice).store, "Approval Store"
+        ),
+        review_gate=app_state.slice(ApprovalStateSlice).review_gate,
+        review_pipeline=await _build_auto_review_pipeline_or_none(app_state),
+        clarification_enabled=await config_resolver_of(app_state).get_bool(
+            "engine", "clarification_enabled"
+        ),
+        scoping_enabled=await config_resolver_of(app_state).get_bool(
+            "engine", "scoping_enabled"
         ),
         cost_forecast_repo=app_state.slice(BudgetStateSlice).cost_forecast_repo,
         approval_gate=app_state.slice(ApprovalStateSlice).gate,

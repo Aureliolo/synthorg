@@ -20,6 +20,7 @@ from synthorg._core.features import (
     FeatureManifest,
     FeatureModule,
 )
+from synthorg.api.controllers.board import BoardController
 from synthorg.api.controllers.brownfield import BrownfieldController
 from synthorg.api.controllers.decomposition import DecompositionController
 from synthorg.api.controllers.evaluation_config_versions import (
@@ -54,6 +55,7 @@ FEATURE: FeatureModule = FeatureManifest(
         SubworkflowController,
         EvaluationConfigVersionController,
         DecompositionController,
+        BoardController,
         # Mounted unconditionally: their work-entry adapters wire during
         # startup (after route assembly), so a predicate read at mount
         # time would always be False and the controller would never mount
