@@ -78,7 +78,7 @@ kill switch and is best-effort (a resolution failure never fails the meeting).
 
     ```yaml
     conflict_resolution:
-      strategy: "authority"            # authority, debate, human, hybrid
+      strategy: "authority"            # authority, debate, human, hybrid, evidence_weighted
     ```
 
     - Deterministic, zero extra tokens, fast resolution
@@ -170,7 +170,7 @@ kill switch and is best-effort (a resolution failure never fails the meeting).
 
 === "Strategy 5: Evidence-Weighted"
 
-    A deterministic, no-LLM synthesizer
+    A deterministic, no-LLM synthesiser
     (`communication/conflict_resolution/evidence_strategy.py`). Every position
     is scored by the strength of its reasoning (`._evidence.score_position`)
     and the best-supported one wins. Ties break toward the more senior agent,
