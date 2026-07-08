@@ -376,6 +376,11 @@ def _wire_resolver_dependents(app_state: AppState) -> None:
         escalation_notify_subscriber.set_config_resolver(
             config_resolver_of(app_state),
         )
+    conflict_escalation_bridge = communication.conflict_escalation_bridge
+    if conflict_escalation_bridge is not None:
+        conflict_escalation_bridge.set_config_resolver(
+            config_resolver_of(app_state),
+        )
     event_stream_hub = communication.event_stream_hub
     if event_stream_hub is not None:
         event_stream_hub.set_config_resolver(config_resolver_of(app_state))

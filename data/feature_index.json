@@ -322,7 +322,8 @@
         "escalation_processor",
         "escalation_sweeper",
         "escalation_notify_subscriber",
-        "conflict_resolution_service"
+        "conflict_resolution_service",
+        "conflict_escalation_bridge"
       ]
     },
     {
@@ -1379,6 +1380,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-08T08:21:11.470867Z",
+  "generated_at": "2026-07-08T09:47:43.932459Z",
   "schema_version": 1
 }

@@ -177,10 +177,12 @@ decision or a terminal no-winner result on timeout.
 
 Single LLM review call. If the winner matches a participant, auto-resolves. On ambiguity:
 
-- `escalate_on_ambiguity=True`: delegates to `HumanEscalationResolver` (same stub behaviour)
+- `escalate_on_ambiguity=True`: delegates to `HumanEscalationResolver` (persists the escalation row, awaits the operator decision with a bounded timeout)
 - `escalate_on_ambiguity=False`: falls back to `AuthorityResolver`
 
-**Verdict**: Safe. Single LLM call; no loop. Ambiguity handled deterministically.
+An evaluator/provider outage follows the same `escalate_on_ambiguity` branch as an ambiguous verdict, so a failed review never silently drops or auto-decides the conflict.
+
+**Verdict**: Safe. Single LLM call; no loop. Ambiguity and outage both handled deterministically.
 
 ### Complete Fallback Chain
 
@@ -188,8 +190,8 @@ Single LLM review call. If the winner matches a participant, auto-resolves. On a
 flowchart TD
     HR[HybridResolver]
     HR -->|clear winner| RH[RESOLVED_BY_HYBRID]
-    HR -->|ambiguous + escalate_on_ambiguity=True| EH1[ESCALATED_TO_HUMAN stub]
-    HR -->|ambiguous + escalate_on_ambiguity=False| AR1[AuthorityResolver]
+    HR -->|ambiguous or outage + escalate_on_ambiguity=True| EH1[ESCALATED_TO_HUMAN]
+    HR -->|ambiguous or outage + escalate_on_ambiguity=False| AR1[AuthorityResolver]
     AR1 --> RA1[RESOLVED_BY_AUTHORITY]
 
     DR[DebateResolver]
@@ -202,7 +204,7 @@ flowchart TD
     AFB -->|ConflictHierarchyError| SF[seniority-only fallback]
     SF --> RA5[RESOLVED_BY_AUTHORITY no hierarchy]
 
-    HE[HumanEscalationResolver] --> EH2[ESCALATED_TO_HUMAN stub - immediate]
+    HE[HumanEscalationResolver] --> EH2[ESCALATED_TO_HUMAN after operator decision or timeout]
 
     AR[AuthorityResolver]
     AR -->|common manager found| RA3[RESOLVED_BY_AUTHORITY]

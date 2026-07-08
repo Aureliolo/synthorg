@@ -20,6 +20,7 @@ from synthorg.engine.prompt_safety import (
     TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
+    TAG_CONFLICT_POSITION,
     TAG_CRITERIA_JSON,
     TAG_KNOWLEDGE,
     TAG_LIVING_DOC,
@@ -86,6 +87,7 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_LIVING_DOC,
     TAG_BRAIN_STATE,
     TAG_KNOWLEDGE,
+    TAG_CONFLICT_POSITION,
 )
 
 # Import-time guard: every fence tag in the prompt-safety registry must

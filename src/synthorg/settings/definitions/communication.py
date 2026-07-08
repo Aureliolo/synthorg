@@ -349,7 +349,7 @@ _r.register(
 # visibility; applied at protocol construction so changes take effect
 # on next restart.
 
-# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+# ── Kill switches ────────────────────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -366,7 +366,23 @@ _r.register(
     )
 )
 
-# ── Escalation queue + sweeper (CFG-1 audit) ─────────────────────
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="meeting_conflict_escalation_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Kill switch for feeding meeting-detected conflicts into the"
+            " conflict-resolution service. Disable to pause the"
+            " meeting-to-conflict-resolution bridge without touching the"
+            " meetings or escalation-queue subsystems."
+        ),
+        group="Meetings",
+    )
+)
+
+# ── Escalation queue + sweeper ───────────────────────────────────
 
 _r.register(
     SettingDefinition(

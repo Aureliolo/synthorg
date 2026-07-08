@@ -5,10 +5,47 @@ from collections import Counter
 from typing import NoReturn
 
 from synthorg.communication.meeting.errors import MeetingParticipantError
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.meeting import MEETING_VALIDATION_FAILED
+from synthorg.communication.meeting.models import MeetingMinutes
+from synthorg.communication.meeting.protocol import ConflictEscalationHook
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
+from synthorg.observability.events.meeting import (
+    MEETING_CONFLICT_ESCALATION_FAILED,
+    MEETING_VALIDATION_FAILED,
+)
 
 logger = get_logger(__name__)
+
+
+async def run_conflict_escalation_hook(
+    hook: ConflictEscalationHook | None,
+    minutes: MeetingMinutes,
+    *,
+    meeting_id: str,
+) -> None:
+    """Run the post-meeting conflict-escalation hook, contained.
+
+    The hook contract is best-effort (it contains its own failures); this
+    guard is defence in depth so even a misbehaving hook cannot turn an
+    already-completed meeting into an unhandled failure. Only
+    ``MemoryError``/``RecursionError`` propagate.
+    """
+    if hook is None:
+        return
+    try:
+        await hook(minutes)
+    except Exception as exc:  # noqa: BLE001 -- a hook must never sink a meeting
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger,
+            MEETING_CONFLICT_ESCALATION_FAILED,
+            exc,
+            meeting_id=meeting_id,
+        )
 
 
 def _fail_participant(

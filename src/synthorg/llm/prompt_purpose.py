@@ -51,6 +51,7 @@ class PromptPurposeCategory(StrEnum):
     HR = "hr"
     CLIENT = "client"
     PROVIDER = "providers"
+    COMMUNICATION = "communication"
 
 
 class PromptPurposeId(StrEnum):
@@ -114,6 +115,8 @@ class PromptPurposeId(StrEnum):
     CLIENT_REQUIREMENT_GENERATOR = "system:client:requirement_generator"
 
     PROVIDERS_TEST_CONNECTION = "system:providers:test_connection"
+
+    CONFLICT_JUDGE = "system:conflict:judge"
 
 
 class PromptPurpose(BaseModel):
@@ -436,6 +439,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.PROVIDERS_TEST_CONNECTION,
         PromptPurposeCategory.PROVIDER,
         "Probe a provider connection with a minimal completion.",
+    ),
+    (
+        PromptPurposeId.CONFLICT_JUDGE,
+        PromptPurposeCategory.COMMUNICATION,
+        "Judge which agent position wins a multi-agent conflict.",
     ),
 )
 

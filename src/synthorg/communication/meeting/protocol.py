@@ -36,6 +36,18 @@ Used by the orchestrator to optionally create tasks from extracted
 action items.
 """
 
+ConflictEscalationHook = Callable[[MeetingMinutes], Awaitable[None]]
+"""Best-effort post-meeting conflict-resolution hook.
+
+Signature: ``(minutes) -> None`` (awaited)
+
+Invoked by the orchestrator after a completed meeting so a detected
+conflict can be fed into the conflict-resolution service. It MUST NOT
+raise: the orchestrator awaits it with no surrounding ``try/except``, so
+an escaping exception would turn a completed meeting into an unhandled
+failure. Implementations own their own error containment.
+"""
+
 
 @runtime_checkable
 class ConflictDetector(Protocol):

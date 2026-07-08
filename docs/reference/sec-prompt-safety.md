@@ -16,6 +16,8 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 
 ### Standard tags
 
+The authoritative registry is `ALL_FENCE_TAGS` in `engine/prompt_safety.py` (auto-derived from the `TAG_*` constants); the list below mirrors it.
+
 - `TAG_TASK_DATA`
 - `TAG_TASK_FACT`
 - `TAG_UNTRUSTED_ARTIFACT`
@@ -26,6 +28,11 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `TAG_CRITERIA_JSON`
 - `TAG_PEER_CONTRIBUTION`
 - `TAG_MEMORY_ENTRY`
+- `TAG_RESEARCH_SOURCE`
+- `TAG_LIVING_DOC`
+- `TAG_BRAIN_STATE`
+- `TAG_KNOWLEDGE`
+- `TAG_CONFLICT_POSITION`
 
 ### Fence breakout protection
 

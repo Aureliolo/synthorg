@@ -25,6 +25,10 @@ CONFLICT_DEBATE_EVALUATOR_FAILED: Final[str] = "conflict.debate.evaluator_failed
 CONFLICT_HYBRID_REVIEW: Final[str] = "conflict.hybrid.review"
 CONFLICT_HYBRID_AUTO_RESOLVED: Final[str] = "conflict.hybrid.auto_resolved"
 
+# LLM judge (JudgeEvaluator implementation)
+CONFLICT_JUDGE_EVALUATED: Final[str] = "conflict.judge.evaluated"
+CONFLICT_JUDGE_OUTPUT_INVALID: Final[str] = "conflict.judge.output_invalid"
+
 # Human escalation
 CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"
 CONFLICT_ESCALATION_RESOLVED: Final[str] = "conflict.escalation.resolved"

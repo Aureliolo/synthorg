@@ -70,6 +70,7 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:evolution:propose` | Propose an evolution to an agent's behaviour. |
 | `system:workspace` | Answer a semantic query over a task workspace. |
 | `system:verification` | Grade a deliverable against quality criteria. |
+| `system:conflict:judge` | Judge which agent position wins a multi-agent conflict. |
 
 ### Large (`example-large-001`)
 
