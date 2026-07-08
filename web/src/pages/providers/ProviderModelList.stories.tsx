@@ -10,6 +10,7 @@ const models: ProviderModelResponse[] = [
     alias: 'large',
     cost_per_1k_input: 0.015,
     cost_per_1k_output: 0.075,
+    cost_per_image: null,
     currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 1500,
@@ -20,6 +21,7 @@ const models: ProviderModelResponse[] = [
     supports_streaming: true,
     supports_embeddings: false,
     supports_reasoning: false,
+    supports_image_generation: false,
     family: null,
     stale: null,
   },
@@ -28,6 +30,7 @@ const models: ProviderModelResponse[] = [
     alias: 'medium',
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
+    cost_per_image: null,
     currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 500,
@@ -38,6 +41,7 @@ const models: ProviderModelResponse[] = [
     supports_streaming: true,
     supports_embeddings: false,
     supports_reasoning: false,
+    supports_image_generation: false,
     family: null,
     stale: null,
   },
@@ -46,6 +50,7 @@ const models: ProviderModelResponse[] = [
     alias: 'small',
     cost_per_1k_input: 0.0008,
     cost_per_1k_output: 0.004,
+    cost_per_image: null,
     currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: 200,
@@ -56,6 +61,7 @@ const models: ProviderModelResponse[] = [
     supports_streaming: true,
     supports_embeddings: false,
     supports_reasoning: false,
+    supports_image_generation: false,
     family: null,
     stale: null,
   },
@@ -75,9 +81,11 @@ export const Default: Story = { args: { models } }
 
 export const AllCapabilities: Story = {
   args: {
-    // Explicit override: models[0] ships reasoning off, so reuse would skip the
-    // reasoning badge this fixture exists to showcase.
-    models: [{ ...models[0]!, supports_reasoning: true }],
+    // Explicit override: models[0] ships reasoning + image generation off, so
+    // reuse would skip the badges this fixture exists to showcase.
+    models: [
+      { ...models[0]!, supports_reasoning: true, supports_image_generation: true },
+    ],
   },
 }
 
@@ -88,6 +96,7 @@ export const NoCapabilities: Story = {
       alias: 'local-small',
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
+      cost_per_image: null,
       currency: DEFAULT_CURRENCY,
       max_context: 128000,
       estimated_latency_ms: null,
@@ -98,6 +107,7 @@ export const NoCapabilities: Story = {
       supports_streaming: false,
       supports_embeddings: false,
       supports_reasoning: false,
+      supports_image_generation: false,
       family: null,
       stale: null,
     }],

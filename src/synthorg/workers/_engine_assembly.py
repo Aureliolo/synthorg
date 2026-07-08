@@ -61,6 +61,7 @@ from synthorg.workers._agent_middleware_assembly import (
     build_agent_middleware_chain_or_none,
 )
 from synthorg.workers._classification_assembly import build_classification
+from synthorg.workers._image_provider_wiring import build_image_provider_or_none
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -116,17 +117,10 @@ async def _build_tool_registry(
         exist_ok=True,
     )
     resolver = config_resolver_of(app_state)
-    web_request_timeout = await resolver.get_float(
-        _WEB_TIMEOUT_NS,
-        _WEB_TIMEOUT_KEY,
-    )
-    git_log_max_count = await resolver.get_int(
-        _TOOLS_NS,
-        _GIT_LOG_MAX_COUNT_KEY,
-    )
+    web_request_timeout = await resolver.get_float(_WEB_TIMEOUT_NS, _WEB_TIMEOUT_KEY)
+    git_log_max_count = await resolver.get_int(_TOOLS_NS, _GIT_LOG_MAX_COUNT_KEY)
     code_runner_output_tail_limit = await resolver.get_int(
-        _TOOLS_NS,
-        _CODE_RUNNER_OUTPUT_TAIL_KEY,
+        _TOOLS_NS, _CODE_RUNNER_OUTPUT_TAIL_KEY
     )
     from synthorg.tools.browser._settings import (  # noqa: PLC0415
         resolve_browser_settings,
@@ -149,6 +143,7 @@ async def _build_tool_registry(
         workspace=workspace_root,
         lifecycle_strategy=lifecycle_strategy,
     )
+    image_provider = await build_image_provider_or_none(app_state)
     default_tools = build_default_tools_from_config(
         workspace=workspace_root,
         config=app_state.config,
@@ -159,6 +154,7 @@ async def _build_tool_registry(
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),
+        image_provider=image_provider,
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

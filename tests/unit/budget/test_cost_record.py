@@ -167,7 +167,7 @@ class TestCostRecord:
             )
 
     def test_positive_cost_with_zero_tokens_rejected(self) -> None:
-        """Reject positive cost with zero tokens."""
+        """Reject positive cost with zero tokens for token-priced calls."""
         with pytest.raises(ValidationError, match="both token counts are zero"):
             CostRecord(
                 agent_id="agent-1",
@@ -180,6 +180,25 @@ class TestCostRecord:
                 currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
+
+    def test_image_generation_positive_cost_zero_tokens_accepted(self) -> None:
+        """Accept positive cost with zero tokens for per-image billing."""
+        from synthorg.budget.call_category import LLMCallCategory
+
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="image-model",
+            input_tokens=0,
+            output_tokens=0,
+            cost=0.04,
+            currency="EUR",
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            call_category=LLMCallCategory.IMAGE_GENERATION,
+        )
+        assert record.cost == pytest.approx(0.04)
+        assert record.call_category is LLMCallCategory.IMAGE_GENERATION
 
     def test_zero_cost_with_tokens_accepted(self) -> None:
         """Accept zero cost with tokens (free tier / test)."""

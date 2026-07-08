@@ -22,6 +22,12 @@ template:
     - "reviewer"
   posture: "supervised_client_facing"
 
+  # Creative / design agency: enable the design tools (diagram + asset
+  # management) so agents can produce visual deliverables. Image generation
+  # additionally requires the design.image_model setting + an image-capable
+  # provider (off by default).
+  design_tools: {}
+
   variables:
     - name: "wip_limit"
       description: "Work-in-progress limit per column"

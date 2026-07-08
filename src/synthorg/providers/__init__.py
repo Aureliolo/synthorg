@@ -38,9 +38,15 @@ from .errors import (
     ModelNotFoundError,
     ProviderConnectionError,
     ProviderError,
+    ProviderImageGenerationUnsupportedError,
     ProviderInternalError,
     ProviderTimeoutError,
     RateLimitError,
+)
+from .image_models import (
+    GeneratedImage,
+    ImageGenerationConfig,
+    ImageGenerationResponse,
 )
 from .models import (
     ZERO_TOKEN_USAGE,
@@ -116,6 +122,9 @@ __all__ = [
     "DriverFactoryNotFoundError",
     "DriverNotRegisteredError",
     "FastestStrategy",
+    "GeneratedImage",
+    "ImageGenerationConfig",
+    "ImageGenerationResponse",
     "InvalidRequestError",
     "LiteLLMDriver",
     "ManualStrategy",
@@ -130,6 +139,7 @@ __all__ = [
     "PatternRedactor",
     "ProviderConnectionError",
     "ProviderError",
+    "ProviderImageGenerationUnsupportedError",
     "ProviderInternalError",
     "ProviderRegistry",
     "ProviderTimeoutError",

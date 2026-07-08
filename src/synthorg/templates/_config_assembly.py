@@ -193,6 +193,10 @@ def _build_config_dict(  # noqa: PLR0913
 
     _attach_optional_lists(rendered_data, result)
 
+    design_tools = rendered_data.get("design_tools")
+    if isinstance(design_tools, dict):
+        result["design_tools"] = design_tools
+
     return result
 
 

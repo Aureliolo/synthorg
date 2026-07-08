@@ -168,6 +168,21 @@ _OPENAI = CloudPreset(
                 metadata_source="preset",
             ),
         ),
+        ProviderModelConfig(
+            # Image-output model: billed per image, not per token, so
+            # ``max_context`` is nominal and ``cost_per_image`` carries the
+            # price (operator-tunable, like the token costs).
+            id="gpt-image-1",
+            alias="gpt-image",
+            cost_per_image=0.04,
+            max_context=1,
+            metadata=ModelMetadata(
+                supports_image_generation=True,
+                family="gpt-image",
+                generation=1.0,
+                metadata_source="preset",
+            ),
+        ),
     ),
 )
 
@@ -208,6 +223,19 @@ _GEMINI = CloudPreset(
                 max_output_tokens=65_536,
                 family="gemini-flash",
                 generation=2.5,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            # Image-output model: billed per image (nominal ``max_context``).
+            id="imagen-4.0-generate-001",
+            alias="imagen",
+            cost_per_image=0.04,
+            max_context=1,
+            metadata=ModelMetadata(
+                supports_image_generation=True,
+                family="imagen",
+                generation=4.0,
                 metadata_source="preset",
             ),
         ),

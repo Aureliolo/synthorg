@@ -7,9 +7,10 @@ inject a provider at construction time.
 
 import asyncio
 import base64
+import hashlib
 from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
@@ -24,8 +25,14 @@ from synthorg.observability.events.design import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import ImageGeneratorArgs
+from synthorg.tools.design.asset_store import (
+    DesignAssetStore,
+    InMemoryDesignAssetStore,
+)
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig
+
+_ASSET_ID_HASH_LEN: Final[int] = 16
 
 logger = get_logger(__name__)
 _DEFAULT_WIDTH: Final[int] = 1024
@@ -105,6 +112,7 @@ class ImageGeneratorTool(BaseDesignTool):
         *,
         provider: ImageProvider | None = None,
         config: DesignToolsConfig | None = None,
+        store: DesignAssetStore | None = None,
     ) -> None:
         """Initialize the image generator tool.
 
@@ -113,6 +121,9 @@ class ImageGeneratorTool(BaseDesignTool):
                 ``execute`` return a configuration error.
             config: Design tool configuration with prompt-length and
                 size caps. ``None`` falls back to defaults.
+            store: Asset store the generated image is persisted to.
+                ``None`` uses an in-memory store; the factory injects a
+                durable filesystem store when ``asset_storage_path`` is set.
         """
         super().__init__(
             name="image_generator",
@@ -124,6 +135,9 @@ class ImageGeneratorTool(BaseDesignTool):
             config=config,
         )
         self._provider = provider
+        self._store: DesignAssetStore = (
+            store if store is not None else InMemoryDesignAssetStore()
+        )
 
     @override
     async def execute(
@@ -236,8 +250,31 @@ class ImageGeneratorTool(BaseDesignTool):
                 is_error=True,
             )
 
+        digest = hashlib.sha256(decoded_bytes).hexdigest()[:_ASSET_ID_HASH_LEN]
+        asset_id = f"img-{digest}"
+        asset_metadata: dict[str, JsonValue] = {
+            "type": "image",
+            "content_type": result.content_type,
+            "width": result.width,
+            "height": result.height,
+            "size_bytes": byte_size,
+            "prompt": prompt,
+            "style": style,
+            "tags": ["image", style],
+        }
+        # Content write can be large, so keep it off the event loop; the
+        # metadata registration is a small in-process/JSON write.
+        await asyncio.to_thread(
+            self._store.save_content,
+            asset_id,
+            decoded_bytes,
+            content_type=result.content_type,
+        )
+        self._store.register(asset_id, asset_metadata)
+
         logger.info(
             DESIGN_IMAGE_GENERATION_SUCCESS,
+            asset_id=asset_id,
             width=result.width,
             height=result.height,
             content_type=result.content_type,
@@ -247,14 +284,17 @@ class ImageGeneratorTool(BaseDesignTool):
         return ToolExecutionResult(
             content=(
                 f"Image generated successfully.\n"
+                f"Asset ID: {asset_id}\n"
                 f"Dimensions: {result.width}x{result.height}\n"
                 f"Type: {result.content_type}\n"
-                f"Data length: {len(result.data)} chars (base64)"
+                f"Size: {byte_size} bytes"
             ),
             metadata={
+                "asset_id": asset_id,
                 "data": result.data,
                 "content_type": result.content_type,
                 "width": result.width,
                 "height": result.height,
+                "size_bytes": byte_size,
             },
         )

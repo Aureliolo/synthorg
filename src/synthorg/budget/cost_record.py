@@ -16,6 +16,13 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
 
+_NON_TOKEN_BILLED_CATEGORIES: frozenset[LLMCallCategory] = frozenset(
+    {LLMCallCategory.IMAGE_GENERATION},
+)
+"""Call categories billed per output rather than per token, for which a
+positive cost with zero token counts is legitimate (not a mis-populated
+record)."""
+
 
 def _new_claim_id() -> NotBlankStr:
     """Generate a fresh per-record idempotency key (UUID4 string).
@@ -59,7 +66,7 @@ class CostRecord(BaseModel):
             drift from the allowlist or privilege a specific region.
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
-            coordination, system, embedding).
+            coordination, system, embedding, image_generation).
         accuracy_effort_ratio: Accuracy-effort ratio for the task
             this call belongs to (populated at task completion when
             quality signals are available, ``None`` otherwise).
@@ -102,7 +109,10 @@ class CostRecord(BaseModel):
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(
         default=None,
-        description="LLM call category (productive, coordination, system, embedding)",
+        description=(
+            "LLM call category (productive, coordination, system, "
+            "embedding, image_generation)"
+        ),
     )
     accuracy_effort_ratio: float | None = Field(
         default=None,
@@ -153,13 +163,23 @@ class CostRecord(BaseModel):
     def _validate_token_consistency(self) -> Self:
         """Ensure positive cost implies at least one non-zero token count.
 
+        Exempts non-token-billed modalities (currently image generation),
+        which legitimately charge per output (per image) with zero token
+        counts; for token-priced calls a positive cost with no tokens is a
+        mis-populated record.
+
         Returns:
             Result of type ``Self``.
 
         Raises:
             ValueError: If an argument fails domain validation.
         """
-        if self.cost > 0 and self.input_tokens == 0 and self.output_tokens == 0:
+        if (
+            self.cost > 0
+            and self.input_tokens == 0
+            and self.output_tokens == 0
+            and self.call_category not in _NON_TOKEN_BILLED_CATEGORIES
+        ):
             msg = "cost is positive but both token counts are zero"
             raise ValueError(msg)
         return self

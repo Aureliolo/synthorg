@@ -472,20 +472,21 @@ async def emit_cost_record_from_context(
     )
 
 
-def _build_cost_record_from_usage(
+def _build_cost_record_from_usage(  # noqa: PLR0913 -- keyword-only record fields
     ctx: CostRecordingContext,
     usage: TokenUsage,
     *,
     model: str,
     provider: str,
     finish_reason: FinishReason,
+    call_category: LLMCallCategory | None = None,
 ) -> CostRecord:
-    """Construct a CostRecord directly from a terminal stream usage chunk.
+    """Construct a CostRecord from a bare usage record.
 
-    Streaming responses surface token counts on the terminal
-    ``StreamEventType.USAGE`` chunk rather than a full
-    :class:`CompletionResponse`, and carry no ``_synthorg_*`` provider
-    metadata, so latency / cache / retry default to absent.
+    Used by the streaming path (terminal ``USAGE`` chunk) and the
+    image-generation path (per-image cost, zero tokens). ``call_category``
+    overrides ``ctx.call_category`` so a non-token modality is categorised
+    on the record regardless of the ambient scope.
 
     Returns:
         A ``CostRecord`` populated from the active context + usage.
@@ -502,7 +503,7 @@ def _build_cost_record_from_usage(
         cost=usage.cost,
         currency=ctx.currency,
         timestamp=datetime.now(UTC),
-        call_category=ctx.call_category,
+        call_category=call_category if call_category is not None else ctx.call_category,
         latency_ms=None,
         cache_hit=None,
         retry_count=None,
@@ -512,30 +513,23 @@ def _build_cost_record_from_usage(
     )
 
 
-async def emit_cost_record_from_usage(
+async def emit_cost_record_from_usage(  # noqa: PLR0913 -- keyword-only record fields
     ctx: CostRecordingContext,
     usage: TokenUsage,
     *,
     model: str,
     provider: str,
     finish_reason: FinishReason = FinishReason.STOP,
+    call_category: LLMCallCategory | None = None,
 ) -> None:
-    """Build and submit a CostRecord from a terminal stream usage chunk.
+    """Build and submit a CostRecord from a bare usage record.
 
-    The streaming counterpart to :func:`emit_cost_record_from_context`: a
-    completed stream surfaces its token counts on the terminal ``USAGE``
-    chunk, so cost is recorded from that usage. Zero-usage and
-    failure-handling semantics mirror the completion path (skip free
-    no-ops; log + swallow recording failures off the response path).
-    ``MemoryError`` / ``RecursionError`` propagate.
-
-    Args:
-        ctx: Active recording context.
-        usage: Token usage from the stream's terminal USAGE chunk.
-        model: Model identifier for the call.
-        provider: Provider label resolved by the base class.
-        finish_reason: Terminal finish reason; streams carry none
-            per-chunk, so a cleanly-drained stream defaults to ``STOP``.
+    The counterpart to :func:`emit_cost_record_from_context` for callers
+    holding only a :class:`TokenUsage`: the streaming path (terminal
+    ``USAGE`` chunk) and the image-generation path (per-image cost).
+    Zero-usage and failure-handling semantics mirror the completion path.
+    ``call_category`` overrides ``ctx.call_category`` on the record (e.g.
+    ``IMAGE_GENERATION``). ``MemoryError`` / ``RecursionError`` propagate.
     """
     await _skip_build_and_submit(
         ctx,
@@ -543,7 +537,12 @@ async def emit_cost_record_from_usage(
         model=model,
         provider=provider,
         build=lambda: _build_cost_record_from_usage(
-            ctx, usage, model=model, provider=provider, finish_reason=finish_reason
+            ctx,
+            usage,
+            model=model,
+            provider=provider,
+            finish_reason=finish_reason,
+            call_category=call_category,
         ),
     )
 

@@ -22,6 +22,7 @@ def _config(  # noqa: PLR0913 -- keyword-only test factory
     vision: bool = False,
     reasoning: bool = False,
     embeddings: bool = False,
+    image_generation: bool = False,
     max_context: int = 8192,
 ) -> ProviderModelConfig:
     return ProviderModelConfig(
@@ -33,6 +34,7 @@ def _config(  # noqa: PLR0913 -- keyword-only test factory
             supports_vision=vision,
             supports_reasoning=reasoning,
             supports_embeddings=embeddings,
+            supports_image_generation=image_generation,
         ),
     )
 
@@ -76,3 +78,34 @@ def test_max_output_tokens_clamped_to_context() -> None:
     # The fallback output cap must never exceed the model's context window.
     caps = _ollama_caps(_config("small", max_context=1024))
     assert caps.max_output_tokens <= 1024
+
+
+def test_ollama_image_generation_flag_from_metadata() -> None:
+    caps = _ollama_caps(_config("local-image-001", image_generation=True))
+    assert caps.supports_image_generation is True
+
+
+def test_chat_model_is_not_image_generation() -> None:
+    assert _ollama_caps(_config("llama3:8b")).supports_image_generation is False
+
+
+def test_image_generation_detected_by_litellm_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A hosted image model is stamped ``mode="image_generation"`` in LiteLLM's
+    # static DB; the flag flows through even when the persisted metadata omits it.
+    def _fake_info(model: str) -> dict[str, object]:
+        assert model
+        return {"mode": "image_generation"}
+
+    monkeypatch.setattr(
+        "synthorg.providers.drivers.litellm_capabilities.get_litellm_model_info",
+        _fake_info,
+    )
+    caps = build_capabilities(
+        _config("hosted-image-001"),
+        routing_key="example-provider",
+        provider_name="example-provider",
+        fallback_max_output_tokens=2048,
+    )
+    assert caps.supports_image_generation is True

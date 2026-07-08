@@ -50,6 +50,11 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
             show: model.supports_vision,
             className: 'bg-warning/15 text-warning',
           },
+          {
+            label: 'image',
+            show: model.supports_image_generation,
+            className: 'bg-primary/15 text-primary',
+          },
         ]
 
   const visible = badges.filter((b) => b.show)

@@ -9,6 +9,7 @@ const baseModel: ProviderModelResponse = {
   alias: 'local-7b',
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
+  cost_per_image: null,
   currency: DEFAULT_CURRENCY,
   max_context: 4096,
   estimated_latency_ms: null,
@@ -19,6 +20,7 @@ const baseModel: ProviderModelResponse = {
   supports_streaming: true,
   supports_embeddings: false,
   supports_reasoning: false,
+  supports_image_generation: false,
   family: null,
   stale: null,
 }

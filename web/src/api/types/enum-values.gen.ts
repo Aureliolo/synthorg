@@ -518,6 +518,7 @@ export const LLM_CALL_CATEGORY_VALUES = [
     'coordination',
     'system',
     'embedding',
+    'image_generation',
 ] as const
 export type LLMCallCategory = (typeof LLM_CALL_CATEGORY_VALUES)[number]
 
@@ -887,6 +888,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'appearance',
     'org_chart',
     'dashboard',
+    'design',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 

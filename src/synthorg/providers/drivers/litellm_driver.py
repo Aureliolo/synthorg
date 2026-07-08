@@ -68,6 +68,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+from synthorg.providers.drivers.litellm_image import generate_image_via_litellm
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
@@ -84,6 +85,11 @@ from synthorg.providers.drivers.litellm_tool_accumulator import (
     emit_pending_tool_calls,
 )
 from synthorg.providers.enums import AuthType, StreamEventType
+from synthorg.providers.image_generation import ImageGenerationMixin
+from synthorg.providers.image_models import (
+    ImageGenerationConfig,
+    ImageGenerationResponse,
+)
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -135,7 +141,7 @@ _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...]
 )
 
 
-class LiteLLMDriver(BaseCompletionProvider):
+class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     """Completion driver backed by LiteLLM.
 
     Uses ``litellm.acompletion`` for both streaming and non-streaming
@@ -368,6 +374,39 @@ class LiteLLMDriver(BaseCompletionProvider):
                 msg, context={"provider": self._provider_name, "model": model}
             )
         return self._wrap_stream(raw_stream, model, model_config)
+
+    @override
+    async def _do_generate_image(
+        self,
+        prompt: str,
+        model: str,
+        *,
+        config: ImageGenerationConfig | None = None,
+    ) -> ImageGenerationResponse:
+        """Call ``litellm.aimage_generation`` and map the response.
+
+        Returns:
+            An ``ImageGenerationResponse`` mapped from LiteLLM's
+            ``ImageResponse`` (base64 payloads decoded per image).
+
+        Raises:
+            ProviderError: A provider error (re-raised directly, or mapped
+                from a non-provider exception via ``_map_exception``).
+        """
+        await self._ensure_credentials_resolved()
+        model_config = self._resolve_model(model)
+        return await generate_image_via_litellm(
+            map_exception=self._map_exception,
+            provider_config=self._config,
+            resolved_credentials=self._resolved_credentials,
+            catalog_present=self._connection_catalog is not None,
+            provider_name=self._provider_name,
+            routing_key=self._routing_key,
+            model=model,
+            model_config=model_config,
+            prompt=prompt,
+            config=config,
+        )
 
     @override
     async def _do_get_model_capabilities(

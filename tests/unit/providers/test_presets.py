@@ -80,6 +80,45 @@ class TestProviderPresets:
         names = [p.name for p in PROVIDER_PRESETS]
         assert len(names) == len(set(names))
 
+    @pytest.mark.parametrize(
+        ("provider", "model_id"),
+        [
+            ("openai", "gpt-image-1"),
+            ("gemini", "imagen-4.0-generate-001"),
+        ],
+    )
+    def test_preset_ships_an_image_model(self, provider: str, model_id: str) -> None:
+        preset = get_preset(provider)
+        assert preset is not None
+        image_models = [
+            m
+            for m in default_models_for(preset)
+            if m.metadata.supports_image_generation
+        ]
+        assert image_models, f"{provider} has no image-generation model"
+        target = next(m for m in image_models if m.id == model_id)
+        assert target.cost_per_image is not None
+        assert target.cost_per_image > 0
+        # Per-image billing: token costs stay zero and context is nominal.
+        assert target.cost_per_1k_input == 0.0
+        assert target.cost_per_1k_output == 0.0
+
+    def test_image_model_builds_valid_capabilities(self) -> None:
+        from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+
+        preset = get_preset("openai")
+        assert preset is not None
+        model = next(m for m in default_models_for(preset) if m.id == "gpt-image-1")
+        caps = build_capabilities(
+            model,
+            routing_key="ollama",  # bypass the live litellm DB lookup
+            provider_name="openai",
+            fallback_max_output_tokens=2048,
+        )
+        assert caps.supports_image_generation is True
+        assert caps.max_context_tokens > 0
+        assert caps.max_output_tokens <= caps.max_context_tokens
+
     def test_get_preset_by_name(self) -> None:
         preset = get_preset("ollama")
         assert preset is not None

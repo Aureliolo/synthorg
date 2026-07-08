@@ -268,6 +268,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "coordination",
         "dashboard",
         "demo",
+        "design",
         "engine",
         "external_api",
         "hr",

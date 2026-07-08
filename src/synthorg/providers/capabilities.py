@@ -58,6 +58,10 @@ class ModelCapabilities(BaseModel):
         default=False,
         description="Is an embedding model (vector output, not chat)",
     )
+    supports_image_generation: bool = Field(
+        default=False,
+        description="Generates images from text prompts (image output modality)",
+    )
     supports_reasoning: bool = Field(
         default=False,
         description="Exposes extended reasoning (thinking/o1-style models)",

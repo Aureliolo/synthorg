@@ -258,7 +258,13 @@ def build_category_breakdown(
         """
         return round(math.fsum(vals), BUDGET_ROUNDING_PRECISION)
 
-    p = buckets[LLMCallCategory.PRODUCTIVE]
+    # Image generation is productive output (an agent producing a
+    # deliverable), not orchestration overhead, so its per-image spend
+    # rolls into the productive bucket rather than silently vanishing or
+    # inflating the orchestration ratio.
+    pb = buckets[LLMCallCategory.PRODUCTIVE]
+    ib = buckets[LLMCallCategory.IMAGE_GENERATION]
+    p = (pb[0] + ib[0], pb[1] + ib[1], pb[2] + ib[2])
     c = buckets[LLMCallCategory.COORDINATION]
     s = buckets[LLMCallCategory.SYSTEM]
     e = buckets[LLMCallCategory.EMBEDDING]

@@ -67,6 +67,15 @@ class ProviderModelConfig(BaseModel):
         ge=0.0,
         description="Cost per 1k output tokens (base currency)",
     )
+    cost_per_image: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Flat cost per generated image (base currency) for image-output "
+            "models; None for chat/embedding models. Operator-owned, kept "
+            "aligned with the provider's per-image price like the token costs."
+        ),
+    )
     max_context: int = Field(
         default=200_000,
         gt=0,

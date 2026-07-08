@@ -89,3 +89,40 @@ def compute_token_cost(
         output_tokens=output_tokens,
         cost=round(cost, BUDGET_ROUNDING_PRECISION),
     )
+
+
+def compute_image_cost(n: int, *, cost_per_image: float) -> TokenUsage:
+    """Build a ``TokenUsage`` for a per-image-priced generation call.
+
+    Image models bill per generated image, not per token, so the token
+    counts are zero and the whole charge lands in ``cost``. A non-zero
+    cost keeps the record out of the zero-usage skip path so it is still
+    attributed to the ambient cost scope.
+
+    Args:
+        n: Number of images generated (must be >= 1).
+        cost_per_image: Flat cost per image in the configured currency
+            (finite and >= 0).
+
+    Returns:
+        Populated ``TokenUsage`` with zero token counts and the image cost.
+
+    Raises:
+        InvalidRequestError: If ``n`` is not positive or ``cost_per_image``
+            is negative or non-finite.
+    """
+    if n < 1:
+        msg = "n must be a positive image count"
+        logger.warning(PROVIDER_COST_INVALID, field="n", value=n)
+        raise InvalidRequestError(msg, context={"n": n})
+    if cost_per_image < 0 or not math.isfinite(cost_per_image):
+        msg = "cost_per_image must be a finite non-negative number"
+        logger.warning(
+            PROVIDER_COST_INVALID, field="cost_per_image", value=cost_per_image
+        )
+        raise InvalidRequestError(msg, context={"cost_per_image": cost_per_image})
+    return TokenUsage(
+        input_tokens=0,
+        output_tokens=0,
+        cost=round(n * cost_per_image, BUDGET_ROUNDING_PRECISION),
+    )

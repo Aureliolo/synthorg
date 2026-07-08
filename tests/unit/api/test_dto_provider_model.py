@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.api.dto_providers import ProviderModelResponse, to_provider_model_response
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.capabilities import ModelCapabilities
 
@@ -87,3 +88,29 @@ class TestToProviderModelResponse:
         assert resp.alias is None
         assert resp.max_context == 128_000
         assert resp.estimated_latency_ms == 250
+
+    def test_image_capability_and_cost_passthrough(self) -> None:
+        config = ProviderModelConfig(
+            id="test-image-001",
+            alias="image",
+            cost_per_image=0.04,
+            max_context=1,
+            metadata=ModelMetadata(supports_image_generation=True),
+        )
+        caps = ModelCapabilities(
+            model_id="test-image-001",
+            provider="test-provider",
+            max_context_tokens=1,
+            max_output_tokens=1,
+            cost_per_1k_input=0.0,
+            cost_per_1k_output=0.0,
+            supports_image_generation=True,
+        )
+        resp = to_provider_model_response(config, caps)
+        assert resp.supports_image_generation is True
+        assert resp.cost_per_image == 0.04
+
+    def test_image_flag_defaults_false(self) -> None:
+        resp = ProviderModelResponse(id="test-small-001")
+        assert resp.supports_image_generation is False
+        assert resp.cost_per_image is None

@@ -14,6 +14,7 @@ function buildModel(
     alias: null,
     cost_per_1k_input: 0,
     cost_per_1k_output: 0,
+    cost_per_image: null,
     currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: null,
@@ -24,6 +25,7 @@ function buildModel(
     supports_streaming: true,
     supports_embeddings: false,
     supports_reasoning: false,
+    supports_image_generation: false,
     family: null,
     stale: null,
   }

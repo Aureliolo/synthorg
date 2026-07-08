@@ -163,7 +163,7 @@ class TestAssetManagerTool:
     def test_register_asset(self) -> None:
         tool = AssetManagerTool()
         tool.register_asset("img-001", {"type": "image"})
-        assert "img-001" in tool._assets
+        assert tool._store.get("img-001") is not None
 
     async def test_register_then_get(self) -> None:
         tool = AssetManagerTool()
@@ -175,5 +175,7 @@ class TestAssetManagerTool:
     def test_initial_assets_are_deep_copied(self) -> None:
         original: dict[str, JsonDict] = {"img-001": {"type": "image"}}
         tool = AssetManagerTool(assets=original)
-        tool._assets["img-001"]["type"] = "modified"
-        assert original["img-001"]["type"] == "image"
+        original["img-001"]["type"] = "modified"
+        stored = tool._store.get("img-001")
+        assert stored is not None
+        assert stored["type"] == "image"

@@ -113,6 +113,7 @@ def to_provider_model_response(
         alias=config.alias,
         cost_per_1k_input=config.cost_per_1k_input,
         cost_per_1k_output=config.cost_per_1k_output,
+        cost_per_image=config.cost_per_image,
         # ``ProviderModelConfig`` does not yet carry a per-row
         # currency; the project-wide default reflects the operator's
         # ``budget.currency`` setting and aggregation sites enforce
@@ -141,6 +142,11 @@ def to_provider_model_response(
             capabilities.supports_embeddings
             if capabilities is not None
             else config.metadata.supports_embeddings
+        ),
+        supports_image_generation=(
+            capabilities.supports_image_generation
+            if capabilities is not None
+            else config.metadata.supports_image_generation
         ),
         supports_reasoning=(
             capabilities.supports_reasoning
