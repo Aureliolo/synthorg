@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   validateManualModel,
   type ManualModelInputs,
-} from "@/pages/providers/AddManualModelDialog";
+} from "@/pages/providers/manual-model";
 
 function inputs(overrides: Partial<ManualModelInputs> = {}): ManualModelInputs {
   return {
