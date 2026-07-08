@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.9.3](https://github.com/Aureliolo/synthorg/compare/v0.9.2...v0.9.3) (2026-07-08)
+
+
+### Features
+
+* blank-safe per-feature models, hot-reload wiring, toolsmith approve-to-live, and Dev Tunnels UX ([#2536](https://github.com/Aureliolo/synthorg/issues/2536)) ([4e421fb](https://github.com/Aureliolo/synthorg/commit/4e421fb889641023a8f96677d089ee21c2bf1a5b)), closes [#2533](https://github.com/Aureliolo/synthorg/issues/2533)
+* stateful browser sessions (WebStorage + WebAuthn) and TTL-aware memory update() ([#2534](https://github.com/Aureliolo/synthorg/issues/2534)) ([016da28](https://github.com/Aureliolo/synthorg/commit/016da2890a6e9d9267a4833a35f57af5e68da371)), closes [#2531](https://github.com/Aureliolo/synthorg/issues/2531)
+
+
+### Bug Fixes
+
+* bump CLI Go toolchain to 1.26.5 to clear stdlib CVEs ([#2549](https://github.com/Aureliolo/synthorg/issues/2549)) ([65de3dc](https://github.com/Aureliolo/synthorg/commit/65de3dc80d135213c0c63cb7eaa6f503f142434d))
+* CLI status/tunnel/provider fixes, durable org-alert log, and Chief of Staff chat ([#2529](https://github.com/Aureliolo/synthorg/issues/2529)) ([ce2b28c](https://github.com/Aureliolo/synthorg/commit/ce2b28cb1457e0b571d48f8b1689d8a4561d6e77))
+* correct review-dep-pr skill process failures ([#2532](https://github.com/Aureliolo/synthorg/issues/2532)) ([cebb908](https://github.com/Aureliolo/synthorg/commit/cebb908aa99b4b6588f2d13b7aa48b4618f4a0c4))
+* dispatch each agent to its own provider and fix chat/streaming cost teardown ([#2540](https://github.com/Aureliolo/synthorg/issues/2540)) ([38a4e0b](https://github.com/Aureliolo/synthorg/commit/38a4e0b6815ce8cad55e95302d61dc2a78b2aa4c))
+* live-review fixes, fine-tune docker dispatch, devtunnel auto-download ([#2524](https://github.com/Aureliolo/synthorg/issues/2524)) ([6f68a2e](https://github.com/Aureliolo/synthorg/commit/6f68a2e7acdb0ec31e62a7e9c1e97f851df75042))
+
+
+### CI/CD
+
+* update apko lockfiles ([#2541](https://github.com/Aureliolo/synthorg/issues/2541)) ([922eef1](https://github.com/Aureliolo/synthorg/commit/922eef13d74d363bf49246e0ad20465d4c49fcf8))
+
+
+### Maintenance
+
+* Lock file maintenance ([#2538](https://github.com/Aureliolo/synthorg/issues/2538)) ([34faff5](https://github.com/Aureliolo/synthorg/commit/34faff57151af2d7e915b74f9de02d5012f4c0f4))
+* Update Infrastructure dependencies ([#2528](https://github.com/Aureliolo/synthorg/issues/2528)) ([0c5bf06](https://github.com/Aureliolo/synthorg/commit/0c5bf0609f93925e941447a806090499d38eb4a7))
+* Update Web dependencies ([#2527](https://github.com/Aureliolo/synthorg/issues/2527)) ([6ea91c7](https://github.com/Aureliolo/synthorg/commit/6ea91c75aa53dc91fcec16ee4d8ed51b3b95d7d8))
+
 ## [0.9.2](https://github.com/Aureliolo/synthorg/compare/v0.9.1...v0.9.2) (2026-06-30)
 
 
