@@ -29303,8 +29303,8 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
@@ -29334,8 +29334,8 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

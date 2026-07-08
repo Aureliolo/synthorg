@@ -11,6 +11,7 @@ from typing import Annotated
 from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
+from litestar.status_codes import HTTP_200_OK
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -211,6 +212,7 @@ class SprintController(Controller):
 
     @post(
         "/{sprint_id:str}/start",
+        status_code=HTTP_200_OK,
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("sprints.start", key="user"),
@@ -241,6 +243,7 @@ class SprintController(Controller):
 
     @post(
         "/{sprint_id:str}/advance",
+        status_code=HTTP_200_OK,
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("sprints.advance", key="user"),

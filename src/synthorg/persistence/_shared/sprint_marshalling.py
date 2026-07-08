@@ -135,7 +135,9 @@ def row_to_sprint(row: RowLike) -> Sprint:
             story_points_committed=float(str(row["story_points_committed"])),
             story_points_completed=float(str(row["story_points_completed"])),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
+        # aiosqlite/sqlite3 Row raises IndexError (not KeyError) on a
+        # missing column, so both are caught for cross-backend robustness.
         msg = (
             f"Failed to parse sprint row: "
             f"{type(exc).__name__} ({safe_error_description(exc)})"

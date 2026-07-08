@@ -25,6 +25,8 @@ from synthorg.persistence._generics import (
 )
 
 if TYPE_CHECKING:
+    from typing import Unpack
+
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):
@@ -121,7 +123,7 @@ class SprintRepository(
         entity_id: NotBlankStr,
         from_state: SprintStatus,
         to_state: SprintStatus,
-        **updates: object,
+        **updates: Unpack[TransitionKwargs],
     ) -> bool:
         """Atomic compare-and-set for the sprint lifecycle state.
 

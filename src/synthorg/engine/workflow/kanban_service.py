@@ -10,6 +10,7 @@ runtime change applies to the next board operation with no restart.
 
 import asyncio
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     KanbanInvalidMoveError,
@@ -37,8 +38,11 @@ from synthorg.engine.workflow.kanban_view import (
     KanbanColumnView,
 )
 from synthorg.engine.workflow.sprint_service import SprintService
-from synthorg.observability import get_logger
-from synthorg.observability.events.workflow import SPRINT_GATE_BLOCKED
+from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability.events.workflow import (
+    SPRINT_GATE_BLOCKED,
+    SPRINT_GATE_CHECK_FAILED,
+)
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
@@ -178,7 +182,9 @@ class KanbanBoardService:
         Advisory: a no-op unless a ``SprintService`` is wired and the move
         targets the In-Progress column. The service short-circuits to
         "workable" when sprints are disabled, the workflow is not
-        ``agile_kanban``, or the project has no open sprint.
+        ``agile_kanban``, or the project has no open sprint. If the check
+        itself fails (e.g. sprint-store outage), the move is allowed
+        through so the gate stays advisory rather than blocking the board.
 
         Raises:
             SprintTaskNotInBacklogError: When the gate is active and the
@@ -189,7 +195,21 @@ class KanbanBoardService:
             or target_column is not KanbanColumn.IN_PROGRESS
         ):
             return
-        if await self._sprint_service.is_task_workable(str(task.id), task.project):
+        try:
+            workable = await self._sprint_service.is_task_workable(
+                str(task.id), task.project
+            )
+        except Exception as exc:  # noqa: BLE001 -- advisory gate: fail open
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SPRINT_GATE_CHECK_FAILED,
+                exc,
+                task_id=str(task.id),
+                project=task.project,
+            )
+            return
+        if workable:
             return
         logger.warning(
             SPRINT_GATE_BLOCKED,

@@ -214,6 +214,7 @@ class TestExplicitControl:
         service = _service(scheduler=scheduler)
         sprint = await service.create_sprint("proj-1")
         started = await service.start_sprint(sprint.id)
+        await service.drain()
         assert started.status is SprintStatus.ACTIVE
         assert started.start_date is not None
         scheduler.activate_sprint.assert_awaited_once()
@@ -458,6 +459,8 @@ class TestConcurrencyGuards:
         service = _service(sprints=repo)
         history = await service._velocity_history(NotBlankStr("proj-1"))
         assert len(history) == 2
+        # Oldest-first: sprint 1's record must precede sprint 2's.
+        assert [record.sprint_number for record in history] == [1, 2]
 
     async def test_finalize_retro_cas_lost_does_not_deactivate(self) -> None:
         repo = _FailHopRepo(SprintStatus.RETROSPECTIVE, SprintStatus.COMPLETED)

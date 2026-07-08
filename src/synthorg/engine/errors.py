@@ -4,8 +4,10 @@
 from typing import TYPE_CHECKING, ClassVar
 
 from synthorg.core.domain_errors import (
+    ConflictError,
     DomainError,
     NotFoundError,
+    ValidationError,
     VersionConflictError,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -715,7 +717,7 @@ class SprintNotFoundError(SprintError, NotFoundError):
     default_message: ClassVar[str] = "Sprint not found"
 
 
-class SprintBacklogFullError(SprintError):
+class SprintBacklogFullError(SprintError, ConflictError):
     """Raised when adding a task would exceed ``max_tasks_per_sprint``.
 
     Maps to 409 (conflict): the sprint backlog is at capacity, so the
@@ -728,7 +730,7 @@ class SprintBacklogFullError(SprintError):
     default_message: ClassVar[str] = "Sprint backlog is full"
 
 
-class SprintTransitionConflictError(SprintError):
+class SprintTransitionConflictError(SprintError, ConflictError):
     """Raised when a sprint is not in the state a lifecycle hop requires.
 
     Maps to 409 (conflict). Fires from two places: an upfront status
@@ -744,7 +746,7 @@ class SprintTransitionConflictError(SprintError):
     default_message: ClassVar[str] = "Sprint is not in the expected state"
 
 
-class SprintTaskNotInBacklogError(SprintError):
+class SprintTaskNotInBacklogError(SprintError, ValidationError):
     """Raised when work is requested on a task outside the active sprint.
 
     Maps to 400: the board move targets a task that is not in the active

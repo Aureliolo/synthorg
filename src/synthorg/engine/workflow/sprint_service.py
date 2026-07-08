@@ -282,8 +282,11 @@ class SprintService:
             if not ok:
                 msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 raise SprintTransitionConflictError(msg)
-        await self._activate_scheduler(started)
         self._log_transition(started, SprintStatus.PLANNING)
+        # Off-load scheduler activation: the transition is durably committed,
+        # so a ceremony-activation failure must be logged, not surfaced as a
+        # request error that a retry would then hit as a 409.
+        self._spawn(self._activate_scheduler(started))
         return started
 
     async def advance_sprint(self, sprint_id: str) -> Sprint:
@@ -312,8 +315,10 @@ class SprintService:
             if not ok:
                 msg = f"Sprint {sprint_id!r} is not in {sprint.status.value!r}"
                 raise SprintTransitionConflictError(msg)
-        await self._reconcile_scheduler(sprint.status, advanced)
         self._log_transition(advanced, sprint.status)
+        # See start_sprint: the hop is committed, so scheduler reconciliation
+        # runs off the request path and its failures are logged, not raised.
+        self._spawn(self._reconcile_scheduler(sprint.status, advanced))
         return advanced
 
     # -- Task-engine observer ------------------------------------------

@@ -155,7 +155,7 @@ class TestSprintController:
             f"{_BASE}/sprint-1/start",
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "active"
 
     async def test_advance_sprint(
@@ -170,7 +170,7 @@ class TestSprintController:
             f"{_BASE}/sprint-1/advance",
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         wired_sprint_service.advance_sprint.assert_awaited_once()
 
     async def test_add_task_conflict_maps_to_409(

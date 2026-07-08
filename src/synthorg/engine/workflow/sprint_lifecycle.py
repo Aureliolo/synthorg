@@ -12,7 +12,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.core.state_machine import StateMachine
@@ -253,16 +253,32 @@ class Sprint(BaseModel):
             raise ValueError(msg)
         return self
 
+    @field_validator("task_points", mode="after")
+    @classmethod
+    def _freeze_task_points(cls, value: Mapping[str, float]) -> Mapping[str, float]:
+        """Store ``task_points`` as an immutable mapping.
+
+        ``frozen=True`` blocks attribute reassignment but not in-place
+        mutation of a plain ``dict``; a read-only view keeps parity with
+        the tuple-valued ``task_ids`` / ``completed_task_ids`` fields.
+
+        Returns:
+            A read-only view over the supplied mapping.
+        """
+        return MappingProxyType(dict(value))
+
     @model_validator(mode="after")
     def _validate_task_points(self) -> Self:
-        """Every ``task_points`` key must be a backlog task with non-negative points.
+        """Validate ``task_points`` keys, signs, and total-vs-committed.
 
         Returns:
             ``self`` unchanged when the per-task points are well-formed.
 
         Raises:
-            ValueError: When a key is absent from ``task_ids`` or carries a
-                negative value.
+            ValueError: When a key is absent from ``task_ids``, carries a
+                negative value, or the per-task total exceeds
+                ``story_points_committed`` (which would let a backlog
+                removal drive the committed total negative).
         """
         stray = sorted(set(self.task_points) - set(self.task_ids))
         if stray:
@@ -271,6 +287,13 @@ class Sprint(BaseModel):
         negative = sorted(k for k, v in self.task_points.items() if v < 0)
         if negative:
             msg = f"task_points has negative values for: {negative}"
+            raise ValueError(msg)
+        total = sum(self.task_points.values())
+        if total > self.story_points_committed + 1e-9:
+            msg = (
+                f"task_points total ({total}) exceeds "
+                f"story_points_committed ({self.story_points_committed})"
+            )
             raise ValueError(msg)
         return self
 
