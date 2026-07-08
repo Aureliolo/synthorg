@@ -40,3 +40,10 @@ def test_strategy_for_maps_each_type(
 
 def test_strategy_for_none_defaults_to_task_driven() -> None:
     assert isinstance(strategy_for(None), TaskDrivenStrategy)
+
+
+def test_every_strategy_type_is_mapped() -> None:
+    # A new CeremonyStrategyType added without a factory case would silently
+    # fall back to the task-driven default; this asserts each type is handled
+    # explicitly so the omission is caught here rather than in production.
+    assert set(_EXPECTED) == set(CeremonyStrategyType)

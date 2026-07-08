@@ -6,6 +6,11 @@ from typing import Any
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import (
+    SprintBacklogFullError,
+    SprintNotFoundError,
+    SprintTransitionConflictError,
+)
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.sprint_service import SprintService
@@ -152,6 +157,76 @@ class TestSprintController:
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["status"] == "active"
+
+    async def test_advance_sprint(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        wired_sprint_service.advance_sprint.return_value = _sprint(
+            status=SprintStatus.ACTIVE
+        )
+        resp = await async_test_client.post(
+            f"{_BASE}/sprint-1/advance",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        wired_sprint_service.advance_sprint.assert_awaited_once()
+
+    async def test_add_task_conflict_maps_to_409(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        wired_sprint_service.add_task.side_effect = SprintTransitionConflictError(
+            "not planning"
+        )
+        resp = await async_test_client.post(
+            f"{_BASE}/sprint-1/tasks",
+            json={"task_id": "task-a", "story_points": 3.0},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        assert resp.json()["success"] is False
+
+    async def test_add_task_backlog_full_maps_to_409(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        wired_sprint_service.add_task.side_effect = SprintBacklogFullError("full")
+        resp = await async_test_client.post(
+            f"{_BASE}/sprint-1/tasks",
+            json={"task_id": "task-a", "story_points": 3.0},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+
+    async def test_start_conflict_maps_to_409(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        wired_sprint_service.start_sprint.side_effect = SprintTransitionConflictError(
+            "not planning"
+        )
+        resp = await async_test_client.post(
+            f"{_BASE}/sprint-1/start",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+
+    async def test_advance_not_found_maps_to_404(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        wired_sprint_service.advance_sprint.side_effect = SprintNotFoundError("gone")
+        resp = await async_test_client.post(
+            f"{_BASE}/sprint-1/advance",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
 
     async def test_list_503_when_unwired(
         self,

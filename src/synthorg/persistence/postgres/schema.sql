@@ -2449,12 +2449,18 @@ CREATE TABLE sprints (
     CHECK (JSONB_TYPEOF(task_ids) = 'array'),
     completed_task_ids JSONB NOT NULL DEFAULT '[]'::JSONB
     CHECK (JSONB_TYPEOF(completed_task_ids) = 'array'),
+    task_points JSONB NOT NULL DEFAULT '{}'::JSONB
+    CHECK (JSONB_TYPEOF(task_points) = 'object'),
     story_points_committed DOUBLE PRECISION NOT NULL DEFAULT 0.0
     CHECK (story_points_committed >= 0.0),
     story_points_completed DOUBLE PRECISION NOT NULL DEFAULT 0.0
-    CHECK (story_points_completed >= 0.0)
+    CHECK (story_points_completed >= 0.0),
+    CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date),
+    CHECK (story_points_completed <= story_points_committed),
+    UNIQUE (project, sprint_number)
 );
-CREATE INDEX idx_sprints_project ON sprints (project);
 CREATE INDEX idx_sprints_status ON sprints (status);
 CREATE INDEX idx_sprints_project_status ON sprints (project, status);
 CREATE INDEX idx_sprints_number_id ON sprints (sprint_number DESC, id DESC);
+CREATE UNIQUE INDEX idx_sprints_org_wide_number ON sprints (sprint_number)
+WHERE project IS NULL;

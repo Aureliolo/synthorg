@@ -21,7 +21,14 @@ from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import SprintNotFoundError
 from synthorg.engine.state import sprint_service_of
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import (
+    STORY_POINTS_CEILING,
+    Sprint,
+    SprintStatus,
+)
+
+#: Upper bound on a caller-supplied id string at the API boundary.
+_MAX_ID_LENGTH: int = 256
 
 
 class SprintCreatePayload(BaseModel):
@@ -31,6 +38,7 @@ class SprintCreatePayload(BaseModel):
 
     project: NotBlankStr | None = Field(
         default=None,
+        max_length=_MAX_ID_LENGTH,
         description="Owning project id; omit for an org-wide sprint",
     )
 
@@ -40,11 +48,14 @@ class SprintAddTaskPayload(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    task_id: NotBlankStr = Field(description="Task id to add to the backlog")
+    task_id: NotBlankStr = Field(
+        max_length=_MAX_ID_LENGTH,
+        description="Task id to add to the backlog",
+    )
     story_points: float = Field(
         default=0.0,
         ge=0.0,
-        le=100_000.0,
+        le=STORY_POINTS_CEILING,
         description="Story points committed for the task",
     )
 
@@ -185,6 +196,12 @@ class SprintController(Controller):
 
         Returns:
             ``ApiResponse[Sprint]`` after the task is added.
+
+        Raises:
+            SprintNotFoundError: When no sprint has that id (404).
+            SprintTransitionConflictError: When the sprint is not
+                ``PLANNING`` (409).
+            SprintBacklogFullError: When the backlog is full (409).
         """
         app_state: AppState = state.app_state
         sprint = await sprint_service_of(app_state).add_task(
@@ -212,6 +229,11 @@ class SprintController(Controller):
 
         Returns:
             ``ApiResponse[Sprint]`` for the started ACTIVE sprint.
+
+        Raises:
+            SprintNotFoundError: When no sprint has that id (404).
+            SprintTransitionConflictError: When the sprint is not
+                ``PLANNING`` (409).
         """
         app_state: AppState = state.app_state
         sprint = await sprint_service_of(app_state).start_sprint(sprint_id)
@@ -237,6 +259,11 @@ class SprintController(Controller):
 
         Returns:
             ``ApiResponse[Sprint]`` for the advanced sprint.
+
+        Raises:
+            SprintNotFoundError: When no sprint has that id (404).
+            SprintTransitionConflictError: When the sprint is terminal or
+                the CAS finds a different state (409).
         """
         app_state: AppState = state.app_state
         sprint = await sprint_service_of(app_state).advance_sprint(sprint_id)

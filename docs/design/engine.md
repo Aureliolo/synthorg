@@ -222,8 +222,10 @@ graph LR
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
 IN_REVIEW, RETROSPECTIVE, COMPLETED. Each sprint is a discrete
-lifecycle; a new sprint is created after the previous one completes
-(no automatic cycling).  The `Sprint` model tracks task IDs, story
+lifecycle. There is no automatic cycling: a COMPLETED sprint is never
+auto-restarted. The next sprint is created only when new work arrives
+for a project with no open sprint (see the `SprintService` observer
+below), never on a timer. The `Sprint` model tracks task IDs, story
 points (committed and completed), dates, and duration. Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
 added during PLANNING).  `SprintConfig` defines sprint duration, task limits,

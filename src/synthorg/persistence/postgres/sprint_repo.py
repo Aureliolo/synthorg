@@ -8,6 +8,8 @@ queries. Row <-> model marshalling is shared with the SQLite sibling via
 :mod:`synthorg.persistence._shared.sprint_marshalling`.
 """
 
+from collections.abc import Mapping
+
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -49,9 +51,18 @@ def _encode_array_jsonb(values: tuple[str, ...]) -> object:
     return Jsonb(list(values))
 
 
+def _encode_map_jsonb(values: Mapping[str, float]) -> object:
+    """Wrap the ``task_points`` column for binding to native JSONB.
+
+    Returns:
+        A :class:`~psycopg.types.json.Jsonb` adapter.
+    """
+    return Jsonb(dict(values))
+
+
 _UPSERT_SQL = f"""
     INSERT INTO sprints ({SPRINT_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         project = EXCLUDED.project,
         name = EXCLUDED.name,
@@ -63,6 +74,7 @@ _UPSERT_SQL = f"""
         end_date = EXCLUDED.end_date,
         task_ids = EXCLUDED.task_ids,
         completed_task_ids = EXCLUDED.completed_task_ids,
+        task_points = EXCLUDED.task_points,
         story_points_committed = EXCLUDED.story_points_committed,
         story_points_completed = EXCLUDED.story_points_completed
 """  # noqa: S608 -- column list is a compile-time constant
@@ -93,7 +105,9 @@ class PostgresSprintRepository:
             ConstraintViolationError: If a database constraint is violated.
             QueryError: If the database query fails.
         """
-        params = sprint_save_params(entity, encode_array=_encode_array_jsonb)
+        params = sprint_save_params(
+            entity, encode_array=_encode_array_jsonb, encode_map=_encode_map_jsonb
+        )
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(_UPSERT_SQL, params)

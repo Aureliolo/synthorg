@@ -11,6 +11,7 @@ so a re-run cannot double-register it.
 """
 
 from synthorg.api.state import AppState
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -78,11 +79,14 @@ async def wire_sprint_service(app_state: AppState) -> None:
             config_resolver=config_resolver,
             sprint_config=app_state.config.workflow.sprint,
         )
-        app_state.wire(EngineStateSlice, sprint_service=service)
+        # Register the observer BEFORE committing the service to state: a
+        # failure here then leaves the service unwired (endpoints stay 503,
+        # as logged) and a re-run retries cleanly, rather than committing a
+        # service whose completions never reach the observer.
         task_engine.register_observer(service.on_task_state_changed)
-    except MemoryError, RecursionError:
-        raise
+        app_state.wire(EngineStateSlice, sprint_service=service)
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="sprint_service",

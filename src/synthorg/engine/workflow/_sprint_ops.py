@@ -42,6 +42,11 @@ TERMINAL_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
         TaskStatus.FAILED,
     }
 )
+# Statuses worth seeding into a new sprint backlog, in enum order. Queried
+# per-status so terminal tasks can never crowd out open ones under a row cap.
+NON_TERMINAL_TASK_STATUSES: Final[tuple[TaskStatus, ...]] = tuple(
+    status for status in TaskStatus if status not in TERMINAL_TASK_STATUSES
+)
 # Statuses in which a sprint still accepts task completions.
 OPEN_SPRINT_STATUSES: Final[frozenset[SprintStatus]] = frozenset(
     {SprintStatus.ACTIVE, SprintStatus.IN_REVIEW}
@@ -100,6 +105,7 @@ def open_backlog_tasks(candidates: Sequence[Task], *, cap: int) -> tuple[Task, .
 
 
 __all__ = [
+    "NON_TERMINAL_TASK_STATUSES",
     "OPEN_SPRINT_STATUSES",
     "TERMINAL_TASK_STATUSES",
     "next_status",

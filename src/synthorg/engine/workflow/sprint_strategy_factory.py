@@ -2,9 +2,11 @@
 
 The eight ceremony strategies all ship stateless (or clock-only)
 constructors, so this factory is a pure type -> instance dispatch used
-by the :class:`SprintService` when it activates a sprint. An unknown
-type falls back to the task-driven default, which is the natural fit for
-synthetic-agent speed (see ``docs/design/ceremony-scheduling.md``).
+by the :class:`SprintService` when it activates a sprint. ``None`` and
+the explicit task-driven type both select the task-driven default. The
+mapping is exhaustive over the enum; a member added without a case is
+caught by ``test_sprint_strategy_factory`` rather than silently defaulting
+in production.
 """
 
 from synthorg.core.clock import Clock
@@ -55,6 +57,7 @@ def strategy_for(
         case CeremonyStrategyType.MILESTONE_DRIVEN:
             return MilestoneDrivenStrategy()
         case _:
+            # Task-driven type and None both land here as the default.
             return TaskDrivenStrategy()
 
 

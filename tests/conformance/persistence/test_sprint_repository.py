@@ -23,7 +23,7 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.persistence.postgres.sprint_repo import PostgresSprintRepository
@@ -62,6 +62,7 @@ def _make_sprint(  # noqa: PLR0913 -- test helper carries the sprint field set
     status: SprintStatus = SprintStatus.PLANNING,
     task_ids: tuple[str, ...] = ("task-a", "task-b"),
     completed_task_ids: tuple[str, ...] = (),
+    task_points: dict[str, float] | None = None,
     story_points_committed: float = 8.0,
     story_points_completed: float = 0.0,
     start_date: str | None = None,
@@ -79,6 +80,9 @@ def _make_sprint(  # noqa: PLR0913 -- test helper carries the sprint field set
         end_date=end_date,
         task_ids=tuple(NotBlankStr(t) for t in task_ids),
         completed_task_ids=tuple(NotBlankStr(t) for t in completed_task_ids),
+        task_points=(
+            task_points if task_points is not None else {"task-a": 5.0, "task-b": 3.0}
+        ),
         story_points_committed=story_points_committed,
         story_points_completed=story_points_completed,
     )
@@ -100,6 +104,7 @@ class TestSprintRepository:
         assert fetched.duration_days == 14
         assert fetched.task_ids == ("task-a", "task-b")
         assert fetched.completed_task_ids == ()
+        assert dict(fetched.task_points) == {"task-a": 5.0, "task-b": 3.0}
         assert fetched.story_points_committed == pytest.approx(8.0)
         assert fetched.story_points_completed == pytest.approx(0.0)
 
@@ -262,6 +267,44 @@ class TestSprintRepository:
                 SprintStatus.ACTIVE,
                 start_date=_START,
                 bogus_key="nope",
+            )
+
+    async def test_task_points_round_trip(self, backend: PersistenceBackend) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="tp",
+                task_ids=("task-a", "task-b", "task-c"),
+                task_points={"task-a": 1.5, "task-b": 2.0, "task-c": 4.5},
+                story_points_committed=8.0,
+            )
+        )
+        fetched = await repo.get(NotBlankStr("tp"))
+        assert fetched is not None
+        assert dict(fetched.task_points) == {
+            "task-a": 1.5,
+            "task-b": 2.0,
+            "task-c": 4.5,
+        }
+
+    async def test_unique_project_sprint_number(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="u1", project="proj-u", sprint_number=1))
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_sprint(sprint_id="u2", project="proj-u", sprint_number=1)
+            )
+
+    async def test_unique_org_wide_sprint_number(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="ow1", project=None, sprint_number=1))
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_sprint(sprint_id="ow2", project=None, sprint_number=1)
             )
 
     async def test_delete(self, backend: PersistenceBackend) -> None:

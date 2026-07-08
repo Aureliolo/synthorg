@@ -37,8 +37,12 @@ from synthorg.engine.workflow.kanban_view import (
     KanbanColumnView,
 )
 from synthorg.engine.workflow.sprint_service import SprintService
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import SPRINT_GATE_BLOCKED
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+logger = get_logger(__name__)
 
 _SETTINGS_NS = "engine"
 _LIMIT_KEYS: dict[KanbanColumn, str] = {
@@ -187,6 +191,12 @@ class KanbanBoardService:
             return
         if await self._sprint_service.is_task_workable(str(task.id), task.project):
             return
+        logger.warning(
+            SPRINT_GATE_BLOCKED,
+            task_id=str(task.id),
+            project=task.project,
+            target_column=target_column.value,
+        )
         msg = (
             f"Task {task.id} is not in the active sprint backlog; "
             "pull it into the sprint before moving it into progress"

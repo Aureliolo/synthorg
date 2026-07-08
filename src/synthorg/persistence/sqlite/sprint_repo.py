@@ -6,9 +6,10 @@ lifecycle transitions (``planning -> active -> in_review ->
 retrospective -> completed``), and filtered queries by project / status.
 
 Tuple-valued fields (``task_ids``, ``completed_task_ids``) are stored as
-JSON arrays; ISO-8601 date strings and story points are flattened into
-dedicated columns. Row <-> model marshalling is shared with the Postgres
-sibling via :mod:`synthorg.persistence._shared.sprint_marshalling`.
+JSON arrays and ``task_points`` as a JSON object; ISO-8601 date strings
+and story points are flattened into dedicated columns. Row <-> model
+marshalling is shared with the Postgres sibling via
+:mod:`synthorg.persistence._shared.sprint_marshalling`.
 """
 
 import sqlite3
@@ -46,7 +47,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _UPSERT_SQL = f"""
     INSERT INTO sprints ({SPRINT_COLUMNS})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         project = excluded.project,
         name = excluded.name,
@@ -58,6 +59,7 @@ _UPSERT_SQL = f"""
         end_date = excluded.end_date,
         task_ids = excluded.task_ids,
         completed_task_ids = excluded.completed_task_ids,
+        task_points = excluded.task_points,
         story_points_committed = excluded.story_points_committed,
         story_points_completed = excluded.story_points_completed
 """  # noqa: S608 -- column list is a compile-time constant

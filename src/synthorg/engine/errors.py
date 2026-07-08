@@ -729,11 +729,13 @@ class SprintBacklogFullError(SprintError):
 
 
 class SprintTransitionConflictError(SprintError):
-    """Raised when a lifecycle CAS finds the sprint in an unexpected state.
+    """Raised when a sprint is not in the state a lifecycle hop requires.
 
-    Maps to 409 (conflict): the sprint moved out of the expected
-    ``from`` state before the transition landed (a concurrent advance or
-    an illegal explicit hop).
+    Maps to 409 (conflict). Fires from two places: an upfront status
+    check (e.g. ``add_task`` / ``start_sprint`` on a non-``PLANNING``
+    sprint, or advancing a terminal sprint), and the ``transition_if``
+    CAS returning a mismatch when a concurrent advance moved the row out
+    of the expected ``from`` state before this hop landed.
     """
 
     status_code: ClassVar[int] = 409

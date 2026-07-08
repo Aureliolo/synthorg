@@ -12,7 +12,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import Protocol, override, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +23,22 @@ from synthorg.persistence._generics import (
     FilteredQueryRepository,
     StatefulRepository,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import TypedDict
+
+    class TransitionKwargs(TypedDict, total=False):
+        """Typed kwargs for :meth:`SprintRepository.transition_if`.
+
+        The lifecycle date columns stamped atomically with a compare-and-set:
+        ``start_date`` on the ``planning -> active`` hop, ``end_date`` on the
+        ``retrospective -> completed`` hop. Both are ISO-8601 ``str`` values;
+        each is applied via ``COALESCE`` so an omitted key leaves its column
+        untouched.
+        """
+
+        start_date: object
+        end_date: object
 
 
 class SprintFilterSpec(BaseModel):

@@ -45,6 +45,11 @@ SPRINT_SERVICE_OBSERVER_FAILED: str = "workflow.sprint.service_observer_failed"
 SPRINT_GATE_BLOCKED: str = "workflow.sprint.gate_blocked"
 """Sprint gate rejected working a task outside the active sprint backlog."""
 
+SPRINT_TRANSITION_LOST: str = "workflow.sprint.transition_lost"
+"""A lifecycle CAS returned False: the expected from-state was gone, so the
+attempted transition did not persist (a concurrent advance, a duplicate
+completion event, or corruption). The in-memory transition is discarded."""
+
 SPRINT_LIFECYCLE_TRANSITION: str = "workflow.sprint.lifecycle_transition"
 """Sprint transitioned between lifecycle statuses."""
 

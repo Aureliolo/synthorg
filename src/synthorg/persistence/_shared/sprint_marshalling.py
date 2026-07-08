@@ -7,15 +7,16 @@ back into the same positional upsert params. The row objects differ
 indexing, so this module's :class:`RowLike` marshaller serves both
 backends.
 
-``task_ids`` / ``completed_task_ids`` are stored as JSON arrays (TEXT on
-SQLite, native JSONB on Postgres). ``start_date`` / ``end_date`` are the
-domain model's own ISO-8601 strings (the ``Sprint`` model types them as
-``str | None``, not ``datetime``), so they are persisted verbatim as
-nullable TEXT on both backends for a lossless round-trip.
+``task_ids`` / ``completed_task_ids`` are stored as JSON arrays and
+``task_points`` as a JSON object (TEXT on SQLite, native JSONB on
+Postgres). ``start_date`` / ``end_date`` are the domain model's own
+ISO-8601 strings (the ``Sprint`` model types them as ``str | None``, not
+``datetime``), so they are persisted verbatim as nullable TEXT on both
+backends for a lossless round-trip.
 """
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import LiteralString
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 
 SPRINT_COLUMNS: LiteralString = (
     "id, project, name, goal, status, sprint_number, duration_days, "
-    "start_date, end_date, task_ids, completed_task_ids, "
+    "start_date, end_date, task_ids, completed_task_ids, task_points, "
     "story_points_committed, story_points_completed"
 )
 
@@ -70,6 +71,39 @@ def encode_str_tuple(values: tuple[str, ...]) -> object:
     return json.dumps(list(values))
 
 
+def _decode_float_map(raw: object) -> dict[str, float]:
+    """Decode a JSON object column into a ``{task_id: points}`` mapping.
+
+    Tolerates both backends: SQLite returns a JSON ``str`` (needs parsing);
+    Postgres' native JSONB column returns an already-parsed ``dict``.
+
+    Returns:
+        The decoded per-task points mapping.
+
+    Raises:
+        TypeError: If the decoded value is not a JSON object.
+    """
+    if raw is None:
+        return {}
+    items = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(items, dict):
+        msg = f"expected a JSON object, got {type(items).__name__}"
+        raise TypeError(msg)
+    return {str(key): float(value) for key, value in items.items()}
+
+
+def encode_float_map(values: Mapping[str, float]) -> object:
+    """Encode a ``{task_id: points}`` mapping as a JSON object (SQLite default).
+
+    The Postgres sprint repository injects a ``Jsonb`` encoder instead so the
+    value binds to the native JSONB column.
+
+    Returns:
+        A JSON string.
+    """
+    return json.dumps(dict(values))
+
+
 def row_to_sprint(row: RowLike) -> Sprint:
     """Convert a database row into a :class:`Sprint`.
 
@@ -97,6 +131,7 @@ def row_to_sprint(row: RowLike) -> Sprint:
             end_date=(str(end_raw) if end_raw is not None else None),
             task_ids=_decode_str_tuple(row["task_ids"]),
             completed_task_ids=_decode_str_tuple(row["completed_task_ids"]),
+            task_points=_decode_float_map(row["task_points"]),
             story_points_committed=float(str(row["story_points_committed"])),
             story_points_completed=float(str(row["story_points_completed"])),
         )
@@ -118,6 +153,7 @@ def sprint_save_params(
     entity: Sprint,
     *,
     encode_array: Callable[[tuple[str, ...]], object] = encode_str_tuple,
+    encode_map: Callable[[Mapping[str, float]], object] = encode_float_map,
 ) -> tuple[object, ...]:
     """Flatten a sprint into the positional upsert params.
 
@@ -126,6 +162,8 @@ def sprint_save_params(
         encode_array: Serialiser for the JSON-array columns (``json.dumps``
             for SQLite's TEXT columns; a ``Jsonb`` wrapper for Postgres' native
             JSONB columns).
+        encode_map: Serialiser for the ``task_points`` JSON-object column
+            (same SQLite/Postgres split as ``encode_array``).
 
     Returns:
         The matching collection, ordered to match :data:`SPRINT_COLUMNS`.
@@ -142,6 +180,7 @@ def sprint_save_params(
         entity.end_date,
         encode_array(entity.task_ids),
         encode_array(entity.completed_task_ids),
+        encode_map(entity.task_points),
         float(entity.story_points_committed),
         float(entity.story_points_completed),
     )
@@ -187,6 +226,7 @@ def validate_sprint_update_keys(updates: dict[str, object]) -> None:
 __all__ = [
     "SPRINT_COLUMNS",
     "build_sprint_where",
+    "encode_float_map",
     "encode_str_tuple",
     "row_to_sprint",
     "sprint_save_params",

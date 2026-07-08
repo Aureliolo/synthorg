@@ -612,6 +612,12 @@
       "ratio": 0.848,
       "tier": "code"
     },
+    "src/synthorg/engine/workflow/sprint_service.py": {
+      "cap": 600,
+      "loc": 563,
+      "ratio": 0.938,
+      "tier": "service"
+    },
     "src/synthorg/engine/workflow/strategies/budget_driven.py": {
       "cap": 500,
       "loc": 446,
@@ -1550,7 +1556,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 64,
     "synthorg.core.clock": 217,
-    "synthorg.core.critical_errors": 639,
+    "synthorg.core.critical_errors": 641,
     "synthorg.core.domain_errors": 236,
     "synthorg.core.effective_autonomy": 23,
     "synthorg.core.error_taxonomy": 62,
@@ -1619,7 +1625,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1807,
+    "synthorg.observability": 1808,
     "synthorg.observability.background_tasks": 27,
     "synthorg.observability.events.api": 211,
     "synthorg.observability.events.approval_gate": 23,
@@ -1641,7 +1647,7 @@
     "synthorg.observability.events.settings": 62,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
-    "synthorg.observability.events.workflow": 27,
+    "synthorg.observability.events.workflow": 28,
     "synthorg.observability.events.workspace": 28,
     "synthorg.observability.metrics_hub": 33,
     "synthorg.ontology.models": 25,
@@ -1754,7 +1760,7 @@
     },
     "synthorg.engine.workflow.sprint_service:SprintService": {
       "lcom4": 1,
-      "loc": 401
+      "loc": 487
     },
     "synthorg.engine.workspace.git_worktree:PlannerWorktreeStrategy": {
       "lcom4": 2,

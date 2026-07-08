@@ -6,6 +6,7 @@ tracks tasks, story points, and dates across the sprint lifecycle.
 """
 
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
@@ -96,6 +97,11 @@ def validate_sprint_transition(
 
 # -- Sprint model -----------------------------------------------------------
 
+#: Upper bound on story points, shared by the aggregate totals on the
+#: ``Sprint`` model and by the per-task ``add_task`` API payload so the two
+#: never drift.
+STORY_POINTS_CEILING: Final[float] = 100_000.0
+
 
 class Sprint(BaseModel):
     """A time-boxed work cycle in the Agile sprints workflow.
@@ -112,6 +118,8 @@ class Sprint(BaseModel):
         end_date: Sprint end date (ISO 8601, required when COMPLETED).
         task_ids: IDs of tasks in the sprint backlog.
         completed_task_ids: IDs of completed tasks (subset of task_ids).
+        task_points: Story points committed per task id (single source of
+            truth for what each task credits on completion).
         story_points_committed: Total story points planned.
         story_points_completed: Story points delivered.
     """
@@ -156,16 +164,20 @@ class Sprint(BaseModel):
         default=(),
         description="Completed task IDs (subset of task_ids)",
     )
+    task_points: Mapping[str, float] = Field(
+        default_factory=dict,
+        description="Story points committed per task id",
+    )
     story_points_committed: float = Field(
         default=0.0,
         ge=0.0,
-        le=100_000.0,
+        le=STORY_POINTS_CEILING,
         description="Total story points planned",
     )
     story_points_completed: float = Field(
         default=0.0,
         ge=0.0,
-        le=100_000.0,
+        le=STORY_POINTS_CEILING,
         description="Story points delivered",
     )
 
@@ -238,6 +250,27 @@ class Sprint(BaseModel):
         extra = set(self.completed_task_ids) - task_set
         if extra:
             msg = f"completed_task_ids contains IDs not in task_ids: {sorted(extra)}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_task_points(self) -> Self:
+        """Every ``task_points`` key must be a backlog task with non-negative points.
+
+        Returns:
+            ``self`` unchanged when the per-task points are well-formed.
+
+        Raises:
+            ValueError: When a key is absent from ``task_ids`` or carries a
+                negative value.
+        """
+        stray = sorted(set(self.task_points) - set(self.task_ids))
+        if stray:
+            msg = f"task_points references tasks not in task_ids: {stray}"
+            raise ValueError(msg)
+        negative = sorted(k for k, v in self.task_points.items() if v < 0)
+        if negative:
+            msg = f"task_points has negative values for: {negative}"
             raise ValueError(msg)
         return self
 

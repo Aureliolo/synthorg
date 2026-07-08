@@ -1,26 +1,36 @@
 # module-kind: service
-"""Runtime orchestration for agile sprints.
+"""Runtime orchestration for agile sprints in ``agile_kanban`` orgs.
 
-Brings the previously-inert sprint domain to life for ``agile_kanban``
-orgs. The service:
+The service:
 
-* creates and persists a :class:`Sprint`, pulling a project's open tasks
-  into the ``PLANNING`` backlog and starting it (``ACTIVE``);
-* observes ``TaskStateChanged`` events off the :class:`TaskEngine` and,
-  on each completion, marks the task done in the sprint backlog and
-  forwards to the :class:`CeremonyScheduler`, which fires ceremonies and
-  auto-transitions the sprint;
+* registers as a :class:`TaskEngine` observer. On a task entering
+  ``ASSIGNED`` for a project with no open sprint, it auto-creates a
+  sprint seeded with the project's open tasks and starts it (``ACTIVE``);
+  on a task entering ``COMPLETED``, it marks the task done in the open
+  sprint's backlog and forwards to the :class:`CeremonyScheduler`, which
+  fires ceremonies and auto-transitions the sprint;
 * drives the tail of the lifecycle (``IN_REVIEW -> RETROSPECTIVE ->
   COMPLETED``) once the backlog is fully delivered, then deactivates the
   scheduler;
+* exposes explicit control (``create_sprint`` builds an empty PLANNING
+  shell; ``add_task`` / ``start_sprint`` / ``advance_sprint`` are the
+  REST overrides);
 * answers ``is_task_workable`` for the advisory Kanban board gate.
+
+The DB writes (backlog + lifecycle CAS) run inline; the ceremony-scheduler
+notifications, which can fire LLM-backed meetings, run in tracked
+background tasks so the single-consumer observer-dispatch loop never
+blocks on a meeting.
 
 Persistence is the sole source of truth: the sprint is read back from
 the repository on every operation, mutated via the immutable domain
-functions, and written straight back.
+functions, and written straight back. The per-service ``asyncio.Lock``
+serialises the read-modify-write sections **within one process**; the
+repository's ``transition_if`` CAS is the only cross-process guard.
 """
 
 import asyncio
+from collections.abc import Coroutine
 from typing import Final
 from uuid import uuid4
 
@@ -36,6 +46,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow._sprint_ops import (
+    NON_TERMINAL_TASK_STATUSES,
     OPEN_SPRINT_STATUSES,
     next_status,
     open_backlog_tasks,
@@ -62,6 +73,7 @@ from synthorg.observability.events.workflow import (
     SPRINT_SERVICE_OBSERVER_FAILED,
     SPRINT_STATUS_TRANSITIONED,
     SPRINT_TASK_COMPLETED,
+    SPRINT_TRANSITION_LOST,
 )
 from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
@@ -89,6 +101,7 @@ class SprintService:
     """
 
     __slots__ = (
+        "_bg_tasks",
         "_ceremony_scheduler",
         "_clock",
         "_config_resolver",
@@ -115,8 +128,40 @@ class SprintService:
         self._sprint_config = sprint_config or SprintConfig()
         self._clock = clock or SystemClock()
         # Serialises the read-modify-write critical sections so two
-        # concurrent completions cannot both advance the same sprint.
+        # concurrent completions in this process cannot both advance the
+        # same sprint; transition_if is the cross-process backstop.
         self._lock = asyncio.Lock()
+        # In-flight ceremony-forwarding tasks spawned off the observer so
+        # a meeting never blocks the dispatch loop; drained on shutdown.
+        self._bg_tasks: set[asyncio.Task[None]] = set()
+
+    def _spawn(self, coro: Coroutine[object, object, None]) -> None:
+        """Run *coro* as a tracked background task (never blocks the caller)."""
+        task = asyncio.create_task(self._guard(coro))
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+    async def _guard(self, coro: Coroutine[object, object, None]) -> None:
+        """Await *coro*, redacting any non-critical failure off the dispatch loop."""
+        try:
+            await coro
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SPRINT_SERVICE_OBSERVER_FAILED,
+                exc,
+                phase="ceremony_forward",
+            )
+
+    async def drain(self) -> None:
+        """Await all in-flight background ceremony tasks.
+
+        Used by graceful shutdown and by tests that assert on the state a
+        forwarded ceremony leaves behind.
+        """
+        while self._bg_tasks:
+            await asyncio.gather(*tuple(self._bg_tasks), return_exceptions=True)
 
     # -- Read surface --------------------------------------------------
 
@@ -189,11 +234,16 @@ class SprintService:
 
         Raises:
             SprintNotFoundError: When *sprint_id* has no row.
+            SprintTransitionConflictError: When the sprint is not
+                ``PLANNING`` (tasks may only be added while planning).
             SprintBacklogFullError: When the backlog is at
                 ``max_tasks_per_sprint``.
         """
         async with self._lock:
             sprint = await self._require(sprint_id)
+            if sprint.status is not SprintStatus.PLANNING:
+                msg = f"Sprint {sprint_id!r} is not in 'planning'; cannot add tasks"
+                raise SprintTransitionConflictError(msg)
             if len(sprint.task_ids) >= self._sprint_config.max_tasks_per_sprint:
                 msg = (
                     f"Sprint {sprint_id!r} backlog is full "
@@ -277,14 +327,17 @@ class SprintService:
         done in the open sprint and forward to the ceremony scheduler.
         Never raises into the engine's observer dispatch.
         """
+        phase = "unknown"
         try:
             if event.task is None or event.new_status is None:
                 return
             if not await self._sprints_active():
                 return
             if event.new_status is TaskStatus.ASSIGNED:
+                phase = "ensure_sprint_for_work"
                 await self._ensure_sprint_for_work(event.task)
             elif event.new_status is TaskStatus.COMPLETED:
+                phase = "handle_completion"
                 await self._handle_completion(event.task)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -292,7 +345,9 @@ class SprintService:
                 logger,
                 SPRINT_SERVICE_OBSERVER_FAILED,
                 exc,
+                phase=phase,
                 task_id=event.task_id,
+                project=event.task.project if event.task is not None else None,
                 new_status=event.new_status.value if event.new_status else None,
             )
 
@@ -324,6 +379,13 @@ class SprintService:
                 SprintStatus.ACTIVE,
                 start_date=started.start_date,
             ):
+                logger.warning(
+                    SPRINT_TRANSITION_LOST,
+                    sprint_id=sprint.id,
+                    from_status=SprintStatus.PLANNING.value,
+                    to_status=SprintStatus.ACTIVE.value,
+                    note="post_create_activation",
+                )
                 return
             logger.info(
                 SPRINT_CREATED,
@@ -332,23 +394,34 @@ class SprintService:
                 sprint_number=sprint.sprint_number,
                 seeded_tasks=len(sprint.task_ids),
             )
-        await self._activate_scheduler(started)
         self._log_transition(started, SprintStatus.PLANNING)
+        self._spawn(self._activate_scheduler(started))
 
     async def _handle_completion(self, task: Task) -> None:
-        """Mark *task* done in the open sprint and advance the lifecycle."""
+        """Mark *task* done in the open sprint, then advance off-loop.
+
+        The backlog write commits inline (source of truth); the ceremony
+        forward + lifecycle tail run in a background task so the observer
+        dispatch loop never waits on a meeting.
+        """
         task_id = str(task.id)
-        points = story_points_for(task)
         async with self._lock:
             sprint = await self._open_sprint(self._project_of(task))
             if sprint is None or task_id not in sprint.task_ids:
                 return
             if task_id in sprint.completed_task_ids:
                 return
-            updated = complete_task_in_sprint(sprint, NotBlankStr(task_id), points)
+            points = sprint.task_points.get(task_id, 0.0)
+            updated = complete_task_in_sprint(sprint, NotBlankStr(task_id))
             await self._sprints.save(updated)
         logger.info(SPRINT_TASK_COMPLETED, sprint_id=updated.id, task_id=task_id)
-        transitioned = await self._forward_completion(updated, task_id, points)
+        self._spawn(self._forward_and_finalize(updated, task_id, points))
+
+    async def _forward_and_finalize(
+        self, sprint: Sprint, task_id: str, points: float
+    ) -> None:
+        """Off-loop tail: forward the completion to the scheduler, then finalize."""
+        transitioned = await self._forward_completion(sprint, task_id, points)
         await self._finalize_if_delivered(transitioned)
 
     async def _forward_completion(
@@ -366,9 +439,17 @@ class SprintService:
         )
         if transitioned.status is sprint.status:
             return sprint
-        await self._sprints.transition_if(
+        if not await self._sprints.transition_if(
             NotBlankStr(sprint.id), sprint.status, transitioned.status
-        )
+        ):
+            logger.warning(
+                SPRINT_TRANSITION_LOST,
+                sprint_id=sprint.id,
+                from_status=sprint.status.value,
+                to_status=transitioned.status.value,
+                note="ceremony_auto_transition",
+            )
+            return sprint
         self._log_transition(transitioned, sprint.status)
         return transitioned
 
@@ -386,16 +467,31 @@ class SprintService:
                 SprintStatus.IN_REVIEW,
                 SprintStatus.RETROSPECTIVE,
             ):
+                logger.debug(
+                    SPRINT_TRANSITION_LOST,
+                    sprint_id=sprint.id,
+                    from_status=SprintStatus.IN_REVIEW.value,
+                    to_status=SprintStatus.RETROSPECTIVE.value,
+                    note="finalize_review_to_retro",
+                )
                 return
             completed = sprint.model_copy(
                 update={"status": SprintStatus.RETROSPECTIVE}
             ).with_transition(SprintStatus.COMPLETED, end_date=self._now_iso())
-            await self._sprints.transition_if(
+            if not await self._sprints.transition_if(
                 NotBlankStr(sprint.id),
                 SprintStatus.RETROSPECTIVE,
                 SprintStatus.COMPLETED,
                 end_date=completed.end_date,
-            )
+            ):
+                logger.warning(
+                    SPRINT_TRANSITION_LOST,
+                    sprint_id=sprint.id,
+                    from_status=SprintStatus.RETROSPECTIVE.value,
+                    to_status=SprintStatus.COMPLETED.value,
+                    note="finalize_retro_to_completed",
+                )
+                return
         self._log_transition(completed, SprintStatus.IN_REVIEW)
         if self._ceremony_scheduler is not None:
             await self._ceremony_scheduler.deactivate_sprint()
@@ -502,15 +598,27 @@ class SprintService:
     async def _collect_backlog(self, trigger: Task) -> tuple[Task, ...]:
         """Return the project's open tasks to seed a new sprint (capped).
 
+        Queries per non-terminal status so a project whose first rows are
+        terminal cannot starve the backlog of the open tasks that exist.
+
         Returns:
             The non-terminal tasks for the trigger's project (at most
             ``max_tasks_per_sprint``).
         """
         cap = self._sprint_config.max_tasks_per_sprint
-        candidates = await self._tasks.query(
-            TaskFilterSpec(project=self._project_of(trigger)), limit=cap
-        )
-        return open_backlog_tasks(candidates, cap=cap)
+        project = self._project_of(trigger)
+        collected: list[Task] = []
+        seen: set[object] = set()
+        for status in NON_TERMINAL_TASK_STATUSES:
+            if len(collected) >= cap:
+                break
+            for task in await self._tasks.query(
+                TaskFilterSpec(project=project, status=status), limit=cap
+            ):
+                if task.id not in seen:
+                    seen.add(task.id)
+                    collected.append(task)
+        return open_backlog_tasks(tuple(collected), cap=cap)
 
     @staticmethod
     def _project_of(task: Task) -> NotBlankStr:

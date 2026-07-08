@@ -20,12 +20,18 @@ CREATE TABLE sprints (
     CHECK (JSON_VALID(task_ids) AND JSON_TYPE(task_ids) = 'array'),
     completed_task_ids TEXT NOT NULL DEFAULT '[]'
     CHECK (JSON_VALID(completed_task_ids) AND JSON_TYPE(completed_task_ids) = 'array'),
+    task_points TEXT NOT NULL DEFAULT '{}'
+    CHECK (JSON_VALID(task_points) AND JSON_TYPE(task_points) = 'object'),
     story_points_committed REAL NOT NULL DEFAULT 0.0
     CHECK (story_points_committed >= 0.0),
     story_points_completed REAL NOT NULL DEFAULT 0.0
-    CHECK (story_points_completed >= 0.0)
+    CHECK (story_points_completed >= 0.0),
+    CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date),
+    CHECK (story_points_completed <= story_points_committed),
+    UNIQUE (project, sprint_number)
 );
-CREATE INDEX idx_sprints_project ON sprints (project);
 CREATE INDEX idx_sprints_status ON sprints (status);
 CREATE INDEX idx_sprints_project_status ON sprints (project, status);
 CREATE INDEX idx_sprints_number_id ON sprints (sprint_number DESC, id DESC);
+CREATE UNIQUE INDEX idx_sprints_org_wide_number ON sprints (sprint_number)
+WHERE project IS NULL;

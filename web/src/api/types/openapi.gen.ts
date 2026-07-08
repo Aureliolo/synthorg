@@ -16052,6 +16052,10 @@ export type components = {
              * @default []
              */
             readonly task_ids: readonly string[];
+            /** @description Story points committed per task id */
+            readonly task_points: {
+                readonly [key: string]: number;
+            };
         };
         /** SprintAddTaskPayload */
         readonly SprintAddTaskPayload: {
