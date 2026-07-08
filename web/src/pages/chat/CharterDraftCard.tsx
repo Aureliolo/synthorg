@@ -109,8 +109,7 @@ function CharterDraftActions({
       </div>
       {busy && (
         <p className="text-sm text-muted-foreground" role="status">
-          Working on it. Approving plans the project and can take up to a
-          minute on slower providers.
+          Working on it. This can take up to a minute on slower providers.
         </p>
       )}
     </div>
