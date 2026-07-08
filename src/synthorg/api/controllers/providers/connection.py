@@ -160,12 +160,19 @@ class ProviderConnectionController(Controller):
         Raises:
             ProviderNotFoundError: If the provider does not exist (404,
                 mapped by the domain handler from class metadata).
+            ProviderError: If the live discovery round-trip fails (bad
+                credentials / rate limit / unreachable host), surfaced so the
+                operator sees the specific reason rather than an empty result.
         """
         app_state: AppState = state.app_state
         mgmt = provider_management_of(app_state)
+        # A user-clicked re-sync is authoritative: surface the specific failure
+        # (bad key / 429 / unreachable) rather than an empty "0 discovered"
+        # result the operator cannot distinguish from "nothing changed".
         discovered = await mgmt.discover_models_for_provider(
             name,
             preset_hint=preset_hint,
+            strict=True,
         )
         return ApiResponse(
             data=DiscoverModelsResponse(

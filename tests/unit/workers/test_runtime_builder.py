@@ -20,7 +20,6 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.parallel import ParallelExecutor
@@ -37,6 +36,7 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import config_resolver_of
 from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -221,19 +221,20 @@ class TestProviderPresentSwitch:
         assert result.work_pipeline is None
 
     @pytest.mark.parametrize("model_value", ["", "   "])
-    async def test_blank_decomposition_model_raises_config_error(
+    async def test_blank_decomposition_model_fails_soft_to_no_coordinator(
         self,
         tmp_path: Path,
         model_value: str,
     ) -> None:
-        """A provider-present boot rejects a blank decomposition model.
+        """A provider-present boot with a blank decomposition model fails soft.
 
-        The coordinator builds eagerly when a provider is configured, so
-        an empty or whitespace-only ``coordination.decomposition_model``
-        fails fast at the wiring chokepoint with a typed,
-        operator-readable config error rather than a deep strategy-level
-        failure. The guard strips before checking, so a whitespace-only
-        value is rejected just like the empty string.
+        The coordinator builds eagerly when a provider is configured, but an
+        empty / whitespace-only ``coordination.decomposition_model`` must NOT
+        crash the boot / reload (a mid-setup capability toggle can rebuild the
+        coordinator before the model lands). It degrades to the no-coordinator
+        mode -- task execution rejected at the seam via
+        ``NoProviderExecutionService`` -- so setting the model later triggers a
+        watched-key rebuild that self-heals, instead of a hard failure.
         """
         registry = ProviderRegistry.from_config(
             {
@@ -249,8 +250,103 @@ class TestProviderPresentSwitch:
             blank_decomposition_value=model_value,
         )
 
-        with pytest.raises(CoordinationConfigError):
-            await build_runtime_services(app_state, workspace_root=tmp_path)
+        with capture_logs() as logs:
+            result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        assert result.coordinator is None
+        assert result.work_pipeline is None
+        assert isinstance(result.worker_execution_service, NoProviderExecutionService)
+        # Exactly one WARNING marks the degraded mode (not a per-hook cascade).
+        degraded = [
+            entry
+            for entry in logs
+            if entry.get("event") == API_APP_STARTUP
+            and entry.get("mode") == "no_coordinator"
+        ]
+        assert len(degraded) == 1
+        assert degraded[0]["service"] == "runtime_services"
+
+    async def test_decomposition_model_cleared_after_precheck_fails_soft(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The coordinator-build backstop also degrades, with the error typed.
+
+        If the model is cleared between the cheap pre-check and the eager
+        coordinator build (a race the pre-check cannot catch), the
+        ``CoordinationConfigError`` backstop must degrade to the same mode and
+        log the failure with an ``error_type`` discriminator.
+        """
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
+        )
+        app_state = _provider_app_state(
+            registry,
+            tmp_path,
+            blank_decomposition_model=True,
+        )
+
+        # Force the pre-check to pass so the eager build reaches the blank model
+        # and raises, exercising the backstop rather than the pre-check.
+        async def _pretend_configured(_app_state: AppState) -> bool:
+            return True
+
+        monkeypatch.setattr(
+            "synthorg.workers.runtime_builder.decomposition_model_is_configured",
+            _pretend_configured,
+        )
+
+        with capture_logs() as logs:
+            result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        assert result.coordinator is None
+        assert isinstance(result.worker_execution_service, NoProviderExecutionService)
+        degraded = next(
+            entry
+            for entry in logs
+            if entry.get("event") == API_APP_STARTUP
+            and entry.get("mode") == "no_coordinator"
+        )
+        assert degraded["error_type"] == "CoordinationConfigError"
+
+    async def test_degraded_boot_self_heals_when_model_is_set(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The same app_state degrades on a blank model, then heals when set.
+
+        Drives the full self-heal sequence a watched-key reload performs: an
+        initial build with a blank ``decomposition_model`` returns the degraded
+        no-coordinator mode; once the model resolves to a real id, a rebuild
+        against the SAME app_state brings a live coordinator online -- no
+        process restart.
+        """
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
+        )
+        app_state = _provider_app_state(
+            registry, tmp_path, blank_decomposition_model=True
+        )
+
+        degraded = await build_runtime_services(app_state, workspace_root=tmp_path)
+        assert degraded.coordinator is None
+
+        # Operator sets coordination.decomposition_model: the resolver now
+        # yields a model id, exactly what a watched-key reload rebuilds against.
+        get_str = cast(AsyncMock, config_resolver_of(app_state).get_str)
+        get_str.side_effect = _get_str
+
+        healed = await build_runtime_services(app_state, workspace_root=tmp_path)
+        assert isinstance(healed.coordinator, MultiAgentCoordinator)
 
     async def test_worker_and_coordinator_share_one_engine(
         self,

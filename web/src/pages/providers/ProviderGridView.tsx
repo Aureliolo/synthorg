@@ -24,11 +24,13 @@ const ProviderGridItem = memo(function ProviderGridItem({
 }: ProviderGridItemProps) {
   return (
     <StaggerItem>
-      <div className="relative">
+      <div className="flex items-start gap-2">
         {onToggleSelect && (
           <div
-            className="absolute left-2 top-2 z-10"
-            onClick={(e) => e.stopPropagation()}
+            className="shrink-0 pt-card"
+            onClick={(e) => {
+              e.stopPropagation()
+            }}
           >
             <Checkbox
               checked={selected ?? false}
@@ -42,7 +44,7 @@ const ProviderGridItem = memo(function ProviderGridItem({
             ':providerName',
             encodeURIComponent(provider.name),
           )}
-          className="block"
+          className="block min-w-0 flex-1"
         >
           <ProviderCard provider={provider} health={health} />
         </Link>

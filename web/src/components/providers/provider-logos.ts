@@ -17,6 +17,7 @@ export const KNOWN_LOGOS: ReadonlySet<string> = new Set([
   'gemini',
   'groq',
   'lm-studio',
+  'mammouth',
   'mistral',
   'moonshot',
   'nvidia_nim',

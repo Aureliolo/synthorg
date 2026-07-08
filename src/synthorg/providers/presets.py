@@ -472,6 +472,32 @@ _COHERE = CloudPreset(
     default_models=(),
 )
 
+_MAMMOUTH = CloudPreset(
+    name="mammouth",
+    display_name="Mammouth",
+    description="Multi-model gateway (mammouth.ai) with one subscription",
+    driver="litellm",
+    # Mammouth exposes an OpenAI-compatible endpoint (https://api.mammouth.ai/v1)
+    # with a Bearer API key, so it routes through LiteLLM's ``openai`` provider
+    # against the custom base URL -- the same pattern as Ollama Cloud. Its
+    # catalogue aggregates many vendors (GPT, Claude, Gemini, DeepSeek, ...)
+    # under bare model ids, so ``prefer_live_discovery`` pulls the full live
+    # catalogue from ``/v1/models`` rather than the static ``litellm.model_cost``
+    # table (which under ``litellm_provider="openai"`` would surface OpenAI's
+    # catalogue).
+    litellm_provider="openai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_base_url="https://api.mammouth.ai/v1",
+    requires_base_url=False,
+    prefer_live_discovery=True,
+    # No seed: a live-discovery gateway's models come from the live
+    # ``/v1/models`` catalogue. A curated seed here could only ever act as a
+    # silent fallback masking a failed discovery (bad key / rate limit /
+    # unreachable), so discovery is the single source of truth.
+    default_models=(),
+)
+
 _OLLAMA_CLOUD = CloudPreset(
     name="ollama-cloud",
     display_name="Ollama Cloud",
@@ -735,6 +761,7 @@ _FEATURED_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
     _FIREWORKS,
     _GEMINI,
     _GROQ,
+    _MAMMOUTH,
     _MISTRAL,
     _MOONSHOT,
     _NVIDIA_NIM,

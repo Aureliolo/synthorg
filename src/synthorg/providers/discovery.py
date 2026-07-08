@@ -12,6 +12,7 @@ URL probing (candidate URL probing for presets) lives in
 :mod:`synthorg.providers.probing`.
 """
 
+import functools
 import json
 from collections.abc import Awaitable, Callable
 from typing import Final
@@ -20,11 +21,18 @@ import httpx
 from pydantic import JsonValue
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.core.resilience import (
+    GeneralRetryHandler,
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_DISCOVERY_RETRY,
     PROVIDER_DISCOVERY_SSRF_BYPASSED,
     PROVIDER_MODELS_DISCOVERED,
 )
@@ -36,6 +44,15 @@ from synthorg.providers.capability_enrichment import (
     FetchContext,
     enrich_discovered_models,
 )
+from synthorg.providers.errors import (
+    AuthenticationError,
+    InvalidRequestError,
+    ProviderConnectionError,
+    ProviderError,
+    ProviderInternalError,
+    ProviderTimeoutError,
+    RateLimitError,
+)
 from synthorg.providers.probing import (
     _parse_ollama_models,
     _parse_standard_models,
@@ -44,7 +61,187 @@ from synthorg.providers.url_utils import redact_url as _redact_url
 
 logger = get_logger(__name__)
 
+_HTTP_UNAUTHORIZED: Final[int] = 401
+_HTTP_FORBIDDEN: Final[int] = 403
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
+_HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
+
 _DISCOVERY_TIMEOUT_SECONDS: Final[float] = 10.0
+
+# Bounded retry for an authoritative (strict) discovery round-trip: a
+# live-discovery gateway save or a manual re-sync should absorb a transient
+# 429 / 5xx / timeout before surfacing a failure, but must not retry a
+# terminal error (bad key, 4xx) or loop indefinitely.
+_DISCOVERY_RETRY_MAX_ATTEMPTS: Final[int] = 3
+_DISCOVERY_RETRY_BASE_SECONDS: Final[float] = 0.5
+_DISCOVERY_RETRY_CAP_SECONDS: Final[float] = 8.0
+
+
+def _discovery_http_error(
+    status_code: int,
+    safe_url: str,
+    *,
+    retry_after: float | None = None,
+) -> ProviderError:
+    """Map a discovery HTTP status onto a typed provider error.
+
+    Args:
+        status_code: The HTTP status returned by the provider listing.
+        safe_url: Redacted URL for the error context (never the raw URL).
+        retry_after: Server-supplied cool-down seconds for a 429, when the
+            response carried a parseable ``Retry-After`` header.
+
+    Returns:
+        The provider error a strict discovery should raise for *status_code*.
+    """
+    if status_code in (_HTTP_UNAUTHORIZED, _HTTP_FORBIDDEN):
+        return AuthenticationError(
+            f"Provider rejected the discovery credentials ({status_code})",
+            context={"url": safe_url},
+        )
+    if status_code == _HTTP_TOO_MANY_REQUESTS:
+        return RateLimitError(
+            "Provider rate-limited model discovery (429)",
+            retry_after=retry_after,
+            context={"url": safe_url},
+        )
+    if status_code >= _HTTP_SERVER_ERROR_FLOOR:
+        return ProviderInternalError(
+            f"Provider returned {status_code} during discovery",
+            context={"url": safe_url},
+        )
+    return InvalidRequestError(
+        f"Provider returned {status_code} during discovery",
+        context={"url": safe_url},
+    )
+
+
+def _discovery_transport_error(reason: str, safe_url: str) -> ProviderError:
+    """Build the typed error a strict discovery raises for a transport failure.
+
+    Constructing the message here (rather than at the ``raise`` site) keeps the
+    long human-readable strings out of the caller, mirroring
+    :func:`_discovery_http_error`.
+
+    Args:
+        reason: Transport failure kind (``ssrf`` / ``connection`` / ``timeout``
+            / ``non_json`` / anything else -> unexpected).
+        safe_url: Redacted URL for the error context.
+
+    Returns:
+        The typed provider error for *reason*.
+    """
+    match reason:
+        case "ssrf":
+            return InvalidRequestError(
+                "Discovery URL failed SSRF validation",
+                context={"url": safe_url},
+            )
+        case "connection":
+            return ProviderConnectionError(
+                "Could not connect to the provider during discovery",
+                context={"url": safe_url},
+            )
+        case "timeout":
+            return ProviderTimeoutError(
+                "Timed out contacting the provider during discovery",
+                context={"url": safe_url},
+            )
+        case "non_json":
+            return ProviderInternalError(
+                "Provider returned a non-JSON discovery response",
+                context={"url": safe_url},
+            )
+        case _:
+            return ProviderInternalError(
+                "Model discovery failed unexpectedly",
+                context={"url": safe_url},
+            )
+
+
+def _http_retry_after_seconds(response: httpx.Response) -> float | None:
+    """Extract a parseable ``Retry-After`` cool-down from a 429 response.
+
+    Args:
+        response: The httpx response carrying the (case-insensitive) headers.
+
+    Returns:
+        The non-negative finite cool-down seconds, or ``None`` when the header
+        is absent or unparseable.
+    """
+    raw = response.headers.get("retry-after")
+    if raw is None:
+        return None
+    return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
+
+
+def _is_retryable_discovery_error(exc: Exception) -> bool:
+    """Whether a strict-discovery failure warrants a retry (transient only).
+
+    Returns:
+        True for a retryable provider error (429 / 5xx / timeout / connection).
+    """
+    return isinstance(exc, ProviderError) and exc.is_retryable
+
+
+def _discovery_retry_after(exc: Exception) -> float | None:
+    """Honour a provider-supplied ``Retry-After`` on a rate-limit retry.
+
+    Returns:
+        The error's ``retry_after`` cool-down seconds, or ``None`` when absent.
+    """
+    return getattr(exc, "retry_after", None)
+
+
+async def discover_models_strict(
+    base_url: str,
+    preset_name: str | None = None,
+    *,
+    headers: dict[str, str] | None = None,
+    trust_url: bool = False,
+    clock: Clock | None = None,
+) -> tuple[ProviderModelConfig, ...]:
+    """Run an authoritative discovery with bounded retry, raising on failure.
+
+    The entry point for callers for whom discovery IS the source of truth (a
+    seedless live-discovery gateway save, or a manual re-sync): transient
+    provider errors (429 / 5xx / timeout / connection) are retried with
+    exponential backoff honouring a server ``Retry-After``, and a terminal
+    error (bad key, 4xx) or an exhausted retry budget propagates so the caller
+    surfaces the specific reason rather than masking it as "no models".
+
+    Args:
+        base_url: Provider base URL.
+        preset_name: Preset identifier hint for endpoint selection.
+        headers: Optional auth headers to include in the request.
+        trust_url: When True, skip SSRF validation (trusted-origin URL).
+        clock: Clock seam for the retry backoff (tests inject a fake).
+
+    Returns:
+        Tuple of discovered model configs (may be empty when the provider
+        legitimately lists no models).
+
+    Raises:
+        ProviderError: On a terminal failure or after the retry budget is spent.
+    """
+    handler = GeneralRetryHandler(
+        retryable=_is_retryable_discovery_error,
+        max_attempts=_DISCOVERY_RETRY_MAX_ATTEMPTS,
+        base=_DISCOVERY_RETRY_BASE_SECONDS,
+        cap=_DISCOVERY_RETRY_CAP_SECONDS,
+        event=PROVIDER_DISCOVERY_RETRY,
+        clock=clock,
+        delay_override=_discovery_retry_after,
+    )
+    op = functools.partial(
+        discover_models,
+        base_url,
+        preset_name,
+        headers=headers,
+        trust_url=trust_url,
+        strict=True,
+    )
+    return await handler.execute(op, provider=preset_name)
 
 
 async def discover_models(
@@ -53,6 +250,7 @@ async def discover_models(
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
+    strict: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover available models from a provider endpoint.
 
@@ -68,9 +266,17 @@ async def discover_models(
         trust_url: When True, skip SSRF validation. Use only when
             the URL originates from a trusted source (e.g. a preset's
             ``candidate_urls`` or admin-entered during setup).
+        strict: When True, a failed listing round-trip raises a typed
+            :class:`ProviderError` instead of returning an empty tuple, so
+            an authoritative discovery (a live-discovery gateway save)
+            surfaces the real reason rather than masking it as "no models".
 
     Returns:
-        Tuple of discovered model configs, or empty tuple on failure.
+        Tuple of discovered model configs, or empty tuple on failure when
+        not ``strict``.
+
+    Raises:
+        ProviderError: On a failed listing round-trip when ``strict`` is True.
     """
     # Local ``ollama`` speaks the native listing protocol
     # (``GET /api/tags``). ``ollama-cloud`` is reached through Ollama's
@@ -81,12 +287,14 @@ async def discover_models(
             base_url,
             headers=headers,
             trust_url=trust_url,
+            strict=strict,
         )
     return await _discover_standard_api(
         base_url,
         preset_name,
         headers=headers,
         trust_url=trust_url,
+        strict=strict,
     )
 
 
@@ -108,6 +316,7 @@ async def _discover_ollama(
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
+    strict: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from Ollama's ``/api/tags`` endpoint.
 
@@ -115,12 +324,18 @@ async def _discover_ollama(
         base_url: Ollama server URL.
         headers: Optional auth headers.
         trust_url: Skip SSRF validation when True.
+        strict: Raise a typed :class:`ProviderError` on a failed round-trip.
 
     Returns:
-        Discovered models, or empty tuple on failure.
+        Discovered models, or empty tuple on failure when not ``strict``.
+
+    Raises:
+        ProviderError: On a failed round-trip when ``strict`` is True.
     """
     url = _discovery_url(base_url, "/api/tags")
-    data = await _fetch_json(url, "ollama", headers=headers, trust_url=trust_url)
+    data = await _fetch_json(
+        url, "ollama", headers=headers, trust_url=trust_url, strict=strict
+    )
     if data is None:
         return ()
     base_models = _parse_and_log("ollama", url, data, _parse_ollama_models)
@@ -138,6 +353,7 @@ async def _discover_standard_api(
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
+    strict: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from a standard ``/models`` endpoint.
 
@@ -149,9 +365,13 @@ async def _discover_standard_api(
         preset_name: Preset name for logging context.
         headers: Optional auth headers.
         trust_url: Skip SSRF validation when True.
+        strict: Raise a typed :class:`ProviderError` on a failed round-trip.
 
     Returns:
-        Discovered models, or empty tuple on failure.
+        Discovered models, or empty tuple on failure when not ``strict``.
+
+    Raises:
+        ProviderError: On a failed round-trip when ``strict`` is True.
     """
     url = _discovery_url(base_url, "/models")
     data = await _fetch_json(
@@ -159,6 +379,7 @@ async def _discover_standard_api(
         preset_name,
         headers=headers,
         trust_url=trust_url,
+        strict=strict,
     )
     if data is None:
         return ()
@@ -257,6 +478,7 @@ async def _fetch_json_trusted(
     *,
     headers: dict[str, str] | None = None,
     body: dict[str, JsonValue] | None = None,
+    strict: bool = False,
 ) -> dict[str, JsonValue] | None:
     """Fetch JSON from a trusted URL without SSRF validation.
 
@@ -271,9 +493,14 @@ async def _fetch_json_trusted(
         preset_name: Preset name for logging context.
         headers: Optional auth headers to include.
         body: JSON request body; when set, the request is a POST.
+        strict: When True, a fetch failure raises a typed
+            :class:`ProviderError` instead of returning ``None``.
 
     Returns:
-        Parsed JSON dict, or ``None`` on any failure.
+        Parsed JSON dict, or ``None`` on failure when not ``strict``.
+
+    Raises:
+        ProviderError: On any fetch failure when ``strict`` is True.
     """
     safe_url = _redact_url(url)
     # A trusted discovery URL is allowlisted -- a preset ``candidate_url`` or an
@@ -290,16 +517,18 @@ async def _fetch_json_trusted(
         _do_fetch_json(url, headers, preset_name=preset_name, body=body),
         preset_name,
         safe_url,
+        strict=strict,
     )
 
 
-async def _fetch_json(
+async def _fetch_json(  # noqa: PLR0913 -- SSRF-validated fetch: url + logging + auth + body + strict is the irreducible surface
     url: str,
     preset_name: str | None,
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
     body: dict[str, JsonValue] | None = None,
+    strict: bool = False,
 ) -> dict[str, JsonValue] | None:
     """Fetch JSON from a URL with timeout and error handling.
 
@@ -316,9 +545,14 @@ async def _fetch_json(
         headers: Optional auth headers to include.
         trust_url: When True, skip SSRF validation and IP pinning.
         body: JSON request body; when set, the request is a POST.
+        strict: When True, a fetch failure (including SSRF rejection) raises a
+            typed :class:`ProviderError` instead of returning ``None``.
 
     Returns:
-        Parsed JSON dict, or ``None`` on any failure.
+        Parsed JSON dict, or ``None`` on failure when not ``strict``.
+
+    Raises:
+        ProviderError: On any fetch failure when ``strict`` is True.
     """
     if trust_url:
         return await _fetch_json_trusted(
@@ -326,6 +560,7 @@ async def _fetch_json(
             preset_name,
             headers=headers,
             body=body,
+            strict=strict,
         )
 
     safe_url = _redact_url(url)
@@ -335,6 +570,9 @@ async def _fetch_json(
         safe_url,
     )
     if pinned_url is None:
+        if strict:
+            error = _discovery_transport_error("ssrf", safe_url)
+            raise error
         return None
 
     return await _safe_fetch(
@@ -347,6 +585,7 @@ async def _fetch_json(
         ),
         preset_name,
         safe_url,
+        strict=strict,
     )
 
 
@@ -397,6 +636,8 @@ async def _safe_fetch(
     coro: Awaitable[dict[str, JsonValue] | None],
     preset_name: str | None,
     safe_url: str,
+    *,
+    strict: bool = False,
 ) -> dict[str, JsonValue] | None:
     """Await a fetch coroutine with unified exception handling.
 
@@ -407,9 +648,18 @@ async def _safe_fetch(
         coro: Awaitable returning a JSON dict or None.
         preset_name: Preset name for logging context.
         safe_url: Redacted URL for log messages.
+        strict: When True, a fetch failure raises a typed
+            :class:`ProviderError` instead of returning ``None``. Callers
+            for whom discovery is authoritative (a provider save on a
+            live-discovery gateway) pass this so a failed round-trip
+            surfaces the real reason rather than being masked as "no
+            models found".
 
     Returns:
-        Parsed JSON dict, or ``None`` on any failure.
+        Parsed JSON dict, or ``None`` on failure when not ``strict``.
+
+    Raises:
+        ProviderError: On any fetch failure when ``strict`` is True.
     """
     try:
         return await coro
@@ -421,13 +671,29 @@ async def _safe_fetch(
             url=safe_url,
             status_code=exc.response.status_code,
         )
-    except httpx.ConnectError:
+        if strict:
+            error = _discovery_http_error(
+                exc.response.status_code,
+                safe_url,
+                retry_after=_http_retry_after_seconds(exc.response),
+            )
+            raise error from exc
+    except httpx.ConnectError as exc:
         _log_fetch_failure(preset_name, "connection_refused", safe_url)
-    except httpx.TimeoutException:
+        if strict:
+            error = _discovery_transport_error("connection", safe_url)
+            raise error from exc
+    except httpx.TimeoutException as exc:
         _log_fetch_failure(preset_name, "timeout", safe_url)
-    except json.JSONDecodeError:
+        if strict:
+            error = _discovery_transport_error("timeout", safe_url)
+            raise error from exc
+    except json.JSONDecodeError as exc:
         _log_fetch_failure(preset_name, "invalid_json_response", safe_url)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        if strict:
+            error = _discovery_transport_error("non_json", safe_url)
+            raise error from exc
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
@@ -437,6 +703,9 @@ async def _safe_fetch(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        if strict:
+            error = _discovery_transport_error("unexpected", safe_url)
+            raise error from exc
     return None
 
 

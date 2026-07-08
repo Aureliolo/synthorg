@@ -450,6 +450,54 @@ def _ollama_parameter_count(show: Mapping[str, JsonValue]) -> int | None:
     return None
 
 
+# A remote gateway self-reports ``max_input_tokens``; this ceiling (generous
+# headroom over any real 2026 context window) rejects an implausible value
+# (data error or a hostile gateway inflating the window to skew model
+# selection) so it falls back to the safe default instead of being trusted.
+_MAX_CONTEXT_TOKENS: Final[int] = 20_000_000
+
+
+def _standard_entry_positive_int(entry: dict[str, JsonValue], key: str) -> int | None:
+    """Read a positive-int field from a ``/models`` entry, else ``None``.
+
+    Rejects ``bool`` (a subclass of ``int``) and non-positive values so a
+    provider's ``0``/``false`` never masquerades as a real limit.
+
+    Returns:
+        The positive integer value, or ``None`` when absent/invalid.
+    """
+    value = entry.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _standard_model_from_entry(
+    model_id: str, entry: dict[str, JsonValue]
+) -> ProviderModelConfig:
+    """Build a model config from a ``/models`` entry, keeping provider detail.
+
+    An OpenAI-compatible listing is the provider's own catalogue, so any
+    per-model detail it returns is authoritative and must be carried through
+    rather than discarded and re-derived from LiteLLM's static database. Today
+    that is the context window (``max_input_tokens`` -> ``max_context``).
+
+    ``max_context`` is a top-level field, so downstream capability enrichment
+    (which replaces only ``metadata`` for ``unknown``-source models) preserves
+    it while still resolving capability flags from LiteLLM / family inference.
+    ``metadata`` is intentionally left at its ``unknown`` default here so that
+    enrichment still runs; carrying ``max_output_tokens`` through requires a
+    merge in enrichment (tracked separately) rather than pinning the source.
+
+    Returns:
+        The model config with the provider-supplied context window applied.
+    """
+    max_context = _standard_entry_positive_int(entry, "max_input_tokens")
+    if max_context is None or max_context > _MAX_CONTEXT_TOKENS:
+        return ProviderModelConfig(id=model_id)
+    return ProviderModelConfig(id=model_id, max_context=max_context)
+
+
 def _parse_standard_models(
     data: dict[str, JsonValue],
 ) -> tuple[ProviderModelConfig, ...] | None:
@@ -472,5 +520,5 @@ def _parse_standard_models(
         model_id = entry.get("id")
         if not isinstance(model_id, str) or not model_id.strip():
             continue
-        models.append(ProviderModelConfig(id=model_id))
+        models.append(_standard_model_from_entry(model_id, entry))
     return tuple(models)

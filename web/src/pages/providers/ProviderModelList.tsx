@@ -58,7 +58,21 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
         ]
 
   const visible = badges.filter((b) => b.show)
-  if (visible.length === 0) return null
+  if (visible.length === 0) {
+    // Honest surfacing, never a guess: when neither the provider nor LiteLLM
+    // reported capabilities (metadata_source 'unknown') we mark the model
+    // unverified rather than implying it has none. A known-but-plain chat
+    // model (source != 'unknown') simply shows no extra pills. (An embedding
+    // model always yields a visible pill, so it never reaches this branch.)
+    if (model.metadata_source === 'unknown') {
+      return (
+        <span className="rounded bg-bg-surface px-1.5 py-0.5 text-micro font-medium leading-tight text-text-muted">
+          capabilities unverified
+        </span>
+      )
+    }
+    return null
+  }
 
   return (
     <div className="flex flex-wrap gap-1">

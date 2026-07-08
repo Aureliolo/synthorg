@@ -37,7 +37,7 @@ class TestDiscoverModelsForProvider:
             ProviderModelConfig(id="test-model-b"),
         )
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             new_callable=AsyncMock,
             return_value=discovered,
         ):
@@ -82,7 +82,7 @@ class TestDiscoverModelsForProvider:
             ),
         )
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             new_callable=AsyncMock,
             return_value=(),
         ) as mock_discover:
@@ -120,7 +120,7 @@ class TestCreateFromPresetAutoDiscovery:
                 return_value=(),
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=discovered,
             ) as mock_discover,
@@ -148,7 +148,7 @@ class TestCreateFromPresetAutoDiscovery:
                 return_value=(),
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=discovered,
             ) as mock_discover,
@@ -233,18 +233,14 @@ class TestDiscoverModelsForProviderTrust:
         await service.create_provider(
             make_create_request(base_url=base_url),
         )
-        kwargs: dict[str, str] = {}
-        if preset_hint is not None:
-            kwargs["preset_hint"] = preset_hint
-
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             new_callable=AsyncMock,
             return_value=(),
         ) as mock_discover:
             await service.discover_models_for_provider(
                 "test-provider",
-                **kwargs,
+                preset_hint=preset_hint,
             )
 
         mock_discover.assert_awaited_once()
@@ -274,7 +270,7 @@ class TestApplyDiscoveredModelsTOCTOU:
             return (ProviderModelConfig(id="test-discovered"),)
 
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             side_effect=discover_then_delete,
         ):
             result = await service.discover_models_for_provider(
@@ -308,7 +304,7 @@ class TestApplyDiscoveredModelsTOCTOU:
             return (ProviderModelConfig(id="test-discovered"),)
 
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             side_effect=discover_then_change_url,
         ):
             result = await service.discover_models_for_provider(
@@ -391,7 +387,7 @@ class TestSelfConnectionGuard:
                 return_value=fake_preset,
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(),
             ) as mock_discover,
@@ -432,7 +428,7 @@ class TestSelfConnectionGuard:
                 return_value=fake_preset,
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(),
             ) as mock_discover,
@@ -470,7 +466,7 @@ class TestSelfConnectionGuard:
                 return_value=fake_preset,
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(),
             ),

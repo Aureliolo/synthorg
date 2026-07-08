@@ -248,6 +248,7 @@ class TestDiscoverModelsEndpoint:
         mgmt.discover_models_for_provider.assert_awaited_once_with(
             "test-provider",
             preset_hint=None,
+            strict=True,
         )
         assert result.data.provider_name == "test-provider"
         assert result.data.discovered_models == discovered

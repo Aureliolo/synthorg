@@ -88,6 +88,7 @@ const testModels: ProviderModelResponse[] = [
     supports_reasoning: false,
     supports_image_generation: false,
     family: null,
+    metadata_source: "unknown",
     stale: null,
   },
 ];

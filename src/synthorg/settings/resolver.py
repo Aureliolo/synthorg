@@ -60,6 +60,7 @@ from synthorg.settings.bridge_configs import (
     ToolsBridgeConfig,
     WorkersBridgeConfig,
 )
+from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 
@@ -354,10 +355,35 @@ class ConfigResolver:
                 reason="decryption_failed",
             )
             raise
+        if not result.value.strip():
+            if result.source is not SettingSource.DEFAULT:
+                # A blank value from a REAL source (e.g. `SYNTHORG_..._CONFIGS=`
+                # left empty in the environment) is a misconfiguration, not
+                # "unset": surface it once so the operator sees why their
+                # override was silently ignored rather than applied.
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    reason="blank_value_override",
+                    source=result.source.value,
+                )
+            # An unset JSON setting whose definition ``default`` is ``None``
+            # resolves to the empty-string sentinel (see
+            # ``SettingsService._resolve_fallback``). That is "no value", not
+            # corrupt JSON, so return JSON null and let the container resolver
+            # apply its own fallback -- WITHOUT warning on every read (e.g.
+            # ``providers.configs`` / ``providers.discovery_allowlist`` on a
+            # fresh install before anything is saved).
+            return None
         try:
             return json.loads(result.value)
         except json.JSONDecodeError as exc:
-            logger.warning(
+            # DEBUG, not WARNING: this raises ValueError, and the caller
+            # (e.g. _resolve_json_setting's invalid_json_fallback) emits the
+            # single actionable WARNING for genuinely-corrupt (non-empty)
+            # values. Warning here too double-logs every failed read.
+            logger.debug(
                 SETTINGS_VALIDATION_FAILED,
                 namespace=namespace,
                 key=key,
@@ -1067,10 +1093,10 @@ class ConfigResolver:
         """
         from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
 
-        # ``get_json`` parses the value and emits the structured
-        # ``SETTINGS_VALIDATION_FAILED`` warning on JSON-decode errors,
-        # keeping this setting on the same observability path as every
-        # other JSON-typed setting in the resolver.
+        # ``get_json`` parses the value and raises ``ValueError`` on a
+        # genuinely-corrupt (non-empty) JSON value, logging that at DEBUG; this
+        # method's own broad-except caller emits the actionable WARNING, so the
+        # failure stays visible without double-logging each read.
         parsed = await self.get_json("memory", "fine_tune_vram_batch_table")
         if not isinstance(parsed, list) or any(
             not isinstance(row, list | tuple) or len(row) != 2  # noqa: PLR2004 -- pair shape

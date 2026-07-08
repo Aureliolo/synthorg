@@ -62,12 +62,10 @@ from synthorg.observability.events.security import (
     SECURITY_PROVIDER_UPDATED,
 )
 from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
-from synthorg.providers.discovery import discover_models
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
-    is_url_allowed,
 )
-from synthorg.providers.enums import AuthType, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderError,
@@ -90,10 +88,7 @@ from synthorg.providers.management._credential_helpers import (
     rollback_credential,
     store_provider_api_key,
 )
-from synthorg.providers.management._discovery_auth import (
-    build_discovery_headers,
-    resolve_discovery_hint,
-)
+from synthorg.providers.management._discovery_mixin import ProviderDiscoveryMixin
 from synthorg.providers.management._persistence import apply_provider_change
 from synthorg.providers.management._preset_creation import create_provider_from_preset
 from synthorg.providers.management._tool_call_capability_mixin import (
@@ -114,8 +109,6 @@ from synthorg.providers.management.local_models import (
 )
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
-    CloudPreset,
-    LocalPreset,
     get_preset,
 )
 from synthorg.providers.routing.router import ModelRouter
@@ -283,7 +276,7 @@ def _safe_task_id_segment(value: str) -> str:
 
 
 class ProviderManagementService(
-    ProviderCapabilitiesMixin, ProviderToolCallCapabilityMixin
+    ProviderDiscoveryMixin, ProviderCapabilitiesMixin, ProviderToolCallCapabilityMixin
 ):
     """Runtime CRUD service for LLM providers.
 
@@ -774,156 +767,6 @@ class ProviderManagementService(
             ProviderAlreadyExistsError: If the name is taken.
         """
         return await create_provider_from_preset(self, request)
-
-    async def _maybe_discover_preset_models(
-        self,
-        preset: CloudPreset | LocalPreset,
-        base_url: str | None,
-        models: tuple[ProviderModelConfig, ...],
-        *,
-        auth_type: AuthType,
-        api_key: str | None = None,
-    ) -> tuple[ProviderModelConfig, ...]:
-        """Auto-discover models for no-auth or live-discovery presets.
-
-        Two discovery modes:
-
-        - **No-auth local** (``auth_type == NONE``): discover only when no
-          seed models were supplied, with no auth headers.
-        - **Live-discovery gateway** (``preset.prefer_live_discovery``, an
-          API-key ``api_key``, and the base URL still pointing at the
-          preset's canonical host): discover even when a curated seed
-          exists, sending the key as a Bearer credential, so the full live
-          catalogue replaces the seed on create. The Bearer credential is
-          sent only when ``base_url`` matches ``preset.default_base_url``;
-          a user-overridden host keeps the seed and is never handed the
-          key (confused-deputy guard).
-
-        Args:
-            preset: Resolved preset definition.
-            base_url: Provider base URL (may be user-overridden).
-            models: Seed models (may be empty).
-            auth_type: Effective auth type.
-            api_key: Plaintext API key for authenticated discovery.
-
-        Returns:
-            Discovered models if any, otherwise the seed models.
-        """
-        prefer_live = isinstance(preset, CloudPreset) and preset.prefer_live_discovery
-        headers: dict[str, str] | None
-        if auth_type == AuthType.NONE:
-            if models:
-                return models
-            headers = None
-        elif (
-            prefer_live
-            and auth_type == AuthType.API_KEY
-            and api_key
-            and base_url == preset.default_base_url
-        ):
-            headers = {"Authorization": f"Bearer {api_key}"}
-        else:
-            return models
-        if not base_url or self._is_self_connection(base_url):
-            return models
-        policy = await self._allowlist.load()
-        trust = is_url_allowed(base_url, policy)
-        discovered = await discover_models(
-            base_url,
-            preset.name,
-            headers=headers,
-            trust_url=trust,
-        )
-        return discovered or models
-
-    async def discover_models_readonly(
-        self,
-        name: str,
-        *,
-        preset_hint: str | None = None,
-    ) -> tuple[ProviderModelConfig, ...]:
-        """Discover a provider's live models without persisting anything.
-
-        The read-only core of :meth:`discover_models_for_provider`: it
-        resolves the endpoint, builds auth headers, applies the SSRF
-        trust decision, and queries the provider. It performs NO
-        persistence, so the periodic model-refresh probe can use it for
-        detection without mutating the configured model list.
-
-        Args:
-            name: Provider name.
-            preset_hint: Optional preset name for endpoint selection.
-
-        Returns:
-            The discovered models, or an empty tuple when the provider
-            has no base URL, targets this backend, or discovery returns
-            nothing.
-
-        Raises:
-            ProviderNotFoundError: If the provider does not exist.
-        """
-        config = await self.get_provider(name)
-
-        if config.base_url is None:
-            logger.info(
-                PROVIDER_DISCOVERY_FAILED,
-                provider=name,
-                reason="no_base_url",
-            )
-            return ()
-
-        if self._is_self_connection(config.base_url):
-            return ()
-
-        resolved_hint = resolve_discovery_hint(config, preset_hint)
-        api_key = await resolve_provider_api_key(self._app_state, config)
-        headers = build_discovery_headers(config, api_key)
-        policy = await self._allowlist.load()
-        trust = is_url_allowed(config.base_url, policy)
-        return await discover_models(
-            config.base_url,
-            resolved_hint,
-            headers=headers,
-            trust_url=trust,
-        )
-
-    async def discover_models_for_provider(
-        self,
-        name: str,
-        *,
-        preset_hint: str | None = None,
-    ) -> tuple[ProviderModelConfig, ...]:
-        """Discover and update models for an existing provider.
-
-        Args:
-            name: Provider name.
-            preset_hint: Optional preset name for endpoint selection.
-
-        Returns:
-            A tuple of discovered ``ProviderModelConfig`` instances (may
-            be empty if the provider has no base URL, targets the backend
-            itself, or discovery returns nothing).
-
-        Raises:
-            ProviderNotFoundError: If the provider does not exist.
-        """
-        # Capture the pre-discovery base_url so ``_apply_discovered_models``
-        # can detect a concurrent change (TOCTOU): if the provider's
-        # base_url is updated while discovery is in flight, the apply is
-        # refused and the discovered models are dropped.
-        config = await self.get_provider(name)
-        discovered = await self.discover_models_readonly(name, preset_hint=preset_hint)
-
-        if discovered and config.base_url is not None:
-            applied = await self._apply_discovered_models(
-                name,
-                config.base_url,
-                discovered,
-            )
-            if not applied:
-                return ()
-
-        return discovered
 
     def _is_self_connection(self, base_url: str) -> bool:
         """Check if a URL points at this backend; log warning if so.

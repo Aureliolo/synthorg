@@ -110,6 +110,7 @@ PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT: Final[str] = (
 PROVIDER_MODEL_ABSENT: Final[str] = "provider.management.model_absent"
 PROVIDER_MODELS_DISCOVERED: Final[str] = "provider.management.models_discovered"
 PROVIDER_DISCOVERY_FAILED: Final[str] = "provider.management.discovery_failed"
+PROVIDER_DISCOVERY_RETRY: Final[str] = "provider.management.discovery_retry"
 PROVIDER_DISCOVERY_SSRF_BYPASSED: Final[str] = (
     "provider.management.discovery_ssrf_bypassed"
 )

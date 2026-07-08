@@ -21,6 +21,7 @@ from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
 )
+from synthorg.config.model_metadata import MetadataSource
 from synthorg.config.model_staleness import ModelStaleness
 from synthorg.config.schema import (
     LocalModelParams,
@@ -133,6 +134,15 @@ class ProviderModelResponse(BaseModel):
     family: NotBlankStr | None = Field(
         default=None,
         description="Parsed model family (groups models for the picker)",
+    )
+    metadata_source: MetadataSource = Field(
+        default="unknown",
+        description=(
+            "Provenance of the capability metadata (litellm / preset / probe /"
+            " unknown). 'unknown' means neither the provider nor LiteLLM"
+            " reported capabilities, so the UI marks them unverified rather than"
+            " asserting the model has none."
+        ),
     )
     stale: ModelStaleness | None = Field(
         default=None,

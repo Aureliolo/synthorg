@@ -7,12 +7,21 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers._discovery_ssrf import (
     SsrfCheckResult,
     validate_discovery_url,
 )
 from synthorg.providers.discovery import discover_models
+from synthorg.providers.errors import (
+    AuthenticationError,
+    InvalidRequestError,
+    ProviderConnectionError,
+    ProviderError,
+    ProviderInternalError,
+    ProviderTimeoutError,
+    RateLimitError,
+)
 from synthorg.providers.presets import LocalPreset
 from synthorg.providers.probing import (
     ProbeResult,
@@ -244,6 +253,148 @@ class TestDiscoverStandardApi:
         assert len(result) == 2
         assert result[0].id == "model-a"
         assert result[1].id == "model-b"
+
+    async def test_carries_provider_context_window(self) -> None:
+        """The provider's per-model ``max_input_tokens`` becomes ``max_context``.
+
+        An OpenAI-compatible listing is the provider's own catalogue, so a
+        context window it reports is authoritative and must be carried through
+        rather than discarded in favour of LiteLLM's static database. An entry
+        that omits it (or reports a non-positive value) leaves the field at its
+        default so downstream enrichment can still fill it.
+        """
+        response = _mock_response(
+            {
+                "data": [
+                    {"id": "with-ctx", "max_input_tokens": 314_159},
+                    {"id": "no-ctx"},
+                    {"id": "zero-ctx", "max_input_tokens": 0},
+                    {"id": "neg-ctx", "max_input_tokens": -5},
+                    # ``True`` is an ``int`` subclass; it must not masquerade as 1.
+                    {"id": "bool-ctx", "max_input_tokens": True},
+                    # An untrusted gateway must not inflate the window past the
+                    # sanity ceiling to skew model selection.
+                    {"id": "huge-ctx", "max_input_tokens": 999_999_999_999},
+                ],
+            }
+        )
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            result = await discover_models("http://localhost:1234/v1", "lm-studio")
+
+        by_id = {model.id: model for model in result}
+        default_ctx = ProviderModelConfig(id="x").max_context
+        # The reported window is carried through verbatim.
+        assert by_id["with-ctx"].max_context == 314_159
+        assert by_id["with-ctx"].max_context != default_ctx
+        # Absent / non-positive / bool / implausibly-large windows all fall back
+        # to the shared default rather than trusting a garbage value.
+        for garbage_id in ("no-ctx", "zero-ctx", "neg-ctx", "bool-ctx", "huge-ctx"):
+            assert by_id[garbage_id].max_context == default_ctx
+
+    async def test_strict_raises_typed_error_on_http_failure(self) -> None:
+        """A strict discovery surfaces a failed round-trip as a typed error.
+
+        On a provider save for a live-discovery gateway, discovery is
+        authoritative: a 429 must raise (so the operator sees the real
+        reason) rather than degrade to an empty tuple that a caller could
+        mistake for a genuinely empty catalogue.
+        """
+        response = _mock_response({"error": "slow down"}, status_code=429)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            with pytest.raises(RateLimitError):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    async def test_non_strict_degrades_to_empty_on_http_failure(self) -> None:
+        """Without ``strict`` a failed round-trip still degrades to empty."""
+        response = _mock_response({"error": "slow down"}, status_code=429)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            result = await discover_models("http://localhost:1234/v1", "lm-studio")
+
+        assert result == ()
+
+    @pytest.mark.parametrize(
+        ("status_code", "expected"),
+        [
+            (401, AuthenticationError),
+            (403, AuthenticationError),
+            (500, ProviderInternalError),
+            (503, ProviderInternalError),
+            (400, InvalidRequestError),
+            (404, InvalidRequestError),
+        ],
+    )
+    async def test_strict_maps_http_status_to_typed_error(
+        self, status_code: int, expected: type[ProviderError]
+    ) -> None:
+        """Each HTTP status class maps to its distinct typed provider error.
+
+        A status-comparison bug (e.g. an off-by-one on the 5xx floor, or 403
+        falling through to the generic branch) would misclassify an auth
+        failure as a generic invalid-request, so the operator's remedy differs;
+        each class is asserted independently.
+        """
+        response = _mock_response({"error": "x"}, status_code=status_code)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            with pytest.raises(expected):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    @pytest.mark.parametrize(
+        ("side_effect", "expected"),
+        [
+            (httpx.ConnectError("refused"), ProviderConnectionError),
+            (httpx.TimeoutException("slow"), ProviderTimeoutError),
+        ],
+    )
+    async def test_strict_maps_transport_error_to_typed_error(
+        self, side_effect: Exception, expected: type[ProviderError]
+    ) -> None:
+        """A strict connect / timeout failure raises its typed provider error."""
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(side_effect=side_effect)
+
+            with pytest.raises(expected):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    async def test_strict_raises_on_non_json_response(self) -> None:
+        """A strict discovery raises when the body is not JSON."""
+        response = httpx.Response(
+            status_code=200,
+            content=b"<html>not json</html>",
+            request=httpx.Request("GET", "http://test"),
+        )
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            with pytest.raises(ProviderInternalError):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    async def test_strict_raises_on_ssrf_rejection(self) -> None:
+        """A strict discovery surfaces an SSRF rejection as an invalid request."""
+        blocked = SsrfCheckResult(error="blocked private ip", pinned_ip=None)
+        with (
+            patch(
+                "synthorg.providers.discovery.validate_discovery_url",
+                return_value=blocked,
+            ),
+            pytest.raises(InvalidRequestError),
+        ):
+            await discover_models("http://169.254.169.254/v1", "lm-studio", strict=True)
 
     async def test_uses_models_endpoint(self) -> None:
         response = _mock_response({"data": []})

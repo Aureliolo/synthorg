@@ -23,6 +23,7 @@ const models: ProviderModelResponse[] = [
     supports_reasoning: false,
     supports_image_generation: false,
     family: null,
+    metadata_source: 'litellm',
     stale: null,
   },
   {
@@ -43,6 +44,7 @@ const models: ProviderModelResponse[] = [
     supports_reasoning: false,
     supports_image_generation: false,
     family: null,
+    metadata_source: 'litellm',
     stale: null,
   },
   {
@@ -63,6 +65,7 @@ const models: ProviderModelResponse[] = [
     supports_reasoning: false,
     supports_image_generation: false,
     family: null,
+    metadata_source: 'litellm',
     stale: null,
   },
 ]
@@ -89,8 +92,10 @@ export const AllCapabilities: Story = {
   },
 }
 
-export const NoCapabilities: Story = {
+export const CapabilitiesUnverified: Story = {
   args: {
+    // Unknown metadata source + no capability flags: renders the muted
+    // "capabilities unverified" pill rather than an empty cell.
     models: [{
       id: 'test-local-001',
       alias: 'local-small',
@@ -109,6 +114,7 @@ export const NoCapabilities: Story = {
       supports_reasoning: false,
       supports_image_generation: false,
       family: null,
+      metadata_source: 'unknown',
       stale: null,
     }],
   },

@@ -32,6 +32,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
         ("coordination", "enable_coordination_middleware"),
+        # The coordinator builds eagerly and hard-requires a non-blank
+        # decomposition model, so setting it must rebuild the coordinator
+        # live: without this, first-run setup writes the model AFTER a
+        # capability toggle already tried (and failed) to build the
+        # coordinator, leaving it broken until a manual restart.
+        ("coordination", "decomposition_model"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
     }
