@@ -486,6 +486,9 @@ class CompanyTemplate(BaseModel):
         autonomy: Autonomy configuration dict (e.g. ``{"level": "semi"}``).
         workflow_handoffs: Cross-department workflow handoff definitions.
         escalation_paths: Cross-department escalation path definitions.
+        design_tools: Design-tool configuration passed through to the
+            rendered RootConfig (``None`` = disabled; ``{}`` = enabled with
+            defaults).
         extends: Parent template name for inheritance (``None`` for
             standalone templates).
         memory: Memory configuration overrides (e.g. embedder settings).
@@ -536,6 +539,14 @@ class CompanyTemplate(BaseModel):
     escalation_paths: tuple[dict[str, JsonValue], ...] = Field(
         default=(),
         description="Cross-department escalation paths",
+    )
+    design_tools: dict[str, JsonValue] | None = Field(
+        default=None,
+        description=(
+            "Design-tool configuration (diagram / asset / image tools) passed"
+            " through to the rendered RootConfig. None leaves the design tools"
+            " disabled; an empty mapping enables them with defaults."
+        ),
     )
     extends: NotBlankStr | None = Field(
         default=None,

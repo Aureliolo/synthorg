@@ -77,6 +77,24 @@ class TestBuildCategoryBreakdown:
         assert result.system_count == 1
         assert result.uncategorized_count == 1
 
+    def test_image_generation_rolls_into_productive(self) -> None:
+        # Per-image spend carries zero tokens; it must be counted as
+        # productive output rather than dropped from the breakdown.
+        records = [
+            _record(category=LLMCallCategory.PRODUCTIVE, cost=0.01),
+            _record(
+                category=LLMCallCategory.IMAGE_GENERATION,
+                cost=0.04,
+                input_tokens=0,
+                output_tokens=0,
+            ),
+        ]
+        result = build_category_breakdown(records)
+        assert result.productive_count == 2
+        assert result.productive_cost == 0.05
+        assert result.productive_tokens == 150  # only the token-billed record
+        assert result.uncategorized_count == 0
+
     def test_all_uncategorized(self) -> None:
         records = [_record(category=None) for _ in range(3)]
         result = build_category_breakdown(records)

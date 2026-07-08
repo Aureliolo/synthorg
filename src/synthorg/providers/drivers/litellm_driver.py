@@ -6,6 +6,7 @@ contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 
+import asyncio
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,  # runtime: isinstance guard on the stream result
@@ -68,6 +69,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+from synthorg.providers.drivers.litellm_image import generate_image_via_litellm
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
@@ -84,6 +86,11 @@ from synthorg.providers.drivers.litellm_tool_accumulator import (
     emit_pending_tool_calls,
 )
 from synthorg.providers.enums import AuthType, StreamEventType
+from synthorg.providers.image_generation import ImageGenerationMixin
+from synthorg.providers.image_models import (
+    ImageGenerationConfig,
+    ImageGenerationResponse,
+)
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -135,7 +142,7 @@ _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...]
 )
 
 
-class LiteLLMDriver(BaseCompletionProvider):
+class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     """Completion driver backed by LiteLLM.
 
     Uses ``litellm.acompletion`` for both streaming and non-streaming
@@ -184,6 +191,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         # the driver. The TTL is intentionally coarse -- it is a safety
         # net for rotation, not a token-refresh mechanism.
         self._credentials_cached_at: float | None = None
+        # Single-flight guard so concurrent calls on this driver (e.g. a
+        # completion and an image generation fanned out together) coalesce
+        # onto one credential resolution instead of a thundering herd of
+        # duplicate catalog fetches. Created lazily to keep asyncio
+        # primitives out of ``__init__``.
+        self._credentials_lock: asyncio.Lock | None = None
         self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
             MappingProxyType(build_model_lookup(config.models))
         )
@@ -245,26 +258,32 @@ class LiteLLMDriver(BaseCompletionProvider):
             PROVIDER_CONNECTION_RESOLVED,
         )
 
-        now = self._clock.monotonic()
-        # Never serve cached OAuth credentials -- the token manager
-        # can rotate them at any moment and a stale bearer token
-        # would just fail auth on the next request with no way for
-        # the driver to recover. Always go back to the catalog and
-        # pick up the current access token.
-        if self._config.auth_type is not AuthType.OAUTH and (
-            self._resolved_credentials is not None
-            and self._credentials_cached_at is not None
-            and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
-        ):
-            return
-
-        creds = await self._connection_catalog.get_credentials(
-            self._config.connection_name,
-        )
-        # Snapshot so the caller's view is insulated from any
-        # subsequent mutation in the catalog layer.
-        self._resolved_credentials = dict(creds)
-        self._credentials_cached_at = now
+        # Lazy lock init is race-free: no ``await`` between the check and
+        # assignment, so the single-threaded event loop cannot interleave
+        # two creators. The lock is single-flight: concurrent callers
+        # coalesce onto one resolution instead of a duplicate-fetch herd.
+        lock = self._credentials_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._credentials_lock = lock
+        async with lock:
+            now = self._clock.monotonic()
+            # Never serve cached OAuth credentials -- the token manager can
+            # rotate them at any moment and a stale bearer token would just
+            # fail auth on the next request, so OAuth always re-resolves.
+            if self._config.auth_type is not AuthType.OAUTH and (
+                self._resolved_credentials is not None
+                and self._credentials_cached_at is not None
+                and (now - self._credentials_cached_at) < _CREDENTIAL_CACHE_TTL
+            ):
+                return
+            creds = await self._connection_catalog.get_credentials(
+                self._config.connection_name,
+            )
+            # Snapshot so the caller's view is insulated from any subsequent
+            # mutation in the catalog layer.
+            self._resolved_credentials = dict(creds)
+            self._credentials_cached_at = now
         logger.info(
             PROVIDER_CONNECTION_RESOLVED,
             provider=self._provider_name,
@@ -368,6 +387,39 @@ class LiteLLMDriver(BaseCompletionProvider):
                 msg, context={"provider": self._provider_name, "model": model}
             )
         return self._wrap_stream(raw_stream, model, model_config)
+
+    @override
+    async def _do_generate_image(
+        self,
+        prompt: str,
+        model: str,
+        *,
+        config: ImageGenerationConfig | None = None,
+    ) -> ImageGenerationResponse:
+        """Call ``litellm.aimage_generation`` and map the response.
+
+        Returns:
+            An ``ImageGenerationResponse`` mapped from LiteLLM's
+            ``ImageResponse`` (base64 payloads decoded per image).
+
+        Raises:
+            ProviderError: A provider error (re-raised directly, or mapped
+                from a non-provider exception via ``_map_exception``).
+        """
+        await self._ensure_credentials_resolved()
+        model_config = self._resolve_model(model)
+        return await generate_image_via_litellm(
+            map_exception=self._map_exception,
+            provider_config=self._config,
+            resolved_credentials=self._resolved_credentials,
+            catalog_present=self._connection_catalog is not None,
+            provider_name=self._provider_name,
+            routing_key=self._routing_key,
+            model=model,
+            model_config=model_config,
+            prompt=prompt,
+            config=config,
+        )
 
     @override
     async def _do_get_model_capabilities(

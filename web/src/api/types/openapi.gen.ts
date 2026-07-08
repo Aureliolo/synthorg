@@ -9312,10 +9312,10 @@ export type components = {
             /** @description Whether the provider served this call from cache */
             readonly cache_hit: boolean | null;
             /**
-             * @description LLM call category (productive, coordination, system, embedding)
+             * @description LLM call category (productive, coordination, system, embedding, image_generation)
              * @enum {string|null}
              */
-            readonly call_category: "productive" | "coordination" | "system" | "embedding" | null;
+            readonly call_category: "productive" | "coordination" | "system" | "embedding" | "image_generation" | null;
             /** @description Idempotency key for this billing event. Generated once at construction (UUID4 by default) so retries / JetStream redelivery / in-process tracker double-submission cannot double-bill: ``CostTracker.record`` keeps a bounded LRU of seen ``claim_id`` values and treats repeats as no-ops. */
             readonly claim_id: string;
             /** @description Numeric cost of the call, denominated in ``currency`` */
@@ -11752,7 +11752,7 @@ export type components = {
          *     enabling data-driven tuning of multi-agent orchestration.
          * @enum {string}
          */
-        readonly LLMCallCategory: "productive" | "coordination" | "system" | "embedding";
+        readonly LLMCallCategory: "productive" | "coordination" | "system" | "embedding" | "image_generation";
         /** LocalModelParams */
         readonly LocalModelParams: {
             readonly num_batch: number | null;
@@ -12252,6 +12252,8 @@ export type components = {
             readonly release_date: string | null;
             /** @default false */
             readonly supports_embeddings: boolean;
+            /** @default false */
+            readonly supports_image_generation: boolean;
             /** @default false */
             readonly supports_reasoning: boolean;
             /** @default false */
@@ -14342,6 +14344,8 @@ export type components = {
              * @default 0
              */
             readonly cost_per_1k_output: number;
+            /** @description Flat cost per generated image (base currency) for image-output models; None for chat/embedding models. Operator-owned, kept aligned with the provider's per-image price like the token costs. */
+            readonly cost_per_image: number | null;
             /** @description Estimated median latency in milliseconds */
             readonly estimated_latency_ms: number | null;
             /** @description Model identifier */
@@ -14371,6 +14375,8 @@ export type components = {
              * @default 0
              */
             readonly cost_per_1k_output: number;
+            /** @description Flat cost per generated image, for image-output models */
+            readonly cost_per_image: number | null;
             /**
              * @description Currency the cost fields are expressed in.  Carries the operator's configured ``budget.currency`` so aggregation sites can enforce the same-currency invariant without a second lookup.
              * @default USD
@@ -14396,6 +14402,11 @@ export type components = {
              * @default false
              */
             readonly supports_embeddings: boolean;
+            /**
+             * @description Generates images from text prompts (image output modality)
+             * @default false
+             */
+            readonly supports_image_generation: boolean;
             /**
              * @description Exposes extended reasoning (thinking/o1-style models)
              * @default false
@@ -15607,7 +15618,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard" | "design";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.

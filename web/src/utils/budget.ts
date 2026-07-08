@@ -209,8 +209,11 @@ export function computeCostBreakdown(
  * Compute cost category breakdown from cost records.
  *
  * Buckets records by `call_category` (null treated as uncategorized).
- * Records with unrecognized call_category values fall through to the uncategorized bucket.
- * Returns cost, count, and percentage for each of the five categories.
+ * `image_generation` folds into the productive bucket, mirroring the backend
+ * `build_category_breakdown` (flat per-image spend is productive output, not
+ * orchestration overhead). Records with unrecognized call_category values fall
+ * through to the uncategorized bucket. Returns cost, count, and percentage for
+ * each of the five buckets.
  */
 export function computeCategoryBreakdown(
   records: readonly CostRecord[],
@@ -228,7 +231,9 @@ export function computeCategoryBreakdown(
   const warnedUnknown = new Set<string>()
 
   for (const r of records) {
-    const cat = r.call_category ?? 'uncategorized'
+    const rawCat = r.call_category ?? 'uncategorized'
+    // Fold image generation into productive to match the backend.
+    const cat = rawCat === 'image_generation' ? 'productive' : rawCat
     // ``call_category`` is a backend enum; a value outside the known set
     // (schema drift) falls through to the uncategorized bucket per this
     // function's documented contract. Index through a string-keyed view so a

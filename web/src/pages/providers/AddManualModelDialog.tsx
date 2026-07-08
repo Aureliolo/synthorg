@@ -5,114 +5,15 @@ import { ErrorBanner } from "@/components/ui/error-banner";
 import { InputField } from "@/components/ui/input-field";
 import { useProvidersStore } from "@/stores/providers";
 import { useSettingsStore } from "@/stores/settings";
-import type { ProviderModelConfig } from "@/api/types/providers";
+import {
+  validateManualModel,
+  type ManualModelInputs,
+} from "./manual-model";
 
 interface AddManualModelDialogProps {
   providerName: string | null;
   open: boolean;
   onClose: () => void;
-}
-
-function parsePositiveInt(raw: string): number | null {
-  const t = raw.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null;
-}
-
-function parseNonNegFloat(raw: string): number | null {
-  const t = raw.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-type FieldParse = { ok: true; value: number | null } | { ok: false };
-
-/** Parse an optional numeric field: empty → null (use default), invalid → not-ok. */
-function parseOptionalField(
-  raw: string,
-  parse: (r: string) => number | null,
-): FieldParse {
-  if (raw.trim() === "") return { ok: true, value: null };
-  const value = parse(raw);
-  return value === null ? { ok: false } : { ok: true, value };
-}
-
-interface ManualModelInputs {
-  modelId: string;
-  alias: string;
-  costInput: string;
-  costOutput: string;
-  maxContext: string;
-  latencyMs: string;
-}
-
-interface ParsedModelValues {
-  idTrimmed: string;
-  alias: string;
-  ctx: number | null;
-  inCost: number | null;
-  outCost: number | null;
-  latency: number | null;
-}
-
-function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
-  return {
-    id: v.idTrimmed,
-    alias: v.alias.trim() || null,
-    cost_per_1k_input: v.inCost ?? 0,
-    cost_per_1k_output: v.outCost ?? 0,
-    max_context: v.ctx ?? 200_000,
-    estimated_latency_ms: v.latency ?? null,
-    local_params: null,
-    // Manually-added models are unenriched; backend enriches on next sync.
-    // Embedding is the one capability that gates chat-agent matching, so a
-    // hard ``false`` would let an embedder-by-id slip in as a chat candidate
-    // until sync; apply the backend's id-substring last resort here too.
-    metadata: {
-      supports_tools: false,
-      supports_vision: false,
-      supports_reasoning: false,
-      supports_embeddings: /embed/i.test(v.idTrimmed),
-      max_output_tokens: null,
-      parameter_count: null,
-      cost_tier: null,
-      family: null,
-      generation: null,
-      release_date: null,
-      tool_calls_verified: null,
-      metadata_source: "unknown",
-    },
-    stale: null,
-  };
-}
-
-type ManualModelValidation = { error: string } | { model: ProviderModelConfig };
-
-function validateManualModel(fields: ManualModelInputs): ManualModelValidation {
-  const idTrimmed = fields.modelId.trim();
-  if (idTrimmed === "") return { error: "Model id is required." };
-  const ctx = parseOptionalField(fields.maxContext, parsePositiveInt);
-  if (!ctx.ok) return { error: "Max context must be a positive integer." };
-  const inCost = parseOptionalField(fields.costInput, parseNonNegFloat);
-  if (!inCost.ok) return { error: "Input cost must be a non-negative number." };
-  const outCost = parseOptionalField(fields.costOutput, parseNonNegFloat);
-  if (!outCost.ok)
-    return { error: "Output cost must be a non-negative number." };
-  const latency = parseOptionalField(fields.latencyMs, parsePositiveInt);
-  if (!latency.ok)
-    return { error: "Latency must be a positive integer (milliseconds)." };
-  return {
-    model: buildManualModel({
-      idTrimmed,
-      alias: fields.alias,
-      ctx: ctx.value,
-      inCost: inCost.value,
-      outCost: outCost.value,
-      latency: latency.value,
-    }),
-  };
 }
 
 interface ManualModelForm {
@@ -121,6 +22,7 @@ interface ManualModelForm {
   setAlias: (value: string) => void;
   setCostInput: (value: string) => void;
   setCostOutput: (value: string) => void;
+  setCostImage: (value: string) => void;
   setMaxContext: (value: string) => void;
   setLatencyMs: (value: string) => void;
   submitting: boolean;
@@ -135,6 +37,7 @@ function useManualModelForm(): ManualModelForm {
   const [alias, setAlias] = useState("");
   const [costInput, setCostInput] = useState("");
   const [costOutput, setCostOutput] = useState("");
+  const [costImage, setCostImage] = useState("");
   const [maxContext, setMaxContext] = useState("");
   const [latencyMs, setLatencyMs] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -145,6 +48,7 @@ function useManualModelForm(): ManualModelForm {
     setAlias("");
     setCostInput("");
     setCostOutput("");
+    setCostImage("");
     setMaxContext("");
     setLatencyMs("");
     setSubmitting(false);
@@ -152,11 +56,20 @@ function useManualModelForm(): ManualModelForm {
   };
 
   return {
-    values: { modelId, alias, costInput, costOutput, maxContext, latencyMs },
+    values: {
+      modelId,
+      alias,
+      costInput,
+      costOutput,
+      costImage,
+      maxContext,
+      latencyMs,
+    },
     setModelId,
     setAlias,
     setCostInput,
     setCostOutput,
+    setCostImage,
     setMaxContext,
     setLatencyMs,
     submitting,
@@ -210,6 +123,16 @@ function ManualModelFields({
           onChange={(e) => form.setCostOutput(e.target.value)}
           min={0}
           step="0.0001"
+        />
+        <InputField
+          label="Cost / image"
+          hint={`${currency}; for image-output models`}
+          type="number"
+          inputMode="decimal"
+          value={values.costImage}
+          onChange={(e) => form.setCostImage(e.target.value)}
+          min={0}
+          step="0.001"
         />
       </div>
       <div className="grid grid-cols-2 gap-grid-gap">

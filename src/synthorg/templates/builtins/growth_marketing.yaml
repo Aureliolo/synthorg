@@ -93,6 +93,9 @@ template:
   workflow: "agile_kanban"
   communication: "hybrid"
 
+  # Campaign creative + marketing collateral: enable the design tools.
+  design_tools: {}
+
   workflow_config:
     kanban:
       wip_limits:

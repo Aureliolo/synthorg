@@ -68,6 +68,7 @@ export const modelsHandlers = [
         alias: null,
         cost_per_1k_input: 0,
         cost_per_1k_output: 0,
+        cost_per_image: null,
         currency: DEFAULT_CURRENCY,
         max_context: 0,
         estimated_latency_ms: null,
@@ -78,6 +79,7 @@ export const modelsHandlers = [
         supports_streaming: false,
         supports_embeddings: false,
         supports_reasoning: false,
+        supports_image_generation: false,
         family: null,
         stale: null,
       }),
@@ -99,6 +101,7 @@ export const modelsHandlers = [
       supports_streaming: false,
       supports_embeddings: false,
       supports_reasoning: false,
+      supports_image_generation: false,
       family: null,
       stale: null,
     }

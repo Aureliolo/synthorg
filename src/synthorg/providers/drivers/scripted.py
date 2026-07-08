@@ -20,6 +20,8 @@ protocol.  Three strategies ship:
   every call, or raises one configured error.
 """
 
+import asyncio
+import base64
 import hashlib
 import threading
 from collections.abc import AsyncIterator, Mapping
@@ -27,13 +29,22 @@ from typing import Final, Protocol, override, runtime_checkable
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import DomainError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_SCRIPTED_DRIVER_INSTANTIATED,
 )
+from synthorg.providers._cost import compute_image_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.drivers.scripted_image import render_deterministic_png
 from synthorg.providers.enums import MessageRole, StreamEventType
+from synthorg.providers.image_generation import ImageGenerationMixin
+from synthorg.providers.image_models import (
+    GeneratedImage,
+    ImageGenerationConfig,
+    ImageGenerationResponse,
+)
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -50,6 +61,7 @@ _DEFAULT_MODEL_ID: Final[str] = "scripted-model-001"
 _SCRIPTED_INPUT_TOKENS: Final[int] = 1
 _SCRIPTED_OUTPUT_TOKENS: Final[int] = 1
 _SCRIPTED_COST: Final[float] = 0.0
+_SCRIPTED_IMAGE_COST: Final[float] = 0.0
 _DET_DIGEST_LEN: Final[int] = 12
 _CAP_MAX_CONTEXT_TOKENS: Final[int] = 200_000
 _CAP_MAX_OUTPUT_TOKENS: Final[int] = 8_192
@@ -200,7 +212,7 @@ class SingleResponseStrategy:
         return self._response
 
 
-class ScriptedDriver(BaseCompletionProvider):
+class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
     """Deterministic test / simulation completion provider.
 
     Construct directly with a ``strategy=`` for tests, or via
@@ -283,6 +295,50 @@ class ScriptedDriver(BaseCompletionProvider):
             yield StreamChunk(event_type=StreamEventType.DONE)
 
         return _chunks()
+
+    @override
+    async def _do_generate_image(
+        self,
+        prompt: str,
+        model: str,
+        *,
+        config: ImageGenerationConfig | None = None,
+    ) -> ImageGenerationResponse:
+        """Render deterministic offline PNGs seeded by the prompt.
+
+        No network, no vendor: exercises the full image-generation path
+        for tests and air-gapped installs. Output is byte-stable for a
+        given ``(prompt, size, index)``.
+
+        Returns:
+            An ``ImageGenerationResponse`` carrying ``config.n`` PNG images.
+        """
+        cfg = config if config is not None else ImageGenerationConfig()
+
+        def _render_all() -> tuple[GeneratedImage, ...]:
+            """Render every requested PNG (CPU-bound; run off the loop).
+
+            Returns:
+                The rendered images as ``GeneratedImage`` values.
+            """
+            return tuple(
+                GeneratedImage(
+                    b64_data=NotBlankStr(
+                        base64.b64encode(
+                            render_deterministic_png(prompt, size=cfg.size, index=i)
+                        ).decode("ascii")
+                    ),
+                )
+                for i in range(cfg.n)
+            )
+
+        # PIL render + PNG encode are CPU-bound; keep them off the event loop.
+        images = await asyncio.to_thread(_render_all)
+        return ImageGenerationResponse(
+            images=images,
+            usage=compute_image_cost(cfg.n, cost_per_image=_SCRIPTED_IMAGE_COST),
+            model=NotBlankStr(model or _DEFAULT_MODEL_ID),
+        )
 
     @override
     async def _do_get_model_capabilities(

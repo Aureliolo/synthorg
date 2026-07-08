@@ -43,3 +43,6 @@ template:
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  # Campaign visuals + marketing collateral: enable the design tools.
+  design_tools: {}

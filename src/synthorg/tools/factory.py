@@ -288,13 +288,22 @@ def _build_design_tools(
         DiagramGeneratorTool,
         ImageGeneratorTool,
     )
+    from synthorg.tools.design.asset_store import (  # noqa: PLC0415
+        build_design_asset_store,
+    )
 
+    # One store shared across the design tools so a generated image is
+    # immediately listable / retrievable via ``asset_manager`` and durable
+    # when ``asset_storage_path`` is configured.
+    store = build_design_asset_store(config.asset_storage_path)
     tools: list[BaseTool] = [
         DiagramGeneratorTool(config=config),
-        AssetManagerTool(config=config),
+        AssetManagerTool(config=config, store=store),
     ]
     if image_provider is not None:
-        tools.append(ImageGeneratorTool(provider=image_provider, config=config))
+        tools.append(
+            ImageGeneratorTool(provider=image_provider, config=config, store=store),
+        )
     return tuple(tools)
 
 

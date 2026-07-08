@@ -53,6 +53,7 @@ const makeProvider = (
     max_context: 8192,
     cost_per_1k_input: 0,
     cost_per_1k_output: 0,
+    cost_per_image: null,
     estimated_latency_ms: null,
     local_params: null,
     metadata: {
@@ -60,6 +61,7 @@ const makeProvider = (
       supports_vision: false,
       supports_reasoning: false,
       supports_embeddings: false,
+      supports_image_generation: false,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

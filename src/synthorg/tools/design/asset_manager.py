@@ -5,7 +5,7 @@ tracks metadata for generated images, diagrams, and other
 design artifacts.
 """
 
-import copy
+import asyncio
 from typing import ClassVar, cast, override
 
 from pydantic import BaseModel, JsonValue
@@ -24,6 +24,10 @@ from synthorg.observability.events.design import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import AssetManagerArgs
+from synthorg.tools.design.asset_store import (
+    DesignAssetStore,
+    InMemoryDesignAssetStore,
+)
 from synthorg.tools.design.base_design_tool import BaseDesignTool
 from synthorg.tools.design.config import DesignToolsConfig
 
@@ -71,6 +75,7 @@ class AssetManagerTool(BaseDesignTool):
         self,
         *,
         config: DesignToolsConfig | None = None,
+        store: DesignAssetStore | None = None,
         assets: dict[str, dict[str, JsonValue]] | None = None,
     ) -> None:
         """Initialize the asset manager tool.
@@ -78,8 +83,11 @@ class AssetManagerTool(BaseDesignTool):
         Args:
             config: Design tool configuration. ``None`` falls back to
                 defaults.
-            assets: Pre-existing assets to seed the in-memory store.
-                Deep-copied at construction; ``None`` starts empty.
+            store: Backing asset store. ``None`` uses an in-memory store
+                (seeded from ``assets``); the factory injects a durable
+                filesystem store when ``asset_storage_path`` is configured.
+            assets: Pre-existing assets to seed the default in-memory store.
+                Ignored when ``store`` is provided.
         """
         super().__init__(
             name="asset_manager",
@@ -88,8 +96,8 @@ class AssetManagerTool(BaseDesignTool):
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )
-        self._assets: dict[str, dict[str, JsonValue]] = (
-            copy.deepcopy(assets) if assets else {}
+        self._store: DesignAssetStore = (
+            store if store is not None else InMemoryDesignAssetStore(assets)
         )
 
     def register_asset(
@@ -97,7 +105,7 @@ class AssetManagerTool(BaseDesignTool):
         asset_id: str,
         metadata: dict[str, JsonValue],
     ) -> None:
-        """Register an asset in the internal registry.
+        """Register an asset in the backing store.
 
         Called programmatically by other tools after generating
         an asset.
@@ -112,7 +120,7 @@ class AssetManagerTool(BaseDesignTool):
         if not asset_id.strip():
             msg = "asset_id must not be empty"
             raise ValueError(msg)
-        self._assets[asset_id] = copy.deepcopy(metadata)
+        self._store.register(asset_id, metadata)
         logger.info(
             DESIGN_ASSET_STORED,
             asset_id=asset_id,
@@ -136,14 +144,14 @@ class AssetManagerTool(BaseDesignTool):
         """
         args = parse_typed("tool.execute", arguments, AssetManagerArgs)
         if args.action == "list":
-            return self._handle_list(args)
+            return await self._handle_list(args)
         if args.action == "get":
-            return self._handle_get(args)
+            return await self._handle_get(args)
         if args.action == "delete":
-            return self._handle_delete(args)
-        return self._handle_search(args)
+            return await self._handle_delete(args)
+        return await self._handle_search(args)
 
-    def _handle_list(
+    async def _handle_list(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -155,18 +163,21 @@ class AssetManagerTool(BaseDesignTool):
         tags = list(args.tags)
         tag_set = set(tags)
 
+        # Offloaded: a durable filesystem store globs + parses every sidecar,
+        # which would block the event loop for the whole scan.
+        all_assets = await asyncio.to_thread(self._store.items)
         if tag_set:
             matching = {
                 aid: meta
-                for aid, meta in self._assets.items()
+                for aid, meta in all_assets.items()
                 if tag_set.issubset(_str_tags(meta))
             }
         else:
-            matching = self._assets
+            matching = dict(all_assets)
 
         logger.info(
             DESIGN_ASSET_LISTED,
-            total=len(self._assets),
+            total=len(all_assets),
             matched=len(matching),
             filter_tags=tags,
         )
@@ -184,7 +195,7 @@ class AssetManagerTool(BaseDesignTool):
             metadata={"count": len(matching)},
         )
 
-    def _handle_get(
+    async def _handle_get(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -196,7 +207,7 @@ class AssetManagerTool(BaseDesignTool):
         # ``AssetManagerArgs._validate_action_fields`` guarantees asset_id is
         # present for get/delete; cast narrows the Optional for mypy.
         asset_id = cast("str", args.asset_id)
-        meta = self._assets.get(asset_id)
+        meta = await self._safe_store_get(asset_id, action="get")
         if meta is None:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
@@ -217,12 +228,40 @@ class AssetManagerTool(BaseDesignTool):
         lines = [f"Asset: {asset_id}"]
         for key, value in sorted(meta.items()):
             lines.append(f"  {key}: {value}")
+        # ``store.get`` already returns an owned copy (deep copy in-memory,
+        # fresh JSON parse on disk), so no second defensive copy is needed.
         return ToolExecutionResult(
             content="\n".join(lines),
-            metadata=copy.deepcopy(meta),
+            metadata=meta,
         )
 
-    def _handle_delete(
+    async def _safe_store_get(
+        self,
+        asset_id: str,
+        *,
+        action: str,
+    ) -> dict[str, JsonValue] | None:
+        """Fetch metadata off-thread, treating an unsafe id as not-found.
+
+        The store raises ``ValueError`` for a path-unsafe ``asset_id``;
+        an agent-supplied id must degrade to a graceful not-found result
+        rather than an unhandled tool crash.
+
+        Returns:
+            The metadata, or ``None`` when absent or the id is unsafe.
+        """
+        try:
+            return await asyncio.to_thread(self._store.get, asset_id)
+        except ValueError:
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action=action,
+                reason="unsafe_asset_id",
+                asset_id=asset_id,
+            )
+            return None
+
+    async def _handle_delete(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -233,7 +272,22 @@ class AssetManagerTool(BaseDesignTool):
         """
         # Guaranteed present for delete by the model validator; cast for mypy.
         asset_id = cast("str", args.asset_id)
-        if asset_id not in self._assets:
+        try:
+            deleted = await asyncio.to_thread(self._store.delete, asset_id)
+        except ValueError:
+            # Distinguish an unsafe id from a genuine miss in the logs (as the
+            # get path does), while keeping the same "not found" to the caller.
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="delete",
+                reason="unsafe_asset_id",
+                asset_id=asset_id,
+            )
+            return ToolExecutionResult(
+                content=f"Asset not found: {asset_id!r}",
+                is_error=True,
+            )
+        if not deleted:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="delete",
@@ -245,8 +299,6 @@ class AssetManagerTool(BaseDesignTool):
                 is_error=True,
             )
 
-        del self._assets[asset_id]
-
         logger.info(
             DESIGN_ASSET_DELETED,
             asset_id=asset_id,
@@ -256,7 +308,7 @@ class AssetManagerTool(BaseDesignTool):
             content=f"Asset deleted: {asset_id}",
         )
 
-    def _handle_search(
+    async def _handle_search(
         self,
         args: AssetManagerArgs,
     ) -> ToolExecutionResult:
@@ -270,8 +322,9 @@ class AssetManagerTool(BaseDesignTool):
         tags = list(args.tags)
         tag_set = set(tags)
 
+        all_assets = await asyncio.to_thread(self._store.items)
         matching: dict[str, dict[str, JsonValue]] = {}
-        for aid, meta in self._assets.items():
+        for aid, meta in all_assets.items():
             searchable = " ".join(str(v).lower() for v in meta.values())
             if query not in searchable:
                 continue
@@ -281,7 +334,7 @@ class AssetManagerTool(BaseDesignTool):
 
         logger.info(
             DESIGN_ASSET_SEARCHED,
-            total=len(self._assets),
+            total=len(all_assets),
             matched=len(matching),
             search_query=query,
             filter_tags=tags,

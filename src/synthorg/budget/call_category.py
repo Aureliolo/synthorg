@@ -27,6 +27,9 @@ class LLMCallCategory(StrEnum):
     EMBEDDING = "embedding"
     """Embedding model calls -- memory store/retrieve vectorization."""
 
+    IMAGE_GENERATION = "image_generation"
+    """Image-output model calls -- generating image assets from prompts."""
+
 
 class OrchestrationAlertLevel(StrEnum):
     """Alert levels for orchestration overhead ratio.

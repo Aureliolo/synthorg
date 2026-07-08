@@ -20,6 +20,9 @@ DESIGN_ASSET_DELETED: Final[str] = "design.asset.deleted"
 DESIGN_ASSET_LISTED: Final[str] = "design.asset.listed"
 DESIGN_ASSET_SEARCHED: Final[str] = "design.asset.searched"
 DESIGN_ASSET_VALIDATION_FAILED: Final[str] = "design.asset.validation_failed"
+DESIGN_ASSET_PERSISTED: Final[str] = "design.asset.persisted"
+DESIGN_ASSET_PERSIST_FAILED: Final[str] = "design.asset.persist_failed"
 
 # Provider
 DESIGN_PROVIDER_NOT_CONFIGURED: Final[str] = "design.provider.not_configured"
+DESIGN_IMAGE_PROVIDER_BOUND: Final[str] = "design.image.provider_bound"

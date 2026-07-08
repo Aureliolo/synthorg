@@ -32,6 +32,8 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
         ("coordination", "enable_coordination_middleware"),
+        ("design", "image_generation_enabled"),
+        ("design", "image_model"),
     }
 )
 

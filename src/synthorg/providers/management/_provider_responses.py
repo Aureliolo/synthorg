@@ -38,6 +38,7 @@ class ProviderModelResponse(BaseModel):
         alias: Short alias for routing rules.
         cost_per_1k_input: Cost per 1k input tokens.
         cost_per_1k_output: Cost per 1k output tokens.
+        cost_per_image: Flat cost per generated image (image-output models).
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
         local_params: Per-model launch parameters for local providers.
@@ -48,6 +49,8 @@ class ProviderModelResponse(BaseModel):
             assigning the model to tool-requiring agents.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
+        supports_image_generation: Whether the model generates images from
+            text prompts (image output modality).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -66,6 +69,11 @@ class ProviderModelResponse(BaseModel):
         default=0.0,
         ge=0.0,
         description="Cost per 1k output tokens",
+    )
+    cost_per_image: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Flat cost per generated image, for image-output models",
     )
     currency: CurrencyCode = Field(
         default=DEFAULT_CURRENCY,
@@ -113,6 +121,10 @@ class ProviderModelResponse(BaseModel):
     supports_embeddings: bool = Field(
         default=False,
         description="Is an embedding model (vector output, not chat)",
+    )
+    supports_image_generation: bool = Field(
+        default=False,
+        description="Generates images from text prompts (image output modality)",
     )
     supports_reasoning: bool = Field(
         default=False,

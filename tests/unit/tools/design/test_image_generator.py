@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.tools.design.asset_manager import AssetManagerTool
+from synthorg.tools.design.asset_store import InMemoryDesignAssetStore
 from synthorg.tools.design.image_generator import (
     ImageGeneratorTool,
     ImageProvider,
@@ -58,6 +60,37 @@ class TestImageGeneratorTool:
         assert result.metadata["width"] == 1024
         assert result.metadata["height"] == 1024
         assert len(mock_provider.calls) == 1
+
+    async def test_execute_persists_asset_to_store(
+        self,
+        mock_provider: MockImageProvider,
+    ) -> None:
+        store = InMemoryDesignAssetStore()
+        tool = ImageGeneratorTool(provider=mock_provider, store=store)
+        result = await tool.execute(arguments={"prompt": "a cat"})
+        asset_id = result.metadata["asset_id"]
+        assert isinstance(asset_id, str)
+        assert asset_id.startswith("img-")
+        assert asset_id in result.content
+        # Bytes and metadata are durably stored under the returned id.
+        assert store.get(asset_id) is not None
+        assert store.load_content(asset_id) is not None
+
+    async def test_generated_asset_visible_via_asset_manager(
+        self,
+        mock_provider: MockImageProvider,
+    ) -> None:
+        store = InMemoryDesignAssetStore()
+        image_tool = ImageGeneratorTool(provider=mock_provider, store=store)
+        asset_manager = AssetManagerTool(store=store)
+        gen = await image_tool.execute(arguments={"prompt": "a cat"})
+        asset_id = gen.metadata["asset_id"]
+        assert isinstance(asset_id, str)
+        got = await asset_manager.execute(
+            arguments={"action": "get", "asset_id": asset_id}
+        )
+        assert not got.is_error
+        assert asset_id in got.content
 
     async def test_execute_passes_all_params(
         self,

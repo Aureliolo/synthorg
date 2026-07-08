@@ -44,3 +44,6 @@ template:
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  # Visual-asset team: enable the design tools (diagram + asset management).
+  design_tools: {}

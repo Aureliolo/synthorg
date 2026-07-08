@@ -14,6 +14,7 @@ from typing import Final, Protocol, runtime_checkable
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -181,6 +182,39 @@ async def record_stream_cost_if_in_scope(
     ctx = current_cost_context()
     if ctx is not None:
         await emit_cost_record_from_usage(ctx, usage, model=model, provider=provider)
+
+
+async def record_image_cost_if_in_scope(
+    usage: TokenUsage,
+    *,
+    model: str,
+    provider: str,
+) -> None:
+    """Emit a CostRecord from an image-generation call's usage in scope.
+
+    Image generation bills per image, so the usage carries zero token
+    counts and the whole charge in ``cost``; a priced model
+    (``cost_per_image > 0``) clears the zero-usage skip and is recorded,
+    while an unpriced model produces a zero-usage record that is skipped
+    like a free-tier token call. The invoker opens the enclosing
+    ``cost_recording_scope`` for the ``image_generator`` tool; sites
+    without an open scope see no change. Recording errors are swallowed
+    inside ``emit_cost_record_from_usage``.
+
+    Args:
+        usage: Cost usage from the image-generation response.
+        model: Model identifier for the call.
+        provider: The resolved provider name.
+    """
+    ctx = current_cost_context()
+    if ctx is not None:
+        await emit_cost_record_from_usage(
+            ctx,
+            usage,
+            model=model,
+            provider=provider,
+            call_category=LLMCallCategory.IMAGE_GENERATION,
+        )
 
 
 def record_call_failure(  # noqa: PLR0913

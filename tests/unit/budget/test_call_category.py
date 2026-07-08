@@ -15,7 +15,7 @@ class TestLLMCallCategory:
         assert LLMCallCategory.SYSTEM.value == "system"
 
     def test_member_count(self) -> None:
-        assert len(LLMCallCategory) == 4
+        assert len(LLMCallCategory) == 5
 
     @pytest.mark.parametrize(
         ("member", "expected"),
@@ -24,6 +24,7 @@ class TestLLMCallCategory:
             (LLMCallCategory.COORDINATION, "coordination"),
             (LLMCallCategory.SYSTEM, "system"),
             (LLMCallCategory.EMBEDDING, "embedding"),
+            (LLMCallCategory.IMAGE_GENERATION, "image_generation"),
         ],
     )
     def test_string_conversion(
@@ -40,6 +41,7 @@ class TestLLMCallCategory:
             ("coordination", LLMCallCategory.COORDINATION),
             ("system", LLMCallCategory.SYSTEM),
             ("embedding", LLMCallCategory.EMBEDDING),
+            ("image_generation", LLMCallCategory.IMAGE_GENERATION),
         ],
     )
     def test_from_string(

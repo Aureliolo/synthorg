@@ -122,6 +122,7 @@ def extract_model_metadata(
         supports_tools=bool(info.get("supports_function_calling", False)),
         supports_vision=bool(info.get("supports_vision", False)),
         supports_reasoning=bool(info.get("supports_reasoning", False)),
+        supports_image_generation=str(info.get("mode") or "") == "image_generation",
         max_output_tokens=max_output,
         family=identity.family,
         generation=identity.generation,

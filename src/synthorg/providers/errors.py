@@ -242,6 +242,17 @@ class InvalidRequestError(ProviderError):
     default_message: ClassVar[str] = "Invalid provider request"
 
 
+class ProviderImageGenerationUnsupportedError(InvalidRequestError):
+    """Raised when a provider or model cannot generate images.
+
+    Inherits :class:`InvalidRequestError` (an inheritance alias for the
+    error-code-uniqueness gate): asking an image-incapable model to
+    generate an image is a bad request, non-retryable, 422.
+    """
+
+    default_message: ClassVar[str] = "Provider does not support image generation"
+
+
 class ContentFilterError(ProviderError):
     """Request or response blocked by the provider's content filter.
 

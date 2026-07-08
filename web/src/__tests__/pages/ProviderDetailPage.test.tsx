@@ -31,6 +31,7 @@ function makeProvider(name: string): ProviderWithName {
         alias: "test",
         cost_per_1k_input: 0.003,
         cost_per_1k_output: 0.015,
+        cost_per_image: null,
         max_context: 200000,
         estimated_latency_ms: null,
         local_params: null,
@@ -39,6 +40,7 @@ function makeProvider(name: string): ProviderWithName {
           supports_vision: false,
           supports_reasoning: false,
           supports_embeddings: false,
+          supports_image_generation: false,
           max_output_tokens: null,
           parameter_count: null,
           cost_tier: null,
@@ -73,6 +75,7 @@ const testModels: ProviderModelResponse[] = [
     alias: "test",
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
+    cost_per_image: null,
     currency: DEFAULT_CURRENCY,
     max_context: 200000,
     estimated_latency_ms: null,
@@ -83,6 +86,7 @@ const testModels: ProviderModelResponse[] = [
     supports_streaming: true,
     supports_embeddings: false,
     supports_reasoning: false,
+    supports_image_generation: false,
     family: null,
     stale: null,
   },
@@ -158,6 +162,21 @@ describe("ProviderDetailPage", () => {
     expect(screen.getByText("tools")).toBeInTheDocument();
     // Streaming is universal, so it no longer earns a capability badge.
     expect(screen.queryByText("stream")).not.toBeInTheDocument();
+    // ``testModels`` is not image-capable, so no image badge shows.
+    expect(screen.queryByText("image")).not.toBeInTheDocument();
+  });
+
+  it("renders the image badge for an image-capable model", () => {
+    const provider = makeProvider("test-provider");
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [
+        { ...testModels[0]!, supports_image_generation: true, cost_per_image: 0.04 },
+      ],
+    };
+    renderDetail();
+    expect(screen.getByText("image")).toBeInTheDocument();
   });
 
   it("renders health metrics when health available", () => {

@@ -71,6 +71,12 @@ def build_capabilities(
         or str(info.get("mode") or "") == "embedding"
         or "embed" in model_config.id.lower()
     )
+    # Image-output models: prefer the persisted metadata flag, then LiteLLM's
+    # ``mode`` (which stamps ``"image_generation"`` on hosted image models).
+    supports_image_generation = (
+        metadata.supports_image_generation
+        or str(info.get("mode") or "") == "image_generation"
+    )
 
     return ModelCapabilities(
         model_id=model_config.id,
@@ -83,6 +89,7 @@ def build_capabilities(
         supports_streaming_tool_calls=supports_tools and supports_streaming,
         supports_system_messages=bool(info.get("supports_system_messages", True)),
         supports_embeddings=supports_embeddings,
+        supports_image_generation=supports_image_generation,
         supports_reasoning=metadata.supports_reasoning,
         cost_per_1k_input=model_config.cost_per_1k_input,
         cost_per_1k_output=model_config.cost_per_1k_output,

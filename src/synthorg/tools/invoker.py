@@ -11,13 +11,15 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 import asyncio
 import copy
 from collections.abc import Iterable
-from contextlib import nullcontext
+from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import UTC, datetime
 from typing import Literal
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
@@ -41,6 +43,7 @@ from synthorg.observability.events.tool import (
     TOOL_SECURITY_ESCALATED,
 )
 from synthorg.observability.tracing import tool_span
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.policy_engine.protocol import PolicyEngine
@@ -94,6 +97,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         invocation_tracker: ToolInvocationTracker | None = None,
         policy_engine: PolicyEngine | None = None,
         policy_evaluation_mode: Literal["enforce", "log_only"] = "log_only",
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Initialize with a tool registry and optional checkers.
 
@@ -117,6 +121,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 every call site -- stronger than a runtime guard, and the
                 only runtime source (``PolicyEngineConfig.evaluation_mode``)
                 is already a Pydantic-validated ``Literal``.
+            cost_tracker: Optional sink for provider cost incurred *inside*
+                a tool call (e.g. image generation). When set, the invoker
+                opens a ``cost_recording_scope`` around any tool that
+                declares a ``cost_scope_category`` so the spend is
+                attributed to this invoker's agent/task. ``None`` leaves
+                such calls unattributed (the pre-existing behaviour).
         """
         self._registry = registry
         self._permission_checker = permission_checker
@@ -127,6 +137,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self._invocation_tracker = invocation_tracker
         self._policy_engine = policy_engine
         self._policy_evaluation_mode = policy_evaluation_mode
+        self._cost_tracker = cost_tracker
         # Per-batch execution-run id, set by invoke()/invoke_all() so the
         # policy seam can stamp Cedar context with the live execution_id
         # (the invoker is built per-task, before the execution context
@@ -711,6 +722,38 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 is_error=True,
             )
 
+    def _cost_scope_for(
+        self,
+        tool: BaseTool,
+    ) -> AbstractAsyncContextManager[None]:
+        """Return a cost-recording scope for a cost-billing tool, else no-op.
+
+        A tool that declares ``cost_scope_category`` triggers a provider
+        call that bills cost (e.g. image generation); wrapping its
+        execution in a scope attributes that spend to this invoker's
+        agent/task via the same chokepoint as chat completions. Returns
+        ``nullcontext`` when the tool bills nothing, or when the
+        tracker/agent/task needed to attribute the spend are absent.
+
+        Returns:
+            An async context manager: the cost scope, or a no-op.
+        """
+        category = tool.cost_scope_category
+        if (
+            category is None
+            or self._cost_tracker is None
+            or not self._agent_id
+            or not self._task_id
+        ):
+            return nullcontext()
+        return cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr(self._agent_id),
+            task_id=NotBlankStr(self._task_id),
+            call_category=category,
+            purpose=None,
+        )
+
     async def _execute_tool(
         self,
         tool: BaseTool,
@@ -743,9 +786,10 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 return deepcopied
             safe_args = deepcopied
         try:
-            return await tool.execute(
-                arguments=safe_args,
-            )
+            async with self._cost_scope_for(tool):
+                return await tool.execute(
+                    arguments=safe_args,
+                )
         except (MemoryError, RecursionError) as exc:
             logger.warning(
                 TOOL_INVOKE_NON_RECOVERABLE,
