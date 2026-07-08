@@ -589,7 +589,7 @@ class TestWireFineTuneOrchestrator:
             and "not registered" in str(e.get("note", ""))
         ]
         assert len(errors) == 1
-        assert errors[0]["fine_tune_query_provider"] == "ghost-provider"
+        assert errors[0]["provider_name"] == "ghost-provider"
 
     async def test_wires_orchestrator_and_runs_recovery(self) -> None:
         fake = FakePersistenceBackend()
