@@ -981,7 +981,14 @@ class TestAutoWirePhase1Details:
         """Explicit provider_registry is preserved by auto-wiring."""
         from unittest.mock import MagicMock
 
+        from synthorg.providers.errors import ModelNotFoundError
+
         fake_registry = MagicMock()
+        # The conflict-judge builder resolves its provider by the pinned
+        # model; a bare double serves no model, so the judge stays unwired.
+        fake_registry.resolve_for_model.side_effect = ModelNotFoundError(
+            "no serving provider", context={}
+        )
         app = create_app(
             config=root_config,
             provider_registry=fake_registry,

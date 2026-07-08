@@ -88,6 +88,12 @@ class HybridResolver:
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
         """Resolve via hybrid review -- auto-resolve or escalate.
 
+        A clear winner auto-resolves. A verdict the review cannot ground in
+        a participant (ambiguous) OR an evaluator/provider outage both route
+        through ``escalate_on_ambiguity`` (human queue, else authority): a
+        review that produced no clear winner must not silently drop the
+        conflict or auto-decide it.
+
         Args:
             conflict: The conflict to resolve.
 
@@ -111,7 +117,7 @@ class HybridResolver:
                 conflict,
                 self._config.review_agent,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised; recovered fallback
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_STRATEGY_ERROR,
@@ -122,7 +128,10 @@ class HybridResolver:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise
+            return await self._escalate_or_authority(
+                conflict,
+                reason="review_evaluate_failed",
+            )
 
         # Check if the winner is an actual participant
         winner_pos = find_position(conflict, winning_agent_id)
@@ -152,14 +161,29 @@ class HybridResolver:
             participants=[p.agent_id for p in conflict.positions],
             escalate=self._config.escalate_on_ambiguity,
         )
-
-        if self._config.escalate_on_ambiguity:
-            return await self._human_resolver.resolve(conflict)
-
-        return self._authority_fallback(
+        return await self._escalate_or_authority(
             conflict,
             reason="ambiguous_review_result",
         )
+
+    async def _escalate_or_authority(
+        self,
+        conflict: Conflict,
+        *,
+        reason: str,
+    ) -> ConflictResolution:
+        """Escalate to the human queue when configured, else use authority.
+
+        Shared by the ambiguous-verdict and evaluator-outage paths: both are
+        cases where the review named no clear winner, so both honour
+        ``escalate_on_ambiguity`` rather than dropping or auto-deciding.
+
+        Returns:
+            The human-escalation resolution, or the authority fallback.
+        """
+        if self._config.escalate_on_ambiguity:
+            return await self._human_resolver.resolve(conflict)
+        return self._authority_fallback(conflict, reason=reason)
 
     def build_dissent_records(
         self,

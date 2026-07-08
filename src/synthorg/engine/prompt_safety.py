@@ -150,6 +150,19 @@ Distinct from :data:`TAG_BRAIN_STATE`: knowledge is the curated reference
 corpus (project + global), not the long-horizon project-brain decision log.
 """
 
+TAG_CONFLICT_POSITION: Final[str] = "conflict-position"
+"""Wrap an agent's stated position + reasoning in a conflict-resolution judge prompt.
+
+The LLM judge (``LlmJudgeEvaluator``) reads each disputing agent's position to
+pick a winner. The position text is the free-form output of an upstream agent
+that may itself have been prompt-injected, so each position is fenced as
+untrusted input.
+
+Distinct from :data:`TAG_PEER_CONTRIBUTION` (collaborative meeting turns): a
+conflict position is an adversarial stance an agent is defending in a
+structured dispute, presented to an impartial judge rather than to peers.
+"""
+
 
 def _collect_fence_tags() -> frozenset[str]:
     """Collect every ``TAG_*`` fence-name constant defined in this module.

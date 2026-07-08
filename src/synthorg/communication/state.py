@@ -36,6 +36,9 @@ from synthorg.communication.delegation.record_store import (
 )
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.communication.meeting.conflict_escalation import (
+    MeetingConflictEscalationBridge,
+)
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,
 )
@@ -63,6 +66,7 @@ class CommunicationStateSlice(BaseFeatureStateSlice):
     escalation_sweeper: EscalationExpirationSweeper | None = None
     escalation_notify_subscriber: EscalationNotifySubscriber | None = None
     conflict_resolution_service: ConflictResolutionService | None = None
+    conflict_escalation_bridge: MeetingConflictEscalationBridge | None = None
 
 
 def message_bus_of(app_state: AppStateSliceMixin) -> MessageBus:

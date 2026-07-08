@@ -59,7 +59,7 @@ class ConflictResolutionConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     strategy: ConflictResolutionStrategy = Field(
-        default=ConflictResolutionStrategy.AUTHORITY,
+        default=ConflictResolutionStrategy.HYBRID,
         description="Default resolution strategy",
     )
     debate: DebateConfig = Field(

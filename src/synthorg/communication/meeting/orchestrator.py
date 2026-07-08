@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from synthorg.communication.meeting._meeting_utils import (
     format_exception,
+    run_conflict_escalation_hook,
     validate_meeting_inputs,
 )
 from synthorg.communication.meeting.config import MeetingProtocolConfig
@@ -31,6 +32,7 @@ from synthorg.communication.meeting.models import (
 )
 from synthorg.communication.meeting.protocol import (
     AgentCaller,
+    ConflictEscalationHook,
     MeetingProtocol,
     TaskCreator,
 )
@@ -106,6 +108,7 @@ class MeetingOrchestrator:
     __slots__ = (
         "_agent_caller",
         "_config_resolver",
+        "_conflict_escalation_hook",
         "_lens_assigner",
         "_protocol_registry",
         "_records",
@@ -123,6 +126,7 @@ class MeetingOrchestrator:
         strategy_config: _LensStrategyConfig | None = None,
         lens_assigner: _LensAssigner | None = None,
         config_resolver: ConfigResolverProtocol | None = None,
+        conflict_escalation_hook: ConflictEscalationHook | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
@@ -132,12 +136,23 @@ class MeetingOrchestrator:
         self._strategy_config = strategy_config
         self._lens_assigner = lens_assigner
         self._config_resolver = config_resolver
+        self._conflict_escalation_hook = conflict_escalation_hook
         self._records: list[MeetingRecord] = []
         # Mirror records by id for O(1) lookup via ``get_record``.
         # The list keeps chronological order (used by ``get_records``);
         # the dict serves point lookups so controller endpoints don't
         # need to scan every record on every fetch.
         self._records_by_id: dict[str, MeetingRecord] = {}
+
+    def set_conflict_escalation_hook(self, hook: ConflictEscalationHook) -> None:
+        """Install the post-meeting conflict-escalation hook.
+
+        Post-construction injection: the conflict-resolution service the
+        hook drives is built later in the same wiring pass than the
+        orchestrator, so the composition root sets the hook here rather
+        than at construction.
+        """
+        self._conflict_escalation_hook = hook
 
     async def run_meeting(  # noqa: PLR0913
         self,
@@ -307,6 +322,9 @@ class MeetingOrchestrator:
             return result
 
         self._create_tasks(meeting_id, protocol_config, result)
+        await run_conflict_escalation_hook(
+            self._conflict_escalation_hook, result, meeting_id=meeting_id
+        )
         return self._record_success(
             meeting_id,
             meeting_type_name,

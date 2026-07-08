@@ -52,7 +52,7 @@ class TestHybridConfig:
 class TestConflictResolutionConfig:
     def test_defaults(self) -> None:
         cfg = ConflictResolutionConfig()
-        assert cfg.strategy == ConflictResolutionStrategy.AUTHORITY
+        assert cfg.strategy == ConflictResolutionStrategy.HYBRID
         assert isinstance(cfg.debate, DebateConfig)
         assert isinstance(cfg.hybrid, HybridConfig)
 

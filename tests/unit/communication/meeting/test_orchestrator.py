@@ -712,3 +712,139 @@ class TestMeetingOrchestratorTaskCreation:
         )
 
         assert len(created_tasks) == 5
+
+
+def _minutes_with_conflicts(*, conflicts_detected: bool) -> MeetingMinutes:
+    now = datetime.now(UTC)
+    return MeetingMinutes(
+        meeting_id="m-conflict",
+        protocol_type=MeetingProtocolType.ROUND_ROBIN,
+        leader_id="leader",
+        participant_ids=("agent-a", "agent-b"),
+        agenda=MeetingAgenda(title="Adopt REST or gRPC"),
+        conflicts_detected=conflicts_detected,
+        started_at=now,
+        ended_at=now,
+    )
+
+
+def _orchestrator_with_hook(
+    minutes: MeetingMinutes,
+    hook: object,
+) -> MeetingOrchestrator:
+    mock_protocol = MagicMock(spec=MeetingProtocol)
+    mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
+    mock_protocol.run = AsyncMock(return_value=minutes)
+    registry: dict[MeetingProtocolType, MeetingProtocol] = {
+        MeetingProtocolType.ROUND_ROBIN: mock_protocol,
+    }
+    return MeetingOrchestrator(
+        protocol_registry=registry,
+        agent_caller=make_mock_agent_caller(),
+        conflict_escalation_hook=hook,  # type: ignore[arg-type]
+    )
+
+
+@pytest.mark.unit
+class TestMeetingOrchestratorConflictEscalation:
+    """Tests for the post-meeting conflict-escalation hook."""
+
+    async def test_hook_awaited_with_minutes_when_conflicts_detected(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        hook = AsyncMock()
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a", "agent-b"),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED
+        hook.assert_awaited_once_with(minutes)
+
+    async def test_hook_still_invoked_when_no_conflicts(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        # The orchestrator always delegates to the hook after a successful
+        # meeting; the hook itself decides to no-op when no conflict exists.
+        minutes = _minutes_with_conflicts(conflicts_detected=False)
+        hook = AsyncMock()
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a", "agent-b"),
+            token_budget=10000,
+        )
+
+        hook.assert_awaited_once_with(minutes)
+
+    async def test_no_hook_is_noop(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        orchestrator = _orchestrator_with_hook(minutes, None)
+
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a", "agent-b"),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED
+
+    async def test_raising_hook_does_not_sink_completed_meeting(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        # A hook that violates its "must not raise" contract is contained at
+        # the call site: the meeting still records COMPLETED and stays
+        # retrievable, rather than being lost to an unhandled error.
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        hook = AsyncMock(side_effect=RuntimeError("hook boom"))
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a", "agent-b"),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED
+        assert orchestrator.get_record(record.meeting_id) is not None
+
+    async def test_raising_hook_still_propagates_critical(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        minutes = _minutes_with_conflicts(conflicts_detected=True)
+        hook = AsyncMock(side_effect=MemoryError())
+        orchestrator = _orchestrator_with_hook(minutes, hook)
+
+        with pytest.raises(MemoryError):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=simple_agenda,
+                leader_id="leader",
+                participant_ids=("agent-a", "agent-b"),
+                token_budget=10000,
+            )
