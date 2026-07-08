@@ -49,6 +49,8 @@ class ProviderModelResponse(BaseModel):
             assigning the model to tool-requiring agents.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
+        supports_image_generation: Whether the model generates images from
+            text prompts (image output modality).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

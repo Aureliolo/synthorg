@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.tools.design.asset_manager import AssetManagerTool
+from synthorg.tools.design.asset_store import InMemoryDesignAssetStore
 from synthorg.tools.design.image_generator import (
     ImageGeneratorTool,
     ImageProvider,
@@ -63,8 +65,6 @@ class TestImageGeneratorTool:
         self,
         mock_provider: MockImageProvider,
     ) -> None:
-        from synthorg.tools.design.asset_store import InMemoryDesignAssetStore
-
         store = InMemoryDesignAssetStore()
         tool = ImageGeneratorTool(provider=mock_provider, store=store)
         result = await tool.execute(arguments={"prompt": "a cat"})
@@ -80,9 +80,6 @@ class TestImageGeneratorTool:
         self,
         mock_provider: MockImageProvider,
     ) -> None:
-        from synthorg.tools.design.asset_manager import AssetManagerTool
-        from synthorg.tools.design.asset_store import InMemoryDesignAssetStore
-
         store = InMemoryDesignAssetStore()
         image_tool = ImageGeneratorTool(provider=mock_provider, store=store)
         asset_manager = AssetManagerTool(store=store)

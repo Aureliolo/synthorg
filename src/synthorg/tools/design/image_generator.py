@@ -195,7 +195,20 @@ class ImageGeneratorTool(BaseDesignTool):
         decoded = self._decode_and_check(result)
         if isinstance(decoded, ToolExecutionResult):
             return decoded
+        return await self._store_and_report(args, result, decoded)
 
+    async def _store_and_report(
+        self,
+        args: ImageGeneratorArgs,
+        result: ImageResult,
+        decoded: bytes,
+    ) -> ToolExecutionResult:
+        """Persist the decoded image and build the success/failure result.
+
+        Returns:
+            The success ``ToolExecutionResult``, or the failure result from
+            ``_persist_asset`` when storage failed.
+        """
         digest = hashlib.sha256(decoded).hexdigest()[:_ASSET_ID_HASH_LEN]
         asset_id = f"img-{digest}"
         byte_size = len(decoded)
@@ -391,6 +404,13 @@ class ImageGeneratorTool(BaseDesignTool):
                 await asyncio.to_thread(self._store.delete, asset_id)
             except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(cleanup_exc)
+                logger.warning(
+                    DESIGN_ASSET_PERSIST_FAILED,
+                    asset_id=asset_id,
+                    reason="cleanup_failed",
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
+                )
             return ToolExecutionResult(
                 content=(
                     "Image generated but could not be saved to storage. "

@@ -17,6 +17,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.design import DESIGN_IMAGE_PROVIDER_BOUND
 from synthorg.providers.image_generation import ImageGenerationProvider
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import config_resolver_of
@@ -77,7 +78,22 @@ async def build_image_provider_or_none(
             note="image generation enabled but no provider registry is wired",
         )
         return None
-    model_id = (await resolver.get_str(_DESIGN_NS, "image_model")).strip()
+    try:
+        model_id_raw = await resolver.get_str(_DESIGN_NS, "image_model")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # Transient settings-resolve failure (distinct from a misconfig):
+        # WARNING, not ERROR. Fail open so worker startup is never broken.
+        logger.warning(
+            API_APP_STARTUP,
+            service="design_image",
+            context="image_model_resolve",
+            note="could not resolve design.image_model; feature off",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    model_id = model_id_raw.strip()
     if not model_id:
         logger.error(
             API_APP_STARTUP,
@@ -94,7 +110,12 @@ async def build_image_provider_or_none(
         ProviderImageProvider,
     )
 
-    logger.info(API_APP_STARTUP, service="design_image", note="wired", model=model_id)
+    logger.info(
+        DESIGN_IMAGE_PROVIDER_BOUND,
+        service="design_image",
+        note="wired",
+        model=model_id,
+    )
     return ProviderImageProvider(provider=provider, model=model_id)
 
 

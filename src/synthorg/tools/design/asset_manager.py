@@ -275,7 +275,18 @@ class AssetManagerTool(BaseDesignTool):
         try:
             deleted = await asyncio.to_thread(self._store.delete, asset_id)
         except ValueError:
-            deleted = False
+            # Distinguish an unsafe id from a genuine miss in the logs (as the
+            # get path does), while keeping the same "not found" to the caller.
+            logger.warning(
+                DESIGN_ASSET_VALIDATION_FAILED,
+                action="delete",
+                reason="unsafe_asset_id",
+                asset_id=asset_id,
+            )
+            return ToolExecutionResult(
+                content=f"Asset not found: {asset_id!r}",
+                is_error=True,
+            )
         if not deleted:
             logger.warning(
                 DESIGN_ASSET_VALIDATION_FAILED,

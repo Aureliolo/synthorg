@@ -183,8 +183,6 @@ class TestCostRecord:
 
     def test_image_generation_positive_cost_zero_tokens_accepted(self) -> None:
         """Accept positive cost with zero tokens for per-image billing."""
-        from synthorg.budget.call_category import LLMCallCategory
-
         record = CostRecord(
             agent_id="agent-1",
             task_id="task-1",

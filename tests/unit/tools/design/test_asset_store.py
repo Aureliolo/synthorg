@@ -58,6 +58,7 @@ def test_missing_asset_returns_none(
 ) -> None:
     assert store.get("absent") is None
     assert store.load_content("absent") is None
+    assert store.delete("absent") is False
 
 
 @pytest.mark.parametrize("bad_id", ["../escape", "a/b", "with space", ""])
@@ -76,6 +77,8 @@ def test_rejects_unsafe_asset_ids(
         store.delete(bad_id)
     with pytest.raises(ValueError, match="asset_id"):
         store.load_content(bad_id)
+    with pytest.raises(ValueError, match="asset_id"):
+        store.save_content(bad_id, b"data", content_type="image/png")
 
 
 def test_corrupt_sidecar_degrades_gracefully(tmp_path: Path) -> None:
@@ -87,6 +90,29 @@ def test_corrupt_sidecar_degrades_gracefully(tmp_path: Path) -> None:
     (root / "broken.json").write_text("{not valid json", encoding="utf-8")
     assert set(store.items()) == {"good"}
     assert store.get("broken") is None
+
+
+def test_delete_cleans_content_when_sidecar_corrupt(tmp_path: Path) -> None:
+    root = tmp_path / "assets"
+    store = FilesystemDesignAssetStore(root)
+    store.register("img-1", {"type": "image", "content_type": "image/png"})
+    store.save_content("img-1", b"pixels", content_type="image/png")
+    # Corrupt the sidecar so metadata can no longer resolve the content
+    # extension; delete must still glob-remove the orphaned content bytes.
+    (root / "img-1.json").write_text("{truncated", encoding="utf-8")
+    assert store.delete("img-1") is True
+    assert not (root / "img-1.png").exists()
+    assert not (root / "img-1.json").exists()
+
+
+def test_non_object_sidecar_read_as_absent(tmp_path: Path) -> None:
+    root = tmp_path / "assets"
+    store = FilesystemDesignAssetStore(root)
+    # A sidecar hand-edited to a JSON array (not an object) must be treated as
+    # corrupt, not returned as-is to crash downstream ``.get()`` access.
+    (root / "listy.json").write_text('["not", "an", "object"]', encoding="utf-8")
+    assert store.get("listy") is None
+    assert set(store.items()) == set()
 
 
 def test_filesystem_persists_across_instances(tmp_path: Path) -> None:

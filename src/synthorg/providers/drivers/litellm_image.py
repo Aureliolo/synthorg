@@ -139,8 +139,10 @@ def build_image_kwargs(  # noqa: PLR0913 -- keyword-only driver state
     if image_config.timeout is not None:
         kwargs["timeout"] = image_config.timeout
     # ``apply_auth_kwargs`` is typed against the completion TypedDict, so
-    # resolve auth onto a minimal valid holder and copy the two keys it may
-    # set (``api_key`` / ``extra_headers``) onto the image request.
+    # resolve auth onto a minimal valid holder and forward every resolved
+    # credential it set (all keys but the two placeholder fields) onto the
+    # image request, so a future per-provider auth key is not silently
+    # dropped from image generation.
     auth_holder: _AcompletionKwargs = {"model": litellm_model, "messages": []}
     apply_auth_kwargs(
         auth_holder,
@@ -152,10 +154,13 @@ def build_image_kwargs(  # noqa: PLR0913 -- keyword-only driver state
             litellm_model=litellm_model,
         ),
     )
-    if "api_key" in auth_holder:
-        kwargs["api_key"] = auth_holder["api_key"]
-    if "extra_headers" in auth_holder:
-        kwargs["extra_headers"] = auth_holder["extra_headers"]
+    kwargs.update(
+        {
+            auth_key: auth_val
+            for auth_key, auth_val in auth_holder.items()
+            if auth_key not in ("model", "messages")
+        }
+    )
     if provider_config.base_url is not None:
         kwargs["api_base"] = provider_config.base_url
     return kwargs

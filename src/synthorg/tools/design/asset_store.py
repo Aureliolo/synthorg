@@ -200,7 +200,7 @@ class FilesystemDesignAssetStore:
         if not path.is_file():
             return None
         try:
-            parsed: dict[str, JsonValue] = json.loads(path.read_text(encoding="utf-8"))
+            parsed: JsonValue = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -209,6 +209,17 @@ class FilesystemDesignAssetStore:
                 reason="metadata_read_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+            return None
+        if not isinstance(parsed, dict):
+            # A sidecar hand-edited to a non-object JSON value (list, scalar)
+            # would crash every downstream ``.get()``; treat it as corrupt.
+            logger.warning(
+                DESIGN_ASSET_PERSIST_FAILED,
+                asset_id=asset_id,
+                reason="metadata_not_object",
+                error_type=type(parsed).__name__,
+                error="metadata sidecar is not a JSON object",
             )
             return None
         return parsed
@@ -248,16 +259,19 @@ class FilesystemDesignAssetStore:
     def delete(self, asset_id: str) -> bool:
         """Delete the sidecar + any content file; ``True`` if a row existed.
 
+        Globs every ``<id>.*`` sibling rather than resolving the content
+        extension through the metadata, so a corrupt or missing sidecar
+        cannot orphan the content bytes (or a stale temp file) on disk.
+
         Returns:
             ``True`` if the metadata sidecar existed and was removed.
         """
-        meta = self.get(asset_id)
-        path = self._meta_path(asset_id)
-        existed = path.is_file()
-        path.unlink(missing_ok=True)
-        if meta is not None:
-            content_type = str(meta.get("content_type", ""))
-            self._content_path(asset_id, content_type).unlink(missing_ok=True)
+        safe_id = _require_safe_id(asset_id)
+        existed = False
+        for path in self._root.glob(f"{safe_id}.*"):
+            if path.suffix == _METADATA_SUFFIX:
+                existed = True
+            path.unlink(missing_ok=True)
         return existed
 
     def items(self) -> Mapping[str, dict[str, JsonValue]]:

@@ -39,7 +39,7 @@ function parseOptionalField(
   return value === null ? { ok: false } : { ok: true, value };
 }
 
-interface ManualModelInputs {
+export interface ManualModelInputs {
   modelId: string;
   alias: string;
   costInput: string;
@@ -70,15 +70,18 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
     estimated_latency_ms: v.latency ?? null,
     local_params: null,
     // Manually-added models are unenriched; backend enriches on next sync.
-    // Embedding is the one capability that gates chat-agent matching, so a
-    // hard ``false`` would let an embedder-by-id slip in as a chat candidate
-    // until sync; apply the backend's id-substring last resort here too.
+    // Two capabilities gate design-tool usability before that sync, so apply
+    // a last-resort heuristic for each: embedding by id-substring (so an
+    // embedder-by-id is not treated as a chat candidate), and image
+    // generation from a configured per-image cost (the operator's deliberate
+    // signal that this is an image-output model, otherwise unselectable as
+    // design.image_model until a sync re-enriches it).
     metadata: {
       supports_tools: false,
       supports_vision: false,
       supports_reasoning: false,
       supports_embeddings: /embed/i.test(v.idTrimmed),
-      supports_image_generation: false,
+      supports_image_generation: v.imageCost !== null,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,
@@ -94,7 +97,9 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
 
 type ManualModelValidation = { error: string } | { model: ProviderModelConfig };
 
-function validateManualModel(fields: ManualModelInputs): ManualModelValidation {
+export function validateManualModel(
+  fields: ManualModelInputs,
+): ManualModelValidation {
   const idTrimmed = fields.modelId.trim();
   if (idTrimmed === "") return { error: "Model id is required." };
   const ctx = parseOptionalField(fields.maxContext, parsePositiveInt);
