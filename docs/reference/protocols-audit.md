@@ -98,7 +98,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 |---|---|---|---|---|---|---|---|
 | communication/conflict_resolution/escalation/notify.py | 56 | `EscalationNotifySubscriber` | 1 | 0 | 0 | KEEP | Plug-in `Subscriber`; factory-registered (`build_escalation_notify_subscriber`). |
 | communication/conflict_resolution/escalation/protocol.py | 175 | `DecisionProcessor` | 1 | 0 | 0 | KEEP | Pluggable strategy; updated by Phase G. |
-| communication/conflict_resolution/protocol.py | 70 | `JudgeEvaluator` | 0 | 0 | 0 | REMOVE | No subclasses, no test references; verify single consumer can take a concrete type. |
+| communication/conflict_resolution/protocol.py | 70 | `JudgeEvaluator` | 1 | 1 | 0 | KEEP | Plug-in LLM-judge seam; `LlmJudgeEvaluator` is the concrete impl wired into the debate and hybrid resolvers. |
 | communication/event_stream/consumer.py | 15 | `EventStreamConsumer` | 1 | 0 | 0 | REMOVE | No usages; one-consumer seam. |
 | communication/meeting/participant.py | 56 | `ParticipantResolver` | 1 | 0 | 0 | REMOVE | Same name lives in `meeting/protocol.py`; one of the two is dead. |
 | communication/bus/persistence.py | 33 | `HistoryAccessor` | 1 | 0 | 2 | KEEP | Plug-in `Accessor`. |

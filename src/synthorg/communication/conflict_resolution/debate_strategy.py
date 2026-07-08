@@ -14,6 +14,7 @@ from uuid import uuid4
 from synthorg.communication.conflict_resolution._evidence import extract_evidence
 from synthorg.communication.conflict_resolution._helpers import (
     find_losers,
+    find_position,
     find_position_or_raise,
     pick_highest_seniority,
 )
@@ -38,6 +39,7 @@ from synthorg.communication.errors import ConflictHierarchyError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.conflict import (
+    CONFLICT_AMBIGUOUS_RESULT,
     CONFLICT_AUTHORITY_FALLBACK,
     CONFLICT_DEBATE_EVALUATOR_FAILED,
     CONFLICT_DEBATE_JUDGE_DECIDED,
@@ -98,78 +100,108 @@ class DebateResolver:
         )
 
         # Records the resolution path truthfully: a judged debate stays
-        # RESOLVED_BY_DEBATE, but an evaluator failure (or no evaluator)
-        # falls back to seniority and must be recorded as
+        # RESOLVED_BY_DEBATE, but any fallback to seniority (no evaluator,
+        # evaluator failure, or an ambiguous verdict) must be recorded as
         # RESOLVED_BY_AUTHORITY so the persisted outcome and dissent audit
         # trail do not misattribute the decision to a debate that never ran.
+        decision = await self._judge(conflict, judge_id)
         outcome = ConflictResolutionOutcome.RESOLVED_BY_DEBATE
-        if self._judge_evaluator is not None:
-            try:
-                winning_agent_id, reasoning = await self._judge_evaluator.evaluate(
-                    conflict,
-                    judge_id,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger,
-                    CONFLICT_DEBATE_EVALUATOR_FAILED,
-                    exc,
-                    conflict_id=str(conflict.id),
-                    judge=judge_id,
-                )
-                outcome = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
-                try:
-                    winning_agent_id, reasoning = self._authority_fallback(
-                        conflict,
-                    )
-                except ConflictHierarchyError:
-                    # Hierarchy tiebreak failed too -- fall back without
-                    # hierarchy so we always produce a resolution.
-                    logger.warning(
-                        CONFLICT_HIERARCHY_ERROR,
-                        conflict_id=str(conflict.id),
-                        note="authority fallback hierarchy failed; "
-                        "using seniority without hierarchy",
-                    )
-                    best = pick_highest_seniority(
-                        conflict,
-                        hierarchy=None,
-                    )
-                    winning_agent_id = best.agent_id
-                    reasoning = (
-                        f"Debate fallback: authority-based judging "
-                        f"(no hierarchy) -- {best.agent_id} "
-                        f"({best.agent_level}) has highest seniority"
-                    )
-        else:
+        if decision is None:
+            outcome = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
+            decision = self._authority_fallback_safe(conflict)
+
+        winning_pos = find_position_or_raise(conflict, decision.winning_agent_id)
+
+        logger.info(
+            CONFLICT_DEBATE_JUDGE_DECIDED,
+            conflict_id=str(conflict.id),
+            judge=judge_id,
+            winner=decision.winning_agent_id,
+        )
+
+        return ConflictResolution(
+            conflict_id=str(conflict.id),
+            outcome=outcome,
+            winning_agent_id=decision.winning_agent_id,
+            winning_position=winning_pos.position,
+            decided_by=judge_id,
+            reasoning=decision.reasoning,
+            resolved_at=datetime.now(UTC),
+        )
+
+    async def _judge(
+        self,
+        conflict: Conflict,
+        judge_id: str,
+    ) -> JudgeDecision | None:
+        """Run the LLM judge, or ``None`` to signal an authority fallback.
+
+        Returns ``None`` when no evaluator is wired, the evaluator fails, or
+        it returns a non-participant winner (the ambiguity sentinel or a
+        hallucinated id): debate has no human-escalation arm, so every such
+        case degrades to authority-based judging.
+
+        Returns:
+            The judge's decision, or ``None`` to fall back to authority.
+        """
+        if self._judge_evaluator is None:
             logger.warning(
                 CONFLICT_AUTHORITY_FALLBACK,
                 conflict_id=str(conflict.id),
                 strategy="debate",
                 reason="no_judge_evaluator",
             )
-            outcome = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
-            winning_agent_id, reasoning = self._authority_fallback(conflict)
+            return None
+        try:
+            decision = await self._judge_evaluator.evaluate(conflict, judge_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                CONFLICT_DEBATE_EVALUATOR_FAILED,
+                exc,
+                conflict_id=str(conflict.id),
+                judge=judge_id,
+            )
+            return None
+        if find_position(conflict, decision.winning_agent_id) is None:
+            logger.warning(
+                CONFLICT_AMBIGUOUS_RESULT,
+                conflict_id=str(conflict.id),
+                returned_winner=decision.winning_agent_id,
+                participants=[p.agent_id for p in conflict.positions],
+            )
+            return None
+        return decision
 
-        winning_pos = find_position_or_raise(conflict, winning_agent_id)
+    def _authority_fallback_safe(self, conflict: Conflict) -> JudgeDecision:
+        """Authority fallback that always yields a winner.
 
-        logger.info(
-            CONFLICT_DEBATE_JUDGE_DECIDED,
-            conflict_id=str(conflict.id),
-            judge=judge_id,
-            winner=winning_agent_id,
-        )
+        Wraps :meth:`_authority_fallback` with a hierarchy-failure safety
+        net so a failed lowest-common-manager lookup still resolves by raw
+        seniority rather than raising.
 
-        return ConflictResolution(
-            conflict_id=str(conflict.id),
-            outcome=outcome,
-            winning_agent_id=winning_agent_id,
-            winning_position=winning_pos.position,
-            decided_by=judge_id,
-            reasoning=reasoning,
-            resolved_at=datetime.now(UTC),
-        )
+        Returns:
+            The authority-based decision.
+        """
+        try:
+            return self._authority_fallback(conflict)
+        except ConflictHierarchyError:
+            logger.warning(
+                CONFLICT_HIERARCHY_ERROR,
+                conflict_id=str(conflict.id),
+                note="authority fallback hierarchy failed; "
+                "using seniority without hierarchy",
+            )
+            best = pick_highest_seniority(conflict, hierarchy=None)
+            return JudgeDecision(
+                winning_agent_id=best.agent_id,
+                reasoning=(
+                    f"Debate fallback: authority-based judging (no hierarchy) "
+                    f"-- {best.agent_id} ({best.agent_level}) has highest "
+                    f"seniority"
+                ),
+            )
 
     def build_dissent_records(
         self,

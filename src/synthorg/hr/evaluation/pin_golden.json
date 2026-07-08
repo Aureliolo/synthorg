@@ -5,6 +5,7 @@
   "system:classification:logical_contradiction": "084859cabe203326d3f694ab5a6638ee456af0aca83fe65272eff10fdf35f9c0",
   "system:classification:numerical_drift": "24d6fd825b017c425550b8e96dd5021ba0efa6ebcea1a808f5e64949d992db3e",
   "system:client:requirement_generator": "44761ece6b416ad8157284b0986cfa14a81bd967d21e28edcacafd1e539ce0b0",
+  "system:conflict:judge": "7626e02356350dce4020f1a75406b4e76a75b74abd8a98c5c221f79782eb8814",
   "system:cos:chat": "48fa27d50448bad6f5b883c755a1e8285f36d768a854101f4c61e72c30f04a7a",
   "system:cos:narrative": "c9277a56f98546d73dc94b983dfb9a3713cdf3332a11dc58473073c7b7db31f4",
   "system:cos:propose": "f130dd11c6c39c6221d639000b5667c759efbcd51a2f35f4934c6d7f40169a40",

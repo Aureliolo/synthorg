@@ -57,9 +57,16 @@ behind a `ConflictResolver` protocol. New strategies can be added without
 modifying existing ones. The strategy is configurable per company, per
 department, or per conflict type.
 
-=== "Strategy 1: Authority + Dissent Log"
+**Invocation trigger.** A conflict enters this pipeline from the meeting
+subsystem: when a structured-phases meeting's discussion phase detects a
+conflict (`MeetingMinutes.conflicts_detected`), the
+`MeetingConflictEscalationBridge`
+(`communication/meeting/conflict_escalation.py`) builds a `Conflict` from the
+participants' positions and hands it to the `ConflictResolutionService`. The
+bridge is gated by the hot-reloadable `communication.meeting_conflict_escalation_enabled`
+kill switch and is best-effort (a resolution failure never fails the meeting).
 
-    **Default Strategy**
+=== "Strategy 1: Authority + Dissent Log"
 
     The agent with higher authority level decides. Cross-department conflicts
     (incomparable authority) escalate to the lowest common manager in the
@@ -129,9 +136,14 @@ department, or per conflict type.
 
 === "Strategy 4: Hybrid"
 
-    **Recommended for Production**
+    **Default Strategy (Recommended for Production)**
 
-    Combines strategies with an intelligent review layer:
+    Combines strategies with an intelligent review layer. The `conflict review
+    agent` is the `LlmJudgeEvaluator`
+    (`communication/conflict_resolution/llm_judge_evaluator.py`), an LLM judge
+    wired into the debate and hybrid resolvers by the conflict-service factory
+    when a provider is registered; without one, both resolvers fall back to
+    authority.
 
     1. Both agents present arguments (1 round), preserving dissent
     2. A **conflict review agent** evaluates the result:

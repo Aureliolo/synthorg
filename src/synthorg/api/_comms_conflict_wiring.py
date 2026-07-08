@@ -10,6 +10,7 @@ touches :class:`AppState`; the resolver-assembly knowledge stays in
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
@@ -22,9 +23,11 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
 )
 from synthorg.config.schema import RootConfig
+from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.communication.conflict_resolution.protocol import JudgeEvaluator
 
 
 def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collaborator DI
@@ -36,12 +39,16 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
     escalation_store: EscalationQueueStore,
     escalation_processor: DecisionProcessor,
     escalation_registry: PendingFuturesRegistry,
+    provider_registry: ProviderRegistry | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> None:
     """Build + install the conflict-resolution service on the comms slice.
 
     The hierarchy is built from the boot-time company snapshot (same
     lifecycle as the escalation wiring), and the human resolver reuses the
-    escalation store/processor/registry already wired.
+    escalation store/processor/registry already wired. When a provider is
+    registered, an :class:`LlmJudgeEvaluator` is built and shared by the
+    debate and hybrid resolvers so their auto-resolution arms are live.
     """
     from synthorg.communication.conflict_resolution.factory import (  # noqa: PLC0415
         build_conflict_resolution_service,
@@ -65,10 +72,43 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
         escalation_registry=escalation_registry,
         event_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         message_bus=message_bus,
+        judge_evaluator=_build_judge_evaluator(provider_registry, cost_tracker),
     )
     app_state.wire(
         CommunicationStateSlice,
         conflict_resolution_service=service,
+    )
+
+
+def _build_judge_evaluator(
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> JudgeEvaluator | None:
+    """Build the LLM judge from the first registered provider, if any.
+
+    Mirrors the "first registered provider" selection the client-simulation
+    runtime builder uses: the judge is a system actor, not a company agent,
+    so no per-agent provider identity applies.
+
+    Returns:
+        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no provider is
+        registered (the debate/hybrid resolvers then fall back to authority).
+    """
+    if provider_registry is None:
+        return None
+    names = provider_registry.list_providers()
+    if not names:
+        return None
+    from synthorg.communication.conflict_resolution.llm_judge_evaluator import (  # noqa: PLC0415
+        LlmJudgeEvaluator,
+    )
+    from synthorg.llm.model_pins import pin_for  # noqa: PLC0415
+    from synthorg.llm.prompt_purpose import PromptPurposeId  # noqa: PLC0415
+
+    return LlmJudgeEvaluator(
+        provider=provider_registry.get(names[0]),
+        model=pin_for(PromptPurposeId.CONFLICT_JUDGE).model,
+        cost_tracker=cost_tracker,
     )
 
 

@@ -31,6 +31,7 @@ from synthorg.communication.meeting.models import (
 )
 from synthorg.communication.meeting.protocol import (
     AgentCaller,
+    ConflictEscalationHook,
     MeetingProtocol,
     TaskCreator,
 )
@@ -106,6 +107,7 @@ class MeetingOrchestrator:
     __slots__ = (
         "_agent_caller",
         "_config_resolver",
+        "_conflict_escalation_hook",
         "_lens_assigner",
         "_protocol_registry",
         "_records",
@@ -123,6 +125,7 @@ class MeetingOrchestrator:
         strategy_config: _LensStrategyConfig | None = None,
         lens_assigner: _LensAssigner | None = None,
         config_resolver: ConfigResolverProtocol | None = None,
+        conflict_escalation_hook: ConflictEscalationHook | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
@@ -132,6 +135,7 @@ class MeetingOrchestrator:
         self._strategy_config = strategy_config
         self._lens_assigner = lens_assigner
         self._config_resolver = config_resolver
+        self._conflict_escalation_hook = conflict_escalation_hook
         self._records: list[MeetingRecord] = []
         # Mirror records by id for O(1) lookup via ``get_record``.
         # The list keeps chronological order (used by ``get_records``);
@@ -307,6 +311,8 @@ class MeetingOrchestrator:
             return result
 
         self._create_tasks(meeting_id, protocol_config, result)
+        if self._conflict_escalation_hook is not None:
+            await self._conflict_escalation_hook(result)
         return self._record_success(
             meeting_id,
             meeting_type_name,

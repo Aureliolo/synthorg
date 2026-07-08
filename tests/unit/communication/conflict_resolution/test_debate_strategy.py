@@ -16,10 +16,7 @@ from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
-from synthorg.communication.errors import (
-    ConflictHierarchyError,
-    ConflictStrategyError,
-)
+from synthorg.communication.errors import ConflictHierarchyError
 from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position
@@ -249,11 +246,14 @@ class TestDebateResolverDissentRecord:
 
 
 @pytest.mark.unit
-class TestDebateResolverInvalidWinner:
-    async def test_judge_returns_unknown_agent_raises(
+class TestDebateResolverAmbiguousWinner:
+    async def test_judge_returns_unknown_agent_falls_back_to_authority(
         self,
         hierarchy: HierarchyResolver,
     ) -> None:
+        # A judge verdict naming a non-participant (a hallucinated id) has no
+        # human-escalation arm under debate, so it degrades to authority
+        # rather than raising on ``find_position_or_raise``.
         judge = FakeJudgeEvaluator(winner_id="nonexistent_agent")
         resolver = DebateResolver(
             hierarchy=hierarchy,
@@ -270,8 +270,36 @@ class TestDebateResolverInvalidWinner:
                 ),
             ),
         )
-        with pytest.raises(ConflictStrategyError, match="not found"):
-            await resolver.resolve(conflict)
+        resolution = await resolver.resolve(conflict)
+        assert resolution.winning_agent_id == "sr_dev"
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
+        assert "fallback" in resolution.reasoning.lower()
+
+    async def test_judge_ambiguous_sentinel_falls_back_to_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        # The empty-string sentinel signals a genuinely ambiguous verdict.
+        judge = FakeJudgeEvaluator(winner_id="")
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+        with structlog.testing.capture_logs() as logs:
+            resolution = await resolver.resolve(conflict)
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
+        assert "conflict.ambiguous_result" in [e["event"] for e in logs]
 
 
 @pytest.mark.unit

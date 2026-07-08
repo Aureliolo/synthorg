@@ -29,7 +29,10 @@ from synthorg.communication.conflict_resolution.human_strategy import (
     HumanEscalationResolver,
 )
 from synthorg.communication.conflict_resolution.hybrid_strategy import HybridResolver
-from synthorg.communication.conflict_resolution.protocol import ConflictResolver
+from synthorg.communication.conflict_resolution.protocol import (
+    ConflictResolver,
+    JudgeEvaluator,
+)
 from synthorg.communication.conflict_resolution.service import (
     ConflictResolutionService,
 )
@@ -48,6 +51,7 @@ def build_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabor
     escalation_registry: PendingFuturesRegistry,
     event_hub: EventStreamHub | None = None,
     message_bus: object | None = None,
+    judge_evaluator: JudgeEvaluator | None = None,
 ) -> ConflictResolutionService:
     """Build a fully-wired :class:`ConflictResolutionService`.
 
@@ -67,6 +71,9 @@ def build_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabor
         escalation_registry: Shared pending-futures registry.
         event_hub: Optional event-stream hub for AG-UI dissent events.
         message_bus: Optional message bus for dissent broadcast.
+        judge_evaluator: Optional LLM judge shared by the debate and hybrid
+            resolvers. When ``None`` both fall back to authority-based
+            judging (no auto-resolution, no ambiguity escalation).
 
     Returns:
         The wired :class:`ConflictResolutionService`.
@@ -82,11 +89,13 @@ def build_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabor
         ConflictResolutionStrategy.DEBATE: DebateResolver(
             hierarchy=hierarchy,
             config=config.debate,
+            judge_evaluator=judge_evaluator,
         ),
         ConflictResolutionStrategy.HYBRID: HybridResolver(
             hierarchy=hierarchy,
             config=config.hybrid,
             human_resolver=human_resolver,
+            review_evaluator=judge_evaluator,
         ),
         ConflictResolutionStrategy.HUMAN: human_resolver,
         ConflictResolutionStrategy.EVIDENCE_WEIGHTED: EvidenceWeightedResolver(),

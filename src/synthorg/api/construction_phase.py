@@ -157,13 +157,16 @@ def _wire_quadratic_alert_sink(
     )
 
 
-def _wire_communication_services(
+def _wire_communication_services(  # noqa: PLR0913 -- keyword-only collaborator DI
     app_state: AppState,
     *,
     effective_config: RootConfig,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
     meeting_orchestrator: MeetingOrchestrator | None,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+    agent_registry: AgentRegistryService,
 ) -> ConfigResolver | None:
     """Wire the communication-domain + human-escalation services onto AppState.
 
@@ -178,6 +181,11 @@ def _wire_communication_services(
         message_bus: The auto-wired message bus, or ``None``.
         persistence: The persistence backend (may be ``None``).
         meeting_orchestrator: The auto-wired meeting orchestrator, or ``None``.
+        provider_registry: The provider registry, so the conflict-resolution
+            service can build its LLM judge (``None`` -> no judge).
+        cost_tracker: The cost tracker the LLM judge attributes spend to.
+        agent_registry: The agent registry the meeting-conflict bridge reads
+            department/seniority from to build conflict positions.
 
     Returns:
         The settings ``config_resolver`` for the bridge and later consumers.
@@ -235,8 +243,50 @@ def _wire_communication_services(
         escalation_store=escalation_store,
         escalation_processor=escalation_processor,
         escalation_registry=escalation_registry,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )
+    _wire_meeting_conflict_bridge(
+        app_state,
+        meeting_orchestrator=meeting_orchestrator,
+        agent_registry=agent_registry,
+        config_resolver=config_resolver,
     )
     return config_resolver
+
+
+def _wire_meeting_conflict_bridge(
+    app_state: AppState,
+    *,
+    meeting_orchestrator: MeetingOrchestrator | None,
+    agent_registry: AgentRegistryService,
+    config_resolver: ConfigResolver | None,
+) -> None:
+    """Install the meeting-to-conflict-resolution bridge on the orchestrator.
+
+    Post-construction attribute injection (mirroring the meeting-scheduler
+    event-publisher wiring): the conflict-resolution service is built later
+    in this same wiring pass than the orchestrator is constructed. A no-op
+    when either the orchestrator or the service is absent.
+    """
+    from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
+
+    conflict_service = app_state.slice(
+        CommunicationStateSlice
+    ).conflict_resolution_service
+    if meeting_orchestrator is None or conflict_service is None:
+        return
+    from synthorg.communication.meeting.conflict_escalation import (  # noqa: PLC0415
+        MeetingConflictEscalationBridge,
+    )
+
+    meeting_orchestrator._conflict_escalation_hook = (  # noqa: SLF001
+        MeetingConflictEscalationBridge(
+            conflict_service=conflict_service,
+            agent_registry=agent_registry,
+            config_resolver=config_resolver,
+        )
+    )
 
 
 def build_construction_services(
@@ -494,6 +544,9 @@ def build_construction_services(
         message_bus=message_bus,
         persistence=persistence,
         meeting_orchestrator=meeting_orchestrator,
+        provider_registry=provider_registry,
+        cost_tracker=phase1.cost_tracker,
+        agent_registry=agent_registry,
     )
 
     bridge = (
