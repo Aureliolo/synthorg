@@ -50,7 +50,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_DISCOVERY_FAILED,
-    PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
     PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
     PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
@@ -113,7 +112,6 @@ from synthorg.providers.presets import (
 )
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import ModelCandidateSelector
-from synthorg.providers.url_utils import is_self_url, redact_url
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 
@@ -767,23 +765,6 @@ class ProviderManagementService(
             ProviderAlreadyExistsError: If the name is taken.
         """
         return await create_provider_from_preset(self, request)
-
-    def _is_self_connection(self, base_url: str) -> bool:
-        """Check if a URL points at this backend; log warning if so.
-
-        Returns:
-            ``True`` when *base_url* resolves to this backend's own host
-            and port; ``False`` otherwise.
-        """
-        backend_port = self._backend_port
-        if is_self_url(base_url, backend_port=backend_port):
-            logger.warning(
-                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
-                url=redact_url(base_url),
-                backend_port=backend_port,
-            )
-            return True
-        return False
 
     async def get_discovery_policy(self) -> ProviderDiscoveryPolicy:
         """Return the current discovery allowlist policy.

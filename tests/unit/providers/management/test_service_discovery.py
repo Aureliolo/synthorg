@@ -471,7 +471,7 @@ class TestSelfConnectionGuard:
                 return_value=(),
             ),
             patch(
-                "synthorg.providers.management.service.logger",
+                "synthorg.providers.management._discovery_mixin.logger",
             ) as mock_logger,
         ):
             await service.discover_models_for_provider(

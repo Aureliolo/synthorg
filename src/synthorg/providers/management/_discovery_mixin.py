@@ -14,7 +14,10 @@ from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_DISCOVERY_FAILED
+from synthorg.observability.events.provider import (
+    PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+)
 from synthorg.providers.discovery import discover_models, discover_models_strict
 from synthorg.providers.discovery_policy import is_url_allowed
 from synthorg.providers.enums import AuthType
@@ -26,6 +29,7 @@ from synthorg.providers.management._discovery_auth import (
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.presets import CloudPreset, LocalPreset
+from synthorg.providers.url_utils import is_self_url, redact_url
 
 logger = get_logger(__name__)
 
@@ -41,6 +45,7 @@ class _ServiceProtocol(Protocol):
     _clock: Clock
     _app_state: AppState
     _allowlist: DiscoveryAllowlistManager
+    _backend_port: int
 
     async def get_provider(self, name: str) -> ProviderConfig:
         """Load a provider by name (provided by the host service)."""
@@ -77,6 +82,23 @@ class ProviderDiscoveryMixin:
     class supplies the attributes and CRUD helpers declared on
     ``_ServiceProtocol``.
     """
+
+    def _is_self_connection(self: _ServiceProtocol, base_url: str) -> bool:
+        """Check if a URL points at this backend; log a warning if so.
+
+        Returns:
+            ``True`` when *base_url* resolves to this backend's own host
+            and port; ``False`` otherwise.
+        """
+        backend_port = self._backend_port
+        if is_self_url(base_url, backend_port=backend_port):
+            logger.warning(
+                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+                url=redact_url(base_url),
+                backend_port=backend_port,
+            )
+            return True
+        return False
 
     async def _maybe_discover_preset_models(
         self: _ServiceProtocol,
