@@ -37,6 +37,7 @@ from synthorg.security.rules.path_traversal_detector import (
 )
 from synthorg.security.rules.policy_validator import PolicyValidator
 from synthorg.security.service import SecOpsService
+from synthorg.tools.base import BaseTool
 from synthorg.tools.external_api._runtime import ExternalApiRuntime
 from synthorg.tools.registry import ToolRegistry
 
@@ -257,6 +258,17 @@ def _warn_disabled_features(cfg: SecurityConfig) -> None:
         )
 
 
+def _registry_with_tool_appended(
+    tool_registry: ToolRegistry, tool: BaseTool
+) -> ToolRegistry:
+    """Return a new registry carrying the existing tools plus *tool*.
+
+    Returns:
+        A :class:`ToolRegistry` with *tool* appended.
+    """
+    return ToolRegistry([*tool_registry.all_tools(), tool])
+
+
 def registry_with_approval_tool(
     tool_registry: ToolRegistry,
     approval_store: ApprovalStoreProtocol | None,
@@ -276,9 +288,6 @@ def registry_with_approval_tool(
     from synthorg.tools.approval_tool import (  # noqa: PLC0415
         RequestHumanApprovalTool,
     )
-    from synthorg.tools.registry import (  # noqa: PLC0415
-        ToolRegistry as _ToolRegistry,
-    )
 
     approval_tool = RequestHumanApprovalTool(
         approval_store=approval_store,
@@ -286,8 +295,7 @@ def registry_with_approval_tool(
         agent_id=str(identity.id),
         task_id=task_id,
     )
-    existing = list(tool_registry.all_tools())
-    return _ToolRegistry([*existing, approval_tool])
+    return _registry_with_tool_appended(tool_registry, approval_tool)
 
 
 def registry_with_clarification_tool(
@@ -313,17 +321,13 @@ def registry_with_clarification_tool(
     from synthorg.tools.clarification_tool import (  # noqa: PLC0415
         RequestClarificationTool,
     )
-    from synthorg.tools.registry import (  # noqa: PLC0415
-        ToolRegistry as _ToolRegistry,
-    )
 
     clarification_tool = RequestClarificationTool(
         approval_store=approval_store,
         agent_id=str(identity.id),
         task_id=task_id,
     )
-    existing = list(tool_registry.all_tools())
-    return _ToolRegistry([*existing, clarification_tool])
+    return _registry_with_tool_appended(tool_registry, clarification_tool)
 
 
 def registry_with_decision_tool(
@@ -349,17 +353,13 @@ def registry_with_decision_tool(
     from synthorg.tools.decision_tool import (  # noqa: PLC0415
         RequestProjectDecisionTool,
     )
-    from synthorg.tools.registry import (  # noqa: PLC0415
-        ToolRegistry as _ToolRegistry,
-    )
 
     decision_tool = RequestProjectDecisionTool(
         approval_store=approval_store,
         agent_id=str(identity.id),
         task_id=task_id,
     )
-    existing = list(tool_registry.all_tools())
-    return _ToolRegistry([*existing, decision_tool])
+    return _registry_with_tool_appended(tool_registry, decision_tool)
 
 
 def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring inputs

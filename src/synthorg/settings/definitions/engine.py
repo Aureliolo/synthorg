@@ -72,6 +72,9 @@ _r.register(
 # ── Automatic review ────────────────────────────────────────────
 
 _r.register(
+    # lint-allow: restart-required -- the review pipeline is wired into the
+    # agent runtime at boot; a change applies on the next runtime-services
+    # rebuild, not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="auto_review_on_completion",
@@ -87,12 +90,16 @@ _r.register(
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
 # ── Mid-task clarification ──────────────────────────────────────
 
 _r.register(
+    # lint-allow: restart-required -- the clarification tool is added to every
+    # agent toolset at boot; a change applies on the next runtime-services
+    # rebuild, not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="clarification_enabled",
@@ -108,12 +115,16 @@ _r.register(
         ),
         group="Clarification",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
 # ── Scoping + decision gate ─────────────────────────────────────
 
 _r.register(
+    # lint-allow: restart-required -- the decision tool is added to every agent
+    # toolset at boot; a change applies on the next runtime-services rebuild,
+    # not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="scoping_enabled",
@@ -130,6 +141,7 @@ _r.register(
         ),
         group="Scoping",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
@@ -845,6 +857,7 @@ _r.register(
             " change applies to the next move with no restart."
         ),
         group="Kanban Board",
+        level=SettingLevel.ADVANCED,
     )
 )
 
@@ -861,6 +874,7 @@ _r.register(
             " to the next board operation."
         ),
         group="Kanban Board",
+        level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=100,
     )
@@ -879,6 +893,7 @@ _r.register(
             " operation."
         ),
         group="Kanban Board",
+        level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=100,
     )

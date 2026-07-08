@@ -148,10 +148,11 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
                     API_APP_STARTUP,
                     service="fine_tune_orchestrator",
                     note=(
-                        "fine_tune_query_provider names a provider that is "
-                        "not registered; using the extractive query generator"
+                        "fine_tune_query_model's provider is not registered; "
+                        "using the extractive query generator"
                     ),
-                    fine_tune_query_provider=provider_name,
+                    provider_name=provider_name,
+                    fine_tune_query_model=query_model,
                 )
             if provider is not None:
                 query_generator = build_query_generator(

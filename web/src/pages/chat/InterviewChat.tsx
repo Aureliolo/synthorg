@@ -96,6 +96,12 @@ export function InterviewChat({
             {sending ? 'Sending...' : 'Send'}
           </Button>
         </div>
+        {sending && (
+          <p className="text-sm text-muted-foreground" role="status">
+            The CEO is thinking. This can take up to a minute on slower
+            providers.
+          </p>
+        )}
         {conversationClosed && (
           <p className="text-sm text-muted-foreground">
             This interview is closed. Start a new one to draft another charter.

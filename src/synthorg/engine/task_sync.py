@@ -233,48 +233,16 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
     if reason != TerminationReason.COMPLETED:
         return execution_result
 
-    # Apply IN_PROGRESS -> IN_REVIEW stepwise so that ``ctx`` always
-    # reflects the furthest-reached state, even when one step raises
-    # (partial-completion safety).
-    for target, step_reason in _COMPLETION_STEPS:
-        try:
-            ctx = await _transition_and_sync(
-                ctx,
-                target_status=target,
-                reason=step_reason,
-                agent_id=agent_id,
-                task_id=task_id,
-                task_engine=task_engine,
-            )
-        except (ValueError, ExecutionStateError) as exc:
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                context="Post-execution transition failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            break
-
-    # Create a review approval if the task reached IN_REVIEW.
-    if (
-        ctx.task_execution is not None
-        and ctx.task_execution.status == TaskStatus.IN_REVIEW
-    ):
-        await _create_review_approval(
-            approval_store, agent_id=agent_id, task_id=task_id
-        )
-        await _maybe_auto_review(
-            review_gate,
-            review_pipeline,
-            agent_id=agent_id,
-            task_id=task_id,
-        )
-
-    if ctx is execution_result.context:
-        return execution_result
-    return execution_result.model_copy(update={"context": ctx})
+    return await _transition_to_review(
+        execution_result,
+        ctx,
+        agent_id,
+        task_id,
+        task_engine,
+        approval_store,
+        review_gate,
+        review_pipeline,
+    )
 
 
 async def _maybe_auto_review(
@@ -416,6 +384,64 @@ async def _create_review_approval(
         agent_id=agent_id,
     )
     return str(approval_id)
+
+
+async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
+    execution_result: ExecutionResult,
+    ctx: AgentContext,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
+    review_gate: ReviewGateService | None,
+    review_pipeline: ReviewPipeline | None,
+) -> ExecutionResult:
+    """Drive a COMPLETED run IN_PROGRESS -> IN_REVIEW, then request review.
+
+    Applies ``_COMPLETION_STEPS`` stepwise so ``ctx`` always reflects the
+    furthest-reached state even when one step raises (partial-completion
+    safety). On reaching IN_REVIEW, a review approval is created and the
+    auto-review pass runs when both are wired.
+
+    Returns:
+        The original ``execution_result`` when the context is unchanged, or
+        a copy carrying the furthest-reached context.
+    """
+    for target, step_reason in _COMPLETION_STEPS:
+        try:
+            ctx = await _transition_and_sync(
+                ctx,
+                target_status=target,
+                reason=step_reason,
+                agent_id=agent_id,
+                task_id=task_id,
+                task_engine=task_engine,
+            )
+        except (ValueError, ExecutionStateError) as exc:
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                context="Post-execution transition failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            break
+
+    if (
+        ctx.task_execution is not None
+        and ctx.task_execution.status == TaskStatus.IN_REVIEW
+    ):
+        await _create_review_approval(
+            approval_store, agent_id=agent_id, task_id=task_id
+        )
+        await _maybe_auto_review(
+            review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
+        )
+
+    if ctx is execution_result.context:
+        return execution_result
+    return execution_result.model_copy(update={"context": ctx})
 
 
 async def _transition_to_interrupted(

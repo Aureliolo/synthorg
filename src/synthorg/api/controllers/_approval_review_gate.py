@@ -340,6 +340,10 @@ async def signal_resume_intent(  # noqa: PLR0913
        run / reject a parked work proposal.
     0.5. **Agent invite** (:func:`try_conversational_invite_resume`):
        add / decline an agent-initiated invite on consent.
+    0.7. **Plan approval** (:func:`try_plan_review_resume`):
+       dispatch the parked plan on approval, or cancel the parent task.
+    0.8. **Project decision** (:func:`record_project_decision`):
+       record a project-shaping decision, then fall through.
     1. **Mid-execution parking** (:func:`try_mid_execution_resume`):
        resume a parked context if one exists.
     2. **Review gate** (:func:`try_review_gate_transition`):

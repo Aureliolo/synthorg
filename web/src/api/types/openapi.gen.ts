@@ -11340,10 +11340,7 @@ export type components = {
             readonly count: number;
             /** @description WIP limit (None = unlimited) */
             readonly limit: number | null;
-            /**
-             * @description Whether the column is over its WIP limit
-             * @default false
-             */
+            /** @description Whether the column is over its WIP limit */
             readonly over_limit: boolean;
             /** @description Cards in this column */
             readonly tasks: readonly components["schemas"]["Task"][];

@@ -8,6 +8,8 @@ read per request from the settings resolver (``engine.kanban_*``), so a
 runtime change applies to the next board operation with no restart.
 """
 
+import asyncio
+
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     KanbanInvalidMoveError,
@@ -52,7 +54,7 @@ class KanbanBoardService:
     the coordinator is not throttled here.
     """
 
-    __slots__ = ("_config_resolver", "_task_engine", "_tasks")
+    __slots__ = ("_config_resolver", "_move_lock", "_task_engine", "_tasks")
 
     def __init__(
         self,
@@ -64,6 +66,10 @@ class KanbanBoardService:
         self._tasks = task_repository
         self._task_engine = task_engine
         self._config_resolver = config_resolver
+        # Serialises the read-check-move critical section in ``move_task`` so
+        # two concurrent moves cannot both pass a stale WIP check before either
+        # transition lands (a TOCTOU that would let a column exceed its limit).
+        self._move_lock = asyncio.Lock()
 
     async def _resolve_limits(self) -> dict[KanbanColumn, int]:
         """Read the per-column WIP limits from settings (hot).
@@ -112,22 +118,22 @@ class KanbanBoardService:
         workflow_type = await self._config_resolver.get_enum(
             _SETTINGS_NS, "workflow_type", WorkflowType
         )
-        columns: list[KanbanColumnView] = []
-        for column in BOARD_COLUMN_ORDER:
-            tasks = await self._column_tasks(column, project=project)
-            limit = limits.get(column)
-            count = len(tasks)
-            columns.append(
-                KanbanColumnView(
-                    column=column,
-                    tasks=tasks,
-                    count=count,
-                    limit=limit,
-                    over_limit=limit is not None and count > limit,
-                )
+        # Per-column lookups are independent; fan them out concurrently.
+        async with asyncio.TaskGroup() as group:
+            column_cards = {
+                column: group.create_task(self._column_tasks(column, project=project))
+                for column in BOARD_COLUMN_ORDER
+            }
+        columns = tuple(
+            KanbanColumnView(
+                column=column,
+                tasks=column_cards[column].result(),
+                limit=limits.get(column),
             )
+            for column in BOARD_COLUMN_ORDER
+        )
         return KanbanBoardView(
-            columns=tuple(columns),
+            columns=columns,
             workflow_type=workflow_type,
             enforce_wip=enforce,
         )
@@ -187,21 +193,26 @@ class KanbanBoardService:
 
         limits = await self._resolve_limits()
         kanban = await self._resolve_kanban_config(limits)
-        target_count = len(await self._column_tasks(target_column, project=None))
-        wip = check_wip_limit(kanban, target_column, {target_column: target_count})
-        if not wip.allowed:
-            msg = (
-                f"Column {target_column.value!r} is at its WIP limit "
-                f"({wip.limit}); move rejected"
-            )
-            raise KanbanWipLimitError(msg)
+        # Hold the move lock across the WIP read + transition so the target
+        # count a move validates against is the count it then mutates: two
+        # concurrent moves are serialised rather than both passing a stale
+        # snapshot and pushing the column over its limit.
+        async with self._move_lock:
+            target_count = len(await self._column_tasks(target_column, project=None))
+            wip = check_wip_limit(kanban, target_column, {target_column: target_count})
+            if not wip.allowed:
+                msg = (
+                    f"Column {target_column.value!r} is at its WIP limit "
+                    f"({wip.limit}); move rejected"
+                )
+                raise KanbanWipLimitError(msg)
 
-        updated = task
-        for status in resolve_task_transitions(current, target_column):
-            updated, _ = await self._task_engine.transition_task(
-                task_id,
-                status,
-                requested_by=requested_by,
-                reason=f"kanban board move to {target_column.value}",
-            )
-        return updated
+            updated = task
+            for status in resolve_task_transitions(current, target_column):
+                updated, _ = await self._task_engine.transition_task(
+                    task_id,
+                    status,
+                    requested_by=requested_by,
+                    reason=f"kanban board move to {target_column.value}",
+                )
+            return updated

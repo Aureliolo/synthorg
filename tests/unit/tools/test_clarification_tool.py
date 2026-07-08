@@ -100,7 +100,8 @@ class TestExecute:
     ) -> None:
         result = await tool.execute(arguments={"question": "   "})
         assert result.is_error
-        assert "non-empty" in result.content
+        # The failing field is named so the agent can self-correct.
+        assert "question" in result.content
 
 
 class TestErrorHandling:

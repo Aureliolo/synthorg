@@ -116,6 +116,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     dispatch-straight-to-team behaviour, so wiring this never changes an
     org that has not opted in.
     """
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
         EngineStateSlice,
         work_pipeline_of,
@@ -128,6 +129,11 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         "coordination", "plan_approval_required"
     )
     if not required:
+        return
+    # Best-effort: the approval store is normally always wired, but an early
+    # boot (before persistence connects) can reach here without it. Skip
+    # rather than let ``approval_store_of`` raise a 503 out of a wiring hook.
+    if app_state.slice(ApprovalStateSlice).store is None:
         return
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),

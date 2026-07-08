@@ -91,9 +91,9 @@ async def try_plan_review_resume(
             note="approved plan's parent task no longer exists",
         )
         return True
-    plan = DecompositionResult.model_validate_json(plan_json)
-    agents = await agent_registry_of(app_state).list_active()
     try:
+        plan = DecompositionResult.model_validate_json(plan_json)
+        agents = await agent_registry_of(app_state).list_active()
         await coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents),
             precomputed_plan=plan,
@@ -107,18 +107,19 @@ async def try_plan_review_resume(
             APPROVAL_GATE_RESUME_FAILED,
             exc,
             approval_id=approval_id,
-            note="approved plan dispatch failed; marking task failed for visibility",
+            note="approved plan could not be resumed; marking task failed",
         )
-        # The approval is already persisted APPROVED, so a swallowed dispatch
-        # failure would leave the parent silently stuck in its pre-approval
-        # status with no board-visible signal. Move it to FAILED so the stuck
-        # plan surfaces and stays re-runnable (FAILED -> ASSIGNED is valid).
+        # The approval is already persisted APPROVED, so a swallowed failure
+        # (bad stored plan, registry lookup, or dispatch) would leave the parent
+        # silently stuck in its pre-approval status with no board-visible
+        # signal. Move it to FAILED so the stuck plan surfaces and stays
+        # re-runnable (FAILED -> ASSIGNED is valid).
         await _mark_task(
             app_state,
             task_id,
             decided_by,
             target=TaskStatus.FAILED,
-            reason="approved plan failed to dispatch",
+            reason="approved plan could not be resumed",
         )
     return True
 

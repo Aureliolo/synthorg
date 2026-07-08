@@ -70,6 +70,13 @@ class TestModelRefTypeValidation:
         with pytest.raises(SettingValidationError, match="model reference"):
             validate_by_type(_defn(), '{"provider": "p", "model_id": 5}')
 
+    def test_missing_required_field_rejected(self) -> None:
+        # A structured value must carry BOTH keys; a partial dict is not a
+        # valid model reference (write-path strictness).
+        for value in ("{}", '{"provider": "p"}', '{"model_id": "m"}'):
+            with pytest.raises(SettingValidationError, match="model reference"):
+                validate_by_type(_defn(), value)
+
     def test_malformed_json_rejected(self) -> None:
         with pytest.raises(SettingValidationError, match="Invalid model reference"):
             validate_by_type(_defn(), '{"provider": ')

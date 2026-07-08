@@ -110,9 +110,16 @@ class RequestClarificationTool(BaseTool):
             args = parse_typed(
                 "tool.request_clarification", arguments, RequestClarificationArgs
             )
-        except ValidationError:
+        except ValidationError as exc:
+            # Report the field that actually failed (blank, too long, or an
+            # unexpected extra) rather than a fixed message. Uses loc + msg
+            # only, never the raw input value.
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+                for err in exc.errors()
+            )
             return ToolExecutionResult(
-                content="Argument question must be a non-empty string",
+                content=f"Invalid clarification arguments: {details}",
                 is_error=True,
             )
 

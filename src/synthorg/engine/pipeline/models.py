@@ -259,6 +259,9 @@ class WorkPipelineResult(BaseModel):
         refinement_handoff: Set iff ``execution_path`` is
             ``REFINEMENT`` -- the human-in-the-loop handoff that ran
             instead of team execution.
+        plan_review_handoff: Set iff ``execution_path`` is
+            ``PLAN_REVIEW`` -- the human plan-approval handoff parked
+            instead of dispatching the team.
         is_success: Whether every recorded phase succeeded.
         total_duration_seconds: Total wall-clock duration.
     """

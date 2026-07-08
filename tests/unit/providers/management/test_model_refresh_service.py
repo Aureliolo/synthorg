@@ -237,6 +237,59 @@ class TestModelRefreshService:
         assert report.superseded_count == 0
         repo.transition_if.assert_not_called()
 
+    @staticmethod
+    def _removed_provider_pending() -> StoredUpgradeRecommendation:
+        # A pending row for a provider dropped from configuration entirely:
+        # the per-provider reconcile loop never visits it, so only the
+        # post-loop cleanup can retire it.
+        return StoredUpgradeRecommendation(
+            recommendation=UpgradeRecommendation(
+                provider_name="removed-provider",
+                current_model_id="old",
+                recommended_model_id="new",
+                family="fam",
+                current_generation=1.0,
+                recommended_generation=2.0,
+                score=0.5,
+                reason="orphaned pick",
+            ),
+            created_at=FakeClock().now(),
+        )
+
+    async def test_pending_for_removed_provider_is_superseded(self) -> None:
+        orphan = self._removed_provider_pending()
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=(orphan,)),
+            save=AsyncMock(),
+            transition_if=AsyncMock(return_value=True),
+        )
+        service = _build_service(repo=repo)
+        report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
+        # The configured provider still yields old->new, and the orphaned row
+        # whose provider no longer exists is retired despite never being
+        # visited by the per-provider loop.
+        assert report.recommended_count == 1
+        assert report.superseded_count == 1
+        repo.transition_if.assert_awaited_once()
+        call = repo.transition_if.await_args
+        assert call.args[0] == orphan.id
+        assert call.kwargs["to_state"] is RecommendationStatus.SUPERSEDED
+
+    async def test_removed_provider_pending_not_superseded_in_detect_only(
+        self,
+    ) -> None:
+        orphan = self._removed_provider_pending()
+        repo = mock_of[UpgradeRecommendationRepository](
+            query=AsyncMock(return_value=(orphan,)),
+            save=AsyncMock(),
+            transition_if=AsyncMock(return_value=True),
+        )
+        service = _build_service(repo=repo)
+        report = await service.run_cycle(mode=RefreshMode.DETECT_ONLY)
+        # A detect-only pass must not retire orphaned rows either.
+        assert report.superseded_count == 0
+        repo.transition_if.assert_not_called()
+
     async def test_auto_apply_invokes_hook(self) -> None:
         repo = mock_of[UpgradeRecommendationRepository](
             query=AsyncMock(return_value=()),

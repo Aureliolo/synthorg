@@ -174,6 +174,12 @@ class ModelRefreshService:
         # mutable set seeded from the snapshot; ``pending_rows`` keeps the ids
         # for the retirement pass.
         seen_pending: set[_RecKey] = {key for key, _ in pending_rows}
+        # Group pending rows by provider once so the per-provider retirement
+        # pass reads only its own subset (not a full re-scan per provider) and
+        # the removed-provider cleanup below can find orphaned rows directly.
+        pending_by_provider: dict[str, list[tuple[_RecKey, UUID]]] = {}
+        for key, rec_id in pending_rows:
+            pending_by_provider.setdefault(key[0], []).append((key, rec_id))
 
         added = stale = recommended = auto_applied = superseded = 0
         scanned = 0
@@ -254,10 +260,21 @@ class ModelRefreshService:
             reconciling = mode is RefreshMode.RECONCILE_RECOMMEND
             if reconciling and outcome.recommendations_valid:
                 superseded += await self._retire_obsolete(
-                    provider_name,
                     tuple(rec for rec, _ in usable),
-                    pending_rows,
+                    pending_by_provider.get(provider_name, []),
                 )
+
+        # Providers removed from configuration entirely are never visited by
+        # the loop above, so their lingering pending rows would never be
+        # retired. Supersede them here so a stale rec cannot outlive its
+        # provider on the review surface (reconcile passes only).
+        if mode is RefreshMode.RECONCILE_RECOMMEND:
+            for orphan_provider, rows in pending_by_provider.items():
+                if orphan_provider in providers:
+                    continue
+                for _key, rec_id in rows:
+                    if await self._supersede(rec_id):
+                        superseded += 1
 
         await self._alert_stale_models(stale_by_provider)
         report = RefreshCycleReport(
@@ -281,16 +298,15 @@ class ModelRefreshService:
 
     async def _retire_obsolete(
         self,
-        provider_name: str,
         recommendations: tuple[UpgradeRecommendation, ...],
-        pending_rows: tuple[tuple[_RecKey, UUID], ...],
+        provider_pending: list[tuple[_RecKey, UUID]],
     ) -> int:
-        """Supersede *provider_name*'s pending rows no longer produced.
+        """Supersede a provider's pending rows the recommender no longer produces.
 
         *recommendations* is the authoritative current set the recommender
-        produced for the provider this cycle; any pending row for the same
-        provider whose key is absent is obsolete and retired. Rows for other
-        providers are skipped (each provider is reconciled independently).
+        produced for the provider this cycle; *provider_pending* holds only
+        that provider's pending rows (pre-grouped by the caller). Any pending
+        row whose key is absent from the produced set is obsolete and retired.
 
         Returns:
             The number of pending recommendations retired.
@@ -300,8 +316,8 @@ class ModelRefreshService:
             for r in recommendations
         }
         retired = 0
-        for key, rec_id in pending_rows:
-            if key[0] != provider_name or key in produced:
+        for key, rec_id in provider_pending:
+            if key in produced:
                 continue
             if await self._supersede(rec_id):
                 retired += 1

@@ -91,8 +91,8 @@ class LlmJudgedRoutingPolicy:
 
         Returns:
             The :class:`RoutingVerdict` parsed from the LLM response;
-            when the response is ambiguous, the verdict from the
-            deterministic fallback policy.
+            when the response is ambiguous or the model call fails, the
+            verdict from the deterministic fallback policy.
         """
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),

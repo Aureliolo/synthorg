@@ -35,6 +35,11 @@ async def wire_kanban_board(app_state: AppState) -> None:
     task_engine = app_state.slice(EngineStateSlice).task_engine
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
     if persistence is None or task_engine is None or config_resolver is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="kanban_board",
+            note="kanban board not wired; dependencies not yet present",
+        )
         return
     try:
         from synthorg.engine.workflow.kanban_service import (  # noqa: PLC0415

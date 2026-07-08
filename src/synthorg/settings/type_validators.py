@@ -181,12 +181,12 @@ def _validate_model_ref(definition: SettingDefinition, value: str) -> None:
         )
         msg = f"Invalid model reference JSON: {display}"
         raise SettingValidationError(msg) from exc
-    allowed = {"provider", "model_id"}
+    required = {"provider", "model_id"}
     if (
         not isinstance(data, dict)
-        or set(data) - allowed
-        or not isinstance(data.get("provider", ""), str)
-        or not isinstance(data.get("model_id", ""), str)
+        or set(data) != required
+        or not isinstance(data["provider"], str)
+        or not isinstance(data["model_id"], str)
     ):
         msg = 'A model reference must be {"provider": str, "model_id": str}'
         raise SettingValidationError(msg)

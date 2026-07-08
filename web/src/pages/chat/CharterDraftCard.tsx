@@ -91,16 +91,28 @@ function CharterDraftActions({
   onCancel,
 }: CharterDraftActionsProps) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button variant="outline" onClick={onSave} disabled={busy || !dirty || !amountValid}>
-        Save changes
-      </Button>
-      <Button onClick={onApprove} disabled={busy || dirty}>
-        Approve & start run
-      </Button>
-      <Button variant="ghost" onClick={onCancel} disabled={busy}>
-        Cancel charter
-      </Button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={onSave}
+          disabled={busy || !dirty || !amountValid}
+        >
+          Save changes
+        </Button>
+        <Button onClick={onApprove} disabled={busy || dirty}>
+          Approve & start run
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel charter
+        </Button>
+      </div>
+      {busy && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Working on it. Approving plans the project and can take up to a
+          minute on slower providers.
+        </p>
+      )}
     </div>
   )
 }

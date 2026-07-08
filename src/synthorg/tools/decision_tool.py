@@ -121,9 +121,17 @@ class RequestProjectDecisionTool(BaseTool):
                 arguments,
                 RequestProjectDecisionArgs,
             )
-        except ValidationError:
+        except ValidationError as exc:
+            # Surface which field failed (question, options, or an unexpected
+            # extra) rather than a fixed "question" message that misreports an
+            # options / extra-field error. Uses loc + msg only, never the raw
+            # input value.
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+                for err in exc.errors()
+            )
             return ToolExecutionResult(
-                content="Argument question must be a non-empty string",
+                content=f"Invalid decision arguments: {details}",
                 is_error=True,
             )
 

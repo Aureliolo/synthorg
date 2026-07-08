@@ -7,7 +7,7 @@ WIP-limit state so a single API response fully describes the board a
 dashboard renders.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.task import Task
 from synthorg.engine.workflow.enums import WorkflowType
@@ -26,25 +26,35 @@ BOARD_COLUMN_ORDER: tuple[KanbanColumn, ...] = (
 class KanbanColumnView(BaseModel):
     """A single board column with its cards and WIP-limit state.
 
+    ``count`` and ``over_limit`` are derived from ``tasks`` + ``limit`` so a
+    view can never be constructed with a count that disagrees with its cards.
+
     Attributes:
         column: The column this view describes.
         tasks: Cards currently in the column (tasks whose status maps here).
-        count: Number of cards in the column.
         limit: Configured WIP limit, or ``None`` when the column is
             unlimited (backlog / ready / done).
-        over_limit: ``True`` when ``count`` exceeds ``limit``.
+        count: Number of cards in the column (derived from ``tasks``).
+        over_limit: ``True`` when ``count`` exceeds ``limit`` (derived).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     column: KanbanColumn = Field(description="Board column")
     tasks: tuple[Task, ...] = Field(description="Cards in this column")
-    count: int = Field(ge=0, description="Card count")
     limit: int | None = Field(default=None, description="WIP limit (None = unlimited)")
-    over_limit: bool = Field(
-        default=False,
-        description="Whether the column is over its WIP limit",
-    )
+
+    @computed_field(description="Card count")
+    @property
+    def count(self) -> int:
+        """Number of cards currently in the column."""
+        return len(self.tasks)
+
+    @computed_field(description="Whether the column is over its WIP limit")
+    @property
+    def over_limit(self) -> bool:
+        """Whether the card count exceeds the configured WIP limit."""
+        return self.limit is not None and self.count > self.limit
 
 
 class KanbanBoardView(BaseModel):
