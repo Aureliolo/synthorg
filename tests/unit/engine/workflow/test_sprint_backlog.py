@@ -29,6 +29,7 @@ def _active_sprint(**overrides: object) -> Sprint:
         "status": SprintStatus.ACTIVE,
         "start_date": "2026-04-01",
         "task_ids": ("t-1", "t-2", "t-3"),
+        "task_points": {"t-1": 5.0, "t-2": 3.0, "t-3": 5.0},
         "story_points_committed": 13.0,
     }
     defaults.update(overrides)
@@ -47,6 +48,7 @@ class TestAddTaskToSprint:
         result = add_task_to_sprint(sprint, "t-1", story_points=3.0)
         assert "t-1" in result.task_ids
         assert result.story_points_committed == 3.0
+        assert result.task_points["t-1"] == 3.0
 
     @pytest.mark.unit
     def test_add_multiple_tasks(self) -> None:
@@ -116,6 +118,18 @@ class TestRemoveTaskFromSprint:
         result = remove_task_from_sprint(sprint, "t-1")
         assert "t-1" not in result.completed_task_ids
         assert "t-1" not in result.task_ids
+        assert "t-1" not in result.task_points
+
+    @pytest.mark.unit
+    def test_reclaims_points_on_removal(self) -> None:
+        sprint = _active_sprint(
+            completed_task_ids=("t-1",),
+            story_points_committed=13.0,
+            story_points_completed=5.0,
+        )
+        result = remove_task_from_sprint(sprint, "t-1")
+        assert result.story_points_committed == 8.0
+        assert result.story_points_completed == 0.0
 
     @pytest.mark.unit
     def test_reject_from_completed_sprint(self) -> None:
@@ -148,37 +162,49 @@ class TestRemoveTaskFromSprint:
 
 
 class TestCompleteTaskInSprint:
-    """complete_task_in_sprint marks tasks done during ACTIVE/IN_REVIEW."""
+    """complete_task_in_sprint marks tasks done during ACTIVE/IN_REVIEW.
+
+    Points credited come from the sprint's per-task ``task_points`` (what
+    the task committed when added), never a caller-supplied value.
+    """
 
     @pytest.mark.unit
-    def test_complete_task(self) -> None:
+    def test_complete_task_credits_committed_points(self) -> None:
         sprint = _active_sprint()
-        result = complete_task_in_sprint(sprint, "t-1", 5.0)
+        result = complete_task_in_sprint(sprint, "t-1")
         assert "t-1" in result.completed_task_ids
         assert result.story_points_completed == 5.0
 
     @pytest.mark.unit
     def test_complete_multiple_tasks(self) -> None:
         sprint = _active_sprint()
-        sprint = complete_task_in_sprint(sprint, "t-1", 5.0)
-        sprint = complete_task_in_sprint(sprint, "t-2", 3.0)
+        sprint = complete_task_in_sprint(sprint, "t-1")
+        sprint = complete_task_in_sprint(sprint, "t-2")
         assert sprint.completed_task_ids == ("t-1", "t-2")
         assert sprint.story_points_completed == 8.0
+
+    @pytest.mark.unit
+    def test_missing_points_entry_credits_zero(self) -> None:
+        sprint = _active_sprint(task_points={"t-1": 5.0, "t-3": 5.0})
+        result = complete_task_in_sprint(sprint, "t-2")
+        assert "t-2" in result.completed_task_ids
+        assert result.story_points_completed == 0.0
 
     @pytest.mark.unit
     def test_reject_when_planning(self) -> None:
         sprint = _planning_sprint(
             task_ids=("t-1",),
+            task_points={"t-1": 5.0},
             story_points_committed=5.0,
         )
         with pytest.raises(ValueError, match="must be 'active' or 'in_review'"):
-            complete_task_in_sprint(sprint, "t-1", 5.0)
+            complete_task_in_sprint(sprint, "t-1")
 
     @pytest.mark.unit
     def test_reject_unknown_task(self) -> None:
         sprint = _active_sprint()
         with pytest.raises(ValueError, match="not in sprint"):
-            complete_task_in_sprint(sprint, "unknown", 1.0)
+            complete_task_in_sprint(sprint, "unknown")
 
     @pytest.mark.unit
     def test_reject_already_completed(self) -> None:
@@ -187,19 +213,7 @@ class TestCompleteTaskInSprint:
             story_points_completed=5.0,
         )
         with pytest.raises(ValueError, match="already completed"):
-            complete_task_in_sprint(sprint, "t-1", 1.0)
-
-    @pytest.mark.unit
-    def test_reject_exceeds_committed_points(self) -> None:
-        sprint = _active_sprint(story_points_committed=5.0)
-        with pytest.raises(ValueError, match="exceed committed"):
-            complete_task_in_sprint(sprint, "t-1", 10.0)
-
-    @pytest.mark.unit
-    def test_reject_negative_story_points(self) -> None:
-        sprint = _active_sprint()
-        with pytest.raises(ValueError, match="story_points"):
-            complete_task_in_sprint(sprint, "t-1", -1.0)
+            complete_task_in_sprint(sprint, "t-1")
 
     @pytest.mark.unit
     def test_in_review_status_allowed(self) -> None:
@@ -210,14 +224,15 @@ class TestCompleteTaskInSprint:
             status=SprintStatus.IN_REVIEW,
             start_date="2026-04-01",
             task_ids=("t-1",),
+            task_points={"t-1": 5.0},
             story_points_committed=5.0,
         )
-        result = complete_task_in_sprint(sprint, "t-1", 3.0)
+        result = complete_task_in_sprint(sprint, "t-1")
         assert "t-1" in result.completed_task_ids
 
     @pytest.mark.unit
     def test_original_unchanged(self) -> None:
         sprint = _active_sprint()
-        complete_task_in_sprint(sprint, "t-1", 5.0)
+        complete_task_in_sprint(sprint, "t-1")
         assert sprint.completed_task_ids == ()
         assert sprint.story_points_completed == 0.0

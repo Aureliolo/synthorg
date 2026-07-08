@@ -222,8 +222,10 @@ graph LR
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
 IN_REVIEW, RETROSPECTIVE, COMPLETED. Each sprint is a discrete
-lifecycle; a new sprint is created after the previous one completes
-(no automatic cycling).  The `Sprint` model tracks task IDs, story
+lifecycle. There is no automatic cycling: a COMPLETED sprint is never
+auto-restarted. The next sprint is created only when new work arrives
+for a project with no open sprint (see the `SprintService` observer
+below), never on a timer. The `Sprint` model tracks task IDs, story
 points (committed and completed), dates, and duration. Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
 added during PLANNING).  `SprintConfig` defines sprint duration, task limits,
@@ -231,6 +233,18 @@ velocity window, and ceremony configurations that integrate with the meeting
 protocol system (`MeetingProtocolType` and `MeetingFrequency`).
 `VelocityRecord` captures delivery metrics from completed sprints with a
 rolling average calculation.
+
+Sprints are persisted via the dual-backend `SprintRepository` (a `sprints`
+table composing the id-keyed + state-transition + filtered-query generics)
+and driven at runtime by the `SprintService`. For an org whose
+`engine.workflow_type` is `agile_kanban` (with `engine.sprint_enabled` on),
+the service registers as a `TaskEngine` observer: it auto-creates and starts
+a sprint when work begins, pulls the project's open tasks into the backlog,
+and on each task completion marks the task done and forwards to the
+`CeremonyScheduler`, which fires ceremonies and auto-transitions the sprint.
+The `/sprints` REST surface exposes explicit create / add-task / start /
+advance control, and the Kanban board applies an advisory gate: a move into
+In-Progress is rejected for a task outside the active sprint backlog.
 
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration, ceremonies).

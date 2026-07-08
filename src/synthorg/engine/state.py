@@ -40,6 +40,7 @@ from synthorg.engine.workflow.execution_service import (
 )
 from synthorg.engine.workflow.kanban_service import KanbanBoardService
 from synthorg.engine.workflow.service import WorkflowService
+from synthorg.engine.workflow.sprint_service import SprintService
 from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowService,
 )
@@ -67,6 +68,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     evolution_service: EvolutionService | None = None
     ceremony_scheduler: CeremonyScheduler | None = None
     kanban_board_service: KanbanBoardService | None = None
+    sprint_service: SprintService | None = None
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None
     brownfield_entry_adapter: WorkEntryAdapter[CodebaseImportSubmission] | None = None
@@ -102,6 +104,17 @@ def kanban_board_service_of(app_state: AppStateSliceMixin) -> KanbanBoardService
     """
     return require_service(
         app_state.slice(EngineStateSlice).kanban_board_service, "Kanban Board"
+    )
+
+
+def sprint_service_of(app_state: AppStateSliceMixin) -> SprintService:
+    """Resolve the sprint service from its slice, or raise 503.
+
+    Returns:
+        The wired sprint service.
+    """
+    return require_service(
+        app_state.slice(EngineStateSlice).sprint_service, "Sprint Service"
     )
 
 

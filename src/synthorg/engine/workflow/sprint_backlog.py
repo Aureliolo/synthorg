@@ -86,6 +86,7 @@ def add_task_to_sprint(
     result = sprint.model_copy(
         update={
             "task_ids": (*sprint.task_ids, task_id),
+            "task_points": {**sprint.task_points, task_id: story_points},
             "story_points_committed": (sprint.story_points_committed + story_points),
         },
     )
@@ -104,12 +105,10 @@ def remove_task_from_sprint(
 ) -> Sprint:
     """Return a new Sprint with a task removed from the backlog.
 
-    Tasks cannot be removed from a COMPLETED sprint.  Story point
-    totals are **not** adjusted because per-task point data is not
-    stored on the Sprint model.  If the task was previously completed,
-    ``story_points_completed`` will retain that task's points, which
-    may overstate delivered work.  Callers should manually adjust
-    ``story_points_completed`` via ``model_copy`` if needed.
+    Tasks cannot be removed from a COMPLETED sprint.  The task's committed
+    points (``task_points``) are reclaimed from ``story_points_committed``,
+    and from ``story_points_completed`` too when the task had already been
+    completed, so both totals stay exact after the removal.
 
     Args:
         sprint: The current sprint.
@@ -140,22 +139,22 @@ def remove_task_from_sprint(
             task_id=task_id,
             reason="not_found",
         )
+    points = sprint.task_points.get(task_id, 0.0)
     was_completed = task_id in sprint.completed_task_ids
     new_task_ids = tuple(t for t in sprint.task_ids if t != task_id)
     new_completed = tuple(t for t in sprint.completed_task_ids if t != task_id)
-    if was_completed:
-        logger.warning(
-            SPRINT_BACKLOG_INVALID,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="completed_task_removed_points_stale",
-            story_points_committed=sprint.story_points_committed,
-            story_points_completed=sprint.story_points_completed,
-        )
+    new_task_points = {k: v for k, v in sprint.task_points.items() if k != task_id}
     result = sprint.model_copy(
         update={
             "task_ids": new_task_ids,
             "completed_task_ids": new_completed,
+            "task_points": new_task_points,
+            "story_points_committed": sprint.story_points_committed - points,
+            "story_points_completed": (
+                sprint.story_points_completed - points
+                if was_completed
+                else sprint.story_points_completed
+            ),
         },
     )
     logger.info(
@@ -169,17 +168,17 @@ def remove_task_from_sprint(
 def complete_task_in_sprint(
     sprint: Sprint,
     task_id: NotBlankStr,
-    story_points: float,
 ) -> Sprint:
     """Mark a task as completed within the sprint.
 
     The task must be in the backlog and not already completed.  The
-    sprint must be ACTIVE or IN_REVIEW.
+    sprint must be ACTIVE or IN_REVIEW.  The points credited are the
+    per-task points committed when the task was added (``task_points``),
+    so what a task credits on completion always matches what it committed.
 
     Args:
         sprint: The current sprint.
         task_id: ID of the task to mark completed.
-        story_points: Story points earned for this task.
 
     Returns:
         A new Sprint with the task marked completed.
@@ -187,7 +186,8 @@ def complete_task_in_sprint(
     Raises:
         ValueError: If preconditions are not met.
     """
-    _validate_completion_preconditions(sprint, task_id, story_points)
+    _validate_completion_preconditions(sprint, task_id)
+    story_points = sprint.task_points.get(task_id, 0.0)
     new_completed_points = sprint.story_points_completed + story_points
     result = sprint.model_copy(
         update={
@@ -210,7 +210,6 @@ def complete_task_in_sprint(
 def _validate_completion_preconditions(
     sprint: Sprint,
     task_id: NotBlankStr,
-    story_points: float,
 ) -> None:
     """Validate preconditions for completing a task in a sprint."""
     allowed = {SprintStatus.ACTIVE, SprintStatus.IN_REVIEW}
@@ -244,28 +243,4 @@ def _validate_completion_preconditions(
             sprint_id=sprint.id,
             task_id=task_id,
             reason="already_completed",
-        )
-    if story_points < 0:
-        msg = f"story_points must be >= 0, got {story_points}"
-        _log_and_raise(
-            SPRINT_BACKLOG_INVALID,
-            msg,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="negative_points",
-        )
-    new_completed_points = sprint.story_points_completed + story_points
-    if new_completed_points > sprint.story_points_committed:
-        msg = (
-            f"Completing task {task_id!r} with {story_points} "
-            f"points would exceed committed points "
-            f"({new_completed_points} > "
-            f"{sprint.story_points_committed})"
-        )
-        _log_and_raise(
-            SPRINT_BACKLOG_INVALID,
-            msg,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="exceeds_committed",
         )

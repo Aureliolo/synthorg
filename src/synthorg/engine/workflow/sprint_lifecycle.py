@@ -6,12 +6,13 @@ tracks tasks, story points, and dates across the sprint lifecycle.
 """
 
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.core.state_machine import StateMachine
@@ -96,12 +97,18 @@ def validate_sprint_transition(
 
 # -- Sprint model -----------------------------------------------------------
 
+#: Upper bound on story points, shared by the aggregate totals on the
+#: ``Sprint`` model and by the per-task ``add_task`` API payload so the two
+#: never drift.
+STORY_POINTS_CEILING: Final[float] = 100_000.0
+
 
 class Sprint(BaseModel):
     """A time-boxed work cycle in the Agile sprints workflow.
 
     Attributes:
         id: Unique sprint identifier.
+        project: Owning project id, or ``None`` for an org-wide sprint.
         name: Sprint display name.
         goal: Sprint goal statement.
         status: Current lifecycle status.
@@ -111,6 +118,8 @@ class Sprint(BaseModel):
         end_date: Sprint end date (ISO 8601, required when COMPLETED).
         task_ids: IDs of tasks in the sprint backlog.
         completed_task_ids: IDs of completed tasks (subset of task_ids).
+        task_points: Story points committed per task id (single source of
+            truth for what each task credits on completion).
         story_points_committed: Total story points planned.
         story_points_completed: Story points delivered.
     """
@@ -118,6 +127,10 @@ class Sprint(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique sprint identifier")
+    project: NotBlankStr | None = Field(
+        default=None,
+        description="Owning project id; None denotes an org-wide sprint",
+    )
     name: NotBlankStr = Field(description="Sprint display name")
     goal: str = Field(default="", description="Sprint goal statement")
     status: SprintStatus = Field(
@@ -151,16 +164,20 @@ class Sprint(BaseModel):
         default=(),
         description="Completed task IDs (subset of task_ids)",
     )
+    task_points: Mapping[str, float] = Field(
+        default_factory=dict,
+        description="Story points committed per task id",
+    )
     story_points_committed: float = Field(
         default=0.0,
         ge=0.0,
-        le=100_000.0,
+        le=STORY_POINTS_CEILING,
         description="Total story points planned",
     )
     story_points_completed: float = Field(
         default=0.0,
         ge=0.0,
-        le=100_000.0,
+        le=STORY_POINTS_CEILING,
         description="Story points delivered",
     )
 
@@ -233,6 +250,50 @@ class Sprint(BaseModel):
         extra = set(self.completed_task_ids) - task_set
         if extra:
             msg = f"completed_task_ids contains IDs not in task_ids: {sorted(extra)}"
+            raise ValueError(msg)
+        return self
+
+    @field_validator("task_points", mode="after")
+    @classmethod
+    def _freeze_task_points(cls, value: Mapping[str, float]) -> Mapping[str, float]:
+        """Store ``task_points`` as an immutable mapping.
+
+        ``frozen=True`` blocks attribute reassignment but not in-place
+        mutation of a plain ``dict``; a read-only view keeps parity with
+        the tuple-valued ``task_ids`` / ``completed_task_ids`` fields.
+
+        Returns:
+            A read-only view over the supplied mapping.
+        """
+        return MappingProxyType(dict(value))
+
+    @model_validator(mode="after")
+    def _validate_task_points(self) -> Self:
+        """Validate ``task_points`` keys, signs, and total-vs-committed.
+
+        Returns:
+            ``self`` unchanged when the per-task points are well-formed.
+
+        Raises:
+            ValueError: When a key is absent from ``task_ids``, carries a
+                negative value, or the per-task total exceeds
+                ``story_points_committed`` (which would let a backlog
+                removal drive the committed total negative).
+        """
+        stray = sorted(set(self.task_points) - set(self.task_ids))
+        if stray:
+            msg = f"task_points references tasks not in task_ids: {stray}"
+            raise ValueError(msg)
+        negative = sorted(k for k, v in self.task_points.items() if v < 0)
+        if negative:
+            msg = f"task_points has negative values for: {negative}"
+            raise ValueError(msg)
+        total = sum(self.task_points.values())
+        if total > self.story_points_committed + 1e-9:
+            msg = (
+                f"task_points total ({total}) exceeds "
+                f"story_points_committed ({self.story_points_committed})"
+            )
             raise ValueError(msg)
         return self
 

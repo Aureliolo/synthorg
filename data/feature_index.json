@@ -441,6 +441,7 @@
         "EvaluationConfigVersionController",
         "DecompositionController",
         "BoardController",
+        "SprintController",
         "ObjectiveController",
         "BrownfieldController"
       ],
@@ -532,6 +533,7 @@
         "evolution_service",
         "ceremony_scheduler",
         "kanban_board_service",
+        "sprint_service",
         "intake_entry_adapter",
         "objective_entry_adapter",
         "brownfield_entry_adapter",
@@ -1378,6 +1380,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-08T08:03:54.511745Z",
+  "generated_at": "2026-07-08T09:47:43.932459Z",
   "schema_version": 1
 }

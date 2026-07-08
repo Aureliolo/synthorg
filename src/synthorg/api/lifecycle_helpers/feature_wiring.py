@@ -46,6 +46,7 @@ from synthorg.api.lifecycle_helpers.organization_wiring import (
 )
 from synthorg.api.lifecycle_helpers.plan_review_wiring import wire_plan_review_gate
 from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
+from synthorg.api.lifecycle_helpers.sprint_wiring import wire_sprint_service
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -617,6 +618,9 @@ async def wire_features_on_startup(
     # Opt-in human plan-approval gate: when enabled, splittable team work is
     # parked for approval before it builds. No-op unless the setting is on.
     await wire_plan_review_gate(app_state)
+    # Sprint service: runs real sprints for agile_kanban orgs. Wired before
+    # the board so the board's advisory sprint gate has its dependency.
+    await wire_sprint_service(app_state)
     # Kanban board service: projects tasks onto the org's board and drives
     # column moves. Wired whenever the task engine + persistence exist.
     await wire_kanban_board(app_state)

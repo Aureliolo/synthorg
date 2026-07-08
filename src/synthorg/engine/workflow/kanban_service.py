@@ -10,10 +10,12 @@ runtime change applies to the next board operation with no restart.
 
 import asyncio
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     KanbanInvalidMoveError,
     KanbanWipLimitError,
+    SprintTaskNotInBacklogError,
     TaskNotFoundError,
 )
 from synthorg.engine.task_engine import TaskEngine
@@ -35,8 +37,16 @@ from synthorg.engine.workflow.kanban_view import (
     KanbanBoardView,
     KanbanColumnView,
 )
+from synthorg.engine.workflow.sprint_service import SprintService
+from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability.events.workflow import (
+    SPRINT_GATE_BLOCKED,
+    SPRINT_GATE_CHECK_FAILED,
+)
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+logger = get_logger(__name__)
 
 _SETTINGS_NS = "engine"
 _LIMIT_KEYS: dict[KanbanColumn, str] = {
@@ -54,7 +64,13 @@ class KanbanBoardService:
     the coordinator is not throttled here.
     """
 
-    __slots__ = ("_config_resolver", "_move_lock", "_task_engine", "_tasks")
+    __slots__ = (
+        "_config_resolver",
+        "_move_lock",
+        "_sprint_service",
+        "_task_engine",
+        "_tasks",
+    )
 
     def __init__(
         self,
@@ -62,10 +78,15 @@ class KanbanBoardService:
         task_repository: TaskRepository,
         task_engine: TaskEngine,
         config_resolver: ConfigResolverProtocol,
+        sprint_service: SprintService | None = None,
     ) -> None:
         self._tasks = task_repository
         self._task_engine = task_engine
         self._config_resolver = config_resolver
+        # Advisory sprint gate: when wired, a move into In-Progress is
+        # rejected for a task outside the active sprint backlog. Optional so
+        # non-agile boards and pre-sprint-wiring boots keep working.
+        self._sprint_service = sprint_service
         # Serialises the read-check-move critical section in ``move_task`` so
         # two concurrent moves cannot both pass a stale WIP check before either
         # transition lands (a TOCTOU that would let a column exceed its limit).
@@ -153,6 +174,55 @@ class KanbanBoardService:
             )
         return tuple(cards)
 
+    async def _enforce_sprint_gate(
+        self, task: Task, target_column: KanbanColumn
+    ) -> None:
+        """Reject a move into flow for a task outside the active sprint.
+
+        Advisory: a no-op unless a ``SprintService`` is wired and the move
+        targets the In-Progress column. The service short-circuits to
+        "workable" when sprints are disabled, the workflow is not
+        ``agile_kanban``, or the project has no open sprint. If the check
+        itself fails (e.g. sprint-store outage), the move is allowed
+        through so the gate stays advisory rather than blocking the board.
+
+        Raises:
+            SprintTaskNotInBacklogError: When the gate is active and the
+                task is not in the open sprint backlog.
+        """
+        if (
+            self._sprint_service is None
+            or target_column is not KanbanColumn.IN_PROGRESS
+        ):
+            return
+        try:
+            workable = await self._sprint_service.is_task_workable(
+                str(task.id), task.project
+            )
+        except Exception as exc:  # noqa: BLE001 -- advisory gate: fail open
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                SPRINT_GATE_CHECK_FAILED,
+                exc,
+                task_id=str(task.id),
+                project=task.project,
+            )
+            return
+        if workable:
+            return
+        logger.warning(
+            SPRINT_GATE_BLOCKED,
+            task_id=str(task.id),
+            project=task.project,
+            target_column=target_column.value,
+        )
+        msg = (
+            f"Task {task.id} is not in the active sprint backlog; "
+            "pull it into the sprint before moving it into progress"
+        )
+        raise SprintTaskNotInBacklogError(msg)
+
     async def move_task(
         self,
         task_id: str,
@@ -190,6 +260,8 @@ class KanbanBoardService:
             validate_column_transition(current, target_column)
         except ValueError as exc:
             raise KanbanInvalidMoveError(str(exc)) from exc
+
+        await self._enforce_sprint_gate(task, target_column)
 
         limits = await self._resolve_limits()
         kanban = await self._resolve_kanban_config(limits)

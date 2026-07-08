@@ -9,6 +9,7 @@ unwired, and re-running after setup brings it online with no restart.
 """
 
 from synthorg.api.state import AppState
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -50,11 +51,14 @@ async def wire_kanban_board(app_state: AppState) -> None:
             task_repository=persistence.tasks,
             task_engine=task_engine,
             config_resolver=config_resolver,
+            # Advisory sprint gate: present once the sprint service is wired
+            # (sprint wiring runs first), None on an early boot. Re-wiring the
+            # board after the sprint service comes online picks it up.
+            sprint_service=app_state.slice(EngineStateSlice).sprint_service,
         )
         app_state.wire(EngineStateSlice, kanban_board_service=service)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="kanban_board",

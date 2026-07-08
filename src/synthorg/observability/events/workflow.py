@@ -39,6 +39,21 @@ KANBAN_TASK_PLACED: str = "workflow.kanban.task_placed"
 SPRINT_CREATED: str = "workflow.sprint.created"
 """New sprint created."""
 
+SPRINT_SERVICE_OBSERVER_FAILED: str = "workflow.sprint.service_observer_failed"
+"""SprintService task-state observer swallowed a non-critical error."""
+
+SPRINT_GATE_BLOCKED: str = "workflow.sprint.gate_blocked"
+"""Sprint gate rejected working a task outside the active sprint backlog."""
+
+SPRINT_GATE_CHECK_FAILED: str = "workflow.sprint.gate_check_failed"
+"""The advisory sprint gate could not read sprint state (e.g. store outage);
+the move is allowed through rather than blocked, keeping the gate advisory."""
+
+SPRINT_TRANSITION_LOST: str = "workflow.sprint.transition_lost"
+"""A lifecycle CAS returned False: the expected from-state was gone, so the
+attempted transition did not persist (a concurrent advance, a duplicate
+completion event, or corruption). The in-memory transition is discarded."""
+
 SPRINT_LIFECYCLE_TRANSITION: str = "workflow.sprint.lifecycle_transition"
 """Sprint transitioned between lifecycle statuses."""
 

@@ -272,6 +272,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # simulations
     "simulations.cancel": (30, 60),
     "simulations.create": (30, 3600),
+    # sprints (agile sprint control surface)
+    "sprints.create": (30, 60),
+    "sprints.add_task": (100, 60),
+    "sprints.start": (30, 60),
+    "sprints.advance": (30, 60),
     # subworkflows
     "subworkflows.create": (20, 60),
     "subworkflows.delete_version": (10, 60),

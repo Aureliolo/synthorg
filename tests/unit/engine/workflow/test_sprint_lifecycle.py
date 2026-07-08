@@ -179,6 +179,32 @@ class TestSprintModel:
             )
 
     @pytest.mark.unit
+    def test_task_points_stray_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="not in task_ids"):
+            self._make_sprint(
+                task_ids=("t-1",),
+                task_points={"t-2": 3.0},
+                story_points_committed=3.0,
+            )
+
+    @pytest.mark.unit
+    def test_task_points_negative_value_rejected(self) -> None:
+        with pytest.raises(ValueError, match="negative values"):
+            self._make_sprint(
+                task_ids=("t-1",),
+                task_points={"t-1": -1.0},
+            )
+
+    @pytest.mark.unit
+    def test_task_points_valid(self) -> None:
+        sprint = self._make_sprint(
+            task_ids=("t-1", "t-2"),
+            task_points={"t-1": 3.0, "t-2": 5.0},
+            story_points_committed=8.0,
+        )
+        assert dict(sprint.task_points) == {"t-1": 3.0, "t-2": 5.0}
+
+    @pytest.mark.unit
     def test_active_requires_start_date(self) -> None:
         with pytest.raises(ValueError, match="start_date is required"):
             self._make_sprint(

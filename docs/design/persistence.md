@@ -89,6 +89,7 @@ one level up in `src/synthorg/persistence/`:
 | `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot |
 | `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
 | `project_environment_protocol.py`      | `ProjectEnvironmentRepository`: per-project reproducible-environment provisioning cache (1:1 per project; declaration hash + type + built image ref) |
+| `sprint_protocol.py`                    | `SprintRepository`: agile sprint records with atomic linear-lifecycle transitions and project / status filtered queries |
 | `tracked_container_protocol.py`        | `TrackedContainerRepository`: Docker sandbox container registry so a restart can reconcile orphans on both the daemon and DB sides |
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
