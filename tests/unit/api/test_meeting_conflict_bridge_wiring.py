@@ -84,3 +84,31 @@ def test_noop_when_service_absent() -> None:
 
     assert app_state.slice(CommunicationStateSlice).conflict_escalation_bridge is None
     assert orchestrator._conflict_escalation_hook is None
+
+
+def test_wire_resolver_dependents_rebinds_bridge_resolver() -> None:
+    # The bridge is built at construction with the placeholder resolver; the
+    # startup rebind (_wire_resolver_dependents) must inject the live one so
+    # the kill switch honours dashboard overrides.
+    from synthorg.api.lifecycle_helpers.config_apply import (
+        _wire_resolver_dependents,
+    )
+    from synthorg.settings.resolver import ConfigResolver
+    from synthorg.settings.state import SettingsStateSlice
+
+    resolver = mock_of[ConfigResolver]()
+    bridge = MeetingConflictEscalationBridge(
+        conflict_service=mock_of[ConflictResolutionService](),
+        agent_registry=mock_of[AgentRegistryService](),
+        config_resolver=None,
+    )
+    app_state = make_app_state(
+        slices={
+            SettingsStateSlice: {"config_resolver": resolver},
+            CommunicationStateSlice: {"conflict_escalation_bridge": bridge},
+        }
+    )
+
+    _wire_resolver_dependents(app_state)
+
+    assert bridge._config_resolver is resolver

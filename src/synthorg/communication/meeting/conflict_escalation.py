@@ -32,7 +32,7 @@ from synthorg.communication.meeting.models import (
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meeting import (
     MEETING_CONFLICT_ESCALATION_FAILED,
     MEETING_CONFLICT_ESCALATION_RESOLVED,
@@ -99,11 +99,11 @@ class MeetingConflictEscalationBridge:
             await self._escalate(minutes)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised; must not raise
             reraise_critical(exc)
-            logger.warning(
+            log_exception_redacted(
+                logger,
                 MEETING_CONFLICT_ESCALATION_FAILED,
+                exc,
                 meeting_id=minutes.meeting_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
 
     async def _escalate(self, minutes: MeetingMinutes) -> None:

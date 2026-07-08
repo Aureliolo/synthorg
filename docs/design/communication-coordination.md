@@ -58,8 +58,9 @@ modifying existing ones. The strategy is configurable per company, per
 department, or per conflict type.
 
 **Invocation trigger.** A conflict enters this pipeline from the meeting
-subsystem: when a structured-phases meeting's discussion phase detects a
-conflict (`MeetingMinutes.conflicts_detected`), the
+subsystem as a post-meeting handoff. A structured-phases meeting flags a
+disagreement surfaced during its discussion phase on
+`MeetingMinutes.conflicts_detected`; then, once the meeting has completed, the
 `MeetingConflictEscalationBridge`
 (`communication/meeting/conflict_escalation.py`) builds a `Conflict` from the
 participants' positions and hands it to the `ConflictResolutionService`. The

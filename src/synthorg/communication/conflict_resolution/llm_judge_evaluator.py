@@ -150,7 +150,7 @@ class LlmJudgeEvaluator:
                 msg,
                 context={"conflict_id": str(conflict.id)},
             ) from exc
-        return _to_decision(verdict, conflict)
+        return _to_decision(verdict, conflict, judge_agent_id)
 
 
 def _build_user_prompt(conflict: Conflict) -> str:
@@ -183,7 +183,11 @@ def _build_user_prompt(conflict: Conflict) -> str:
     )
 
 
-def _to_decision(verdict: JudgeVerdictOut, conflict: Conflict) -> JudgeDecision:
+def _to_decision(
+    verdict: JudgeVerdictOut,
+    conflict: Conflict,
+    judge_agent_id: NotBlankStr,
+) -> JudgeDecision:
     """Map a parsed verdict to a ``JudgeDecision``, defending the sentinel.
 
     A ``winning_agent_id`` that is not an actual participant (the literal
@@ -200,6 +204,7 @@ def _to_decision(verdict: JudgeVerdictOut, conflict: Conflict) -> JudgeDecision:
     logger.info(
         CONFLICT_JUDGE_EVALUATED,
         conflict_id=str(conflict.id),
+        judge_agent_id=judge_agent_id,
         winner=winner,
         ambiguous=not winner,
     )
