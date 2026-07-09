@@ -67,6 +67,14 @@ describe('AgentCard', () => {
     expect(screen.getByText('medium')).toBeInTheDocument()
   })
 
+  it('renders the model with no tier suffix when the tier is absent', () => {
+    render(<AgentCard {...defaultProps} model="example-large-001" />)
+
+    expect(screen.getByText('example-large-001')).toBeInTheDocument()
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
+  })
+
   it('renders timestamp when provided', () => {
     render(<AgentCard {...defaultProps} timestamp="2m ago" />)
 
