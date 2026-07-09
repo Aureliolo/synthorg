@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
@@ -499,6 +501,152 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out is result
+
+    async def test_no_op_work_task_transitions_to_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A NO_OP run on a work task fails the task, never pushes to review."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(
+            ctx, reason=TerminationReason.NO_OP, error_message="empty run"
+        )
+        mock_te = _make_mock_task_engine()
+        approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+            approval_store=approval_store,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+        synced = [c.args[0].target_status for c in mock_te.submit.call_args_list]
+        assert synced == [TaskStatus.FAILED]
+        approval_store.add.assert_not_awaited()
+
+    async def test_completed_empty_work_task_transitions_to_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Defence-in-depth: a COMPLETED work run with zero tool calls fails."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+
+    async def test_justified_no_op_goes_to_review(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A recorded no-op justification routes an empty run to review."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.NO_OP,
+            error_message="empty run",
+            metadata={"no_op_justification": "No change needed; code already correct."},
+            turns=(
+                TurnRecord(
+                    turn_number=1,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost=0.001,
+                    finish_reason=FinishReason.STOP,
+                ),
+            ),
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    async def test_completed_work_task_with_tool_calls_goes_to_review(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A COMPLETED work run that used tools proceeds to review as usual."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=(
+                TurnRecord(
+                    turn_number=1,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost=0.001,
+                    finish_reason=FinishReason.STOP,
+                    tool_calls_made=("write_file",),
+                ),
+            ),
+        )
+        mock_te = _make_mock_task_engine()
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
     async def test_completed_transition_failure_returns_original(
         self,

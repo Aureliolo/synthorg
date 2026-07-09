@@ -7,7 +7,9 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
@@ -1225,3 +1227,80 @@ class TestReactLoopStagnationDetector:
         assert result.termination_reason == TerminationReason.STAGNATION
         assert detector.check_count == 2
         assert detector.corrections_seen == [0, 1]
+
+
+@pytest.mark.unit
+class TestReactLoopNoOpFailLoud:
+    """A work task that finishes without producing any artifact fails loud."""
+
+    @staticmethod
+    def _work_context(
+        agent: AgentIdentity,
+        task: Task,
+    ) -> AgentContext:
+        work_task = task.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                ),
+            }
+        )
+        ctx = AgentContext.from_identity(agent, task=work_task)
+        return _ctx_with_user_msg(ctx)
+
+    async def test_zero_tool_work_run_is_no_op(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+        assert result.total_tool_calls == 0
+        assert result.error_message is not None
+
+    async def test_work_run_with_tool_call_completes(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_tool_use_response("echo", "tc-1"), _stop_response("Done.")]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+
+    async def test_chat_action_without_task_execution_still_completes(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        # A task that expects no deliverable (empty ``artifacts_expected``)
+        # legitimately answers in text and must NOT be reclassified NO_OP.
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Here is the answer.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED

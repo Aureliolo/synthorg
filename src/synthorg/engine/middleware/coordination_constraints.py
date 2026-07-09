@@ -335,6 +335,7 @@ class MagenticReplanHook:
                     agent_id="coordination-replan",
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,

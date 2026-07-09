@@ -198,6 +198,7 @@ class ReactLoop:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort observer
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_TURN_OBSERVER_FAILED,
@@ -434,6 +435,7 @@ class ReactLoop:
             try:
                 await self._checkpoint_callback(ctx)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- resiliency side channel
                 reraise_critical(exc)
                 logger.warning(
                     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -494,6 +496,33 @@ class ReactLoop:
                 TerminationReason.ERROR,
                 turns,
                 error_message=error_msg,
+            )
+        # Fail-loud on a silent no-op: a WORK task (one that declared
+        # expected artifacts) that finished without calling a single tool
+        # produced zero artifacts. Chat actions (no ``task_execution``) and
+        # tasks that expect no deliverable legitimately answer in text, so
+        # only artifact-expecting empty runs are reclassified from COMPLETED
+        # to NO_OP (routed to FAILED downstream unless justified).
+        if (
+            ctx.task_execution is not None
+            and ctx.task_execution.task.artifacts_expected
+            and not any(turn.tool_calls_made for turn in turns)
+        ):
+            no_op_msg = (
+                "Task run produced no artifacts: the agent finished without "
+                "calling any tool. A silent no-op success is a failure."
+            )
+            logger.warning(
+                EXECUTION_LOOP_TERMINATED,
+                execution_id=ctx.execution_id,
+                reason=TerminationReason.NO_OP.value,
+                turns=len(turns),
+            )
+            return build_result(
+                ctx,
+                TerminationReason.NO_OP,
+                turns,
+                error_message=no_op_msg,
             )
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(

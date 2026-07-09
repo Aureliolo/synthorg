@@ -141,6 +141,7 @@ class SemanticDriftDetector(BaseAgentMiddleware):
                 ctx = ctx.with_metadata("semantic_drift_score", similarity)
 
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 MIDDLEWARE_SEMANTIC_DRIFT_ERROR,

@@ -129,6 +129,7 @@ class LlmJudgedRoutingPolicy:
             # fallback rather than hard-failing the whole run. Without this the
             # llm-judged default would turn every approve into a 404 when the
             # decomposition model is not resolvable on its provider.
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 PIPELINE_ROUTING_DECIDED,

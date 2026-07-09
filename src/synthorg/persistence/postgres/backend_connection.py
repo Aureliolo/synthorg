@@ -9,6 +9,7 @@ concrete backend.
 import asyncio
 import contextlib
 import math
+from abc import ABC, abstractmethod
 from typing import Final
 
 import psycopg
@@ -79,27 +80,26 @@ def _build_conninfo(config: PostgresConfig) -> str:
     )
 
 
-class PostgresConnectionMixin:
-    """Connection lifecycle for the Postgres persistence backend."""
+class PostgresConnectionMixin(ABC):
+    """Connection lifecycle for the Postgres persistence backend.
+
+    The state-reset and repository-wiring seams are abstract, bound by
+    the concrete backend's repository-wiring base; ABCMeta blocks
+    instantiating a subclass that leaves either unimplemented.
+    """
 
     _config: PostgresConfig
     _pool: AsyncConnectionPool | None
     _lifecycle_lock: asyncio.Lock
 
-    def _clear_state(self) -> None:  # pragma: no cover - see concrete
-        """Clear state (provided by concrete backend).
-
-        Raises:
-            NotImplementedError: Concrete backend has not implemented this method.
-        """
+    @abstractmethod
+    def _clear_state(self) -> None:
+        """Reset connection state to the disconnected baseline."""
         raise NotImplementedError
 
-    def _create_repositories(self) -> None:  # pragma: no cover - see concrete
-        """Create repositories (provided by concrete backend).
-
-        Raises:
-            NotImplementedError: Concrete backend has not implemented this method.
-        """
+    @abstractmethod
+    def _create_repositories(self) -> None:
+        """Instantiate the pool-bound repositories."""
         raise NotImplementedError
 
     async def _configure_connection(

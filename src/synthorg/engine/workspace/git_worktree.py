@@ -873,6 +873,7 @@ class PlannerWorktreeStrategy:
         try:
             await watcher.check_worktree(Path(workspace.worktree_path))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 WORKSPACE_DISK_CHECK_ERROR,

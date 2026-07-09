@@ -4,11 +4,10 @@
 coordination-metrics nudge thresholds, the red-team stakes threshold,
 and the ``strategy`` discriminator dispatched by ``build_stakes_router``.
 
-The default floors track the calibrated tier bands of
-:class:`~synthorg.budget.benchmark_stub.StubBenchmarkScoreProvider`
-(small 72, medium 85, large 92): a low floor admits the cheapest tier,
-a normal floor requires at least medium, and a high/critical floor
-requires the large tier.
+The default floors track the canonical tier bands (small 72, medium
+85, large 92): a low floor admits the cheapest tier, a normal floor
+requires at least medium, and a high/critical floor requires the large
+tier.
 """
 
 from typing import Final, Self

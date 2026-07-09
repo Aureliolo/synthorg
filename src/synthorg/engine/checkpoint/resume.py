@@ -215,6 +215,7 @@ async def cleanup_checkpoint_artifacts(
                 deleted_count=count,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort teardown
             reraise_critical(exc)
             logger.warning(
                 CHECKPOINT_DELETE_FAILED,
@@ -231,6 +232,7 @@ async def cleanup_checkpoint_artifacts(
                 execution_id=execution_id,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort teardown
             reraise_critical(exc)
             logger.warning(
                 HEARTBEAT_DELETE_FAILED,

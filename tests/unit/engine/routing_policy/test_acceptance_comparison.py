@@ -19,7 +19,6 @@ from typing import Final
 
 import pytest
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Stakes, TaskType
@@ -39,7 +38,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import as_uuid, sid
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
@@ -180,12 +179,12 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
         config = StakesRoutingConfig()
         floors = config.quality_floors
         stakes_aware = StakesAwareStrategy(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             config=config,
             resolver=_resolver(),
         )
         flat = FlatStrategy()
-        provider = StubBenchmarkScoreProvider()
+        provider = FakeTierBenchmarkScoreProvider()
 
         flat_cost = 0.0
         flat_quality = 0
@@ -224,7 +223,7 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
     async def test_low_stakes_cheap_high_stakes_strong_with_red_team(self) -> None:
         tasks = {t.id: t for t in await _decomposed_tasks()}
         stakes_aware = StakesAwareStrategy(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             resolver=_resolver(),
         )
         agent = _agent("large")

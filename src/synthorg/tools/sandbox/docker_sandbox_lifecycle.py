@@ -5,6 +5,7 @@ Owns ``_safe_collect_logs``, ``_log_execution_outcome``,
 ``cleanup``, ``health_check``, and ``get_backend_type``.
 """
 
+from abc import ABC, abstractmethod
 from typing import Final
 
 import aiodocker
@@ -36,33 +37,26 @@ logger = get_logger(__name__)
 _MAX_STDERR_LOG_CHARS: Final[int] = 200
 
 
-class DockerSandboxLifecycleMixin:
-    """Container log collection, stop/remove, cleanup, health check."""
+class DockerSandboxLifecycleMixin(ABC):
+    """Container log collection, stop/remove, cleanup, health check.
+
+    The docker-handle seams are abstract, bound by the concrete
+    ``DockerSandbox``; ABCMeta blocks instantiating a subclass that
+    leaves either unimplemented.
+    """
 
     _docker: aiodocker.Docker | None
     _tracked_containers: dict[str, str | None]
     _lifecycle_strategy: SandboxLifecycleStrategy
 
-    async def _ensure_docker(self) -> aiodocker.Docker:  # pragma: no cover
-        """Ensure docker.
-
-        Returns:
-            Result of type ``aiodocker.Docker``.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    @abstractmethod
+    async def _ensure_docker(self) -> aiodocker.Docker:
+        """Return the connected aiodocker client, connecting if needed."""
         raise NotImplementedError
 
-    async def _destroy_handle(
-        self,
-        handle: ContainerHandle,
-    ) -> None:  # pragma: no cover - implemented on the concrete sandbox
-        """Destroy handle.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    @abstractmethod
+    async def _destroy_handle(self, handle: ContainerHandle) -> None:
+        """Destroy the container behind *handle*."""
         raise NotImplementedError
 
     async def _safe_collect_logs(

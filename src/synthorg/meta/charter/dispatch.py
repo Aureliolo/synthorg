@@ -48,6 +48,7 @@ from synthorg.observability.events.charter import (
     CHARTER_ALREADY_DECIDED,
     CHARTER_APPROVED,
     CHARTER_DISPATCH_FAILED,
+    CHARTER_DISPATCH_UNSUCCESSFUL,
     CHARTER_DISPATCHED,
     CHARTER_NOT_FOUND,
     CHARTER_PROJECT_ALREADY_EXISTS,
@@ -239,13 +240,28 @@ class CharterDispatcher:
             charter, forecast, result.task_id, project_id, approved_by, now
         )
         await self._close_conversation(charter.conversation_id, now)
-        logger.info(
-            CHARTER_DISPATCHED,
-            charter_id=charter_id,
-            project_id=project_id,
-            task_id=result.task_id,
-            is_success=result.is_success,
-        )
+        if result.is_success:
+            logger.info(
+                CHARTER_DISPATCHED,
+                charter_id=charter_id,
+                project_id=project_id,
+                task_id=result.task_id,
+                is_success=True,
+            )
+        else:
+            # The charter transition to APPROVED is correct (a human
+            # approved it and the pipeline was dispatched), but the run
+            # itself produced no successful work. Surface that at WARNING
+            # so an empty / failed dispatch is never masked by a routine
+            # ``charter.dispatched`` INFO line; the caller still receives
+            # the truthful ``is_success`` on the result.
+            logger.warning(
+                CHARTER_DISPATCH_UNSUCCESSFUL,
+                charter_id=charter_id,
+                project_id=project_id,
+                task_id=result.task_id,
+                is_success=False,
+            )
         approved = await self._charter_repo.get(charter_id)
         if approved is None:
             # ``_stamp_approved`` only returns after a winning CAS, so

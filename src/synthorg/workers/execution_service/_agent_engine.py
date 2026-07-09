@@ -268,19 +268,22 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                     task.project
                 )
                 workspace_path = Path(workspace.workspace_path)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            except Exception as exc:
                 reraise_critical(exc)
-                # Best-effort: workspace provisioning failure should not
-                # block agent execution (the workspace may not be needed
-                # by every tool). Log and continue.
-                logger.warning(
+                # Fail-loud: a broken or missing persistent workspace must
+                # fail the task with the surfaced reason, never silently
+                # degrade the run to no-workspace (which then cascades into
+                # a skipped reproducible environment and an empty run that
+                # masquerades as success). The worker records the failure.
+                log_exception_redacted(
+                    logger,
                     WORKERS_EXECUTION_SERVICE_FAILED,
+                    exc,
                     task_id=task_id,
                     project_id=task.project,
                     reason="project_workspace_provision_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
+                raise
 
         # Per-project reproducible environment: provision the committed
         # declaration into the workspace before the agent runs, and bind
@@ -389,6 +392,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                 execution_duration=run_result.duration_seconds,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
@@ -489,6 +493,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                 owner_id, project_id=project_id, image_override=image_override
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort teardown
             reraise_critical(exc)
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,

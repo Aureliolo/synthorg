@@ -70,7 +70,7 @@ This pattern is interim by construction. Each pin must reference an issue tracki
 
 ## In-memory fallbacks
 
-In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. The connection-family backends (Connection, ConnectionSecret, OAuthState, WebhookReceipt) now ship durable SQLite + Postgres implementations alongside these fakes; the `InMemory*` classes remain only for unit-test fakes that don't want to spin up a real database.
+In-memory repositories in `persistence/integration_inmemory.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. The connection-family backends (Connection, ConnectionSecret, OAuthState, WebhookReceipt) ship durable SQLite + Postgres implementations alongside these fakes; the `InMemory*` classes serve unit-test fakes and the boot-window fallback the connection catalog binds before `persistence.connect()` completes.
 
 ## Service layer
 

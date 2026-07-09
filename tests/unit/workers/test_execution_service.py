@@ -12,14 +12,19 @@ from synthorg.core.domain_errors import (
     NotFoundError,
 )
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
+from synthorg.engine.errors import ProjectWorkspaceNotProvisionedError
 from synthorg.engine.health.pipeline import HealthMonitoringPipeline
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.workspace.project_workspace_service import (
+    ProjectWorkspaceService,
+)
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
@@ -202,6 +207,52 @@ class TestAgentEngineExecutionService:
         assert kwargs["task"] is task
         # SUPERVISED default preset -> a real EffectiveAutonomy verdict.
         assert kwargs["effective_autonomy"] is not None
+
+    async def test_workspace_provision_failure_fails_loud(self) -> None:
+        # A broken persistent workspace must fail the task with a surfaced
+        # reason (raise), never silently degrade to a no-workspace run that
+        # then cascades into an empty result masquerading as success. The
+        # agent must never run.
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        registry = AgentRegistryService()
+        await registry.register(identity)
+        engine_run = AsyncMock(return_value=_run_result())
+        task_engine = mock_of[TaskEngine](get_task=AsyncMock(return_value=task))
+        workspace_service = mock_of[ProjectWorkspaceService](
+            get_or_provision=AsyncMock(
+                side_effect=ProjectWorkspaceNotProvisionedError(
+                    project_id=NotBlankStr("proj-e2e")
+                )
+            )
+        )
+        service = AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](run=engine_run),
+            task_engine=task_engine,
+            agent_registry=registry,
+            autonomy_resolver=AutonomyResolver(
+                registry=ActionTypeRegistry(),
+                config=AutonomyConfig(),
+            ),
+            project_workspace_service=workspace_service,
+        )
+
+        with capture_logs() as logs, pytest.raises(ProjectWorkspaceNotProvisionedError):
+            await service.execute_once(
+                task_id=str(task.id),
+                previous_status="assigned",
+                new_status="in_progress",
+                idempotency_key="k",
+                requested_by="user",
+            )
+
+        engine_run.assert_not_awaited()
+        assert any(
+            entry.get("event") == WORKERS_EXECUTION_SERVICE_FAILED
+            and entry.get("reason") == "project_workspace_provision_failed"
+            and entry.get("task_id") == str(task.id)
+            for entry in logs
+        )
 
     async def test_health_gate_failure_does_not_disrupt_completion(self) -> None:
         identity = make_e2e_identity()

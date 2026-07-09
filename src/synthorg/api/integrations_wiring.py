@@ -314,7 +314,7 @@ def auto_wire_integrations(  # noqa: PLR0913
             # for the wiring window. The controllers still need an instance
             # attached to the bundle so they register on the app; OpenAPI
             # export depends on that registration.
-            from synthorg.persistence.integration_stubs import (  # noqa: PLC0415
+            from synthorg.persistence.integration_inmemory import (  # noqa: PLC0415
                 InMemoryConnectionRepository,
             )
 

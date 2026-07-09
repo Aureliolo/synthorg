@@ -125,6 +125,7 @@ class AgentEngineContextMixin:
                     "personality_max_tokens_override",
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
@@ -218,6 +219,7 @@ class AgentEngineContextMixin:
                 "engine", "memory_context_token_budget"
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-None wiring
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
@@ -266,6 +268,7 @@ class AgentEngineContextMixin:
                 token_budget,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort memory hook
             reraise_critical(exc)
             logger.warning(
                 MEMORY_CONTEXT_INJECTION_FAILED,
@@ -311,6 +314,7 @@ class AgentEngineContextMixin:
                 reason="notifier callback timed out (>2s)",
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
@@ -342,6 +346,7 @@ class AgentEngineContextMixin:
             )
             return result  # noqa: TRY300
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,

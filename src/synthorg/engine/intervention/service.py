@@ -359,6 +359,7 @@ class SteeringService:
                     reason=reason,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 logger.warning(
                     STEERING_TASK_SUPERSEDE_FAILED,
@@ -436,6 +437,7 @@ class SteeringService:
         try:
             await self._notifier(event, payload)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 event,

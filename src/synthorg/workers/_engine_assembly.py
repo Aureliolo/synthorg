@@ -191,6 +191,7 @@ async def _build_external_api_runtime(
     try:
         enabled = await resolver.get_bool(_EXTERNAL_API_NS, "enabled")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -222,6 +223,7 @@ async def _build_external_api_runtime(
         default_max_rpm = await resolver.get_int(_EXTERNAL_API_NS, "default_max_rpm")
         provider = build_external_access_provider(provider_type=provider_type)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         log_exception_redacted(
             logger,
@@ -354,6 +356,7 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
         try:
             await existing_factory.shutdown()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-None wiring
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -378,6 +381,7 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
         factory = MCPToolFactory(merged)
         tools = await factory.create_tools()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         # A factory that opened sessions before failing must release them;
         # shutdown() is self-guarding (per-client try/except + clear), so
@@ -453,6 +457,7 @@ def _build_evolution_service_or_none(
             outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -662,6 +667,7 @@ def _build_vision_gate_or_none(
             clock=app_state.clock,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

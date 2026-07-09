@@ -7,6 +7,7 @@ Relies on ``_sparse_encoder``, ``_qdrant_client``, ``_mem0_config``,
 ``_validate_agent_id`` declared on the concrete class.
 """
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -27,8 +28,13 @@ if TYPE_CHECKING:
     from qdrant_client import QdrantClient
 
 
-class Mem0AdapterSharedMixin:
-    """Shared-knowledge-store + sparse-retrieval delegation."""
+class Mem0AdapterSharedMixin(ABC):
+    """Shared-knowledge-store + sparse-retrieval delegation.
+
+    The connection / sparse-capability / agent-id seams are abstract,
+    bound by the concrete ``Mem0MemoryBackend``; ABCMeta blocks
+    instantiating a subclass that leaves one unimplemented.
+    """
 
     __slots__ = ()
 
@@ -37,36 +43,24 @@ class Mem0AdapterSharedMixin:
     _mem0_config: Mem0BackendConfig
 
     @property
-    def supports_sparse_search(self) -> bool:  # pragma: no cover - see concrete
-        """Whether BM25 sparse search is available (implemented on concrete class).
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    @abstractmethod
+    def supports_sparse_search(self) -> bool:
+        """Whether BM25 sparse search is available."""
         raise NotImplementedError
 
-    def _require_connected(self) -> Mem0Client:  # pragma: no cover - see concrete
-        """Require connected.
-
-        Returns:
-            Result of type ``Mem0Client``.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    @abstractmethod
+    def _require_connected(self) -> Mem0Client:
+        """Return the connected Mem0 client, or raise if disconnected."""
         raise NotImplementedError
 
+    @abstractmethod
     def _validate_agent_id(
         self,
         agent_id: NotBlankStr,
         *,
         error_cls: type[DomainMemoryError] = MemoryRetrievalError,
-    ) -> None:  # pragma: no cover - see concrete
-        """Validate agent id.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    ) -> None:
+        """Validate that the agent id is well-formed for this backend."""
         raise NotImplementedError
 
     async def retrieve_sparse(

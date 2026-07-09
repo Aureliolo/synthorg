@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
@@ -11,7 +10,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import as_uuid
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -48,7 +47,7 @@ def _engine(*, stakes: bool) -> AgentEngine:
     router = (
         build_stakes_router(
             StakesRoutingConfig(),
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             resolver=_resolver(),
         )
         if stakes

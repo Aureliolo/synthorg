@@ -172,6 +172,7 @@ class CeremonyScheduler:
         try:
             return self._budget_snapshot()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort metrics
             reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
@@ -346,6 +347,7 @@ class CeremonyScheduler:
         try:
             record = await self._state_repo.get(NotBlankStr(sprint_id))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_SCHEDULER_START_FAILED,
@@ -505,6 +507,7 @@ class CeremonyScheduler:
             try:
                 await self._active_strategy.on_sprint_deactivated()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -526,6 +529,7 @@ class CeremonyScheduler:
                     NotBlankStr(self._active_sprint.id),
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 logger.warning(
                     SPRINT_CEREMONY_SCHEDULER_STOPPED,
@@ -591,6 +595,7 @@ class CeremonyScheduler:
                     context,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -771,6 +776,7 @@ class CeremonyScheduler:
             try:
                 await delegate(self._active_strategy, sprint, context)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -1109,6 +1115,7 @@ class CeremonyScheduler:
                 context=context,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

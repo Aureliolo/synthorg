@@ -183,6 +183,7 @@ async def _send_best_effort(
     try:
         await coro
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             SPRINT_CEREMONY_NOTIFICATION_FAILED,

@@ -24,7 +24,11 @@ from synthorg.meta.charter.models import (
     ScopeBoundaries,
 )
 from synthorg.meta.errors import CharterAlreadyDecidedError, CharterNotFoundError
-from synthorg.observability.events.charter import CHARTER_DISPATCH_FAILED
+from synthorg.observability.events.charter import (
+    CHARTER_DISPATCH_FAILED,
+    CHARTER_DISPATCH_UNSUCCESSFUL,
+    CHARTER_DISPATCHED,
+)
 from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
@@ -228,12 +232,13 @@ class _FakeProjectRepo:
 
 
 class _FakeWorkPipeline:
-    def __init__(self) -> None:
+    def __init__(self, *, is_success: bool = True) -> None:
         self.ran: list[WorkItem] = []
+        self._is_success = is_success
 
     async def run(self, work_item: WorkItem) -> object:
         self.ran.append(work_item)
-        return SimpleResult(task_id=NotBlankStr("task-1"), is_success=True)
+        return SimpleResult(task_id=NotBlankStr("task-1"), is_success=self._is_success)
 
     def attach_narrator(self, narrator: object) -> None:
         raise NotImplementedError
@@ -280,11 +285,12 @@ def _dispatcher(
     charter: ProjectCharter,
     *,
     project_repo: _FakeProjectRepo | None = None,
+    pipeline_success: bool = True,
 ) -> tuple[CharterDispatcher, _FakeForecastRepo, _FakeWorkPipeline, _FakeProjectRepo]:
     charter_repo = _FakeCharterRepo(charter)
     forecast_repo = _FakeForecastRepo()
     proj_repo = project_repo or _FakeProjectRepo()
-    pipeline = _FakeWorkPipeline()
+    pipeline = _FakeWorkPipeline(is_success=pipeline_success)
     dispatcher = CharterDispatcher(
         charter_repo=cast(CharterRepository, charter_repo),
         forecast_repo=cast(CostForecastRepository, forecast_repo),
@@ -333,6 +339,33 @@ class TestApprove:
         # cleared so the run is filed under a concrete project_id.
         assert result.charter.project_id == _EXPECTED_NEW_PROJECT_ID
         assert result.charter.proposed_project_name is None
+
+    async def test_unsuccessful_pipeline_still_approves_but_warns(self) -> None:
+        """An empty/failed pipeline run stamps APPROVED yet fails loud.
+
+        The charter transition to APPROVED is correct (a human approved and
+        the dispatch happened), but a run that produced no successful work
+        surfaces the honest ``is_success=False`` and a WARNING event, never a
+        routine ``charter.dispatched`` INFO line that would mask the no-op.
+        """
+        from structlog.testing import capture_logs
+
+        dispatcher, _, _, _ = _dispatcher(_charter(), pipeline_success=False)
+        with capture_logs() as logs:
+            result = await dispatcher.approve(
+                NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+            )
+
+        assert result.is_success is False
+        assert result.charter.status is CharterStatus.APPROVED
+        events = [e.get("event") for e in logs]
+        assert CHARTER_DISPATCH_UNSUCCESSFUL in events
+        assert CHARTER_DISPATCHED not in events
+        unsuccessful = next(
+            e for e in logs if e.get("event") == CHARTER_DISPATCH_UNSUCCESSFUL
+        )
+        assert unsuccessful["log_level"] == "warning"
+        assert unsuccessful["is_success"] is False
 
     async def test_approve_emits_status_transition_log(self) -> None:
         """Approval logs charter.status_transitioned (DRAFTED -> APPROVED)."""

@@ -7,17 +7,17 @@ the quality at 40 percent of the cost if you downgrade these roles".
 ``cost_saving_pct`` so the dashboard can render "biggest wins first".
 
 Quality scores come from a :class:`BenchmarkScoreProvider` (see
-:mod:`synthorg.budget.benchmark_protocol`). :class:`StubBenchmarkScoreProvider`
-supplies calibrated per-tier constants pending a measured benchmark
-integration; a real provider swaps in behind the protocol with no
-analyzer change, and the provenance is surfaced verbatim via
-:attr:`ParetoPoint.source` so the dashboard never mistakes stub data
-for measured data.
+:mod:`synthorg.budget.benchmark_protocol`). A model with no measured
+score is skipped rather than assigned a fabricated number, and the
+provenance of each scored point is surfaced verbatim via
+:attr:`ParetoPoint.source` so the dashboard shows the real source of
+every measured row.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +33,11 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
+# Provenance label for a frontier computed with no measured scores: the
+# frontier is empty and the quality axis is honestly absent, never a
+# fabricated benchmark source.
+_NO_MEASURED_SOURCE: Final[str] = "no-measured-scores"
+
 
 class ParetoPoint(BaseModel):
     """A single downgrade candidate on the cost / quality frontier.
@@ -40,9 +45,9 @@ class ParetoPoint(BaseModel):
     Each point answers "if you downgrade ``role_id`` from
     ``current_model`` to ``candidate_model``, you lose
     ``quality_delta_pct`` of quality and save ``cost_saving_pct`` of
-    cost". The :attr:`source` carries the provenance of the benchmark
-    score used to compute the quality delta so the dashboard can flag
-    stub data versus measured data.
+    cost". The :attr:`source` carries the provenance of the measured
+    benchmark score used to compute the quality delta so the dashboard
+    can show where each score came from.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -215,7 +220,7 @@ class ParetoAnalyzer:
 
         points.sort(key=lambda p: p.cost_saving_pct, reverse=True)
         aggregate_source = (
-            ", ".join(sorted(sources)) if sources else "stub:calibrated-v1"
+            ", ".join(sorted(sources)) if sources else _NO_MEASURED_SOURCE
         )
         return ParetoFrontier(
             points=tuple(points),
@@ -272,7 +277,7 @@ class ParetoAnalyzer:
             cost_saving_pct=min(cost_saving_pct, 100.0),
             # quality_delta_pct blends both scores; surface both
             # provenances when they differ so the dashboard never
-            # attributes a measured candidate to a stub baseline.
+            # attributes a measured candidate to an unmeasured baseline.
             source=(
                 current_score.source
                 if current_score.source == candidate_score.source

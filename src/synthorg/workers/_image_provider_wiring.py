@@ -53,6 +53,7 @@ async def build_image_provider_or_none(
     try:
         enabled = await resolver.get_bool(_DESIGN_NS, "image_generation_enabled")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         # Transient settings-resolve failure (distinct from a misconfig):
         # WARNING, not ERROR.
@@ -81,6 +82,7 @@ async def build_image_provider_or_none(
     try:
         model_id_raw = await resolver.get_str(_DESIGN_NS, "image_model")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         # Transient settings-resolve failure (distinct from a misconfig):
         # WARNING, not ERROR. Fail open so worker startup is never broken.
@@ -137,6 +139,7 @@ async def _resolve_serving_provider(
         _, provider = registry.resolve_for_model(model_id)
         capabilities = await provider.get_model_capabilities(model_id)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         log_exception_redacted(
             logger,

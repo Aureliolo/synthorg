@@ -1,4 +1,4 @@
-"""Unit tests for in-memory integration repository stubs.
+"""Unit tests for the in-memory integration repositories.
 
 These doubles must mirror the durable repos' insert-or-replace
 semantics so test code that swaps them in does not observe behaviour
@@ -9,7 +9,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
-from synthorg.persistence.integration_stubs import (
+from synthorg.persistence.integration_inmemory import (
     InMemoryWebhookReceiptRepository,
 )
 from tests._shared import as_uuid, sid

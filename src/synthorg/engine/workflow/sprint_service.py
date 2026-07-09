@@ -146,6 +146,7 @@ class SprintService:
         try:
             await coro
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -345,6 +346,7 @@ class SprintService:
                 phase = "handle_completion"
                 await self._handle_completion(event.task)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

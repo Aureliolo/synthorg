@@ -140,6 +140,7 @@ class SeenClaimsPruner:
                     except asyncio.CancelledError:
                         pass
                     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        # lint-allow: swallow-ok -- shutdown drain
                         reraise_critical(exc)
                         logger.warning(
                             WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,

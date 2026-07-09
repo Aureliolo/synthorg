@@ -9,6 +9,7 @@ When the APIs actually diverge, split the subclass bodies; the
 connection identities and saved rows stay unchanged.
 """
 
+from abc import ABC, abstractmethod
 from typing import override
 
 from synthorg.integrations.connections.models import ConnectionType
@@ -21,18 +22,21 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 
-class _GiteaFamilyAuthenticator:
+class _GiteaFamilyAuthenticator(ABC):
     """Shared token-auth validation for the Gitea/Forgejo family.
 
     Subclasses set :attr:`connection_type`; the validation surface is
-    identical while the two forges remain API/token compatible.
+    identical while the two forges remain API/token compatible. ABCMeta
+    blocks instantiating this shared base directly.
 
     Required fields: ``token`` (personal access token).
     Optional fields: ``api_url`` (self-hosted base URL).
     """
 
     @property
-    def connection_type(self) -> ConnectionType:  # pragma: no cover - overridden
+    @abstractmethod
+    def connection_type(self) -> ConnectionType:
+        """The connection type this authenticator handles."""
         raise NotImplementedError
 
     def validate_credentials(

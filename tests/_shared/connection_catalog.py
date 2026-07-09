@@ -8,7 +8,7 @@ encrypted backend or a connected persistence layer.
 """
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.persistence.integration_stubs import InMemoryConnectionRepository
+from synthorg.persistence.integration_inmemory import InMemoryConnectionRepository
 
 
 class InMemorySecretBackend:

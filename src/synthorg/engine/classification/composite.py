@@ -138,6 +138,7 @@ async def _run_detector_safely(
     try:
         return await detector.detect(context)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- fail-open detector
         reraise_critical(exc)
         log_exception_redacted(
             logger,

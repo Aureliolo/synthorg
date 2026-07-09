@@ -156,6 +156,7 @@ class WorkerHeartbeatSubscriber:
                 try:
                     await subscription.unsubscribe()
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(exc)
                     # A failed unsubscribe can leave a duplicate callback
                     # on restart; surface it instead of swallowing.
@@ -174,6 +175,7 @@ class WorkerHeartbeatSubscriber:
                     except asyncio.CancelledError:
                         pass
                     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        # lint-allow: swallow-ok -- shutdown drain
                         reraise_critical(exc)
                         logger.warning(
                             WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED,

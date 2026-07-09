@@ -277,14 +277,12 @@ shared resolver (`budget/model_tier.py`): the built-in heuristic handles the
 operator map arbitrary deployment ids onto a canonical tier without re-keying the
 candidate construction.
 
-Two providers back the quality axis, selected by the `budget.benchmark_provider` setting
-(`stub` by default; an unknown value fails loudly at wiring):
+The quality axis is backed by `MeasuredBenchmarkScoreProvider`, selected by the
+`budget.benchmark_provider` setting (`measured`; an unknown value fails loudly at wiring):
 
-- `StubBenchmarkScoreProvider` (`stub`) supplies calibrated per-tier constants, badged
-  `source="stub:calibrated-v1"`, as the safe default and cold-start fallback.
 - `MeasuredBenchmarkScoreProvider` (`measured`) reads measured per-model scores from the
-  `BenchmarkScoreRepository` and falls back to the stub for any unmeasured model, so the
-  frontier mixes measured and stub rows honestly rather than fabricating a number.
+  `BenchmarkScoreRepository`. A model with no measured row returns `None`, so the frontier
+  skips it and the quality axis is shown as explicitly absent, never a fabricated number.
 
 Measured scores are genuinely measured, never fitted: `make record-benchmark-scores`
 (driving `scripts/record_benchmark_scores.py`) replays a recorded per-model cassette

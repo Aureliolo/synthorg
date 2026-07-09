@@ -65,6 +65,7 @@ def check_shutdown(
     try:
         shutting_down = shutdown_checker()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort teardown
         reraise_critical(exc)
         error_msg = f"Shutdown checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -128,6 +129,7 @@ def check_budget(
         )
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -200,6 +202,7 @@ async def check_stagnation(
             corrections_injected=corrections_injected,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_LOOP_ERROR,
@@ -307,6 +310,7 @@ async def invoke_compaction(
     try:
         return await compaction_callback(ctx)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             CONTEXT_BUDGET_COMPACTION_FAILED,

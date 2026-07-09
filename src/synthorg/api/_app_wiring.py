@@ -138,7 +138,6 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     benchmark_provider = select_benchmark_provider(
         budget_config.benchmark_provider,
         repo=benchmark_score_repo,
-        tier_map=model_tier_map,
     )
     assignment_lookup, history_lookup, cost_tracker = build_pareto_inputs(app_state)
     forecaster = CostForecaster(

@@ -188,6 +188,7 @@ const TERMINATION_REASON_COPY: Readonly<
   shutdown: 'Stopped: the runtime shut down.',
   cancelled: 'Stopped: the action was cancelled.',
   error: 'Stopped: an error interrupted the action.',
+  no_op: 'Stopped: the action produced no result.',
 }
 
 function buildActMessage(

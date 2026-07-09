@@ -429,6 +429,7 @@ class AgentEngineErrorsMixin:
                 task_id=task_id,
             )
         except Exception as park_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(park_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -477,6 +478,7 @@ class AgentEngineErrorsMixin:
             )
             await repo.save(updated)
         except Exception as stamp_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(stamp_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,

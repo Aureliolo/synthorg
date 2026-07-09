@@ -134,6 +134,7 @@ class ScoringBasedAssignmentStrategy:
         try:
             return rewriter(ranking.selected)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 TASK_ASSIGNMENT_REASON_REWRITER_FAILED,

@@ -28,7 +28,7 @@ from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
 from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
-from synthorg.persistence.integration_stubs import (
+from synthorg.persistence.integration_inmemory import (
     InMemoryConnectionRepository,
     InMemoryConnectionSecretRepository,
     InMemoryOAuthStateRepository,

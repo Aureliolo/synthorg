@@ -95,6 +95,7 @@ class HealthMonitoringPipeline:
                 execution_duration=execution_duration,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger, HEALTH_PIPELINE_ERROR, exc, agent_id=agent_id, task_id=task_id
@@ -139,6 +140,7 @@ class HealthMonitoringPipeline:
         try:
             await self._dispatcher.dispatch(notification)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

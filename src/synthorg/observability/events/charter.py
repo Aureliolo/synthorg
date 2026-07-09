@@ -36,6 +36,9 @@ CHARTER_APPROVED: Final[str] = "charter.approved"
 CHARTER_CANCELLED: Final[str] = "charter.cancelled"
 CHARTER_DISPATCHED: Final[str] = "charter.dispatched"
 CHARTER_DISPATCH_FAILED: Final[str] = "charter.dispatch_failed"
+CHARTER_DISPATCH_UNSUCCESSFUL: Final[str] = "charter.dispatch_unsuccessful"
+"""The work pipeline ran to completion but produced an unsuccessful run
+(a failed or empty task outcome), so the dispatch is not a real success."""
 CHARTER_PROJECT_ALREADY_EXISTS: Final[str] = "charter.project_already_exists"
 
 # -- Data inconsistency ------------------------------------------------
@@ -60,6 +63,7 @@ __all__ = [
     "CHARTER_CONVERSATION_NOT_FOUND",
     "CHARTER_DISPATCHED",
     "CHARTER_DISPATCH_FAILED",
+    "CHARTER_DISPATCH_UNSUCCESSFUL",
     "CHARTER_EDITED",
     "CHARTER_INTERVIEW_CAP_REACHED",
     "CHARTER_INTERVIEW_DRAFTED",

@@ -28,7 +28,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import (
@@ -58,7 +57,7 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
-from tests._shared import as_uuid, sid
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -349,7 +348,7 @@ async def test_cost_dial_full_lifecycle() -> None:
         )
 
     analyzer = ParetoAnalyzer(
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         budget_config=budget,
         assignment_lookup=_assignments,
     )

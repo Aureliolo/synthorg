@@ -363,6 +363,7 @@ class ShadowEvaluationGuard:
                         # client timeout, etc.) -- distinguished from
                         # guard-deadline timeout by virtue of being
                         # caught inside ``asyncio.timeout``.
+                        # lint-allow: swallow-ok -- best-effort memory hook
                         error_desc = safe_error_description(exc)
                         logger.warning(
                             EVOLUTION_SHADOW_TASK_FAILED,

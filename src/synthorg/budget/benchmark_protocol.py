@@ -1,15 +1,16 @@
 """Benchmark-score provider protocol for the Pareto view.
 
 The Pareto view answers "90% of the quality at 40% of the cost if you
-downgrade these roles". The quality axis comes from a calibrated
+downgrade these roles". The quality axis comes from a measured
 per-model benchmark score.
 
-:class:`StubBenchmarkScoreProvider` (in
-:mod:`synthorg.budget.benchmark_stub`) returns per-tier calibrated
-constants in code; real benchmark implementations swap in behind this
-protocol via the factory wiring in ``lifecycle_helpers.py``. The UI
-surfaces the :attr:`BenchmarkScore.source` field so operators can
-see whether they are reading stub or measured data.
+:class:`~synthorg.budget.benchmark_measured.MeasuredBenchmarkScoreProvider`
+reads measured per-model scores from the benchmark-score repository; a
+model with no measured row returns ``None`` so its quality axis is
+shown as absent, never fabricated. Additional real providers swap in
+behind this protocol via the factory wiring. The UI surfaces the
+:attr:`BenchmarkScore.source` field so operators see the real
+provenance of every measured row.
 """
 
 from collections.abc import Mapping
@@ -30,10 +31,9 @@ class BenchmarkScore(BaseModel):
             confidence interval.
         confidence_upper: Upper bound of the score's 95 percent
             confidence interval.
-        source: Provenance identifier. Stubs use ``"stub:..."`` and
-            real benchmark runs use ``"benchmark:..."``; the dashboard
-            renders this verbatim so operators can never mistake
-            illustrative data for measured data.
+        source: Provenance identifier. Measured benchmark runs use
+            ``"benchmark:..."``; the dashboard renders this verbatim so
+            operators see where each score came from.
         last_updated: When this score was last refreshed.
     """
 
@@ -51,7 +51,7 @@ class BenchmarkScore(BaseModel):
         description="Upper bound of 95 percent confidence interval",
     )
     source: NotBlankStr = Field(
-        description='Provenance identifier (e.g. "stub:calibrated-v1")',
+        description='Provenance identifier (e.g. "benchmark:run-2026-05")',
     )
     last_updated: datetime = Field(description="When this score was last refreshed")
 

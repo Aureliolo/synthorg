@@ -195,6 +195,7 @@ class AgentEngineResumeMixin:
                 reason="Human clarification received; resuming execution",
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_RESUME_FAILED,
@@ -302,6 +303,7 @@ class AgentEngineResumeMixin:
                 system_prompt=system_prompt,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fatal-error boundary returns FAILED
             reraise_critical(exc)
             return await self._handle_fatal_error(
                 exc=exc,

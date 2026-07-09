@@ -50,6 +50,19 @@ _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
 
 _REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
 
+# Reason surfaced when a work task finishes with no produced artifacts and
+# no recorded no-op justification: the run is failed rather than pushed to
+# review as a silent no-op success.
+_EMPTY_RUN_REASON: Final[str] = (
+    "Run produced no artifacts and no tool calls; failing the task instead "
+    "of recording a silent no-op success"
+)
+
+# Metadata key an agent/pipeline sets to justify a legitimately empty run
+# (e.g. a task that concluded no change was needed). Its presence routes an
+# otherwise-empty run to review instead of FAILED.
+_NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
+
 
 async def sync_to_task_engine(  # noqa: PLR0913
     task_engine: TaskEngine | None,
@@ -96,6 +109,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         _log_sync_issue(
             critical=critical,
@@ -230,8 +244,30 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
-    if reason != TerminationReason.COMPLETED:
+    justified = bool(execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY))
+    task_expects_artifacts = bool(ctx.task_execution.task.artifacts_expected)
+
+    # A silent no-op success is a failure: a WORK task (one that declared
+    # expected artifacts) that produced none (proxied by zero tool calls) is
+    # failed unless an explicit no-op justification was recorded. Enforced in
+    # two layers: the react loop classifies the empty run as NO_OP, and this
+    # transition also guards a COMPLETED that slipped through from another loop.
+    if reason == TerminationReason.NO_OP and not justified:
+        return await _transition_to_failed(
+            execution_result, ctx, agent_id, task_id, task_engine
+        )
+
+    if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
         return execution_result
+
+    if (
+        task_expects_artifacts
+        and execution_result.total_tool_calls == 0
+        and not justified
+    ):
+        return await _transition_to_failed(
+            execution_result, ctx, agent_id, task_id, task_engine
+        )
 
     return await _transition_to_review(
         execution_result,
@@ -276,6 +312,7 @@ async def _maybe_auto_review(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- best-effort: never block completion
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
@@ -367,6 +404,7 @@ async def _create_review_approval(
     try:
         await approval_store.add(item)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
@@ -442,6 +480,54 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     if ctx is execution_result.context:
         return execution_result
     return execution_result.model_copy(update={"context": ctx})
+
+
+async def _transition_to_failed(
+    execution_result: ExecutionResult,
+    ctx: AgentContext,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+) -> ExecutionResult:
+    """Transition an empty/no-op run IN_PROGRESS -> FAILED (no review).
+
+    A work task that produced no artifacts must surface a visible failure
+    with the reason, never a silent no-op success pushed to review. No
+    review approval is created.
+
+    Returns:
+        A copy of ``execution_result`` with the context updated to
+        ``FAILED``; the original is returned unchanged when the
+        transition raises.
+    """
+    logger.warning(
+        EXECUTION_ENGINE_ERROR,
+        agent_id=agent_id,
+        task_id=task_id,
+        context="Empty run: no artifacts produced; failing the task",
+        reason=_EMPTY_RUN_REASON,
+    )
+    try:
+        ctx = await _transition_and_sync(
+            ctx,
+            target_status=TaskStatus.FAILED,
+            reason=_EMPTY_RUN_REASON,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            critical=True,
+        )
+        return execution_result.model_copy(update={"context": ctx})
+    except (ValueError, ExecutionStateError) as exc:
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            context="Post-execution FAILED transition failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return execution_result
 
 
 async def _transition_to_interrupted(

@@ -213,6 +213,7 @@ async def run_with_agent_middleware[R: _HasAgentContext](  # noqa: PLR0913
                 effective_autonomy=effective_autonomy,
             )
         except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(cleanup_exc)
             logger.warning(
                 MIDDLEWARE_HOOK_ERROR,

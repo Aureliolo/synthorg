@@ -124,6 +124,7 @@ async def _resolve_routing_scorer_config(
     try:
         bridge = await config_resolver_of(app_state).get_engine_bridge_config()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -137,6 +138,7 @@ async def _resolve_routing_scorer_config(
     try:
         return RoutingScorerConfig.from_bridge_config(bridge)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

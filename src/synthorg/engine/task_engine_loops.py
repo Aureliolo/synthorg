@@ -234,6 +234,7 @@ class TaskEngineLoopsMixin:
                         envelope.future.exception()
                 raise
             except Exception as exc:  # noqa: BLE001 -- processing-loop boundary
+                # lint-allow: swallow-ok -- resilient poll loop
                 consecutive_failures += 1
                 log_exception_redacted(
                     logger,
@@ -320,6 +321,7 @@ class TaskEngineLoopsMixin:
                             queue_size=self._observer_queue.qsize(),
                         )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -357,6 +359,7 @@ class TaskEngineLoopsMixin:
             try:
                 await self._notify_observers(event)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort observer
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -379,6 +382,7 @@ class TaskEngineLoopsMixin:
             try:
                 await observer(event)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort notification
                 reraise_critical(exc)
                 logger.warning(
                     TASK_ENGINE_OBSERVER_FAILED,

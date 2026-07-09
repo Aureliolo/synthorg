@@ -139,12 +139,14 @@ class ParallelExecutor:
                 progress,
             )
         except Exception as exc:  # noqa: BLE001 -- captured, re-raised below
+            # lint-allow: swallow-ok -- captured, re-raised below
             task_error = exc
         finally:
             if lock is not None:
                 try:
                     await release_all_locks(group, lock)
                 except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
+                    # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(release_exc)
                     logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
@@ -229,6 +231,7 @@ class ParallelExecutor:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
+            # lint-allow: swallow-ok -- best-effort side channel
             logger.warning(
                 PARALLEL_GROUP_SUPPRESSED,
                 note="ExceptionGroup suppressed",
@@ -510,6 +513,7 @@ class ParallelExecutor:
         try:
             self._progress_callback(snapshot)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort observer
             reraise_critical(exc)
             logger.warning(
                 PARALLEL_PROGRESS_UPDATE,

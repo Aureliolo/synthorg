@@ -18,7 +18,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.persistence.integration_stubs import InMemoryConnectionRepository
+from synthorg.persistence.integration_inmemory import InMemoryConnectionRepository
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.external_api._runtime import ExternalApiRuntime

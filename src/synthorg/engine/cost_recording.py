@@ -118,6 +118,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 success=turn.success,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort metrics
             reraise_critical(exc)
             # Validator rejection (e.g. negative cost, blank identifier)
             # would otherwise bubble up and abort the whole recording
@@ -168,6 +169,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 cost=turn.cost,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort metrics
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_COST_FAILED,
@@ -203,6 +205,7 @@ async def _submit_cost_record(
     try:
         await tracker.record(record)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort metrics
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_COST_FAILED,

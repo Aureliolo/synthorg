@@ -101,35 +101,36 @@ interface SourceBadgeProps {
   source: string
 }
 
-type BadgeKind = 'measured' | 'estimated' | 'mixed'
+type BadgeKind = 'measured' | 'absent' | 'mixed'
 
 const BADGE_CLASS = {
   measured: 'border border-success/30 bg-success/10 text-success',
-  estimated: 'border border-warning/30 bg-warning/10 text-warning',
+  absent: 'border border-border bg-muted text-muted-foreground',
   mixed: 'border border-warning/30 bg-warning/10 text-warning',
 } as const satisfies Record<BadgeKind, string>
 
 const BADGE_LABEL = {
   measured: 'measured',
-  estimated: 'estimated',
-  mixed: 'mixed',
+  absent: 'not measured',
+  mixed: 'partial',
 } as const satisfies Record<BadgeKind, string>
 
 const BADGE_TITLE = {
   measured: 'Measured per-model benchmark scores',
-  estimated: 'Stub benchmark data; awaiting measured scores',
-  mixed: 'Mixed provenance: some roles measured, some stub',
+  absent: 'No measured benchmark scores yet',
+  mixed: 'Partial provenance: some roles measured, some not yet measured',
 } as const satisfies Record<BadgeKind, string>
 
 // The frontier source joins each point's provenance, and a point blends
-// its current/candidate scores, so a single string can carry both
-// 'benchmark:' (measured) and 'stub:' tokens. A measured-current /
-// stub-candidate mix must not read as fully measured.
+// its current/candidate scores, so a single string can carry both a
+// 'benchmark:' (measured) token and the 'no-measured-scores' absent
+// marker. A measured/absent mix must not read as fully measured, and an
+// unmeasured model is shown as absent rather than fabricated.
 function badgeKind(source: string): BadgeKind {
-  const hasStub = source.includes('stub:')
   const hasMeasured = source.includes('benchmark:')
-  if (hasStub && hasMeasured) return 'mixed'
-  return hasStub ? 'estimated' : 'measured'
+  const hasAbsent = source.includes('no-measured-scores')
+  if (hasMeasured && hasAbsent) return 'mixed'
+  return hasMeasured ? 'measured' : 'absent'
 }
 
 function SourceBadge({ source }: SourceBadgeProps) {

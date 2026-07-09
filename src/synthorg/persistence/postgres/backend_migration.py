@@ -7,6 +7,7 @@ backend.
 """
 
 import asyncio
+from abc import ABC, abstractmethod
 
 import psycopg
 from psycopg.rows import TupleRow
@@ -29,19 +30,21 @@ from synthorg.persistence.config import PostgresConfig
 logger = get_logger(__name__)
 
 
-class PostgresMigrationMixin:
-    """Schema migration + TimescaleDB setup for the Postgres backend."""
+class PostgresMigrationMixin(ABC):
+    """Schema migration + TimescaleDB setup for the Postgres backend.
+
+    The state-reset seam is abstract, bound by the concrete backend's
+    repository-wiring base; ABCMeta blocks instantiating a subclass that
+    leaves it unimplemented.
+    """
 
     _config: PostgresConfig
     _pool: AsyncConnectionPool | None
     _lifecycle_lock: asyncio.Lock
 
-    def _clear_state(self) -> None:  # pragma: no cover - see concrete
-        """Clear state (provided by concrete backend).
-
-        Raises:
-            NotImplementedError: Concrete backend has not implemented this method.
-        """
+    @abstractmethod
+    def _clear_state(self) -> None:
+        """Reset connection state to the disconnected baseline."""
         raise NotImplementedError
 
     async def migrate(self) -> None:

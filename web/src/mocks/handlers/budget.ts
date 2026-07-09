@@ -43,7 +43,7 @@ function buildForecast(overrides: Partial<Forecast> = {}): Forecast {
 function buildParetoFrontier(): ParetoFrontier {
   return {
     points: [],
-    source: 'stub:calibrated-v1',
+    source: 'no-measured-scores',
     generated_at: '2026-05-20T12:00:00Z',
     baseline_window_size: 0,
   }
@@ -97,7 +97,7 @@ function buildBudgetConfig(
     forecast_static_prior_per_turn_small: 0.005,
     forecast_static_prior_per_turn_local_small: 0,
     forecast_shrinkage_prior_weight: 5,
-    benchmark_provider: 'stub',
+    benchmark_provider: 'measured',
     model_tier_overrides: {},
     risk_budget: {
       alerts: { critical_at: 90, warn_at: 75 },

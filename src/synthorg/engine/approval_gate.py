@@ -186,6 +186,7 @@ class ApprovalGate:
                     # an operator can resolve the stuck interrupt instead
                     # of waiting for the expiry sweeper, but still re-raise
                     # the ORIGINAL failure below.
+                    # lint-allow: swallow-ok -- best-effort side channel
                     reraise_critical(comp_exc)
                     log_exception_redacted(
                         logger,
@@ -229,6 +230,7 @@ class ApprovalGate:
                 await self._interrupt_store.create(interrupt)
                 interrupt_id = interrupt.id
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort notification
                 reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -256,6 +258,7 @@ class ApprovalGate:
                 },
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -298,6 +301,7 @@ class ApprovalGate:
                 ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -444,6 +448,7 @@ class ApprovalGate:
                     payload={"approval_id": approval_id},
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort notification
                 reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -474,6 +479,7 @@ class ApprovalGate:
         try:
             await self._interrupt_store.resolve(resolution)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort notification
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,

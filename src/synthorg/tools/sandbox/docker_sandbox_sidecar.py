@@ -7,6 +7,7 @@ sandbox.
 
 import asyncio
 import secrets
+from abc import ABC, abstractmethod
 from typing import Final, cast
 
 import aiodocker
@@ -37,21 +38,20 @@ logger = get_logger(__name__)
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 
 
-class DockerSandboxSidecarMixin:
-    """Sidecar-container creation and health polling."""
+class DockerSandboxSidecarMixin(ABC):
+    """Sidecar-container creation and health polling.
+
+    The memory-limit parsing seam is abstract, bound by the concrete
+    ``DockerSandbox``; ABCMeta blocks instantiating a subclass that
+    leaves it unimplemented.
+    """
 
     _config: DockerSandboxConfig
 
     @staticmethod
-    def _parse_memory_limit(limit: str) -> int:  # pragma: no cover - see concrete
-        """Parse memory limit.
-
-        Returns:
-            Result of type ``int``.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+    @abstractmethod
+    def _parse_memory_limit(limit: str) -> int:
+        """Parse a docker memory-limit string into a byte count."""
         raise NotImplementedError
 
     async def _create_sidecar(

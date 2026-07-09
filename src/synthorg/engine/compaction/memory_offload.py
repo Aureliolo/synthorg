@@ -89,6 +89,7 @@ class MemoryOffloader:
         try:
             await self._backend.store(agent_id, request)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort memory hook
             reraise_critical(exc)
             logger.warning(
                 CONTEXT_BUDGET_COMPACTION_OFFLOAD_FAILED,

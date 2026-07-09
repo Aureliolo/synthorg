@@ -124,6 +124,7 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         try:
             tags = self._infer_tags(ctx)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

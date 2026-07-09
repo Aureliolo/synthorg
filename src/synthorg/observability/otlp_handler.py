@@ -21,6 +21,7 @@ from structlog.stdlib import ProcessorFormatter
 from structlog.typing import Processor
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import FeatureNotImplementedError
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import safe_error_description
 from synthorg.observability._sync_backoff import backoff_delay
@@ -117,7 +118,7 @@ class OtlpHandler(logging.Handler):
         super().__init__()
         if protocol == OtlpProtocol.GRPC:
             msg = "gRPC transport is not implemented; use HTTP_JSON"
-            raise NotImplementedError(msg)
+            raise FeatureNotImplementedError(msg)
         self._endpoint = endpoint
         self._protocol = protocol
         self._extra_headers = dict(headers)

@@ -1,4 +1,4 @@
-"""Unit tests for ParetoAnalyzer and StubBenchmarkScoreProvider."""
+"""Unit tests for ParetoAnalyzer."""
 
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.model_tier import ModelTierMap
 from synthorg.budget.pareto import (
@@ -15,7 +14,7 @@ from synthorg.budget.pareto import (
     RoleAssignment,
 )
 from synthorg.core.types import NotBlankStr
-from tests._shared import FakeClock
+from tests._shared import FIXTURE_SOURCE, FakeClock, FakeTierBenchmarkScoreProvider
 
 pytestmark = pytest.mark.unit
 
@@ -67,33 +66,10 @@ def _assignments(
     return _lookup
 
 
-class TestStubBenchmarkScoreProvider:
-    async def test_known_tier_returns_calibrated_score(self) -> None:
-        provider = StubBenchmarkScoreProvider()
-        score = await provider.get_score("example-large-001")
-        assert score is not None
-        assert 0 <= score.score <= 100
-        assert score.source == "stub:calibrated-v1"
-
-    async def test_unknown_model_returns_none(self) -> None:
-        provider = StubBenchmarkScoreProvider()
-        assert await provider.get_score("totally-made-up") is None
-
-    async def test_list_scores_keyed_by_canonical_model_id(self) -> None:
-        provider = StubBenchmarkScoreProvider()
-        scores = await provider.list_scores()
-        assert {
-            "example-large-001",
-            "example-medium-001",
-            "example-small-001",
-            "example-local-small-001",
-        } <= set(scores)
-
-
 class TestParetoAnalyzer:
     async def test_empty_assignments_returns_empty_frontier(self) -> None:
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             clock=FakeClock(start=_NOW).now,
         )
@@ -101,7 +77,7 @@ class TestParetoAnalyzer:
         assert isinstance(frontier, ParetoFrontier)
         assert frontier.points == ()
         assert frontier.generated_at == _NOW
-        assert "stub:calibrated-v1" in frontier.source
+        assert frontier.source == "no-measured-scores"
 
     async def test_single_assignment_emits_frontier_point(self) -> None:
         assignment = RoleAssignment(
@@ -111,7 +87,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=1.00,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -123,7 +99,7 @@ class TestParetoAnalyzer:
         assert point.candidate_model == "example-medium-001"
         assert point.cost_saving_pct > 0
         assert point.quality_delta_pct > 0
-        assert point.source == "stub:calibrated-v1"
+        assert point.source == FIXTURE_SOURCE
 
     async def test_model_tier_map_resolves_non_archetype_current_model(self) -> None:
         # A non-archetype id is skipped by the heuristic; an operator
@@ -175,7 +151,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.0,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -192,7 +168,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.001,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,
@@ -216,7 +192,7 @@ class TestParetoAnalyzer:
             ),
         ]
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=assignments),
             clock=FakeClock(start=_NOW).now,
@@ -237,7 +213,7 @@ class TestParetoAnalyzer:
             current_cost_per_task=0.50,
         )
         analyzer = ParetoAnalyzer(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
             clock=FakeClock(start=_NOW).now,

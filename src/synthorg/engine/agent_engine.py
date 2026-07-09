@@ -663,6 +663,7 @@ class AgentEngine(
                     system_prompt=system_prompt,
                 )
             except Exception as exc:  # noqa: BLE001 -- engine fatal-error boundary
+                # lint-allow: swallow-ok -- fatal-error boundary returns FAILED
                 return await self._handle_fatal_error(
                     exc=exc,
                     identity=identity,

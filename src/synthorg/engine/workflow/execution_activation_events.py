@@ -51,6 +51,7 @@ def emit_activation_events(
             task_count=task_count,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         # The warning rides the same logging/metrics path that just failed,
         # so it can raise for the same reason. Guard it too: the activation
@@ -64,6 +65,7 @@ def emit_activation_events(
                 error=safe_error_description(exc),
             )
         except Exception as warning_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(warning_exc)
 
 

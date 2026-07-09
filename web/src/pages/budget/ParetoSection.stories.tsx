@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { ParetoSection } from './ParetoSection'
 import type { ParetoFrontier } from '@/api/types'
 
-const stubFrontier: ParetoFrontier = {
+const absentFrontier: ParetoFrontier = {
   points: [
     {
       role_id: 'role-1',
@@ -12,7 +12,7 @@ const stubFrontier: ParetoFrontier = {
       candidate_model: 'example-medium-001',
       quality_delta_pct: 7,
       cost_saving_pct: 70,
-      source: 'stub:calibrated-v1',
+      source: 'no-measured-scores',
     },
     {
       role_id: 'role-2',
@@ -21,31 +21,32 @@ const stubFrontier: ParetoFrontier = {
       candidate_model: 'example-small-001',
       quality_delta_pct: 13,
       cost_saving_pct: 83,
-      source: 'stub:calibrated-v1',
+      source: 'no-measured-scores',
     },
   ],
   generated_at: '2026-05-20T12:00:00Z',
   baseline_window_size: 50,
-  source: 'stub:calibrated-v1',
+  source: 'no-measured-scores',
 }
 
 const measuredFrontier: ParetoFrontier = {
-  ...stubFrontier,
+  ...absentFrontier,
   source: 'benchmark:1980-v1',
-  points: stubFrontier.points.map((point) => ({
+  points: absentFrontier.points.map((point) => ({
     ...point,
     source: 'benchmark:1980-v1',
   })),
 }
 
-// A frontier blending measured and stub rows: the aggregate source
-// carries both tokens, so the badge resolves to 'mixed'.
+// A frontier blending measured and unmeasured rows: the aggregate source
+// carries both a 'benchmark:' token and the absent marker, so the badge
+// resolves to 'partial'.
 const mixedFrontier: ParetoFrontier = {
-  ...stubFrontier,
-  source: 'benchmark:1980-v1, stub:calibrated-v1',
-  points: stubFrontier.points.map((point, index) => ({
+  ...absentFrontier,
+  source: 'benchmark:1980-v1, no-measured-scores',
+  points: absentFrontier.points.map((point, index) => ({
     ...point,
-    source: index === 0 ? 'benchmark:1980-v1' : 'stub:calibrated-v1',
+    source: index === 0 ? 'benchmark:1980-v1' : 'no-measured-scores',
   })),
 }
 
@@ -58,8 +59,8 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
-export const StubData: Story = {
-  args: { frontier: stubFrontier },
+export const AbsentData: Story = {
+  args: { frontier: absentFrontier },
 }
 
 export const MeasuredData: Story = {
@@ -71,7 +72,7 @@ export const MixedData: Story = {
 }
 
 export const EmptyState: Story = {
-  args: { frontier: { ...stubFrontier, points: [] } },
+  args: { frontier: { ...absentFrontier, points: [] } },
 }
 
 export const Loading: Story = {

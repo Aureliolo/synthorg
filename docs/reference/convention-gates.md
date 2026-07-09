@@ -67,6 +67,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_client_state_persistence.py` | commit+push | `web/src/` outside the auth/CSRF allowlist | full | no | none | add |
 | `check_no_controller_response_for_domain_errors.py` | commit+push | `api/controllers/` | full | no | `no_controller_response_for_domain_errors_baseline.txt` | keep |
 | `check_no_em_dashes.py` | commit+push | all text | staged | yes | none | harden |
+| `check_no_engine_worker_swallow.py` | push | `engine/` + `workers/` | full | no | none | add |
 | `check_no_explicit_any_inline_disable.py` | commit+push | `src/` + `tests/` | staged | yes | none | keep |
 | `check_no_ghost_wiring.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_no_growth_in_god_modules.py` | commit+push | god-module allowlist | full | no | allowlist (empty) | keep |
@@ -83,6 +84,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_review_origin_in_code.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_no_ruff100_self_cloak.py` | commit+push | every tracked `.py` | full | no | none | **add** |
 | `check_no_stdlib_logging.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_no_stubs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_synthorg_any_override.py` | commit+push | `pyproject.toml` | full | no | none | keep |
 | `check_openapi_liveness.py` | CI (`ci.yml`) | exported OpenAPI schema | n/a | n/a | none | keep |
 | `check_orphan_fixtures.py` | push | `tests/` | full | no | none | harden |
@@ -110,7 +112,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->88<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->91<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
