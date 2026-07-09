@@ -8,7 +8,7 @@ import { LocalityBadge } from '@/components/ui/locality-badge'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 import { getProviderStatus } from '@/utils/provider-status'
-import { isLocalUrl } from '@/utils/provider-locality'
+import { useProviderLocality } from '@/hooks/useProviderLocality'
 import { Building2, Users, Server } from 'lucide-react'
 
 function SetupAgentRow({ agent, isLocal }: { agent: SetupAgentSummary; isLocal: boolean }) {
@@ -41,6 +41,7 @@ export function SetupSummary({
   providers,
   currency,
 }: SetupSummaryProps) {
+  const localityByProvider = useProviderLocality(providers)
   return (
     <div className="space-y-section-gap">
       {/* Company details */}
@@ -92,7 +93,7 @@ export function SetupSummary({
               // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
               key={`${agent.name}-${index}`}
               agent={agent}
-              isLocal={isLocalUrl(providers[agent.model_provider ?? '']?.base_url)}
+              isLocal={localityByProvider[agent.model_provider ?? ''] ?? false}
             />
           ))}
         </div>

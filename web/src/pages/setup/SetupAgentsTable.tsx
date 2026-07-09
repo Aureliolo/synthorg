@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 import { LocalityBadge } from '@/components/ui/locality-badge'
 import { cn } from '@/lib/utils'
-import { isLocalUrl } from '@/utils/provider-locality'
+import { useProviderLocality } from '@/hooks/useProviderLocality'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { PersonalityPresetInfo, SetupAgentSummary } from '@/api/types/setup'
 
@@ -209,14 +209,7 @@ export function SetupAgentsTable({
   )
   const groups = useMemo(() => groupByDepartment(agents), [agents])
   const placeholderText = personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)
-  // Parse each provider's base_url once, not per row per render.
-  const localityByProvider = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(providers).map(([name, cfg]) => [name, isLocalUrl(cfg.base_url)]),
-      ),
-    [providers],
-  )
+  const localityByProvider = useProviderLocality(providers)
 
   const rowFor = useCallback(
     (item: { agent: SetupAgentSummary; index: number }) => (
