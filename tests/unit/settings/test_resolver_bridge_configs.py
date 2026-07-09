@@ -236,6 +236,8 @@ _HAPPY_CASES: tuple[
             "matcher_base_score": 0.4,
             "matcher_tier_large_min_context": 200000,
             "matcher_min_usable_parameters": 20000000000,
+            "matcher_prefer_local": True,
+            "matcher_min_cloud_tier": 2,
             "quality_heuristic_pass_threshold": 0.5,
         },
     ),

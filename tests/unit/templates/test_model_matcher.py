@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.config.model_metadata import MetadataSource, ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
@@ -502,9 +503,20 @@ class TestModelMatcherConfig:
     def test_from_bridge_config_projects_fields(self) -> None:
         from synthorg.settings.bridge_configs import EngineBridgeConfig
 
-        cfg = ModelMatcherConfig.from_bridge_config(EngineBridgeConfig())
-        assert cfg.base_score == EngineBridgeConfig().matcher_base_score
-        assert (
-            cfg.tier_large_min_context
-            == EngineBridgeConfig().matcher_tier_large_min_context
-        )
+        bridge = EngineBridgeConfig()
+        cfg = ModelMatcherConfig.from_bridge_config(bridge)
+        assert cfg.base_score == bridge.matcher_base_score
+        assert cfg.capability_fit_weight == bridge.matcher_capability_fit_weight
+        assert cfg.headroom_max_bonus == bridge.matcher_headroom_max_bonus
+        assert cfg.priority_max_bonus == bridge.matcher_priority_max_bonus
+        assert cfg.headroom_ratio_cap == bridge.matcher_headroom_ratio_cap
+        assert cfg.tier_large_min_context == bridge.matcher_tier_large_min_context
+        assert cfg.tier_medium_min_context == bridge.matcher_tier_medium_min_context
+        assert cfg.min_usable_parameters == bridge.matcher_min_usable_parameters
+        assert cfg.prefer_local == bridge.matcher_prefer_local
+        assert cfg.min_cloud_tier == bridge.matcher_min_cloud_tier
+
+    @pytest.mark.parametrize("bad_tier", [0, 5])
+    def test_min_cloud_tier_out_of_range_rejected(self, bad_tier: int) -> None:
+        with pytest.raises(ValidationError):
+            ModelMatcherConfig(min_cloud_tier=bad_tier)

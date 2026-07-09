@@ -24,7 +24,10 @@ from typing import Final
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.observability import get_logger
-from synthorg.observability.events.template import TEMPLATE_MODEL_MATCH_SKIPPED
+from synthorg.observability.events.template import (
+    TEMPLATE_MODEL_MATCH_FALLBACK,
+    TEMPLATE_MODEL_MATCH_SKIPPED,
+)
 from synthorg.templates.model_requirements import ModelRequirement
 
 logger = get_logger(__name__)
@@ -117,7 +120,15 @@ def above_usable_floor(
         if m.metadata.parameter_count is None
         or m.metadata.parameter_count >= min_parameters
     ]
-    return kept or list(models)
+    if not kept:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_FALLBACK,
+            reason="usable_floor_would_empty",
+            min_parameters=min_parameters,
+            candidate_count=len(models),
+        )
+        return list(models)
+    return kept
 
 
 _TIER_QUALITY_REASONING: Final[int] = 4
@@ -324,6 +335,12 @@ def enforce_cloud_floor(
     set when the floor would empty it, so a cheap-only remote catalogue still
     yields a match rather than leaving the agent unassigned.
 
+    Args:
+        eligible: Hard-filter-passing, floor-passing candidates.
+        local_ids: ``id(model)`` of models on a local provider (floor-exempt).
+        min_cloud_tier: Lowest cost tier (1-4) a remote model may hold.
+        overrides: Curated tier overrides applied to each model's tier.
+
     Returns:
         The models clearing the floor, or all of *eligible* when none do.
     """
@@ -335,7 +352,15 @@ def enforce_cloud_floor(
         return not tiers or max(tiers) >= min_cloud_tier
 
     kept = [m for m in eligible if _clears(m)]
-    return kept or list(eligible)
+    if not kept:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_FALLBACK,
+            reason="cloud_floor_would_empty",
+            min_cloud_tier=min_cloud_tier,
+            candidate_count=len(eligible),
+        )
+        return list(eligible)
+    return kept
 
 
 def select_for_demand(

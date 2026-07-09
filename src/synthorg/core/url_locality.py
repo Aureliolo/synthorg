@@ -34,7 +34,8 @@ def is_local_url(url: str | None) -> bool:
     property: a localhost alias, or any loopback / private / link-local IP.
 
     Args:
-        url: The provider's base URL, or ``None`` for a keyless cloud provider.
+        url: The provider's base URL, or ``None`` when the provider has no
+            explicit base URL (a hosted provider on its SDK default endpoint).
 
     Returns:
         True when *url* targets a local/self-hosted backend, False for a remote
@@ -42,7 +43,10 @@ def is_local_url(url: str | None) -> bool:
     """
     if not url:
         return False
-    hostname = urlparse(url).hostname
+    # A base_url may omit the scheme ("localhost:11434"); ``urlparse`` only
+    # populates ``.hostname`` when a scheme (or ``//``) is present, so add one.
+    normalized = url if "://" in url else f"//{url}"
+    hostname = urlparse(normalized).hostname
     if hostname is None:
         return False
     normalized_host = normalize_ascii_lowercase(hostname.rstrip("."))

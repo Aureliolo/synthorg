@@ -249,8 +249,9 @@ the result sensible on a mixed local + cloud setup:
 - **Prefer local when adequate** (`engine.matcher_prefer_local`, default on): when
   a locally-hosted model (loopback / private / localhost base URL) already sits in
   the adequate band for a role, it is chosen over a paid remote of equal fit before
-  family spread applies. A role that a free local model can serve never silently
-  runs on a paid cloud model of equal or lower capability.
+  family spread applies (so a free local model wins even against a nominally
+  stronger remote model that sits in the same adequate band). A role a free
+  local model can serve never silently runs on a paid cloud model instead.
 - **Cloud capability floor** (`engine.matcher_min_cloud_tier`, default `2`): a
   remote provider is never auto-assigned a model whose *known* cost tier is below
   the floor, so a paid provider does not fill a role with a bottom-tier model when

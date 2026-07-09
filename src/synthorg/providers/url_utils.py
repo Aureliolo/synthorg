@@ -4,10 +4,10 @@ import ipaddress
 from urllib.parse import urlparse
 
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.core.url_locality import LOCALHOST_ALIASES, is_local_url
+from synthorg.core.url_locality import LOCALHOST_ALIASES
 from synthorg.core.url_redaction import redact_url as _redact_url
 
-__all__ = ["LOCALHOST_ALIASES", "is_local_url", "is_self_url", "redact_url"]
+__all__ = ["LOCALHOST_ALIASES", "is_self_url", "redact_url"]
 
 
 def is_self_url(url: str, *, backend_port: int) -> bool:

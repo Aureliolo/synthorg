@@ -10,16 +10,25 @@ describe('isLocalUrl', () => {
     'http://172.16.4.2:11434',
     'http://169.254.1.1:11434',
     'http://[::1]:11434',
+    'http://[fe80::1]:11434',
+    'http://[fc00::1]:11434',
+    // Schemeless host:port (a base_url may omit the scheme).
+    'localhost:11434',
+    '192.168.1.5:1234',
   ])('treats %s as local', (url) => {
     expect(isLocalUrl(url)).toBe(true)
   })
 
   it.each([
-    'https://api.openai.com/v1',
+    'https://api.example-provider.com/v1',
     'https://ollama.com/v1',
     'https://api.mammouth.ai/v1',
     'http://8.8.8.8/v1',
     'http://172.32.0.1/v1',
+    // Ordinary hostnames that begin with fc/fd/fe80 must NOT read as local IPv6.
+    'https://fcm.googleapis.com',
+    'https://fdio.example.com',
+    'https://fe80-gateway.example.com',
   ])('treats %s as remote', (url) => {
     expect(isLocalUrl(url)).toBe(false)
   })

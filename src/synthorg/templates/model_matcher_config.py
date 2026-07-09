@@ -1,3 +1,4 @@
+# module-kind: code
 """Operator-tunable weights and tier derivation for the model matcher.
 
 Separated from the matching engine (:mod:`synthorg.templates.model_matcher`)

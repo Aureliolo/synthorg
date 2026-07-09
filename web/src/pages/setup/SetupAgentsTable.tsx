@@ -5,6 +5,7 @@ import { InlineEdit } from '@/components/ui/inline-edit'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
+import { LocalityBadge } from '@/components/ui/locality-badge'
 import { cn } from '@/lib/utils'
 import { isLocalUrl } from '@/utils/provider-locality'
 import type { ProviderConfig } from '@/api/types/providers'
@@ -55,23 +56,11 @@ function LevelBadge({ level }: { level: string | null | undefined }) {
   )
 }
 
-/** Flags an agent whose model runs on a local (free) provider. */
-function LocalityBadge({ isLocal }: { isLocal: boolean }) {
-  if (!isLocal) return null
-  return (
-    <span
-      className="inline-flex shrink-0 rounded-full border border-success/20 bg-success/8 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-success"
-      title="Runs on a local provider -- free to run"
-    >
-      local
-    </span>
-  )
-}
-
 interface RowProps {
   agent: SetupAgentSummary
   index: number
   providers: Readonly<Record<string, ProviderConfig>>
+  isLocal: boolean
   personalityOptions: readonly PersonalityOption[]
   personalityPlaceholderText: string
   onNameChange: (index: number, name: string) => Promise<void>
@@ -84,6 +73,7 @@ function SetupAgentRow({
   agent,
   index,
   providers,
+  isLocal,
   personalityOptions,
   personalityPlaceholderText,
   onNameChange,
@@ -151,7 +141,7 @@ function SetupAgentRow({
             onChange={(provider, modelId) => void onModelChange(index, provider, modelId)}
           />
         </div>
-        <LocalityBadge isLocal={isLocalUrl(providers[agent.model_provider ?? '']?.base_url)} />
+        <LocalityBadge isLocal={isLocal} />
       </div>
     </div>
   )
@@ -219,6 +209,14 @@ export function SetupAgentsTable({
   )
   const groups = useMemo(() => groupByDepartment(agents), [agents])
   const placeholderText = personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)
+  // Parse each provider's base_url once, not per row per render.
+  const localityByProvider = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(providers).map(([name, cfg]) => [name, isLocalUrl(cfg.base_url)]),
+      ),
+    [providers],
+  )
 
   const rowFor = useCallback(
     (item: { agent: SetupAgentSummary; index: number }) => (
@@ -227,6 +225,7 @@ export function SetupAgentsTable({
         agent={item.agent}
         index={item.index}
         providers={providers}
+        isLocal={localityByProvider[item.agent.model_provider ?? ''] ?? false}
         personalityOptions={personalityOptions}
         personalityPlaceholderText={placeholderText}
         onNameChange={onNameChange}
@@ -237,6 +236,7 @@ export function SetupAgentsTable({
     ),
     [
       providers,
+      localityByProvider,
       personalityOptions,
       placeholderText,
       onNameChange,

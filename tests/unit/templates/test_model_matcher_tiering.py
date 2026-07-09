@@ -57,6 +57,10 @@ class _Provider:
         self.base_url = base_url
 
 
+_ONE_B: int = 1_000_000_000
+_TWENTY_B: int = 20_000_000_000
+
+
 @pytest.mark.unit
 class TestDemandTier:
     @pytest.mark.parametrize(
@@ -269,10 +273,6 @@ class TestMatchAllAgentsDemandDriven:
         chosen = {m.model_id for m in match_all_agents(agents, providers)}
         assert "fam-1.0" not in chosen
         assert chosen == {"fam-2.0"}
-
-
-_ONE_B: int = 1_000_000_000
-_TWENTY_B: int = 20_000_000_000
 
 
 @pytest.mark.unit

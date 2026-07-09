@@ -666,9 +666,11 @@ _r.register(
         description=(
             "Model matcher: when a locally-hosted model already meets a role's"
             " capability demand, prefer it over a remote/cloud model in the same"
-            " band, so free local hardware is used before paid cloud. Applied on"
-            " the next runtime-services rebuild, triggered by a settings"
-            " subscriber, so a change takes effect without a restart."
+            " band, so free local hardware is used before paid cloud. Only"
+            " affects demand-tier auto-assignment; an explicit model pin"
+            " (model_id/family/pattern) is unaffected. Applied on the next"
+            " runtime-services rebuild, triggered by a settings subscriber, so a"
+            " change takes effect without a restart."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -685,7 +687,8 @@ _r.register(
             "Model matcher: the lowest capability tier (1=economy .. 4=frontier)"
             " an agent may be auto-assigned on a remote/cloud provider, so a paid"
             " provider never draws a bottom-tier model when a role could take a"
-            " stronger one. Locally-hosted providers are exempt (free to run)."
+            " stronger one. Locally-hosted providers are exempt (free to run),"
+            " and an explicit model pin (model_id/family/pattern) is unaffected."
             " Applied on the next runtime-services rebuild, triggered by a"
             " settings subscriber, so a change takes effect without a restart."
         ),

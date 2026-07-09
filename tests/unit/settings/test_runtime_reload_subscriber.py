@@ -45,6 +45,8 @@ class TestProtocol:
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
         assert ("engine", "matcher_min_usable_parameters") in watched
+        assert ("engine", "matcher_prefer_local") in watched
+        assert ("engine", "matcher_min_cloud_tier") in watched
         assert ("external_api", "enabled") in watched
         assert ("coordination", "enable_coordination_middleware") in watched
         assert ("coordination", "decomposition_model") in watched

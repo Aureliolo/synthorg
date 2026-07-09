@@ -1,3 +1,4 @@
+# module-kind: code
 """Capability-aware model-matching engine.
 
 Given a :class:`~synthorg.templates.model_requirements.ModelRequirement`

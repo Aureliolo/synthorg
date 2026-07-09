@@ -43,10 +43,13 @@ function model(id: string): ProviderModelConfig {
       metadata_source: 'unknown',
     },
     stale: null,
-  } as unknown as ProviderModelConfig
+  }
 }
 
 function provider(baseUrl: string | null): ProviderConfig {
+  // The full ProviderConfig type has many credential-indicator fields; the
+  // table only reads models + base_url here, so cast through unknown rather
+  // than synthesising every field.
   return {
     driver: 'litellm',
     litellm_provider: 'prov',
