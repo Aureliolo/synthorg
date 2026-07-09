@@ -35,7 +35,9 @@ class CompanyConfig(BaseModel):
     Attributes:
         autonomy: Autonomy configuration (level + presets).
         approval_timeout: Timeout policy for pending approval items.
-        budget_monthly: Monthly budget in the configured currency.
+        budget_monthly: Setup-time monthly budget seed only; the enforced
+            value is settings ``budget.total_monthly`` (this field is not
+            read at runtime). See the field description.
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.
         middleware: Agent and coordination middleware configuration.
@@ -58,7 +60,17 @@ class CompanyConfig(BaseModel):
     budget_monthly: float = Field(
         default=100.0,
         ge=0.0,
-        description="Monthly budget in the configured currency",
+        # Setup/template seed only. The ENFORCED monthly budget is the single
+        # source of truth in settings ``budget.total_monthly`` (mirrored into
+        # ``BudgetConfig.total_monthly``): the cost tracker/enforcer, the
+        # analytics, and the Org page all read that setting, and the Org-edit
+        # budget field reads/writes it directly. This field is not consulted at
+        # runtime, so it can never diverge from what is enforced.
+        description=(
+            "Setup-time monthly budget seed in the configured currency. The"
+            " enforced value is settings budget.total_monthly (the single"
+            " source of truth); this field is not read at runtime."
+        ),
     )
     communication_pattern: NotBlankStr = Field(
         default="hybrid",

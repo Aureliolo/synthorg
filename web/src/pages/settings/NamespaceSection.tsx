@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types/settings'
 import { useAnimationPreset } from '@/hooks/useAnimationPreset'
+import { Collapsible } from '@/components/ui/collapsible'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
@@ -138,17 +139,83 @@ function NamespaceHeader({ displayName, icon, count, isOpen, forceOpen, onToggle
   )
 }
 
+/**
+ * A setting that genuinely cannot be changed from the dashboard: it is sourced
+ * from the environment / YAML at process start and a write is rejected
+ * (`read_only_post_init`). A merely `restart_required` setting is NOT included:
+ * it is DB-writable and stays inline with its restart badge, only its effect
+ * waits for a restart.
+ */
+function isStartupOnly(entry: SettingEntry): boolean {
+  return entry.definition.read_only_post_init
+}
+
+/** Split entries into live-editable groups and the read-only startup remainder. */
+function partitionByRuntime(
+  entries: SettingEntry[],
+): { groups: Map<string, SettingEntry[]>; startup: SettingEntry[] } {
+  const startup: SettingEntry[] = []
+  const live: SettingEntry[] = []
+  for (const entry of entries) {
+    if (isStartupOnly(entry)) startup.push(entry)
+    else live.push(entry)
+  }
+  return { groups: groupByGroup(live), startup }
+}
+
+/**
+ * Collapsed disclosure for genuinely read-only (env / YAML) settings.
+ *
+ * Settings flagged `read_only_post_init` are baked in from env / YAML at
+ * process start and a dashboard write is rejected, so rendering them inline
+ * among live-editable knobs (with an enabled-looking input) is misleading. They
+ * are grouped here, collapsed by default and marked read-only, so operators can
+ * still inspect the baked-in value without mistaking it for something editable.
+ * (`restart_required`-only settings are DB-writable and stay inline with their
+ * restart badge; they are deliberately not moved here.)
+ */
+function AdvancedStartupOnly({ entries, rows }: { entries: SettingEntry[]; rows: RowRenderProps }) {
+  if (entries.length === 0) return null
+  // Reuse the shared disclosure primitive (chevron trigger + aria wiring +
+  // per-instance id) rather than hand-rolling a second toggle here.
+  return (
+    <Collapsible
+      className="mt-3"
+      defaultOpen={false}
+      title={
+        <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
+          Advanced · startup-only
+          <span className="ml-2 font-normal normal-case">
+            read-only · set via env / YAML before launch
+          </span>
+        </span>
+      }
+      summary={`(${entries.length})`}
+    >
+      <div className="space-y-1">
+        {entries.map((entry) => (
+          <NamespaceSettingRow key={entryKey(entry)} entry={entry} rows={rows} />
+        ))}
+      </div>
+    </Collapsible>
+  )
+}
+
 export function NamespaceSection(props: NamespaceSectionProps) {
   const { displayName, icon, entries, forceOpen, hideHeader, footerAction } = props
   const [collapsed, setCollapsed] = useState(false)
   const isOpen = Boolean(hideHeader) || Boolean(forceOpen) || !collapsed
   const anim = useAnimationPreset()
-  const groups = groupByGroup(entries)
-  const contentId = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}-content`
+  // Live-editable settings render inline (grouped); startup-only settings move
+  // to a collapsed "Advanced" disclosure so they are not mistaken for editable.
+  const { groups, startup: startupEntries } = partitionByRuntime(entries)
+  const sectionSlug = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}`
+  const contentId = `${sectionSlug}-content`
   const rows: RowRenderProps = props
   const inner = (
     <>
       <NamespaceGroups groups={groups} hideHeader={hideHeader} anim={anim} rows={rows} />
+      <AdvancedStartupOnly entries={startupEntries} rows={rows} />
       <NamespaceFooter footerAction={footerAction} />
     </>
   )

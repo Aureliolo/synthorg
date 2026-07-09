@@ -191,7 +191,15 @@ async def overlay_feature_settings(
         requested = bool(overrides["tool_creation_enabled"])
         enabled = requested and bool(allowlist)
         if requested and not allowlist:
-            logger.warning(
+            # DEBUG, not WARNING: this is an expected, derivable quiescent
+            # state (toolsmith requested but no allowed_capabilities set),
+            # re-evaluated on every overlay rebuild (boot, a wiring pass, or a
+            # self_improvement / chief_of_staff settings edit), so at WARNING it
+            # tiles the log. The held-off state is already visible in the
+            # feature's own status. (The sibling malformed-value branches stay
+            # WARNING: a bad JSON shape is an operator error worth surfacing,
+            # not an expected quiescent state.)
+            logger.debug(
                 META_TOOLSMITH_ALLOWLIST_REQUIRED,
                 note=(
                     "tool creation requested but no allowed_capabilities are "

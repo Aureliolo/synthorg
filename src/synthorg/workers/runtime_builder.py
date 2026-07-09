@@ -44,6 +44,7 @@ from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.health import (
     HealthJudge,
     HealthMonitoringPipeline,
@@ -63,6 +64,7 @@ from synthorg.observability.events.workers import (
     WORKERS_RUNTIME_HOT_SWAP_FAILED,
     WORKERS_RUNTIME_RELOADED,
 )
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
@@ -85,6 +87,7 @@ from synthorg.workers._agent_engine_collaborators import (
 from synthorg.workers._coordinator_assembly import (
     _build_runtime_coordinator,
     _build_runtime_work_pipeline,
+    decomposition_model_is_configured,
 )
 from synthorg.workers._engine_assembly import (
     _build_external_api_runtime,
@@ -278,6 +281,63 @@ def _select_active_provider(
     return registry, names
 
 
+def _degraded_no_coordinator(
+    app_state: AppState,
+    workspace_root: Path,
+    provider: CompletionProvider,
+    *,
+    error: BaseException | None = None,
+) -> RuntimeServices:
+    """Boot the degraded no-coordinator mode: task execution rejected at the seam.
+
+    Used when a provider is configured but ``coordination.decomposition_model``
+    is unset (e.g. a capability toggle rebuilt the coordinator mid-setup before
+    the model landed). Reject task execution at the seam until a coordination
+    model is configured, instead of crashing the boot / reload. Setting the
+    model triggers a watched-key rebuild that succeeds, so this self-heals.
+
+    Args:
+        app_state: Live application state.
+        workspace_root: Absolute filesystem root for the vision gate.
+        provider: The active provider (its vision gate still boots).
+        error: The caught config error, when reached from the coordinator
+            build's late backstop rather than the cheap pre-check.
+
+    Returns:
+        Degraded ``RuntimeServices`` (``NoProviderExecutionService``,
+        ``coordinator=None``, ``work_pipeline=None``).
+    """
+    error_fields = (
+        {}
+        if error is None
+        else {
+            "error_type": type(error).__name__,
+            "error": safe_error_description(error),
+        }
+    )
+    logger.warning(
+        API_APP_STARTUP,
+        service="runtime_services",
+        mode="no_coordinator",
+        note=(
+            "provider present but coordination.decomposition_model is unset; "
+            "task execution rejected at the seam until a coordination model "
+            "is configured"
+        ),
+        **error_fields,
+    )
+    return RuntimeServices(
+        worker_execution_service=NoProviderExecutionService(),
+        coordinator=None,
+        work_pipeline=None,
+        vision_gate=_build_vision_gate_or_none(
+            app_state=app_state,
+            workspace_root=workspace_root,
+            provider=provider,
+        ),
+    )
+
+
 async def build_runtime_services(
     app_state: AppState,
     *,
@@ -315,6 +375,15 @@ async def build_runtime_services(
         )
     registry, names = selected
     provider = registry.get(names[0])
+
+    # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
+    # the coordination model is unset the coordinator build would raise anyway,
+    # so short-circuit to degraded mode here rather than tearing down and
+    # reconnecting live MCP sessions only to discard the result. This keeps the
+    # self-heal reload path (an unrelated watched-key write while the model is
+    # still blank) from churning healthy resources.
+    if not await decomposition_model_is_configured(app_state):
+        return _degraded_no_coordinator(app_state, workspace_root, provider)
 
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
@@ -365,17 +434,23 @@ async def build_runtime_services(
         registry=ActionTypeRegistry(),
         config=app_state.config.config.autonomy,
     )
-    (
-        coordinator,
-        scorer,
-        decomposition_provider,
-        decomposition_model,
-    ) = await _build_runtime_coordinator(
-        app_state,
-        engine,
-        provider,
-        coordination_metrics_collector,
-    )
+    try:
+        (
+            coordinator,
+            scorer,
+            decomposition_provider,
+            decomposition_model,
+        ) = await _build_runtime_coordinator(
+            app_state,
+            engine,
+            provider,
+            coordination_metrics_collector,
+        )
+    except CoordinationConfigError as exc:
+        # Backstop for the case the pre-check cannot catch: the model was
+        # cleared between the pre-check read and this eager build. Degrade to
+        # the same no-coordinator mode the pre-check returns.
+        return _degraded_no_coordinator(app_state, workspace_root, provider, error=exc)
     security = app_state.config.security
     logger.info(
         API_APP_STARTUP,

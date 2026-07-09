@@ -25,6 +25,7 @@ Per-asset provenance:
 | `gemini.svg` | `gemini` |
 | `groq.svg` | `groq` |
 | `lm-studio.svg` | `lmstudio` |
+| `mammouth.svg` | original artwork (see below) |
 | `mistral.svg` | `mistral` |
 | `moonshot.svg` | `moonshot` |
 | `nvidia_nim.svg` | `nvidia` |
@@ -45,6 +46,16 @@ template; the upstream copyright notice is preserved here:
 `Copyright (c) 2023 LobeHub`. SynthOrg uses these brand marks under
 fair-use nominative-fair-use grounds (we display them solely to
 indicate that this product integrates with that provider).
+
+### mammouth.svg
+
+lobe-icons ships no Mammouth mark, so `mammouth.svg` is an original,
+monochrome mammoth silhouette drawn for this project (a generic
+mammoth glyph representing the provider, not a copy of Mammouth's
+brand mark), in the same `currentColor` / `viewBox="0 0 24 24"`
+style as the lobe-icons set. No third-party licence applies. Swap in
+the official brand SVG if one is later obtained and its licence
+permits nominative use.
 
 ## Theming via mask-image
 

@@ -1,14 +1,14 @@
 schema_version: 1
-last_generated_utc: '2026-07-08T11:01:17Z'
-generator_revision: a3e1323a0
+last_generated_utc: '2026-07-08T23:25:22Z'
+generator_revision: ee716ad0b
 stats:
   tests:
-    raw: 39732
+    raw: 39758
     rounded: 39000
     display: 39,000+
   providers_curated:
-    raw: 20
-    display: '20'
+    raw: 21
+    display: '21'
   providers_via_litellm:
     raw: 94
     display: 90+

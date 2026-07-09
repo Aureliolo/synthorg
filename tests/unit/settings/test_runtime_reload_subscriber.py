@@ -47,6 +47,7 @@ class TestProtocol:
         assert ("engine", "matcher_min_usable_parameters") in watched
         assert ("external_api", "enabled") in watched
         assert ("coordination", "enable_coordination_middleware") in watched
+        assert ("coordination", "decomposition_model") in watched
         assert ("design", "image_generation_enabled") in watched
         assert ("design", "image_model") in watched
 
@@ -58,6 +59,7 @@ class TestReload:
             ("engine", "classifier_fallback_confidence"),
             ("external_api", "provider_type"),
             ("coordination", "enable_coordination_middleware"),
+            ("coordination", "decomposition_model"),
             ("design", "image_generation_enabled"),
             ("design", "image_model"),
         ],

@@ -81,6 +81,7 @@ export const modelsHandlers = [
         supports_reasoning: false,
         supports_image_generation: false,
         family: null,
+        metadata_source: 'unknown',
         stale: null,
       }),
     )
@@ -103,6 +104,7 @@ export const modelsHandlers = [
       supports_reasoning: false,
       supports_image_generation: false,
       family: null,
+      metadata_source: 'unknown',
       stale: null,
     }
     return HttpResponse.json(

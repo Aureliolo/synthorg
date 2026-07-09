@@ -10,13 +10,14 @@ def make_setting_value(
     value: str,
     namespace: SettingNamespace = SettingNamespace.BUDGET,
     key: str = "total_monthly",
+    source: SettingSource = SettingSource.DEFAULT,
 ) -> SettingValue:
     """Build a ``SettingValue`` for testing."""
     return SettingValue(
         namespace=namespace,
         key=key,
         value=value,
-        source=SettingSource.DEFAULT,
+        source=source,
     )
 
 

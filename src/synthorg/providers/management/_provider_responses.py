@@ -21,6 +21,7 @@ from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
 )
+from synthorg.config.model_metadata import MetadataSource
 from synthorg.config.model_staleness import ModelStaleness
 from synthorg.config.schema import (
     LocalModelParams,
@@ -39,6 +40,8 @@ class ProviderModelResponse(BaseModel):
         cost_per_1k_input: Cost per 1k input tokens.
         cost_per_1k_output: Cost per 1k output tokens.
         cost_per_image: Flat cost per generated image (image-output models).
+        currency: Currency the cost fields are expressed in (the operator's
+            configured ``budget.currency``).
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
         local_params: Per-model launch parameters for local providers.
@@ -49,8 +52,17 @@ class ProviderModelResponse(BaseModel):
             assigning the model to tool-requiring agents.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
+        supports_embeddings: Whether the model is an embedding model (vector
+            output, excluded from chat-agent matching).
         supports_image_generation: Whether the model generates images from
             text prompts (image output modality).
+        supports_reasoning: Whether the model exposes extended reasoning
+            (thinking / o1-style models).
+        family: Parsed model family used to group models in the picker.
+        metadata_source: Provenance of the capability metadata (litellm /
+            preset / probe / unknown); ``unknown`` drives the UI's
+            "capabilities unverified" pill.
+        stale: Staleness marker set when the id left the live catalogue.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -133,6 +145,15 @@ class ProviderModelResponse(BaseModel):
     family: NotBlankStr | None = Field(
         default=None,
         description="Parsed model family (groups models for the picker)",
+    )
+    metadata_source: MetadataSource = Field(
+        default="unknown",
+        description=(
+            "Provenance of the capability metadata (litellm / preset / probe /"
+            " unknown). 'unknown' means neither the provider nor LiteLLM"
+            " reported capabilities, so the UI marks them unverified rather than"
+            " asserting the model has none."
+        ),
     )
     stale: ModelStaleness | None = Field(
         default=None,

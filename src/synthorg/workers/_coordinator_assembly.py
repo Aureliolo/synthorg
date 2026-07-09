@@ -204,6 +204,25 @@ async def _resolve_coordinator_dependencies(
     )
 
 
+async def decomposition_model_is_configured(app_state: AppState) -> bool:
+    """Whether a non-blank ``coordination.decomposition_model`` is set.
+
+    A cheap pre-check the runtime builder runs before the expensive engine /
+    MCP-bridge assembly: a blank model short-circuits straight to degraded
+    no-coordinator mode, so a self-heal reload triggered by an unrelated
+    watched-key write does not tear down and reconnect live MCP sessions only
+    to discard the result.
+
+    Returns:
+        True when the resolved model reference carries a non-blank model id.
+    """
+    raw_ref = await config_resolver_of(app_state).get_str(
+        _DECOMPOSITION_NS,
+        _DECOMPOSITION_KEY,
+    )
+    return bool(parse_model_ref(raw_ref).model_id.strip())
+
+
 def _build_coordination_chain(
     app_state: AppState,
     *,
@@ -307,17 +326,17 @@ async def _build_runtime_coordinator(
         or provider
     )
     if not decomposition_model.strip():
+        # Fail soft, not hard: raise a typed error so the runtime builder can
+        # boot in the degraded no-coordinator mode (task execution rejected at
+        # the seam) instead of crashing the whole reload. Logging happens once,
+        # at the builder's catch site; this raise site stays silent so a single
+        # failure yields a single WARNING rather than one line per boot hook it
+        # would propagate through.
         msg = (
             "coordination.decomposition_model must select a model from your"
             " provider catalogue when a provider is configured: the"
             " coordinator builds eagerly at boot and its decomposition"
             " strategy requires a non-blank model."
-        )
-        logger.error(
-            API_APP_STARTUP,
-            service="coordinator",
-            context="config_invalid",
-            error=msg,
         )
         raise CoordinationConfigError(msg)
     performance_tracker = app_state.slice(HrStateSlice).performance_tracker

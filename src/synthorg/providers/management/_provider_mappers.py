@@ -154,5 +154,6 @@ def to_provider_model_response(
             else config.metadata.supports_reasoning
         ),
         family=config.metadata.family,
+        metadata_source=config.metadata.metadata_source,
         stale=config.stale,
     )

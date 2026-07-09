@@ -8951,7 +8951,7 @@ export type components = {
             readonly approval_timeout: components["schemas"]["WaitForeverConfig"] | components["schemas"]["DenyOnTimeoutConfig"] | components["schemas"]["TieredTimeoutConfig"] | components["schemas"]["EscalationChainConfig"];
             readonly autonomy: components["schemas"]["AutonomyConfig"];
             /**
-             * @description Monthly budget in the configured currency
+             * @description Setup-time monthly budget seed in the configured currency. The enforced value is settings budget.total_monthly (the single source of truth); this field is not read at runtime.
              * @default 100
              */
             readonly budget_monthly: number;
@@ -14395,6 +14395,12 @@ export type components = {
              * @default 200000
              */
             readonly max_context: number;
+            /**
+             * @description Provenance of the capability metadata (litellm / preset / probe / unknown). 'unknown' means neither the provider nor LiteLLM reported capabilities, so the UI marks them unverified rather than asserting the model has none.
+             * @default unknown
+             * @enum {string}
+             */
+            readonly metadata_source: "litellm" | "preset" | "probe" | "unknown";
             /** @description Staleness marker when the id left the live catalogue */
             readonly stale: components["schemas"]["ModelStaleness"] | null;
             /**

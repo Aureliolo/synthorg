@@ -205,6 +205,7 @@ class TestProviderPresets:
         "fireworks_ai",
         "gemini",
         "groq",
+        "mammouth",
         "mistral",
         "moonshot",
         "nvidia_nim",
@@ -260,19 +261,28 @@ class TestProviderPresets:
         assert preset is not None
         assert preset.requires_base_url is True
 
-    def test_ollama_cloud_prefills_openai_compatible_base_url(self) -> None:
-        """Ollama Cloud prefills its OpenAI-compatible ``/v1`` endpoint.
+    @pytest.mark.parametrize(
+        ("name", "base_url"),
+        [
+            ("ollama-cloud", "https://ollama.com/v1"),
+            ("mammouth", "https://api.mammouth.ai/v1"),
+        ],
+    )
+    def test_live_discovery_gateway_prefills_openai_compatible_base_url(
+        self, name: str, base_url: str
+    ) -> None:
+        """A live-discovery gateway prefills its OpenAI-compatible ``/v1`` URL.
 
-        Ollama Cloud is reached through ``https://ollama.com/v1`` with a
-        Bearer API key (the documented, auth-working cloud path); the
-        field is optional so a private deployment can override, but the
-        form is submit-ready after entering an API key alone.
+        Each is reached through its ``/v1`` endpoint with a Bearer API key; the
+        base URL is optional but prefilled, so the form is submit-ready after
+        an API key alone, and ``prefer_live_discovery`` pulls the live catalogue
+        on create rather than the static ``litellm.model_cost`` table.
         """
-        preset = get_preset("ollama-cloud")
+        preset = get_preset(name)
         assert preset is not None
         assert isinstance(preset, CloudPreset)
         assert preset.requires_base_url is False
-        assert preset.default_base_url == "https://ollama.com/v1"
+        assert preset.default_base_url == base_url
         assert preset.prefer_live_discovery is True
 
     @pytest.mark.parametrize("name", ["ollama", "lm-studio", "vllm"])

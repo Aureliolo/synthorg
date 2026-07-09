@@ -168,7 +168,7 @@ class TestDiscoveryTrustViaAllowlist:
             make_create_request(base_url="http://localhost:11434"),
         )
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             new_callable=AsyncMock,
             return_value=(),
         ) as mock_discover:
@@ -189,7 +189,7 @@ class TestDiscoveryTrustViaAllowlist:
         await service.remove_custom_allowlist_entry("evil.example.com:9999")
 
         with patch(
-            "synthorg.providers.management.service.discover_models",
+            "synthorg.providers.management._discovery_mixin.discover_models",
             new_callable=AsyncMock,
             return_value=(),
         ) as mock_discover:
@@ -302,7 +302,7 @@ class TestCreateFromPresetAllowlistTrust:
                 return_value=(),
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(),
             ) as mock_discover,
@@ -327,7 +327,7 @@ class TestCreateFromPresetAllowlistTrust:
                 return_value=(),
             ),
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(),
             ) as mock_discover,

@@ -16,7 +16,7 @@ from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.settings._resolver_coercions import _parse_bool
-from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver
@@ -144,6 +144,55 @@ class TestGetStr:
         mock_settings.get.side_effect = SettingNotFoundError("nope")
         with pytest.raises(SettingNotFoundError):
             await resolver.get_str("bad", "key")
+
+
+@pytest.mark.unit
+class TestGetJson:
+    """Tests for get_json()."""
+
+    async def test_empty_value_returns_none_without_invalid_json_warning(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """An unset JSON setting resolves to JSON null, quietly.
+
+        A JSON setting whose definition ``default`` is ``None`` resolves to
+        the empty-string sentinel; that is "no value", not corrupt JSON, so
+        ``get_json`` returns ``None`` and emits no invalid-JSON warning (the
+        source of the ``providers.configs`` fresh-install log spam).
+        """
+        mock_settings.get.return_value = _make_value("")
+        with capture_logs() as logs:
+            result = await resolver.get_json("providers", "configs")
+        assert result is None
+        # "Quietly" means no log at all on the unset-default path.
+        assert logs == []
+
+    async def test_blank_env_override_returns_none_but_warns(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """A blank value from a REAL source is surfaced, not silently dropped.
+
+        An empty ``SYNTHORG_..._CONFIGS=`` in the environment is a
+        misconfiguration, not "unset": ``get_json`` still returns ``None`` (so
+        the container fallback applies) but logs one WARNING so the operator
+        sees why their override was ignored, distinguishing it from the quiet
+        DEFAULT-sourced sentinel above.
+        """
+        mock_settings.get.return_value = _make_value(
+            "", source=SettingSource.ENVIRONMENT
+        )
+        with capture_logs() as logs:
+            result = await resolver.get_json("providers", "configs")
+        assert result is None
+        blank = [log for log in logs if log.get("reason") == "blank_value_override"]
+        assert len(blank) == 1
+        assert blank[0]["source"] == SettingSource.ENVIRONMENT.value
+
+    async def test_parses_object_value(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value('{"a": 1}')
+        assert await resolver.get_json("test", "key") == {"a": 1}
 
 
 @pytest.mark.unit

@@ -15,12 +15,14 @@ from pydantic import SecretStr
 from synthorg.api.dto_providers import CreateFromPresetRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
+from synthorg.providers.errors import AuthenticationError, RateLimitError
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.presets import get_preset
 
 pytestmark = pytest.mark.unit
 
-_DISCOVER_PATH = "synthorg.providers.management.service.discover_models"
+_DISCOVER_PATH = "synthorg.providers.management._discovery_mixin.discover_models"
+_STRICT_PATH = "synthorg.providers.management._discovery_mixin.discover_models_strict"
 _LITELLM_PATH = "synthorg.providers.management._preset_creation.models_from_litellm"
 
 
@@ -60,8 +62,103 @@ class TestPreferLiveDiscoveryCreate:
         # The discovered catalogue replaces the curated seed on create.
         assert {m.id for m in config.models} == {"live-model-001", "live-model-002"}
 
+    async def test_mammouth_seedless_discovers_and_replaces(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """A seedless gateway (Mammouth) populates purely from live discovery.
+
+        Mammouth ships no curated seed, so create runs the strict discovery
+        path (the catalogue IS its models) and persists exactly what discovery
+        returns, never consulting the static litellm catalogue.
+        """
+        discovered = (ProviderModelConfig(id="gpt-x", alias="gpt-x"),)
+        request = CreateFromPresetRequest(
+            name="my-mammouth",
+            preset_name="mammouth",
+            api_key=SecretStr("sk-mammouth-key"),
+        )
+
+        with (
+            patch(_STRICT_PATH) as discover_strict,
+            patch(_DISCOVER_PATH) as discover_plain,
+            patch(_LITELLM_PATH) as litellm_models,
+        ):
+            discover_strict.return_value = discovered
+            config = await service.create_from_preset(request)
+
+        litellm_models.assert_not_called()
+        # A seedless gateway routes through the strict (surface-on-failure) path,
+        # never the non-strict fallback path.
+        discover_strict.assert_awaited_once()
+        discover_plain.assert_not_called()
+        assert discover_strict.await_args is not None
+        assert discover_strict.await_args.kwargs["headers"] == {
+            "Authorization": "Bearer sk-mammouth-key",
+        }
+        assert {m.id for m in config.models} == {"gpt-x"}
+
+    @pytest.mark.parametrize(
+        "error",
+        [AuthenticationError("bad key"), RateLimitError("rate limited")],
+    )
+    async def test_mammouth_seedless_surfaces_discovery_failure(
+        self,
+        service: ProviderManagementService,
+        error: Exception,
+    ) -> None:
+        """A seedless gateway propagates a failed discovery, never persists empty.
+
+        With no seed to fall back to, a discovery failure (a terminal bad key,
+        or a rate limit that exhausted its retry budget) must surface the
+        specific error to the create caller rather than creating a provider
+        with zero models.
+        """
+        request = CreateFromPresetRequest(
+            name="my-mammouth",
+            preset_name="mammouth",
+            api_key=SecretStr("sk-bad-key"),
+        )
+
+        with patch(_STRICT_PATH) as discover_strict:
+            discover_strict.side_effect = error
+            with pytest.raises(type(error)):
+                await service.create_from_preset(request)
+
 
 class TestLiveDiscoveryGuards:
+    async def test_seeded_gateway_retains_seed_on_failed_discovery(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """A seeded gateway (Ollama Cloud) degrades to its seed on failure.
+
+        The curated seed is a valid create-time catalogue, so a non-strict
+        discovery that comes back empty (a transient blip) keeps the seed
+        rather than failing the save or persisting an empty list. The strict
+        surface-on-failure path is reserved for seedless gateways.
+        """
+        preset = get_preset("ollama-cloud")
+        assert preset is not None
+        seed = (ProviderModelConfig(id="seed-001", alias="seed"),)
+
+        with (
+            patch(_DISCOVER_PATH) as discover,
+            patch(_STRICT_PATH) as discover_strict,
+        ):
+            discover.return_value = ()
+            result = await service._maybe_discover_preset_models(
+                preset,
+                preset.default_base_url,
+                seed,
+                auth_type=AuthType.API_KEY,
+                api_key="sk-ollama-key",
+            )
+
+        discover.assert_awaited_once()
+        discover_strict.assert_not_called()
+        assert result == seed
+
     async def test_no_api_key_keeps_seed_and_skips_discovery(
         self,
         service: ProviderManagementService,

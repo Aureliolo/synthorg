@@ -640,6 +640,13 @@ MCP tools for coordination and ceremony policy route through dedicated service f
 
 The services import `AppState` for re-use of the existing 3-level resolution (`settings_service` + `config_resolver` + `ceremony_scheduler`) rather than introducing a parallel protocol stack.
 
+### Runtime Coordinator Boot Modes
+
+`build_runtime_services` (`src/synthorg/workers/runtime_builder.py`) assembles the live coordinator, and degrades rather than crashing when it cannot:
+
+- **No provider registered**: returns a `NoProviderExecutionService` and `coordinator=None`; the execute seam fails loudly and `POST /tasks/{task_id}/coordinate` honestly 503s instead of walking status labels silently.
+- **Provider present but `coordination.decomposition_model` unset**: the coordinator's decomposition strategy requires a non-blank model, so the builder boots the *same* degraded no-coordinator mode (task execution rejected at the seam, `/coordinate` 503s) rather than crashing the boot / reload. A cheap pre-check short-circuits before the expensive engine / MCP-bridge assembly (so a self-heal reload triggered by an unrelated settings write does not churn live MCP sessions), and a single WARNING (`mode="no_coordinator"`) is logged. `coordination.decomposition_model` is a watched reload key, so setting it triggers a rebuild that succeeds: the runtime **self-heals** to full coordination without a process restart.
+
 ## See Also
 
 - [Task & Workflow Engine](engine.md): task dispatch, state coordination

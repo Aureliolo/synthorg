@@ -28,7 +28,7 @@ class TestLocalModelManagement:
         """Helper: create an Ollama provider via from-preset."""
         with (
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(ProviderModelConfig(id="test-model:latest"),),
             ),
@@ -103,7 +103,7 @@ class TestLocalModelManagement:
                 "synthorg.providers.management.local_models.get_local_model_manager",
             ) as mock_factory,
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(ProviderModelConfig(id="remaining-model"),),
             ) as mock_discover,
@@ -229,7 +229,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
                 "synthorg.providers.management._preset_creation.models_from_litellm",
             ) as mock_litellm,
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
                 return_value=(ProviderModelConfig(id="local-model"),),
             ),
@@ -277,7 +277,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
                 "synthorg.providers.management._preset_creation.models_from_litellm",
             ) as mock_litellm,
             patch(
-                "synthorg.providers.management.service.discover_models",
+                "synthorg.providers.management._discovery_mixin.discover_models",
                 new_callable=AsyncMock,
             ) as mock_discover,
         ):
