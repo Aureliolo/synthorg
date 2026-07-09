@@ -95,6 +95,17 @@ export const FullProfile: Story = {
   },
 }
 
+export const TierWithoutModel: Story = {
+  args: {
+    name: 'Grace Hopper',
+    role: 'Principal Engineer',
+    department: 'Engineering',
+    status: 'active',
+    tier: 'medium',
+    timestamp: '4m ago',
+  },
+}
+
 export const AgentGrid: Story = {
   args: { name: 'Alice Smith', role: 'Engineer', department: 'Engineering', status: 'active' },
   render: () => (

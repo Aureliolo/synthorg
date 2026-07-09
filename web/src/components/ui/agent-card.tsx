@@ -42,12 +42,27 @@ interface MetaItemData {
   mono?: boolean
   /** Span both grid columns (long values like traits / current task). */
   span?: boolean
+  /** Muted qualifier shown after the value (e.g. the model's capability tier). */
+  suffix?: string | undefined
+}
+
+/**
+ * The model row, with the capability tier co-located as a muted suffix. Falls
+ * back to a standalone tier row when the model id is absent.
+ */
+function modelMetaItem(props: AgentCardProps): MetaItemData | null {
+  if (props.model) {
+    return { label: 'Model', value: props.model, mono: true, suffix: props.tier ?? undefined }
+  }
+  if (props.tier) return { label: 'Tier', value: props.tier }
+  return null
 }
 
 /** Assemble the metadata items present for this agent, in display order. */
 function buildMetaItems(props: AgentCardProps): MetaItemData[] {
   const items: MetaItemData[] = [{ label: 'Dept', value: props.department }]
-  if (props.model) items.push({ label: 'Model', value: props.model, mono: true })
+  const model = modelMetaItem(props)
+  if (model) items.push(model)
   if (props.personality) items.push({ label: 'Personality', value: props.personality })
   if (props.capabilities?.length) {
     items.push({ label: 'Capabilities', value: props.capabilities.join(', ') })
@@ -59,20 +74,18 @@ function buildMetaItems(props: AgentCardProps): MetaItemData[] {
   return items
 }
 
-function MetaItem({ label, value, mono = false, span = false }: MetaItemData) {
+function MetaItem({ label, value, mono = false, span = false, suffix }: MetaItemData) {
   return (
     <div className={cn('flex min-w-0 items-baseline gap-1 text-xs', span && 'col-span-2')}>
       <span className="shrink-0 text-muted-foreground">{label}:</span>
-      <span className={cn('truncate text-text-secondary', mono && 'font-mono')}>{value}</span>
+      <span className={cn('min-w-0 truncate text-text-secondary', mono && 'font-mono')}>{value}</span>
+      {suffix && (
+        <span className="shrink-0 text-muted-foreground">
+          <span aria-hidden="true">· </span>
+          {suffix}
+        </span>
+      )}
     </div>
-  )
-}
-
-function TierBadge({ tier }: { tier: 'large' | 'medium' | 'small' }) {
-  return (
-    <span className="shrink-0 self-start rounded-md border border-border bg-surface px-1.5 py-0.5 text-micro uppercase tracking-wide text-text-secondary">
-      {tier}
-    </span>
   )
 }
 
@@ -98,7 +111,7 @@ function CardFooterTime({
 }
 
 export function AgentCard(props: AgentCardProps) {
-  const { name, role, status, tier, timestamp, timestampIso, className, flashStyle } = props
+  const { name, role, status, timestamp, timestampIso, className, flashStyle } = props
   const nameId = useId()
   const roleId = useId()
   const metaItems = buildMetaItems(props)
@@ -113,7 +126,7 @@ export function AgentCard(props: AgentCardProps) {
       )}
       style={flashStyle}
     >
-      {/* Header: avatar + name + status + tier */}
+      {/* Header: avatar + name + status */}
       <div className="flex items-start gap-2.5">
         <Avatar name={name} size="md" />
         <div className="min-w-0 flex-1">
@@ -125,7 +138,6 @@ export function AgentCard(props: AgentCardProps) {
           </div>
           <span id={roleId} className="text-xs text-text-secondary">{role}</span>
         </div>
-        {tier && <TierBadge tier={tier} />}
       </div>
 
       {/* Body: two-column metadata grid */}
