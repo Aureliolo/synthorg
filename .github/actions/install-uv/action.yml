@@ -4,17 +4,16 @@ description: |
   retry_cmd.sh's bounded exponential-with-cap backoff, and leave uv + uvx on
   PATH for later steps.
 
-  Why not astral-sh/setup-uv: that action resolves the latest release over
-  the GitHub API and downloads the binary from the CDN as single-attempt
-  network ops, so one transient GitHub-API / CDN blip aborts the step in
-  seconds and takes the whole job -- and every downstream check -- with it.
-  This is the uv analogue of go-mod-download-retry: the house pattern of
-  wrapping every idempotent network fetch in bounded retry rather than
-  trusting a third party's own resilience. The uv dependency cache that
-  setup-uv used to manage is handled by an explicit actions/cache step in
-  the callers that need it (actions/cache treats a cache-service outage as a
-  non-fatal warning, so it cannot fail the job the way setup-uv's bundled
-  cache handling could).
+  Why not astral-sh/setup-uv: that action resolves the latest release over the
+  GitHub API and downloads the binary from the CDN as single-attempt network
+  ops, so one transient GitHub-API / CDN blip aborts the step in seconds and
+  takes the whole job -- and every downstream check -- with it. This is the uv
+  analogue of go-mod-download-retry: the house pattern of wrapping every
+  idempotent network fetch in bounded retry rather than trusting a third
+  party's own resilience. The uv dependency cache that setup-uv used to manage
+  is handled by an explicit actions/cache step in the callers that need it
+  (actions/cache treats a cache-service outage as a non-fatal warning, so it
+  cannot fail the job the way setup-uv's bundled cache handling could).
 
 runs:
   using: composite
@@ -22,21 +21,33 @@ runs:
     - name: Install uv (retry-wrapped)
       shell: bash
       env:
-        # A deterministic install dir removes the runner-env guesswork in the
-        # installer's default-location precedence (XDG_BIN_HOME / CARGO_HOME /
-        # ~/.local/bin); the binary lands directly in UV_INSTALL_DIR, which is
-        # then put on PATH for subsequent steps.
-        UV_INSTALL_DIR: ${{ runner.temp }}/uv-bin
+        # Pinned + Renovate-tracked (mirrors D2_VERSION) so the toolchain is
+        # reproducible instead of silently following whatever uv is latest.
+        # renovate: datasource=github-releases depName=astral-sh/uv
+        UV_VERSION: "0.11.28"
+        # UV_UNMANAGED_INSTALL installs uv to this exact dir AND suppresses the
+        # installer's shell-profile / self-update mutation, the right posture
+        # on an ephemeral CI runner (PATH is threaded via GITHUB_PATH below,
+        # not a profile). The binary lands at $UV_UNMANAGED_INSTALL/uv.
+        UV_UNMANAGED_INSTALL: ${{ runner.temp }}/uv-bin
         # The installer fetches the script AND the binary; a stalled fetch
         # (connection opens, no data) would hang untouched until the job
         # timeout because retry_cmd retries a non-zero EXIT, not a hang. A
         # per-attempt timeout converts that hang into a retryable 124.
         RETRY_CMD_ATTEMPT_TIMEOUT: "120"
-      run: | # zizmor: ignore[github-env] -- UV_INSTALL_DIR is a static runner.temp path, not untrusted input
+      run: | # zizmor: ignore[github-env] -- UV_UNMANAGED_INSTALL / $HOME are static paths, not untrusted input
+        # pipefail so a curl failure (transient blip / DNS) propagates: without
+        # it the pipe's exit is sh's, which exits 0 on empty EOF input, so
+        # retry_cmd would see a false success and never retry. The versioned
+        # URL pins uv to UV_VERSION for a reproducible install.
         .github/scripts/retry_cmd.sh "uv installer" \
-          bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
-        echo "$UV_INSTALL_DIR" >> "$GITHUB_PATH"
+          bash -c 'set -o pipefail; curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh'
+        echo "$UV_UNMANAGED_INSTALL" >> "$GITHUB_PATH"
+        # Pin uv's cache dir to the path setup-python-uv's actions/cache step
+        # restores, so an XDG_CACHE_HOME override on the runner cannot send uv
+        # writes to an uncached location.
+        echo "UV_CACHE_DIR=$HOME/.cache/uv" >> "$GITHUB_ENV"
         # Smoke-test via the absolute path (the GITHUB_PATH addition only
-        # applies to LATER steps, not this one). A wrong UV_INSTALL_DIR fails
+        # applies to LATER steps, not this one). A wrong install dir fails
         # loud here rather than as a confusing "uv: not found" downstream.
-        "$UV_INSTALL_DIR/uv" --version
+        "$UV_UNMANAGED_INSTALL/uv" --version

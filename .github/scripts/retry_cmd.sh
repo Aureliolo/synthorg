@@ -108,8 +108,16 @@ while :; do
     # --kill-after escalates to SIGKILL if the command ignores the initial
     # SIGTERM, so a wedged process cannot outlive its attempt. A timeout
     # exits 124 (or 137 on the SIGKILL escalation), which the loop treats as
-    # any other retryable non-zero exit.
-    timeout --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
+    # any other retryable non-zero exit. macOS runners ship coreutils' timeout
+    # as `gtimeout` (or not at all); fall back rather than fail with a 127
+    # that would burn the whole retry budget on a `command not found`.
+    if command -v timeout >/dev/null 2>&1; then
+      timeout --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
+    else
+      "$@" || rc=$?
+    fi
   else
     "$@" || rc=$?
   fi
