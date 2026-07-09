@@ -217,6 +217,8 @@ _HAPPY_CASES: tuple[
             ("engine", "matcher_tier_large_min_context"): "200000",
             ("engine", "matcher_tier_medium_min_context"): "32000",
             ("engine", "matcher_min_usable_parameters"): "20000000000",
+            ("engine", "matcher_prefer_local"): "true",
+            ("engine", "matcher_min_cloud_tier"): "2",
             ("engine", "quality_heuristic_pass_threshold"): "0.5",
             ("engine", "quality_heuristic_pass_grade"): "0.8",
             ("engine", "quality_heuristic_fail_grade"): "0.3",

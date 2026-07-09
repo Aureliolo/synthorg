@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.core.url_locality import is_local_url
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_COERCED,
@@ -37,6 +38,8 @@ from synthorg.templates.model_matcher_priority import priority_ranker, shift_pri
 from synthorg.templates.model_matcher_tiering import (
     above_usable_floor,
     demand_tier,
+    enforce_cloud_floor,
+    passes_hard_filters,
     prune_dominated,
     select_for_demand,
 )
@@ -49,9 +52,10 @@ _CAPABILITY_COUNT: Final[int] = 3
 
 
 class _ProviderWithModels(Protocol):
-    """Structural type for a provider config exposing its models."""
+    """Structural type for a provider config exposing its models + endpoint."""
 
     models: tuple[ProviderModelConfig, ...]
+    base_url: str | None
 
 
 class ModelMatch(BaseModel):
@@ -86,72 +90,6 @@ class ModelSelectionStrategy(Protocol):
     ) -> tuple[ProviderModelConfig | None, float]:
         """Return the best model and its 0-1 score (or ``None``, 0.0)."""
         ...
-
-
-def passes_hard_filters(
-    model: ProviderModelConfig,
-    requirement: ModelRequirement,
-) -> bool:
-    """Return ``True`` when *model* clears every hard requirement.
-
-    Optimistic: a required capability is a hard fail only when the model is
-    *known* to lack it (``litellm`` / ``probe`` metadata with the flag False).
-    A model with ``unknown`` metadata is allowed through -- most modern models
-    support tools/reasoning, and excluding every un-probed cloud model would
-    leave agents unassigned.
-
-    Runtime tool-call feedback overrides optimism: a model whose
-    ``tool_calls_verified`` is ``False`` has *proven* at runtime that it cannot
-    call tools, so it is excluded for ``requires_tools`` agents regardless of
-    metadata source (the runtime signal is authoritative over the
-    discovery-time claim).
-
-    Returns:
-        True when the model meets the context floor and every required
-        capability it is known to possess (or has unknown metadata for).
-    """
-    if model.max_context < requirement.min_context:
-        return False
-    meta = model.metadata
-    # Embedding models produce vector output, not chat completions, so they
-    # must never be assigned to a chat agent regardless of any other
-    # capability flags. An explicit ``model_id`` pin still bypasses this
-    # filter (the operator escape hatch for a deliberately specialised agent).
-    if meta.supports_embeddings:
-        logger.debug(
-            TEMPLATE_MODEL_MATCH_SKIPPED,
-            model=model.id,
-            reason="embedding_model_not_chat_capable",
-        )
-        return False
-    if requirement.requires_tools and meta.tool_calls_verified is False:
-        logger.debug(
-            TEMPLATE_MODEL_MATCH_SKIPPED,
-            model=model.id,
-            reason="tool_calls_runtime_unverified",
-        )
-        return False
-    # A runtime-proven tool caller is authoritative over stale discovery
-    # metadata: ``tool_calls_verified is True`` re-admits a model whose
-    # ``supports_tools`` flag is a false negative, so it is never permanently
-    # unassignable to ``requires_tools`` agents.
-    tools_supported = meta.tool_calls_verified is True or meta.supports_tools
-    unknown = meta.metadata_source == "unknown"
-    required_checks = (
-        (requirement.requires_tools, tools_supported),
-        (requirement.requires_vision, meta.supports_vision),
-        (requirement.requires_reasoning, meta.supports_reasoning),
-    )
-    for required, supported in required_checks:
-        if required and not unknown and not supported:
-            logger.debug(
-                TEMPLATE_MODEL_MATCH_SKIPPED,
-                model=model.id,
-                reason="capability_unmet",
-                metadata_unknown=unknown,
-            )
-            return False
-    return True
 
 
 class CapabilityFitStrategy:
@@ -468,12 +406,12 @@ def match_all_agents(
 
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
-    pool, owner = _build_pool(providers)
+    pool, owner, local_ids = _build_pool(providers)
     # Domination pruning: drop the older sibling when a same-family model in
     # the same cost tier is strictly stronger (same price, worse). Tier
     # overrides apply so a promoted model is compared in its promoted tier.
     pruned = tuple(prune_dominated(pool, cfg.tier_overrides))
-    ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
+    ctx = _MatchContext(pruned, owner, local_ids, Counter(), cfg, selector)
 
     resolved: list[tuple[int, ModelRequirement]] = []
     for idx, agent in enumerate(agents):
@@ -523,6 +461,7 @@ class _MatchContext:
 
     pool: tuple[ProviderModelConfig, ...]
     owner: dict[int, str]
+    local_ids: frozenset[int]
     family_usage: Counter[str]
     config: ModelMatcherConfig
     strategy: ModelSelectionStrategy
@@ -530,19 +469,25 @@ class _MatchContext:
 
 def _build_pool(
     providers: Mapping[str, _ProviderWithModels],
-) -> tuple[tuple[ProviderModelConfig, ...], dict[int, str]]:
-    """Flatten every provider's models into one pool + an id->provider map.
+) -> tuple[tuple[ProviderModelConfig, ...], dict[int, str], frozenset[int]]:
+    """Flatten every provider's models into one pool + id maps.
 
     Returns:
-        ``(pool, owner)`` where ``owner`` maps ``id(model)`` to its provider.
+        ``(pool, owner, local_ids)`` where ``owner`` maps ``id(model)`` to its
+        provider name and ``local_ids`` holds the ``id(model)`` of every model
+        served by a locally-hosted provider (free to run).
     """
     pool: list[ProviderModelConfig] = []
     owner: dict[int, str] = {}
+    local_ids: set[int] = set()
     for pname, pcfg in providers.items():
+        provider_is_local = is_local_url(pcfg.base_url)
         for model in pcfg.models:
             pool.append(model)
             owner[id(model)] = pname
-    return tuple(pool), owner
+            if provider_is_local:
+                local_ids.add(id(model))
+    return tuple(pool), owner, frozenset(local_ids)
 
 
 def _match_agent(
@@ -566,8 +511,21 @@ def _match_agent(
     else:
         eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]
         eligible = above_usable_floor(eligible, ctx.config.min_usable_parameters)
+        eligible = enforce_cloud_floor(
+            eligible,
+            ctx.local_ids,
+            ctx.config.min_cloud_tier,
+            ctx.config.tier_overrides,
+        )
+        # The locality preference is opt-out: pass an empty set to fall back to
+        # pure capability + family-spread selection.
+        prefer = ctx.local_ids if ctx.config.prefer_local else frozenset()
         model = select_for_demand(
-            eligible, demand_tier(req), ctx.family_usage, ctx.config.tier_overrides
+            eligible,
+            demand_tier(req),
+            ctx.family_usage,
+            ctx.config.tier_overrides,
+            local_ids=prefer,
         )
         score = _TIERED_MATCH_SCORE if model is not None else 0.0
 

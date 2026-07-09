@@ -61,8 +61,11 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
 class _Provider:
     """Minimal provider exposing a typed ``models`` tuple."""
 
-    def __init__(self, models: tuple[ProviderModelConfig, ...]) -> None:
+    def __init__(
+        self, models: tuple[ProviderModelConfig, ...], base_url: str | None = None
+    ) -> None:
         self.models = models
+        self.base_url = base_url
 
 
 def _provider(*models: ProviderModelConfig) -> _Provider:

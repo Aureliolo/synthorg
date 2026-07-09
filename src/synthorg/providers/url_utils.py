@@ -1,22 +1,13 @@
 """Shared URL utilities for the providers package."""
 
 import ipaddress
-from typing import Final
 from urllib.parse import urlparse
 
 from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.core.url_locality import LOCALHOST_ALIASES, is_local_url
 from synthorg.core.url_redaction import redact_url as _redact_url
 
-LOCALHOST_ALIASES: Final[frozenset[str]] = frozenset(
-    {
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",  # noqa: S104 -- matching alias, not binding
-        "host.docker.internal",
-        "172.17.0.1",
-        "::1",
-    }
-)
+__all__ = ["LOCALHOST_ALIASES", "is_local_url", "is_self_url", "redact_url"]
 
 
 def is_self_url(url: str, *, backend_port: int) -> bool:

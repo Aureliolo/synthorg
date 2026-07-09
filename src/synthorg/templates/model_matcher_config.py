@@ -57,6 +57,8 @@ class ModelMatcherConfig(BaseModel):
     tier_large_min_context: int = Field(default=200_000, gt=0)
     tier_medium_min_context: int = Field(default=32_000, gt=0)
     min_usable_parameters: int = Field(default=_MIN_USABLE_PARAMETERS, ge=0)
+    prefer_local: bool = Field(default=True)
+    min_cloud_tier: int = Field(default=2, ge=1, le=4)
     tier_overrides: Mapping[str, int] = Field(
         default_factory=_default_tier_overrides,
     )
@@ -98,6 +100,8 @@ class ModelMatcherConfig(BaseModel):
             tier_large_min_context=bridge.matcher_tier_large_min_context,
             tier_medium_min_context=bridge.matcher_tier_medium_min_context,
             min_usable_parameters=bridge.matcher_min_usable_parameters,
+            prefer_local=bridge.matcher_prefer_local,
+            min_cloud_tier=bridge.matcher_min_cloud_tier,
         )
 
 

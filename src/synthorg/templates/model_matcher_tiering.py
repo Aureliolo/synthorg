@@ -23,7 +23,77 @@ from types import MappingProxyType
 from typing import Final
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.observability import get_logger
+from synthorg.observability.events.template import TEMPLATE_MODEL_MATCH_SKIPPED
 from synthorg.templates.model_requirements import ModelRequirement
+
+logger = get_logger(__name__)
+
+
+def passes_hard_filters(
+    model: ProviderModelConfig,
+    requirement: ModelRequirement,
+) -> bool:
+    """Return ``True`` when *model* clears every hard requirement.
+
+    Optimistic: a required capability is a hard fail only when the model is
+    *known* to lack it (``litellm`` / ``probe`` metadata with the flag False).
+    A model with ``unknown`` metadata is allowed through -- most modern models
+    support tools/reasoning, and excluding every un-probed cloud model would
+    leave agents unassigned.
+
+    Runtime tool-call feedback overrides optimism: a model whose
+    ``tool_calls_verified`` is ``False`` has *proven* at runtime that it cannot
+    call tools, so it is excluded for ``requires_tools`` agents regardless of
+    metadata source (the runtime signal is authoritative over the
+    discovery-time claim).
+
+    Returns:
+        True when the model meets the context floor and every required
+        capability it is known to possess (or has unknown metadata for).
+    """
+    if model.max_context < requirement.min_context:
+        return False
+    meta = model.metadata
+    # Embedding models produce vector output, not chat completions, so they
+    # must never be assigned to a chat agent regardless of any other
+    # capability flags. An explicit ``model_id`` pin still bypasses this
+    # filter (the operator escape hatch for a deliberately specialised agent).
+    if meta.supports_embeddings:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            model=model.id,
+            reason="embedding_model_not_chat_capable",
+        )
+        return False
+    if requirement.requires_tools and meta.tool_calls_verified is False:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            model=model.id,
+            reason="tool_calls_runtime_unverified",
+        )
+        return False
+    # A runtime-proven tool caller is authoritative over stale discovery
+    # metadata: ``tool_calls_verified is True`` re-admits a model whose
+    # ``supports_tools`` flag is a false negative, so it is never permanently
+    # unassignable to ``requires_tools`` agents.
+    tools_supported = meta.tool_calls_verified is True or meta.supports_tools
+    unknown = meta.metadata_source == "unknown"
+    required_checks = (
+        (requirement.requires_tools, tools_supported),
+        (requirement.requires_vision, meta.supports_vision),
+        (requirement.requires_reasoning, meta.supports_reasoning),
+    )
+    for required, supported in required_checks:
+        if required and not unknown and not supported:
+            logger.debug(
+                TEMPLATE_MODEL_MATCH_SKIPPED,
+                model=model.id,
+                reason="capability_unmet",
+                metadata_unknown=unknown,
+            )
+            return False
+    return True
 
 
 def above_usable_floor(
@@ -238,27 +308,62 @@ def prune_dominated(
     return [*survivors, *passthrough]
 
 
+def enforce_cloud_floor(
+    eligible: Sequence[ProviderModelConfig],
+    local_ids: frozenset[int],
+    min_cloud_tier: int,
+    overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
+) -> list[ProviderModelConfig]:
+    """Drop remote models whose known cost tier sits below the cloud floor.
+
+    A locally-hosted model is exempt (free to run at any tier). A remote model
+    with a *known* cost tier below *min_cloud_tier* is dropped, so a paid
+    provider never fills a role with a bottom-tier model when a stronger one
+    exists. A remote model with no resolvable tier passes (optimistic, matching
+    the hard filter's treatment of unknown metadata). Falls back to the full
+    set when the floor would empty it, so a cheap-only remote catalogue still
+    yields a match rather than leaving the agent unassigned.
+
+    Returns:
+        The models clearing the floor, or all of *eligible* when none do.
+    """
+
+    def _clears(model: ProviderModelConfig) -> bool:
+        if id(model) in local_ids:
+            return True
+        tiers = _model_tiers(model, overrides)
+        return not tiers or max(tiers) >= min_cloud_tier
+
+    kept = [m for m in eligible if _clears(m)]
+    return kept or list(eligible)
+
+
 def select_for_demand(
     eligible: Sequence[ProviderModelConfig],
     target_tier: int,
     family_usage: Counter[str],
     overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
+    *,
+    local_ids: frozenset[int] = frozenset(),
 ) -> ProviderModelConfig | None:
     """Pick a model nearest the target cost tier, spreading across families.
 
     Chooses from the models whose tier is closest to *target_tier* (the best
     achievable when nothing sits exactly at it). A promoted model is near both
     its scraped and its promoted tier (:func:`_model_tiers`), so it competes
-    for either. Among the nearest band, the least-used family fans the roster
-    out; a promoted model carries a small spread discount so it is picked a
-    little more often without overriding spread, and ties resolve to the
-    stronger model.
+    for either. Among the nearest band, a locally-hosted model (free to run)
+    outranks a paid remote of equal fit; then the least-used family fans the
+    roster out; a promoted model carries a small spread discount so it is
+    picked a little more often without overriding spread, and ties resolve to
+    the stronger model.
 
     Args:
         eligible: Hard-filter-passing, domination-pruned candidates.
         target_tier: The role's demand tier (1-4).
         family_usage: Running per-family assignment counts, updated by caller.
         overrides: Curated tier overrides applied to each model's tier.
+        local_ids: ``id(model)`` of models on a local provider to prefer within
+            the band; pass an empty set to disable the locality preference.
 
     Returns:
         The chosen model, or ``None`` when nothing is eligible.
@@ -275,11 +380,15 @@ def select_for_demand(
     band = rank_by_quality([m for m in eligible if distance[id(m)] == nearest])
     spread_pool = _within_quality_floor(band)
 
-    def _spread_key(i: int) -> tuple[float, int]:
+    def _spread_key(i: int) -> tuple[int, float, int]:
         model = spread_pool[i]
         used = float(family_usage[model.metadata.family or model.id])
         bonus = _PROMOTION_SPREAD_BONUS if _is_promoted(model, overrides) else 0.0
-        return (used - bonus, i)
+        # A locally-hosted model that is already in the adequate band is free to
+        # run, so it outranks a paid remote of equal fit before family-spread
+        # even applies; among equals (all local or all remote) spread decides.
+        locality_rank = 0 if id(model) in local_ids else 1
+        return (locality_rank, used - bonus, i)
 
     return spread_pool[min(range(len(spread_pool)), key=_spread_key)]
 

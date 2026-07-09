@@ -30,6 +30,8 @@ class TypedSettingReads(Protocol):
 
     async def get_str(self, namespace: str, key: str) -> str: ...
 
+    async def get_bool(self, namespace: str, key: str) -> bool: ...
+
     async def get_json(self, namespace: str, key: str) -> object: ...
 
 
@@ -43,6 +45,7 @@ _TYPED_READERS: Mapping[
         "int": lambda reads, ns, key: reads.get_int(ns, key),
         "float": lambda reads, ns, key: reads.get_float(ns, key),
         "str": lambda reads, ns, key: reads.get_str(ns, key),
+        "bool": lambda reads, ns, key: reads.get_bool(ns, key),
         "json": lambda reads, ns, key: reads.get_json(ns, key),
     }
 )
@@ -56,7 +59,7 @@ async def resolve_bridge_fields(
     """Resolve a bundle of same-namespace settings in parallel.
 
     Each spec is ``(key, kind)`` where ``kind`` is one of ``"int"``,
-    ``"float"``, ``"str"``, or ``"json"``.  Returns a mapping from key
+    ``"float"``, ``"str"``, ``"bool"``, or ``"json"``.  Returns a mapping from key
     to parsed value, suitable for passing into a Pydantic model
     constructor as keyword arguments -- which is why the value type is
     deliberately ``object``: the callers unpack the mapping into typed
@@ -122,7 +125,7 @@ async def _resolve_typed(
         namespace: Setting namespace (e.g. ``"api"``, ``"tools"``).
         key: Setting key within the namespace.
         kind: Type discriminator; one of ``"int"``, ``"float"``,
-            ``"str"``, or ``"json"``. Any other value raises
+            ``"str"``, ``"bool"``, or ``"json"``. Any other value raises
             ``ValueError`` so misuse fails loudly rather than silently
             resolving the wrong accessor.
 
@@ -130,8 +133,7 @@ async def _resolve_typed(
         The resolved value coerced to the requested type.
 
     Raises:
-        ValueError: If *kind* is not one of the four supported
-            discriminators.
+        ValueError: If *kind* is not one of the supported discriminators.
         SettingNotFoundError: If the registry does not contain *key*
             in *namespace*.
     """
