@@ -134,6 +134,37 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
+# --- 9. per-attempt timeout: a hang is killed, retried, and (when it never
+# stops hanging) fails closed with timeout's 124 ------------------------
+# `sleep 30` never returns on its own; a 1s attempt timeout kills it, and
+# with 2 attempts + zero backoff the ladder bubbles 124. Guarded on
+# `timeout` being present so an environment without coreutils `timeout`
+# skips the case rather than false-failing.
+if command -v timeout >/dev/null 2>&1; then
+  rc=0
+  out="$(RETRY_CMD_ATTEMPTS=2 RETRY_CMD_BASE_DELAY=0 RETRY_CMD_ATTEMPT_TIMEOUT=1 \
+    bash "$HELPER" "selftest-hang" sleep 30 2>&1)" || rc=$?
+  if [ "$rc" -eq 124 ] && grep -q 'failed after 2 attempts' <<<"$out"; then
+    pass "retry_cmd times out a hanging attempt and fails closed with 124"
+  else
+    fail "retry_cmd did not time out a hang and bubble 124 (rc=${rc}, expected 124)"
+    printf '%s\n' "$out" | tail -n 3 >&2 || true
+  fi
+else
+  printf 'SKIP: timeout(1) unavailable; per-attempt-timeout case not run\n'
+fi
+
+# --- 10. non-numeric attempt timeout: rejected up front with exit 2 -----
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=2 RETRY_CMD_BASE_DELAY=0 RETRY_CMD_ATTEMPT_TIMEOUT=abc \
+  bash "$HELPER" "selftest-badtimeout" bash -c 'exit 1' 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_ATTEMPT_TIMEOUT must be a non-negative integer' <<<"$out"; then
+  pass "retry_cmd rejects a non-numeric RETRY_CMD_ATTEMPT_TIMEOUT with exit 2"
+else
+  fail "retry_cmd did not reject a non-numeric attempt timeout (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   printf '\nretry_cmd self-test FAILED\n' >&2
   exit 1

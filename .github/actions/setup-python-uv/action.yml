@@ -10,10 +10,20 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install uv
-      uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+    # uv's dependency cache. Replaces astral-sh/setup-uv's bundled cache
+    # handling: actions/cache treats a cache-service outage as a non-fatal
+    # warning, so a restore/save blip never fails the job. Keyed on uv.lock
+    # (the uv project's resolved graph), not the requirements glob setup-uv
+    # defaulted to.
+    - name: Restore uv cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        enable-cache: true
+        path: ~/.cache/uv
+        key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          uv-${{ runner.os }}-
+
+    - uses: ./.github/actions/install-uv
 
     # Both installs are wrapped in retry_cmd.sh: a cold run (or evicted
     # uv cache) fetches the CPython standalone tarball and every dependency
@@ -21,10 +31,20 @@ runs:
     # of those would otherwise fail the step on a single attempt. This is
     # the Python analogue of go-mod-download-retry; both wrapped commands
     # are idempotent, so retry-everything is safe. ~3m45s backoff budget.
+    #
+    # ``uv python install`` is a quick, bounded fetch, so it carries a
+    # per-attempt timeout that converts a stalled download into a retry.
+    # ``uv sync`` is deliberately left without one: a cold cross-platform
+    # resolve legitimately runs for minutes, and a per-attempt timeout tight
+    # enough to help within the shorter job budgets would risk killing a
+    # slow-but-progressing sync. Its transient failures already surface as
+    # non-zero exits the retry ladder catches, and the cache above shrinks
+    # the cold-fetch window that a hang could occur in.
     - name: Install Python
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
+        RETRY_CMD_ATTEMPT_TIMEOUT: "180"
       run: |
         .github/scripts/retry_cmd.sh "uv python install" \
           uv python install "$PYTHON_VERSION"

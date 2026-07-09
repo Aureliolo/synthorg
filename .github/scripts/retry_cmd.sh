@@ -39,6 +39,14 @@
 # Tunable via RETRY_CMD_ATTEMPTS / RETRY_CMD_BASE_DELAY / RETRY_CMD_MAX_DELAY
 # (also the seam the self-test drives with zero backoff).
 #
+# Per-attempt timeout: retry_cmd retries on a non-zero EXIT, so a command
+# that HANGS -- a connection that opens then stalls with no data and no
+# error -- would sit untouched until the job's own timeout-minutes reaps
+# the whole runner, never reaching the retry ladder. RETRY_CMD_ATTEMPT_TIMEOUT
+# (seconds; 0 = off, the default) wraps each attempt in `timeout` so a hang
+# becomes a retryable 124 and the ladder engages. Off by default so existing
+# callers are byte-for-byte unchanged; opt in per-call.
+#
 # Usage:
 #   retry_cmd.sh "label for log" <command> [args...]
 #
@@ -66,6 +74,7 @@ fi
 ATTEMPTS="${RETRY_CMD_ATTEMPTS:-5}"
 DELAY="${RETRY_CMD_BASE_DELAY:-15}"
 MAX_DELAY="${RETRY_CMD_MAX_DELAY:-120}"
+ATTEMPT_TIMEOUT="${RETRY_CMD_ATTEMPT_TIMEOUT:-0}"
 
 # Fail fast on a non-numeric tunable. Without ``-e``, a non-numeric value
 # makes the ``[ "$attempt" -ge "$ATTEMPTS" ]`` exhaustion test error out
@@ -84,6 +93,26 @@ if ! [[ "$MAX_DELAY" =~ ^[0-9]+$ ]]; then
   echo "::error::retry_cmd.sh: RETRY_CMD_MAX_DELAY must be a non-negative integer (got '$MAX_DELAY')" >&2
   exit 2
 fi
+if ! [[ "$ATTEMPT_TIMEOUT" =~ ^[0-9]+$ ]]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_ATTEMPT_TIMEOUT must be a non-negative integer (got '$ATTEMPT_TIMEOUT')" >&2
+  exit 2
+fi
+
+# Resolve the per-attempt timeout wrapper once, before the loop. macOS ships
+# coreutils' `timeout` as `gtimeout` (or not at all); when a timeout was asked
+# for but neither exists, warn ONCE so the unguarded fallback is visible in the
+# log rather than silently skipped -- and warning here, not per attempt, keeps
+# the retry output clean.
+TIMEOUT_CMD=""
+if [ "$ATTEMPT_TIMEOUT" -gt 0 ]; then
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+  else
+    echo "::warning::retry_cmd.sh: RETRY_CMD_ATTEMPT_TIMEOUT=${ATTEMPT_TIMEOUT} set but neither 'timeout' nor 'gtimeout' is available; attempts run WITHOUT a per-attempt timeout" >&2
+  fi
+fi
 
 attempt=0
 while :; do
@@ -91,7 +120,15 @@ while :; do
   # `|| rc=$?` keeps `set -e`-style aborts away and captures the real exit
   # code, sidestepping the `if cmd; then` idiom that resets $? to 0.
   rc=0
-  "$@" || rc=$?
+  if [ -n "$TIMEOUT_CMD" ]; then
+    # --kill-after escalates to SIGKILL if the command ignores the initial
+    # SIGTERM, so a wedged process cannot outlive its attempt. A timeout exits
+    # 124 (or 137 on the SIGKILL escalation), which the loop treats as any
+    # other retryable non-zero exit.
+    "$TIMEOUT_CMD" --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
+  else
+    "$@" || rc=$?
+  fi
   if [ "$rc" -eq 0 ]; then
     if [ "$attempt" -gt 1 ]; then
       echo "::notice::${LABEL} succeeded on attempt ${attempt}" >&2
