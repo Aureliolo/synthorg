@@ -52,6 +52,21 @@ describe('AgentCard', () => {
     expect(screen.queryByText(/Task:/)).not.toBeInTheDocument()
   })
 
+  it('renders the model with its capability tier as a suffix', () => {
+    render(<AgentCard {...defaultProps} model="example-large-001" tier="large" />)
+
+    expect(screen.getByText('example-large-001')).toBeInTheDocument()
+    expect(screen.getByText('· large')).toBeInTheDocument()
+    expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
+  })
+
+  it('renders a standalone tier row when a tier has no model', () => {
+    render(<AgentCard {...defaultProps} tier="medium" />)
+
+    expect(screen.getByText('Tier:')).toBeInTheDocument()
+    expect(screen.getByText('medium')).toBeInTheDocument()
+  })
+
   it('renders timestamp when provided', () => {
     render(<AgentCard {...defaultProps} timestamp="2m ago" />)
 
