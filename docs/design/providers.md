@@ -238,6 +238,31 @@ headroom + generation delta, from the registered matcher weights), with model id
 as a deterministic tie-break, so a larger / more capable variant is preferred over
 an arbitrary alphabetical pick.
 
+## Setup Model Assignment (cost + locality aware)
+
+At org provisioning the template matcher (`templates/model_matcher.py`) assigns
+each agent a concrete model across **all** configured providers. Selection is
+driven by the demand a role declares (`priority` + `requires_*` mapped to a cost
+tier), then domination pruning and family spread. Two provider-aware guards keep
+the result sensible on a mixed local + cloud setup:
+
+- **Prefer local when adequate** (`engine.matcher_prefer_local`, default on): when
+  a locally-hosted model (loopback / private / localhost base URL) already sits in
+  the adequate band for a role, it is chosen over a paid remote of equal fit before
+  family spread applies (so a free local model wins even against a nominally
+  stronger remote model that sits in the same adequate band). A role a free
+  local model can serve never silently runs on a paid cloud model instead.
+- **Cloud capability floor** (`engine.matcher_min_cloud_tier`, default `2`): a
+  remote provider is never auto-assigned a model whose *known* cost tier is below
+  the floor, so a paid provider does not fill a role with a bottom-tier model when
+  a stronger one exists. Local providers are exempt (free to run at any tier), and
+  a remote model with no resolvable tier passes (optimistic); the floor relaxes if
+  it would otherwise leave an agent unassigned.
+
+Both are hot-reloadable (a change triggers a runtime-services rebuild via the
+settings subscriber, no restart), so the defaults give a sensible allocation
+with no operator input while remaining tunable per deployment.
+
 ## Model Routing Strategy
 
 Model routing determines which LLM handles a given request. Five strategies are available,

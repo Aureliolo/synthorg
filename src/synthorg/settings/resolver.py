@@ -873,7 +873,7 @@ class ConfigResolver:
             namespace: Setting namespace (e.g. ``"a2a"``).
             specs: Tuple of ``(key, kind)`` pairs to resolve, where
                 ``kind`` is one of ``"int"``, ``"float"``, ``"str"``,
-                or ``"json"``.
+                ``"bool"``, or ``"json"``.
 
         Returns:
             Dict of ``{key: parsed_value}`` for each spec.
@@ -1049,6 +1049,8 @@ class ConfigResolver:
                 ("matcher_tier_large_min_context", "int"),
                 ("matcher_tier_medium_min_context", "int"),
                 ("matcher_min_usable_parameters", "int"),
+                ("matcher_prefer_local", "bool"),
+                ("matcher_min_cloud_tier", "int"),
                 ("quality_heuristic_pass_threshold", "float"),
                 ("quality_heuristic_pass_grade", "float"),
                 ("quality_heuristic_fail_grade", "float"),

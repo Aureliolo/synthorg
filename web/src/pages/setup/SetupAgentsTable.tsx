@@ -5,7 +5,9 @@ import { InlineEdit } from '@/components/ui/inline-edit'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
+import { LocalityBadge } from '@/components/ui/locality-badge'
 import { cn } from '@/lib/utils'
+import { useProviderLocality } from '@/hooks/useProviderLocality'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { PersonalityPresetInfo, SetupAgentSummary } from '@/api/types/setup'
 
@@ -58,6 +60,7 @@ interface RowProps {
   agent: SetupAgentSummary
   index: number
   providers: Readonly<Record<string, ProviderConfig>>
+  isLocal: boolean
   personalityOptions: readonly PersonalityOption[]
   personalityPlaceholderText: string
   onNameChange: (index: number, name: string) => Promise<void>
@@ -70,6 +73,7 @@ function SetupAgentRow({
   agent,
   index,
   providers,
+  isLocal,
   personalityOptions,
   personalityPlaceholderText,
   onNameChange,
@@ -126,15 +130,18 @@ function SetupAgentRow({
           placeholder={personalityPlaceholderText}
         />
       </div>
-      <div className={W.model}>
-        <AgentModelPicker
-          hideLabel
-          label={`Model for ${agent.name}`}
-          currentProvider={agent.model_provider ?? ''}
-          currentModelId={agent.model_id ?? ''}
-          providers={providers}
-          onChange={(provider, modelId) => void onModelChange(index, provider, modelId)}
-        />
+      <div className={cn(W.model, 'flex items-center gap-2')}>
+        <div className="min-w-0 flex-1">
+          <AgentModelPicker
+            hideLabel
+            label={`Model for ${agent.name}`}
+            currentProvider={agent.model_provider ?? ''}
+            currentModelId={agent.model_id ?? ''}
+            providers={providers}
+            onChange={(provider, modelId) => void onModelChange(index, provider, modelId)}
+          />
+        </div>
+        <LocalityBadge isLocal={isLocal} />
       </div>
     </div>
   )
@@ -202,6 +209,7 @@ export function SetupAgentsTable({
   )
   const groups = useMemo(() => groupByDepartment(agents), [agents])
   const placeholderText = personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)
+  const localityByProvider = useProviderLocality(providers)
 
   const rowFor = useCallback(
     (item: { agent: SetupAgentSummary; index: number }) => (
@@ -210,6 +218,7 @@ export function SetupAgentsTable({
         agent={item.agent}
         index={item.index}
         providers={providers}
+        isLocal={localityByProvider[item.agent.model_provider ?? ''] ?? false}
         personalityOptions={personalityOptions}
         personalityPlaceholderText={placeholderText}
         onNameChange={onNameChange}
@@ -220,6 +229,7 @@ export function SetupAgentsTable({
     ),
     [
       providers,
+      localityByProvider,
       personalityOptions,
       placeholderText,
       onNameChange,

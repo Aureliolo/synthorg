@@ -4,13 +4,14 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Avatar } from '@/components/ui/avatar'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { LocalityBadge } from '@/components/ui/locality-badge'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 import { getProviderStatus } from '@/utils/provider-status'
-import { formatModelTier } from '@/utils/model-tiers'
+import { useProviderLocality } from '@/hooks/useProviderLocality'
 import { Building2, Users, Server } from 'lucide-react'
 
-function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
+function SetupAgentRow({ agent, isLocal }: { agent: SetupAgentSummary; isLocal: boolean }) {
   return (
     <div className="flex items-center gap-3 rounded-md border border-border p-card-snug">
       <Avatar name={agent.name} size="sm" />
@@ -20,7 +21,8 @@ function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
       </div>
       <div className="flex items-center gap-2">
         <StatPill label="Dept" value={agent.department} />
-        <StatPill label="Tier" value={formatModelTier(agent.tier)} />
+        <StatPill label="Model" value={agent.model_id ?? 'unassigned'} />
+        <LocalityBadge isLocal={isLocal} />
       </div>
     </div>
   )
@@ -39,6 +41,7 @@ export function SetupSummary({
   providers,
   currency,
 }: SetupSummaryProps) {
+  const localityByProvider = useProviderLocality(providers)
   return (
     <div className="space-y-section-gap">
       {/* Company details */}
@@ -86,8 +89,12 @@ export function SetupSummary({
           aria-label="Agent roster, scrollable"
         >
           {agents.map((agent, index) => (
-            // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
-            <SetupAgentRow key={`${agent.name}-${index}`} agent={agent} />
+            <SetupAgentRow
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
+              key={`${agent.name}-${index}`}
+              agent={agent}
+              isLocal={localityByProvider[agent.model_provider ?? ''] ?? false}
+            />
           ))}
         </div>
       </SectionCard>

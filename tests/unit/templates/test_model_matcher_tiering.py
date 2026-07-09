@@ -12,6 +12,7 @@ from synthorg.templates.model_matcher_tiering import (
     _is_promoted,
     _model_tiers,
     demand_tier,
+    enforce_cloud_floor,
     prune_dominated,
     rank_by_quality,
     select_for_demand,
@@ -49,8 +50,15 @@ def _model(  # noqa: PLR0913 -- keyword-only test factory
 
 
 class _Provider:
-    def __init__(self, *models: ProviderModelConfig) -> None:
+    def __init__(
+        self, *models: ProviderModelConfig, base_url: str | None = None
+    ) -> None:
         self.models = models
+        self.base_url = base_url
+
+
+_ONE_B: int = 1_000_000_000
+_TWENTY_B: int = 20_000_000_000
 
 
 @pytest.mark.unit
@@ -135,6 +143,76 @@ class TestSelectForDemand:
     def test_empty_returns_none(self) -> None:
         assert select_for_demand([], 3, Counter()) is None
 
+    def test_prefers_local_over_remote_in_band(self) -> None:
+        remote = _model("remote", cost_tier=2, family="a")
+        local = _model("local", cost_tier=2, family="b")
+        chosen = select_for_demand(
+            [remote, local], 2, Counter(), local_ids=frozenset({id(local)})
+        )
+        assert chosen is local
+
+    def test_empty_local_ids_disables_locality_preference(self) -> None:
+        # With no locality hint the stronger model wins on quality, not origin.
+        remote = _model("remote", cost_tier=2, family="a", parameter_count=_TWENTY_B)
+        local = _model("local", cost_tier=2, family="b", parameter_count=_ONE_B)
+        chosen = select_for_demand([remote, local], 2, Counter(), local_ids=frozenset())
+        assert chosen is remote
+
+
+@pytest.mark.unit
+class TestEnforceCloudFloor:
+    def test_drops_known_below_floor_remote(self) -> None:
+        cheap = _model("cheap", cost_tier=1, family="a")
+        strong = _model("strong", cost_tier=3, family="b")
+        kept = enforce_cloud_floor([cheap, strong], frozenset(), 2)
+        assert {m.id for m in kept} == {"strong"}
+
+    def test_keeps_local_below_floor(self) -> None:
+        local = _model("local", cost_tier=1, family="a")
+        kept = enforce_cloud_floor([local], frozenset({id(local)}), 2)
+        assert kept == [local]
+
+    def test_keeps_unknown_tier_remote(self) -> None:
+        unknown = _model("mystery", cost_tier=None, family=None)
+        kept = enforce_cloud_floor([unknown], frozenset(), 3)
+        assert kept == [unknown]
+
+    def test_falls_back_when_floor_would_empty(self) -> None:
+        cheap = _model("cheap", cost_tier=1, family="a")
+        kept = enforce_cloud_floor([cheap], frozenset(), 4)
+        assert kept == [cheap]
+
+
+@pytest.mark.unit
+class TestMatchAllAgentsLocality:
+    def test_adequate_role_prefers_local_over_equal_cloud(self) -> None:
+        # Both meet a balanced role's demand tier; the free local one wins.
+        local = _model("local-a", cost_tier=2, family="x", parameter_count=_TWENTY_B)
+        cloud = _model("cloud-a", cost_tier=2, family="y", parameter_count=_TWENTY_B)
+        providers = {
+            "ollama": _Provider(local, base_url="http://localhost:11434"),
+            "cloud": _Provider(cloud, base_url="https://ollama.com/v1"),
+        }
+        agents: list[dict[str, object]] = [
+            {"role": "Dev", "model_requirement": {"priority": "balanced"}},
+        ]
+        matches = match_all_agents(agents, providers)
+        assert matches[0].provider_name == "ollama"
+        assert matches[0].model_id == "local-a"
+
+    def test_cloud_floor_lifts_cost_role_off_bottom_tier(self) -> None:
+        # Cloud-only: a cost role must not draw a known bottom-tier model.
+        cheap = _model("cheap", cost_tier=1, family="a", parameter_count=_TWENTY_B)
+        mid = _model("mid", cost_tier=2, family="b", parameter_count=_TWENTY_B)
+        providers = {
+            "cloud": _Provider(cheap, mid, base_url="https://api.example.com/v1"),
+        }
+        agents: list[dict[str, object]] = [
+            {"role": "QA", "model_requirement": {"priority": "cost"}},
+        ]
+        matches = match_all_agents(agents, providers)
+        assert matches[0].model_id == "mid"
+
 
 @pytest.mark.unit
 class TestRankByQuality:
@@ -151,11 +229,15 @@ class TestRankByQuality:
 @pytest.mark.unit
 class TestMatchAllAgentsDemandDriven:
     def test_hard_work_outranks_routine_regardless_of_order(self) -> None:
+        # A local provider so the routine role may legitimately draw the
+        # free tier-1 model; the cloud floor would otherwise lift a paid
+        # bottom-tier pick, which the ordering assertion is not about.
         providers = {
-            "cloud": _Provider(
+            "local": _Provider(
                 _model("frontier", cost_tier=4, family="deep", generation=4.0),
                 _model("mid", cost_tier=2, family="gem", generation=4.0),
                 _model("cheap", cost_tier=1, family="min", generation=3.0),
+                base_url="http://localhost:11434",
             )
         }
         # Routine role listed first; the demanding role must still claim the
@@ -191,10 +273,6 @@ class TestMatchAllAgentsDemandDriven:
         chosen = {m.model_id for m in match_all_agents(agents, providers)}
         assert "fam-1.0" not in chosen
         assert chosen == {"fam-2.0"}
-
-
-_ONE_B: int = 1_000_000_000
-_TWENTY_B: int = 20_000_000_000
 
 
 @pytest.mark.unit
