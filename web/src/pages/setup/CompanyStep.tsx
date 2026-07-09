@@ -10,7 +10,6 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useGoToStep, useStepCompletionSync } from './_hooks'
 import { graphemeLength, validateCompanyStep } from '@/utils/setup-validation'
-import { formatModelTier } from '@/utils/model-tiers'
 import { CURRENCY_OPTIONS, isCurrencyCode } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
@@ -120,7 +119,7 @@ function CompanyDetailsForm({
             setModelTierProfile(v)
           }
         }}
-        hint="Influences which model tiers are assigned to agents."
+        hint="Biases the whole roster cheaper (Economy) or stronger (Premium); Balanced keeps each role's default. Free local models are preferred when they meet a role's needs."
       />
     </div>
   )
@@ -271,7 +270,11 @@ function CompanyPreview({
             {agents.map((agent, index) => (
               // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
               <li key={`${agent.name}-${index}`}>
-                {agent.name} ({agent.department}) - {formatModelTier(agent.tier)} model
+                {agent.name} ({agent.department}):{' '}
+                <span className="font-mono text-text-secondary">
+                  {agent.model_id ?? 'unassigned'}
+                </span>
+                {agent.model_provider ? ` · ${agent.model_provider}` : ''}
               </li>
             ))}
           </ul>

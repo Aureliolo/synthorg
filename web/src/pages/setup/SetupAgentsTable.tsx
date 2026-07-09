@@ -6,6 +6,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 import { cn } from '@/lib/utils'
+import { isLocalUrl } from '@/utils/provider-locality'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { PersonalityPresetInfo, SetupAgentSummary } from '@/api/types/setup'
 
@@ -50,6 +51,19 @@ function LevelBadge({ level }: { level: string | null | undefined }) {
   return (
     <span className="inline-flex w-fit rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
       {level}
+    </span>
+  )
+}
+
+/** Flags an agent whose model runs on a local (free) provider. */
+function LocalityBadge({ isLocal }: { isLocal: boolean }) {
+  if (!isLocal) return null
+  return (
+    <span
+      className="inline-flex shrink-0 rounded-full border border-success/20 bg-success/8 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-success"
+      title="Runs on a local provider -- free to run"
+    >
+      local
     </span>
   )
 }
@@ -126,15 +140,18 @@ function SetupAgentRow({
           placeholder={personalityPlaceholderText}
         />
       </div>
-      <div className={W.model}>
-        <AgentModelPicker
-          hideLabel
-          label={`Model for ${agent.name}`}
-          currentProvider={agent.model_provider ?? ''}
-          currentModelId={agent.model_id ?? ''}
-          providers={providers}
-          onChange={(provider, modelId) => void onModelChange(index, provider, modelId)}
-        />
+      <div className={cn(W.model, 'flex items-center gap-2')}>
+        <div className="min-w-0 flex-1">
+          <AgentModelPicker
+            hideLabel
+            label={`Model for ${agent.name}`}
+            currentProvider={agent.model_provider ?? ''}
+            currentModelId={agent.model_id ?? ''}
+            providers={providers}
+            onChange={(provider, modelId) => void onModelChange(index, provider, modelId)}
+          />
+        </div>
+        <LocalityBadge isLocal={isLocalUrl(providers[agent.model_provider ?? '']?.base_url)} />
       </div>
     </div>
   )
