@@ -164,7 +164,7 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
         logger.warning(
             API_APP_STARTUP,
             service="benchmark_scores",
-            note="benchmark-score seeding failed; measured scores fall back to stub",
+            note="benchmark-score seeding failed; unseeded models render as absent",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

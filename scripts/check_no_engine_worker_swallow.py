@@ -92,12 +92,27 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 
 def _handler_raises(handler: ast.ExceptHandler) -> bool:
-    """Return True iff *handler*'s body contains a ``raise`` statement.
+    """Return True iff *handler*'s own body contains a ``raise``.
+
+    Descends through nested control flow (``try`` / ``if`` / ``with`` /
+    ``for`` / ``while``) but NOT into nested ``def`` / ``async def`` /
+    ``lambda`` scopes: a ``raise`` inside a nested helper defined in the
+    handler never propagates the caught exception, so counting it would
+    let a genuine swallow-and-continue pass the gate unflagged.
 
     Returns:
-        True when any ``raise`` appears in the handler subtree.
+        True when a ``raise`` appears in the handler's own control flow.
     """
-    return any(isinstance(node, ast.Raise) for node in ast.walk(handler))
+    stack: list[ast.AST] = list(handler.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.Raise):
+            return True
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            # Nested scope: a raise inside it does not propagate here.
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return False
 
 
 def _handler_marked(handler: ast.ExceptHandler, lines: list[str]) -> bool:

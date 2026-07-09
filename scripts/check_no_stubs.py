@@ -11,9 +11,11 @@ AST-based (string/comment mentions never false-positive). Flags, under
 ``src/synthorg/``:
 
 * ``raise NotImplementedError`` in a concrete method body. An
-  ``@abstractmethod`` / ``@overload`` seam is exempt: Python already
-  blocks instantiating a class with an unimplemented abstract method, so
-  the raise cannot masquerade as working code.
+  ``@abstractmethod`` seam is exempt because Python already blocks
+  instantiating a class with an unimplemented abstract method, so the
+  raise cannot masquerade as working code; an ``@overload`` seam is
+  exempt because its signature is namespace-shadowed by the real
+  implementation that follows, so the placeholder body never runs.
 * A function/method whose body is exactly ``pass`` or ``...`` (after an
   optional docstring), unless the enclosing class is a ``Protocol``, the
   method is ``@abstractmethod`` / ``@overload``, or the definition sits

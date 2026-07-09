@@ -145,13 +145,26 @@ class TestEvaluateCondition:
     # ── Safety: no code execution ─────────────────────────────────
 
     @pytest.mark.unit
-    def test_import_expression_treated_as_key(self) -> None:
-        """Dangerous expressions are just treated as key lookups."""
-        assert evaluate_condition("__import__('os')", {}) is False
+    def test_import_expression_rejected_never_executed(self) -> None:
+        """A dangerous expression is rejected as malformed, never executed.
+
+        The parenthesised call shape parses as a structurally malformed
+        compound expression (trailing tokens after the atom), so it fails
+        loud rather than silently resolving to a key lookup -- and the
+        argument is never passed to ``eval``/``exec``.
+        """
+        with pytest.raises(ValueError, match=r"[Mm]alformed"):
+            evaluate_condition("__import__('os')", {})
 
     @pytest.mark.unit
-    def test_eval_expression_treated_as_key(self) -> None:
-        assert evaluate_condition("eval('1+1')", {}) is False
+    def test_eval_expression_rejected_never_executed(self) -> None:
+        with pytest.raises(ValueError, match=r"[Mm]alformed"):
+            evaluate_condition("eval('1+1')", {})
+
+    @pytest.mark.unit
+    def test_bare_dangerous_identifier_is_inert_key_lookup(self) -> None:
+        """A parenless dangerous-looking token is an inert missing-key lookup."""
+        assert evaluate_condition("__import__", {}) is False
 
 
 @pytest.mark.unit
@@ -311,10 +324,15 @@ class TestCompoundConditions:
             ),
         ],
     )
-    def test_malformed_resolves_false(
-        self, expression: str, ctx: dict[str, str]
-    ) -> None:
-        assert evaluate_condition(expression, ctx) is False
+    def test_malformed_raises(self, expression: str, ctx: dict[str, str]) -> None:
+        """A structurally malformed expression fails loud, not silently False.
+
+        The workflow-activation caller wraps this ``ValueError`` in a typed
+        ``WorkflowConditionEvalError`` rather than silently taking the
+        condition-not-met edge.
+        """
+        with pytest.raises(ValueError, match=r"[Mm]alformed|operand|paren|Unexpected"):
+            evaluate_condition(expression, ctx)
 
     def test_double_not(self) -> None:
         assert evaluate_condition("NOT NOT true", {}) is True

@@ -10,7 +10,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
+from synthorg.engine.errors import ResourceConflictError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.parallel_models import (
@@ -577,7 +577,13 @@ class TestParallelExecutorShutdown:
 
 @pytest.mark.unit
 class TestParallelExecutorFatalErrors:
-    """Fatal error (MemoryError/RecursionError) handling."""
+    """Fatal error (MemoryError/RecursionError) handling.
+
+    A non-recoverable error surfaces unwrapped so a downstream
+    ``reraise_critical`` (which inspects the exception itself, not
+    ``__cause__``) treats it as fatal, never as a mere wave failure
+    laundered into a ``ParallelExecutionError`` (regression C2).
+    """
 
     async def test_memory_error_propagates(self) -> None:
         a1 = _make_assignment("a1", "t1")
@@ -585,7 +591,7 @@ class TestParallelExecutorFatalErrors:
         executor = ParallelExecutor(engine=engine)
         group = _make_group(a1)
 
-        with pytest.raises(ParallelExecutionError, match="fatal"):
+        with pytest.raises(MemoryError):
             await executor.execute_group(group)
 
     async def test_recursion_error_propagates(self) -> None:
@@ -594,8 +600,33 @@ class TestParallelExecutorFatalErrors:
         executor = ParallelExecutor(engine=engine)
         group = _make_group(a1)
 
-        with pytest.raises(ParallelExecutionError, match="fatal"):
+        with pytest.raises(RecursionError):
             await executor.execute_group(group)
+
+    async def test_multiple_fatals_raise_exception_group(self) -> None:
+        """Two fatals surface as an ExceptionGroup of the originals.
+
+        ``fail_fast`` defaults off and the guarded runner collects each
+        fatal without cancelling siblings, so both non-recoverable errors
+        are gathered and re-raised together, unwrapped.
+        """
+        a1 = _make_assignment("a1", "t1")
+        a2 = _make_assignment("a2", "t2")
+
+        async def side_effect(**kwargs: object) -> AgentRunResult:
+            msg = "oom"
+            raise MemoryError(msg)
+
+        engine = _mock_engine()
+        engine.run = AsyncMock(side_effect=side_effect)
+        executor = ParallelExecutor(engine=engine)
+        group = _make_group(a1, a2)
+
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await executor.execute_group(group)
+        fatals = exc_info.value.exceptions
+        assert len(fatals) == 2
+        assert all(isinstance(e, MemoryError) for e in fatals)
 
 
 @pytest.mark.unit

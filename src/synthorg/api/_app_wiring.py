@@ -116,8 +116,9 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
 
     Builds the BudgetConfig, the per-backend CostForecastRepository +
     BenchmarkScoreRepository, the benchmark-score provider selected by the
-    ``budget.benchmark_provider`` discriminator (stub by default, measured
-    behind the repo with a stub fallback), the CostForecaster, and the
+    ``budget.benchmark_provider`` discriminator (``measured`` only; a
+    model with no measured score renders as explicitly absent, never
+    faked), the CostForecaster, and the
     ParetoAnalyzer then hot-swaps them onto AppState through the
     lock-protected ``swap_*`` methods so an in-flight controller read
     cannot race the boot wiring.

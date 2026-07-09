@@ -1,7 +1,7 @@
 """Tests for the ReAct execution loop."""
 
 from typing import TYPE_CHECKING, cast, override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import JsonValue
@@ -27,6 +27,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import mock_of
 from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
@@ -800,9 +801,10 @@ class TestReactLoopRecursionErrorPropagation:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=RecursionError)
+        )
         mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(side_effect=RecursionError)
         loop = ReactLoop()
 
         with pytest.raises(RecursionError):
@@ -819,9 +821,10 @@ class TestReactLoopRecursionErrorPropagation:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=MemoryError)
+        )
         mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(side_effect=MemoryError)
         loop = ReactLoop()
 
         with pytest.raises(MemoryError):
@@ -843,11 +846,10 @@ class TestReactLoopInvokeAllException:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
-        mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(
-            side_effect=RuntimeError("TaskGroup crashed"),
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=RuntimeError("TaskGroup crashed"))
         )
+        mock_invoker.registry.to_definitions.return_value = ()
         loop = ReactLoop()
 
         result = await loop.execute(

@@ -164,6 +164,34 @@ def test_critical_reraise_pair_is_clean(tmp_path: Path) -> None:
     assert _scan(tmp_path, source) == []
 
 
+def test_except_star_swallow_flagged(tmp_path: Path) -> None:
+    # PEP 654 except* groups are ``ast.ExceptHandler`` nodes too, so a
+    # broad except* that logs-and-continues must not slip past the gate.
+    source = (
+        "def f() -> None:\n"
+        "    try:\n"
+        "        g()\n"
+        "    except* Exception:\n"
+        "        logger.warning('boom')\n"
+    )
+    assert len(_scan(tmp_path, source)) == 1
+
+
+def test_raise_in_nested_function_still_flagged(tmp_path: Path) -> None:
+    # A ``raise`` buried in a nested def/lambda is not the handler
+    # re-raising: control never leaves the handler, so the swallow stands.
+    source = (
+        "def f() -> None:\n"
+        "    try:\n"
+        "        g()\n"
+        "    except Exception:\n"
+        "        def _inner() -> None:\n"
+        "            raise RuntimeError('not the handler')\n"
+        "        logger.warning('boom')\n"
+    )
+    assert len(_scan(tmp_path, source)) == 1
+
+
 def test_syntax_error_fails_closed(tmp_path: Path) -> None:
     base = tmp_path / "src" / "synthorg" / "workers"
     base.mkdir(parents=True, exist_ok=True)
@@ -184,3 +212,36 @@ def test_main_clean_tree_returns_zero(
         ["check_no_engine_worker_swallow.py", "--repo-root", str(tmp_path)],
     )
     assert gate.main() == 0
+
+
+def test_main_returns_one_on_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "src" / "synthorg" / "engine"
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "bad.py").write_text(
+        "def f() -> None:\n"
+        "    try:\n"
+        "        g()\n"
+        "    except Exception:\n"
+        "        logger.warning('boom')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["check_no_engine_worker_swallow.py", "--repo-root", str(tmp_path)],
+    )
+    assert gate.main() == 1
+
+
+def test_main_returns_two_on_syntax_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "src" / "synthorg" / "workers"
+    base.mkdir(parents=True, exist_ok=True)
+    (base / "broken.py").write_text("def f(:\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["check_no_engine_worker_swallow.py", "--repo-root", str(tmp_path)],
+    )
+    assert gate.main() == 2

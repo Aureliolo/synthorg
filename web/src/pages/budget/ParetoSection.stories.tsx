@@ -38,18 +38,6 @@ const measuredFrontier: ParetoFrontier = {
   })),
 }
 
-// A frontier blending measured and unmeasured rows: the aggregate source
-// carries both a 'benchmark:' token and the absent marker, so the badge
-// resolves to 'partial'.
-const mixedFrontier: ParetoFrontier = {
-  ...absentFrontier,
-  source: 'benchmark:1980-v1, no-measured-scores',
-  points: absentFrontier.points.map((point, index) => ({
-    ...point,
-    source: index === 0 ? 'benchmark:1980-v1' : 'no-measured-scores',
-  })),
-}
-
 const meta = {
   title: 'Pages/Budget/ParetoSection',
   component: ParetoSection,
@@ -65,10 +53,6 @@ export const AbsentData: Story = {
 
 export const MeasuredData: Story = {
   args: { frontier: measuredFrontier },
-}
-
-export const MixedData: Story = {
-  args: { frontier: mixedFrontier },
 }
 
 export const EmptyState: Story = {

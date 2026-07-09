@@ -14,6 +14,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
+    ProjectRepositoryNotConfiguredError,
 )
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
@@ -413,3 +414,33 @@ class AgentEngineContextMixin:
                 project_budget=project.budget,
             )
         return float(project.budget)
+
+    def _reject_unconfigured_project_repo(
+        self,
+        *,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Warn, and fail loud for a work task, when no project repo is wired.
+
+        Reached only when no ``_project_repo`` is configured but the task
+        still carries a project reference. A work task (one expecting
+        artifacts) will produce output against the project, so running it
+        with no repository to validate membership/budget is a correctness
+        and security gap; it aborts. A non-work task carries the project
+        only as a label and proceeds with the logged warning.
+
+        Raises:
+            ProjectRepositoryNotConfiguredError: When ``task`` expects
+                artifacts but no project repository is configured.
+        """
+        logger.warning(
+            EXECUTION_PROJECT_VALIDATION_FAILED,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=task.project,
+            reason="project_repo_not_configured",
+        )
+        if task.artifacts_expected:
+            raise ProjectRepositoryNotConfiguredError(project_id=task.project)

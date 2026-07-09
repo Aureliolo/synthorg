@@ -292,7 +292,7 @@ async def execute_tool_calls(  # noqa: PLR0913
             execution_id=ctx.execution_id,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
+        # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)
         error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         log_exception_redacted(

@@ -2,6 +2,7 @@ import { ArrowDownToLine, Sparkles } from 'lucide-react'
 
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { cn } from '@/lib/utils'
 import type { ParetoFrontier } from '@/api/types'
 
@@ -101,50 +102,39 @@ interface SourceBadgeProps {
   source: string
 }
 
-type BadgeKind = 'measured' | 'absent' | 'mixed'
+type BadgeKind = 'measured' | 'absent'
 
 const BADGE_CLASS = {
   measured: 'border border-success/30 bg-success/10 text-success',
   absent: 'border border-border bg-muted text-muted-foreground',
-  mixed: 'border border-warning/30 bg-warning/10 text-warning',
 } as const satisfies Record<BadgeKind, string>
 
 const BADGE_LABEL = {
   measured: 'measured',
   absent: 'not measured',
-  mixed: 'partial',
 } as const satisfies Record<BadgeKind, string>
 
 const BADGE_TITLE = {
   measured: 'Measured per-model benchmark scores',
   absent: 'No measured benchmark scores yet',
-  mixed: 'Partial provenance: some roles measured, some not yet measured',
 } as const satisfies Record<BadgeKind, string>
 
-// The frontier source joins each point's provenance, and a point blends
-// its current/candidate scores, so a single string can carry both a
-// 'benchmark:' (measured) token and the 'no-measured-scores' absent
-// marker. A measured/absent mix must not read as fully measured, and an
-// unmeasured model is shown as absent rather than fabricated.
+// A Pareto point exists only when both its current and candidate models
+// carry a measured 'benchmark:' score, so a point's source is always
+// measured. The frontier aggregate is the empty-set 'no-measured-scores'
+// marker only when zero points survived; the two provenance tokens never
+// share one string, so an unmeasured frontier reads as absent, never
+// fabricated.
 function badgeKind(source: string): BadgeKind {
-  const hasMeasured = source.includes('benchmark:')
-  const hasAbsent = source.includes('no-measured-scores')
-  if (hasMeasured && hasAbsent) return 'mixed'
-  return hasMeasured ? 'measured' : 'absent'
+  return source.includes('benchmark:') ? 'measured' : 'absent'
 }
 
 function SourceBadge({ source }: SourceBadgeProps) {
   const kind = badgeKind(source)
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
-        BADGE_CLASS[kind],
-      )}
-      title={BADGE_TITLE[kind]}
-    >
+    <ProvenanceBadge className={BADGE_CLASS[kind]} title={BADGE_TITLE[kind]}>
       {BADGE_LABEL[kind]}
-    </span>
+    </ProvenanceBadge>
   )
 }
 

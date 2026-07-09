@@ -104,8 +104,14 @@ class ParallelExecutor:
         Raises:
             ResourceConflictError: If resource claims conflict between
                 assignments.
-            ParallelExecutionError: If fatal errors (MemoryError,
-                RecursionError) occurred during execution.
+            MemoryError: Propagated directly (single fatal) so the
+                interpreter-fatal reaches the top of the stack unmasked.
+            RecursionError: Propagated directly (single fatal), as above.
+            ExceptionGroup: When more than one fatal error occurred; its
+                members are the original MemoryError/RecursionError
+                instances.
+            ParallelExecutionError: On a non-fatal ``fail_fast`` failure or
+                a resource-lock release failure (never wraps a fatal).
         """
         start = self._clock.monotonic()
 
@@ -197,7 +203,16 @@ class ParallelExecutor:
                 fatal_error_count=len(fatal_errors),
                 error=msg,
             )
-            raise ParallelExecutionError(msg) from fatal_errors[0]
+            # Re-raise the original MemoryError/RecursionError (or an
+            # ExceptionGroup of them) directly, never wrapped in a domain
+            # error: downstream ``reraise_critical`` inspects the exception
+            # itself (and ExceptionGroup members), not ``__cause__``, so
+            # wrapping would launder an interpreter-fatal into an ordinary
+            # ``ParallelExecutionError`` a caller can swallow. Mirrors
+            # ``ToolInvoker._raise_fatal_errors``.
+            if len(fatal_errors) == 1:
+                raise fatal_errors[0]
+            raise ExceptionGroup(msg, fatal_errors)
 
         return result
 

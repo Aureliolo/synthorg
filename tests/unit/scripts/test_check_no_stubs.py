@@ -194,6 +194,18 @@ def test_docstring_ellipsis_not_flagged(tmp_path: Path) -> None:
     assert _scan(tmp_path, "m.py", source) == []
 
 
+def test_docstring_only_body_not_flagged(tmp_path: Path) -> None:
+    # A concrete method whose body is exactly a docstring is the sanctioned
+    # host-provided mixin seam (the host overrides it); it is neither a bare
+    # ``pass`` nor ``...`` stub, so it must not be flagged.
+    source = (
+        "class C:\n"
+        "    def hook(self) -> None:\n"
+        '        """Host-provided seam; overridden by the composing host."""\n'
+    )
+    assert _scan(tmp_path, "m.py", source) == []
+
+
 def test_syntax_error_fails_closed(tmp_path: Path) -> None:
     target = tmp_path / "bad.py"
     target.write_text("def f(:\n", encoding="utf-8")
@@ -221,3 +233,14 @@ def test_main_reports_violations_returns_one(
     )
     monkeypatch.setattr("sys.argv", ["check_no_stubs.py", "--repo-root", str(tmp_path)])
     assert gate.main() == 1
+
+
+def test_main_returns_two_on_syntax_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src" / "synthorg").mkdir(parents=True)
+    (tmp_path / "src" / "synthorg" / "broken.py").write_text(
+        "def f(:\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("sys.argv", ["check_no_stubs.py", "--repo-root", str(tmp_path)])
+    assert gate.main() == 2

@@ -144,7 +144,7 @@ async def call_provider(  # noqa: PLR0913
                 )
             return response
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
+        # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(

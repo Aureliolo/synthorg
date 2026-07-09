@@ -83,6 +83,11 @@ SPRINT_TASK_REMOVED: str = "workflow.sprint.task_removed"
 SPRINT_TASK_COMPLETED: str = "workflow.sprint.task_completed"
 """Task marked completed within a sprint."""
 
+SPRINT_BACKLOG_SAVE_FAILED: str = "workflow.sprint.backlog_save_failed"
+"""Source-of-truth sprint backlog write failed; the sprint's completed-task
+set has diverged from actual task state and needs operator reconciliation
+(the task's own status is authoritative and unaffected)."""
+
 SPRINT_BACKLOG_INVALID: str = "workflow.sprint.backlog_invalid"
 """Invalid sprint backlog operation attempted."""
 

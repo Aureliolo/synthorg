@@ -16,6 +16,7 @@ from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.quality.models import StepQualitySignal
+from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -502,11 +503,15 @@ class ReactLoop:
         # produced zero artifacts. Chat actions (no ``task_execution``) and
         # tasks that expect no deliverable legitimately answer in text, so
         # only artifact-expecting empty runs are reclassified from COMPLETED
-        # to NO_OP (routed to FAILED downstream unless justified).
+        # to NO_OP (routed to FAILED downstream unless justified). A resumed
+        # run only sees this segment's turns, so its zero-tool-call count is
+        # not a valid proxy for total output (earlier segments may have
+        # produced artifacts before an approval park); leave it COMPLETED.
         if (
             ctx.task_execution is not None
             and ctx.task_execution.task.artifacts_expected
             and not any(turn.tool_calls_made for turn in turns)
+            and not is_resumed_run()
         ):
             no_op_msg = (
                 "Task run produced no artifacts: the agent finished without "
@@ -517,6 +522,8 @@ class ReactLoop:
                 execution_id=ctx.execution_id,
                 reason=TerminationReason.NO_OP.value,
                 turns=len(turns),
+                artifacts_expected=True,
+                note=no_op_msg,
             )
             return build_result(
                 ctx,

@@ -1,8 +1,8 @@
 # module-kind: code
 """Model-id to tier-archetype resolution for the cost-dial.
 
-The Pareto downgrade traversal and the stub benchmark provider both need
-to map a model id onto one of the canonical tier archetypes
+The Pareto downgrade traversal and the measured benchmark provider both
+need to map a model id onto one of the canonical tier archetypes
 (``large`` / ``medium`` / ``small`` / ``local-small``). The default
 heuristic recognises the vendor-agnostic ``example-<tier>-<rev>`` /
 ``...-local-small-...`` ids; an operator running arbitrary model ids

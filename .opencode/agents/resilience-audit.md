@@ -73,7 +73,6 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 - **HIGH**: Retry logic in wrong layer, error hierarchy violation, missing retry safety
 - **MEDIUM**: Configuration issues, missing rate limiting, timeout gaps
 - **LOW**: Soft rule violations, optimization opportunities
-- **LOW**: Optimization opportunities, minor pattern improvements
 
 ## Report Format
 

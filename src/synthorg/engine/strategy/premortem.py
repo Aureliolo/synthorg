@@ -272,7 +272,7 @@ class DefaultPremortemExecutor:
                     context_id,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort side channel
+                # lint-allow: swallow-ok -- advisory: degrades to empty premortem
                 reraise_critical(exc)
                 logger.warning(
                     STRATEGY_PREMORTEM_RESPONSE_SKIPPED,

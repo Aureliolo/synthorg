@@ -341,8 +341,8 @@ class UnknownBenchmarkProviderError(DomainError):
 
     A wiring-time misconfiguration: the cost-dial selects the benchmark
     provider from a config discriminator, and an unrecognised value
-    fails loudly rather than silently degrading to the stub (which would
-    mask a typo'd operator setting).
+    fails loudly rather than silently degrading to a fabricated fallback
+    (which would mask a typo'd operator setting).
 
     Class Attributes:
         status_code: HTTP 500 (server misconfiguration, not a client fault).

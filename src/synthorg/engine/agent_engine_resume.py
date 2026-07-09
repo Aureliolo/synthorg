@@ -18,6 +18,7 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
+from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import correlation_scope
@@ -277,20 +278,25 @@ class AgentEngineResumeMixin:
             reason to ``BUDGET_EXHAUSTED`` / ``ERROR``).
         """
         try:
-            result = await self._execute(
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                completion_config=None,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                start=start,
-                timeout_seconds=timeout_seconds,
-                tool_invoker=tool_invoker,
-                effective_autonomy=effective_autonomy,
-                provider=self._provider,
-            )
+            # A resumed run continues prior work: exempt it from the
+            # empty-run (zero-tool-call) fail-loud, whose per-segment proxy
+            # would otherwise discard a task that already produced artifacts
+            # before the approval park.
+            with resumed_run_scope():
+                result = await self._execute(
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    completion_config=None,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    start=start,
+                    timeout_seconds=timeout_seconds,
+                    tool_invoker=tool_invoker,
+                    effective_autonomy=effective_autonomy,
+                    provider=self._provider,
+                )
         except BudgetExhaustedError as exc:
             return await self._handle_budget_error(
                 exc=exc,

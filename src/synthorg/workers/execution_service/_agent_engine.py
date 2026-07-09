@@ -15,7 +15,9 @@ from synthorg.core.domain_errors import (
 from synthorg.core.task import (
     Task,
 )
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -222,6 +224,31 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             env_additions=dict(provisioned.env_vars),
         )
 
+    @override
+    async def _fail_task_provisioning(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        reason: str,
+    ) -> None:
+        """Drive the task to FAILED after a pre-run provisioning failure.
+
+        Workspace / environment provisioning runs before the engine's own
+        status transitions, so a provisioning failure raises (fail loud) but
+        the engine never runs to sync a terminal state. Record FAILED here so
+        the failure is visible on the board, not just in the log; the sync is
+        best-effort and never masks the original raise.
+        """
+        await sync_to_task_engine(
+            self._task_engine,
+            target_status=TaskStatus.FAILED,
+            task_id=task_id,
+            agent_id=agent_id,
+            reason=reason,
+            critical=True,
+        )
+
     async def execute_once(
         self,
         *,
@@ -257,44 +284,58 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         identity = await self._resolve_identity(task.assigned_to, task_id=task_id)
         effective_autonomy = self._resolve_autonomy(identity, task_id=task_id)
 
-        # Lazy per-project workspace provisioning: ensure the project has
-        # its persistent git-backed working tree before the agent runs.
-        # Skipped when no service is wired (test fixtures, persistence-less
-        # dev apps) or the task has no project association.
-        workspace_path: Path | None = None
-        if self._project_workspace_service is not None and task.project is not None:
-            try:
-                workspace = await self._project_workspace_service.get_or_provision(
-                    task.project
-                )
-                workspace_path = Path(workspace.workspace_path)
-            except Exception as exc:
-                reraise_critical(exc)
-                # Fail-loud: a broken or missing persistent workspace must
-                # fail the task with the surfaced reason, never silently
-                # degrade the run to no-workspace (which then cascades into
-                # a skipped reproducible environment and an empty run that
-                # masquerades as success). The worker records the failure.
-                log_exception_redacted(
-                    logger,
-                    WORKERS_EXECUTION_SERVICE_FAILED,
-                    exc,
-                    task_id=task_id,
-                    project_id=task.project,
-                    reason="project_workspace_provision_failed",
-                )
-                raise
+        # Provisioning (workspace + reproducible environment) runs before the
+        # engine's own ASSIGNED -> IN_PROGRESS transition, so a failure here
+        # would strand the task non-terminal: the engine never runs to sync a
+        # terminal state. Fail loud AND drive the task to a visible FAILED so
+        # the board reflects the failure, not just the log.
+        try:
+            # Lazy per-project workspace provisioning: ensure the project has
+            # its persistent git-backed working tree before the agent runs.
+            # Skipped when no service is wired (test fixtures, persistence-less
+            # dev apps) or the task has no project association.
+            workspace_path: Path | None = None
+            if self._project_workspace_service is not None and task.project is not None:
+                try:
+                    workspace = await self._project_workspace_service.get_or_provision(
+                        task.project
+                    )
+                    workspace_path = Path(workspace.workspace_path)
+                except Exception as exc:
+                    reraise_critical(exc)
+                    # A broken or missing persistent workspace must fail the
+                    # task with the surfaced reason, never silently degrade the
+                    # run to no-workspace (which then cascades into a skipped
+                    # reproducible environment and an empty run that masquerades
+                    # as success).
+                    log_exception_redacted(
+                        logger,
+                        WORKERS_EXECUTION_SERVICE_FAILED,
+                        exc,
+                        task_id=task_id,
+                        project_id=task.project,
+                        reason="project_workspace_provision_failed",
+                    )
+                    raise
 
-        # Per-project reproducible environment: provision the committed
-        # declaration into the workspace before the agent runs, and bind
-        # the resulting image + env additions as the active sandbox
-        # environment for this run. Fail-loud (log then raise): a broken
-        # environment must not present itself as a ready sandbox.
-        active_env = await self._provision_environment(
-            task_id=task_id,
-            project_id=task.project,
-            workspace_path=workspace_path,
-        )
+            # Per-project reproducible environment: provision the committed
+            # declaration into the workspace before the agent runs, and bind
+            # the resulting image + env additions as the active sandbox
+            # environment for this run. Fail-loud (log then raise): a broken
+            # environment must not present itself as a ready sandbox.
+            active_env = await self._provision_environment(
+                task_id=task_id,
+                project_id=task.project,
+                workspace_path=workspace_path,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            await self._fail_task_provisioning(
+                task_id=task_id,
+                agent_id=str(identity.name),
+                reason="task_provisioning_failed",
+            )
+            raise
 
         logger.info(
             WORKERS_EXECUTION_SERVICE_ATTEMPTED,

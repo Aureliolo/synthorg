@@ -48,8 +48,8 @@ async def create_review_approval(
     now = datetime.now(UTC)
     approval_id = uuid4()
     # Local import breaks the ontology -> persistence -> budget ->
-    # security -> engine -> core.approval cycle (see security.service
-    # for the same pattern).
+    # security -> engine -> core.approval cycle (see
+    # security.service_escalation for the same pattern).
     from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
     item = ApprovalItem(

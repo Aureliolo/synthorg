@@ -28,16 +28,18 @@ Operator precedence (highest to lowest): NOT, AND, OR.
    Use values that do not contain operator keywords, or restructure
    the expression to avoid the ambiguity.
 
-This function aims to never raise -- all edge cases (empty
-expressions, missing keys, malformed comparisons) resolve to a
-boolean.  Parse errors are logged at WARNING level.
+Legitimate edge cases (empty expressions, missing keys, malformed
+comparisons where both sides are present) resolve to a defined
+boolean. A structurally malformed expression (unbalanced parens,
+missing operand, trailing tokens) raises ``ValueError`` so the
+workflow-activation caller fails loud rather than silently taking the
+condition-not-met edge.
 """
 
 import re
 from collections.abc import Mapping
 from typing import Final
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.condition_eval import (
     CONDITION_EVAL_PARSE_ERROR,
@@ -276,11 +278,13 @@ def evaluate_condition(
 ) -> bool:
     """Evaluate a condition expression against a context dict.
 
-    This function aims to never raise -- all edge cases (empty
-    expressions, missing keys, malformed comparisons) are caught
-    and resolve to ``False``.  ``MemoryError`` and
-    ``RecursionError`` propagate.  Parse errors are logged at
-    WARNING level before returning ``False``.
+    Legitimate edge cases (empty expression, missing keys, malformed
+    comparisons where both sides are present) resolve to a defined
+    boolean. A structurally malformed expression raises ``ValueError``
+    so the workflow-activation caller fails loud with a typed
+    ``WorkflowConditionEvalError`` instead of silently taking the
+    condition-not-met edge; this is control flow, not a side channel.
+    ``MemoryError`` / ``RecursionError`` propagate.
 
     Supports compound expressions with AND, OR, NOT operators
     and parenthesized groups.  Operator precedence: NOT > AND > OR.
@@ -291,21 +295,16 @@ def evaluate_condition(
 
     Returns:
         Boolean result of the expression evaluation.
+
+    Raises:
+        ValueError: On a structurally malformed condition expression
+            (unbalanced parens, missing operand, trailing tokens).
     """
     expr = expression.strip()
     if not expr:
         return False
 
-    try:
-        return _evaluate_inner(expr, context)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
-        reraise_critical(exc)
-        logger.warning(
-            CONDITION_EVAL_PARSE_ERROR,
-            expression=expr[:200],
-        )
-        return False
+    return _evaluate_inner(expr, context)
 
 
 def _evaluate_inner(
@@ -316,8 +315,12 @@ def _evaluate_inner(
 
     Returns:
         The boolean result of evaluating ``expr`` against ``context``;
-        an over-complex or trailing-token expression resolves to
+        an over-complex expression (a resource guard) resolves to
         ``False`` after logging a warning.
+
+    Raises:
+        ValueError: On a structurally malformed expression (bad parse
+            or trailing tokens after a complete parse).
     """
     # Quick path: if no compound operators, use simple evaluation
     # for zero-overhead backward compatibility.  If the entire
@@ -347,5 +350,6 @@ def _evaluate_inner(
             consumed=pos,
             total=len(tokens),
         )
-        return False
+        msg = f"Malformed condition: {len(tokens) - pos} trailing token(s)"
+        raise ValueError(msg)
     return result

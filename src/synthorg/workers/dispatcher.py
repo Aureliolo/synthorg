@@ -216,7 +216,7 @@ class DistributedDispatcher:
         try:
             await retry.execute(publish, task_id=task_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
+            # lint-allow: swallow-ok -- returns False; emits EXHAUSTED event
             reraise_critical(exc)
             # Preserve the original, less-severe event on the final
             # failure so downstream monitoring that still filters on

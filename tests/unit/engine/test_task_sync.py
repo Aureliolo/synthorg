@@ -1,8 +1,8 @@
 """Unit tests for task_sync module -- AgentEngine → TaskEngine sync functions."""
 
 import asyncio
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -17,8 +17,10 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import (
     TaskErrorCode,
     TaskMutationResult,
@@ -67,19 +69,17 @@ def _make_sync_failure(
     )
 
 
-def _make_mock_task_engine(
+def _make_mock_task_engine(  # type: ignore[explicit-any]  # mock_of returns Any
     side_effect: object | None = None,
     return_value: TaskMutationResult | None = None,
-) -> MagicMock:
+) -> Any:
     """Build a mock TaskEngine with configurable submit behavior."""
-    mock_te = MagicMock()
-    if side_effect is not None:
-        mock_te.submit = AsyncMock(side_effect=side_effect)
-    else:
-        mock_te.submit = AsyncMock(
-            return_value=return_value or _make_sync_success(),
-        )
-    return mock_te
+    submit = (
+        AsyncMock(side_effect=side_effect)
+        if side_effect is not None
+        else AsyncMock(return_value=return_value or _make_sync_success())
+    )
+    return mock_of[TaskEngine](submit=submit)
 
 
 def _make_execution_result(
@@ -648,6 +648,42 @@ class TestApplyPostExecutionTransitions:
         assert out.context.task_execution is not None
         assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
+    async def test_resumed_empty_work_run_goes_to_review_not_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A resumed run's zero-tool-call segment must not fail the task.
+
+        Regression (C1): a PARKED-then-resumed run only carries the current
+        segment's turns, so its zero-tool-call count is not a valid proxy for
+        total output; earlier segments may already have produced artifacts.
+        Inside a ``resumed_run_scope`` an otherwise-empty completed work run
+        proceeds to review instead of being wrongly failed.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+        mock_te = _make_mock_task_engine()
+
+        with resumed_run_scope():
+            out = await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(work_task.id),
+                task_engine=mock_te,
+            )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
     async def test_completed_transition_failure_returns_original(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -826,8 +862,7 @@ class TestReviewApprovalCreation:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
 
-        mock_store = MagicMock()
-        mock_store.add = AsyncMock()
+        mock_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
 
         await apply_post_execution_transitions(
             result,
@@ -880,8 +915,9 @@ class TestReviewApprovalCreation:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
 
-        mock_store = MagicMock()
-        mock_store.add = AsyncMock(side_effect=RuntimeError("store error"))
+        mock_store = mock_of[ApprovalStoreProtocol](
+            add=AsyncMock(side_effect=RuntimeError("store error"))
+        )
 
         out = await apply_post_execution_transitions(
             result,
@@ -914,8 +950,9 @@ class TestReviewApprovalCreation:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
 
-        mock_store = MagicMock()
-        mock_store.add = AsyncMock(side_effect=error_cls("fatal"))
+        mock_store = mock_of[ApprovalStoreProtocol](
+            add=AsyncMock(side_effect=error_cls("fatal"))
+        )
 
         with pytest.raises(error_cls):
             await apply_post_execution_transitions(

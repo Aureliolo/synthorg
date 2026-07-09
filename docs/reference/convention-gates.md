@@ -71,6 +71,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_explicit_any_inline_disable.py` | commit+push | `src/` + `tests/` | staged | yes | none | keep |
 | `check_no_ghost_wiring.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_no_growth_in_god_modules.py` | commit+push | god-module allowlist | full | no | allowlist (empty) | keep |
+| `check_no_hardcoded_model_default.py` | push | `settings/definitions/` + `src/synthorg/` | full | no | `hardcoded_model_default_baseline.txt` | keep |
 | `check_no_implicit_state_attribute.py` | push | `api/state.py` | full | no | none | keep |
 | `check_no_loop_bound_init.py` | commit+push | `src/synthorg/` | full | no | `loop_bound_init_baseline.txt` | harden |
 | `check_no_magic_numbers.py` | push | `src/synthorg/` | full | no | `no_magic_numbers_baseline.txt` | keep |

@@ -1,9 +1,12 @@
 """Task status sync -- AgentEngine → TaskEngine integration.
 
 Module-level functions extracted from ``AgentEngine`` to keep the
-orchestrator file focused on execution flow.  Every function is
-best-effort: sync failures are logged and swallowed so agent
-execution is never blocked by a ``TaskEngine`` issue.
+orchestrator file focused on execution flow.  Remote ``TaskEngine`` sync
+is best-effort (failures are logged and swallowed so agent execution is
+never blocked by a ``TaskEngine`` issue), but the post-execution
+transition itself is fail-loud: a work task that produced no artifacts
+and no recorded no-op justification is driven to ``FAILED`` rather than
+pushed to review as a silent no-op success.
 """
 
 import asyncio
@@ -16,6 +19,7 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.engine.task_sync_review import create_review_approval
@@ -29,6 +33,7 @@ if TYPE_CHECKING:
     from synthorg.engine.review_gate import ReviewGateService
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
+    EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
     EXECUTION_ENGINE_SYNC_FAILED,
     EXECUTION_ENGINE_TASK_SYNCED,
     EXECUTION_ENGINE_TASK_TRANSITION,
@@ -52,9 +57,12 @@ _EMPTY_RUN_REASON: Final[str] = (
     "of recording a silent no-op success"
 )
 
-# Metadata key an agent/pipeline sets to justify a legitimately empty run
-# (e.g. a task that concluded no change was needed). Its presence routes an
-# otherwise-empty run to review instead of FAILED.
+# Extension point for a legitimately empty run (e.g. a task that concluded no
+# change was needed): its presence routes an otherwise-empty run to review
+# instead of FAILED. The invariant is fail-closed today -- no production path
+# sets this key, so an empty work run always fails. When a producer is wired,
+# it MUST be a system/pipeline-set, validated signal, never a value derived
+# from agent/LLM output, so an agent cannot self-justify an empty run.
 _NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
 
 
@@ -206,6 +214,10 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
     COMPLETED termination triggers the stepwise transitions defined
     in ``_COMPLETION_STEPS`` (currently: -> IN_REVIEW, awaiting review).
     SHUTDOWN triggers current status -> INTERRUPTED.
+    A ``NO_OP`` run -- or a ``COMPLETED`` run that a work task finished
+    with zero tool calls (the silent-no-op proxy for zero artifacts) --
+    is driven to FAILED instead of review, unless a no-op justification
+    was recorded or the run resumed prior work (see ``empty_run_fails``).
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.
     ``MemoryError`` and ``RecursionError`` propagate unconditionally.
@@ -240,13 +252,20 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
 
     justified = bool(execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY))
     task_expects_artifacts = bool(ctx.task_execution.task.artifacts_expected)
+    # A resumed/replayed run only carries the current segment's turns, so its
+    # zero-tool-call count is not a valid proxy for total task output: earlier
+    # segments (before an approval park) may already have produced artifacts.
+    # Exempt a continued run from the empty-run failure so a legitimately
+    # progressed task is never discarded; a genuinely empty continued run
+    # still completes to review rather than FAILED.
+    empty_run_fails = not is_resumed_run()
 
     # A silent no-op success is a failure: a WORK task (one that declared
     # expected artifacts) that produced none (proxied by zero tool calls) is
     # failed unless an explicit no-op justification was recorded. Enforced in
     # two layers: the react loop classifies the empty run as NO_OP, and this
     # transition also guards a COMPLETED that slipped through from another loop.
-    if reason == TerminationReason.NO_OP and not justified:
+    if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
         return await _transition_to_failed(
             execution_result, ctx, agent_id, task_id, task_engine
         )
@@ -258,6 +277,7 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
         task_expects_artifacts
         and execution_result.total_tool_calls == 0
         and not justified
+        and empty_run_fails
     ):
         return await _transition_to_failed(
             execution_result, ctx, agent_id, task_id, task_engine
@@ -431,7 +451,7 @@ async def _transition_to_failed(
         transition raises.
     """
     logger.warning(
-        EXECUTION_ENGINE_ERROR,
+        EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
         agent_id=agent_id,
         task_id=task_id,
         context="Empty run: no artifacts produced; failing the task",
