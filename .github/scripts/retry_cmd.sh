@@ -98,26 +98,34 @@ if ! [[ "$ATTEMPT_TIMEOUT" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+# Resolve the per-attempt timeout wrapper once, before the loop. macOS ships
+# coreutils' `timeout` as `gtimeout` (or not at all); when a timeout was asked
+# for but neither exists, warn ONCE so the unguarded fallback is visible in the
+# log rather than silently skipped -- and warning here, not per attempt, keeps
+# the retry output clean.
+TIMEOUT_CMD=""
+if [ "$ATTEMPT_TIMEOUT" -gt 0 ]; then
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+  else
+    echo "::warning::retry_cmd.sh: RETRY_CMD_ATTEMPT_TIMEOUT=${ATTEMPT_TIMEOUT} set but neither 'timeout' nor 'gtimeout' is available; attempts run WITHOUT a per-attempt timeout" >&2
+  fi
+fi
+
 attempt=0
 while :; do
   attempt=$((attempt + 1))
   # `|| rc=$?` keeps `set -e`-style aborts away and captures the real exit
   # code, sidestepping the `if cmd; then` idiom that resets $? to 0.
   rc=0
-  if [ "$ATTEMPT_TIMEOUT" -gt 0 ]; then
+  if [ -n "$TIMEOUT_CMD" ]; then
     # --kill-after escalates to SIGKILL if the command ignores the initial
-    # SIGTERM, so a wedged process cannot outlive its attempt. A timeout
-    # exits 124 (or 137 on the SIGKILL escalation), which the loop treats as
-    # any other retryable non-zero exit. macOS runners ship coreutils' timeout
-    # as `gtimeout` (or not at all); fall back rather than fail with a 127
-    # that would burn the whole retry budget on a `command not found`.
-    if command -v timeout >/dev/null 2>&1; then
-      timeout --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
-    elif command -v gtimeout >/dev/null 2>&1; then
-      gtimeout --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
-    else
-      "$@" || rc=$?
-    fi
+    # SIGTERM, so a wedged process cannot outlive its attempt. A timeout exits
+    # 124 (or 137 on the SIGKILL escalation), which the loop treats as any
+    # other retryable non-zero exit.
+    "$TIMEOUT_CMD" --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
   else
     "$@" || rc=$?
   fi
