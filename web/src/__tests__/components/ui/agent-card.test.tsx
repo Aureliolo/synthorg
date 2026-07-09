@@ -56,7 +56,9 @@ describe('AgentCard', () => {
     render(<AgentCard {...defaultProps} model="example-large-001" tier="large" />)
 
     expect(screen.getByText('example-large-001')).toBeInTheDocument()
-    expect(screen.getByText('· large')).toBeInTheDocument()
+    expect(screen.getByText('large')).toBeInTheDocument()
+    // The separator dot is decorative and hidden from assistive tech.
+    expect(screen.getByText('·')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.queryByText('Tier:')).not.toBeInTheDocument()
   })
 

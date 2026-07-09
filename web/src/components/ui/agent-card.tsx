@@ -78,8 +78,13 @@ function MetaItem({ label, value, mono = false, span = false, suffix }: MetaItem
   return (
     <div className={cn('flex min-w-0 items-baseline gap-1 text-xs', span && 'col-span-2')}>
       <span className="shrink-0 text-muted-foreground">{label}:</span>
-      <span className={cn('truncate text-text-secondary', mono && 'font-mono')}>{value}</span>
-      {suffix && <span className="shrink-0 text-muted-foreground">· {suffix}</span>}
+      <span className={cn('min-w-0 truncate text-text-secondary', mono && 'font-mono')}>{value}</span>
+      {suffix && (
+        <span className="shrink-0 text-muted-foreground">
+          <span aria-hidden="true">· </span>
+          {suffix}
+        </span>
+      )}
     </div>
   )
 }
