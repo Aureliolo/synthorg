@@ -7,11 +7,9 @@ execution is never blocked by a ``TaskEngine`` issue.
 """
 
 import asyncio
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
-from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
@@ -20,6 +18,7 @@ from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
+from synthorg.engine.task_sync_review import create_review_approval
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
@@ -28,9 +27,6 @@ if TYPE_CHECKING:
     # call site duck-types through the passed-in gate.
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_REVIEW_CREATED,
-)
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_SYNC_FAILED,
@@ -47,8 +43,6 @@ logger = get_logger(__name__)
 _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
     (TaskStatus.IN_REVIEW, "Agent completed execution -- awaiting review"),
 )
-
-_REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
 
 # Reason surfaced when a work task finishes with no produced artifacts and
 # no recorded no-op justification: the run is failed rather than pushed to
@@ -362,68 +356,6 @@ async def _transition_and_sync(  # noqa: PLR0913
     return ctx
 
 
-async def _create_review_approval(
-    approval_store: ApprovalStoreProtocol | None,
-    *,
-    agent_id: str,
-    task_id: str,
-) -> str | None:
-    """Create an ApprovalItem for a task entering IN_REVIEW.
-
-    Best-effort: failures are logged and swallowed so the
-    execution result is never lost.
-
-    Args:
-        approval_store: Store to create the item in, or ``None``.
-        agent_id: Agent that completed the task.
-        task_id: Task identifier.
-
-    Returns:
-        The approval_id on success, or ``None`` if no store or on error.
-    """
-    if approval_store is None:
-        return None
-
-    now = datetime.now(UTC)
-    approval_id = uuid4()
-    # Local import breaks the ontology -> persistence -> budget ->
-    # security -> engine -> core.approval cycle (see security.service
-    # for the same pattern).
-    from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-
-    item = ApprovalItem(
-        id=approval_id,
-        action_type=_REVIEW_ACTION_TYPE,
-        title=f"Review task {task_id} completion",
-        description=f"Agent {agent_id} completed task {task_id}",
-        requested_by=agent_id,
-        risk_level=ApprovalRiskLevel.LOW,
-        created_at=now,
-        task_id=task_id,
-    )
-    try:
-        await approval_store.add(item)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
-        reraise_critical(exc)
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
-            approval_id=approval_id,
-            task_id=task_id,
-            agent_id=agent_id,
-            error="Failed to create review approval (non-fatal)",
-        )
-        return None
-
-    logger.info(
-        APPROVAL_GATE_REVIEW_CREATED,
-        approval_id=str(approval_id),
-        task_id=task_id,
-        agent_id=agent_id,
-    )
-    return str(approval_id)
-
-
 async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
@@ -470,9 +402,7 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.IN_REVIEW
     ):
-        await _create_review_approval(
-            approval_store, agent_id=agent_id, task_id=task_id
-        )
+        await create_review_approval(approval_store, agent_id=agent_id, task_id=task_id)
         await _maybe_auto_review(
             review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
         )

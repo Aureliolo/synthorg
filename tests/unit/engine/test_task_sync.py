@@ -24,11 +24,11 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
 )
 from synthorg.engine.task_sync import (
-    _REVIEW_ACTION_TYPE,
     apply_post_execution_transitions,
     sync_to_task_engine,
     transition_task_if_needed,
 )
+from synthorg.engine.task_sync_review import _REVIEW_ACTION_TYPE
 from synthorg.execution.turn import TurnRecord
 from tests._shared import mock_of
 
