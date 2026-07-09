@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types/settings'
 import { useAnimationPreset } from '@/hooks/useAnimationPreset'
+import { Collapsible } from '@/components/ui/collapsible'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
@@ -173,46 +174,30 @@ function partitionByRuntime(
  * (`restart_required`-only settings are DB-writable and stay inline with their
  * restart badge; they are deliberately not moved here.)
  */
-function AdvancedStartupOnly({
-  entries,
-  rows,
-  sectionSlug,
-}: {
-  entries: SettingEntry[]
-  rows: RowRenderProps
-  sectionSlug: string
-}) {
-  const [open, setOpen] = useState(false)
-  // Per-section id: this disclosure renders once per namespace, so a shared
-  // literal would collide (duplicate DOM id + broken aria-controls) whenever
-  // more than one namespace has read-only settings.
-  const contentId = `${sectionSlug}-advanced-startup-only`
+function AdvancedStartupOnly({ entries, rows }: { entries: SettingEntry[]; rows: RowRenderProps }) {
   if (entries.length === 0) return null
+  // Reuse the shared disclosure primitive (chevron trigger + aria wiring +
+  // per-instance id) rather than hand-rolling a second toggle here.
   return (
-    <div className="mt-3 rounded-md border border-border/60">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 p-card text-left text-xs text-text-muted transition-colors hover:bg-card-hover"
-        aria-expanded={open}
-        aria-controls={contentId}
-      >
-        <span className="font-medium uppercase tracking-wider">Advanced · startup-only</span>
-        <span>({entries.length})</span>
-        <span className="ml-1">read-only · set via env / YAML before launch</span>
-        <ChevronDown
-          className={cn('ml-auto size-4 transition-transform duration-200', open && 'rotate-180')}
-          aria-hidden
-        />
-      </button>
-      {open && (
-        <div id={contentId} className="space-y-1 border-t border-border/60 p-card">
-          {entries.map((entry) => (
-            <NamespaceSettingRow key={entryKey(entry)} entry={entry} rows={rows} />
-          ))}
-        </div>
-      )}
-    </div>
+    <Collapsible
+      className="mt-3"
+      defaultOpen={false}
+      title={
+        <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
+          Advanced · startup-only
+          <span className="ml-2 font-normal normal-case">
+            read-only · set via env / YAML before launch
+          </span>
+        </span>
+      }
+      summary={`(${entries.length})`}
+    >
+      <div className="space-y-1">
+        {entries.map((entry) => (
+          <NamespaceSettingRow key={entryKey(entry)} entry={entry} rows={rows} />
+        ))}
+      </div>
+    </Collapsible>
   )
 }
 
@@ -230,7 +215,7 @@ export function NamespaceSection(props: NamespaceSectionProps) {
   const inner = (
     <>
       <NamespaceGroups groups={groups} hideHeader={hideHeader} anim={anim} rows={rows} />
-      <AdvancedStartupOnly entries={startupEntries} rows={rows} sectionSlug={sectionSlug} />
+      <AdvancedStartupOnly entries={startupEntries} rows={rows} />
       <NamespaceFooter footerAction={footerAction} />
     </>
   )

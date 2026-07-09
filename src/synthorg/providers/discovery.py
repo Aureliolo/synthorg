@@ -152,6 +152,11 @@ def _discovery_transport_error(reason: str, safe_url: str) -> ProviderError:
                 "Provider returned a non-JSON discovery response",
                 context={"url": safe_url},
             )
+        case "malformed":
+            return ProviderInternalError(
+                "Provider returned an unexpected discovery response structure",
+                context={"url": safe_url},
+            )
         case _:
             return ProviderInternalError(
                 "Model discovery failed unexpectedly",
@@ -337,8 +342,16 @@ async def _discover_ollama(
         url, "ollama", headers=headers, trust_url=trust_url, strict=strict
     )
     if data is None:
+        # A strict fetch already raised on transport failures; a non-raising
+        # ``None`` here means a 200 with a non-dict body, which strict must
+        # surface rather than mask as "no models".
+        if strict:
+            error = _discovery_transport_error("malformed", _redact_url(url))
+            raise error
         return ()
-    base_models = _parse_and_log("ollama", url, data, _parse_ollama_models)
+    base_models = _parse_and_log(
+        "ollama", url, data, _parse_ollama_models, strict=strict
+    )
     return await enrich_discovered_models(
         base_url,
         base_models,
@@ -382,8 +395,16 @@ async def _discover_standard_api(
         strict=strict,
     )
     if data is None:
+        # A strict fetch already raised on transport failures; a non-raising
+        # ``None`` here means a 200 with a non-dict body, which strict must
+        # surface rather than mask as "no models".
+        if strict:
+            error = _discovery_transport_error("malformed", _redact_url(url))
+            raise error
         return ()
-    models = _parse_and_log(preset_name, url, data, _parse_standard_models)
+    models = _parse_and_log(
+        preset_name, url, data, _parse_standard_models, strict=strict
+    )
     return await enrich_discovered_models(
         base_url,
         models,
@@ -397,6 +418,8 @@ def _parse_and_log(
     url: str,
     data: dict[str, JsonValue],
     parse_fn: Callable[[dict[str, JsonValue]], tuple[ProviderModelConfig, ...] | None],
+    *,
+    strict: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Parse a model-listing response and log skip counts.
 
@@ -409,9 +432,16 @@ def _parse_and_log(
         data: Parsed JSON response body.
         parse_fn: Parser function returning a tuple of
             ProviderModelConfig or None.
+        strict: When True, an unexpected response structure (``parse_fn``
+            returns ``None``) raises a typed :class:`ProviderError` instead of
+            degrading to an empty tuple, so an authoritative discovery surfaces
+            a malformed catalogue rather than masking it as "no models".
 
     Returns:
         Tuple of discovered model configs, or empty tuple.
+
+    Raises:
+        ProviderError: On an unexpected response structure when ``strict``.
     """
     models = parse_fn(data)
     if models is None:
@@ -421,6 +451,9 @@ def _parse_and_log(
             reason="unexpected_response_structure",
             url=_redact_url(url),
         )
+        if strict:
+            error = _discovery_transport_error("malformed", _redact_url(url))
+            raise error
         return ()
 
     # Determine skip count from the raw list.

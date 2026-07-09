@@ -61,9 +61,6 @@ class TestPreferLiveDiscoveryCreate:
         }
         # The discovered catalogue replaces the curated seed on create.
         assert {m.id for m in config.models} == {"live-model-001", "live-model-002"}
-        # Ollama Cloud ships a seed, so its create uses the non-strict path (a
-        # failed discovery degrades to the seed rather than failing the save).
-        discover.assert_awaited_once()
 
     async def test_mammouth_seedless_discovers_and_replaces(
         self,

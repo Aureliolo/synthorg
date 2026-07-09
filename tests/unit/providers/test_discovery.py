@@ -396,6 +396,42 @@ class TestDiscoverStandardApi:
         ):
             await discover_models("http://169.254.169.254/v1", "lm-studio", strict=True)
 
+    async def test_strict_raises_on_non_dict_body(self) -> None:
+        """A strict discovery raises when a 200 body is valid JSON but not a dict.
+
+        A malformed-but-successful response must not slip through strict mode
+        as an empty catalogue -- it surfaces as a typed provider error.
+        """
+        response = _mock_response(["not", "a", "dict"], status_code=200)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            with pytest.raises(ProviderInternalError):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    async def test_strict_raises_on_unexpected_shape(self) -> None:
+        """A strict discovery raises when the dict lacks the model listing."""
+        response = _mock_response({"unexpected": "shape"}, status_code=200)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            with pytest.raises(ProviderInternalError):
+                await discover_models(
+                    "http://localhost:1234/v1", "lm-studio", strict=True
+                )
+
+    async def test_non_strict_degrades_to_empty_on_unexpected_shape(self) -> None:
+        """Without ``strict`` an unexpected-shape body still degrades to empty."""
+        response = _mock_response({"unexpected": "shape"}, status_code=200)
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value = _mock_client(response)
+
+            result = await discover_models("http://localhost:1234/v1", "lm-studio")
+
+        assert result == ()
+
     async def test_uses_models_endpoint(self) -> None:
         response = _mock_response({"data": []})
         with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
