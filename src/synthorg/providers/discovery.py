@@ -125,7 +125,7 @@ def _discovery_transport_error(reason: str, safe_url: str) -> ProviderError:
 
     Args:
         reason: Transport failure kind (``ssrf`` / ``connection`` / ``timeout``
-            / ``non_json`` / anything else -> unexpected).
+            / ``non_json`` / ``malformed`` / anything else -> unexpected).
         safe_url: Redacted URL for the error context.
 
     Returns:
@@ -162,6 +162,30 @@ def _discovery_transport_error(reason: str, safe_url: str) -> ProviderError:
                 "Model discovery failed unexpectedly",
                 context={"url": safe_url},
             )
+
+
+def _malformed_or_empty(url: str, *, strict: bool) -> tuple[ProviderModelConfig, ...]:
+    """Resolve an unusable 200 discovery body: raise when strict, else empty.
+
+    Shared by the discovery paths that reach a 200 response whose body cannot
+    yield a catalogue (a non-dict body, or a parse that produced nothing): a
+    strict discovery surfaces it as a typed :class:`ProviderError`, a non-strict
+    one degrades to an empty catalogue.
+
+    Args:
+        url: The fetched URL (redacted for the error context).
+        strict: When True, raise instead of degrading to empty.
+
+    Returns:
+        Empty tuple when not ``strict``.
+
+    Raises:
+        ProviderError: When ``strict`` is True.
+    """
+    if strict:
+        error = _discovery_transport_error("malformed", _redact_url(url))
+        raise error
+    return ()
 
 
 def _http_retry_after_seconds(response: httpx.Response) -> float | None:
@@ -345,10 +369,7 @@ async def _discover_ollama(
         # A strict fetch already raised on transport failures; a non-raising
         # ``None`` here means a 200 with a non-dict body, which strict must
         # surface rather than mask as "no models".
-        if strict:
-            error = _discovery_transport_error("malformed", _redact_url(url))
-            raise error
-        return ()
+        return _malformed_or_empty(url, strict=strict)
     base_models = _parse_and_log(
         "ollama", url, data, _parse_ollama_models, strict=strict
     )
@@ -398,10 +419,7 @@ async def _discover_standard_api(
         # A strict fetch already raised on transport failures; a non-raising
         # ``None`` here means a 200 with a non-dict body, which strict must
         # surface rather than mask as "no models".
-        if strict:
-            error = _discovery_transport_error("malformed", _redact_url(url))
-            raise error
-        return ()
+        return _malformed_or_empty(url, strict=strict)
     models = _parse_and_log(
         preset_name, url, data, _parse_standard_models, strict=strict
     )
@@ -451,10 +469,7 @@ def _parse_and_log(
             reason="unexpected_response_structure",
             url=_redact_url(url),
         )
-        if strict:
-            error = _discovery_transport_error("malformed", _redact_url(url))
-            raise error
-        return ()
+        return _malformed_or_empty(url, strict=strict)
 
     # Determine skip count from the raw list.
     raw_key = "models" if parse_fn is _parse_ollama_models else "data"
