@@ -59,6 +59,49 @@ describe('ChiefOfStaffChat', () => {
     expect(screen.getByText('Confidence: 90%')).toBeInTheDocument()
   })
 
+  it('surfaces cited org-state records as reference chips', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/stream', () =>
+        sseStream([
+          sseFrame('progress', { delta: 'Working on the platform revamp.' }),
+          sseFrame('complete', {
+            answer: 'Working on the platform revamp.',
+            sources: ['tasks', 'projects'],
+            cited_records: [
+              {
+                kind: 'task',
+                record_id: 'task-1',
+                label: 'Fix login',
+                status: 'in_review',
+              },
+              {
+                kind: 'project',
+                record_id: 'proj-1',
+                label: 'Platform Revamp',
+                status: 'active',
+              },
+            ],
+            confidence: 0.9,
+          }),
+        ]),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<ChiefOfStaffChat />)
+
+    await user.type(
+      screen.getByLabelText('Chat message'),
+      'what is the org working on?',
+    )
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Fix login')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Platform Revamp')).toBeInTheDocument()
+    expect(screen.getByText('(in_review)')).toBeInTheDocument()
+  })
+
   it('keeps the partial answer and stops streaming when Stop is clicked', async () => {
     // A stream that emits one delta then never completes, so the turn stays
     // in flight until the client aborts it.

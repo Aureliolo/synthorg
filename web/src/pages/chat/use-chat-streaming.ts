@@ -71,6 +71,7 @@ export function useChatStreaming(setStaff: SetStaff): ChatStreaming {
                 ...m,
                 content: result.answer || m.content,
                 sources: result.sources,
+                citedRecords: result.citedRecords,
                 confidence: result.confidence,
                 isStreaming: false,
               })),

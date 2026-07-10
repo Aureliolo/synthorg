@@ -21,6 +21,7 @@ from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
+from synthorg.meta.chief_of_staff.org_state import OrgStateSnapshot
 from synthorg.meta.signal_models import OrgSignalSnapshot
 from synthorg.meta.state import alert_repo_of
 from synthorg.observability import get_logger, safe_error_description
@@ -37,8 +38,13 @@ async def resolve_chat_answer(
     chat_backend: ChiefOfStaffChat,
     query: ChatQuery,
     snapshot: OrgSignalSnapshot,
+    org_state: OrgStateSnapshot | None,
 ) -> ChatResponse:
     """Answer a chat question, routing by whichever scoping id is set.
+
+    The free-form paths (plain and proposal-scoped) ground the answer in
+    the real ``org_state`` read model; the dedicated alert-explain path
+    stays scoped to the alert's own signal context.
 
     Returns:
         The chat response from whichever path was taken.
@@ -70,7 +76,7 @@ async def resolve_chat_answer(
                     scope="alert_id",
                     value=str(query.alert_id),
                 )
-        return await chat_backend.ask(query, snapshot)
+        return await chat_backend.ask(query, snapshot, org_state=org_state)
 
     if query.proposal_id is not None:
         store = app_state.slice(ApprovalStateSlice).store
@@ -93,15 +99,34 @@ async def resolve_chat_answer(
                 )
             else:
                 if item is not None:
-                    return await chat_backend.ask(query, snapshot, scoped_proposal=item)
+                    return await chat_backend.ask(
+                        query, snapshot, scoped_proposal=item, org_state=org_state
+                    )
                 logger.warning(
                     META_CHAT_SCOPE_NOT_FOUND,
                     scope="proposal_id",
                     value=str(query.proposal_id),
                 )
-        return await chat_backend.ask(query, snapshot)
+        return await chat_backend.ask(query, snapshot, org_state=org_state)
 
-    return await chat_backend.ask(query, snapshot)
+    return await chat_backend.ask(query, snapshot, org_state=org_state)
 
 
-__all__ = ["resolve_chat_answer"]
+def chat_answer_payload(result: ChatResponse) -> dict[str, object]:
+    """Flatten a chat response into the wire body shared by both paths.
+
+    Used by the buffered ``/meta/chat`` response and the streaming
+    ``complete`` frame so the two never drift on the field set.
+
+    Returns:
+        The ``answer`` / ``sources`` / ``cited_records`` / ``confidence`` dict.
+    """
+    return {
+        "answer": result.answer,
+        "sources": list(result.sources),
+        "cited_records": [r.model_dump(mode="json") for r in result.cited_records],
+        "confidence": result.confidence,
+    }
+
+
+__all__ = ["chat_answer_payload", "resolve_chat_answer"]

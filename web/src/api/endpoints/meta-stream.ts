@@ -15,6 +15,8 @@ import { sanitizeForLog } from '@/utils/logging'
 import { apiClient } from '../client'
 import type { ChatStreamRequest } from '../types'
 
+import type { CitedRecord } from './meta'
+
 const log = createLogger('meta-stream')
 
 interface SseFrame {
@@ -146,7 +148,26 @@ function errorMessage(data: unknown): string {
 export interface ChatStreamResult {
   answer: string
   sources: string[]
+  citedRecords: CitedRecord[]
   confidence: number
+}
+
+const CITED_KINDS = new Set(['task', 'project', 'approval'])
+
+function isCitedRecord(entry: unknown): entry is CitedRecord {
+  return (
+    isRecord(entry) &&
+    typeof entry['kind'] === 'string' &&
+    CITED_KINDS.has(entry['kind']) &&
+    typeof entry['record_id'] === 'string' &&
+    typeof entry['label'] === 'string' &&
+    typeof entry['status'] === 'string'
+  )
+}
+
+function parseCitedRecords(value: unknown): CitedRecord[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isCitedRecord)
 }
 
 /** Incremental callbacks for a streaming Chief-of-Staff answer. */
@@ -158,7 +179,7 @@ export interface ChatStreamCallbacks {
 function parseChatComplete(data: unknown): ChatStreamResult {
   if (!isRecord(data)) {
     log.warn('Malformed complete frame in chat stream; using empty defaults')
-    return { answer: '', sources: [], confidence: 0.5 }
+    return { answer: '', sources: [], citedRecords: [], confidence: 0.5 }
   }
   const sources = data['sources']
   return {
@@ -166,6 +187,7 @@ function parseChatComplete(data: unknown): ChatStreamResult {
     sources: Array.isArray(sources)
       ? sources.filter((s): s is string => typeof s === 'string')
       : [],
+    citedRecords: parseCitedRecords(data['cited_records']),
     confidence: typeof data['confidence'] === 'number' ? data['confidence'] : 0.5,
   }
 }

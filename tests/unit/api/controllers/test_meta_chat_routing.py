@@ -26,6 +26,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.models import Alert, ChatQuery, ChatResponse
+from synthorg.meta.chief_of_staff.org_state import OrgStateSnapshot
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -48,6 +49,9 @@ from tests._shared import make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 6, 20, 12, 0, tzinfo=UTC)
+# Threaded verbatim through every free-form ``ask`` call; the routing helper
+# forwards it unchanged (the alert-explain path stays scoped and ignores it).
+_ORG_STATE = OrgStateSnapshot(read_at=_NOW)
 
 
 def _snapshot() -> OrgSignalSnapshot:
@@ -119,10 +123,12 @@ class TestResolveChatAnswerNoScope:
         query = ChatQuery(question="How are we doing?")
         snapshot = _snapshot()
 
-        result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+        result = await resolve_chat_answer(
+            state, chat_backend, query, snapshot, _ORG_STATE
+        )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         chat_backend.explain_alert.assert_not_awaited()
 
 
@@ -136,7 +142,9 @@ class TestResolveChatAnswerAlertScope:
         query = ChatQuery(question="Explain this alert", alert_id=alert.id)
         snapshot = _snapshot()
 
-        result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+        result = await resolve_chat_answer(
+            state, chat_backend, query, snapshot, _ORG_STATE
+        )
 
         assert result.answer == "alert answer"
         chat_backend.explain_alert.assert_awaited_once_with(alert, snapshot)
@@ -152,10 +160,12 @@ class TestResolveChatAnswerAlertScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         chat_backend.explain_alert.assert_not_awaited()
         # A resolved-but-empty lookup is a stale/deleted id, not an unwired
         # dependency -- the two must not share one event.
@@ -174,10 +184,12 @@ class TestResolveChatAnswerAlertScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         chat_backend.explain_alert.assert_not_awaited()
         events = [r.get("event") for r in caplog]
         assert META_CHAT_DEPENDENCY_UNAVAILABLE in events
@@ -189,10 +201,12 @@ class TestResolveChatAnswerAlertScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         # An unwired repo is a dependency-availability problem, not a
         # stale/deleted alert id -- must not be reported as the latter.
         events = [r.get("event") for r in caplog]
@@ -210,10 +224,14 @@ class TestResolveChatAnswerProposalScope:
         query = ChatQuery(question="Explain this proposal", proposal_id=item.id)
         snapshot = _snapshot()
 
-        result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+        result = await resolve_chat_answer(
+            state, chat_backend, query, snapshot, _ORG_STATE
+        )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot, scoped_proposal=item)
+        chat_backend.ask.assert_awaited_once_with(
+            query, snapshot, scoped_proposal=item, org_state=_ORG_STATE
+        )
 
     async def test_unresolvable_proposal_id_falls_back_to_plain_ask(self) -> None:
         store = ApprovalStore()
@@ -223,10 +241,12 @@ class TestResolveChatAnswerProposalScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         events = [r.get("event") for r in caplog]
         assert META_CHAT_SCOPE_NOT_FOUND in events
         assert META_CHAT_DEPENDENCY_UNAVAILABLE not in events
@@ -241,10 +261,12 @@ class TestResolveChatAnswerProposalScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         events = [r.get("event") for r in caplog]
         assert META_CHAT_DEPENDENCY_UNAVAILABLE in events
 
@@ -256,10 +278,12 @@ class TestResolveChatAnswerProposalScope:
         snapshot = _snapshot()
 
         with capture_logs() as caplog:
-            result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+            result = await resolve_chat_answer(
+                state, chat_backend, query, snapshot, _ORG_STATE
+            )
 
         assert result.answer == "ask answer"
-        chat_backend.ask.assert_awaited_once_with(query, snapshot)
+        chat_backend.ask.assert_awaited_once_with(query, snapshot, org_state=_ORG_STATE)
         events = [r.get("event") for r in caplog]
         assert META_CHAT_DEPENDENCY_UNAVAILABLE in events
         assert META_CHAT_SCOPE_NOT_FOUND not in events
@@ -282,7 +306,9 @@ class TestResolveChatAnswerBothScopesSet:
         )
         snapshot = _snapshot()
 
-        result = await resolve_chat_answer(state, chat_backend, query, snapshot)
+        result = await resolve_chat_answer(
+            state, chat_backend, query, snapshot, _ORG_STATE
+        )
 
         assert result.answer == "alert answer"
         chat_backend.explain_alert.assert_awaited_once_with(alert, snapshot)

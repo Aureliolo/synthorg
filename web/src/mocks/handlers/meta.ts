@@ -258,6 +258,7 @@ export const metaHandlers = [
       successFor<typeof postChat>({
         answer: 'default response',
         sources: [],
+        cited_records: [],
         confidence: 0,
       }),
     )
@@ -266,7 +267,12 @@ export const metaHandlers = [
     sseStream([
       sseFrame('progress', { delta: 'default ' }),
       sseFrame('progress', { delta: 'response' }),
-      sseFrame('complete', { answer: 'default response', sources: [], confidence: 0 }),
+      sseFrame('complete', {
+        answer: 'default response',
+        sources: [],
+        cited_records: [],
+        confidence: 0,
+      }),
     ]),
   ),
   http.get('/api/v1/meta/chat/conversations', () =>

@@ -242,12 +242,38 @@ class ChatQuery(BaseModel):
     alert_id: UUID | None = None
 
 
+class CitedRecord(BaseModel):
+    """One org-state record the chat answer is grounded in.
+
+    A machine-readable citation of the in-flight task, active project, or
+    pending approval the Chief of Staff drew on, so the dashboard can show
+    (and later deep-link) the exact records behind an answer rather than a
+    bare provenance-domain tag.
+
+    Attributes:
+        kind: Which read surface the record came from.
+        record_id: The record's stable identifier (task / project /
+            approval id).
+        label: Human-readable label (task or approval title, project name).
+        status: The record's current lifecycle status value.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    kind: Literal["task", "project", "approval"]
+    record_id: NotBlankStr
+    label: NotBlankStr
+    status: NotBlankStr
+
+
 class ChatResponse(BaseModel):
     """Output from the Chief of Staff chat interface.
 
     Attributes:
         answer: Natural language response from the LLM.
-        sources: Signal domains referenced in the answer.
+        sources: Signal / read-surface domains referenced in the answer.
+        cited_records: The specific task / project / approval records the
+            answer is grounded in (empty for the scoped explain paths).
         confidence: LLM's self-assessed confidence (0-1).
     """
 
@@ -255,6 +281,7 @@ class ChatResponse(BaseModel):
 
     answer: NotBlankStr
     sources: tuple[NotBlankStr, ...] = ()
+    cited_records: tuple[CitedRecord, ...] = ()
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 

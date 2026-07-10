@@ -62,6 +62,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="chat_org_state_max_items_per_section",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "How many records the Chief of Staff lists per org-state section"
+            " (in-progress tasks, in-review tasks, active projects, pending"
+            " approvals) when answering a chat question. The full count is"
+            " always reported; only the sample is bounded. Resolved fresh per"
+            " request; a change applies without a restart."
+        ),
+        group="Conversational",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="propose_enabled",
         type=SettingType.BOOLEAN,
         default="true",

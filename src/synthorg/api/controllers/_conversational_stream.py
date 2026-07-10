@@ -17,6 +17,8 @@ from collections.abc import AsyncIterator
 from typing import Final
 
 from synthorg.api._feature_gate import ensure_feature_enabled
+from synthorg.api.controllers._meta_chat_org_state import resolve_chat_org_state
+from synthorg.api.controllers._meta_chat_routing import chat_answer_payload
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
@@ -192,25 +194,19 @@ async def chat_answer_stream(
         snapshot = await signals_service.get_org_snapshot(
             since=app_state.clock.now() - await resolve_chat_snapshot_window(app_state),
         )
+        org_state = await resolve_chat_org_state(app_state)
         # aclosing() guarantees the generator's finally runs when the
         # consumer disconnects mid-stream (the send() raises), so the
         # cost_recording_scope inside ask_stream tears down synchronously
         # instead of waiting on async-generator GC.
         async with contextlib.aclosing(
-            chat_backend.ask_stream(query, snapshot)
+            chat_backend.ask_stream(query, snapshot, org_state=org_state)
         ) as stream:
             async for event in stream:
                 if isinstance(event, ChatAnswerDelta):
                     yield _frame("progress", {"delta": event.delta})
                 else:
-                    yield _frame(
-                        "complete",
-                        {
-                            "answer": event.answer,
-                            "sources": list(event.sources),
-                            "confidence": event.confidence,
-                        },
-                    )
+                    yield _frame("complete", chat_answer_payload(event))
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

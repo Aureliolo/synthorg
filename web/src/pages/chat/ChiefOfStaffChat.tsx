@@ -37,6 +37,20 @@ function AssistantMeta({
           Sources: {msg.sources.join(', ')}
         </p>
       )}
+      {msg.citedRecords && msg.citedRecords.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {msg.citedRecords.map((record) => (
+            <span
+              key={`${record.kind}:${record.record_id}`}
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+            >
+              <span className="font-medium capitalize">{record.kind}</span>
+              {record.label}
+              <span className="opacity-70">({record.status})</span>
+            </span>
+          ))}
+        </div>
+      )}
       {typeof msg.confidence === 'number' && (
         <p className="mt-1 text-xs text-muted-foreground">
           Confidence: {Math.round(msg.confidence * 100)}%

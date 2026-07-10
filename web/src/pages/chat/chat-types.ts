@@ -1,3 +1,4 @@
+import type { CitedRecord } from '@/api/endpoints/meta'
 import type { ExecutedToolCall } from '@/api/types'
 
 import type { ChatScopeValue } from './ChatScopePicker'
@@ -23,6 +24,8 @@ interface ChiefOfStaffAssistantMessage {
   role: 'assistant'
   content: string
   sources?: string[]
+  /** Task / project / approval records the answer is grounded in. */
+  citedRecords?: CitedRecord[]
   confidence?: number
   /** True while the reply is still receiving streamed tokens. */
   isStreaming?: boolean

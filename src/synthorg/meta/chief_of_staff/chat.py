@@ -8,10 +8,9 @@ LLM calls (retry + rate limiting handled by the provider).
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.currency import format_cost
 
 # These types appear in public annotations of ``ChiefOfStaffChat``
 # (constructor + ``explain_proposal`` / ``explain_alert`` / ``ask``)
@@ -29,6 +28,12 @@ from synthorg.engine.prompt_safety import (
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.meta.chief_of_staff._chat_format import (
+    format_scoped_proposal,
+    format_signal_context,
+    format_snapshot,
+    free_form_sources,
+)
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Alert,
@@ -36,6 +41,12 @@ from synthorg.meta.chief_of_staff.models import (
     ChatAnswerDelta,
     ChatQuery,
     ChatResponse,
+    CitedRecord,
+)
+from synthorg.meta.chief_of_staff.org_state import (
+    OrgStateSnapshot,
+    cited_records,
+    format_org_state,
 )
 from synthorg.meta.chief_of_staff.prompts import (
     ALERT_EXPLANATION_SYSTEM,
@@ -69,6 +80,15 @@ from synthorg.settings.kill_switch import (
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+# Rendered into the prompt when the org-state read model could not be built
+# (persistence disconnected). System-authored, so it is NOT fenced as
+# untrusted content; it instructs the model to admit it cannot see task /
+# project / approval state rather than infer idleness.
+_ORG_STATE_UNAVAILABLE: Final[str] = (
+    "The org-state read model is currently unavailable (persistence not"
+    " connected), so I cannot see task, project, or approval state."
+)
 
 
 class ChiefOfStaffChat:
@@ -158,7 +178,7 @@ class ChiefOfStaffChat:
             rule_severity="N/A",
             signal_context=wrap_untrusted(
                 TAG_TASK_DATA,
-                _format_snapshot(snapshot),
+                format_snapshot(snapshot),
             ),
             approval_context=wrap_untrusted(TAG_TASK_DATA, approval_ctx),
         )
@@ -199,7 +219,7 @@ class ChiefOfStaffChat:
             ),
             signal_context=wrap_untrusted(
                 TAG_TASK_DATA,
-                _format_signal_context(alert.signal_context),
+                format_signal_context(alert.signal_context),
             ),
         )
         sources = tuple(alert.affected_domains)
@@ -215,8 +235,9 @@ class ChiefOfStaffChat:
         snapshot: OrgSignalSnapshot,
         *,
         scoped_proposal: ApprovalItem | None = None,
+        org_state: OrgStateSnapshot | None = None,
     ) -> ChatResponse:
-        """Answer a free-form question about signals/proposals.
+        """Answer a free-form question about org state, signals, proposals.
 
         A full :class:`ImprovementProposal` cannot be reconstructed from
         the approval queue (rationale / rollback plan / change tuples
@@ -230,6 +251,11 @@ class ChiefOfStaffChat:
             snapshot: Current signal snapshot for context.
             scoped_proposal: The approval-queue item the question is
                 scoped to, when ``query.proposal_id`` resolved to one.
+            org_state: The real org-state read model (in-flight tasks /
+                active projects / pending approvals). ``None`` when the
+                read model could not be built (persistence disconnected),
+                which grounds the answer in the "cannot see state"
+                sentinel instead of any idleness inference.
 
         Returns:
             Natural language response.
@@ -240,14 +266,21 @@ class ChiefOfStaffChat:
             question_length=len(query.question),
             has_proposal_id=query.proposal_id is not None,
             has_alert_id=query.alert_id is not None,
+            has_org_state=org_state is not None,
         )
-        user = await self._build_query_user(query, snapshot, scoped_proposal)
-        return await self._call_llm(CHAT_QUERY_SYSTEM, user, sources=())
+        user = await self._build_query_user(query, snapshot, scoped_proposal, org_state)
+        sources = free_form_sources(snapshot, org_state)
+        records = cited_records(org_state) if org_state is not None else ()
+        return await self._call_llm(
+            CHAT_QUERY_SYSTEM, user, sources=sources, cited=records
+        )
 
     async def ask_stream(
         self,
         query: ChatQuery,
         snapshot: OrgSignalSnapshot,
+        *,
+        org_state: OrgStateSnapshot | None = None,
     ) -> AsyncGenerator[ChatAnswerDelta | ChatAnswerComplete]:
         """Stream a free-form answer token-by-token, then a terminal event.
 
@@ -256,10 +289,15 @@ class ChiefOfStaffChat:
         produce short structured answers where streaming buys nothing). It
         yields a :class:`ChatAnswerDelta` per content chunk in arrival
         order, then one :class:`ChatAnswerComplete` carrying the assembled
-        answer. The free-form path attributes no ``sources`` and computes
-        no ``confidence``, so the terminal event carries the empty-sources /
-        default-confidence defaults (the buffered free-form ``ask`` behaves
-        identically; only the scoped deep-explain paths populate them).
+        answer plus the org-state sources / cited records it drew on. The
+        answer computes no ``confidence``, so the terminal event keeps the
+        default (the buffered free-form ``ask`` behaves identically).
+
+        Args:
+            query: The user's question.
+            snapshot: Current signal snapshot for context.
+            org_state: The real org-state read model, or ``None`` when it
+                could not be built (persistence disconnected).
 
         Yields:
             Zero or more deltas, then exactly one terminal complete event.
@@ -275,8 +313,11 @@ class ChiefOfStaffChat:
             COS_CHAT_QUERY,
             query_type="free_form_stream",
             question_length=len(query.question),
+            has_org_state=org_state is not None,
         )
-        user = await self._build_query_user(query, snapshot, scoped_proposal=None)
+        user = await self._build_query_user(
+            query, snapshot, scoped_proposal=None, org_state=org_state
+        )
         messages, config, model = await self._prepare_messages(CHAT_QUERY_SYSTEM, user)
         timeout = self._config.agent_call_timeout_seconds
         parts: list[str] = []
@@ -321,21 +362,32 @@ class ChiefOfStaffChat:
         if not answer:
             logger.warning(COS_CHAT_FAILED, reason="provider_returned_empty_content")
             answer = "Unable to generate explanation."
-        logger.info(COS_CHAT_RESPONSE, answer_length=len(answer), sources=[])
-        yield ChatAnswerComplete(answer=NotBlankStr(answer))
+        sources = free_form_sources(snapshot, org_state)
+        records = cited_records(org_state) if org_state is not None else ()
+        logger.info(COS_CHAT_RESPONSE, answer_length=len(answer), sources=list(sources))
+        yield ChatAnswerComplete(
+            answer=NotBlankStr(answer),
+            sources=sources,
+            cited_records=records,
+        )
 
     async def _build_query_user(
         self,
         query: ChatQuery,
         snapshot: OrgSignalSnapshot,
         scoped_proposal: ApprovalItem | None,
+        org_state: OrgStateSnapshot | None,
     ) -> str:
         """Render the fenced USER message for a free-form question.
 
         Reads recent outcomes for context (degrading to a placeholder on
         a store read failure) and folds a resolved ``scoped_proposal``
-        summary ahead of them, then fences every attacker-controllable
-        field in a ``<task-data>`` envelope.
+        summary ahead of them, folds the real org-state block (or the
+        "cannot see state" sentinel), then fences every
+        attacker-controllable field in a ``<task-data>`` envelope. The
+        org-state records are human/agent-authored, so the rendered block
+        is fenced; the unavailable sentinel is system-authored and stays
+        unfenced.
 
         Returns:
             The rendered, fully fenced USER-role message.
@@ -356,10 +408,15 @@ class ChiefOfStaffChat:
                 recent_context = "Recent outcomes:\n" + "\n".join(lines)
         if scoped_proposal is not None:
             recent_context = (
-                f"{_format_scoped_proposal(scoped_proposal)}\n\n{recent_context}"
+                f"{format_scoped_proposal(scoped_proposal)}\n\n{recent_context}"
             )
+        if org_state is not None:
+            org_state_block = wrap_untrusted(TAG_TASK_DATA, format_org_state(org_state))
+        else:
+            org_state_block = _ORG_STATE_UNAVAILABLE
         return CHAT_QUERY_USER.format(
-            snapshot_summary=wrap_untrusted(TAG_TASK_DATA, _format_snapshot(snapshot)),
+            snapshot_summary=wrap_untrusted(TAG_TASK_DATA, format_snapshot(snapshot)),
+            org_state=org_state_block,
             recent_context=wrap_untrusted(TAG_TASK_DATA, recent_context),
             user_question=wrap_untrusted(TAG_TASK_DATA, query.question),
         )
@@ -405,6 +462,7 @@ class ChiefOfStaffChat:
         user: str,
         *,
         sources: tuple[str, ...],
+        cited: tuple[CitedRecord, ...] = (),
     ) -> ChatResponse:
         """Call the LLM and wrap the response.
 
@@ -415,7 +473,8 @@ class ChiefOfStaffChat:
         Args:
             system: SYSTEM-role framing + untrusted-content directive.
             user: USER-role message with the fenced data fields.
-            sources: Signal domains referenced.
+            sources: Signal / read-surface domains referenced.
+            cited: The specific org-state records the answer draws on.
 
         Returns:
             Wrapped ChatResponse.
@@ -463,6 +522,7 @@ class ChiefOfStaffChat:
         result = ChatResponse(
             answer=answer,
             sources=tuple(sources),
+            cited_records=cited,
         )
         logger.info(
             COS_CHAT_RESPONSE,
@@ -470,63 +530,3 @@ class ChiefOfStaffChat:
             sources=list(sources),
         )
         return result
-
-
-def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
-    """Format a snapshot into a readable summary string.
-
-    Returns:
-        Resulting string.
-    """
-    perf = snapshot.performance
-    budget = snapshot.budget
-    coord = snapshot.coordination
-    lines = [
-        f"Quality: {perf.avg_quality_score:.1f}/10",
-        f"Success Rate: {perf.avg_success_rate:.0%}",
-        f"Collaboration: {perf.avg_collaboration_score:.1f}/10",
-        f"Active Agents: {perf.agent_count}",
-        f"Total Spend: {format_cost(budget.total_spend)}",
-        f"Orchestration Overhead: {budget.orchestration_overhead:.2f}",
-        f"Error Findings: {snapshot.errors.total_findings}",
-    ]
-    if coord.coordination_overhead_pct is not None:
-        lines.append(
-            f"Coordination Overhead: {coord.coordination_overhead_pct:.0%}",
-        )
-    return "\n".join(lines)
-
-
-def _format_scoped_proposal(item: ApprovalItem) -> str:
-    """Format a scoped approval-queue item into readable context.
-
-    ``ApprovalItem`` is the durable projection a proposal survives into
-    once parked for human review; it carries title/description plus
-    whatever the submitting path recorded in ``metadata`` (altitude,
-    source rule), not the full ``ImprovementProposal``.
-
-    Returns:
-        Formatted context lines describing the scoped proposal.
-    """
-    lines = [
-        "The user's question is scoped to this pending proposal:",
-        f"Title: {item.title}",
-        f"Description: {item.description}",
-        f"Status: {item.status.value}",
-    ]
-    altitude = item.metadata.get("altitude")
-    if altitude:
-        lines.append(f"Altitude: {altitude}")
-    source_rule = item.metadata.get("source_rule")
-    if source_rule:
-        lines.append(f"Source rule: {source_rule}")
-    return "\n".join(lines)
-
-
-def _format_signal_context(ctx: dict[str, object]) -> str:
-    """Format a signal context dict into readable lines.
-
-    Returns:
-        Resulting string.
-    """
-    return "\n".join(f"{k}: {v}" for k, v in ctx.items())

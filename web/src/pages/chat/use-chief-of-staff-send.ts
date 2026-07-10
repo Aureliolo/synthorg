@@ -103,6 +103,7 @@ function buildAssistantMessage(
       role: 'assistant',
       content: response.answer,
       sources: response.sources,
+      citedRecords: response.cited_records,
       confidence: response.confidence,
     }
   }

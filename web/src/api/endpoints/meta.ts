@@ -173,9 +173,18 @@ export interface MetaConfig {
   code_modification_enabled: boolean
 }
 
+/** One org-state record the chat answer is grounded in. */
+export interface CitedRecord {
+  kind: 'task' | 'project' | 'approval'
+  record_id: string
+  label: string
+  status: string
+}
+
 export interface ChatResponse {
   answer: string
   sources: string[]
+  cited_records: CitedRecord[]
   confidence: number
 }
 
