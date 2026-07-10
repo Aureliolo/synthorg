@@ -110,8 +110,10 @@ class ParallelExecutor:
             ExceptionGroup: When more than one fatal error occurred; its
                 members are the original MemoryError/RecursionError
                 instances.
-            ParallelExecutionError: On a non-fatal ``fail_fast`` failure or
-                a resource-lock release failure (never wraps a fatal).
+            ParallelExecutionError: Only when resource-lock release fails
+                and no agent error is pending to carry the note (never
+                wraps a fatal). A ``fail_fast`` abort re-raises the
+                underlying agent error directly rather than wrapping it.
         """
         start = self._clock.monotonic()
 

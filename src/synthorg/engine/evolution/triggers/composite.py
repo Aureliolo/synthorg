@@ -70,7 +70,7 @@ class CompositeTrigger:
                     context=context,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort memory hook
+                # lint-allow: swallow-ok -- a failed trigger is skipped
                 reraise_critical(exc)
                 logger.warning(
                     EVOLUTION_TRIGGER_FAILED,

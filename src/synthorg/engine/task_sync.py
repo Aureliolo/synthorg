@@ -450,13 +450,6 @@ async def _transition_to_failed(
         ``FAILED``; the original is returned unchanged when the
         transition raises.
     """
-    logger.warning(
-        EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
-        agent_id=agent_id,
-        task_id=task_id,
-        context="Empty run: no artifacts produced; failing the task",
-        reason=_EMPTY_RUN_REASON,
-    )
     try:
         ctx = await _transition_and_sync(
             ctx,
@@ -467,7 +460,6 @@ async def _transition_to_failed(
             task_engine=task_engine,
             critical=True,
         )
-        return execution_result.model_copy(update={"context": ctx})
     except (ValueError, ExecutionStateError) as exc:
         logger.warning(
             EXECUTION_ENGINE_ERROR,
@@ -478,6 +470,16 @@ async def _transition_to_failed(
             error=safe_error_description(exc),
         )
         return execution_result
+    # Emit the no-artifacts fail event only after FAILED is persisted, so
+    # the record never claims a failure that the transition did not land.
+    logger.warning(
+        EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
+        agent_id=agent_id,
+        task_id=task_id,
+        context="Empty run: no artifacts produced; task failed",
+        reason=_EMPTY_RUN_REASON,
+    )
+    return execution_result.model_copy(update={"context": ctx})
 
 
 async def _transition_to_interrupted(

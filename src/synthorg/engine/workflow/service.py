@@ -434,10 +434,7 @@ class WorkflowService:
                 saved_by=saved_by,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # ``reraise_critical`` propagates fatal system errors
-            # so the workload can shed load; best-effort logging is
-            # the wrong response here.
-            # lint-allow: swallow-ok -- best-effort metrics/rollup
+            # lint-allow: swallow-ok -- version snapshot is best-effort
             reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,

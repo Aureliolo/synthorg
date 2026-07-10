@@ -269,7 +269,8 @@ class WorkPipelineResult(BaseModel):
         plan_review_handoff: Set iff ``execution_path`` is
             ``PLAN_REVIEW`` -- the human plan-approval handoff parked
             instead of dispatching the team.
-        is_success: Whether every recorded phase succeeded.
+        is_success: Whether every recorded phase succeeded and the task
+            did not end in a failure/cancelled/rejected terminal state.
         total_duration_seconds: Total wall-clock duration.
     """
 

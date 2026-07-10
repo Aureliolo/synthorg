@@ -14,6 +14,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -1306,3 +1307,28 @@ class TestReactLoopNoOpFailLoud:
         result = await loop.execute(context=ctx, provider=provider)
 
         assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_resumed_zero_tool_work_run_completes(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A resumed run's empty segment is not NO_OP.
+
+        Inside a ``resumed_run_scope`` the current segment's zero-tool-call
+        count is not a valid proxy for total task output (earlier segments
+        may already have produced artifacts before a park), so the empty
+        segment completes to review rather than being failed as NO_OP.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory([_stop_response("Resuming; already done.")])
+        loop = ReactLoop()
+
+        with resumed_run_scope():
+            result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 0

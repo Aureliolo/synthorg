@@ -12,7 +12,7 @@ from uuid import uuid4
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_CREATED,
 )
@@ -52,27 +52,29 @@ async def create_review_approval(
     # security.service_escalation for the same pattern).
     from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
-    item = ApprovalItem(
-        id=approval_id,
-        action_type=_REVIEW_ACTION_TYPE,
-        title=f"Review task {task_id} completion",
-        description=f"Agent {agent_id} completed task {task_id}",
-        requested_by=agent_id,
-        risk_level=ApprovalRiskLevel.LOW,
-        created_at=now,
-        task_id=task_id,
-    )
     try:
+        item = ApprovalItem(
+            id=approval_id,
+            action_type=_REVIEW_ACTION_TYPE,
+            title=f"Review task {task_id} completion",
+            description=f"Agent {agent_id} completed task {task_id}",
+            requested_by=agent_id,
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now,
+            task_id=task_id,
+        )
         await approval_store.add(item)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
-            approval_id=approval_id,
+            approval_id=str(approval_id),
             task_id=task_id,
             agent_id=agent_id,
-            error="Failed to create review approval (non-fatal)",
+            context="Failed to create review approval (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

@@ -41,7 +41,7 @@ from synthorg.integrations.connections.models import (
     WebhookReceipt,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec
 
 
@@ -223,7 +223,7 @@ class InMemoryOAuthStateRepository:
             return False
         self._store[state_token] = existing.model_copy(
             update={
-                "consumed_at": consumed_at,
+                "consumed_at": normalize_utc(consumed_at),
                 "connection_name_returned": connection_name,
             }
         )
@@ -315,12 +315,13 @@ class InMemoryWebhookReceiptRepository:
             ``True`` when a row matched ``receipt_id`` and was updated,
             ``False`` when no row matched.
         """
+        normalized = normalize_utc(processed_at) if processed_at is not None else None
         for i, existing in enumerate(self._store):
             if str(existing.id) == str(receipt_id):
                 self._store[i] = existing.model_copy(
                     update={
                         "status": status,
-                        "processed_at": processed_at,
+                        "processed_at": normalized,
                         "error": error,
                     }
                 )
@@ -345,6 +346,7 @@ class InMemoryWebhookReceiptRepository:
             ``True`` when a row matched ``receipt_id`` and its current
             status equalled ``expected_status``, ``False`` otherwise.
         """
+        normalized = normalize_utc(processed_at) if processed_at is not None else None
         for i, existing in enumerate(self._store):
             if str(existing.id) == str(receipt_id):
                 if existing.status != expected_status:
@@ -352,7 +354,7 @@ class InMemoryWebhookReceiptRepository:
                 self._store[i] = existing.model_copy(
                     update={
                         "status": status,
-                        "processed_at": processed_at,
+                        "processed_at": normalized,
                         "error": error,
                     }
                 )

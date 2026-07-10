@@ -129,7 +129,7 @@ class EvolutionService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort memory hook
+            # lint-allow: swallow-ok -- context build is best-effort
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_BUILD_FAILED,
@@ -206,7 +206,7 @@ class EvolutionService:
                     proposed_at=event.proposal.proposed_at,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort memory hook
+                # lint-allow: swallow-ok -- outcome-sink record is best-effort
                 reraise_critical(exc)
                 logger.warning(
                     EVOLUTION_ADAPTATION_FAILED,
@@ -377,7 +377,7 @@ class EvolutionService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort memory hook
+            # lint-allow: swallow-ok -- adaptation-apply is best-effort
             reraise_critical(exc)
             # Adapter should log via EVOLUTION_ADAPTATION_FAILED;
             # this defensive fallback runs only when the adapter
@@ -469,7 +469,7 @@ class EvolutionService:
         try:
             return await self._tracker.get_snapshot(agent_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort memory hook
+            # lint-allow: swallow-ok -- performance snapshot fetch is best-effort
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
@@ -509,7 +509,7 @@ class EvolutionService:
                 ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort memory hook
+            # lint-allow: swallow-ok -- procedural-memory retrieval is best-effort
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_MEMORY_FAILED,

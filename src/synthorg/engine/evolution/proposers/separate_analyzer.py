@@ -392,7 +392,7 @@ class SeparateAnalyzerProposer:
             )
             return ()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort memory hook
+            # lint-allow: swallow-ok -- proposer fallback; degrades to no proposals
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,

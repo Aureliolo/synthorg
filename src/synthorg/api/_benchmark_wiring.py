@@ -117,9 +117,9 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
     ``model_id`` is absent, so an operator-recorded score (even one that
     re-measures a seed model) is never clobbered, and a seed left partial
     by an interrupted or raced earlier boot is completed on the next boot
-    rather than skipped forever. Only runs in the ``measured`` arm; the
-    stub arm has no repo to seed. Best-effort: a seeding failure logs and
-    is swallowed so it cannot poison startup.
+    rather than skipped forever. ``measured`` is the only provider arm.
+    Best-effort: a seeding failure logs and is swallowed so it cannot
+    poison startup.
     """
     from synthorg.budget.benchmark_seed import load_seed_records  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
