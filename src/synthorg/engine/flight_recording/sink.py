@@ -94,6 +94,7 @@ class PersistenceFlightRecorderSink:
             # engine still gets the operator-fatal signal it expects
             # at the per-turn boundary. The recording path is best-
             # effort for storage faults only.
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,

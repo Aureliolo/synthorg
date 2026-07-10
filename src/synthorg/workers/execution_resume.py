@@ -18,7 +18,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_NO_PARKED_CONTEXT,
@@ -96,6 +96,15 @@ class ResumeDispatchMixin:
         image_override: str | None = None,
     ) -> None:
         """Release the sandbox lifecycle owner (provided by the host)."""
+
+    async def _fail_task_provisioning(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        reason: str,
+    ) -> None:
+        """Drive the task to FAILED on provision failure (provided by host)."""
 
     async def dispatch_resume(
         self,
@@ -218,31 +227,43 @@ class ResumeDispatchMixin:
             return
 
         # Resumed runs must execute under the same provisioned image / env
-        # additions as the original run, or reproducibility breaks across
-        # the pause/resume boundary. Mirror execute_once: best-effort
-        # workspace provisioning, then bind the active sandbox environment.
-        workspace_path: Path | None = None
-        if self._project_workspace_service is not None and project_id is not None:
-            try:
-                workspace = await self._project_workspace_service.get_or_provision(
-                    project_id
-                )
-                workspace_path = Path(workspace.workspace_path)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    WORKERS_EXECUTION_SERVICE_FAILED,
-                    task_id=task_id,
-                    project_id=project_id,
-                    reason="project_workspace_provision_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        active_env = await self._provision_environment(
-            task_id=task_id,
-            project_id=project_id,
-            workspace_path=workspace_path,
-        )
+        # additions as the original run, or reproducibility breaks across the
+        # pause/resume boundary. Provisioning runs before the resumed engine
+        # loop, so a failure here fails loud (like execute_once) and drives the
+        # task to a visible FAILED, rather than silently degrading to
+        # no-workspace and finishing the resumed run over nothing.
+        try:
+            workspace_path: Path | None = None
+            if self._project_workspace_service is not None and project_id is not None:
+                try:
+                    workspace = await self._project_workspace_service.get_or_provision(
+                        project_id
+                    )
+                    workspace_path = Path(workspace.workspace_path)
+                except Exception as exc:
+                    reraise_critical(exc)
+                    log_exception_redacted(
+                        logger,
+                        WORKERS_EXECUTION_SERVICE_FAILED,
+                        exc,
+                        task_id=task_id,
+                        project_id=project_id,
+                        reason="project_workspace_provision_failed",
+                    )
+                    raise
+            active_env = await self._provision_environment(
+                task_id=task_id,
+                project_id=project_id,
+                workspace_path=workspace_path,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            await self._fail_task_provisioning(
+                task_id=task_id,
+                agent_id=str(ctx.identity.name),
+                reason="task_provisioning_failed",
+            )
+            raise
         try:
             with active_sandbox_environment(active_env):
                 await self._engine.resume_parked_run(

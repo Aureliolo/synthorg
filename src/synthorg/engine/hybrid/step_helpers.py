@@ -198,6 +198,7 @@ async def invoke_checkpoint_callback(
     try:
         await callback(ctx)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- resiliency side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_CHECKPOINT_CALLBACK_FAILED,

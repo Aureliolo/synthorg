@@ -277,14 +277,12 @@ shared resolver (`budget/model_tier.py`): the built-in heuristic handles the
 operator map arbitrary deployment ids onto a canonical tier without re-keying the
 candidate construction.
 
-Two providers back the quality axis, selected by the `budget.benchmark_provider` setting
-(`stub` by default; an unknown value fails loudly at wiring):
+The quality axis is backed by `MeasuredBenchmarkScoreProvider`, selected by the
+`budget.benchmark_provider` setting (`measured`; an unknown value fails loudly at wiring):
 
-- `StubBenchmarkScoreProvider` (`stub`) supplies calibrated per-tier constants, badged
-  `source="stub:calibrated-v1"`, as the safe default and cold-start fallback.
 - `MeasuredBenchmarkScoreProvider` (`measured`) reads measured per-model scores from the
-  `BenchmarkScoreRepository` and falls back to the stub for any unmeasured model, so the
-  frontier mixes measured and stub rows honestly rather than fabricating a number.
+  `BenchmarkScoreRepository`. A model with no measured row returns `None`, so the frontier
+  skips it and the quality axis is shown as explicitly absent, never a fabricated number.
 
 Measured scores are genuinely measured, never fitted: `make record-benchmark-scores`
 (driving `scripts/record_benchmark_scores.py`) replays a recorded per-model cassette
@@ -294,9 +292,11 @@ normalised brief score plus a 95% confidence band), writing the committed seed a
 when empty, so a fresh operator database carries the measured scores without a recording
 run. Every `ParetoPoint` and the frontier carry a `source` field (the per-point provenance,
 joined with ` | ` when a point's current and candidate scores differ in provenance, and
-comma-joined across the frontier). The dashboard derives a provenance badge from it: a
-`source` carrying both a `benchmark:` and a `stub:` token renders the badge as "mixed",
-never "measured", so stub data is never mistaken for measured data. The frontier is advisory: downgrade callouts
+comma-joined across the frontier). A model with no measured row returns no score, so it never
+becomes a `ParetoPoint`; the quality axis renders it as explicitly absent rather than a
+fabricated value. The dashboard derives a provenance badge from the `source`: a measured
+`benchmark:` token renders "measured", and a role without a measured score renders "absent",
+so fabricated data can never be mistaken for measured data. The frontier is advisory: downgrade callouts
 link to the agent settings surface rather than mutating models inline.
 
 ## Quota Degradation

@@ -19,7 +19,6 @@ from pydantic import ValidationError
 from synthorg.api.state import AppState
 from synthorg.budget.benchmark_models import BenchmarkScoreRecord
 from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
-from synthorg.budget.model_tier import ModelTierMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -76,21 +75,17 @@ def select_benchmark_provider(
     strategy: str,
     *,
     repo: BenchmarkScoreRepository,
-    tier_map: ModelTierMap | None = None,
 ) -> BenchmarkScoreProvider:
     """Select the benchmark-score provider from the config discriminator.
 
-    ``stub`` (the safe default) returns calibrated per-tier constants;
-    ``measured`` reads measured per-model scores from ``repo`` and falls
-    back to the stub for any unmeasured model. An unknown discriminator
-    fails loudly rather than silently degrading to the stub.
+    ``measured`` reads measured per-model scores from ``repo``; a model
+    with no measured row returns ``None`` so the quality axis renders as
+    explicitly absent, never faked. An unknown discriminator fails
+    loudly rather than silently degrading.
 
     Args:
         strategy: The ``budget.benchmark_provider`` discriminator value.
         repo: The measured benchmark-score repository.
-        tier_map: Operator tier overrides threaded into the stub (both the
-            ``stub`` arm and the ``measured`` arm's fallback) so an
-            override-only model id resolves its cold-start score.
 
     Returns:
         The selected :class:`BenchmarkScoreProvider`.
@@ -102,24 +97,14 @@ def select_benchmark_provider(
     from synthorg.budget.benchmark_measured import (  # noqa: PLC0415
         MeasuredBenchmarkScoreProvider,
     )
-    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
-        StubBenchmarkScoreProvider,
-    )
 
-    if strategy == "stub":
-        return StubBenchmarkScoreProvider(tier_map=tier_map)
     if strategy == "measured":
-        return MeasuredBenchmarkScoreProvider(
-            repo,
-            fallback=StubBenchmarkScoreProvider(tier_map=tier_map),
-        )
+        return MeasuredBenchmarkScoreProvider(repo)
     from synthorg.budget.errors import (  # noqa: PLC0415
         UnknownBenchmarkProviderError,
     )
 
-    msg = (
-        f"Unknown budget.benchmark_provider {strategy!r}; expected 'stub' or 'measured'"
-    )
+    msg = f"Unknown budget.benchmark_provider {strategy!r}; expected 'measured'"
     raise UnknownBenchmarkProviderError(msg)
 
 
@@ -132,9 +117,9 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
     ``model_id`` is absent, so an operator-recorded score (even one that
     re-measures a seed model) is never clobbered, and a seed left partial
     by an interrupted or raced earlier boot is completed on the next boot
-    rather than skipped forever. Only runs in the ``measured`` arm; the
-    stub arm has no repo to seed. Best-effort: a seeding failure logs and
-    is swallowed so it cannot poison startup.
+    rather than skipped forever. ``measured`` is the only provider arm.
+    Best-effort: a seeding failure logs and is swallowed so it cannot
+    poison startup.
     """
     from synthorg.budget.benchmark_seed import load_seed_records  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
@@ -179,7 +164,7 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
         logger.warning(
             API_APP_STARTUP,
             service="benchmark_scores",
-            note="benchmark-score seeding failed; measured scores fall back to stub",
+            note="benchmark-score seeding failed; unseeded models render as absent",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -302,9 +287,7 @@ async def rebuild_cost_dial_benchmark_provider(app_state: AppState) -> None:
         SettingNamespace.BUDGET.value, "model_tier_overrides"
     )
     model_tier_map = ModelTierMap(overrides=overrides)
-    benchmark_provider = select_benchmark_provider(
-        strategy, repo=repo, tier_map=model_tier_map
-    )
+    benchmark_provider = select_benchmark_provider(strategy, repo=repo)
     assignment_lookup, _history_lookup, _cost_tracker = build_pareto_inputs(app_state)
     analyzer = ParetoAnalyzer(
         benchmark_provider=benchmark_provider,

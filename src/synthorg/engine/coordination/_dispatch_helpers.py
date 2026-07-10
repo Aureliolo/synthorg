@@ -124,6 +124,7 @@ async def setup_workspaces(
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
+            # lint-allow: swallow-ok -- best-effort side channel
             # The error string is surfaced through
             # ``CoordinationPhaseResult`` to upstream consumers and
             # downstream logs; route through
@@ -238,6 +239,7 @@ async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
             phase=phase_name,
             success=False,
             duration_seconds=elapsed,
+            # lint-allow: swallow-ok -- best-effort side channel
             # Same scrub-at-source rationale as the earlier
             # ``setup_group`` failure handler.
             error=safe_error_description(exc),
@@ -276,6 +278,7 @@ async def teardown_workspaces(
     try:
         await workspace_service.teardown_group(workspaces=workspaces)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort teardown
         reraise_critical(exc)
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
@@ -375,6 +378,7 @@ async def execute_waves(
                 break
 
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             elapsed = clock.monotonic() - start
             logger.warning(

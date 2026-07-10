@@ -11,7 +11,6 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
@@ -19,7 +18,7 @@ from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import as_uuid
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -79,7 +78,7 @@ async def test_stakes_aware_never_costs_more_than_flat_all_strong(
     stakes_mix: list[Stakes],
 ) -> None:
     strategy = StakesAwareStrategy(
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         resolver=_resolver(),
     )
     agent = _agent_large()

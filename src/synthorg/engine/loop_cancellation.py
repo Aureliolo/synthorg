@@ -55,6 +55,7 @@ async def check_task_cancelled(
     try:
         cancelled = await cancellation_checker()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_LOOP_ERROR,

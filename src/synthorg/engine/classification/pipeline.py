@@ -397,6 +397,7 @@ async def _classify_safely(  # noqa: PLR0913
         )
         raise
     except Exception as exc:  # noqa: BLE001 -- best-effort: log and skip
+        # lint-allow: swallow-ok -- fail-open detector
         logger.warning(
             CLASSIFICATION_ERROR,
             agent_id=agent_id,
@@ -422,6 +423,7 @@ async def _dispatch_to_sinks(
         try:
             await sink.on_classification(result)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             logger.warning(
                 CLASSIFICATION_SINK_ERROR,
@@ -540,6 +542,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
         try:
             context = await loader.load(execution_result, agent_id, task_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             detector_names = [type(d).__name__ for d in detectors]
             logger.warning(
@@ -613,6 +616,7 @@ async def _safe_detect(  # noqa: PLR0913
         )
         return ()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- fail-open detector
         reraise_critical(exc)
         logger.warning(
             DETECTOR_ERROR,

@@ -105,6 +105,7 @@ class BrainBackedSteeringInbox:
         try:
             rows = await self._repo.list_current(spec, limit=self._limit, offset=0)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 STEERING_INBOX_READ_FAILED,

@@ -99,13 +99,24 @@ class ParallelExecutor:
             group: The execution group to run.
 
         Returns:
-            Result with all agent outcomes.
+            Result with all agent outcomes. Under ``fail_fast`` the first
+            agent failure cancels the remaining assignments; the failure
+            and the cancellations are recorded as outcomes and logged, not
+            raised, so callers detect them via ``all_succeeded`` / the
+            per-agent outcomes.
 
         Raises:
             ResourceConflictError: If resource claims conflict between
                 assignments.
-            ParallelExecutionError: If fatal errors (MemoryError,
-                RecursionError) occurred during execution.
+            MemoryError: Propagated directly (single fatal) so the
+                interpreter-fatal reaches the top of the stack unmasked.
+            RecursionError: Propagated directly (single fatal), as above.
+            ExceptionGroup: When more than one fatal error occurred; its
+                members are the original MemoryError/RecursionError
+                instances.
+            ParallelExecutionError: Only when resource-lock release fails
+                and no other error is pending to carry the note (never
+                wraps a fatal).
         """
         start = self._clock.monotonic()
 
@@ -139,12 +150,14 @@ class ParallelExecutor:
                 progress,
             )
         except Exception as exc:  # noqa: BLE001 -- captured, re-raised below
+            # lint-allow: swallow-ok -- captured, re-raised below
             task_error = exc
         finally:
             if lock is not None:
                 try:
                     await release_all_locks(group, lock)
                 except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
+                    # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(release_exc)
                     logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
@@ -162,6 +175,12 @@ class ParallelExecutor:
             )
             if task_error is not None:
                 task_error.add_note(lock_msg)
+            elif fatal_errors:
+                # A pending interpreter-fatal must win over a teardown
+                # failure: attach the note to the fatal and let the
+                # fatal re-raise path below surface it, never masked by a
+                # swallowable ParallelExecutionError.
+                fatal_errors[0].add_note(lock_msg)
             else:
                 raise ParallelExecutionError(
                     lock_msg,
@@ -195,7 +214,16 @@ class ParallelExecutor:
                 fatal_error_count=len(fatal_errors),
                 error=msg,
             )
-            raise ParallelExecutionError(msg) from fatal_errors[0]
+            # Re-raise the original MemoryError/RecursionError (or an
+            # ExceptionGroup of them) directly, never wrapped in a domain
+            # error: downstream ``reraise_critical`` inspects the exception
+            # itself (and ExceptionGroup members), not ``__cause__``, so
+            # wrapping would launder an interpreter-fatal into an ordinary
+            # ``ParallelExecutionError`` a caller can swallow. Mirrors
+            # ``ToolInvoker._raise_fatal_errors``.
+            if len(fatal_errors) == 1:
+                raise fatal_errors[0]
+            raise ExceptionGroup(msg, fatal_errors)
 
         return result
 
@@ -229,6 +257,7 @@ class ParallelExecutor:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
+            # lint-allow: swallow-ok -- per-task errors already logged; suppress group
             logger.warning(
                 PARALLEL_GROUP_SUPPRESSED,
                 note="ExceptionGroup suppressed",
@@ -510,6 +539,7 @@ class ParallelExecutor:
         try:
             self._progress_callback(snapshot)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort observer
             reraise_critical(exc)
             logger.warning(
                 PARALLEL_PROGRESS_UPDATE,

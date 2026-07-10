@@ -256,6 +256,7 @@ class LlmSemanticAnalyzer:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             # Fail open: provider exhaustion (RetryExhaustedError) and parse
             # errors degrade to an empty-conflict result. Semantic merge

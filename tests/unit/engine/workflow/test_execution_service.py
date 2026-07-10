@@ -14,6 +14,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.registry import StrategyFactoryNotFoundError
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
+    WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
     WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionNotFoundError,
@@ -727,6 +728,53 @@ class TestActivateConditional:
         assert nmap["task-false"].status is WorkflowNodeExecutionStatus.TASK_CREATED
         assert len(task_engine.created_tasks) == 1
         assert task_engine.created_tasks[0][0].title == "False path"
+
+    @pytest.mark.unit
+    async def test_malformed_condition_fails_loud(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """A structurally malformed condition fails loud, not silently False.
+
+        Regression: the evaluator used to swallow parse errors and return
+        ``False``, silently taking the condition-not-met edge. It now
+        raises, wrapped as a typed ``WorkflowConditionEvalError``.
+        """
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_conditional_node("cond-1", condition_expression="true AND"),
+                make_task_node_full("task-true", config={"title": "True path"}),
+                make_task_node_full("task-false", config={"title": "False path"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "cond-1"),
+                make_edge(
+                    "e2",
+                    "cond-1",
+                    "task-true",
+                    edge_type=WorkflowEdgeType.CONDITIONAL_TRUE,
+                ),
+                make_edge(
+                    "e3",
+                    "cond-1",
+                    "task-false",
+                    edge_type=WorkflowEdgeType.CONDITIONAL_FALSE,
+                ),
+                make_edge("e4", "task-true", "end-1"),
+                make_edge("e5", "task-false", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+        with pytest.raises(WorkflowConditionEvalError):
+            await service.activate(
+                str(wf.id),
+                project="proj",
+                activated_by="user",
+                context={},
+            )
 
 
 class TestActivateAgentAssignment:

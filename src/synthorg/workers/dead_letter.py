@@ -257,6 +257,7 @@ class DeadLetterConsumer:
                     except asyncio.CancelledError:
                         pass
                     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        # lint-allow: swallow-ok -- best-effort teardown
                         reraise_critical(exc)
                         logger.warning(
                             WORKERS_DEAD_LETTER_CONSUMER_STOPPED,
@@ -297,6 +298,7 @@ class DeadLetterConsumer:
             try:
                 pair = await self._task_queue.next_dead(timeout=_DEAD_POLL_SECONDS)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- resilient poll loop
                 reraise_critical(exc)
                 # A transient fetch failure (NATS reconnect, persistence
                 # blip) must not kill the drain loop -- otherwise dead claims

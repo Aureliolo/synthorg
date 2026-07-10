@@ -177,24 +177,22 @@ _r.register(
         namespace=SettingNamespace.BUDGET,
         key="benchmark_provider",
         type=SettingType.STRING,
-        default="stub",
+        default="measured",
         description=(
             "Source of per-model benchmark scores for the cost/quality"
             " Pareto frontier and stakes-routing quality floors."
-            " ``stub`` uses calibrated per-tier constants (the safe"
-            " default; honestly badged as illustrative)."
             " ``measured`` reads measured per-model scores from the"
             " benchmark-score repository, seeded at boot from the"
-            " committed recording artifact, falling back to the stub for"
-            " any unmeasured model. Resolved through the live settings"
-            " chain (DB > env > default); a change rebuilds the"
-            " benchmark provider + Pareto analyser and reloads runtime"
-            " services without a restart."
+            " committed recording artifact; a model with no measured"
+            " score renders as explicitly absent, never faked. Resolved"
+            " through the live settings chain (DB > env > default); a"
+            " change rebuilds the benchmark provider + Pareto analyser"
+            " and reloads runtime services without a restart."
         ),
         group="Cost Dial",
         level=SettingLevel.ADVANCED,
         env_var_override="SYNTHORG_BUDGET_BENCHMARK_PROVIDER",
-        validator_pattern=r"^(stub|measured)$",
+        validator_pattern=r"^measured$",
     )
 )
 

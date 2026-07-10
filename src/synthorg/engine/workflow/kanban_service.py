@@ -200,6 +200,7 @@ class KanbanBoardService:
                 str(task.id), task.project
             )
         except Exception as exc:  # noqa: BLE001 -- advisory gate: fail open
+            # lint-allow: swallow-ok -- advisory gate: fail-open by design
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

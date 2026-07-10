@@ -155,6 +155,7 @@ class LLMSummarizer:
                     messages, self._model, config=self._config
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK,

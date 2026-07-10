@@ -458,23 +458,23 @@ class BudgetConfig(BaseModel):
         ge=0.0,
         description="Prior pseudo-count for the Bayesian shrinkage blend",
     )
-    benchmark_provider: Literal["stub", "measured"] = Field(
-        default="stub",
+    benchmark_provider: Literal["measured"] = Field(
+        default="measured",
         description=(
             "Source of per-model benchmark scores for the Pareto frontier"
-            " and stakes-routing floors: `stub` (calibrated per-tier"
-            " constants, the safe default) or `measured` (repository-backed"
-            " measured scores with stub fallback)"
+            " and stakes-routing floors: `measured` reads repository-backed"
+            " scores (seeded at boot from the committed recording artifact);"
+            " a model with no measured score is shown as absent, never faked"
         ),
     )
     model_tier_overrides: Mapping[NotBlankStr, TierName] = Field(
         default_factory=dict,
         description=(
             "Operator map of model id to quality tier, consulted by the"
-            " Pareto downgrade traversal and the stub fallback before the"
-            " built-in archetype heuristic. Values are typed against the"
-            " canonical tiers, so a non-canonical tier is rejected at"
-            " config construction rather than slipping through to wiring."
+            " Pareto downgrade traversal before the built-in archetype"
+            " heuristic. Values are typed against the canonical tiers, so"
+            " a non-canonical tier is rejected at config construction"
+            " rather than slipping through to wiring."
         ),
     )
 

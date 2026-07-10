@@ -11,6 +11,7 @@ import pytest
 import structlog.testing
 from pydantic import JsonValue
 
+from synthorg.core.domain_errors import FeatureNotImplementedError
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol, SinkType
 from synthorg.observability.events.metrics import METRICS_OTLP_FLUSHER_ERROR
@@ -187,9 +188,9 @@ class TestOtlpHandlerProtocol:
         finally:
             handler.close()
 
-    def test_grpc_protocol_rejects_with_not_implemented(self) -> None:
+    def test_grpc_protocol_rejects_with_feature_not_implemented(self) -> None:
         with pytest.raises(
-            NotImplementedError,
+            FeatureNotImplementedError,
             match="gRPC transport is not implemented",
         ):
             OtlpHandler(

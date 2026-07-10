@@ -5,6 +5,7 @@ the service orchestration.
 """
 
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import TypedDict
 
@@ -45,28 +46,36 @@ class _DeptReassignPayload(TypedDict):
     agents_version: str
 
 
-class OrgDepartmentMutationsMixin:
-    """Department CRUD + reorder for ``OrgMutationService``."""
+class OrgDepartmentMutationsMixin(ABC):
+    """Department CRUD + reorder for ``OrgMutationService``.
+
+    The read/write/snapshot seams below are abstract: the concrete
+    ``OrgMutationService`` binds them to the settings + versioning
+    services, so ABCMeta blocks instantiating a subclass that leaves one
+    unimplemented.
+    """
 
     _settings: SettingsServiceProtocol
 
-    async def _read_setting_versioned(  # pragma: no cover - see concrete
+    @abstractmethod
+    async def _read_setting_versioned(
         self, namespace: str, key: str
     ) -> tuple[str, str]:
         """Read a setting value together with its concurrency version token."""
         raise NotImplementedError
 
-    async def _read_departments(  # pragma: no cover - see concrete
-        self,
-    ) -> tuple[Department, ...]:
+    @abstractmethod
+    async def _read_departments(self) -> tuple[Department, ...]:
         """Read the company's departments."""
         raise NotImplementedError
 
-    async def _read_agents(self) -> tuple[AgentConfig, ...]:  # pragma: no cover
+    @abstractmethod
+    async def _read_agents(self) -> tuple[AgentConfig, ...]:
         """Read the company's agents."""
         raise NotImplementedError
 
-    async def _write_departments(  # pragma: no cover - see concrete
+    @abstractmethod
+    async def _write_departments(
         self,
         departments: tuple[Department, ...],
         *,
@@ -75,30 +84,33 @@ class OrgDepartmentMutationsMixin:
         """Persist the department roster under optimistic-concurrency control."""
         raise NotImplementedError
 
-    async def _snapshot_company(self) -> None:  # pragma: no cover
+    @abstractmethod
+    async def _snapshot_company(self) -> None:
         """Record a company snapshot attributed to the saver."""
         raise NotImplementedError
 
-    def _find_department(  # pragma: no cover - see concrete
+    @abstractmethod
+    def _find_department(
         self, departments: tuple[Department, ...], name: str
     ) -> Department | None:
         """Find a department by name within the given tuple."""
         raise NotImplementedError
 
-    def _check_budget_sum(  # pragma: no cover - see concrete
-        self, departments: tuple[Department, ...]
-    ) -> None:
+    @abstractmethod
+    def _check_budget_sum(self, departments: tuple[Department, ...]) -> None:
         """Validate that department budgets stay within the company ceiling."""
         raise NotImplementedError
 
     @staticmethod
-    def _collect_department_updates(  # pragma: no cover - see concrete
+    @abstractmethod
+    def _collect_department_updates(
         data: UpdateDepartmentRequest,
     ) -> dict[str, object]:
         """Collect the mutable department fields from an update request."""
         raise NotImplementedError
 
-    def _validate_permutation(  # pragma: no cover - see concrete
+    @abstractmethod
+    def _validate_permutation(
         self,
         current_names: tuple[str, ...],
         requested_names: tuple[str, ...],

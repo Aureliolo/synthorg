@@ -28,7 +28,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import (
@@ -58,7 +57,8 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
-from tests._shared import as_uuid, sid
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, sid
+from tests._shared.benchmark import FIXTURE_SOURCE
 
 pytestmark = pytest.mark.integration
 
@@ -336,7 +336,7 @@ async def test_cost_dial_full_lifecycle() -> None:
     assert resumed_checker(_checker_ctx(accumulated_cost=1.50)) is False
 
     # 7. Pareto analyzer returns a frontier referencing the role(s)
-    #    that ran. The stub provider supplies calibrated quality
+    #    that ran. The fake tier provider supplies per-tier measured
     #    scores; the frontier surfaces its provenance via ``source``.
     async def _assignments() -> Sequence[RoleAssignment]:
         return (
@@ -349,7 +349,7 @@ async def test_cost_dial_full_lifecycle() -> None:
         )
 
     analyzer = ParetoAnalyzer(
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         budget_config=budget,
         assignment_lookup=_assignments,
     )
@@ -359,5 +359,5 @@ async def test_cost_dial_full_lifecycle() -> None:
     point = frontier.points[0]
     assert point.role_label == "Backend Engineer"
     assert point.candidate_model == "example-medium-001"
-    assert "stub:calibrated-v1" in frontier.source
+    assert FIXTURE_SOURCE in frontier.source
     _: Mapping[str, object] = {}  # type-check pin for the Mapping import

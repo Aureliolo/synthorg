@@ -14,6 +14,7 @@ from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.company_departments import Department
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.organization.models import UpdateAgentOrgRequest
 
@@ -28,11 +29,64 @@ _PROVIDERS: Mapping[str, ProviderConfig] = {
 
 
 class _Harness(OrgAgentMutationsMixin):
-    """Minimal mixin host exposing only the validation seam."""
+    """Minimal mixin host exposing only the validation seam.
+
+    The CRUD/snapshot seams satisfy the abstract contract with inert
+    bodies: these tests exercise only ``_validate_agent_update``, which
+    reaches ``_read_provider_configs``.
+    """
 
     @override
     async def _read_provider_configs(self) -> Mapping[str, ProviderConfig]:
         return _PROVIDERS
+
+    @override
+    async def _read_setting_versioned(
+        self, namespace: str, key: str
+    ) -> tuple[str, str]:
+        return ("", "")
+
+    @override
+    async def _read_departments(self) -> tuple[Department, ...]:
+        return ()
+
+    @override
+    async def _read_agents(self) -> tuple[AgentConfig, ...]:
+        return ()
+
+    @override
+    async def _write_agents(
+        self,
+        agents: tuple[AgentConfig, ...],
+        *,
+        expected_updated_at: str | None = None,
+    ) -> None:
+        return None
+
+    @override
+    async def _snapshot_company(self) -> None:
+        return None
+
+    @override
+    def _find_department(
+        self, departments: tuple[Department, ...], name: str
+    ) -> Department | None:
+        return None
+
+    @override
+    def _find_agent(
+        self, agents: tuple[AgentConfig, ...], name: str
+    ) -> AgentConfig | None:
+        return None
+
+    @override
+    def _validate_permutation(
+        self,
+        current_names: tuple[str, ...],
+        requested_names: tuple[str, ...],
+        entity: str,
+    ) -> None:
+        return None
 
 
 async def _validate(

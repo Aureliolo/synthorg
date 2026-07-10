@@ -358,6 +358,7 @@ class WorkflowService:
                 # ``reraise_critical`` propagates fatal system errors
                 # even from this best-effort probe; otherwise the
                 # outer ``raise`` below would swallow them.
+                # lint-allow: swallow-ok -- diagnostic revision lookup for conflict
                 reraise_critical(lookup_exc)
                 logger.debug(
                     WORKFLOW_DEF_VERSION_CONFLICT,
@@ -433,9 +434,7 @@ class WorkflowService:
                 saved_by=saved_by,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # ``reraise_critical`` propagates fatal system errors
-            # so the workload can shed load; best-effort logging is
-            # the wrong response here.
+            # lint-allow: swallow-ok -- version snapshot is best-effort
             reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
@@ -504,6 +503,7 @@ class WorkflowService:
         try:
             await self._versions.delete_versions_for_entity(definition_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort version-snapshot cascade delete
             reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,

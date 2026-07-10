@@ -2,10 +2,9 @@
 
 The canonical tiers (``small`` < ``medium`` < ``large``) double as the
 model aliases the :class:`~synthorg.providers.routing.resolver.ModelResolver`
-resolves, and as the keys
-:class:`~synthorg.budget.benchmark_stub.StubBenchmarkScoreProvider`
-scores. Cheapest-first order lets the policy pick the cheapest tier that
-clears a quality floor.
+resolves, and as the tier keys the benchmark-score provider scores.
+Cheapest-first order lets the policy pick the cheapest tier that clears
+a quality floor.
 """
 
 from typing import Final

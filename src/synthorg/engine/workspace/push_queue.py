@@ -262,6 +262,7 @@ class PushQueueCoordinator:
                     # a critical error: this item is no longer on the queue,
                     # so the outer ``finally`` (which only fails still-queued
                     # items) cannot rescue its caller from hanging otherwise.
+                    # lint-allow: swallow-ok -- resilient poll loop
                     if not item.future.done():
                         item.future.set_exception(exc)
                     reraise_critical(exc)
@@ -326,6 +327,7 @@ class PushQueueCoordinator:
                 item.future.set_exception(exc)
             return False
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 WORKSPACE_PUSH_QUEUE_FAILED,

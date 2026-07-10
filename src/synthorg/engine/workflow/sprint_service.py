@@ -69,6 +69,7 @@ from synthorg.observability import (
     log_exception_redacted,
 )
 from synthorg.observability.events.workflow import (
+    SPRINT_BACKLOG_SAVE_FAILED,
     SPRINT_CREATED,
     SPRINT_SERVICE_OBSERVER_FAILED,
     SPRINT_STATUS_TRANSITIONED,
@@ -146,6 +147,7 @@ class SprintService:
         try:
             await coro
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -345,6 +347,7 @@ class SprintService:
                 phase = "handle_completion"
                 await self._handle_completion(event.task)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -418,7 +421,24 @@ class SprintService:
                 return
             points = sprint.task_points.get(task_id, 0.0)
             updated = complete_task_in_sprint(sprint, NotBlankStr(task_id))
-            await self._sprints.save(updated)
+            try:
+                await self._sprints.save(updated)
+            except Exception as exc:
+                # This is the sprint source-of-truth write, not an observer
+                # side channel: a swallow here silently diverges
+                # ``completed_task_ids`` from real task state with no
+                # reconciliation. Surface it distinctly (ERROR) before it
+                # rides the observer catch-all, so the divergence is
+                # actionable rather than buried in a generic observer warning.
+                reraise_critical(exc)
+                log_exception_redacted(
+                    logger,
+                    SPRINT_BACKLOG_SAVE_FAILED,
+                    exc,
+                    sprint_id=updated.id,
+                    task_id=task_id,
+                )
+                raise
         logger.info(SPRINT_TASK_COMPLETED, sprint_id=updated.id, task_id=task_id)
         self._spawn(self._forward_and_finalize(updated, task_id, points))
 

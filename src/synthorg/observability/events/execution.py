@@ -37,6 +37,9 @@ EXECUTION_ENGINE_TIMEOUT: Final[str] = "execution.engine.timeout"
 EXECUTION_ENGINE_BUDGET_STOPPED: Final[str] = "execution.engine.budget_stopped"
 EXECUTION_ENGINE_TASK_SYNCED: Final[str] = "execution.engine.task_synced"
 EXECUTION_ENGINE_SYNC_FAILED: Final[str] = "execution.engine.sync_failed"
+EXECUTION_ENGINE_NO_ARTIFACTS_FAILED: Final[str] = (
+    "execution.engine.no_artifacts_failed"
+)
 
 # Direct chat-driven MCP actions (AgentEngine.run_chat_action): a short
 # tool-capable loop with no Task lifecycle. Parks via the shared

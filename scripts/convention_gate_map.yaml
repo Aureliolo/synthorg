@@ -96,6 +96,16 @@ mandatory_rules:
     header: Error-Code Uniqueness
     gate: scripts/check_error_code_uniqueness.py
 
+  - id: claude-md::no-stubs
+    file: CLAUDE.md
+    header: No Stubs
+    gate: scripts/check_no_stubs.py
+
+  - id: claude-md::fail-loud-execution
+    file: CLAUDE.md
+    header: Fail-Loud Execution
+    gate: scripts/check_no_engine_worker_swallow.py
+
   - id: claude-md::cost-attribution-purpose
     file: CLAUDE.md
     header: Cost Attribution Purpose

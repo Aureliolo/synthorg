@@ -112,6 +112,7 @@ class InMemoryErrorTaxonomyStore:
                     max_results=self._max_results,
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             logger.warning(
                 TAXONOMY_STORE_APPEND_FAILED,

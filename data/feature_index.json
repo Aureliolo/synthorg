@@ -134,7 +134,6 @@
         "ParetoAnalyzer",
         "PostgresBenchmarkScoreRepository",
         "SQLiteBenchmarkScoreRepository",
-        "StubBenchmarkScoreProvider",
         "QuotaTracker",
         "RiskTracker",
         "CallAnalyticsService"
@@ -1380,6 +1379,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-08T09:47:43.932459Z",
+  "generated_at": "2026-07-09T23:08:21.587531Z",
   "schema_version": 1
 }

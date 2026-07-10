@@ -1,26 +1,38 @@
 """In-memory repository implementations for integration tables.
 
-.. note::
-    The production ``SQLitePersistenceBackend`` and
-    ``PostgresPersistenceBackend`` now wire in durable connection,
-    connection-secret, OAuth state, and webhook-receipt repositories
-    directly (``synthorg.persistence.{sqlite,postgres}.<repo>_repo``).
-    These ``InMemory*`` classes remain available for **unit-test
-    fakes** that don't want to spin up a real database.
+These are *working* repositories (full CRUD against a process-local
+dict), not stubs. They serve two real roles:
+
+1. **Unit-test fakes** that exercise the integration wiring without
+   spinning up a real database.
+2. A **boot-window fallback**: ``auto_wire_integrations`` runs before
+   ``persistence.connect()`` in the ``create_app`` boot path, so the
+   connection catalog binds an ``InMemoryConnectionRepository`` for the
+   wiring window and is rebound to the durable backend by the lifecycle
+   startup hook once persistence is live.
+
+The production ``SQLitePersistenceBackend`` and
+``PostgresPersistenceBackend`` wire in durable connection,
+connection-secret, OAuth state, and webhook-receipt repositories
+directly (``synthorg.persistence.{sqlite,postgres}.<repo>_repo``).
 
 .. warning::
     Process-local, non-durable. Data lives only in the current
     Python process, is not replicated across replicas, and is lost
-    on restart. **Never** wire these into a production backend.
+    on restart. **Never** wire these in as a durable backend's
+    repositories.
 
-All reads return deep copies so callers cannot mutate internal
+Model reads return deep copies so callers cannot mutate internal
 state by holding references to returned models. Even though the
 domain models are frozen Pydantic ``BaseModel`` instances, their
 mutable fields (``dict`` metadata) would otherwise still be
-aliased to the stored value.
+aliased to the stored value. The connection-secret repository is the
+exception: it stores and returns immutable ``bytes``, which need no
+copy.
 """
 
 import copy
+from datetime import datetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -29,7 +41,7 @@ from synthorg.integrations.connections.models import (
     WebhookReceipt,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec
 
 
@@ -192,16 +204,30 @@ class InMemoryOAuthStateRepository:
         self,
         state_token: NotBlankStr,
         *,
-        connection_name: NotBlankStr,  # noqa: ARG002
-        consumed_at: object,  # noqa: ARG002
+        connection_name: NotBlankStr,
+        consumed_at: datetime,
     ) -> bool:
-        """In-memory CAS not enforced; treat as no-op success when present.
+        """Compare-and-set: stamp ``consumed_at`` only when unconsumed.
+
+        Mirrors the durable repo's ``consumed_at IS NULL`` predicate: a
+        redelivered callback observes the existing ``consumed_at`` and
+        returns ``False`` so the handler routes it through the replay
+        branch.
 
         Returns:
-            ``True`` when ``state_token`` exists in the stub store, ``False`` otherwise.
-            No prior-consumption tracking is performed.
+            ``True`` when this call stamped the row, ``False`` when the
+            token is absent or was already consumed.
         """
-        return state_token in self._store
+        existing = self._store.get(state_token)
+        if existing is None or existing.consumed_at is not None:
+            return False
+        self._store[state_token] = existing.model_copy(
+            update={
+                "consumed_at": normalize_utc(consumed_at),
+                "connection_name_returned": connection_name,
+            }
+        )
+        return True
 
     async def cleanup_expired(
         self,
@@ -277,33 +303,62 @@ class InMemoryWebhookReceiptRepository:
 
     async def update_status(
         self,
-        receipt_id: NotBlankStr,  # noqa: ARG002
+        receipt_id: NotBlankStr,
         *,
-        status: str,  # noqa: ARG002
-        processed_at: object,  # noqa: ARG002
-        error: str | None,  # noqa: ARG002
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
     ) -> bool:
-        """In-memory stub: no status update.
+        """Update ``status`` / ``processed_at`` / ``error`` of a receipt.
 
         Returns:
-            Always ``False``; the in-memory stub does not persist updates.
+            ``True`` when a row matched ``receipt_id`` and was updated,
+            ``False`` when no row matched.
         """
+        normalized = normalize_utc(processed_at) if processed_at is not None else None
+        for i, existing in enumerate(self._store):
+            if str(existing.id) == str(receipt_id):
+                self._store[i] = existing.model_copy(
+                    update={
+                        "status": status,
+                        "processed_at": normalized,
+                        "error": error,
+                    }
+                )
+                return True
         return False
 
     async def update_status_if_current(
         self,
-        receipt_id: NotBlankStr,  # noqa: ARG002
+        receipt_id: NotBlankStr,
         *,
-        expected_status: str,  # noqa: ARG002
-        status: str,  # noqa: ARG002
-        processed_at: object,  # noqa: ARG002
-        error: str | None,  # noqa: ARG002
+        expected_status: str,
+        status: str,
+        processed_at: datetime | None,
+        error: str | None,
     ) -> bool:
-        """In-memory stub: no CAS update.
+        """Compare-and-set ``status`` only when the row still matches.
+
+        Mirrors the durable repo's ``status = ?`` predicate: two
+        concurrent retries can never both win.
 
         Returns:
-            Always ``False``; the in-memory stub does not persist CAS updates.
+            ``True`` when a row matched ``receipt_id`` and its current
+            status equalled ``expected_status``, ``False`` otherwise.
         """
+        normalized = normalize_utc(processed_at) if processed_at is not None else None
+        for i, existing in enumerate(self._store):
+            if str(existing.id) == str(receipt_id):
+                if existing.status != expected_status:
+                    return False
+                self._store[i] = existing.model_copy(
+                    update={
+                        "status": status,
+                        "processed_at": normalized,
+                        "error": error,
+                    }
+                )
+                return True
         return False
 
     async def get_by_connection(

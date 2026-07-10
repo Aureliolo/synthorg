@@ -34,6 +34,11 @@ class TerminationReason(StrEnum):
     STAGNATION = "stagnation"
     CANCELLED = "cancelled"
     ERROR = "error"
+    NO_OP = "no_op"
+    """A task-backed run that finished without calling any tool, so it
+    produced no artifacts. A silent no-op success is a failure: the run
+    is routed to ``FAILED`` unless an explicit no-op justification was
+    recorded (see ``engine.task_sync``)."""
 
 
 class ExecutionResult(BaseModel):
@@ -98,9 +103,15 @@ class ExecutionResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_message(self) -> Self:
-        if self.termination_reason == TerminationReason.ERROR:
+        if self.termination_reason in (
+            TerminationReason.ERROR,
+            TerminationReason.NO_OP,
+        ):
             if self.error_message is None:
-                msg = "error_message is required when termination_reason is ERROR"
+                msg = (
+                    "error_message is required when termination_reason is "
+                    f"{self.termination_reason.value}"
+                )
                 raise ValueError(msg)
         elif self.termination_reason == TerminationReason.PARKED:
             if self.error_message is not None:

@@ -126,6 +126,7 @@ async def check_steering(
             already_adopted=ctx.adopted_steering_ids,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             STEERING_INBOX_READ_FAILED,

@@ -57,7 +57,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
-    EXECUTION_PROJECT_VALIDATION_FAILED,
 )
 from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
@@ -555,12 +554,13 @@ class AgentEngine(
                         task_id=task_id,
                     )
                 elif task.project:
-                    logger.warning(
-                        EXECUTION_PROJECT_VALIDATION_FAILED,
+                    # Fail loud for a work task (aborts to the fatal-error
+                    # boundary, which terminates the task FAILED) rather than
+                    # running it unvalidated against an unconfigured repo.
+                    self._reject_unconfigured_project_repo(
+                        task=task,
                         agent_id=agent_id,
                         task_id=task_id,
-                        project_id=task.project,
-                        reason="project_repo_not_configured",
                     )
 
                 replay_ctx: AgentContext | None = None
@@ -663,6 +663,7 @@ class AgentEngine(
                     system_prompt=system_prompt,
                 )
             except Exception as exc:  # noqa: BLE001 -- engine fatal-error boundary
+                # lint-allow: swallow-ok -- fatal-error boundary returns FAILED
                 return await self._handle_fatal_error(
                     exc=exc,
                     identity=identity,

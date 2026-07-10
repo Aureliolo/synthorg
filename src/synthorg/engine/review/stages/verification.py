@@ -129,6 +129,7 @@ class VerificationReviewStage:
                 task, generator=generator, evaluator=evaluator
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             logger.warning(
                 REVIEW_STAGE_SETUP_FAULT,
@@ -152,6 +153,7 @@ class VerificationReviewStage:
                 evaluator_agent_id=evaluator,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             # WARNING, not INFO: a grader fault is an unexpected verifier
             # defect an operator must see, distinct from a routine skip.

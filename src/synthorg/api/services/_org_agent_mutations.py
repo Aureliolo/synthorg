@@ -5,6 +5,7 @@ the service orchestration.
 """
 
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import JsonValue
@@ -45,34 +46,40 @@ _AgentRoster = tuple[AgentConfig, ...]
 _RosterWriter = Callable[[_AgentRoster, str], Awaitable[None]]
 
 
-class OrgAgentMutationsMixin:
-    """Agent CRUD + reorder for ``OrgMutationService``."""
+class OrgAgentMutationsMixin(ABC):
+    """Agent CRUD + reorder for ``OrgMutationService``.
 
-    async def _read_setting_versioned(  # pragma: no cover - see concrete
+    The read/write/snapshot seams below are abstract: the concrete
+    ``OrgMutationService`` binds them to the settings + versioning
+    services. ABCMeta blocks instantiating a subclass that leaves one
+    unimplemented, so a missing override fails at construction rather
+    than at call time.
+    """
+
+    @abstractmethod
+    async def _read_setting_versioned(
         self, namespace: str, key: str
     ) -> tuple[str, str]:
         """Read a setting value together with its concurrency version token."""
         raise NotImplementedError
 
-    async def _read_departments(  # pragma: no cover - see concrete
-        self,
-    ) -> tuple[Department, ...]:
+    @abstractmethod
+    async def _read_departments(self) -> tuple[Department, ...]:
         """Read the company's departments."""
         raise NotImplementedError
 
-    async def _read_agents(  # pragma: no cover - see concrete
-        self,
-    ) -> _AgentRoster:
+    @abstractmethod
+    async def _read_agents(self) -> _AgentRoster:
         """Read the company's agents."""
         raise NotImplementedError
 
-    async def _read_provider_configs(  # pragma: no cover - see concrete
-        self,
-    ) -> Mapping[str, ProviderConfig]:
+    @abstractmethod
+    async def _read_provider_configs(self) -> Mapping[str, ProviderConfig]:
         """Read the resolved provider configs for catalog validation."""
         raise NotImplementedError
 
-    async def _write_agents(  # pragma: no cover - see concrete
+    @abstractmethod
+    async def _write_agents(
         self,
         agents: _AgentRoster,
         *,
@@ -81,25 +88,25 @@ class OrgAgentMutationsMixin:
         """Persist the agent roster under optimistic-concurrency control."""
         raise NotImplementedError
 
-    async def _snapshot_company(  # pragma: no cover - see concrete
-        self,
-    ) -> None:
+    @abstractmethod
+    async def _snapshot_company(self) -> None:
         """Record a company snapshot attributed to the bound actor."""
         raise NotImplementedError
 
-    def _find_department(  # pragma: no cover - see concrete
+    @abstractmethod
+    def _find_department(
         self, departments: tuple[Department, ...], name: str
     ) -> Department | None:
         """Find a department by name within the given tuple."""
         raise NotImplementedError
 
-    def _find_agent(  # pragma: no cover - see concrete
-        self, agents: _AgentRoster, name: str
-    ) -> AgentConfig | None:
+    @abstractmethod
+    def _find_agent(self, agents: _AgentRoster, name: str) -> AgentConfig | None:
         """Find an agent by name within the given tuple."""
         raise NotImplementedError
 
-    def _validate_permutation(  # pragma: no cover - see concrete
+    @abstractmethod
+    def _validate_permutation(
         self,
         current_names: tuple[str, ...],
         requested_names: tuple[str, ...],

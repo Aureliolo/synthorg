@@ -100,6 +100,7 @@ def make_checkpoint_callback(
                 checkpoint_id=str(checkpoint.id),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- resiliency side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -131,6 +132,7 @@ def make_checkpoint_callback(
                 execution_id=ctx.execution_id,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- resiliency side channel
             reraise_critical(exc)
             log_exception_redacted(
                 logger, HEARTBEAT_UPDATE_FAILED, exc, execution_id=ctx.execution_id

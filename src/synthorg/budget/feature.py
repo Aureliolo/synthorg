@@ -67,7 +67,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "ParetoAnalyzer",
         "PostgresBenchmarkScoreRepository",
         "SQLiteBenchmarkScoreRepository",
-        "StubBenchmarkScoreProvider",
         "QuotaTracker",
         "RiskTracker",
         "CallAnalyticsService",

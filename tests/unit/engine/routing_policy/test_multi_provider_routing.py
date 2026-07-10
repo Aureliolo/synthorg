@@ -9,7 +9,6 @@ parity and the fail-safe when a routed provider cannot be resolved.
 
 import pytest
 
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
@@ -22,7 +21,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.providers.routing.selector import CheapestSelector
-from tests._shared import as_uuid, mock_of
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _DEFAULT_PROVIDER = "default-provider"
@@ -102,7 +101,7 @@ def _engine(
 ) -> AgentEngine:
     router = build_stakes_router(
         StakesRoutingConfig(),
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         resolver=_multi_provider_resolver(),
     )
     return AgentEngine(
@@ -268,7 +267,7 @@ class TestDispatchClientResolution:
             provider_registry=registry,
             stakes_router=build_stakes_router(
                 StakesRoutingConfig(),
-                benchmark_provider=StubBenchmarkScoreProvider(),
+                benchmark_provider=FakeTierBenchmarkScoreProvider(),
                 resolver=None,
             ),
         )

@@ -1039,6 +1039,7 @@ export const TERMINATION_REASON_VALUES = [
     'stagnation',
     'cancelled',
     'error',
+    'no_op',
 ] as const
 export type TerminationReason = (typeof TERMINATION_REASON_VALUES)[number]
 

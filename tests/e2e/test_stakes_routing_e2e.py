@@ -25,7 +25,6 @@ from pathlib import Path
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.models import ClientRequest
@@ -68,7 +67,14 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    FakeTierBenchmarkScoreProvider,
+    as_uuid,
+    make_app_state,
+    mock_of,
+    sid,
+)
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -79,7 +85,7 @@ _DATABASE_SKILL = "database"
 _PROVIDER = "test-provider"
 
 # Tier-priced model catalogue. Model ids carry the tier token so the
-# StubBenchmarkScoreProvider scores them (small 72, medium 85, large 92)
+# FakeTierBenchmarkScoreProvider scores them (small 72, medium 85, large 92)
 # and the scripted driver can price each completion by tier.
 _TIER_MODEL_IDS: dict[ModelTier, str] = {
     "small": "example-small-001",
@@ -310,7 +316,7 @@ async def _build_pipeline(
         client_simulation_state=mock_of[ClientSimulationState](
             intake_engine=intake,
         ),
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         cost_tracker=cost_tracker,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)

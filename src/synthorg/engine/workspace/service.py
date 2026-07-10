@@ -170,6 +170,7 @@ class WorkspaceIsolationService:
                     workspace=ws,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort resiliency side channel
                 reraise_critical(exc)
                 # Rollback cleanup errors can wrap filesystem / DB
                 # exceptions whose str() embeds paths or connection
@@ -301,6 +302,7 @@ class WorkspaceIsolationService:
             try:
                 await queue.stop()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
@@ -337,6 +339,7 @@ class WorkspaceIsolationService:
                     workspace=workspace,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 # The ``errors`` list flows into
                 # ``WorkspaceCleanupError`` which callers may log as

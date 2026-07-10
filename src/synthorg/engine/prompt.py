@@ -183,6 +183,7 @@ def build_system_prompt(  # noqa: PLR0913
         try:
             validate_policy_quality(org_policies)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-None wiring
             reraise_critical(exc)
             logger.warning(
                 PROMPT_POLICY_VALIDATION_FAILED,

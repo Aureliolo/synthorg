@@ -300,6 +300,7 @@ class _BaseSemanticDetector(ABC):
                 settled = True
             return parse_findings(response.content, self.category)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(exc)
             # Fail open: provider exhaustion (RetryExhaustedError) or a parse
             # error degrades to no findings (same as a clean transcript).

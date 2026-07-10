@@ -1,25 +1,28 @@
 """Task status sync -- AgentEngine → TaskEngine integration.
 
 Module-level functions extracted from ``AgentEngine`` to keep the
-orchestrator file focused on execution flow.  Every function is
-best-effort: sync failures are logged and swallowed so agent
-execution is never blocked by a ``TaskEngine`` issue.
+orchestrator file focused on execution flow.  Remote ``TaskEngine`` sync
+is best-effort (failures are logged and swallowed so agent execution is
+never blocked by a ``TaskEngine`` issue), but the post-execution
+transition itself is fail-loud: a work task that produced no artifacts
+and no recorded no-op justification is driven to ``FAILED`` rather than
+pushed to review as a silent no-op success.
 """
 
 import asyncio
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
-from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
+from synthorg.engine.task_sync_review import create_review_approval
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
@@ -28,11 +31,9 @@ if TYPE_CHECKING:
     # call site duck-types through the passed-in gate.
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_REVIEW_CREATED,
-)
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
+    EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
     EXECUTION_ENGINE_SYNC_FAILED,
     EXECUTION_ENGINE_TASK_SYNCED,
     EXECUTION_ENGINE_TASK_TRANSITION,
@@ -48,7 +49,21 @@ _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
     (TaskStatus.IN_REVIEW, "Agent completed execution -- awaiting review"),
 )
 
-_REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
+# Reason surfaced when a work task finishes with no produced artifacts and
+# no recorded no-op justification: the run is failed rather than pushed to
+# review as a silent no-op success.
+_EMPTY_RUN_REASON: Final[str] = (
+    "Run produced no artifacts and no tool calls; failing the task instead "
+    "of recording a silent no-op success"
+)
+
+# Extension point for a legitimately empty run (e.g. a task that concluded no
+# change was needed): its presence routes an otherwise-empty run to review
+# instead of FAILED. The invariant is fail-closed today -- no production path
+# sets this key, so an empty work run always fails. When a producer is wired,
+# it MUST be a system/pipeline-set, validated signal, never a value derived
+# from agent/LLM output, so an agent cannot self-justify an empty run.
+_NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
 
 
 async def sync_to_task_engine(  # noqa: PLR0913
@@ -96,6 +111,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         _log_sync_issue(
             critical=critical,
@@ -198,6 +214,10 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
     COMPLETED termination triggers the stepwise transitions defined
     in ``_COMPLETION_STEPS`` (currently: -> IN_REVIEW, awaiting review).
     SHUTDOWN triggers current status -> INTERRUPTED.
+    A ``NO_OP`` run -- or a ``COMPLETED`` run that a work task finished
+    with zero tool calls (the silent-no-op proxy for zero artifacts) --
+    is driven to FAILED instead of review, unless a no-op justification
+    was recorded or the run resumed prior work (see ``empty_run_fails``).
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.
     ``MemoryError`` and ``RecursionError`` propagate unconditionally.
@@ -230,8 +250,38 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
-    if reason != TerminationReason.COMPLETED:
+    justified = bool(execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY))
+    task_expects_artifacts = bool(ctx.task_execution.task.artifacts_expected)
+    # A resumed/replayed run only carries the current segment's turns, so its
+    # zero-tool-call count is not a valid proxy for total task output: earlier
+    # segments (before an approval park) may already have produced artifacts.
+    # Exempt a continued run from the empty-run failure so a legitimately
+    # progressed task is never discarded; a genuinely empty continued run
+    # still completes to review rather than FAILED.
+    empty_run_fails = not is_resumed_run()
+
+    # A silent no-op success is a failure: a WORK task (one that declared
+    # expected artifacts) that produced none (proxied by zero tool calls) is
+    # failed unless an explicit no-op justification was recorded. Enforced in
+    # two layers: the react loop classifies the empty run as NO_OP, and this
+    # transition also guards a COMPLETED that slipped through from another loop.
+    if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
+        return await _transition_to_failed(
+            execution_result, ctx, agent_id, task_id, task_engine
+        )
+
+    if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
         return execution_result
+
+    if (
+        task_expects_artifacts
+        and execution_result.total_tool_calls == 0
+        and not justified
+        and empty_run_fails
+    ):
+        return await _transition_to_failed(
+            execution_result, ctx, agent_id, task_id, task_engine
+        )
 
     return await _transition_to_review(
         execution_result,
@@ -276,6 +326,7 @@ async def _maybe_auto_review(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- best-effort: never block completion
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
@@ -325,67 +376,6 @@ async def _transition_and_sync(  # noqa: PLR0913
     return ctx
 
 
-async def _create_review_approval(
-    approval_store: ApprovalStoreProtocol | None,
-    *,
-    agent_id: str,
-    task_id: str,
-) -> str | None:
-    """Create an ApprovalItem for a task entering IN_REVIEW.
-
-    Best-effort: failures are logged and swallowed so the
-    execution result is never lost.
-
-    Args:
-        approval_store: Store to create the item in, or ``None``.
-        agent_id: Agent that completed the task.
-        task_id: Task identifier.
-
-    Returns:
-        The approval_id on success, or ``None`` if no store or on error.
-    """
-    if approval_store is None:
-        return None
-
-    now = datetime.now(UTC)
-    approval_id = uuid4()
-    # Local import breaks the ontology -> persistence -> budget ->
-    # security -> engine -> core.approval cycle (see security.service
-    # for the same pattern).
-    from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-
-    item = ApprovalItem(
-        id=approval_id,
-        action_type=_REVIEW_ACTION_TYPE,
-        title=f"Review task {task_id} completion",
-        description=f"Agent {agent_id} completed task {task_id}",
-        requested_by=agent_id,
-        risk_level=ApprovalRiskLevel.LOW,
-        created_at=now,
-        task_id=task_id,
-    )
-    try:
-        await approval_store.add(item)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
-            approval_id=approval_id,
-            task_id=task_id,
-            agent_id=agent_id,
-            error="Failed to create review approval (non-fatal)",
-        )
-        return None
-
-    logger.info(
-        APPROVAL_GATE_REVIEW_CREATED,
-        approval_id=str(approval_id),
-        task_id=task_id,
-        agent_id=agent_id,
-    )
-    return str(approval_id)
-
-
 async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
@@ -432,15 +422,63 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.IN_REVIEW
     ):
-        await _create_review_approval(
-            approval_store, agent_id=agent_id, task_id=task_id
-        )
+        await create_review_approval(approval_store, agent_id=agent_id, task_id=task_id)
         await _maybe_auto_review(
             review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
         )
 
     if ctx is execution_result.context:
         return execution_result
+    return execution_result.model_copy(update={"context": ctx})
+
+
+async def _transition_to_failed(
+    execution_result: ExecutionResult,
+    ctx: AgentContext,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+) -> ExecutionResult:
+    """Transition an empty/no-op run IN_PROGRESS -> FAILED (no review).
+
+    A work task that produced no artifacts must surface a visible failure
+    with the reason, never a silent no-op success pushed to review. No
+    review approval is created.
+
+    Returns:
+        A copy of ``execution_result`` with the context updated to
+        ``FAILED``; the original is returned unchanged when the
+        transition raises.
+    """
+    try:
+        ctx = await _transition_and_sync(
+            ctx,
+            target_status=TaskStatus.FAILED,
+            reason=_EMPTY_RUN_REASON,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            critical=True,
+        )
+    except (ValueError, ExecutionStateError) as exc:
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            context="Post-execution FAILED transition failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return execution_result
+    # Emit the no-artifacts fail event only after FAILED is persisted, so
+    # the record never claims a failure that the transition did not land.
+    logger.warning(
+        EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
+        agent_id=agent_id,
+        task_id=task_id,
+        context="Empty run: no artifacts produced; task failed",
+        reason=_EMPTY_RUN_REASON,
+    )
     return execution_result.model_copy(update={"context": ctx})
 
 

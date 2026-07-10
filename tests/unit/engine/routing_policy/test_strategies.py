@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
-from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.coordination_metric_models import (
     CoordinationMetrics,
     ErrorAmplification,
@@ -29,7 +28,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import as_uuid, coerce_id
+from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, coerce_id
 from tests._shared.scripted_provider import make_e2e_identity
 
 
@@ -107,7 +106,7 @@ def _strategy(
     resolver: ModelResolver | None = None,
 ) -> StakesAwareStrategy:
     return StakesAwareStrategy(
-        benchmark_provider=StubBenchmarkScoreProvider(),
+        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         config=config or StakesRoutingConfig(),
         resolver=resolver if resolver is not None else _resolver(),
         coordination_store=coordination_store,
@@ -241,7 +240,7 @@ class TestResolverAbsent:
 
     async def test_no_resolver_keeps_model_marks_red_team(self) -> None:
         strategy = StakesAwareStrategy(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             resolver=None,
         )
         decision = await strategy.route(
@@ -274,7 +273,7 @@ class TestBuildStakesRouter:
 
     async def test_default_builds_stakes_aware(self) -> None:
         router = build_stakes_router(
-            benchmark_provider=StubBenchmarkScoreProvider(),
+            benchmark_provider=FakeTierBenchmarkScoreProvider(),
             resolver=_resolver(),
         )
         decision = await router.route(

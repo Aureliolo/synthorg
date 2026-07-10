@@ -5,6 +5,7 @@ module under the size limit.
 """
 
 import math
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
@@ -48,25 +49,21 @@ _COST_WINDOW_HOURS: Final[int] = 720
 logger = get_logger(__name__)
 
 
-class CostTrackerSummaryMixin:
-    """Mixin providing summary, breakdown, and orchestration-ratio helpers."""
+class CostTrackerSummaryMixin(ABC):
+    """Mixin providing summary, breakdown, and orchestration-ratio helpers.
+
+    The record-snapshot seam is abstract, bound by the concrete
+    :class:`CostTracker`; ABCMeta blocks instantiating a subclass that
+    leaves it unimplemented.
+    """
 
     _budget_config: BudgetConfig | None
     _department_resolver: Callable[[str], str | None] | None
     _clock: Clock
 
+    @abstractmethod
     async def _snapshot(self, *, now: datetime | None = None) -> tuple[CostRecord, ...]:
-        """Return an immutable snapshot of records.
-
-        Overridden by the concrete class; declared here only to satisfy
-        mypy's attribute check against the mixin.
-
-        Returns:
-            Tuple of ``CostRecord``.
-
-        Raises:
-            NotImplementedError: If the subclass does not implement this operation.
-        """
+        """Return an immutable snapshot of the tracked cost records."""
         raise NotImplementedError
 
     async def build_summary(

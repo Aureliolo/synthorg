@@ -176,6 +176,7 @@ class ContextDependentDispatcher:
                 requests=wave_requests,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             ws_elapsed = self._clock.monotonic() - ws_start
             logger.warning(
@@ -291,6 +292,7 @@ class ContextDependentDispatcher:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # Mark the wave failed BEFORE re-raising a critical error so the
             # ``finally`` block skips the merge path on a critical unwind.
+            # lint-allow: swallow-ok -- best-effort side channel
             wave_failed = True
             reraise_critical(exc)
             elapsed = self._clock.monotonic() - start

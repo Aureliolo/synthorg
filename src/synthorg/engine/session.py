@@ -402,6 +402,7 @@ def _replay_from_events(
                 error=safe_error_description(exc),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 SESSION_REPLAY_ERROR,

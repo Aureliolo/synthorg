@@ -10,13 +10,20 @@ from the existing stores (single source of truth).
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Final, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+
+# Terminal task states that mean the run did NOT succeed. A pipeline whose
+# phases all executed but whose task ended here (e.g. a silent no-op failed
+# by the fail-loud invariant) must not roll up as a successful dispatch.
+_UNSUCCESSFUL_TASK_STATUSES: Final = frozenset(
+    {TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.REJECTED}
+)
 
 
 class WorkSource(StrEnum):
@@ -262,7 +269,8 @@ class WorkPipelineResult(BaseModel):
         plan_review_handoff: Set iff ``execution_path`` is
             ``PLAN_REVIEW`` -- the human plan-approval handoff parked
             instead of dispatching the team.
-        is_success: Whether every recorded phase succeeded.
+        is_success: Whether every recorded phase succeeded and the task
+            did not end in a failure/cancelled/rejected terminal state.
         total_duration_seconds: Total wall-clock duration.
     """
 
@@ -320,9 +328,18 @@ class WorkPipelineResult(BaseModel):
         return self
 
     @computed_field(
-        description="Whether every recorded phase succeeded",
+        description="Whether the run succeeded (all phases + task outcome)",
     )
     @property
     def is_success(self) -> bool:
-        """Derived: ``True`` only if every recorded phase succeeded."""
-        return all(phase.success for phase in self.phases)
+        """Whether every phase succeeded and the task did not end in failure.
+
+        Rolling the authoritative ``final_task_status`` into the verdict
+        stops a run whose phases merely executed (e.g. a silent no-op the
+        fail-loud invariant failed) from being reported as a successful
+        dispatch.
+        """
+        return (
+            all(phase.success for phase in self.phases)
+            and self.final_task_status not in _UNSUCCESSFUL_TASK_STATUSES
+        )

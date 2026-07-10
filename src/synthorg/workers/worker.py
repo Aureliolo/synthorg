@@ -473,6 +473,7 @@ class Worker:
         try:
             return await self._executor(claim)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- executor fault returns RETRY for redelivery
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -502,6 +503,7 @@ class Worker:
             try:
                 await JetStreamTaskQueue.in_progress(raw)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- recovered by next beat or redelivery
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_ACK_EXTEND_FAILED,
@@ -538,6 +540,7 @@ class Worker:
                 beat.model_dump_json().encode("utf-8"),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- recovered by next heartbeat
             reraise_critical(exc)
             logger.warning(
                 WORKERS_HEARTBEAT_FAILED,

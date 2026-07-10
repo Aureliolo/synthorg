@@ -95,6 +95,7 @@ class AgentEngineRunMixin:
             if frames:
                 await self._flight_recorder_sink.record_frames(frames)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,
@@ -118,6 +119,7 @@ class AgentEngineRunMixin:
         try:
             resolved = await self._config_resolver.get_int("engine", "max_turns")
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-None wiring
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,

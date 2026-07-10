@@ -285,6 +285,7 @@ async def _safe_cleanup(coro: Awaitable[None], *, step: str) -> bool:
         )
         return True
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort teardown
         reraise_critical(exc)
         logger.warning(
             WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED,

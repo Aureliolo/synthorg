@@ -35,9 +35,10 @@ class TestTerminationReason:
         assert TerminationReason.PARKED.value == "parked"
         assert TerminationReason.STAGNATION.value == "stagnation"
         assert TerminationReason.CANCELLED.value == "cancelled"
+        assert TerminationReason.NO_OP.value == "no_op"
 
     def test_member_count(self) -> None:
-        assert len(TerminationReason) == 8
+        assert len(TerminationReason) == 9
 
 
 @pytest.mark.unit

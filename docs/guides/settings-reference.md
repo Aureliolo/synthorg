@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->34<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->35<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 
@@ -81,6 +81,10 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `research` | Research-mode provider/model and pipeline strategies (query planning, credibility triage, deduplication, synthesis) |
 | `charter` | Deep CEO-interview charter pacing (model, turns, temperature, token budget) and default currency |
 | `external_api` | Governed external API access: provider, response-size cap, timeout, and per-minute rate limit |
+| `self_improvement` | Self-modifying meta-loop: master and per-strategy toggles, toolsmith gate, per-call models, and structural tuning (schedule, rollout, regression, guards); every switch defaults off |
+| `chief_of_staff` | Chief-of-Staff capability flags (explain-chat, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
+| `knowledge` | Knowledge substrate (document ingestion + retrieval) enable and optional generative-RAG synthesis (model, strategy, per-answer chunk budget) |
+| `design` | Image-generation master flag and the image model the design `image_generator` tool routes through |
 | `demo` | Demo-mode showcase content (e.g. greeting copy) |
 
 ### Security headers and error documentation

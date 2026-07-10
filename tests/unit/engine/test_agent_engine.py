@@ -11,6 +11,7 @@ import structlog.testing
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -299,6 +300,82 @@ class TestAgentEngineInvalidInput:
                 identity=sample_agent_with_personality,
                 task=other_task,
             )
+
+
+@pytest.mark.unit
+class TestAgentEngineProjectRepoValidation:
+    """A work task against an unconfigured project repository fails loud."""
+
+    def _work_task(self, agent_id: str) -> Task:
+        return Task(
+            id=as_uuid("task-proj-work"),
+            title="Ship a change",
+            description="Produce a code artifact against the project.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to=agent_id,
+            status=TaskStatus.ASSIGNED,
+            artifacts_expected=(
+                ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+            ),
+        )
+
+    async def test_work_task_without_project_repo_fails(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """No project repo + expected artifacts aborts instead of running.
+
+        Running a work task with no repository to validate membership /
+        budget is a correctness and security gap, so the run terminates in
+        error rather than proceeding unvalidated toward a silent success.
+        """
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(provider=provider)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=self._work_task(str(sample_agent_with_personality.id)),
+        )
+
+        assert result.is_success is False
+        assert result.termination_reason == TerminationReason.ERROR
+
+    async def test_non_work_task_without_project_repo_proceeds(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A task carrying a project only as a label may still proceed.
+
+        Without expected artifacts the project is metadata, not an output
+        target, so the missing repo is a logged warning rather than a fatal
+        abort.
+        """
+        agent_id = str(sample_agent_with_personality.id)
+        label_task = Task(
+            id=as_uuid("task-proj-label"),
+            title="Investigate",
+            description="No artifacts expected; project is a label only.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to=agent_id,
+            status=TaskStatus.ASSIGNED,
+        )
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(provider=provider)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=label_task,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
 
 
 @pytest.mark.unit

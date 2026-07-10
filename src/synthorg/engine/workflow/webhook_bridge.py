@@ -169,6 +169,7 @@ class WebhookEventBridge:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             if not self._poll_timeout_fallback_logged:
                 logger.warning(
@@ -209,6 +210,7 @@ class WebhookEventBridge:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             if not self._max_errors_fallback_logged:
                 logger.warning(
@@ -363,6 +365,7 @@ class WebhookEventBridge:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-None wiring
             reraise_critical(exc)
             if not self._enabled_fallback_logged:
                 logger.warning(
@@ -434,6 +437,7 @@ class WebhookEventBridge:
                 # registered in ``start()``; logging-and-continuing past
                 # them would mask the failure for the lifetime of the
                 # bridge.
+                # lint-allow: swallow-ok -- resilient poll loop
                 reraise_critical(exc)
                 # ``logger.exception`` would attach a traceback whose
                 # frame-locals can leak transport credentials (auth
@@ -465,6 +469,7 @@ class WebhookEventBridge:
                             _SUBSCRIBER_ID,
                         )
                     except Exception as unsub_exc:  # noqa: BLE001 -- criticals re-raised
+                        # lint-allow: swallow-ok -- resilient poll loop
                         reraise_critical(unsub_exc)
                         logger.warning(
                             WEBHOOK_BRIDGE_STOPPED,

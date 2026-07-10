@@ -165,6 +165,7 @@ class MemoryContextProvider:
                 ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
@@ -304,6 +305,7 @@ class MeetingContextProvider:
         try:
             records = self._records_source.get_records()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
@@ -406,6 +408,7 @@ class CompositeContextProvider:
             try:
                 return await provider.provide(config=config)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 logger.warning(
                     STRATEGY_CONTEXT_PROVIDER_FAILED,

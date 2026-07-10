@@ -134,6 +134,7 @@ async def call_provider(  # noqa: PLR0913
                 if response.model:
                     span.set_attribute("gen_ai.response.model", response.model)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(exc)
                 logger.warning(
                     SPAN_ATTRIBUTE_WRITE_FAILED,
@@ -143,6 +144,7 @@ async def call_provider(  # noqa: PLR0913
                 )
             return response
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -458,6 +460,7 @@ async def classify_step(
             stagnation_result=None,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- fail-open detector
         reraise_critical(exc)
         # Best-effort: the warning rides the same path that just failed and
         # could raise for the same reason. classify_step is post-work
@@ -471,5 +474,6 @@ async def classify_step(
                 error=safe_error_description(exc),
             )
         except Exception as warning_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- fail-open detector
             reraise_critical(warning_exc)
         return None

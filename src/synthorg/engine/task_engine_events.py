@@ -105,6 +105,7 @@ async def publish_snapshot(
             task_id=event.task_id,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort metrics/rollup
         reraise_critical(exc)
         logger.warning(
             TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,

@@ -48,6 +48,7 @@ async def emit_receipt(
     try:
         await receipt_service.build_and_store(task=task)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
         logger.warning(
             RECEIPT_BUILD_FAILED,

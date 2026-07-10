@@ -561,6 +561,7 @@ class MultiAgentCoordinator:
                 dispatch_result.waves,
             )
         except Exception as attr_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(attr_exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
@@ -576,6 +577,7 @@ class MultiAgentCoordinator:
                     contributions,
                 )
             except Exception as tracker_exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort side channel
                 reraise_critical(tracker_exc)
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
@@ -623,6 +625,7 @@ class MultiAgentCoordinator:
                 timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort metrics
             reraise_critical(exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,

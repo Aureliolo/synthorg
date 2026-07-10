@@ -304,6 +304,7 @@ class JetStreamTaskQueue:
                     )
                     raise BusStopTimeoutError(msg) from exc
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(exc)
                     logger.warning(
                         WORKERS_TASK_QUEUE_DRAIN_FAILED,
@@ -327,6 +328,7 @@ class JetStreamTaskQueue:
             try:
                 await self._client.drain()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_DRAIN_FAILED,
@@ -514,6 +516,7 @@ class JetStreamTaskQueue:
             try:
                 await raw.ack()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort resiliency side channel
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
@@ -533,6 +536,7 @@ class JetStreamTaskQueue:
             try:
                 await raw.ack()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort resiliency side channel
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
@@ -676,6 +680,7 @@ class JetStreamTaskQueue:
         try:
             await asyncio.wait_for(sub.unsubscribe(), timeout=timeout_seconds)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort teardown
             reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
@@ -689,6 +694,7 @@ class JetStreamTaskQueue:
         try:
             await raw.ack()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort resiliency side channel
             reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,

@@ -25,7 +25,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.integrations.errors import ConnectionRateLimitError
-from synthorg.persistence.integration_stubs import InMemoryConnectionRepository
+from synthorg.persistence.integration_inmemory import InMemoryConnectionRepository
 from synthorg.providers.models import ToolCall
 from synthorg.tools.external_api.external_api_tool import ExternalApiTool
 from synthorg.tools.external_api.provider import (

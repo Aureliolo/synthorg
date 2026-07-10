@@ -347,6 +347,7 @@ async def _run_cleanup(
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 all_succeeded = False
                 logger.warning(
@@ -427,6 +428,7 @@ class ShutdownManager:
         try:
             self._strategy.request_shutdown()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort teardown
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_SHUTDOWN_SIGNAL,
@@ -445,6 +447,7 @@ class ShutdownManager:
                 # stuck. Emit via signal-safe ``sys.stderr.write`` (not
                 # structlog, whose lock state is suspect here) so there is
                 # still a trace.
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(stop_exc)
                 sys.stderr.write(
                     "shutdown: last-resort loop.stop() failed "
@@ -474,6 +477,7 @@ class ShutdownManager:
                 )
                 self._strategy.request_shutdown()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 logger.warning(
                     EXECUTION_SHUTDOWN_SIGNAL,
@@ -485,6 +489,7 @@ class ShutdownManager:
                 try:
                     asyncio.get_running_loop().stop()
                 except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
+                    # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(stop_exc)
                     sys.stderr.write(
                         "shutdown: last-resort loop.stop() failed "
@@ -501,6 +506,7 @@ class ShutdownManager:
             try:
                 self._strategy.request_shutdown()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- best-effort teardown
                 reraise_critical(exc)
                 try:
                     sys.stderr.write(
@@ -508,6 +514,7 @@ class ShutdownManager:
                     )
                     sys.stderr.flush()
                 except Exception:  # noqa: BLE001, S110 -- signal-handler last resort
+                    # lint-allow: swallow-ok -- signal-handler last resort
                     pass
 
     def register_task(

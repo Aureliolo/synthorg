@@ -1,17 +1,20 @@
 """Tests for the ReAct execution loop."""
 
 from typing import TYPE_CHECKING, cast, override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import JsonValue
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -25,6 +28,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import mock_of
 from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
@@ -798,9 +802,10 @@ class TestReactLoopRecursionErrorPropagation:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=RecursionError)
+        )
         mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(side_effect=RecursionError)
         loop = ReactLoop()
 
         with pytest.raises(RecursionError):
@@ -817,9 +822,10 @@ class TestReactLoopRecursionErrorPropagation:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=MemoryError)
+        )
         mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(side_effect=MemoryError)
         loop = ReactLoop()
 
         with pytest.raises(MemoryError):
@@ -841,11 +847,10 @@ class TestReactLoopInvokeAllException:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
-        mock_invoker = MagicMock()
-        mock_invoker.registry.to_definitions.return_value = ()
-        mock_invoker.invoke_all = AsyncMock(
-            side_effect=RuntimeError("TaskGroup crashed"),
+        mock_invoker = mock_of[ToolInvoker](
+            invoke_all=AsyncMock(side_effect=RuntimeError("TaskGroup crashed"))
         )
+        mock_invoker.registry.to_definitions.return_value = ()
         loop = ReactLoop()
 
         result = await loop.execute(
@@ -1225,3 +1230,105 @@ class TestReactLoopStagnationDetector:
         assert result.termination_reason == TerminationReason.STAGNATION
         assert detector.check_count == 2
         assert detector.corrections_seen == [0, 1]
+
+
+@pytest.mark.unit
+class TestReactLoopNoOpFailLoud:
+    """A work task that finishes without producing any artifact fails loud."""
+
+    @staticmethod
+    def _work_context(
+        agent: AgentIdentity,
+        task: Task,
+    ) -> AgentContext:
+        work_task = task.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                ),
+            }
+        )
+        ctx = AgentContext.from_identity(agent, task=work_task)
+        return _ctx_with_user_msg(ctx)
+
+    async def test_zero_tool_work_run_is_no_op(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+        assert result.total_tool_calls == 0
+        assert result.error_message is not None
+
+    async def test_work_run_with_tool_call_completes(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_tool_use_response("echo", "tc-1"), _stop_response("Done.")]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+
+    async def test_chat_action_without_task_execution_still_completes(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        # A task that expects no deliverable (empty ``artifacts_expected``)
+        # legitimately answers in text and must NOT be reclassified NO_OP.
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Here is the answer.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_resumed_zero_tool_work_run_completes(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A resumed run's empty segment is not NO_OP.
+
+        Inside a ``resumed_run_scope`` the current segment's zero-tool-call
+        count is not a valid proxy for total task output (earlier segments
+        may already have produced artifacts before a park), so the empty
+        segment completes to review rather than being failed as NO_OP.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory([_stop_response("Resuming; already done.")])
+        loop = ReactLoop()
+
+        with resumed_run_scope():
+            result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 0

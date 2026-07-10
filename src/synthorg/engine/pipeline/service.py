@@ -321,6 +321,7 @@ class DefaultWorkPipeline:
         try:
             await narrator.generate(task_id=str(task.id), project_id=work_item.project)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort documentary narrative
             reraise_critical(exc)
             logger.warning(
                 COS_NARRATIVE_GENERATION_FAILED,

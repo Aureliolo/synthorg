@@ -149,6 +149,26 @@ class ProjectAgentNotMemberError(EngineError):
         self.agent_id: NotBlankStr = agent_id
 
 
+class ProjectRepositoryNotConfiguredError(EngineError):
+    """Task declares a project but no project repository is configured.
+
+    Fail-loud precondition: with no project repository wired the engine
+    cannot validate the task's project membership or budget, so it must
+    not run the agent unvalidated. Raised into the engine's fatal-error
+    boundary so the task terminates FAILED with the surfaced reason. The
+    ``project_id`` attribute is for structured logs only.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_REPOSITORY_NOT_CONFIGURED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Project repository not configured"
+
+    def __init__(self, *, project_id: NotBlankStr | None = None) -> None:
+        super().__init__(self.default_message)
+        self.project_id: NotBlankStr | None = project_id
+
+
 class WorkspaceError(EngineError):
     """Base exception for workspace isolation failures."""
 
