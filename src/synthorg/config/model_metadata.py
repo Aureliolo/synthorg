@@ -109,3 +109,23 @@ class ModelMetadata(BaseModel):
         default="unknown",
         description="Provenance of this metadata record",
     )
+
+
+def is_tool_capable(metadata: ModelMetadata) -> bool:
+    """Whether a model may be assigned tool-bearing agentic work.
+
+    Mirrors the optimistic-for-unknown rule in
+    ``templates.model_matcher_tiering.passes_hard_filters``: a runtime-proven
+    failure (``tool_calls_verified is False``) is an authoritative exclusion; a
+    runtime-proven success or a discovery-time ``supports_tools`` claim admits
+    the model; an unenriched (``unknown``) model is admitted optimistically so
+    every un-probed cloud model is not excluded before it has ever run.
+
+    Returns:
+        ``True`` when the model is eligible to execute tool-bearing work.
+    """
+    if metadata.tool_calls_verified is False:
+        return False
+    if metadata.tool_calls_verified is True or metadata.supports_tools:
+        return True
+    return metadata.metadata_source == "unknown"

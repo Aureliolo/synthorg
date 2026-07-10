@@ -8,11 +8,12 @@ on the strong tier), stakes-aware:
 
 * routes low-stakes subtasks to cheap models and high/critical subtasks
   to the strong model plus the red-team mark, and
-* drops total cost while every selection still clears its stakes quality
-  floor (equal-or-better benchmark adequacy).
+* drops total cost while every selection still meets its stakes tier
+  requirement (equal-or-better tier adequacy).
 
-The benchmark scores come from the calibrated stub, so the comparison
-is fully reproducible without any LLM spend.
+The selection is a pure function of the resolver catalogue and the
+per-stakes tier requirements, so the comparison is fully reproducible
+without any LLM spend.
 """
 
 from typing import Final
@@ -35,10 +36,10 @@ from synthorg.engine.routing_policy import (
     StakesAwareStrategy,
     StakesRoutingConfig,
 )
-from synthorg.engine.routing_policy.config import QualityFloors
+from synthorg.engine.routing_policy.tiers import meets_required
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, sid
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
@@ -66,6 +67,7 @@ def _resolver() -> ModelResolver:
                 cost_per_1k_output=_TIER_TOTAL_COST[tier] / 2,
                 max_context=128000,
                 estimated_latency_ms=100,
+                tier=tier,
             ),
         )
         for tier in _TIER_MODEL_IDS
@@ -164,68 +166,43 @@ async def _decomposed_tasks() -> tuple[Task, ...]:
     return result.created_tasks
 
 
-def _floor_for(task: Task, floors: QualityFloors) -> float:
-    return floors.for_stakes(task.stakes)
-
-
 @pytest.mark.unit
 class TestStakesAwareBeatsFlatOnMixedBrief:
     """The core acceptance comparison for stakes-aware routing."""
 
-    async def test_cost_drops_at_equal_or_better_quality(self) -> None:
+    async def test_cost_drops_at_equal_or_better_tier_adequacy(self) -> None:
         tasks = await _decomposed_tasks()
         # Conservative flat baseline: every subtask on the strong tier.
         flat_agent = _agent("large")
         config = StakesRoutingConfig()
-        floors = config.quality_floors
-        stakes_aware = StakesAwareStrategy(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
-            config=config,
-            resolver=_resolver(),
-        )
+        stakes_aware = StakesAwareStrategy(config=config, resolver=_resolver())
         flat = FlatStrategy()
-        provider = FakeTierBenchmarkScoreProvider()
 
         flat_cost = 0.0
-        flat_quality = 0
         aware_cost = 0.0
-        aware_quality = 0
+        aware_adequate = 0
         for task in tasks:
-            floor = _floor_for(task, floors)
+            required = config.stakes_tiers.for_stakes(task.stakes)
 
             flat_decision = await flat.route(task=task, identity=flat_agent)
             flat_tier = flat_decision.selected_model.model_tier
             assert flat_tier is not None
             flat_cost += _TIER_TOTAL_COST[flat_tier]
-            flat_score = await provider.get_score(
-                flat_decision.selected_model.model_id,
-            )
-            assert flat_score is not None
-            flat_quality += int(flat_score.score >= floor)
 
             aware_decision = await stakes_aware.route(task=task, identity=flat_agent)
             aware_tier = aware_decision.selected_model.model_tier
             assert aware_tier is not None
             aware_cost += _TIER_TOTAL_COST[aware_tier]
-            aware_score = await provider.get_score(
-                aware_decision.selected_model.model_id,
-            )
-            assert aware_score is not None
-            aware_quality += int(aware_score.score >= floor)
+            # Every stakes-aware selection meets its stakes tier requirement.
+            aware_adequate += int(meets_required(aware_tier, required))
 
-        # Equal-or-better quality: every stakes-aware selection clears its
-        # stakes floor, matching the all-strong flat baseline.
-        assert aware_quality == len(tasks)
-        assert aware_quality >= flat_quality
-        # Total cost strictly drops versus flat routing.
+        assert aware_adequate == len(tasks)
+        # Total cost strictly drops versus the all-strong flat baseline.
         assert aware_cost < flat_cost
 
     async def test_low_stakes_cheap_high_stakes_strong_with_red_team(self) -> None:
         tasks = {t.id: t for t in await _decomposed_tasks()}
-        stakes_aware = StakesAwareStrategy(
-            benchmark_provider=FakeTierBenchmarkScoreProvider(),
-            resolver=_resolver(),
-        )
+        stakes_aware = StakesAwareStrategy(resolver=_resolver())
         agent = _agent("large")
 
         doc = await stakes_aware.route(task=tasks[as_uuid("st-doc")], identity=agent)

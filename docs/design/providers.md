@@ -125,6 +125,30 @@ Every successful **scoped** `provider.complete()` call attributes a `CostRecord`
 
 This pattern mirrors `synthorg.observability.correlation.correlation_scope`, which is the established codebase precedent for cross-cutting per-call context bindings (`request_id` / `task_id` / `agent_id`).
 
+### Model pricing (real cost, not $0.00)
+
+A `CostRecord` is only meaningful when the model carries real per-token pricing.
+Live-discovered models otherwise keep `cost_per_1k_*` at the `0.0` default forever,
+recording `$0.00` for every call. Two back-fills close that gap, operator override
+always winning:
+
+- **litellm back-fill**: when enrichment finds a model with zero operator cost, it
+  reads `input_cost_per_token` / `output_cost_per_token` from litellm's model info
+  (`extract_model_pricing`, converted to per-1k) and sets `cost_per_1k_input` /
+  `cost_per_1k_output`. A non-zero operator cost is never overwritten.
+- **register unmapped ids**: at registry build, `register_operator_model_pricing`
+  syncs each litellm-driver provider's operator-supplied costs into
+  `litellm.model_cost` via `litellm.register_model`, so `get_model_info` resolves
+  ids litellm does not ship (e.g. a gateway's own chat model) and downstream cost
+  math is consistent. It runs once per build, not per request.
+
+`prompt_class_id` is legitimately `None` on a raw agent-execution turn: that path
+opens no `cost_recording_scope` and has no registered system-prompt purpose (the
+engine post-execution recorder owns it, by design). The `$0.00` symptom is fixed by
+real pricing, not by fabricating a purpose. Calls that *do* carry a registered
+purpose (the tier-classifier LLM call, decomposition, judging, etc.) attribute
+`prompt_class_id` normally.
+
 ## Cassette Record / Replay
 
 Recorded-LLM **cassettes** make a company run deterministic and free to re-execute: record the exact provider responses of a run keyed by request, then replay them for byte-identical re-execution with zero real LLM calls. Like cost recording, this is a provider-layer concern, not per-driver.
@@ -306,15 +330,45 @@ routing:
 Model routing above selects *which provider/model* serves a request. **Stakes-aware
 routing** is a separate, pluggable layer that re-tiers that selection based on how
 consequential the work is. Each task (and subtask) carries a `stakes` level
-(`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`. The
-`StakesRoutingStrategy` then picks the cheapest model tier whose benchmark score
-clears the per-stakes quality floor, bumps one tier when coordination metrics are
-unhealthy, and marks high/critical work for the red-team gate. High/critical work
-is never routed below the agent's configured tier; low/normal work may drop to a
-cheaper tier (still clearing the floor) to save cost. It is config-selectable via
-`stakes_routing.strategy` (`stakes_aware` default, `flat` to opt out) and applied in
-the engine *before* the budget auto-downgrade, so a hard budget ceiling still wins
-over a stakes upgrade. See [Pluggable Subsystems](../reference/pluggable-subsystems.md).
+(`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`.
+
+Routing maps **stakes to a required model tier** (`StakesTierRequirement`: low to
+`small`, normal to `medium`, high/critical to `large`, validated non-decreasing),
+not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
+tier, bumps one tier when coordination metrics are unhealthy, holds high/critical
+work at or above the agent's own tier for the red-team gate, then scans every
+configured model at or above that tier (cheapest first) and keeps only the
+**tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
+never a model whose `tool_calls_verified` is explicitly `False`). It picks the
+cheapest survivor.
+
+When no configured model satisfies the required tier and tool-calling, routing
+**never silently downgrades**: it raises `StakesModelUnavailableError`
+(`ErrorCode.STAKES_MODEL_UNAVAILABLE`, 503). The engine escalates then fails: if an
+`ApprovalGate` is wired, the task is parked (action `stakes:model_unavailable`,
+risk HIGH) so an operator can add a qualifying provider or approve; otherwise it
+terminates `FAILED` with the typed error. A high-stakes task is therefore never
+run on a sub-tier model.
+
+The layer is config-selectable via `stakes_routing.strategy` (`stakes_aware`
+default, `flat` to opt out) and applied in the engine *before* the budget
+auto-downgrade, so a hard budget ceiling still wins over a stakes upgrade. See
+[Pluggable Subsystems](../reference/pluggable-subsystems.md).
+
+**Model tier classification.** A model's routing tier is derived, not hardcoded per
+vendor. The deterministic `HeuristicTierClassifier` (`providers/tier_assignment/`)
+classifies each configured model from its capability metadata, in priority order:
+archetype id, then `cost_tier`, then `parameter_count` bands, then a cost proxy,
+falling back to `medium` at low confidence (routing must always resolve a tier or
+escalate, never `None`). The effective tier map is the heuristic overlaid by
+persisted operator or LLM-accepted overrides (settings blob
+`providers.tier_assignment_overrides`; no new table). Operators inspect and adjust
+the map through the **Model Tier Assignment** panel (Settings to Providers) backed
+by `GET/PUT /api/v1/providers/tier-assignments`. An opt-in LLM recommender
+(`LlmTierRecommender`, purpose `providers:tier_classification`) offers per-model and
+bulk tier suggestions; it runs on the operator-selected
+`providers.tier_classifier_model` and returns a typed unset state until one is
+picked.
 
 **Per-task multi-provider routing (v1).** The stakes router resolves a tier over
 **all** configured providers with a deterministic `CheapestSelector`, so a tier can

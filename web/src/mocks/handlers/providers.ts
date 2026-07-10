@@ -15,8 +15,14 @@ import { auditHandlers } from './providers/audit'
 import { rateLimitsHandlers } from './providers/rate-limits'
 import { presetsHandlers } from './providers/presets'
 import { credentialsHandlers } from './providers/credentials'
+import { tierAssignmentsHandlers } from './providers/tier-assignments'
 
 export const providersHandlers = [
+  // Static ``/providers/tier-assignments`` routes must precede the
+  // ``/providers/:name`` detail handler in ``crudHandlers``: MSW matches
+  // in registration order, and ``:name`` would otherwise capture the
+  // literal ``tier-assignments`` segment and shadow these.
+  ...tierAssignmentsHandlers,
   ...crudHandlers,
   ...healthHandlers,
   ...modelsHandlers,

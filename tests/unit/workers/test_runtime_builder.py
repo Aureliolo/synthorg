@@ -136,6 +136,10 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
             get_str=get_str_mock,
             get_int=AsyncMock(return_value=1),
             get_engine_bridge_config=bridge_mock,
+            # The stakes router builds over the live provider set; the boot
+            # RootConfig here declares none, so the resolver reports an empty
+            # map and stakes routing is skipped (mirrors a YAML-only boot).
+            get_provider_configs=AsyncMock(return_value={}),
         ),
         task_engine=mock_of[TaskEngine](),
         agent_registry=AgentRegistryService(),

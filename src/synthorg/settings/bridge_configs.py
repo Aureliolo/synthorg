@@ -484,6 +484,7 @@ class EngineBridgeConfig(BaseModel):
     routing_weight_role_match_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     routing_weight_seniority_alignment_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     routing_min_score: float = Field(default=0.1, ge=0.0, le=1.0)
+    routing_low_confidence_score: float = Field(default=0.35, ge=0.0, le=1.0)
     matcher_base_score: float = Field(default=0.4, ge=0.0, le=1.0)
     matcher_capability_fit_weight: float = Field(default=0.2, ge=0.0, le=1.0)
     matcher_headroom_max_bonus: float = Field(default=0.2, ge=0.0, le=1.0)

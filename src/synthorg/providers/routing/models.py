@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 
 
@@ -17,6 +17,13 @@ class ResolvedModel(BaseModel):
         cost_per_1k_output: Cost per 1,000 output tokens in the configured currency.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
+        tier: The routing tier this model is assigned to (best-effort
+            classification overlaid by operator / LLM overrides), or ``None``
+            when the resolver was built without tier information.
+        tool_capable: Whether the model may be assigned tool-bearing agentic
+            work. Defaults to ``True`` (optimistic for un-enriched models);
+            populated from capability metadata when the resolver is built from
+            config.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -24,6 +31,11 @@ class ResolvedModel(BaseModel):
     provider_name: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
     alias: NotBlankStr | None = Field(default=None, description="Short alias")
+    tier: ModelTier | None = Field(default=None, description="Assigned routing tier")
+    tool_capable: bool = Field(
+        default=True,
+        description="Whether the model may execute tool-bearing agentic work",
+    )
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,

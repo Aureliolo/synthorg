@@ -1,0 +1,236 @@
+# module-kind: controller
+"""Model tier-assignment endpoints: effective map, overrides, LLM recommend."""
+
+from litestar import Controller, get, post, put
+from litestar.datastructures import State
+
+from synthorg.api.dto import ApiResponse
+from synthorg.api.dto_tier_assignment import (
+    ApplyRecommendationRequest,
+    ClassifierModelDTO,
+    TierAssignmentsResponse,
+    TierOverrideRequest,
+    TierRecommendationsResponse,
+    to_tier_assignment_dto,
+    to_tier_recommendation_dto,
+)
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.path_params import PathId, PathName
+from synthorg.api.state import AppState
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.providers.tier_assignment.errors import TierClassifierModelUnsetError
+from synthorg.providers.tier_assignment.models import TierRecommendation
+from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
+from synthorg.settings.state import config_resolver_of, settings_service_of
+from synthorg.workers._tier_assignment_wiring import (
+    build_tier_assignment_service,
+    build_tier_recommender_or_none,
+)
+
+_NAMESPACE = "providers"
+_CLASSIFIER_MODEL_KEY = "tier_classifier_model"
+
+
+async def _providers(app_state: AppState) -> dict[str, ProviderConfig]:
+    """Return the live provider config map.
+
+    Returns:
+        The persisted (or boot-default) provider configurations keyed by name.
+    """
+    return dict(await config_resolver_of(app_state).get_provider_configs())
+
+
+def _models_for(
+    providers: dict[str, ProviderConfig],
+    provider: str,
+    model_id: str,
+) -> list[ProviderModelConfig]:
+    """Return the matching model config(s) for a ``(provider, model_id)`` pair.
+
+    Returns:
+        A one-element list when the model exists, else an empty list.
+    """
+    config = providers.get(provider)
+    if config is None:
+        return []
+    return [m for m in config.models if m.id == model_id]
+
+
+class ProviderTierAssignmentsController(Controller):
+    """Effective tier map, operator overrides, and LLM recommendations."""
+
+    path = "/providers/tier-assignments"
+    tags = ("providers",)
+
+    @get("", guards=[require_read_access])
+    async def list_assignments(
+        self,
+        state: State,
+    ) -> ApiResponse[TierAssignmentsResponse]:
+        """Return the effective tier of every configured model.
+
+        Returns:
+            The heuristic classification overlaid by operator / LLM overrides.
+        """
+        app_state: AppState = state.app_state
+        service = build_tier_assignment_service(app_state)
+        assignments = await service.effective_assignments(await _providers(app_state))
+        return ApiResponse(
+            data=TierAssignmentsResponse(
+                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            ),
+        )
+
+    @put("/{provider:str}/{model_id:str}", guards=[require_ceo_or_manager])
+    async def set_override(
+        self,
+        state: State,
+        provider: PathName,
+        model_id: PathId,
+        data: TierOverrideRequest,
+    ) -> ApiResponse[TierAssignmentsResponse]:
+        """Set (or clear) an operator tier override for one model.
+
+        Returns:
+            The full effective tier map after the change.
+        """
+        app_state: AppState = state.app_state
+        service = build_tier_assignment_service(app_state)
+        if data.tier is None:
+            await service.clear_override(provider=provider, model_id=model_id)
+        else:
+            await service.set_override(
+                provider=provider,
+                model_id=model_id,
+                tier=data.tier,
+                provenance="operator",
+                reason=data.reason,
+            )
+        assignments = await service.effective_assignments(await _providers(app_state))
+        return ApiResponse(
+            data=TierAssignmentsResponse(
+                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            ),
+        )
+
+    @post("/{provider:str}/{model_id:str}/recommend", guards=[require_ceo_or_manager])
+    async def recommend_model(
+        self,
+        state: State,
+        provider: PathName,
+        model_id: PathId,
+    ) -> ApiResponse[TierRecommendationsResponse]:
+        """Run the LLM recommender for one model.
+
+        Returns:
+            The offered tier(s); the offer is not applied.
+
+        Raises:
+            TierClassifierModelUnsetError: When no classifier model is set (409).
+        """
+        app_state: AppState = state.app_state
+        recommender = await build_tier_recommender_or_none(app_state)
+        if recommender is None:
+            raise TierClassifierModelUnsetError
+        models = _models_for(await _providers(app_state), provider, model_id)
+        offers = await recommender.recommend(provider, models)
+        return ApiResponse(
+            data=TierRecommendationsResponse(
+                recommendations=tuple(to_tier_recommendation_dto(o) for o in offers),
+            ),
+        )
+
+    @post("/recommend-all", guards=[require_ceo_or_manager])
+    async def recommend_all(
+        self,
+        state: State,
+    ) -> ApiResponse[TierRecommendationsResponse]:
+        """Run the LLM recommender fresh over every configured model.
+
+        Returns:
+            The offered tiers across all providers.
+
+        Raises:
+            TierClassifierModelUnsetError: When no classifier model is set (409).
+        """
+        app_state: AppState = state.app_state
+        recommender = await build_tier_recommender_or_none(app_state)
+        if recommender is None:
+            raise TierClassifierModelUnsetError
+        providers = await _providers(app_state)
+        offers: list[TierRecommendation] = []
+        for name in sorted(providers):
+            offers.extend(await recommender.recommend(name, providers[name].models))
+        return ApiResponse(
+            data=TierRecommendationsResponse(
+                recommendations=tuple(to_tier_recommendation_dto(o) for o in offers),
+            ),
+        )
+
+    @post("/apply", guards=[require_ceo_or_manager])
+    async def apply_recommendation(
+        self,
+        state: State,
+        data: ApplyRecommendationRequest,
+    ) -> ApiResponse[TierAssignmentsResponse]:
+        """Accept an LLM offer, writing it as an ``llm``-provenance override.
+
+        Returns:
+            The full effective tier map after the override.
+        """
+        app_state: AppState = state.app_state
+        service = build_tier_assignment_service(app_state)
+        await service.set_override(
+            provider=data.provider,
+            model_id=data.model_id,
+            tier=data.tier,
+            provenance="llm",
+            reason=data.rationale,
+        )
+        assignments = await service.effective_assignments(await _providers(app_state))
+        return ApiResponse(
+            data=TierAssignmentsResponse(
+                assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
+            ),
+        )
+
+    @get("/classifier-model", guards=[require_read_access])
+    async def get_classifier_model(
+        self,
+        state: State,
+    ) -> ApiResponse[ClassifierModelDTO]:
+        """Return the provider + model the LLM recommender runs on.
+
+        Returns:
+            The configured classifier model (empty fields when unset).
+        """
+        app_state: AppState = state.app_state
+        raw = await config_resolver_of(app_state).get_str(
+            _NAMESPACE, _CLASSIFIER_MODEL_KEY
+        )
+        ref = parse_model_ref(raw)
+        return ApiResponse(
+            data=ClassifierModelDTO(provider=ref.provider, model_id=ref.model_id),
+        )
+
+    @put("/classifier-model", guards=[require_ceo_or_manager])
+    async def set_classifier_model(
+        self,
+        state: State,
+        data: ClassifierModelDTO,
+    ) -> ApiResponse[ClassifierModelDTO]:
+        """Set the provider + model the LLM recommender runs on.
+
+        Returns:
+            The stored classifier model.
+        """
+        app_state: AppState = state.app_state
+        ref = ModelRef(provider=data.provider, model_id=data.model_id)
+        await settings_service_of(app_state).set(
+            _NAMESPACE,
+            _CLASSIFIER_MODEL_KEY,
+            serialize_model_ref(ref),
+        )
+        return ApiResponse(
+            data=ClassifierModelDTO(provider=ref.provider, model_id=ref.model_id),
+        )

@@ -1,0 +1,180 @@
+# module-kind: service
+"""Settings-backed wiring for the model tier-assignment service.
+
+The per-model tier overrides live in the ``providers.tier_assignment_overrides``
+setting (DB > env > code). The heuristic layer is recomputed from live
+capability metadata, so only overrides are persisted.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.budget.state import BudgetStateSlice
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import PROVIDER_TIER_LLM_RECOMMENDED
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.providers.model_binding import resolve_ref_provider
+from synthorg.providers.tier_assignment.llm_recommender import LlmTierRecommender
+from synthorg.providers.tier_assignment.models import (
+    TIER_ASSIGNMENT_SCHEMA_VERSION,
+    TierAssignmentMap,
+)
+from synthorg.providers.tier_assignment.service import TierAssignmentService
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.model_ref import parse_model_ref
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
+from synthorg.settings.state import SettingsStateSlice
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
+
+_NAMESPACE = SettingNamespace.PROVIDERS.value
+_KEY = "tier_assignment_overrides"
+_CLASSIFIER_MODEL_KEY = "tier_classifier_model"
+
+
+class SettingsTierOverrideStore:
+    """Persists the tier-override envelope in the settings system.
+
+    ``load`` reads the ``providers.tier_assignment_overrides`` JSON through the
+    config resolver and falls back to an empty map on any read / validation
+    failure (a corrupt blob must not crash boot). ``save`` writes it through the
+    settings service; a store built without a settings service is read-only and
+    ``save`` raises.
+
+    Args:
+        resolver: Config resolver for reads (``None`` yields an empty map).
+        settings_service: Settings service for writes (``None`` is read-only).
+    """
+
+    __slots__ = ("_resolver", "_settings_service")
+
+    def __init__(
+        self,
+        *,
+        resolver: ConfigResolver | None,
+        settings_service: SettingsService | None,
+    ) -> None:
+        self._resolver = resolver
+        self._settings_service = settings_service
+
+    async def load(self) -> TierAssignmentMap:
+        """Return the persisted override map (empty on any read failure)."""
+        if self._resolver is None:
+            return TierAssignmentMap()
+        try:
+            raw = await self._resolver.get_json(_NAMESPACE, _KEY)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a corrupt/unreadable overrides blob must
+            # not crash boot; fall back to an empty map (heuristic-only routing).
+            reraise_critical(exc)
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=_NAMESPACE,
+                key=_KEY,
+                reason="tier_overrides_read_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return TierAssignmentMap()
+        if raw is None:
+            return TierAssignmentMap()
+        try:
+            envelope = TierAssignmentMap.model_validate(raw)
+        except ValueError as exc:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=_NAMESPACE,
+                key=_KEY,
+                reason="tier_overrides_invalid_schema",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return TierAssignmentMap()
+        if envelope.schema_version != TIER_ASSIGNMENT_SCHEMA_VERSION:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=_NAMESPACE,
+                key=_KEY,
+                reason="tier_overrides_unknown_version",
+                found_version=envelope.schema_version,
+                expected_version=TIER_ASSIGNMENT_SCHEMA_VERSION,
+            )
+            return TierAssignmentMap()
+        return envelope
+
+    async def save(self, overrides: TierAssignmentMap) -> None:
+        """Persist *overrides* through the settings service.
+
+        Raises:
+            RuntimeError: When the store was built without a settings service
+                (read-only), so an override cannot be persisted.
+        """
+        if self._settings_service is None:
+            msg = "tier override store is read-only (no settings service wired)"
+            raise RuntimeError(msg)
+        await self._settings_service.set(
+            _NAMESPACE,
+            _KEY,
+            overrides.model_dump_json(),
+        )
+
+
+def build_tier_assignment_service(app_state: AppState) -> TierAssignmentService:
+    """Build a :class:`TierAssignmentService` from live application state.
+
+    Returns:
+        A service backed by the settings-persisted override store, the
+        heuristic classifier, and the application clock.
+    """
+    slice_ = app_state.slice(SettingsStateSlice)
+    store = SettingsTierOverrideStore(
+        resolver=slice_.config_resolver,
+        settings_service=slice_.settings_service,
+    )
+    return TierAssignmentService(store=store, clock=app_state.clock)
+
+
+async def build_tier_recommender_or_none(
+    app_state: AppState,
+) -> LlmTierRecommender | None:
+    """Build the LLM tier recommender from the classifier-model setting.
+
+    Returns:
+        An :class:`LlmTierRecommender` bound to the provider + model named by
+        ``providers.tier_classifier_model``, or ``None`` when the setting is
+        unset or names an unregistered provider (the caller then surfaces a
+        "set the classifier model first" state to the operator).
+    """
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return None
+    raw = await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY)
+    ref = parse_model_ref(raw)
+    if not ref.model_id.strip():
+        return None
+    provider = resolve_ref_provider(
+        app_state,
+        ref,
+        active=None,
+        event=PROVIDER_TIER_LLM_RECOMMENDED,
+        subject="tier classifier",
+    )
+    if provider is None:
+        return None
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    return LlmTierRecommender(
+        provider=provider,
+        model_id=ref.model_id,
+        cost_tracker=cost_tracker,
+    )
+
+
+__all__ = [
+    "SettingsTierOverrideStore",
+    "build_tier_assignment_service",
+    "build_tier_recommender_or_none",
+]

@@ -506,6 +506,25 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="routing_low_confidence_score",
+        type=SettingType.FLOAT,
+        default="0.35",
+        description=(
+            "Score below which a winning agent-task fit is low-confidence."
+            " For high/critical-stakes work a below-band fit is rejected (no"
+            " eligible agent, so the task escalates); for low/normal-stakes"
+            " work it proceeds but is flagged. Should be >= routing_min_score."
+        ),
+        group="Task Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
 # ── Model matcher score weights ─────────────────────────────────
 # Capability-aware composite: ``matcher_base_score`` is the floor for a
 # candidate that clears the hard capability filters; ``matcher_capability_fit_weight``

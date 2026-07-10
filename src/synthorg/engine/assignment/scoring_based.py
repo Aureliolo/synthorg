@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task_enums import Stakes, compare_stakes
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
     score_and_filter_candidates,
@@ -27,6 +28,7 @@ from synthorg.engine.assignment.ranker_protocol import CandidateRanker, RankingR
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_LOW_CONFIDENCE,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
 )
@@ -98,6 +100,17 @@ class ScoringBasedAssignmentStrategy:
             return self._no_eligible_result(effective_request)
 
         ranking = self._ranker.rank(candidates, effective_request)
+        low_confidence = (
+            ranking.selected.score < effective_request.effective_low_confidence_score
+        )
+        if low_confidence and self._is_high_stakes(effective_request.stakes):
+            return self._below_confidence_result(effective_request, ranking.selected)
+        if low_confidence:
+            self._log_low_confidence(
+                effective_request,
+                ranking.selected,
+                outcome="proceeded",
+            )
         reason = self._compose_reason(
             request,
             filter_result.rewrite_success_reason,
@@ -109,6 +122,62 @@ class ScoringBasedAssignmentStrategy:
             selected=ranking.selected,
             alternatives=ranking.alternatives,
             reason=reason,
+            low_confidence=low_confidence,
+        )
+
+    @staticmethod
+    def _is_high_stakes(stakes: Stakes) -> bool:
+        """Whether *stakes* is at or above HIGH (a marginal fit is rejected).
+
+        Returns:
+            ``True`` when *stakes* is HIGH or CRITICAL.
+        """
+        return compare_stakes(stakes, Stakes.HIGH) >= 0
+
+    def _log_low_confidence(
+        self,
+        request: AssignmentRequest,
+        selected: AssignmentCandidate,
+        *,
+        outcome: str,
+    ) -> None:
+        """Emit the low-confidence marginal-fit warning."""
+        logger.warning(
+            TASK_ASSIGNMENT_LOW_CONFIDENCE,
+            task_id=str(request.task.id),
+            strategy=self.name,
+            agent_id=str(selected.agent_identity.id),
+            score=selected.score,
+            threshold=request.effective_low_confidence_score,
+            stakes=request.stakes.value,
+            outcome=outcome,
+        )
+
+    def _below_confidence_result(
+        self,
+        request: AssignmentRequest,
+        selected: AssignmentCandidate,
+    ) -> AssignmentResult:
+        """Reject a marginal fit for high/critical-stakes work.
+
+        The best candidate cleared eligibility but scored below the
+        low-confidence band, and the task's stakes are too high to proceed on a
+        marginal fit, so no agent is selected and the caller escalates.
+
+        Returns:
+            An :class:`AssignmentResult` with ``selected=None`` and a reason
+            citing the low-confidence rejection.
+        """
+        self._log_low_confidence(request, selected, outcome="rejected")
+        return AssignmentResult(
+            task_id=str(request.task.id),
+            strategy_used=self.name,
+            reason=(
+                f"Best fit scored {selected.score:g} below the low-confidence "
+                f"floor {request.effective_low_confidence_score:g} for "
+                f"{request.stakes.value}-stakes task {str(request.task.id)!r}; "
+                f"no agent is a confident fit"
+            ),
         )
 
     def _compose_reason(

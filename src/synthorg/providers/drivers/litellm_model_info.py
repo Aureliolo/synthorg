@@ -11,15 +11,19 @@ from collections.abc import Mapping
 import litellm as _litellm
 
 from synthorg.config.model_metadata import MetadataSource, ModelMetadata
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_INFO_UNAVAILABLE,
     PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+    PROVIDER_MODEL_PRICING_REGISTERED,
 )
 from synthorg.providers.family_parser import FamilyParser
 
 logger = get_logger(__name__)
+
+_LITELLM_DRIVER = "litellm"
 
 
 def get_litellm_model_info(litellm_model: str) -> dict[str, object]:
@@ -48,6 +52,93 @@ def get_litellm_model_info(litellm_model: str) -> dict[str, object]:
         )
         return {}
     return info if isinstance(info, dict) else {}
+
+
+#: LiteLLM prices per single token; provider config prices per 1,000 tokens.
+_TOKENS_PER_PRICE_UNIT: int = 1000
+#: Round back-filled per-1k costs to the budget precision (6 dp).
+_COST_ROUNDING_DP: int = 6
+
+
+def _coerce_cost_per_token(raw: object) -> float:
+    """Coerce a LiteLLM per-token cost to a non-negative float.
+
+    Returns:
+        The cost as a float, or ``0.0`` when absent or non-numeric.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int | float | str):
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError, TypeError:
+        return 0.0
+    return max(0.0, value)
+
+
+def extract_model_pricing(info: Mapping[str, object]) -> tuple[float, float]:
+    """Extract per-1k input/output costs from a LiteLLM info dict.
+
+    LiteLLM stores ``input_cost_per_token`` / ``output_cost_per_token`` as a
+    per-single-token price; the provider config prices per 1,000 tokens, so the
+    values are scaled up.
+
+    Returns:
+        ``(cost_per_1k_input, cost_per_1k_output)``; ``(0.0, 0.0)`` when the
+        info dict carries no usable pricing.
+    """
+    input_per_token = _coerce_cost_per_token(info.get("input_cost_per_token"))
+    output_per_token = _coerce_cost_per_token(info.get("output_cost_per_token"))
+    return (
+        round(input_per_token * _TOKENS_PER_PRICE_UNIT, _COST_ROUNDING_DP),
+        round(output_per_token * _TOKENS_PER_PRICE_UNIT, _COST_ROUNDING_DP),
+    )
+
+
+def register_operator_model_pricing(
+    providers: Mapping[str, ProviderConfig],
+) -> None:
+    """Sync operator-supplied per-model prices into LiteLLM's model_cost DB.
+
+    So a model the operator priced in config but that LiteLLM does not natively
+    track (e.g. a gateway's aliased model id) resolves through
+    ``get_model_info`` (used by capability enrichment and model refresh) with
+    the operator's price rather than reporting no pricing. LiteLLM prices per
+    single token, so the per-1k config costs are scaled down. Only LiteLLM-driver
+    providers are registered (a scripted test provider is skipped). Best-effort:
+    a LiteLLM failure never blocks provider construction.
+    """
+    entries: dict[str, dict[str, object]] = {}
+    for provider_name, config in providers.items():
+        if config.driver != _LITELLM_DRIVER:
+            continue
+        litellm_provider = config.litellm_provider or provider_name
+        for model in config.models:
+            if model.cost_per_1k_input <= 0.0 and model.cost_per_1k_output <= 0.0:
+                continue
+            entries[model.id] = {
+                "input_cost_per_token": (
+                    model.cost_per_1k_input / _TOKENS_PER_PRICE_UNIT
+                ),
+                "output_cost_per_token": (
+                    model.cost_per_1k_output / _TOKENS_PER_PRICE_UNIT
+                ),
+                "litellm_provider": litellm_provider,
+            }
+    if not entries:
+        return
+    try:
+        _litellm.register_model(entries)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+            reason="register_model_failed",
+            model_count=len(entries),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(PROVIDER_MODEL_PRICING_REGISTERED, model_count=len(entries))
 
 
 def coerce_max_output_tokens(

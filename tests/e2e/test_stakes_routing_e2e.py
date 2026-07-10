@@ -84,8 +84,8 @@ _DEBUG_SKILL = "debug"
 _DATABASE_SKILL = "database"
 _PROVIDER = "test-provider"
 
-# Tier-priced model catalogue. Model ids carry the tier token so the
-# FakeTierBenchmarkScoreProvider scores them (small 72, medium 85, large 92)
+# Tier-priced model catalogue. Model ids are the canonical ``example-<tier>``
+# archetypes, so the heuristic tier classifier assigns each its routing tier,
 # and the scripted driver can price each completion by tier.
 _TIER_MODEL_IDS: dict[ModelTier, str] = {
     "small": "example-small-001",

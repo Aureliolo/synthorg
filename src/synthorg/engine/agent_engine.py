@@ -33,6 +33,7 @@ from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
+from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
@@ -43,6 +44,7 @@ from synthorg.engine.errors import (
 from synthorg.engine.loop_protocol import ExecutionResult, make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
     get_logger,
@@ -170,6 +172,7 @@ class AgentEngine(
     AgentEngineRecoveryMixin,
     AgentEngineResumeMixin,
     AgentEngineRunMixin,
+    AgentEngineStakesErrorsMixin,
 ):
     """Top-level orchestrator for agent execution."""
 
@@ -661,6 +664,20 @@ class AgentEngine(
                     duration_seconds=self._clock.monotonic() - start,
                     ctx=ctx,
                     system_prompt=system_prompt,
+                )
+            except StakesModelUnavailableError as exc:
+                return await self._handle_stakes_unavailable(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=self._clock.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                    provider=provider,
                 )
             except Exception as exc:  # noqa: BLE001 -- engine fatal-error boundary
                 # lint-allow: swallow-ok -- fatal-error boundary returns FAILED

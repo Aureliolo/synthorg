@@ -764,7 +764,7 @@ class TestRootConfig:
         # (``degraded_threshold <= unhealthy_threshold``) that polyfactory
         # cannot satisfy with independent random draws, so we pin it to
         # its default here rather than pollute the shared factory.
-        # ``QualityFloors`` likewise requires non-decreasing floors
+        # ``StakesTierRequirement`` likewise requires non-decreasing tiers
         # (low <= normal <= high <= critical), which independent random
         # draws violate, so pin ``stakes_routing`` to its default too.
         # ``AuditChainConfig`` carries a preset-coherence validator (a

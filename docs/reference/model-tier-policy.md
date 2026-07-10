@@ -52,6 +52,7 @@ Tiers per registered prompt purpose, grouped by tier.
 | `system:intake` | Clarify an incoming request during intake. |
 | `system:hr:calibration` | Sample calibration judgements for performance scoring. |
 | `system:providers:test_connection` | Probe a provider connection with a minimal completion. |
+| `system:providers:tier_classification` | Recommend a routing tier for a configured model from its capability metadata. |
 
 ### Medium (`example-medium-001`)
 

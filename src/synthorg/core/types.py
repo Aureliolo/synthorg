@@ -17,6 +17,22 @@ from pydantic import AfterValidator, BeforeValidator, StringConstraints
 ModelTier = Literal["large", "medium", "small"]
 """Model capability tier: large (most capable), medium, small (cheapest)."""
 
+#: Cheapest-first tier ladder. Index doubles as the tier rank
+#: (``small`` = 0 < ``medium`` = 1 < ``large`` = 2). The single source of the
+#: tier ordering, shared by the provider routing resolver and the engine
+#: stakes-routing layer so neither re-derives it.
+MODEL_TIER_LADDER: Final[tuple[ModelTier, ...]] = ("small", "medium", "large")
+
+_MODEL_TIER_RANK: Final[dict[ModelTier, int]] = {
+    tier: idx for idx, tier in enumerate(MODEL_TIER_LADDER)
+}
+
+
+def model_tier_rank(tier: ModelTier) -> int:
+    """Return the cheapest-first rank of *tier* (small=0, large=2)."""
+    return _MODEL_TIER_RANK[tier]
+
+
 AutonomyDetailLevel = Literal["full", "summary", "minimal"]
 """Level of autonomy instruction detail in prompt profiles."""
 

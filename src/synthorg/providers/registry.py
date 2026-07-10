@@ -307,6 +307,15 @@ class ProviderRegistry:
                 retry_max_attempts,
             )
 
+        # Teach LiteLLM the operator's per-model prices so its model database
+        # resolves them for capability enrichment / model refresh; our cost
+        # recording reads config prices directly, so this never blocks a build.
+        from .drivers.litellm_model_info import (  # noqa: PLC0415
+            register_operator_model_pricing,
+        )
+
+        register_operator_model_pricing(providers)
+
         logger.info(
             PROVIDER_REGISTRY_BUILT,
             provider_count=len(drivers),
