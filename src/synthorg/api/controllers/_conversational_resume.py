@@ -32,7 +32,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.state import EngineStateSlice, task_engine_of
+from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
@@ -339,10 +339,14 @@ async def _resolve_or_intake_task(
         The reused or newly created intake task.
     """
     store = app_state.slice(ApprovalStateSlice).store
-    if store is not None:
+    task_engine = app_state.slice(EngineStateSlice).task_engine
+    # The reuse check needs the task engine to confirm the prior task still
+    # resolves; when it is unwired we cannot verify, so fall through to a fresh
+    # intake rather than raising (intake does not depend on the engine slice).
+    if store is not None and task_engine is not None:
         item = await store.get(NotBlankStr(approval_id))
         if item is not None and item.task_id is not None:
-            existing = await task_engine_of(app_state).get_task(item.task_id)
+            existing = await task_engine.get_task(item.task_id)
             if existing is not None:
                 return existing
     task = await work_pipeline.intake_only(work_item)

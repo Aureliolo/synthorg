@@ -32,6 +32,7 @@ from synthorg.api.channels import (
 from synthorg.api.controllers.approvals._shared import to_response_without_context
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import (
     PersonalityTrimNotifier,
@@ -56,6 +57,7 @@ _POSTGRES_VOLUME_DATA_DIR: Final[str] = "/data"
 
 def _make_expire_callback(
     channels_plugin: ChannelsPlugin,
+    clock: Clock | None = None,
 ) -> Callable[[ApprovalItem], None]:
     """Create a sync callback that publishes APPROVAL_EXPIRED events.
 
@@ -65,14 +67,18 @@ def _make_expire_callback(
 
     Args:
         channels_plugin: Litestar channels plugin for WebSocket delivery.
+        clock: Clock seam for the event timestamp; defaults to
+            ``SystemClock`` so tests can inject a ``FakeClock`` for a
+            deterministic expiry timestamp.
 
     Returns:
         Sync callback accepting an expired ``ApprovalItem``.
     """
+    resolved_clock = clock or SystemClock()
 
     def _on_expire(item: ApprovalItem) -> None:
         """Handle the expire event."""
-        now = datetime.now(UTC)
+        now = resolved_clock.now()
         # Build the event inside the guard: the WsEvent payload validator
         # rejects a malformed payload (e.g. a non-string approval_id) at
         # construction, and this lazy-expiry callback must degrade to a

@@ -71,6 +71,8 @@ logger = get_logger(__name__)
 # failure that never reached the loop (so no real agent identity resolved).
 _SYSTEM_PIPELINE_AGENT_ID: Final[str] = "system:pipeline"
 
+_SPINE_FAILURE_REASON: Final[str] = "Background pipeline spine failed before execution"
+
 
 class AgentEngineExecutionService(ResumeDispatchMixin):
     """Real agent-runtime :class:`WorkerExecutionService` implementation.
@@ -195,22 +197,31 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         work_item: WorkItem,
         task: Task,
     ) -> None:
-        """Run the backgrounded spine, projecting RUN_ERROR on early failure.
+        """Run the backgrounded spine, failing the task on early failure.
 
         A spine failure before the execution loop (project resolution,
         decomposition, agent assignment) never reaches the engine's own
-        terminal SSE projection, so a dashboard subscribed to this task's
-        stream would hang on "Working". Project the terminal error frame
-        before re-raising (so the registry still logs the failure); an in-loop
-        failure has already projected its own frame, making the second
-        projection an idempotent no-op on the client. Cancellation (shutdown /
-        disconnect) is a ``BaseException`` and propagates untouched, never
-        reported as a failed run.
+        terminal projection nor its status sync, so a dashboard subscribed to
+        this task's stream would hang on "Working" while the board still shows
+        the task un-failed. Persist FAILED (best-effort) and project the
+        terminal error frame before re-raising (so the registry still logs the
+        failure); an in-loop failure has already synced its status and
+        projected its own frame, making both an idempotent no-op. Cancellation
+        (shutdown / disconnect) is a ``BaseException`` and propagates untouched,
+        never reported as a failed run.
         """
         try:
             await work_pipeline.continue_from_intake(work_item, task)
         except Exception as exc:
             reraise_critical(exc)
+            await sync_to_task_engine(
+                self._task_engine,
+                target_status=TaskStatus.FAILED,
+                task_id=str(task.id),
+                agent_id=_SYSTEM_PIPELINE_AGENT_ID,
+                reason=_SPINE_FAILURE_REASON,
+                critical=True,
+            )
             await self._engine.project_background_failure(
                 task_id=str(task.id), agent_id=_SYSTEM_PIPELINE_AGENT_ID
             )

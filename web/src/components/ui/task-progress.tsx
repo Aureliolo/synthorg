@@ -63,7 +63,10 @@ export function TaskProgress({ status, stages, className }: TaskProgressProps) {
         <span>{meta.label}</span>
       </div>
       {stages.length === 0 ? (
-        <ProgressIndicator variant="indeterminate" label="Starting run" />
+        <ProgressIndicator
+          variant="indeterminate"
+          label={status === 'running' ? 'Starting run' : 'No progress events received'}
+        />
       ) : (
         <ProgressIndicator variant="stages" stages={stages} />
       )}

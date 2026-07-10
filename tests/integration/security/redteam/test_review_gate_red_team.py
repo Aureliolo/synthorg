@@ -12,7 +12,7 @@ gate's verdict in isolation; this file verifies the service-level
 routing contract end to end.
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -77,8 +77,21 @@ def _mock_task_engine(task: Task) -> Any:  # type: ignore[explicit-any]  # mock_
                 version=1,
             ),
         ),
+        # The review gate commits through the strict ``transition_task`` seam
+        # (which raises on rejection), not ``submit``.
+        transition_task=AsyncMock(return_value=(task, None)),
         get_task=AsyncMock(return_value=task),
     )
+
+
+def _transition_call(task_engine: Any) -> tuple[TaskStatus, str]:  # type: ignore[explicit-any]  # mock element
+    """Return ``(target_status, reason)`` from the recorded transition_task call.
+
+    Returns:
+        The target status (positional arg 1) and reason kwarg of the call.
+    """
+    call = cast("AsyncMock", task_engine.transition_task).call_args
+    return call.args[1], call.kwargs["reason"]
 
 
 class _ScriptedRunner:
@@ -196,10 +209,10 @@ async def test_planted_defect_blocks_via_complete_review() -> None:
         decided_by="bob",
     )
 
-    task_engine.submit.assert_called_once()
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
-    assert "Red-team review blocked" in call.reason
+    cast("AsyncMock", task_engine.transition_task).assert_awaited_once()
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS
+    assert "Red-team review blocked" in reason
 
 
 async def test_planted_defect_blocks_via_run_pipeline() -> None:
@@ -219,9 +232,9 @@ async def test_planted_defect_blocks_via_run_pipeline() -> None:
     )
 
     assert result.final_verdict is ReviewVerdict.PASS
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
-    assert "Red-team review blocked" in call.reason
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS
+    assert "Red-team review blocked" in reason
 
 
 async def test_no_deliverable_blocks_when_policy_block() -> None:
@@ -240,9 +253,9 @@ async def test_no_deliverable_blocks_when_policy_block() -> None:
         decided_by="bob",
     )
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
-    assert "could not retrieve a deliverable" in call.reason
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS
+    assert "could not retrieve a deliverable" in reason
 
 
 async def test_no_deliverable_skips_when_policy_skip() -> None:
@@ -261,8 +274,8 @@ async def test_no_deliverable_skips_when_policy_skip() -> None:
         decided_by="bob",
     )
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED
 
 
 async def test_red_team_gate_absent_no_change() -> None:
@@ -277,8 +290,8 @@ async def test_red_team_gate_absent_no_change() -> None:
         decided_by="bob",
     )
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED
 
 
 class _DispatchFailingRunner:
@@ -308,8 +321,8 @@ async def test_red_team_dispatch_failure_does_not_block_completion() -> None:
         decided_by="bob",
     )
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED
 
 
 async def test_dispatch_completion_backgrounds_gated_approval() -> None:
@@ -331,12 +344,12 @@ async def test_dispatch_completion_backgrounds_gated_approval() -> None:
     assert dispatched is True
     # The blocking gate runs in the background task, not inline: no rework
     # transition is submitted until the registry drains.
-    assert task_engine.submit.call_count == 0
+    assert cast("AsyncMock", task_engine.transition_task).await_count == 0
     await registry.drain()
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
-    assert "Red-team review blocked" in call.reason
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS
+    assert "Red-team review blocked" in reason
 
 
 async def test_dispatch_completion_runs_reject_inline() -> None:
@@ -357,5 +370,5 @@ async def test_dispatch_completion_runs_reject_inline() -> None:
         reason="needs more tests",
     )
     assert dispatched is False
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS

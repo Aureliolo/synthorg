@@ -169,6 +169,20 @@ describe('ApprovalDetailDrawer', () => {
     expect(screen.getByText('Please provide a reason for rejection.')).toBeInTheDocument()
   })
 
+  it('relabels the approve dialog to Acknowledge for a failed run', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ action_type: 'review:task_failed' })
+    await user.click(screen.getByRole('button', { name: /acknowledge/i }))
+    expect(screen.getByText('Acknowledge failure')).toBeInTheDocument()
+  })
+
+  it('relabels the reject dialog to Retry for a failed run', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ action_type: 'review:task_failed' })
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+    expect(screen.getByText('Retry task')).toBeInTheDocument()
+  })
+
   it('reject requires non-empty reason (shows toast error)', async () => {
     const user = userEvent.setup()
     renderDrawer()

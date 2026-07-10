@@ -1,4 +1,4 @@
-import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
+import { sanitizeWsEnum, sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
 import type {
   ApprovalAgentRef,
   ApprovalArtifactRef,
@@ -204,45 +204,47 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 function sanitizeTaskRef(value: unknown): ApprovalTaskRef | null {
   if (!isPlainObject(value)) return null
-  if (typeof value['id'] !== 'string' || typeof value['title'] !== 'string') return null
-  return {
-    id: sanitizeWsString(value['id'], 128) ?? '',
-    title: sanitizeWsString(value['title'], 256) ?? '',
-    status: sanitizeWsEnum(value['status'], TASK_STATUS_VALUES, 'created', {
-      maxLen: 64,
-      field: 'approval.task.status',
-    }),
-  }
+  const id = sanitizeWsString(value['id'], 128)
+  const title = sanitizeWsString(value['title'], 256)
+  const status = sanitizeWsEnumOrNull(value['status'], TASK_STATUS_VALUES, {
+    maxLen: 64,
+    field: 'approval.task.status',
+  })
+  // Reject the ref outright when a required field sanitizes away or the status
+  // is invalid: a blank task id would start a progress subscription for nothing.
+  if (id === undefined || title === undefined || status === null) return null
+  return { id, title, status }
 }
 
 function sanitizeProjectRef(value: unknown): ApprovalProjectRef | null {
   if (!isPlainObject(value)) return null
-  if (typeof value['id'] !== 'string' || typeof value['name'] !== 'string') return null
-  return {
-    id: sanitizeWsString(value['id'], 128) ?? '',
-    name: sanitizeWsString(value['name'], 256) ?? '',
-  }
+  const id = sanitizeWsString(value['id'], 128)
+  const name = sanitizeWsString(value['name'], 256)
+  if (id === undefined || name === undefined) return null
+  return { id, name }
 }
 
 function sanitizeAgentRef(value: unknown): ApprovalAgentRef | null {
   if (!isPlainObject(value)) return null
-  if (typeof value['id'] !== 'string' || typeof value['name'] !== 'string') return null
-  return {
-    id: sanitizeWsString(value['id'], 128) ?? '',
-    name: sanitizeWsString(value['name'], 128) ?? '',
-  }
+  const id = sanitizeWsString(value['id'], 128)
+  const name = sanitizeWsString(value['name'], 128)
+  if (id === undefined || name === undefined) return null
+  return { id, name }
 }
 
 function sanitizeArtifactRef(value: unknown): ApprovalArtifactRef | null {
   if (!isPlainObject(value)) return null
-  if (typeof value['id'] !== 'string' || typeof value['path'] !== 'string') return null
+  const id = sanitizeWsString(value['id'], 128)
+  const path = sanitizeWsString(value['path'], 512)
+  const type = sanitizeWsEnumOrNull(value['type'], ARTIFACT_TYPE_VALUES, {
+    maxLen: 64,
+    field: 'approval.run.artifacts[].type',
+  })
+  if (id === undefined || path === undefined || type === null) return null
   return {
-    id: sanitizeWsString(value['id'], 128) ?? '',
-    path: sanitizeWsString(value['path'], 512) ?? '',
-    type: sanitizeWsEnum(value['type'], ARTIFACT_TYPE_VALUES, 'code', {
-      maxLen: 64,
-      field: 'approval.run.artifacts[].type',
-    }),
+    id,
+    path,
+    type,
     content_type: sanitizeWsString(value['content_type'], 128) ?? '',
     size_bytes: isNonNegInt(value['size_bytes']) ? value['size_bytes'] : 0,
   }
@@ -250,15 +252,19 @@ function sanitizeArtifactRef(value: unknown): ApprovalArtifactRef | null {
 
 function sanitizeRunSummary(value: unknown): ApprovalRunSummary | null {
   if (!isPlainObject(value)) return null
+  // Never synthesize success for untrusted data: a missing/invalid outcome
+  // rejects the whole summary rather than presenting a failed run as succeeded.
+  const outcome = sanitizeWsEnumOrNull(value['outcome'], RUN_OUTCOME_VALUES, {
+    maxLen: 64,
+    field: 'approval.run.outcome',
+  })
+  if (outcome === null) return null
   const rawArtifacts = Array.isArray(value['artifacts']) ? value['artifacts'] : []
   const artifacts = rawArtifacts
     .map(sanitizeArtifactRef)
     .filter((a): a is ApprovalArtifactRef => a !== null)
   return {
-    outcome: sanitizeWsEnum(value['outcome'], RUN_OUTCOME_VALUES, 'succeeded', {
-      maxLen: 64,
-      field: 'approval.run.outcome',
-    }),
+    outcome,
     produced_artifact_count: isNonNegInt(value['produced_artifact_count'])
       ? value['produced_artifact_count']
       : artifacts.length,

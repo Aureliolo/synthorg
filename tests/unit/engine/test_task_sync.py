@@ -543,6 +543,48 @@ class TestApplyPostExecutionTransitions:
         assert created.action_type == "review:task_failed"
         assert created.risk_level == ApprovalRiskLevel.HIGH
 
+    async def test_failed_approval_skipped_when_central_sync_rejected(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """No failure approval is queued when the engine rejects the FAILED sync.
+
+        A swallowed/rejected central transition leaves the engine's task
+        IN_PROGRESS; a ``review:task_failed`` item pointing at it would let a
+        later decision transition the wrong state, so creation is gated on the
+        sync landing.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(
+            ctx, reason=TerminationReason.NO_OP, error_message="empty run"
+        )
+        mock_te = _make_mock_task_engine(return_value=_make_sync_failure())
+        approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+            approval_store=approval_store,
+        )
+
+        # Local state still reflects FAILED (the local transition is applied
+        # unconditionally), but the approval is withheld because the engine did
+        # not accept the transition.
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+        approval_store.add.assert_not_awaited()
+
     async def test_completed_empty_work_task_transitions_to_failed(
         self,
         sample_agent_with_personality: AgentIdentity,

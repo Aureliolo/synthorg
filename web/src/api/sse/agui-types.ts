@@ -89,7 +89,11 @@ function cleanString(value: unknown): string | null {
 }
 
 function buildPayload(raw: Record<string, unknown>): Record<string, unknown> {
-  const payload: Record<string, unknown> = { ...raw }
+  // Allowlist only the fields the progress reducer consumes; never retain
+  // arbitrary untrusted strings / arrays / nested objects from the frame.
+  const payload: Record<string, unknown> = {}
+  const turn = raw['turn']
+  if (typeof turn === 'number' && Number.isFinite(turn)) payload['turn'] = turn
   if ('tools' in raw) payload['tools'] = toStringArray(raw['tools'])
   return payload
 }
@@ -106,10 +110,16 @@ export function parseAguiEvent(raw: unknown): AguiStreamEvent | null {
   if (!isPlainObject(raw)) return null
   const type = raw['type']
   if (typeof type !== 'string' || !isAguiEventType(type)) return null
+  // A frame missing its required identifiers is malformed: reject it rather
+  // than defaulting to '' -- the progress reducer acts on `type` alone, so a
+  // blank-session `run_finished` could otherwise falsely terminate progress.
+  const id = cleanString(raw['id'])
+  const sessionId = cleanString(raw['session_id'])
+  if (id === null || sessionId === null) return null
   return {
-    id: cleanString(raw['id']) ?? '',
+    id,
     type,
-    sessionId: cleanString(raw['session_id']) ?? '',
+    sessionId,
     agentId: cleanString(raw['agent_id']),
     payload: buildPayload(isPlainObject(raw['payload']) ? raw['payload'] : {}),
   }

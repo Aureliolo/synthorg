@@ -66,7 +66,13 @@ function ApprovalDrawerHeader({
   )
 }
 
-function ApprovalDecisionDialogs({ decision }: { decision: ApprovalDecision }) {
+function ApprovalDecisionDialogs({
+  decision,
+  isFailed,
+}: {
+  decision: ApprovalDecision
+  isFailed: boolean
+}) {
   return (
     <>
       <ConfirmDialog
@@ -75,9 +81,13 @@ function ApprovalDecisionDialogs({ decision }: { decision: ApprovalDecision }) {
           decision.setApproveOpen(o)
           if (!o) decision.setComment('')
         }}
-        title="Approve Action"
-        description="Are you sure you want to approve this action?"
-        confirmLabel="Approve"
+        title={isFailed ? 'Acknowledge failure' : 'Approve Action'}
+        description={
+          isFailed
+            ? 'Acknowledge this failed run and close it. The task stays failed.'
+            : 'Are you sure you want to approve this action?'
+        }
+        confirmLabel={isFailed ? 'Acknowledge' : 'Approve'}
         onConfirm={decision.handleApprove}
         loading={decision.submitting}
       >
@@ -102,16 +112,20 @@ function ApprovalDecisionDialogs({ decision }: { decision: ApprovalDecision }) {
             decision.setReasonError(null)
           }
         }}
-        title="Reject Action"
-        description="Please provide a reason for rejection."
-        confirmLabel="Reject"
+        title={isFailed ? 'Retry task' : 'Reject Action'}
+        description={
+          isFailed
+            ? 'Send this task back for rework. Explain what to change.'
+            : 'Please provide a reason for rejection.'
+        }
+        confirmLabel={isFailed ? 'Retry' : 'Reject'}
         variant="destructive"
         onConfirm={decision.handleReject}
         loading={decision.submitting}
       >
         <InputField
           multiline
-          label="Reason for rejection"
+          label={isFailed ? 'Reason for rework' : 'Reason for rejection'}
           value={decision.reason}
           onValueChange={(value) => {
             decision.setReason(value)
@@ -209,6 +223,7 @@ export function ApprovalDetailDrawer({
   const decision = useApprovalDecision(approval, onApprove, onReject)
   const showLoadingState = Boolean(loading) || !approval
   const canDecide = !showLoadingState && !detailError && decision.isPending
+  const isFailed = approval !== null && isFailedApproval(approval)
   const slots = buildDrawerSlots(approval, decision, canDecide)
 
   return (
@@ -230,7 +245,7 @@ export function ApprovalDetailDrawer({
         />
       </Drawer>
 
-      <ApprovalDecisionDialogs decision={decision} />
+      <ApprovalDecisionDialogs decision={decision} isFailed={isFailed} />
     </>
   )
 }

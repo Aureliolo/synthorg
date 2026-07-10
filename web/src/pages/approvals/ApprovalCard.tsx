@@ -240,6 +240,26 @@ function ApprovalCardActions({
   )
 }
 
+/** Surface + border classes: danger tint for a failed run, ring when selected. */
+function cardSurfaceClasses(isFailed: boolean, selected: boolean, isPending: boolean): string {
+  return cn(
+    'rounded-lg border p-card transition-all duration-200',
+    // A failed run is visually unmistakable: danger-tinted surface and border
+    // so it is never read as a routine completion.
+    isFailed ? 'border-danger/40 bg-danger/5' : 'bg-card',
+    // A selected failed card keeps its danger border (twMerge would let a plain
+    // `border-bright` override it and make it read as routine).
+    selected
+      ? isFailed
+        ? 'border-danger/40 ring-1 ring-accent/20'
+        : 'border-bright ring-1 ring-accent/20'
+      : !isFailed && 'border-border',
+    isPending &&
+      'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
+    !isPending && 'opacity-70',
+  )
+}
+
 function ApprovalCardImpl({
   approval,
   selected,
@@ -256,19 +276,10 @@ function ApprovalCardImpl({
 
   return (
     <div
-      className={cn(
-        'rounded-lg border p-card transition-all duration-200',
-        // A failed run is visually unmistakable: danger-tinted surface and
-        // border so it is never read as a routine completion.
-        isFailed ? 'border-danger/40 bg-danger/5' : 'bg-card',
-        selected ? 'border-bright ring-1 ring-accent/20' : !isFailed && 'border-border',
-        isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
-        !isPending && 'opacity-70',
-        className,
-      )}
+      className={cn(cardSurfaceClasses(isFailed, selected, isPending), className)}
       style={flashStyle}
       role="article"
-      aria-label={`Approval: ${approval.title}`}
+      aria-label={`Approval: ${approval.task?.title ?? approval.title}`}
     >
       <ApprovalCardHeader
         approval={approval}

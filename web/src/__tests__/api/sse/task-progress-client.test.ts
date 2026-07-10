@@ -117,10 +117,25 @@ describe('openTaskProgressStream reconnect budget', () => {
     }
   })
 
-  it('close() detaches listeners and cancels reconnects', () => {
-    const closeSpy = vi.spyOn(FakeEventSource.prototype, 'close')
-    const handle = openTaskProgressStream('task-1', { onEvent: () => {} })
-    handle.close()
-    expect(closeSpy).toHaveBeenCalled()
+  it('close() closes the live source and cancels a pending reconnect', () => {
+    vi.useFakeTimers()
+    try {
+      const closeSpy = vi.spyOn(FakeEventSource.prototype, 'close')
+      const onEvent = vi.fn()
+      const handle = openTaskProgressStream('task-1', { onEvent })
+      const firstSource = lastEventSource
+      expect(firstSource).not.toBeNull()
+      // An error schedules a reconnect timer. Closing before it fires must
+      // cancel the timer AND close the live source, so advancing past the max
+      // delay never spins up a replacement source (a leaked timer would).
+      firstSource!.onerror?.(new Event('error'))
+      handle.close()
+      expect(closeSpy).toHaveBeenCalled()
+      vi.advanceTimersByTime(SSE_RECONNECT_MAX_DELAY * 2)
+      expect(lastEventSource).toBe(firstSource)
+      expect(onEvent).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

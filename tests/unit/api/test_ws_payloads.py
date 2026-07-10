@@ -372,16 +372,19 @@ class TestSharedBaseShape:
         (the shape the dashboard upserts), not the old flat scalar fields.
         """
         from datetime import UTC, datetime
-        from uuid import uuid4
 
         from synthorg.api.controllers.approvals._shared import (
             ApprovalResponse,
             UrgencyLevel,
         )
         from synthorg.approval.enums import ApprovalRiskLevel
+        from tests._shared import as_uuid
 
+        # One shared id so the nested approval PK and the envelope's
+        # approval_id cannot drift into an inconsistent event contract.
+        approval_id = as_uuid("approval-1")
         approval = ApprovalResponse(
-            id=uuid4(),
+            id=approval_id,
             action_type="agent_action",
             title="Review: ship it",
             description="Agent completed task: ship it",
@@ -392,7 +395,7 @@ class TestSharedBaseShape:
             urgency_level=UrgencyLevel.CRITICAL,
         )
         original = WsApprovalExpiredPayload(
-            approval_id="approval-1",
+            approval_id=str(approval_id),
             status="expired",
             approval=approval,
         )

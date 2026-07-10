@@ -52,13 +52,16 @@ describe('ApprovalCard', () => {
     renderCard({
       title: 'Review: onboarding',
       task: { id: '88c5f343-e47e-42bc-a55d-0782aab2e38b', title: 'Ship onboarding', status: 'in_review' },
-      project: { id: 'proj-1', name: 'Platform' },
+      project: { id: '6f6c5c0a-5f9d-4d2d-9c0c-2f8c5b7f4b12', name: 'Platform' },
       agent: { id: '2019c07a-8bd0', name: 'Anica Hocevar' },
     })
     expect(screen.getByText('Ship onboarding')).toBeInTheDocument()
     expect(screen.getByText('Platform')).toBeInTheDocument()
     expect(screen.getByText('Anica Hocevar')).toBeInTheDocument()
     expect(screen.queryByText('88c5f343-e47e-42bc-a55d-0782aab2e38b')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('6f6c5c0a-5f9d-4d2d-9c0c-2f8c5b7f4b12'),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('2019c07a-8bd0')).not.toBeInTheDocument()
   })
 

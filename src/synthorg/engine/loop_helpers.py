@@ -28,6 +28,7 @@ import asyncio
 import copy
 import hashlib
 import json
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.completion_enums import FinishReason
@@ -67,6 +68,11 @@ from .loop_protocol import (
 
 logger = get_logger(__name__)
 
+# A hung observer (e.g. a stalled SSE consumer) must not wedge plan/hybrid
+# execution until the run-level timeout, or forever when none is set: progress
+# delivery is best-effort, so the callback is bounded and skipped on expiry.
+_TURN_OBSERVER_TIMEOUT_SECONDS: Final[float] = 2.0
+
 
 async def notify_turn_observer(
     observer: TurnObserver | None,
@@ -85,9 +91,18 @@ async def notify_turn_observer(
     if observer is None:
         return
     try:
-        await observer(turn_number, tool_names)
+        await asyncio.wait_for(
+            observer(turn_number, tool_names), _TURN_OBSERVER_TIMEOUT_SECONDS
+        )
     except asyncio.CancelledError:
         raise
+    except TimeoutError:
+        logger.warning(
+            EXECUTION_TURN_OBSERVER_FAILED,
+            turn_number=turn_number,
+            error_type="TimeoutError",
+            error=f"observer exceeded {_TURN_OBSERVER_TIMEOUT_SECONDS}s",
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort observer
         reraise_critical(exc)

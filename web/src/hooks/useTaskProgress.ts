@@ -148,6 +148,16 @@ export function useTaskProgress(taskId: string | null): TaskProgressState | null
     let stream: TaskProgressStream | null = openTaskProgressStream(taskId, {
       onEvent: (event) => {
         dispatch({ kind: 'event', event })
+        // The per-task stream ends after a terminal frame; the backend closes
+        // its side, so close ours too rather than letting EventSource burn its
+        // whole reconnect budget on the now-dead stream after every run.
+        if (
+          event.type === AguiEventType.RunFinished ||
+          event.type === AguiEventType.RunError
+        ) {
+          stream?.close()
+          stream = null
+        }
       },
       // The stream exhausted its reconnect budget and closed for good; surface
       // it so the panel stops showing an indefinite "Working" spinner.

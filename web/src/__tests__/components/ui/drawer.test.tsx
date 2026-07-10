@@ -136,11 +136,19 @@ describe('Drawer', () => {
   describe('header and footer', () => {
     it('renders custom header content in place of the built-in title', () => {
       render(
-        <Drawer open={true} onClose={() => {}} ariaLabel="Review" header={<span>Custom Header Badge</span>}>
+        <Drawer
+          open={true}
+          onClose={() => {}}
+          title="Built-in Title"
+          ariaLabel="Review"
+          header={<span>Custom Header Badge</span>}
+        >
           Content
         </Drawer>,
       )
       expect(screen.getByText('Custom Header Badge')).toBeInTheDocument()
+      // A custom header must REPLACE the built-in title, not render alongside it.
+      expect(screen.queryByText('Built-in Title')).not.toBeInTheDocument()
       // The close button is still supplied inside the custom header row.
       expect(screen.getByLabelText('Close')).toBeInTheDocument()
     })

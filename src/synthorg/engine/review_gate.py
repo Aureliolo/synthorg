@@ -410,6 +410,19 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         target, transition_reason, event, approved = map_pipeline_verdict(
             result, decided_by
         )
+        # A FAILED task is decided on the failure contract (approve = ack, reject
+        # = retry to ASSIGNED), never a normal completion transition -- the same
+        # guard complete_review applies, so the pipeline path cannot launder a
+        # FAILED task into COMPLETED via the gate chain.
+        if task.status == TaskStatus.FAILED:
+            await self._decide_failed_task(
+                task=task,
+                approved=approved,
+                decided_by=decided_by,
+                normalized_reason=None,
+                approval_id=approval_id,
+            )
+            return result
         (
             target,
             transition_reason,

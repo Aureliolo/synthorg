@@ -699,7 +699,7 @@ class AgentEngine(
             except ProjectNotFoundError, ProjectAgentNotMemberError:
                 raise
             except BudgetExhaustedError as exc:
-                return await self._handle_budget_error(
+                budget_result = await self._handle_budget_error(
                     exc=exc,
                     identity=identity,
                     task=task,
@@ -709,6 +709,21 @@ class AgentEngine(
                     ctx=ctx,
                     system_prompt=system_prompt,
                 )
+                # Project the terminal the budget handler actually selected: a
+                # parked hard-ceiling crossing is PARKED (silent -- the pause
+                # surfaces via the approval-interrupt projection), a plain
+                # controlled stop is BUDGET_EXHAUSTED (RUN_ERROR). The inner
+                # handler skips RUN_ERROR for a budget error precisely so a
+                # parked run is never projected as failed.
+                budget_hub = self._event_stream_hub
+                if budget_hub is not None:
+                    await publish_run_terminated(
+                        budget_hub,
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        reason=budget_result.execution_result.termination_reason,
+                    )
+                return budget_result
             except StakesModelUnavailableError as exc:
                 return await self._handle_stakes_unavailable(
                     exc=exc,
@@ -845,12 +860,15 @@ class AgentEngine(
                 # before the terminal publish below allocates/serialises a frame
                 # that could mask the original critical under memory exhaustion.
                 reraise_critical(exc)
-                # A fatal/budget error skips the normal terminal projection
-                # below, so the live panel would hang on "Working" forever.
-                # Project RUN_ERROR before the exception propagates. Cancellation
-                # is not caught: a shutdown/disconnect resumes and must not be
-                # reported as a failed run.
-                if hub is not None:
+                # A fatal error skips the normal terminal projection below, so
+                # the live panel would hang on "Working" forever: project
+                # RUN_ERROR before the exception propagates. A BudgetExhaustedError
+                # is excluded -- the outer budget handler converts it to a PARKED
+                # approval pause (projected separately) or a BUDGET_EXHAUSTED stop
+                # and projects that terminal itself, so a RUN_ERROR here would show
+                # a paused run as failed. Cancellation is not caught: a
+                # shutdown/disconnect resumes and must not be reported as failed.
+                if hub is not None and not isinstance(exc, BudgetExhaustedError):
                     await publish_run_terminated(
                         hub,
                         task_id=task_id,

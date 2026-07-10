@@ -30,16 +30,15 @@ logger = get_logger(__name__)
 _REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
 _FAILED_ACTION_TYPE: Final[str] = "review:task_failed"
 
-# Bounded transient-I/O retry for the store write. A FAILED-outcome approval is
-# the only surface that carries a hard failure to the operator, so a transient
-# store fault must not silently drop it on the first try.
+# A FAILED-outcome approval is the only surface that carries a hard failure to
+# the operator, so a transient store fault must not silently drop it first try.
 _STORE_RETRY_MAX_ATTEMPTS: Final[int] = 3
 _STORE_RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.05
 _STORE_RETRY_BACKOFF_CAP_SECONDS: Final[float] = 0.5
 
-# Human phrasing for the approval description, keyed by run outcome. The guard
-# forces a conscious entry when a new RunOutcome member is added, so the
-# best-effort creation path can never raise a KeyError on an unmapped outcome.
+# The guard below forces a conscious entry when a new RunOutcome member is
+# added, so the best-effort creation path can never raise a KeyError on an
+# unmapped outcome.
 _OUTCOME_PHRASE: Final[MappingProxyType[RunOutcome, str]] = MappingProxyType(
     {
         RunOutcome.SUCCEEDED: "completed",
