@@ -13,9 +13,9 @@ from collections.abc import Callable
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import is_high_stakes
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
+    resolve_low_confidence_outcome,
     score_and_filter_candidates,
 )
 from synthorg.engine.assignment.models import (
@@ -114,11 +114,7 @@ class ScoringBasedAssignmentStrategy:
             self._log_low_confidence(
                 effective_request,
                 ranking.selected,
-                outcome=(
-                    "escalated"
-                    if is_high_stakes(effective_request.stakes)
-                    else "proceeded"
-                ),
+                outcome=resolve_low_confidence_outcome(effective_request.stakes),
             )
         reason = self._compose_reason(
             request,

@@ -9,7 +9,7 @@ leaf task and return the winner (or raise when none is eligible).
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
-from synthorg.core.task_enums import is_high_stakes
+from synthorg.engine.assignment._shared import resolve_low_confidence_outcome
 from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.decomposition.models import SubtaskDefinition
@@ -99,7 +99,7 @@ def select_solo_agent(
             score=best.score,
             threshold=scorer.low_confidence_score,
             stakes=task.stakes.value,
-            outcome="escalated" if is_high_stakes(task.stakes) else "proceeded",
+            outcome=resolve_low_confidence_outcome(task.stakes),
         )
     assigned_id = str(best.agent_identity.id)
     logger.info(

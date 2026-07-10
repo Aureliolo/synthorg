@@ -7,6 +7,7 @@ are shared by all scorer-based strategies.
 
 from typing import Final
 
+from synthorg.core.task_enums import Stakes, is_high_stakes
 from synthorg.engine.assignment.models import (
     AssignmentCandidate,
     AssignmentRequest,
@@ -28,6 +29,20 @@ STRATEGY_NAME_LOAD_BALANCED: Final[str] = "load_balanced"
 STRATEGY_NAME_COST_OPTIMIZED: Final[str] = "cost_optimized"
 STRATEGY_NAME_HIERARCHICAL: Final[str] = "hierarchical"
 STRATEGY_NAME_AUCTION: Final[str] = "auction"
+
+
+def resolve_low_confidence_outcome(stakes: Stakes) -> str:
+    """Return the logged outcome for a marginal-fit (low-confidence) assignment.
+
+    The assignment always proceeds; only the logged signal differs. High/critical
+    stakes yield ``"escalated"`` (an operator-facing marker that consequential
+    work drew a marginal-fit agent); low/normal stakes yield ``"proceeded"``.
+    Shared by every routing path so the escalation policy stays in one place.
+
+    Returns:
+        ``"escalated"`` for high-stakes work, otherwise ``"proceeded"``.
+    """
+    return "escalated" if is_high_stakes(stakes) else "proceeded"
 
 
 def build_subtask_definition(request: AssignmentRequest) -> SubtaskDefinition:
