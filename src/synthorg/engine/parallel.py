@@ -99,7 +99,11 @@ class ParallelExecutor:
             group: The execution group to run.
 
         Returns:
-            Result with all agent outcomes.
+            Result with all agent outcomes. Under ``fail_fast`` the first
+            agent failure cancels the remaining assignments; the failure
+            and the cancellations are recorded as outcomes and logged, not
+            raised, so callers detect them via ``all_succeeded`` / the
+            per-agent outcomes.
 
         Raises:
             ResourceConflictError: If resource claims conflict between
@@ -111,9 +115,8 @@ class ParallelExecutor:
                 members are the original MemoryError/RecursionError
                 instances.
             ParallelExecutionError: Only when resource-lock release fails
-                and no agent error is pending to carry the note (never
-                wraps a fatal). A ``fail_fast`` abort re-raises the
-                underlying agent error directly rather than wrapping it.
+                and no other error is pending to carry the note (never
+                wraps a fatal).
         """
         start = self._clock.monotonic()
 
