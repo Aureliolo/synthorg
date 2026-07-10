@@ -214,12 +214,17 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             await work_pipeline.continue_from_intake(work_item, task)
         except Exception as exc:
             reraise_critical(exc)
+            # Record the sanitised cause alongside the generic context so the
+            # persisted FAILED reason names what actually broke, not just that
+            # the spine failed; safe_error_description avoids leaking a raw
+            # str(exc) that could carry a secret.
+            reason = f"{_SPINE_FAILURE_REASON}: {safe_error_description(exc)}"
             await sync_to_task_engine(
                 self._task_engine,
                 target_status=TaskStatus.FAILED,
                 task_id=str(task.id),
                 agent_id=_SYSTEM_PIPELINE_AGENT_ID,
-                reason=_SPINE_FAILURE_REASON,
+                reason=reason,
                 critical=True,
             )
             await self._engine.project_background_failure(
