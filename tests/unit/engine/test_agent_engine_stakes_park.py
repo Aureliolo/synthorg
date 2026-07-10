@@ -10,7 +10,6 @@ lower the stakes; without one it degrades to the fatal-error boundary
 
 from datetime import date
 from typing import override
-from uuid import uuid4
 
 import pytest
 
@@ -101,7 +100,7 @@ class _MockEngine(AgentEngineStakesErrorsMixin):
 
 def _identity() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("engineer"),
         name="Engineer",
         role="Backend Engineer",
         department="Engineering",

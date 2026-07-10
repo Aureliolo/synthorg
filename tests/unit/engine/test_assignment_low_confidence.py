@@ -83,10 +83,13 @@ async def test_low_stakes_marginal_fit_proceeds_flagged() -> None:
 
 
 @pytest.mark.parametrize("stakes", [Stakes.HIGH, Stakes.CRITICAL])
-async def test_high_critical_marginal_fit_is_rejected(stakes: Stakes) -> None:
+async def test_high_critical_marginal_fit_proceeds_flagged(stakes: Stakes) -> None:
+    # A marginal fit for high/critical work is never a hard-fail: assign the
+    # best available agent (never deadlock the org) and flag it low_confidence
+    # so the WARNING + dashboard flag surface the risk for operator review.
     result = _strategy().assign(_request(stakes))
-    assert result.selected is None
-    assert "low-confidence" in result.reason
+    assert result.selected is not None
+    assert result.low_confidence is True
 
 
 async def test_confident_fit_is_not_flagged_at_any_stakes() -> None:

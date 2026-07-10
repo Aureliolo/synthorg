@@ -514,9 +514,11 @@ _r.register(
         default="0.35",
         description=(
             "Score below which a winning agent-task fit is low-confidence."
-            " For high/critical-stakes work a below-band fit is rejected (no"
-            " eligible agent, so the task escalates); for low/normal-stakes"
-            " work it proceeds but is flagged. Should be >= routing_min_score."
+            " A below-band fit is always assigned (the best available agent is"
+            " never a hard-fail, so the organisation does not deadlock), but it"
+            " is flagged: high/critical-stakes assignments log an operator-facing"
+            " escalation (WARNING) for review while the work proceeds. Should be"
+            " >= routing_min_score."
         ),
         group="Task Routing",
         level=SettingLevel.ADVANCED,

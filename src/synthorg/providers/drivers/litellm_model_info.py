@@ -6,6 +6,7 @@ coercion of its loosely-typed fields so ``litellm_driver`` stays
 focused on completion dispatch and response mapping.
 """
 
+import math
 from collections.abc import Mapping
 
 import litellm as _litellm
@@ -72,6 +73,8 @@ def _coerce_cost_per_token(raw: object) -> float:
     try:
         value = float(raw)
     except ValueError, TypeError:
+        return 0.0
+    if not math.isfinite(value):
         return 0.0
     return max(0.0, value)
 

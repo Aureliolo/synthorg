@@ -103,13 +103,22 @@ class ScoringBasedAssignmentStrategy:
         low_confidence = (
             ranking.selected.score < effective_request.effective_low_confidence_score
         )
-        if low_confidence and is_high_stakes(effective_request.stakes):
-            return self._below_confidence_result(effective_request, ranking.selected)
         if low_confidence:
+            # The best available agent is a marginal fit. Assign it anyway (a
+            # marginal-fit agent can still do the work, unlike a sub-tier model
+            # that cannot tool-call) so the organisation never deadlocks, but
+            # flag it: high/critical work is logged as an operator-facing
+            # escalation and the low_confidence flag surfaces on the API /
+            # dashboard for review. The stakes-gated red-team review gate
+            # re-reviews consequential output downstream.
             self._log_low_confidence(
                 effective_request,
                 ranking.selected,
-                outcome="proceeded",
+                outcome=(
+                    "escalated"
+                    if is_high_stakes(effective_request.stakes)
+                    else "proceeded"
+                ),
             )
         reason = self._compose_reason(
             request,
@@ -132,7 +141,12 @@ class ScoringBasedAssignmentStrategy:
         *,
         outcome: str,
     ) -> None:
-        """Emit the low-confidence marginal-fit warning."""
+        """Emit the low-confidence marginal-fit warning (WARNING level).
+
+        For high/critical stakes this is the operator-facing escalation signal:
+        the assignment still proceeds, but the WARNING plus the ``low_confidence``
+        flag on the result make the marginal fit visible for review.
+        """
         logger.warning(
             TASK_ASSIGNMENT_LOW_CONFIDENCE,
             task_id=str(request.task.id),
@@ -142,34 +156,6 @@ class ScoringBasedAssignmentStrategy:
             threshold=request.effective_low_confidence_score,
             stakes=request.stakes.value,
             outcome=outcome,
-        )
-
-    def _below_confidence_result(
-        self,
-        request: AssignmentRequest,
-        selected: AssignmentCandidate,
-    ) -> AssignmentResult:
-        """Reject a marginal fit for high/critical-stakes work.
-
-        The best candidate cleared eligibility but scored below the
-        low-confidence band, and the task's stakes are too high to proceed on a
-        marginal fit, so no agent is selected and the caller surfaces the work
-        as undecidable rather than routing it.
-
-        Returns:
-            An :class:`AssignmentResult` with ``selected=None`` and a reason
-            citing the low-confidence rejection.
-        """
-        self._log_low_confidence(request, selected, outcome="rejected")
-        return AssignmentResult(
-            task_id=str(request.task.id),
-            strategy_used=self.name,
-            reason=(
-                f"Best fit scored {selected.score:g} below the low-confidence "
-                f"floor {request.effective_low_confidence_score:g} for "
-                f"{request.stakes.value}-stakes task {str(request.task.id)!r}; "
-                f"no agent is a confident fit"
-            ),
         )
 
     def _compose_reason(

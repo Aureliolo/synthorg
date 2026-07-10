@@ -8,7 +8,7 @@ every read, so only overrides are stored.
 """
 
 from collections.abc import Mapping
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -32,7 +32,7 @@ from synthorg.providers.tier_assignment.models import (
 logger = get_logger(__name__)
 
 #: An override is authoritative over the heuristic, so it carries full trust.
-_OVERRIDE_CONFIDENCE: float = 1.0
+_OVERRIDE_CONFIDENCE: Final[float] = 1.0
 
 
 @runtime_checkable

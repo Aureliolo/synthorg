@@ -71,53 +71,40 @@ class AgentEngineStakesErrorsMixin:
             A ``PARKED`` :class:`AgentRunResult` when the run was parked, or
             the ``FAILED`` result from :meth:`_handle_fatal_error` otherwise.
         """
-        logger.warning(
-            STAKES_ROUTING_ESCALATED,
-            agent_id=agent_id,
-            task_id=task_id,
-            stakes=exc.stakes.value,
-            required_tier=exc.required_tier,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
         has_gate = getattr(self, "_approval_gate", None) is not None
-        parked_ok = has_gate and await self._park_stakes_unavailable(
-            exc=exc,
-            identity=identity,
-            task=task,
-            agent_id=agent_id,
-            task_id=task_id,
-            ctx=ctx,
-        )
-        if parked_ok:
-            try:
-                error_ctx = ctx or AgentContext.from_identity(identity, task=task)
-                parked_result = ExecutionResult(
-                    context=error_ctx,
-                    termination_reason=TerminationReason.PARKED,
-                )
-                return AgentRunResult(
-                    execution_result=parked_result,
-                    system_prompt=build_error_prompt(identity, agent_id, system_prompt),
-                    duration_seconds=duration_seconds,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    currency=resolve_tracker_currency(
-                        getattr(self, "_cost_tracker", None),
-                    ),
-                )
-            except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- a parked-result build failure falls
-                # through to _handle_fatal_error, which surfaces it as FAILED.
-                reraise_critical(build_exc)
+        if has_gate:
+            # Build (and validate) the parked result before the park is
+            # persisted, so a build failure degrades cleanly to FAILED with no
+            # orphaned parked context.
+            parked_result = self._build_stakes_parked_result(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                system_prompt=system_prompt,
+                duration_seconds=duration_seconds,
+                ctx=ctx,
+            )
+            if parked_result is not None and await self._park_stakes_unavailable(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                ctx=ctx,
+            ):
+                # Emitted only once the park has persisted: a run that fell
+                # through to FAILED was not escalated.
                 logger.warning(
-                    EXECUTION_ENGINE_ERROR,
+                    STAKES_ROUTING_ESCALATED,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error_type=type(build_exc).__name__,
-                    error=safe_error_description(build_exc),
-                    stage="build_stakes_parked_result",
+                    stakes=exc.stakes.value,
+                    required_tier=exc.required_tier,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
+                return parked_result
         return await self._handle_fatal_error(
             exc=exc,
             identity=identity,
@@ -131,6 +118,57 @@ class AgentEngineStakesErrorsMixin:
             effective_autonomy=effective_autonomy,
             provider=provider,
         )
+
+    def _build_stakes_parked_result(  # noqa: PLR0913 -- keyword-only assembly inputs
+        self,
+        *,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        system_prompt: SystemPrompt | None,
+        duration_seconds: float,
+        ctx: AgentContext | None,
+    ) -> AgentRunResult | None:
+        """Assemble the PARKED result before the park is persisted.
+
+        Building (and thereby validating) the result before
+        :meth:`_park_stakes_unavailable` writes anything means a build failure
+        degrades cleanly to FAILED with no orphaned parked context.
+
+        Returns:
+            The ``PARKED`` :class:`AgentRunResult`, or ``None`` when assembly
+            failed (the caller then degrades to the fatal-error boundary).
+        """
+        try:
+            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
+            parked_result = ExecutionResult(
+                context=error_ctx,
+                termination_reason=TerminationReason.PARKED,
+            )
+            return AgentRunResult(
+                execution_result=parked_result,
+                system_prompt=build_error_prompt(identity, agent_id, system_prompt),
+                duration_seconds=duration_seconds,
+                agent_id=agent_id,
+                task_id=task_id,
+                currency=resolve_tracker_currency(
+                    getattr(self, "_cost_tracker", None),
+                ),
+            )
+        except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a parked-result build failure degrades to
+            # _handle_fatal_error (FAILED); the original stakes error surfaces.
+            reraise_critical(build_exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error_type=type(build_exc).__name__,
+                error=safe_error_description(build_exc),
+                stage="build_stakes_parked_result",
+            )
+            return None
 
     async def _park_stakes_unavailable(  # noqa: PLR0913 -- keyword-only park inputs
         self,

@@ -8,7 +8,6 @@ import { ModelTierAssignmentSection } from '../ModelTierAssignmentSection'
 
 const BASE = '/api/v1/providers/tier-assignments'
 
-/** Pick the classifier model and turn the recommender opt-in on. */
 async function enableRecommender(): Promise<void> {
   fireEvent.change(screen.getByLabelText('Classifier model'), {
     target: { value: 'local-host␟tiny-7b' },
@@ -24,7 +23,6 @@ describe('ModelTierAssignmentSection', () => {
     render(<ModelTierAssignmentSection />)
     expect(await screen.findByText('tiny-7b')).toBeInTheDocument()
     expect(screen.getByText('huge-120b')).toBeInTheDocument()
-    // Provenance pill carries the label + confidence.
     expect(screen.getByText(/Operator ·/)).toBeInTheDocument()
   })
 
@@ -35,7 +33,6 @@ describe('ModelTierAssignmentSection', () => {
     expect(
       screen.getByRole('button', { name: 'Recommend a tier for tiny-7b' }),
     ).toBeDisabled()
-    // Picking a model alone is not enough; the opt-in is still off.
     fireEvent.change(screen.getByLabelText('Classifier model'), {
       target: { value: 'local-host␟tiny-7b' },
     })
@@ -92,7 +89,6 @@ describe('ModelTierAssignmentSection', () => {
     )
     fireEvent.change(select, { target: { value: 'large' } })
 
-    // The row now shows the operator override at the Large tier.
     await waitFor(() => {
       const row = screen.getByText('tiny-7b').closest('tr') as HTMLElement
       expect(within(row).getByLabelText('Override tier for tiny-7b')).toHaveValue('large')

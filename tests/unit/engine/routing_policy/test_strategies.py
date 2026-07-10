@@ -272,16 +272,16 @@ class TestEscalateWhenNoModelMeetsTier:
     async def test_tool_incapable_cheapest_is_skipped_for_capable_higher(
         self,
     ) -> None:
-        # small is not tool-capable; NORMAL requires medium anyway, so a
-        # tool-capable medium is selected.
+        # NORMAL requires medium, but the medium model cannot call tools, so
+        # the cheapest in-range capable model (large) is selected instead.
         strategy = _strategy(
-            resolver=_resolver(non_tool_capable=frozenset({"small"})),
+            resolver=_resolver(non_tool_capable=frozenset({"medium"})),
         )
         decision = await strategy.route(
             task=_task(Stakes.NORMAL),
             identity=_identity("small"),
         )
-        assert decision.selected_model.model_tier == "medium"
+        assert decision.selected_model.model_tier == "large"
 
 
 @pytest.mark.unit

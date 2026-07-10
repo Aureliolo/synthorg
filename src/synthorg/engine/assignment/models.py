@@ -106,10 +106,10 @@ class AssignmentRequest(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Score below which a winning fit is treated as low-confidence: "
-            "for high/critical stakes it is rejected (no eligible agent), for "
-            "low/normal stakes it proceeds but is flagged. Clamped to at least "
-            "min_score at use-time via effective_low_confidence_score."
+            "Score below which a winning fit is treated as low-confidence. The "
+            "fit is still assigned (never a hard-fail), but flagged: high/critical "
+            "stakes log an operator-facing escalation for review, low/normal only "
+            "flag. Clamped to at least min_score via effective_low_confidence_score."
         ),
     )
     stakes: Stakes = Field(
@@ -194,8 +194,9 @@ class AssignmentResult(BaseModel):
         alternatives: Other candidates considered, ranked by score.
         reason: Human-readable explanation of the assignment decision.
         low_confidence: Whether the selected candidate cleared eligibility but
-            scored below the low-confidence band (a marginal fit that proceeded
-            because the task's stakes did not warrant rejecting it).
+            scored below the low-confidence band (a marginal fit that was
+            assigned anyway and flagged; high/critical stakes additionally log
+            an operator-facing escalation for review).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

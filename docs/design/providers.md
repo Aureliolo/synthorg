@@ -365,7 +365,7 @@ persisted operator or LLM-accepted overrides (settings blob
 `providers.tier_assignment_overrides`; no new table). Operators inspect and adjust
 the map through the **Model Tier Assignment** panel (Settings to Providers) backed
 by `GET/PUT /api/v1/providers/tier-assignments`. An opt-in LLM recommender
-(`LlmTierRecommender`, purpose `providers:tier_classification`) offers per-model and
+(`LlmTierRecommender`, purpose `system:providers:tier_classification`) offers per-model and
 bulk tier suggestions; it runs on the operator-selected
 `providers.tier_classifier_model` and returns a typed unset state until one is
 picked.

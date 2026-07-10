@@ -20,6 +20,9 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_ROUTING_UNDECIDABLE,
     PIPELINE_SOLO_AGENT_SELECTED,
 )
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_LOW_CONFIDENCE,
+)
 
 logger = get_logger(__name__)
 
@@ -83,22 +86,21 @@ def select_solo_agent(
         raise WorkRoutingUndecidableError(msg)
     best = max(viable, key=lambda c: (c.score, str(c.agent_identity.id)))
     low_confidence = best.score < scorer.low_confidence_score
-    if low_confidence and is_high_stakes(task.stakes):
-        msg = (
-            f"best fit scored {best.score:g} below the low-confidence floor "
-            f"({scorer.low_confidence_score}) for {task.stakes.value}-stakes "
-            "solo execution"
-        )
+    if low_confidence:
+        # Assign the best available agent even for high/critical work rather
+        # than deadlocking the pipeline (a marginal-fit agent can still do the
+        # work). High-stakes marginal fits are logged as an operator-facing
+        # escalation; the low_confidence flag propagates for review and the
+        # stakes-gated red-team gate re-reviews the output downstream.
         logger.warning(
-            PIPELINE_ROUTING_UNDECIDABLE,
+            TASK_ASSIGNMENT_LOW_CONFIDENCE,
             task_id=str(task.id),
-            reason="below_confidence_floor",
-            low_confidence_score=scorer.low_confidence_score,
+            path="solo",
             score=best.score,
+            threshold=scorer.low_confidence_score,
             stakes=task.stakes.value,
-            error_type=WorkRoutingUndecidableError.__name__,
+            outcome="escalated" if is_high_stakes(task.stakes) else "proceeded",
         )
-        raise WorkRoutingUndecidableError(msg)
     assigned_id = str(best.agent_identity.id)
     logger.info(
         PIPELINE_SOLO_AGENT_SELECTED,

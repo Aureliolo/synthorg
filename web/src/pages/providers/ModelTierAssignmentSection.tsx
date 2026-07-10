@@ -110,6 +110,11 @@ function ClassifierPicker({
         value={current}
         options={options}
         onChange={(value) => {
+          if (value === '') {
+            // The empty placeholder clears the classifier model.
+            onSelect('', '')
+            return
+          }
           const [provider, modelId] = value.split(CLASSIFIER_SEP)
           if (provider !== undefined && modelId !== undefined) onSelect(provider, modelId)
         }}

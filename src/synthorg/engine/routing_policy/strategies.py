@@ -106,34 +106,12 @@ class StakesAwareStrategy:
         red_team_required = (
             compare_stakes(stakes, self._config.red_team_min_stakes) >= 0
         )
-        current_tier = identity.model.model_tier
-        required = self._config.stakes_tiers.for_stakes(stakes)
-
-        nudged = False
-        if self._coordination_unhealthy(str(task.id)):
-            bumped = bump_one(required)
-            if bumped != required:
-                logger.info(
-                    STAKES_ROUTING_COORD_NUDGE,
-                    task_id=str(task.id),
-                    from_tier=required,
-                    to_tier=bumped,
-                )
-                nudged = True
-            required = bumped
-
-        # Red-team-gated work must never run below the agent's configured tier.
-        if red_team_required and current_tier is not None:
-            floored = higher_tier(required, current_tier)
-            if floored != required:
-                logger.info(
-                    STAKES_ROUTING_TIER_ADJUSTED,
-                    task_id=str(task.id),
-                    from_tier=required,
-                    to_tier=floored,
-                    reason="red_team_floor",
-                )
-            required = floored
+        required, nudged = self._adjusted_required_tier(
+            task=task,
+            identity=identity,
+            stakes=stakes,
+            red_team_required=red_team_required,
+        )
 
         selected = self._select_model(required)
         if selected is None:
@@ -158,6 +136,49 @@ class StakesAwareStrategy:
             selected=selected,
             nudged=nudged,
         )
+
+    def _adjusted_required_tier(
+        self,
+        *,
+        task: Task,
+        identity: AgentIdentity,
+        stakes: Stakes,
+        red_team_required: bool,
+    ) -> tuple[ModelTier, bool]:
+        """Base stakes tier adjusted for coordination health + red-team floor.
+
+        Returns:
+            The (possibly bumped then floored) required tier, and whether a
+            coordination nudge fired.
+        """
+        required = self._config.stakes_tiers.for_stakes(stakes)
+        nudged = False
+        if self._coordination_unhealthy(str(task.id)):
+            bumped = bump_one(required)
+            if bumped != required:
+                logger.info(
+                    STAKES_ROUTING_COORD_NUDGE,
+                    task_id=str(task.id),
+                    from_tier=required,
+                    to_tier=bumped,
+                )
+                nudged = True
+            required = bumped
+
+        # Red-team-gated work must never run below the agent's configured tier.
+        current_tier = identity.model.model_tier
+        if red_team_required and current_tier is not None:
+            floored = higher_tier(required, current_tier)
+            if floored != required:
+                logger.info(
+                    STAKES_ROUTING_TIER_ADJUSTED,
+                    task_id=str(task.id),
+                    from_tier=required,
+                    to_tier=floored,
+                    reason="red_team_floor",
+                )
+            required = floored
+        return required, nudged
 
     def _select_model(self, required: ModelTier) -> ResolvedModel | None:
         """Return the cheapest tool-capable model at or above *required*.

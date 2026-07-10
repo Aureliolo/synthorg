@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.config.provider_schema import ProviderModelConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
@@ -154,17 +155,28 @@ class LlmTierRecommender:
         user_prompt = "Classify the models described in the tagged block:\n" + (
             wrap_untrusted(TAG_CONFIG_VALUE, descriptions)
         )
-        content, _cost = await complete_text(
-            self._provider,
-            self._model_id,
-            system=system_prompt,
-            user=user_prompt,
-            task_id=NotBlankStr(
-                f"system:providers:tier_classification:{provider_name}"
-            ),
-            purpose=self.metadata.prompt_class_id,
-            cost_tracker=self._cost_tracker,
-        )
+        try:
+            content, _cost = await complete_text(
+                self._provider,
+                self._model_id,
+                system=system_prompt,
+                user=user_prompt,
+                task_id=NotBlankStr(
+                    f"system:providers:tier_classification:{provider_name}"
+                ),
+                purpose=self.metadata.prompt_class_id,
+                cost_tracker=self._cost_tracker,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_TIER_LLM_RECOMMENDED,
+                provider=provider_name,
+                reason="provider_call_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         parsed = self._parse(content)
         by_id = {item.model_id: item for item in parsed.recommendations}
         recommendations: list[TierRecommendation] = []

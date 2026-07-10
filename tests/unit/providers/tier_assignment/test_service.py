@@ -129,7 +129,35 @@ async def test_clear_override_reverts_to_heuristic() -> None:
 
 
 async def test_tier_lookup_keys_by_provider_and_model() -> None:
+    # Two providers expose the same model id but classify to different tiers;
+    # the lookup must key on (provider, model_id), never the model id alone.
+    providers = {
+        "local-host": ProviderConfig(
+            auth_type=AuthType.NONE,
+            models=(
+                ProviderModelConfig(
+                    id="tiny-7b",
+                    metadata=ModelMetadata(
+                        parameter_count=7_000_000_000,
+                        metadata_source="probe",
+                    ),
+                ),
+            ),
+        ),
+        "cloud-host": ProviderConfig(
+            auth_type=AuthType.NONE,
+            models=(
+                ProviderModelConfig(
+                    id="tiny-7b",
+                    metadata=ModelMetadata(
+                        parameter_count=120_000_000_000,
+                        metadata_source="probe",
+                    ),
+                ),
+            ),
+        ),
+    }
     service = TierAssignmentService(store=_MemoryStore(), clock=FakeClock())
-    lookup = await service.tier_lookup(_providers())
+    lookup = await service.tier_lookup(providers)
     assert lookup[("local-host", "tiny-7b")] == "small"
-    assert lookup[("local-host", "huge-120b")] == "large"
+    assert lookup[("cloud-host", "tiny-7b")] == "large"
