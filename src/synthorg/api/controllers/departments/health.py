@@ -20,6 +20,7 @@ from synthorg.observability.events.api import (
     API_DEPARTMENT_HEALTH_QUERIED,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -70,12 +71,21 @@ class DepartmentHealthController(Controller):
 
         agents = await config_resolver_of(app_state).get_agents()
         dept_agents = filter_agents_by_department(agents, canonical_name)
-        budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        resolver = config_resolver_of(app_state)
+        budget_cfg = await resolver.get_budget_config()
+        window_days = await resolver.get_int(
+            SettingNamespace.HR, "department_health_window_days"
+        )
+        min_runs = await resolver.get_int(
+            SettingNamespace.HR, "department_health_min_runs"
+        )
         health = await assemble_department_health(
             app_state,
             canonical_name,
             dept_agents,
             currency=budget_cfg.currency,
+            health_window_days=window_days,
+            health_min_runs=min_runs,
         )
 
         logger.debug(

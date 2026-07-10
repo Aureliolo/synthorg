@@ -1,17 +1,24 @@
+# module-kind: service
 """Department health aggregation helpers + response model.
 
 Extracted from ``departments.py`` to keep that controller focused on
-Litestar route handlers.
+Litestar route handlers. Fans out across the agent registry, cost tracker,
+performance snapshots, and real task-outcome metrics to assemble a single
+honest health response.
 """
 
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import NamedTuple, Self
+from typing import Final, NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api.controllers._department_health_outcomes import (
+    health_from_outcomes,
+    resolve_task_outcomes,
+)
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import (
@@ -35,6 +42,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
+
+# Fallback window when a caller does not pass the settings-resolved value
+# (the controller always does; this covers direct/test callers). Mirrors the
+# ``hr.department_health_window_days`` setting default.
+_DEFAULT_HEALTH_WINDOW_DAYS: Final[int] = 7
 
 
 class DepartmentHealth(BaseModel):
@@ -81,11 +93,42 @@ class DepartmentHealth(BaseModel):
         le=10.0,
         description="Mean collaboration score (0-10)",
     )
+    total_runs: int = Field(
+        default=0,
+        ge=0,
+        description="Terminal task runs by this department in the health window",
+    )
+    task_success_rate: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of terminal runs that genuinely produced output (empty"
+            " and failed runs count as non-success). None below the"
+            " minimum-runs gate (no honest signal yet)."
+        ),
+    )
+    health_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "Real department health: task-outcome success rate as a 0-100"
+            " score. None when there is insufficient activity to judge, which"
+            " the dashboard renders as an explicit no-data state rather than a"
+            " misleading full-health number."
+        ),
+    )
 
     @computed_field
     @property
     def utilization_percent(self) -> float:
-        """Percentage of agents that are active."""
+        """Roster utilisation: percentage of agents currently active.
+
+        A lifecycle/roster ratio, not a measure of work quality. The
+        dashboard shows it as utilisation, never as health (which is
+        ``health_score``, derived from real task outcomes).
+        """
         if self.agent_count == 0:
             return 0.0
         return round(self.active_agent_count / self.agent_count * 100, 2)
@@ -360,6 +403,9 @@ def _build_health_from_data(  # noqa: PLR0913
     snapshots: tuple[AgentPerformanceSnapshot, ...],
     now: datetime,
     *,
+    total_runs: int = 0,
+    success_count: int = 0,
+    min_runs: int = 1,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results.
@@ -379,6 +425,9 @@ def _build_health_from_data(  # noqa: PLR0913
         now,
         dept_name=NotBlankStr(dept_name),
     )
+    success_rate, health_score = health_from_outcomes(
+        total_runs, success_count, min_runs
+    )
     return DepartmentHealth(
         department_name=dept_name,
         agent_count=agent_count,
@@ -391,16 +440,21 @@ def _build_health_from_data(  # noqa: PLR0913
         collaboration_score=_mean_optional(
             [s.overall_collaboration_score for s in snapshots],
         ),
+        total_runs=total_runs,
+        task_success_rate=success_rate,
+        health_score=health_score,
         currency=aggregate.currency if aggregate.currency is not None else currency,
     )
 
 
-async def assemble_department_health(
+async def assemble_department_health(  # noqa: PLR0913 -- health data sources
     app_state: AppState,
     dept_name: str,
     dept_agents: tuple[AgentConfig, ...],
     *,
     currency: CurrencyCode = DEFAULT_CURRENCY,
+    health_window_days: int = _DEFAULT_HEALTH_WINDOW_DAYS,
+    health_min_runs: int = 1,
 ) -> DepartmentHealth:
     """Aggregate all data sources into a DepartmentHealth response.
 
@@ -408,7 +462,9 @@ async def assemble_department_health(
     agent ID resolution in parallel via TaskGroup.  If the first stage
     fails, returns a degraded health response with zeroed metrics.
     The second stage fetches performance snapshots (depends on the
-    agent IDs resolved by the first stage).
+    agent IDs resolved by the first stage) and derives the honest
+    ``health_score`` from the department's real task outcomes over the
+    ``health_window_days`` window, gated by ``health_min_runs``.
 
     Returns:
         ``DepartmentHealth`` instance.
@@ -421,6 +477,7 @@ async def assemble_department_health(
 
     now = datetime.now(UTC)
     seven_days_ago = now - timedelta(days=7)
+    health_window_start = now - timedelta(days=health_window_days)
 
     try:
         # Resolve ``cost_tracker`` inside the try so an unwired tracker
@@ -482,6 +539,12 @@ async def assemble_department_health(
         )
         snapshots = ()
 
+    total_runs, success_count = resolve_task_outcomes(
+        app_state,
+        t_ids.result(),
+        window_start=health_window_start,
+    )
+
     return _build_health_from_data(
         dept_name=dept_name,
         agent_count=agent_count,
@@ -490,5 +553,8 @@ async def assemble_department_health(
         agent_ids=t_ids.result(),
         snapshots=snapshots,
         now=now,
+        total_runs=total_runs,
+        success_count=success_count,
+        min_runs=health_min_runs,
         currency=currency,
     )

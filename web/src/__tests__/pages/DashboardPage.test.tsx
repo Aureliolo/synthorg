@@ -31,6 +31,7 @@ const mockOverview: OverviewMetrics = {
   review_7d_trend: [],
   active_agents_count: 5,
   idle_agents_count: 4,
+  task_outcomes: { succeeded: 0, empty: 0, failed: 0 },
   currency: 'EUR',
 }
 
@@ -125,7 +126,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('TASKS')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE AGENTS')).toBeInTheDocument()
     expect(screen.getByText('SPEND')).toBeInTheDocument()
-    expect(screen.getByText('IN REVIEW')).toBeInTheDocument()
+    expect(screen.getByText('FAILED RUNS')).toBeInTheDocument()
   })
 
   it('renders metric values', () => {

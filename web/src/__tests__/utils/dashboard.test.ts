@@ -44,6 +44,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     review_7d_trend: [],
     active_agents_count: 5,
     idle_agents_count: 4,
+    task_outcomes: { succeeded: 5, empty: 0, failed: 1 },
     currency: 'EUR',
     ...overrides,
   }
@@ -138,12 +139,23 @@ describe('computeMetricCards', () => {
     expect(spendCard!.sparklineData).toEqual([5, 6, 7, 5, 8, 6, 5.17])
   })
 
-  it('includes In Review card from tasks_by_status', () => {
-    const overview = makeOverview()
+  it('includes a Failed Runs card driven by the outcome breakdown', () => {
+    const overview = makeOverview({
+      task_outcomes: { succeeded: 7, empty: 2, failed: 3 },
+    })
     const cards = computeMetricCards(overview, makeBudgetConfig())
-    const reviewCard = cards.find((c) => c.label === 'IN REVIEW')
-    expect(reviewCard).toBeDefined()
-    expect(reviewCard!.value).toBe(2)
+    const failedCard = cards.find((c) => c.label === 'FAILED RUNS')
+    expect(failedCard).toBeDefined()
+    expect(failedCard!.value).toBe(3)
+    // Empty runs are flagged distinctly as having produced nothing, never
+    // folded into completed.
+    expect(failedCard!.subText).toContain('7 succeeded')
+    expect(failedCard!.subText).toContain('2 produced nothing')
+  })
+
+  it('no longer surfaces a bare In Review card', () => {
+    const cards = computeMetricCards(makeOverview(), makeBudgetConfig())
+    expect(cards.find((c) => c.label === 'IN REVIEW')).toBeUndefined()
   })
 
   it('includes budget progress on spend card', () => {
@@ -219,7 +231,7 @@ describe('computeSpendTrend', () => {
 
 function dh(
   name: DepartmentHealth['department_name'],
-  utilization: number,
+  health: number | null,
   agents = 1,
 ): DepartmentHealth {
   return {
@@ -231,7 +243,11 @@ function dh(
     department_cost_7d: 0,
     cost_trend: [],
     collaboration_score: null,
-    utilization_percent: utilization,
+    total_runs: health === null ? 0 : 10,
+    task_success_rate: health === null ? null : health / 100,
+    // Roster utilisation is deliberately full to prove health does NOT read it.
+    utilization_percent: 100,
+    health_score: health,
   }
 }
 
@@ -240,11 +256,11 @@ describe('computeOrgHealth', () => {
     expect(computeOrgHealth([])).toBeNull()
   })
 
-  it('returns exact value for single department', () => {
+  it('returns exact health_score for a single department', () => {
     expect(computeOrgHealth([dh('engineering', 85, 4)])).toBe(85)
   })
 
-  it('averages multiple departments', () => {
+  it('averages department health_score, never utilisation', () => {
     expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', 60, 2)])).toBe(70)
   })
 
@@ -252,16 +268,22 @@ describe('computeOrgHealth', () => {
     expect(computeOrgHealth([dh('engineering', 33), dh('design', 33), dh('product', 34)])).toBe(33)
   })
 
-  it('filters out NaN utilization_percent values', () => {
-    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', NaN)])).toBe(80)
+  it('skips no-data (null health_score) departments', () => {
+    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', null)])).toBe(80)
   })
 
-  it('filters out Infinity utilization_percent values', () => {
-    expect(computeOrgHealth([dh('engineering', 60, 2), dh('product', Infinity)])).toBe(60)
+  it('returns null (no-data) when every department lacks a health signal', () => {
+    expect(computeOrgHealth([dh('design', null), dh('product', null)])).toBeNull()
   })
 
-  it('returns null when all departments have non-finite utilization', () => {
-    expect(computeOrgHealth([dh('design', NaN), dh('product', Infinity)])).toBeNull()
+  it('does not report full health from utilisation at zero activity', () => {
+    // Every department is fully utilised (roster) but has no runs: honest
+    // result is no-data, not 100%.
+    expect(computeOrgHealth([dh('engineering', null, 4), dh('design', null, 2)])).toBeNull()
+  })
+
+  it('filters out non-finite health_score values', () => {
+    expect(computeOrgHealth([dh('engineering', 60, 2), dh('product', NaN)])).toBe(60)
   })
 })
 
@@ -352,5 +374,35 @@ describe('wsEventToActivityItem', () => {
     }
     const item = wsEventToActivityItem(event)
     expect(item.task_id).toBeNull()
+  })
+
+  it('carries a terminal run_outcome from the payload', () => {
+    const event: WsEvent = {
+      event_type: 'task.status_changed',
+      channel: 'tasks',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { task_id: 'task-1', to_status: 'failed', run_outcome: 'failed' },
+    }
+    expect(wsEventToActivityItem(event).run_outcome).toBe('failed')
+  })
+
+  it('is null when the event carries no run_outcome', () => {
+    const event: WsEvent = {
+      event_type: 'task.status_changed',
+      channel: 'tasks',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { task_id: 'task-1', to_status: 'in_progress' },
+    }
+    expect(wsEventToActivityItem(event).run_outcome).toBeNull()
+  })
+
+  it('rejects a malformed run_outcome rather than fabricating success', () => {
+    const event: WsEvent = {
+      event_type: 'task.status_changed',
+      channel: 'tasks',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { task_id: 'task-1', to_status: 'completed', run_outcome: 'bogus' },
+    }
+    expect(wsEventToActivityItem(event).run_outcome).toBeNull()
   })
 })

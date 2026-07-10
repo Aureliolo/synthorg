@@ -131,19 +131,31 @@ def _task_metric_to_activity(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
-    """Convert a task metric record to a task_completed event (success or failure).
+    """Convert a task metric record to a completed or failed timeline event.
+
+    A successful run yields ``TASK_COMPLETED``; an unsuccessful run (failed
+    or empty) yields ``TASK_FAILED`` so the feed surfaces the failure
+    distinctly rather than as a generic completion. The cost/duration suffix
+    is omitted when both are zero (a transition-sourced record carries no
+    execution telemetry), keeping the description truthful.
 
     Returns:
         Result of type ``ActivityEvent``.
     """
     status = "succeeded" if record.is_success else "failed"
-    desc = (
-        f"Task {record.task_id} {status} "
-        f"({record.duration_seconds:.1f}s, "
-        f"{format_cost_detail(record.cost, currency)})"
+    event_type = (
+        ActivityEventType.TASK_COMPLETED
+        if record.is_success
+        else ActivityEventType.TASK_FAILED
     )
+    desc = f"Task {record.task_id} {status}"
+    if record.duration_seconds > 0 or record.cost > 0:
+        # lint-allow: currency-aggregation -- one record's own cost, single
+        # currency by construction; not a cross-record/currency aggregation.
+        cost_detail = format_cost_detail(record.cost, currency)
+        desc += f" ({record.duration_seconds:.1f}s, {cost_detail})"
     return ActivityEvent(
-        event_type=ActivityEventType.TASK_COMPLETED,
+        event_type=event_type,
         timestamp=record.completed_at,
         description=desc,
         related_ids={

@@ -129,7 +129,10 @@ function makeHealth(name: DepartmentName, utilizationPercent: number): Departmen
     department_cost_7d: 12.5,
     cost_trend: [],
     collaboration_score: 6.0,
+    total_runs: 10,
+    task_success_rate: utilizationPercent / 100,
     utilization_percent: utilizationPercent,
+    health_score: utilizationPercent,
   }
 }
 

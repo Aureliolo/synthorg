@@ -42,7 +42,10 @@ const mockHealth: DepartmentHealth = {
   department_cost_7d: 25.5,
   cost_trend: [],
   collaboration_score: 6.0,
+  total_runs: 10,
+  task_success_rate: 0.85,
   utilization_percent: 85,
+  health_score: 85,
 }
 
 const meta = {

@@ -65,6 +65,15 @@ class OverviewMetrics(BaseModel):
     tasks_by_status: dict[str, int] = Field(
         description="Task counts by status (keys are TaskStatus values)",
     )
+    task_outcomes: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Terminal-run outcome breakdown (keys are RunOutcome values:"
+            " succeeded / empty / failed), derived from real artifact counts"
+            " so failed and empty runs surface distinctly on the dashboard"
+            " instead of hiding behind a generic in-review count."
+        ),
+    )
     total_agents: int = Field(ge=0, description="Number of configured agents")
     total_cost: float = Field(
         ge=0.0, description="Total cost in the configured currency"

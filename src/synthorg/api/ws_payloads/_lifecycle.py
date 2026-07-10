@@ -15,6 +15,7 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
 from synthorg.budget.currency import CurrencyCode
 from synthorg.communication.message import Part
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.types import NotBlankStr
 
 # ── Task domain ─────────────────────────────────────────────────────
@@ -46,7 +47,14 @@ class WsTaskUpdatedPayload(BaseModel):
 
 
 class WsTaskStatusChangedPayload(BaseModel):
-    """Payload for ``task.status_changed`` -- task transitioned states."""
+    """Payload for ``task.status_changed`` -- task transitioned states.
+
+    ``run_outcome`` is populated only when ``to_status`` is a terminal run
+    state (``in_review`` / ``completed`` / ``failed``); it is the truthful,
+    artifact-count-derived outcome so the Live Activity feed can flag a
+    failed or empty run distinctly instead of a neutral status change. The
+    field is optional and additive: older clients ignore it.
+    """
 
     model_config = PAYLOAD_CONFIG
 
@@ -56,6 +64,9 @@ class WsTaskStatusChangedPayload(BaseModel):
     task_id: NotBlankStr
     from_status: NotBlankStr | None = None
     to_status: NotBlankStr
+    assigned_to: NotBlankStr | None = None
+    description: str | None = None
+    run_outcome: RunOutcome | None = None
 
 
 class WsTaskAssignedPayload(BaseModel):

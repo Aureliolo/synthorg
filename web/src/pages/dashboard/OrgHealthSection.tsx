@@ -22,14 +22,18 @@ const DepartmentRow = memo(function DepartmentRow({ dept }: DepartmentRowProps) 
     <div>
       <DeptHealthBar
         name={formatLabel(dept.department_name)}
-        health={dept.utilization_percent}
+        health={dept.health_score}
         agentCount={dept.agent_count}
       />
-      {dept.department_cost_7d > 0 && (
-        <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
-          {formatCurrency(dept.department_cost_7d, dept.currency)}
+      <div className="mt-0.5 flex justify-between gap-2 font-mono text-xs text-muted-foreground">
+        <span>
+          {Math.round(dept.utilization_percent)}% utilised
+          {dept.total_runs > 0 ? ` · ${dept.total_runs} runs` : ''}
         </span>
-      )}
+        {dept.department_cost_7d > 0 && (
+          <span>{formatCurrency(dept.department_cost_7d, dept.currency)}</span>
+        )}
+      </div>
     </div>
   )
 })
@@ -45,10 +49,15 @@ function OrgHealthSectionInner({ departments, overallHealth }: OrgHealthSectionP
         />
       ) : (
         <div className="space-y-2">
-          {overallHealth !== null && (
+          {overallHealth !== null ? (
             <div className="flex justify-center">
               <ProgressGauge value={overallHealth} label="Overall" size="sm" />
             </div>
+          ) : (
+            <p className="text-center text-xs text-muted-foreground">
+              Awaiting task activity. Health appears once departments complete
+              enough runs.
+            </p>
           )}
           <StaggerGroup className="space-y-1.5">
             {departments.map((dept) => (

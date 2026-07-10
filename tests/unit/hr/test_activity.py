@@ -210,9 +210,12 @@ class TestMergeActivityTimeline:
         )
 
         assert len(timeline) == 2
-        assert timeline[0].event_type == "task_completed"
+        # A failed run surfaces as task_failed, distinct from a completion, so
+        # the feed never hides a failure behind a generic "completed" row.
+        assert timeline[0].event_type == "task_failed"
         assert timeline[0].related_ids["task_id"] == "task-b"
         assert "failed" in timeline[0].description
+        assert timeline[1].event_type == "task_completed"
         assert timeline[1].related_ids["task_id"] == "task-a"
         assert "succeeded" in timeline[1].description
         assert "$" in timeline[1].description

@@ -35,6 +35,7 @@ const mockOverview = {
   review_7d_trend: [],
   active_agents_count: 5,
   idle_agents_count: 4,
+  task_outcomes: { succeeded: 0, empty: 0, failed: 0 },
   currency: DEFAULT_CURRENCY,
 }
 
@@ -73,7 +74,10 @@ const mockDeptHealth = {
   department_cost_7d: 10.0,
   cost_trend: [],
   collaboration_score: 7.0,
+  total_runs: 10,
+  task_success_rate: 0.85,
   utilization_percent: 85,
+  health_score: 85,
 }
 
 type HandlerReturn =
@@ -327,7 +331,10 @@ describe('useAnalyticsStore', () => {
               avg_performance_score: 6.0,
               department_cost_7d: 5.0,
               collaboration_score: null,
+              total_runs: 10,
+              task_success_rate: 0.7,
               utilization_percent: 70,
+              health_score: 70,
             }),
           )
         },

@@ -5,6 +5,7 @@ import asyncio
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Final
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -35,6 +36,7 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.run_outcome import RunOutcome, derive_run_outcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.hr.models import AgentLifecycleEvent
@@ -43,10 +45,76 @@ from synthorg.hr.state import performance_tracker_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+
+# Statuses for which a run has finished and a truthful outcome exists. Mirrors
+# ``approvals/_enrichment._TERMINAL_RUN_STATES``.
+_TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
+)
+# Bounds concurrent artifact reads for the outcome breakdown so a large task
+# set cannot fan out one DB read per task at once. Internal safety cap.
+_MAX_CONCURRENT_ARTIFACT_READS: Final[int] = 16
+
+
+async def _resolve_task_outcomes(
+    app_state: AppState, all_tasks: Sequence[Task]
+) -> dict[str, int]:
+    """Break terminal tasks into succeeded / empty / failed outcome counts.
+
+    ``failed`` comes straight from the task status; ``empty`` vs ``succeeded``
+    is derived from the real produced-artifact count via
+    :func:`derive_run_outcome`. When the artifact count is unavailable (no
+    backend or a read fault) a finished run is credited as succeeded rather
+    than fabricating an empty outcome.
+
+    Returns:
+        Counts keyed by :class:`RunOutcome` value (always all three keys).
+    """
+    counts = {
+        RunOutcome.SUCCEEDED.value: 0,
+        RunOutcome.EMPTY.value: 0,
+        RunOutcome.FAILED.value: sum(
+            1 for t in all_tasks if t.status == TaskStatus.FAILED
+        ),
+    }
+    reviewable = [
+        t for t in all_tasks if t.status in (TaskStatus.IN_REVIEW, TaskStatus.COMPLETED)
+    ]
+    if not reviewable:
+        return counts
+    try:
+        backend = persistence_of(app_state)
+    except ServiceUnavailableError:
+        counts[RunOutcome.SUCCEEDED.value] += len(reviewable)
+        return counts
+
+    sem = asyncio.Semaphore(_MAX_CONCURRENT_ARTIFACT_READS)
+
+    async def _classify(task: Task) -> RunOutcome:
+        async with sem:
+            try:
+                produced = await backend.artifacts.query(
+                    ArtifactFilterSpec(task_id=str(task.id)),
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # Unknown artifact count: credit the finished run as succeeded
+                # rather than fabricate an empty outcome.
+                return RunOutcome.SUCCEEDED
+            return derive_run_outcome(
+                status=task.status, produced_artifact_count=len(produced)
+            )
+
+    async with asyncio.TaskGroup() as tg:
+        futures = [tg.create_task(_classify(task)) for task in reviewable]
+    for future in futures:
+        counts[future.result().value] += 1
+    return counts
 
 
 def _log_trend_source_unavailable(source: str) -> None:
@@ -149,6 +217,7 @@ async def _assemble_overview(  # noqa: PLR0913
         all_tasks=all_tasks,
     )
     metrics, lifecycle_events, approvals = await _collect_trend_sources(app_state, now)
+    task_outcomes = await _resolve_task_outcomes(app_state, all_tasks)
 
     logger.debug(
         ANALYTICS_OVERVIEW_QUERIED,
@@ -160,6 +229,7 @@ async def _assemble_overview(  # noqa: PLR0913
     return OverviewMetrics(
         total_tasks=len(all_tasks),
         tasks_by_status=by_status,
+        task_outcomes=task_outcomes,
         total_agents=len(agents),
         total_cost=total_cost,
         budget_remaining=budget.remaining,

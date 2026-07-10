@@ -14,6 +14,7 @@ export const ACTIVITY_EVENT_TYPE_VALUES = [
     'demoted',
     'task_started',
     'task_completed',
+    'task_failed',
     'cost_incurred',
     'tool_used',
     'delegation_sent',

@@ -22,7 +22,10 @@ const mockDeptHealth: DepartmentHealth = {
   department_cost_7d: 12.5,
   cost_trend: [],
   collaboration_score: 6.0,
+  total_runs: 10,
+  task_success_rate: 0.85,
   utilization_percent: 85,
+  health_score: 85,
 }
 
 function resetStore() {

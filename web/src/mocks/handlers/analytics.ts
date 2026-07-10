@@ -27,6 +27,7 @@ export const analyticsHandlers = [
           rejected: 0,
           auth_required: 0,
         },
+        task_outcomes: { succeeded: 0, empty: 0, failed: 0 },
         total_agents: 0,
         total_cost: 0,
         budget_remaining: 0,

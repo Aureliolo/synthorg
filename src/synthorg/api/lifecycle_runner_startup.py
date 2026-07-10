@@ -44,6 +44,7 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
 from synthorg.api.lifecycle_runner_support import (
     _LifecycleTasks,
     _wire_approval_gate,
+    _wire_task_activity_observer,
     _wire_webhook_request_services,
     _wire_workflow_execution_service,
     _wire_workflow_observer,
@@ -457,6 +458,10 @@ async def _run_startup(  # noqa: PLR0913
         if persistence is not None:
             await _wire_workflow_observer(task_engine, persistence, app_state)
             _wire_workflow_execution_service(persistence, app_state)
+            if bridge is not None:
+                _wire_task_activity_observer(
+                    task_engine, persistence, app_state, bridge.plugin
+                )
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(

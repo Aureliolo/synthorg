@@ -327,6 +327,97 @@ class TestDepartmentHealth:
                 assert "value" in pt
 
 
+@pytest.mark.unit
+class TestDepartmentHealthScore:
+    """Honest health derivation: real task-outcome signal or explicit no-data."""
+
+    async def _eng_client(
+        self,
+        fake_message_bus: FakeMessageBus,
+        *,
+        perf: PerformanceTracker,
+    ) -> LoopAsyncClient:
+        from synthorg.core.company_departments import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=100.0),),
+            agents=(AgentConfig(name="alice", role="dev", department="eng"),),
+        )
+        registry = AgentRegistryService()
+        await registry.register(
+            _make_identity(
+                agent_id=_AGENT_ID_A,
+                name="alice",
+                department="eng",
+                status=AgentStatus.ACTIVE,
+            ),
+        )
+        return _build_dept_client(
+            fake_message_bus=fake_message_bus,
+            config=config,
+            performance_tracker=perf,
+            agent_registry=registry,
+        )
+
+    async def test_full_utilisation_is_not_full_health_at_zero_activity(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The vanity-metric fix: a fully-active roster with no runs is no-data."""
+        perf = PerformanceTracker()  # no metrics recorded
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["utilization_percent"] == 100.0
+            assert data["total_runs"] == 0
+            assert data["health_score"] is None
+            assert data["task_success_rate"] is None
+
+    async def test_health_score_from_real_success_rate(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        recent = _NOW - timedelta(hours=1)
+        perf = PerformanceTracker()
+        for _ in range(3):
+            await perf.record_task_metric(
+                _make_task_metric(
+                    agent_id=_AGENT_ID_A, completed_at=recent, is_success=True
+                ),
+            )
+        await perf.record_task_metric(
+            _make_task_metric(
+                agent_id=_AGENT_ID_A, completed_at=recent, is_success=False
+            ),
+        )
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["total_runs"] == 4
+            assert data["task_success_rate"] == 0.75
+            assert data["health_score"] == 75.0
+
+    async def test_health_score_none_below_min_runs(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Below the min-runs gate the score is no-data, never a guess."""
+        perf = PerformanceTracker()
+        await perf.record_task_metric(
+            _make_task_metric(
+                agent_id=_AGENT_ID_A,
+                completed_at=_NOW - timedelta(hours=1),
+                is_success=True,
+            ),
+        )
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["total_runs"] == 1
+            assert data["health_score"] is None
+
+
 # ── _mean_optional unit tests ─────────────────────────────────
 
 

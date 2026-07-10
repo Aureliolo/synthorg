@@ -1,5 +1,4 @@
-import { isDepartmentName } from '@/api/types/enums'
-import { createLogger } from '@/lib/logger'
+import { isDepartmentName, RUN_OUTCOME_VALUES } from '@/api/types/enums'
 import type {
   ActivityItem,
   DepartmentHealth,
@@ -7,11 +6,11 @@ import type {
   TrendDataPoint,
 } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
+import type { RunOutcome } from '@/api/types/enums'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
-
-const log = createLogger('dashboard')
+import { sanitizeWsEnumOrNull } from '@/utils/ws-sanitize'
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
@@ -51,6 +50,10 @@ export function computeMetricCards(
   budget: BudgetConfig | null,
 ): DashboardMetricCardData[] {
   const spendTrend = computeSpendTrend(overview.cost_7d_trend)
+  const outcomes = overview.task_outcomes
+  const failed = outcomes['failed'] ?? 0
+  const succeeded = outcomes['succeeded'] ?? 0
+  const empty = outcomes['empty'] ?? 0
 
   return [
     {
@@ -76,9 +79,12 @@ export function computeMetricCards(
       subText: `${Math.round(overview.budget_used_percent)}% of budget`,
     },
     {
-      label: 'IN REVIEW',
-      value: overview.tasks_by_status['in_review'] ?? 0,
-      sparklineData: sparkline(overview.review_7d_trend),
+      // Replaces the old bare "in review" tile: an honest outcome breakdown
+      // that surfaces failed and empty runs distinctly. The empty-run count
+      // is flagged so a run that produced nothing is never counted as done.
+      label: 'FAILED RUNS',
+      value: failed,
+      subText: `${succeeded} succeeded, ${empty} produced nothing`,
     },
   ]
 }
@@ -100,16 +106,17 @@ export function computeSpendTrend(
 
 export function computeOrgHealth(departments: readonly DepartmentHealth[]): number | null {
   if (departments.length === 0) return null
-  const valid = departments.filter((d) => Number.isFinite(d.utilization_percent))
-  if (valid.length < departments.length) {
-    log.warn(
-      `computeOrgHealth: ${departments.length - valid.length} department(s) had non-finite utilization_percent`,
-      departments.filter((d) => !Number.isFinite(d.utilization_percent)).map((d) => d.department_name),
-    )
-  }
-  if (valid.length === 0) return null
-  const sum = valid.reduce((acc, d) => acc + d.utilization_percent, 0)
-  return Math.round(sum / valid.length)
+  // Average only departments with a real health signal (health_score derived
+  // from task outcomes). Departments below the min-activity gate report
+  // health_score === null and are skipped; when every department is no-data
+  // the overall is null, which the UI renders as an explicit no-data state
+  // rather than a misleading number.
+  const scores = departments
+    .map((d) => d.health_score)
+    .filter((score): score is number => score !== null && Number.isFinite(score))
+  if (scores.length === 0) return null
+  const sum = scores.reduce((acc, score) => acc + score, 0)
+  return Math.round(sum / scores.length)
 }
 
 export function describeEvent(eventType: WsEventType): string {
@@ -132,6 +139,17 @@ function _resolveAgentName(payload: WsEventPayload): string {
 
 function _resolveTaskId(payload: WsEventPayload): string | null {
   return _isNonEmptyString(payload['task_id']) ? payload['task_id'] : null
+}
+
+function _resolveRunOutcome(payload: WsEventPayload): RunOutcome | null {
+  // Only a terminal task transition carries a run outcome; skip the sanitizer
+  // (and its drift warning) when the field is absent, and reject a malformed
+  // present value rather than fabricating a "succeeded".
+  const raw = payload['run_outcome']
+  if (raw === undefined || raw === null) return null
+  return sanitizeWsEnumOrNull<RunOutcome>(raw, RUN_OUTCOME_VALUES, {
+    field: 'run_outcome',
+  })
 }
 
 function _resolveDepartment(payload: WsEventPayload): ActivityItem['department'] {
@@ -178,5 +196,6 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
     description: _resolveDescription(payload, event.event_type),
     task_id: taskId,
     department: _resolveDepartment(payload),
+    run_outcome: _resolveRunOutcome(payload),
   }
 }

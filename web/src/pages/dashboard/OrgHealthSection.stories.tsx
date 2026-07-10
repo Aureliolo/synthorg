@@ -14,7 +14,10 @@ function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): De
     department_cost_7d: 10 + i * 3,
     cost_trend: [],
     collaboration_score: 6.0,
+    total_runs: 10,
+    task_success_rate: c.health / 100,
     utilization_percent: c.health,
+    health_score: c.health,
   }))
 }
 

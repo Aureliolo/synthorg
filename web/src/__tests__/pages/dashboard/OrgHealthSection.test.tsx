@@ -16,9 +16,30 @@ function makeDepts(count: number): DepartmentHealth[] {
       department_cost_7d: 0,
       cost_trend: [],
       collaboration_score: 6.0,
+      total_runs: 10,
+      task_success_rate: (60 + i * 10) / 100,
       utilization_percent: 60 + i * 10,
+      health_score: 60 + i * 10,
     }
   })
+}
+
+/** A no-data department: fully staffed/utilised but no runs to judge. */
+function makeNoDataDept(): DepartmentHealth {
+  return {
+    department_name: 'engineering',
+    agent_count: 4,
+    active_agent_count: 4,
+    currency: 'EUR',
+    avg_performance_score: null,
+    department_cost_7d: 0,
+    cost_trend: [],
+    collaboration_score: null,
+    total_runs: 0,
+    task_success_rate: null,
+    utilization_percent: 100,
+    health_score: null,
+  }
 }
 
 describe('OrgHealthSection', () => {
@@ -55,5 +76,16 @@ describe('OrgHealthSection', () => {
     const depts = makeDepts(1).map((d) => ({ ...d, department_cost_7d: 100, currency: 'JPY' }))
     render(<OrgHealthSection departments={depts} overallHealth={80} />)
     expect(screen.getByText(formatCurrency(100, 'JPY'))).toBeInTheDocument()
+  })
+
+  it('shows an explicit no-data state instead of a gauge when overall is null', () => {
+    render(<OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />)
+    expect(screen.getByText(/awaiting task activity/i)).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
+  })
+
+  it('renders a no-data department bar as N/A, not full health', () => {
+    render(<OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />)
+    expect(screen.getByText('N/A')).toBeInTheDocument()
   })
 })

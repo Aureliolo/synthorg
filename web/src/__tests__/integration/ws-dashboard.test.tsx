@@ -14,6 +14,7 @@ describe('WS Dashboard Integration', () => {
         total_agents: 5,
         active_agents_count: 3,
         idle_agents_count: 2,
+        task_outcomes: { succeeded: 0, empty: 0, failed: 0 },
         total_tasks: 10,
         tasks_by_status: {
           created: 0,
