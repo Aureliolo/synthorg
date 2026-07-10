@@ -21,7 +21,7 @@ function _clampHealth(health: number | null | undefined): number | null {
 }
 
 function HealthBarMeter({ name, clamped }: { name: string; clamped: number | null }) {
-  const label = `${name} utilization: ${clamped != null ? `${clamped}%` : 'unavailable'}`
+  const label = `${name} health: ${clamped != null ? `${clamped}%` : 'unavailable'}`
   const meterProps = clamped != null
     ? { role: 'meter' as const, 'aria-valuenow': clamped, 'aria-valuemin': 0, 'aria-valuemax': 100 }
     : {}

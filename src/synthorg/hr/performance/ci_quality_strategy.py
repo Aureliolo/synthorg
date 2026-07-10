@@ -90,20 +90,27 @@ class CISignalQualityStrategy:
         # Cost efficiency: log-scaled relative to budget.
         # Tasks at or below budget get full marks; above budget the
         # score decays logarithmically so high-cost tasks still
-        # differentiate instead of all collapsing to 0.
-        ratio = task_result.cost / self._cost_budget
-        if ratio <= 1.0:
-            cost_score = _MAX_SCORE
+        # differentiate instead of all collapsing to 0. An unmeasured
+        # cost (a transition-sourced record) drops the component and
+        # renormalises the remaining weights, so an unknown cost is not
+        # scored as perfect efficiency.
+        cost_score: float | None
+        if task_result.cost is None:
+            cost_score = None
         else:
-            cost_score = max(0.0, _MAX_SCORE * (1.0 - math.log10(ratio)))
+            ratio = task_result.cost / self._cost_budget
+            if ratio <= 1.0:
+                cost_score = _MAX_SCORE
+            else:
+                cost_score = max(0.0, _MAX_SCORE * (1.0 - math.log10(ratio)))
 
-        # Weighted total.
-        total = (
-            criteria_score * _CRITERIA_WEIGHT
-            + success_score * _SUCCESS_WEIGHT
-            + cost_score * _COST_EFFICIENCY_WEIGHT
-        )
-        total = max(0.0, min(_MAX_SCORE, total))
+        # Weighted total (renormalised when cost is unmeasured).
+        weighted = criteria_score * _CRITERIA_WEIGHT + success_score * _SUCCESS_WEIGHT
+        weight_sum = _CRITERIA_WEIGHT + _SUCCESS_WEIGHT
+        if cost_score is not None:
+            weighted += cost_score * _COST_EFFICIENCY_WEIGHT
+            weight_sum += _COST_EFFICIENCY_WEIGHT
+        total = max(0.0, min(_MAX_SCORE, weighted / weight_sum))
 
         # Confidence based on data availability.
         confidence = criteria_confidence * (0.8 if task_result.is_success else 0.6)
@@ -111,7 +118,10 @@ class CISignalQualityStrategy:
         breakdown = (
             ("acceptance_criteria", round(criteria_score, 4)),
             ("task_success", round(success_score, 4)),
-            ("cost_efficiency", round(cost_score, 4)),
+            (
+                "cost_efficiency",
+                round(cost_score, 4) if cost_score is not None else 0.0,
+            ),
         )
 
         result = QualityScoreResult(

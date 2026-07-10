@@ -32,10 +32,13 @@ class _FakeChannels:
 
 
 class _Recorder:
-    def __init__(self) -> None:
+    def __init__(self, *, error: Exception | None = None) -> None:
         self.records: list[TaskMetricRecord] = []
+        self.error = error
 
     async def __call__(self, record: TaskMetricRecord) -> TaskMetricRecord:
+        if self.error is not None:
+            raise self.error
         self.records.append(record)
         return record
 
@@ -91,11 +94,24 @@ def _event(
 
 
 def _observer(
-    channels: _FakeChannels, recorder: _Recorder, *, artifact_count: int = 0
+    channels: _FakeChannels,
+    recorder: _Recorder,
+    *,
+    artifact_count: int = 0,
+    list_error: Exception | None = None,
 ) -> TaskActivityObserver:
+    lister: object
+    if list_error is not None:
+
+        async def _raise(_task_id: str) -> Sequence[Artifact]:
+            raise list_error
+
+        lister = _raise
+    else:
+        lister = _lister(artifact_count)
     return TaskActivityObserver(
         publish=channels.publish,
-        list_artifacts=_lister(artifact_count),  # type: ignore[arg-type]
+        list_artifacts=lister,  # type: ignore[arg-type]
         record_metric=recorder,
     )
 
@@ -174,3 +190,78 @@ class TestTaskActivityObserver:
         )
         assert channels.published == []  # publish raised, swallowed
         assert len(recorder.records) == 1  # metric still recorded
+
+    async def test_record_carries_unmeasured_telemetry(self) -> None:
+        # A transition-sourced record has the reliability outcome but no
+        # measured cost / latency / tokens: those stay None, never a
+        # fabricated zero, so the efficiency pillar reads them as unmeasured.
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, artifact_count=2)(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        record = recorder.records[0]
+        assert record.duration_seconds is None
+        assert record.cost is None
+        assert record.turns_used is None
+        assert record.tokens_used is None
+
+    async def test_artifact_fault_publishes_but_records_nothing(self) -> None:
+        # An unknown artifact count leaves the outcome unresolved; the run is
+        # recorded as neither success nor failure (recording nothing) so a
+        # transient read fault cannot inflate the health success rate.
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, list_error=RuntimeError("db blip"))(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        assert len(channels.published) == 1
+        assert _payload(channels)["run_outcome"] is None
+        assert recorder.records == []
+
+    @pytest.mark.parametrize("terminal", [TaskStatus.CANCELLED, TaskStatus.REJECTED])
+    async def test_cancelled_or_rejected_is_not_recorded(
+        self, terminal: TaskStatus
+    ) -> None:
+        # CANCELLED / REJECTED are FSM-terminal but never ran, so they carry no
+        # run outcome and must never be recorded as a metric.
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder)(
+            _event(new_status=terminal, previous_status=TaskStatus.IN_PROGRESS)
+        )
+        assert len(channels.published) == 1
+        assert recorder.records == []
+
+    async def test_terminal_without_assignee_publishes_but_records_nothing(
+        self,
+    ) -> None:
+        # A FAILED task may carry no assignee (unlike IN_REVIEW / COMPLETED),
+        # so there is nothing to attribute the outcome to: the WS event still
+        # fires but no metric is recorded.
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder)(
+            _event(
+                new_status=TaskStatus.FAILED,
+                previous_status=TaskStatus.IN_PROGRESS,
+                assigned_to=None,
+            )
+        )
+        assert len(channels.published) == 1  # WS event still fires
+        assert recorder.records == []  # nothing to attribute the outcome to
+
+    async def test_metric_record_fault_is_swallowed_and_publish_happened(
+        self,
+    ) -> None:
+        channels = _FakeChannels()
+        recorder = _Recorder(error=RuntimeError("tracker down"))
+        # A record fault must not propagate out of __call__, and the WS publish
+        # (the other independent side effect) must already have happened.
+        await _observer(channels, recorder)(
+            _event(new_status=TaskStatus.FAILED, previous_status=TaskStatus.IN_PROGRESS)
+        )
+        assert len(channels.published) == 1
+        assert recorder.records == []

@@ -1000,7 +1000,9 @@ class PerformanceTracker:
                     window_size=window.window_size,
                 )
             )
-        cost_values = tuple((r.completed_at, r.cost) for r in window_records)
+        cost_values = tuple(
+            (r.completed_at, r.cost) for r in window_records if r.cost is not None
+        )
         if cost_values:
             trends.append(
                 self._trend_strategy.detect(

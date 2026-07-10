@@ -12,6 +12,7 @@ from synthorg.api.controllers._department_health import (
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathName
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.normalization import find_by_name_ci
@@ -33,7 +34,10 @@ class DepartmentHealthController(Controller):
     tags = ("departments",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @get("/{name:str}/health")
+    @get(
+        "/{name:str}/health",
+        guards=[per_op_rate_limit_from_policy("departments.health")],
+    )
     async def get_department_health(
         self,
         state: State,

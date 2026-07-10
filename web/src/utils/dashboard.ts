@@ -50,10 +50,7 @@ export function computeMetricCards(
   budget: BudgetConfig | null,
 ): DashboardMetricCardData[] {
   const spendTrend = computeSpendTrend(overview.cost_7d_trend)
-  const outcomes = overview.task_outcomes
-  const failed = outcomes['failed'] ?? 0
-  const succeeded = outcomes['succeeded'] ?? 0
-  const empty = outcomes['empty'] ?? 0
+  const { succeeded, empty, failed } = overview.task_outcomes
 
   return [
     {
@@ -79,9 +76,9 @@ export function computeMetricCards(
       subText: `${Math.round(overview.budget_used_percent)}% of budget`,
     },
     {
-      // Replaces the old bare "in review" tile: an honest outcome breakdown
-      // that surfaces failed and empty runs distinctly. The empty-run count
-      // is flagged so a run that produced nothing is never counted as done.
+      // Outcome breakdown surfaces failed and empty runs distinctly. The
+      // empty-run count is flagged so a run that produced nothing is never
+      // counted as a completion.
       label: 'FAILED RUNS',
       value: failed,
       subText: `${succeeded} succeeded, ${empty} produced nothing`,

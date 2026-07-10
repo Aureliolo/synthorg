@@ -19,6 +19,7 @@ from synthorg.api.controllers.analytics._overview_trends import (
 )
 from synthorg.api.controllers.analytics._shared import (
     OverviewMetrics,
+    TaskOutcomeCounts,
     _resolve_agent_counts,
     _resolve_budget_context,
 )
@@ -42,8 +43,12 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.state import performance_tracker_of
-from synthorg.observability import get_logger
-from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.analytics import (
+    ANALYTICS_OVERVIEW_OUTCOME_DEGRADED,
+    ANALYTICS_OVERVIEW_QUERIED,
+    ANALYTICS_OVERVIEW_TREND_SOURCE_DEGRADED,
+)
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.state import persistence_of
@@ -51,11 +56,6 @@ from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
-# Statuses for which a run has finished and a truthful outcome exists. Mirrors
-# ``approvals/_enrichment._TERMINAL_RUN_STATES``.
-_TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
-    {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
-)
 # Bounds concurrent artifact reads for the outcome breakdown so a large task
 # set cannot fan out one DB read per task at once. Internal safety cap.
 _MAX_CONCURRENT_ARTIFACT_READS: Final[int] = 16
@@ -63,35 +63,37 @@ _MAX_CONCURRENT_ARTIFACT_READS: Final[int] = 16
 
 async def _resolve_task_outcomes(
     app_state: AppState, all_tasks: Sequence[Task]
-) -> dict[str, int]:
+) -> TaskOutcomeCounts:
     """Break terminal tasks into succeeded / empty / failed outcome counts.
 
     ``failed`` comes straight from the task status; ``empty`` vs ``succeeded``
     is derived from the real produced-artifact count via
     :func:`derive_run_outcome`. When the artifact count is unavailable (no
     backend or a read fault) a finished run is credited as succeeded rather
-    than fabricating an empty outcome.
+    than fabricating an empty outcome, and the degradation is logged. This is
+    a per-request display value, never persisted, so an optimistic credit here
+    (unlike the observer's persisted metric record) cannot corrupt history.
 
     Returns:
-        Counts keyed by :class:`RunOutcome` value (always all three keys).
+        The outcome breakdown across terminal tasks.
     """
-    counts = {
-        RunOutcome.SUCCEEDED.value: 0,
-        RunOutcome.EMPTY.value: 0,
-        RunOutcome.FAILED.value: sum(
-            1 for t in all_tasks if t.status == TaskStatus.FAILED
-        ),
-    }
+    failed = sum(1 for t in all_tasks if t.status == TaskStatus.FAILED)
     reviewable = [
         t for t in all_tasks if t.status in (TaskStatus.IN_REVIEW, TaskStatus.COMPLETED)
     ]
     if not reviewable:
-        return counts
+        return TaskOutcomeCounts(failed=failed)
     try:
         backend = persistence_of(app_state)
-    except ServiceUnavailableError:
-        counts[RunOutcome.SUCCEEDED.value] += len(reviewable)
-        return counts
+    except ServiceUnavailableError as exc:
+        logger.warning(
+            ANALYTICS_OVERVIEW_OUTCOME_DEGRADED,
+            reason="persistence_unavailable",
+            reviewable=len(reviewable),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return TaskOutcomeCounts(succeeded=len(reviewable), failed=failed)
 
     sem = asyncio.Semaphore(_MAX_CONCURRENT_ARTIFACT_READS)
 
@@ -103,6 +105,13 @@ async def _resolve_task_outcomes(
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
+                logger.warning(
+                    ANALYTICS_OVERVIEW_OUTCOME_DEGRADED,
+                    reason="artifact_count_unavailable",
+                    task_id=str(task.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 # Unknown artifact count: credit the finished run as succeeded
                 # rather than fabricate an empty outcome.
                 return RunOutcome.SUCCEEDED
@@ -112,9 +121,9 @@ async def _resolve_task_outcomes(
 
     async with asyncio.TaskGroup() as tg:
         futures = [tg.create_task(_classify(task)) for task in reviewable]
-    for future in futures:
-        counts[future.result().value] += 1
-    return counts
+    empty = sum(1 for f in futures if f.result() == RunOutcome.EMPTY)
+    succeeded = len(reviewable) - empty
+    return TaskOutcomeCounts(succeeded=succeeded, empty=empty, failed=failed)
 
 
 def _log_trend_source_unavailable(source: str) -> None:
@@ -123,7 +132,7 @@ def _log_trend_source_unavailable(source: str) -> None:
     Keeps a flat-zero sparkline distinguishable from genuine zero activity.
     """
     logger.debug(
-        ANALYTICS_OVERVIEW_QUERIED,
+        ANALYTICS_OVERVIEW_TREND_SOURCE_DEGRADED,
         source=source,
         note="trend source unavailable; sparkline degrades to empty",
     )

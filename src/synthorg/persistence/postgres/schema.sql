@@ -153,12 +153,12 @@ CREATE TABLE task_metrics (
     task_type TEXT NOT NULL,
     completed_at TIMESTAMPTZ NOT NULL,
     is_success BOOLEAN NOT NULL,
-    duration_seconds DOUBLE PRECISION NOT NULL,
-    cost DOUBLE PRECISION NOT NULL,
+    duration_seconds DOUBLE PRECISION,
+    cost DOUBLE PRECISION,
     currency TEXT NOT NULL DEFAULT 'USD'
     CHECK (currency ~ '^[A-Z]{3}$'),
-    turns_used BIGINT NOT NULL,
-    tokens_used BIGINT NOT NULL,
+    turns_used BIGINT,
+    tokens_used BIGINT,
     quality_score DOUBLE PRECISION,
     complexity TEXT NOT NULL
 );

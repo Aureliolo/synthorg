@@ -72,6 +72,12 @@
       "ratio": 1.0,
       "tier": "orchestrator"
     },
+    "src/synthorg/api/controllers/_department_health.py": {
+      "cap": 600,
+      "loc": 483,
+      "ratio": 0.805,
+      "tier": "service"
+    },
     "src/synthorg/api/controllers/activities/_shared.py": {
       "cap": 500,
       "loc": 497,
@@ -230,8 +236,8 @@
     },
     "src/synthorg/api/lifecycle_runner_support.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 439,
+      "ratio": 0.878,
       "tier": "code"
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
@@ -704,8 +710,8 @@
     },
     "src/synthorg/hr/performance/tracker.py": {
       "cap": 1100,
-      "loc": 1083,
-      "ratio": 0.985,
+      "loc": 1087,
+      "ratio": 0.988,
       "tier": "complex_service"
     },
     "src/synthorg/hr/promotion/service.py": {
@@ -1406,8 +1412,8 @@
     },
     "src/synthorg/settings/definitions/hr.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 419,
+      "ratio": 0.838,
       "tier": "code"
     },
     "src/synthorg/settings/definitions/tools.py": {
@@ -1554,7 +1560,7 @@
     "synthorg.api.guards": 122,
     "synthorg.api.pagination": 63,
     "synthorg.api.path_params": 84,
-    "synthorg.api.rate_limits": 94,
+    "synthorg.api.rate_limits": 95,
     "synthorg.api.state": 310,
     "synthorg.api.state_slices": 34,
     "synthorg.api.ws_models": 21,
@@ -1809,7 +1815,7 @@
     },
     "synthorg.hr.performance.tracker:PerformanceTracker": {
       "lcom4": 6,
-      "loc": 974
+      "loc": 978
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,

@@ -153,7 +153,7 @@ describe('computeMetricCards', () => {
     expect(failedCard!.subText).toContain('2 produced nothing')
   })
 
-  it('no longer surfaces a bare In Review card', () => {
+  it('does not include a bare In Review card', () => {
     const cards = computeMetricCards(makeOverview(), makeBudgetConfig())
     expect(cards.find((c) => c.label === 'IN REVIEW')).toBeUndefined()
   })

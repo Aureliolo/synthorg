@@ -39,6 +39,29 @@ logger = get_logger(__name__)
 _DEFAULT_HORIZON_DAYS: Final[int] = 14
 
 
+class TaskOutcomeCounts(BaseModel):
+    """Terminal-run outcome breakdown: succeeded / empty / failed counts.
+
+    A closed three-field shape rather than a bare ``dict[str, int]`` so the
+    dashboard sees named, always-present counts (and the generated TS type
+    carries real field names), and a consumer cannot silently miss an outcome
+    bucket. Keys mirror :class:`~synthorg.core.run_outcome.RunOutcome`.
+
+    Attributes:
+        succeeded: Runs that genuinely produced output.
+        empty: Finished runs that produced nothing.
+        failed: Failed runs.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    succeeded: int = Field(default=0, ge=0, description="Runs that produced output")
+    empty: int = Field(
+        default=0, ge=0, description="Finished runs that produced nothing"
+    )
+    failed: int = Field(default=0, ge=0, description="Failed runs")
+
+
 class OverviewMetrics(BaseModel):
     """High-level analytics overview.
 
@@ -65,13 +88,13 @@ class OverviewMetrics(BaseModel):
     tasks_by_status: dict[str, int] = Field(
         description="Task counts by status (keys are TaskStatus values)",
     )
-    task_outcomes: dict[str, int] = Field(
-        default_factory=dict,
+    task_outcomes: TaskOutcomeCounts = Field(
+        default_factory=TaskOutcomeCounts,
         description=(
-            "Terminal-run outcome breakdown (keys are RunOutcome values:"
-            " succeeded / empty / failed), derived from real artifact counts"
-            " so failed and empty runs surface distinctly on the dashboard"
-            " instead of hiding behind a generic in-review count."
+            "Terminal-run outcome breakdown (succeeded / empty / failed),"
+            " derived from real artifact counts so failed and empty runs"
+            " surface distinctly on the dashboard instead of hiding behind a"
+            " generic in-review count."
         ),
     )
     total_agents: int = Field(ge=0, description="Number of configured agents")

@@ -33,7 +33,7 @@ from synthorg.core.artifact import Artifact
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.project import Project
-from synthorg.core.run_outcome import derive_run_outcome
+from synthorg.core.run_outcome import TERMINAL_RUN_STATES, derive_run_outcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.state import EngineStateSlice
@@ -142,14 +142,6 @@ def _unique_task_ids(items: Sequence[ApprovalItem]) -> list[str]:
     return list(seen)
 
 
-# Task statuses for which a run has finished and a truthful outcome exists;
-# a run summary is attached only for these, so a live or not-yet-started task
-# never shows a produced-output badge.
-_TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
-    {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
-)
-
-
 async def _resolve_id[T](
     id_: str,
     fetch: Callable[[str], Awaitable[T]],
@@ -228,7 +220,7 @@ def _build_run_summary(
     """Build the run summary for a finished task, or ``None`` when it is not.
 
     ``produced`` is ``None`` when the artifact listing was unavailable. A
-    summary is built only for a finished run (:data:`_TERMINAL_RUN_STATES`);
+    summary is built only for a finished run (:data:`TERMINAL_RUN_STATES`);
     for a completed/in-review run whose artifacts could not be listed, the
     outcome is unknown (``None``) rather than a fabricated EMPTY. A FAILED
     run is failed regardless of the artifact count, so it is summarised even
@@ -237,7 +229,7 @@ def _build_run_summary(
     Returns:
         The run summary, or ``None`` when no truthful outcome can be shown.
     """
-    if task.status not in _TERMINAL_RUN_STATES:
+    if task.status not in TERMINAL_RUN_STATES:
         return None
     if produced is None and task.status != TaskStatus.FAILED:
         return None

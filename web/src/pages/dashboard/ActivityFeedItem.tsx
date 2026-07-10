@@ -85,7 +85,14 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
             'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-card',
             dotColor,
           )}
-          aria-label={`Action: ${activity.action_type.replace(/[._]/g, ' ')}`}
+          // With a run outcome the dot's colour mirrors the outcome and the
+          // RunOutcomeBadge already supplies the accessible name, so the dot
+          // is decorative; otherwise it announces the action type.
+          {...(activity.run_outcome
+            ? { 'aria-hidden': true }
+            : {
+                'aria-label': `Action: ${activity.action_type.replace(/[._]/g, ' ')}`,
+              })}
         />
       </div>
       <div className="min-w-0 flex-1">

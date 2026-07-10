@@ -119,19 +119,32 @@ class MultiWindowStrategy:
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
             avg_quality = sum(scored) / len(scored) if scored else None
-            window_currency = assert_currencies_match(
-                (r.currency for r in records),
-                project_id=NotBlankStr(window_label),
-            )
-            # Monetary accumulation goes through ``math.fsum`` so it
-            # matches the canonical aggregator at
-            # ``synthorg.budget._aggregation.sum_cost`` and stays exact
-            # across many small-cost records. Bare ``sum()`` accumulates
-            # 1-3 ULP error and would silently degrade
-            # ``avg_cost_per_task`` in long-running windows.
-            avg_cost = math.fsum(r.cost for r in records) / count
-            avg_time = sum(r.duration_seconds for r in records) / count
-            avg_tokens = sum(r.tokens_used for r in records) / count
+            # Telemetry (cost / duration / tokens) is per-record optional: a
+            # record sourced from a task state transition has no measured
+            # value. Averaging over present values only keeps an unmeasured
+            # run from being counted as a genuine zero (which would score a
+            # perfect efficiency); a window with no measured telemetry leaves
+            # the aggregate ``None`` so the efficiency pillar reads it as
+            # insufficient data rather than perfect.
+            costs = [r.cost for r in records if r.cost is not None]
+            if costs:
+                window_currency = assert_currencies_match(
+                    (r.currency for r in records if r.cost is not None),
+                    project_id=NotBlankStr(window_label),
+                )
+                # Monetary accumulation goes through ``math.fsum`` so it
+                # matches the canonical aggregator at
+                # ``synthorg.budget._aggregation.sum_cost`` and stays exact
+                # across many small-cost records. Bare ``sum()`` accumulates
+                # 1-3 ULP error and would silently degrade
+                # ``avg_cost_per_task`` in long-running windows.
+                avg_cost = math.fsum(costs) / len(costs)
+            durations = [
+                r.duration_seconds for r in records if r.duration_seconds is not None
+            ]
+            avg_time = sum(durations) / len(durations) if durations else None
+            token_counts = [r.tokens_used for r in records if r.tokens_used is not None]
+            avg_tokens = sum(token_counts) / len(token_counts) if token_counts else None
             success_rate = completed / count
 
         return WindowMetrics(

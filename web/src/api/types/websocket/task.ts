@@ -1,5 +1,7 @@
 /** Task, agent, company, and department WebSocket payload interfaces. */
 
+import type { RunOutcome } from '../enums'
+
 export interface WsTaskCreatedPayload {
   task_id: string
   title: string
@@ -19,6 +21,9 @@ export interface WsTaskStatusChangedPayload {
   task_id: string
   from_status?: string | null
   to_status: string
+  assigned_to?: string | null
+  description?: string | null
+  run_outcome?: RunOutcome | null
 }
 
 export interface WsTaskAssignedPayload {

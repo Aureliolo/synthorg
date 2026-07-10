@@ -20,6 +20,7 @@ PERF_SNAPSHOT_COMPUTED: Final[str] = "perf.snapshot.computed"
 PERF_SNAPSHOT_FAILED: Final[str] = "perf.snapshot.failed"
 PERF_TREND_COMPUTED: Final[str] = "perf.trend.computed"
 PERF_WINDOW_INSUFFICIENT_DATA: Final[str] = "perf.window.insufficient_data"
+PERF_TASK_OUTCOMES_TRACKER_UNWIRED: Final[str] = "perf.task_outcomes.tracker_unwired"
 
 # ── LLM calibration sampling ─────────────────────────────────
 PERF_LLM_SAMPLE_STARTED: Final[str] = "perf.llm_sample.started"

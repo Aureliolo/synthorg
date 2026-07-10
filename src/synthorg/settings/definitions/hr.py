@@ -442,6 +442,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=False,
         min_value=1,
+        max_value=365,
     )
 )
 
@@ -461,5 +462,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=False,
         min_value=1,
+        max_value=1000,
     )
 )

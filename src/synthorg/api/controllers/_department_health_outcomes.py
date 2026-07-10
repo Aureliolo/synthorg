@@ -15,25 +15,29 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.observability.events.performance import (
+    PERF_TASK_OUTCOMES_TRACKER_UNWIRED,
+)
 
 logger = get_logger(__name__)
 
 
 def health_from_outcomes(
     total_runs: int, success_count: int, min_runs: int
-) -> tuple[float | None, float | None]:
-    """Derive ``(success_rate, health_score)`` with an explicit no-data gate.
+) -> float | None:
+    """Derive the task-outcome success rate with an explicit no-data gate.
 
-    Returns ``(None, None)`` below ``min_runs`` so a department without enough
-    activity reads as no-data rather than a fabricated full-health number.
+    Returns ``None`` below ``min_runs`` so a department without enough activity
+    reads as no-data rather than a fabricated full-health number. The 0-100
+    ``health_score`` is derived from this rate as a ``computed_field`` on
+    :class:`DepartmentHealth`.
 
     Returns:
-        ``(success_rate 0-1, health_score 0-100)`` or ``(None, None)``.
+        ``success_rate`` in ``[0, 1]``, or ``None`` below the gate.
     """
     if total_runs <= 0 or total_runs < min_runs:
-        return None, None
-    rate = success_count / total_runs
-    return round(rate, 4), round(rate * 100, 2)
+        return None
+    return round(success_count / total_runs, 4)
 
 
 def resolve_task_outcomes(
@@ -51,29 +55,42 @@ def resolve_task_outcomes(
     non-success).
 
     Returns:
-        ``(total_runs, success_count)``; ``(0, 0)`` when the performance
-        tracker is unwired or the query fails.
+        ``(total_runs, success_count)``. ``(0, 0)`` means no signal, from one
+        of three distinct causes: no department agents (silent), the
+        performance tracker is unwired (logged at DEBUG), or every agent's
+        query failed (each logged at WARNING). A fault reading one agent is
+        caught per-agent, so the real counts from the agents that were
+        readable are still returned rather than discarded.
     """
     tracker = app_state.slice(HrStateSlice).performance_tracker
-    if tracker is None or not agent_ids:
-        return 0, 0
-    try:
-        total = 0
-        success = 0
-        for agent_id in agent_ids:
-            for record in tracker.get_task_metrics(
-                agent_id=NotBlankStr(agent_id), since=window_start
-            ):
-                total += 1
-                if record.is_success:
-                    success += 1
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_REQUEST_ERROR,
+    if tracker is None:
+        logger.debug(
+            PERF_TASK_OUTCOMES_TRACKER_UNWIRED,
             endpoint="departments.health.task_outcomes",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            agent_count=len(agent_ids),
         )
         return 0, 0
+    if not agent_ids:
+        return 0, 0
+    total = 0
+    success = 0
+    for agent_id in agent_ids:
+        try:
+            metrics = tracker.get_task_metrics(
+                agent_id=NotBlankStr(agent_id), since=window_start
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="departments.health.task_outcomes",
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            continue
+        for record in metrics:
+            total += 1
+            if record.is_success:
+                success += 1
     return total, success

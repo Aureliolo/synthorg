@@ -5,13 +5,16 @@ succeeded / empty / failed from real artifact counts, so the dashboard tile
 surfaces failed and empty runs distinctly instead of a generic in-review count.
 """
 
+from typing import override
+
 import pytest
 
+from synthorg.api.controllers.analytics._shared import TaskOutcomeCounts
 from synthorg.api.controllers.analytics.overview import _resolve_task_outcomes
 from synthorg.core.artifact import Artifact, ArtifactType
-from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from tests._shared import as_uuid, make_app_state
 from tests.unit.api.fakes import FakeArtifactRepository
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -54,11 +57,7 @@ async def test_resolve_task_outcomes_classifies_terminal_runs() -> None:
     app_state = make_app_state(persistence=backend)
     outcomes = await _resolve_task_outcomes(app_state, (failed, empty, ok, running))
 
-    assert outcomes == {
-        RunOutcome.SUCCEEDED.value: 1,
-        RunOutcome.EMPTY.value: 1,
-        RunOutcome.FAILED.value: 1,
-    }
+    assert outcomes == TaskOutcomeCounts(succeeded=1, empty=1, failed=1)
 
 
 @pytest.mark.unit
@@ -68,8 +67,35 @@ async def test_resolve_task_outcomes_credits_finished_run_without_backend() -> N
     app_state = make_app_state(persistence=None)
     ok = _task("ok", TaskStatus.COMPLETED)
     outcomes = await _resolve_task_outcomes(app_state, (ok,))
-    assert outcomes[RunOutcome.SUCCEEDED.value] == 1
-    assert outcomes[RunOutcome.EMPTY.value] == 0
+    assert outcomes.succeeded == 1
+    assert outcomes.empty == 0
+
+
+@pytest.mark.unit
+async def test_resolve_task_outcomes_credits_succeeded_on_artifact_fault() -> None:
+    # A per-task artifact-read fault mid-classification credits that finished
+    # run as succeeded (display-only, per-request) rather than crashing the
+    # overview; the resolver must still return counts for the whole set.
+    class _RaisingArtifacts(FakeArtifactRepository):
+        @override
+        async def query(
+            self,
+            filter_spec: ArtifactFilterSpec,
+            *,
+            limit: int = 100,
+            offset: int = 0,
+        ) -> tuple[Artifact, ...]:
+            msg = "artifact store down"
+            raise RuntimeError(msg)
+
+    backend = FakePersistenceBackend()
+    backend.mark_connected()
+    backend._artifacts = _RaisingArtifacts()
+    outcomes = await _resolve_task_outcomes(
+        app_state=make_app_state(persistence=backend),
+        all_tasks=(_task("ok", TaskStatus.COMPLETED),),
+    )
+    assert outcomes == TaskOutcomeCounts(succeeded=1)
 
 
 @pytest.mark.unit
@@ -78,13 +104,10 @@ async def test_resolve_task_outcomes_empty_when_no_terminal_tasks() -> None:
     outcomes = await _resolve_task_outcomes(
         app_state, (_task("running", TaskStatus.IN_PROGRESS),)
     )
-    assert outcomes == {
-        RunOutcome.SUCCEEDED.value: 0,
-        RunOutcome.EMPTY.value: 0,
-        RunOutcome.FAILED.value: 0,
-    }
+    assert outcomes == TaskOutcomeCounts()
 
 
+@pytest.mark.unit
 def test_fake_artifact_repository_available() -> None:
     # Guard: the resolver relies on the backend exposing an artifact repo.
     assert isinstance(FakePersistenceBackend().artifacts, FakeArtifactRepository)

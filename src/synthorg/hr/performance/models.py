@@ -39,11 +39,14 @@ class TaskMetricRecord(BaseModel):
         started_at: When the task started (None if not tracked).
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
-        duration_seconds: Wall-clock execution time.
-        cost: Numeric cost of the task, denominated in ``currency``.
+        duration_seconds: Wall-clock execution time, None when not measured
+            (e.g. a record sourced from a task state transition, which
+            carries reliability but no execution telemetry).
+        cost: Numeric cost of the task, denominated in ``currency``; None
+            when not measured.
         currency: ISO 4217 currency code for ``cost``.
-        turns_used: Number of LLM turns used.
-        tokens_used: Total tokens consumed.
+        turns_used: Number of LLM turns used, None when not measured.
+        tokens_used: Total tokens consumed, None when not measured.
         quality_score: Quality score (0.0-10.0), None if not scored.
         complexity: Estimated task complexity.
     """
@@ -63,19 +66,29 @@ class TaskMetricRecord(BaseModel):
     )
     completed_at: AwareDatetime = Field(description="When the task was completed")
     is_success: bool = Field(description="Whether the task completed successfully")
-    duration_seconds: float = Field(
+    duration_seconds: float | None = Field(
+        default=None,
         ge=0.0,
-        description="Wall-clock execution time",
+        description="Wall-clock execution time; None when not measured",
     )
-    cost: float = Field(
+    cost: float | None = Field(
+        default=None,
         ge=0.0,
-        description="Numeric cost of the task, denominated in ``currency``",
+        description="Numeric cost of the task in ``currency``; None when not measured",
     )
     currency: CurrencyCode = Field(
         description="ISO 4217 currency code for ``cost``",
     )
-    turns_used: int = Field(ge=0, description="Number of LLM turns used")
-    tokens_used: int = Field(ge=0, description="Total tokens consumed")
+    turns_used: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of LLM turns used; None when not measured",
+    )
+    tokens_used: int | None = Field(
+        default=None,
+        ge=0,
+        description="Total tokens consumed; None when not measured",
+    )
     quality_score: float | None = Field(
         default=None,
         ge=0.0,

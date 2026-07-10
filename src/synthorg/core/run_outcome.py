@@ -14,6 +14,16 @@ from typing import Final
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.task_enums import Stakes, TaskStatus
 
+# Statuses for which a run has finished and a truthful outcome exists. This is a
+# run-outcome concept (a finished run to judge), distinct from the task FSM's
+# "terminal" states in ``task_enums``: FAILED is included here (its run is over)
+# though the FSM allows reassigning it, and CANCELLED/REJECTED are excluded
+# (they never ran, so there is no outcome to show). The single source of truth
+# for the review queue, the live activity feed, and the overview breakdown.
+TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
+)
+
 
 class RunOutcome(StrEnum):
     """Truthful outcome of a task run, for failure-aware review surfaces.

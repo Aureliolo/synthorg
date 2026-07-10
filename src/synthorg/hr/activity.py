@@ -136,8 +136,9 @@ def _task_metric_to_activity(
     A successful run yields ``TASK_COMPLETED``; an unsuccessful run (failed
     or empty) yields ``TASK_FAILED`` so the feed surfaces the failure
     distinctly rather than as a generic completion. The cost/duration suffix
-    is omitted when both are zero (a transition-sourced record carries no
-    execution telemetry), keeping the description truthful.
+    is omitted when the telemetry is unmeasured (a transition-sourced record
+    carries a reliability outcome but no cost/latency), keeping the
+    description truthful.
 
     Returns:
         Result of type ``ActivityEvent``.
@@ -149,9 +150,10 @@ def _task_metric_to_activity(
         else ActivityEventType.TASK_FAILED
     )
     desc = f"Task {record.task_id} {status}"
-    if record.duration_seconds > 0 or record.cost > 0:
-        # lint-allow: currency-aggregation -- one record's own cost, single
-        # currency by construction; not a cross-record/currency aggregation.
+    if record.duration_seconds is not None and record.cost is not None:
+        # lint-allow: currency-aggregation -- formats this one record's own
+        # cost in the resolved display ``currency`` (not ``record.currency``);
+        # a single record, so no cross-record/currency aggregation occurs.
         cost_detail = format_cost_detail(record.cost, currency)
         desc += f" ({record.duration_seconds:.1f}s, {cost_detail})"
     return ActivityEvent(

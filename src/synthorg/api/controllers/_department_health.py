@@ -43,10 +43,12 @@ from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
 
-# Fallback window when a caller does not pass the settings-resolved value
-# (the controller always does; this covers direct/test callers). Mirrors the
-# ``hr.department_health_window_days`` setting default.
+# Fallbacks when a caller does not pass the settings-resolved values (the
+# controller always does; these cover direct/test callers). Each mirrors its
+# ``hr.department_health_*`` setting default so a direct caller behaves like
+# production.
 _DEFAULT_HEALTH_WINDOW_DAYS: Final[int] = 7
+_DEFAULT_HEALTH_MIN_RUNS: Final[int] = 3
 
 
 class DepartmentHealth(BaseModel):
@@ -60,6 +62,11 @@ class DepartmentHealth(BaseModel):
         department_cost_7d: Total cost in the last 7 days.
         cost_trend: Daily spend sparkline for the last 7 days.
         collaboration_score: Mean collaboration score across agents.
+        total_runs: Terminal task runs by this department in the health window.
+        task_success_rate: Fraction of terminal runs that produced output
+            (0-1), or None below the minimum-runs gate.
+        health_score: Derived (computed_field) from task_success_rate as a
+            0-100 score; None when task_success_rate is None (no-data).
         utilization_percent: Derived (computed_field) from
             active_agent_count / agent_count.
         currency: ISO 4217 currency code.
@@ -108,17 +115,20 @@ class DepartmentHealth(BaseModel):
             " minimum-runs gate (no honest signal yet)."
         ),
     )
-    health_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=100.0,
-        description=(
-            "Real department health: task-outcome success rate as a 0-100"
-            " score. None when there is insufficient activity to judge, which"
-            " the dashboard renders as an explicit no-data state rather than a"
-            " misleading full-health number."
-        ),
-    )
+
+    @computed_field
+    @property
+    def health_score(self) -> float | None:
+        """Real department health: task-outcome success rate as a 0-100 score.
+
+        Derived from ``task_success_rate`` so the two never drift. ``None``
+        when there is insufficient activity to judge (``task_success_rate`` is
+        ``None``), which the dashboard renders as an explicit no-data state
+        rather than a misleading full-health number.
+        """
+        if self.task_success_rate is None:
+            return None
+        return round(self.task_success_rate * 100, 2)
 
     @computed_field
     @property
@@ -212,11 +222,9 @@ async def _resolve_snapshots(
     """
     if not agent_ids:
         return ()
-    # Performance tracker is optional: ``assemble_department_health``
-    # only catches ``ExceptionGroup`` for snapshot resolution, so a
-    # ``ServiceUnavailableError`` from ``require_service`` would abort
-    # the endpoint instead of returning the documented empty-snapshot
-    # fallback.  Treat an unwired tracker as "no snapshots available".
+    # Performance tracker is optional: treat an unwired tracker as "no
+    # snapshots available" here rather than raising, so a missing tracker
+    # yields the documented empty-snapshot fallback.
     tracker = app_state.slice(HrStateSlice).performance_tracker
     if tracker is None:
         return ()
@@ -405,7 +413,7 @@ def _build_health_from_data(  # noqa: PLR0913
     *,
     total_runs: int = 0,
     success_count: int = 0,
-    min_runs: int = 1,
+    min_runs: int = _DEFAULT_HEALTH_MIN_RUNS,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results.
@@ -425,9 +433,7 @@ def _build_health_from_data(  # noqa: PLR0913
         now,
         dept_name=NotBlankStr(dept_name),
     )
-    success_rate, health_score = health_from_outcomes(
-        total_runs, success_count, min_runs
-    )
+    success_rate = health_from_outcomes(total_runs, success_count, min_runs)
     return DepartmentHealth(
         department_name=dept_name,
         agent_count=agent_count,
@@ -442,7 +448,6 @@ def _build_health_from_data(  # noqa: PLR0913
         ),
         total_runs=total_runs,
         task_success_rate=success_rate,
-        health_score=health_score,
         currency=aggregate.currency if aggregate.currency is not None else currency,
     )
 
@@ -454,7 +459,7 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
     *,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     health_window_days: int = _DEFAULT_HEALTH_WINDOW_DAYS,
-    health_min_runs: int = 1,
+    health_min_runs: int = _DEFAULT_HEALTH_MIN_RUNS,
 ) -> DepartmentHealth:
     """Aggregate all data sources into a DepartmentHealth response.
 
@@ -519,23 +524,26 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
             endpoint="departments.health",
             department=dept_name,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 
     try:
         snapshots = await _resolve_snapshots(app_state, t_ids.result())
-    except ExceptionGroup as eg:
-        fatal = eg.subgroup((MemoryError, RecursionError))
-        if fatal is not None:
-            raise fatal from eg
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
         # Performance snapshots are optional (``avg_performance_score``
         # is nullable) -- log and fall back to an empty tuple so callers
-        # still get costs + active-agent counts.
+        # still get costs + active-agent counts. ``_resolve_snapshots`` is a
+        # plain await (not a TaskGroup), so a bare exception (e.g. a batch-
+        # size ValueError from a large department) arrives unwrapped and must
+        # be caught directly rather than as an ExceptionGroup.
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health.snapshots",
             department=dept_name,
-            error_count=len(eg.exceptions),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         snapshots = ()
 

@@ -229,7 +229,7 @@ def _wire_task_activity_observer(
 
     Publishes every persisted task transition to the ``tasks`` WS channel and
     records a terminal run's outcome as a task metric, so the dashboard Live
-    Activity feed and org-health derive from real execution. Skips silently
+    Activity feed and org-health derive from real execution. Logs and skips
     when a prerequisite (task engine / channels plugin / performance tracker)
     is absent; the feed then simply lacks live task rows rather than the boot
     failing. Idempotent: never double-registers.
@@ -246,9 +246,25 @@ def _wire_task_activity_observer(
     )
 
     if task_engine is None or not isinstance(channels_plugin, ChannelsPlugin):
+        logger.warning(
+            API_APP_STARTUP,
+            component="task_activity_observer",
+            note=(
+                "task engine or channels plugin absent; skipping observer "
+                "wiring (dashboard live-activity feed lacks live task rows)"
+            ),
+        )
         return
     tracker = app_state.slice(HrStateSlice).performance_tracker
     if tracker is None:
+        logger.warning(
+            API_APP_STARTUP,
+            component="task_activity_observer",
+            note=(
+                "performance tracker absent; skipping observer wiring "
+                "(org health and live-activity task rows lack real data)"
+            ),
+        )
         return
     if any(
         isinstance(o, TaskActivityObserver)
@@ -265,6 +281,7 @@ def _wire_task_activity_observer(
         record_metric=tracker.record_task_metric,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
+    logger.info(API_SERVICE_AUTO_WIRED, service="task_activity_observer")
 
 
 def _wire_workflow_execution_service(

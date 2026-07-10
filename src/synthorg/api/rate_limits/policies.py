@@ -139,6 +139,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "departments.create": (10, 60),
     "departments.delete": (5, 60),
     "departments.delete_ceremony_policy": (10, 60),
+    "departments.health": (30, 60),
     "departments.reorder_agents": (30, 60),
     "departments.update": (20, 60),
     "departments.update_ceremony_policy": (20, 60),
