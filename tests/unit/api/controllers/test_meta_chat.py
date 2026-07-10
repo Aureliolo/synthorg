@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
-from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse
+from synthorg.meta.chief_of_staff.models import ChatQuery, ChatResponse, CitedRecord
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -20,7 +20,7 @@ from synthorg.meta.models import (
 from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.state import MetaStateSlice
 from synthorg.settings.enums import SettingSource
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, sid
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -134,6 +134,65 @@ class TestMetaChat:
             assert str(asked_query.proposal_id) == proposal_id
             assert str(asked_query.alert_id) == alert_id
             assert asked_snapshot is expected_snapshot
+        finally:
+            app_state.swap_slice(original_slice)
+
+    async def test_payload_serialises_cited_records(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """The response flattens ``cited_records`` into typed JSON objects."""
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="Working on the platform revamp.",
+            sources=("tasks", "projects"),
+            cited_records=(
+                CitedRecord(
+                    kind="task",
+                    record_id=sid("task-1"),
+                    label="Fix login",
+                    status="in_progress",
+                ),
+                CitedRecord(
+                    kind="project",
+                    record_id=sid("proj-1"),
+                    label="Platform Revamp",
+                    status="active",
+                ),
+            ),
+            confidence=0.9,
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        app_state = async_test_client.app.state.app_state
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+        )
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={"question": "What is the org working on?"},
+            )
+            assert resp.status_code == 200
+            cited = resp.json()["data"]["cited_records"]
+            assert cited == [
+                {
+                    "kind": "task",
+                    "record_id": sid("task-1"),
+                    "label": "Fix login",
+                    "status": "in_progress",
+                },
+                {
+                    "kind": "project",
+                    "record_id": sid("proj-1"),
+                    "label": "Platform Revamp",
+                    "status": "active",
+                },
+            ]
         finally:
             app_state.swap_slice(original_slice)
 

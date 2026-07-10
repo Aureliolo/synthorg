@@ -204,22 +204,38 @@ Return a structured analysis in plain language.
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
 # Free-form chat query prompt. SYSTEM carries the assistant framing +
-# directive; USER carries the fenced snapshot, recent context, and question.
+# directive; USER carries the fenced snapshot, org-state block, recent
+# context, and question.
 CHAT_QUERY_SYSTEM = """\
-You are the Chief of Staff assistant. Answer questions about
-organizational signals, proposals, and alerts.
+You are the Chief of Staff assistant. Answer questions about the
+organisation's current work, signals, proposals, and alerts.
 
 ## Instructions
 
-Answer based on the data provided. If uncertain, say so.
-Be specific and cite which signals support your answer.
+Answer based on the data provided. If uncertain, say so. Be specific and
+cite which signals or records support your answer.
+
+The "Org Work In Flight" section is the authoritative record of what the
+organisation is currently doing. If it lists any tasks or active
+projects, the organisation is actively working: never describe it as
+idle, in a pre-activity state, or as having done no work. When you name
+what the org is working on, cite the specific tasks, projects, or
+approvals you rely on.
+
+If that section instead says the org-state read model is unavailable, say
+plainly that you cannot currently see task, project, or approval state,
+and do not infer idleness from its absence.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
 CHAT_QUERY_USER = """\
-## Current Org State
+## Current Org Signals
 
 {snapshot_summary}
+
+## Org Work In Flight
+
+{org_state}
 
 ## Recent Context
 

@@ -1,3 +1,4 @@
+import type { CitedRecord } from '@/api/endpoints/meta'
 import type { ExecutedToolCall } from '@/api/types'
 
 import type { ChatScopeValue } from './ChatScopePicker'
@@ -23,6 +24,7 @@ interface ChiefOfStaffAssistantMessage {
   role: 'assistant'
   content: string
   sources?: string[]
+  citedRecords?: readonly CitedRecord[] | undefined
   confidence?: number
   /** True while the reply is still receiving streamed tokens. */
   isStreaming?: boolean

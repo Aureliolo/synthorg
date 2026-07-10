@@ -150,6 +150,8 @@ src/synthorg/meta/
     alerts.py          -- ProactiveAlertService + LoggingAlertSink + PersistentAlertSink
     _capability_gate.py -- resolve_cos_autonomous_cap (persona master + per-capability live gate)
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
+    org_state.py       -- OrgStateReader + OrgStateSnapshot (real in-flight task / project / approval read model, cited_records)
+    _chat_format.py    -- Pure prompt-context formatters (snapshot / org-state / scoped-proposal), extracted from chat.py
     propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
     _intake_parking.py -- Conversational-intake parking + steering execution helpers
     _propose_parking.py -- Proposal parking + compensation mixin for the proposer
@@ -312,7 +314,7 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 ### Interactive endpoints
 
-- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`. An `alert_id` or `proposal_id` on the request scopes the answer: `alert_id` resolves through the durable alert repository and routes to `explain_alert`; `proposal_id` resolves the parked `ApprovalItem` and folds its title/description/metadata into the free-form answer (not `explain_proposal`, which needs a full `ImprovementProposal` that doesn't survive into the approval queue). Alert takes priority when both are set; a stale/unresolvable id or an unwired dependency falls back to the plain free-form path.
+- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`. An `alert_id` or `proposal_id` on the request scopes the answer: `alert_id` resolves through the durable alert repository and routes to `explain_alert`; `proposal_id` resolves the parked `ApprovalItem` and folds its title/description/metadata into the free-form answer (not `explain_proposal`, which needs a full `ImprovementProposal` that doesn't survive into the approval queue). Alert takes priority when both are set; a stale/unresolvable id or an unwired dependency falls back to the plain free-form path. Every free-form answer (plain and proposal-scoped) is grounded in a real per-request **org-state read model** (`meta/chief_of_staff/org_state.py`, built in `api/controllers/_meta_chat_org_state.py`): the in-progress / in-review tasks, active projects, and pending approvals read straight from the task, project, and approval repositories. The answer cites the specific records it drew on in the response's `cited_records` (each a typed `{kind, record_id, label, status}`), so the Chief of Staff reports what the organisation is actually working on rather than inferring idleness. When the read model is unavailable (persistence disconnected or the approval store unwired) the answer says it cannot see task/project/approval state instead of asserting idle. The per-section sample size is the live `chief_of_staff.chat_org_state_max_items_per_section` setting (the full counts are always reported); performance metrics with no active agents are marked "no measured data yet" rather than shown as zeros. The streaming variant (`POST /meta/chat/stream`) carries the same org-state grounding and `cited_records` in its terminal `complete` frame.
 
 - **Server-side idempotency (all four mutating chat endpoints):** `/meta/chat`, `/meta/chat/propose`, `/meta/chat/group`, and `/meta/chat/act` each accept an optional `Idempotency-Key` header. When present, the endpoint runs under `IdempotencyService.run_idempotent` (scopes `meta.chat` / `.propose` / `.group` / `.act`): a replay with the same key and an identical request body returns the cached response instead of re-executing, so a client retry (including the axios 429/`Retry-After` retry) never double-parks a proposal, double-acts, or duplicates a turn; the same key with a different body is a `409`. Absent the header the endpoint runs normally (no idempotency).
 
@@ -346,6 +348,7 @@ self_improvement:
   chief_of_staff:
     # Explain-only chat (POST /meta/chat).
     chat_snapshot_window_days: 7              # Trailing signal window, live-resolved per request
+    chat_org_state_max_items_per_section: 10 # Per-section org-state sample cap (tasks/projects/approvals); full counts always reported; live-resolved per request
     # Clarify-and-propose (POST /meta/chat/propose). All opt-in.
     propose_enabled: false                   # Master switch
     propose_model: example-small-001         # LLM model id

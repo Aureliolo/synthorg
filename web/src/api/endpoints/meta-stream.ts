@@ -15,6 +15,8 @@ import { sanitizeForLog } from '@/utils/logging'
 import { apiClient } from '../client'
 import type { ChatStreamRequest } from '../types'
 
+import { parseCitedRecords, type CitedRecord } from './cited-records'
+
 const log = createLogger('meta-stream')
 
 interface SseFrame {
@@ -146,6 +148,7 @@ function errorMessage(data: unknown): string {
 export interface ChatStreamResult {
   answer: string
   sources: string[]
+  citedRecords: CitedRecord[]
   confidence: number
 }
 
@@ -158,7 +161,7 @@ export interface ChatStreamCallbacks {
 function parseChatComplete(data: unknown): ChatStreamResult {
   if (!isRecord(data)) {
     log.warn('Malformed complete frame in chat stream; using empty defaults')
-    return { answer: '', sources: [], confidence: 0.5 }
+    return { answer: '', sources: [], citedRecords: [], confidence: 0.5 }
   }
   const sources = data['sources']
   return {
@@ -166,6 +169,7 @@ function parseChatComplete(data: unknown): ChatStreamResult {
     sources: Array.isArray(sources)
       ? sources.filter((s): s is string => typeof s === 'string')
       : [],
+    citedRecords: parseCitedRecords(data['cited_records']),
     confidence: typeof data['confidence'] === 'number' ? data['confidence'] : 0.5,
   }
 }

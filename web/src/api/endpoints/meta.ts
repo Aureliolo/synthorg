@@ -27,6 +27,10 @@ import {
   type PaginatedResult,
 } from '../client'
 
+import { parseCitedRecords, type CitedRecord } from './cited-records'
+
+export type { CitedRecord } from './cited-records'
+
 // Re-export the generated DTO under a domain name so callers stay insulated
 // from the generated barrel's layout; the source of truth is openapi.gen.ts.
 export type ConversationalProposeResponse = ProposeResult
@@ -176,6 +180,7 @@ export interface MetaConfig {
 export interface ChatResponse {
   answer: string
   sources: string[]
+  cited_records: CitedRecord[]
   confidence: number
 }
 
@@ -507,5 +512,8 @@ export async function postChat(
       },
     },
   )
-  return unwrap(response)
+  const result = unwrap(response)
+  // Re-validate cited_records through the shared guard so the buffered path
+  // enters the UI with the same defensively-parsed shape as the streaming one.
+  return { ...result, cited_records: parseCitedRecords(result.cited_records) }
 }

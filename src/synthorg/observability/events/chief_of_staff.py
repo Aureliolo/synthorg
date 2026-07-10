@@ -43,6 +43,7 @@ COS_MONITOR_LOOP_DIED: Final[str] = "chief_of_staff.monitor.loop_died"
 COS_CHAT_QUERY: Final[str] = "chief_of_staff.chat.query"
 COS_CHAT_RESPONSE: Final[str] = "chief_of_staff.chat.response"
 COS_CHAT_FAILED: Final[str] = "chief_of_staff.chat.failed"
+COS_ORG_STATE_READ: Final[str] = "chief_of_staff.org_state.read"
 
 # -- Clarify + propose -------------------------------------------------
 

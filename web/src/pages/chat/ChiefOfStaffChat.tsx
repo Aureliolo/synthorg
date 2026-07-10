@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
+import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
@@ -36,6 +37,21 @@ function AssistantMeta({
         <p className="mt-1 text-xs text-muted-foreground">
           Sources: {msg.sources.join(', ')}
         </p>
+      )}
+      {msg.citedRecords && msg.citedRecords.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {msg.citedRecords.map((record) => (
+            <StatusPill
+              key={`${record.kind}:${record.record_id}`}
+              tone="text-secondary"
+            >
+              <span className="capitalize font-medium">{record.kind}</span>
+              {': '}
+              <span>{record.label}</span>{' '}
+              <span className="opacity-70">({record.status})</span>
+            </StatusPill>
+          ))}
+        </div>
       )}
       {typeof msg.confidence === 'number' && (
         <p className="mt-1 text-xs text-muted-foreground">

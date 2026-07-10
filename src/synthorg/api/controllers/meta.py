@@ -14,11 +14,15 @@ from synthorg.api.controllers._chat_idempotency import (
     run_chat_idempotent,
 )
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
+from synthorg.api.controllers._meta_chat_org_state import resolve_chat_org_state
 from synthorg.api.controllers._meta_chat_requests import (
     ChatRequest,
     ConversationalProposeRequest,
 )
-from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
+from synthorg.api.controllers._meta_chat_routing import (
+    chat_answer_payload,
+    resolve_chat_answer,
+)
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.controllers._meta_proposal_helpers import (
     PROPOSAL_ACTION_TYPES,
@@ -431,19 +435,16 @@ class MetaController(Controller):
                 since=app_state.clock.now()
                 - await resolve_chat_snapshot_window(app_state),
             )
+            org_state = await resolve_chat_org_state(app_state)
             query = ChatQuery(
                 question=data.question,
                 proposal_id=data.proposal_id,
                 alert_id=data.alert_id,
             )
-            result = await resolve_chat_answer(app_state, chat_backend, query, snapshot)
-            return ApiResponse[dict[str, object]](
-                data={
-                    "answer": result.answer,
-                    "sources": list(result.sources),
-                    "confidence": result.confidence,
-                },
+            result = await resolve_chat_answer(
+                app_state, chat_backend, query, snapshot, org_state
             )
+            return ApiResponse[dict[str, object]](data=chat_answer_payload(result))
 
         dumped = await run_chat_idempotent(
             app_state,
