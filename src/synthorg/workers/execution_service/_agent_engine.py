@@ -17,9 +17,9 @@ from synthorg.core.task import (
 )
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

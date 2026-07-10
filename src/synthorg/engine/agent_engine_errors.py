@@ -19,6 +19,7 @@ from synthorg.budget.quota import DegradationAction
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -26,7 +27,6 @@ from synthorg.engine.metrics import TaskCompletionMetrics
 from synthorg.engine.prompt import SystemPrompt, build_error_prompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import BUDGET_HARD_CEILING_HALT_STAMPED
 from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED

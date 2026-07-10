@@ -415,11 +415,14 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         # guard complete_review applies, so the pipeline path cannot launder a
         # FAILED task into COMPLETED via the gate chain.
         if task.status == TaskStatus.FAILED:
+            # Carry the pipeline's failure explanation into the rework/ack
+            # record instead of dropping it, so the audit trail and the retry
+            # reason keep the concrete reason the gate produced.
             await self._decide_failed_task(
                 task=task,
                 approved=approved,
                 decided_by=decided_by,
-                normalized_reason=None,
+                normalized_reason=transition_reason,
                 approval_id=approval_id,
             )
             return result

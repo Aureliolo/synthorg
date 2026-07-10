@@ -19,7 +19,11 @@ describe('parseAguiEvent', () => {
   })
 
   it('returns null for an unknown event type', () => {
-    expect(parseAguiEvent({ type: 'not_a_real_event', payload: {} })).toBeNull()
+    // Valid id + session_id so this exercises unknown-TYPE rejection, not the
+    // separate missing-identifier (malformed-frame) rejection.
+    expect(
+      parseAguiEvent({ id: 'evt-x', type: 'not_a_real_event', session_id: 'task-x', payload: {} }),
+    ).toBeNull()
   })
 
   it('returns null for non-object frames', () => {
