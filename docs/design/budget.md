@@ -299,6 +299,13 @@ fabricated value. The dashboard derives a provenance badge from the `source`: a 
 so fabricated data can never be mistaken for measured data. The frontier is advisory: downgrade callouts
 link to the agent settings surface rather than mutating models inline.
 
+Benchmark scores feed **only** this Pareto/quality view. Stakes-aware model routing
+does not consult them: it maps stakes to a required tier and filters by tool-calling
+(see [Providers: stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)).
+The `budget/model_tier.py` heuristic that this analyser shares is also the base
+signal the routing tier classifier builds on, so a model's Pareto tier and its
+routing tier derive from the same capability metadata.
+
 ## Quota Degradation
 
 When a provider's quota is exhausted, the framework applies the configured degradation

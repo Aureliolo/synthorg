@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Stakes
 from synthorg.core.types import NotBlankStr
 
 
@@ -100,6 +101,21 @@ class AssignmentRequest(BaseModel):
         le=1.0,
         description="Minimum score threshold for eligibility",
     )
+    low_confidence_score: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Score below which a winning fit is treated as low-confidence. The "
+            "fit is still assigned (never a hard-fail), but flagged: high/critical "
+            "stakes log an operator-facing escalation for review, low/normal only "
+            "flag. Clamped to at least min_score via effective_low_confidence_score."
+        ),
+    )
+    stakes: Stakes = Field(
+        default=Stakes.NORMAL,
+        description="Assessed stakes of the task, gating the low-confidence band",
+    )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Skill names needed for scoring",
@@ -154,6 +170,19 @@ class AssignmentRequest(BaseModel):
 
         return self
 
+    @property
+    def effective_low_confidence_score(self) -> float:
+        """The low-confidence band, clamped to at least ``min_score``.
+
+        A raised eligibility floor above the configured band collapses the
+        marginal zone (there is nothing between the two), so the band never
+        sits below the floor.
+
+        Returns:
+            ``max(low_confidence_score, min_score)``.
+        """
+        return max(self.low_confidence_score, self.min_score)
+
 
 class AssignmentResult(BaseModel):
     """Result of a task assignment operation.
@@ -164,6 +193,10 @@ class AssignmentResult(BaseModel):
         selected: The selected candidate (None if no viable agent).
         alternatives: Other candidates considered, ranked by score.
         reason: Human-readable explanation of the assignment decision.
+        low_confidence: Whether the selected candidate cleared eligibility but
+            scored below the low-confidence band (a marginal fit that was
+            assigned anyway and flagged; high/critical stakes additionally log
+            an operator-facing escalation for review).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -175,6 +208,10 @@ class AssignmentResult(BaseModel):
     selected: AssignmentCandidate | None = Field(
         default=None,
         description="Selected candidate (None if no viable agent)",
+    )
+    low_confidence: bool = Field(
+        default=False,
+        description="Selected candidate scored below the low-confidence band",
     )
     alternatives: tuple[AssignmentCandidate, ...] = Field(
         default=(),

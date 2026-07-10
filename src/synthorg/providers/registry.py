@@ -286,6 +286,17 @@ class ProviderRegistry:
             "scripted": ScriptedDriver,
         }
 
+        # Teach LiteLLM the operator's per-model prices so its model database
+        # resolves them for capability enrichment / model refresh; our cost
+        # recording reads config prices directly, so this never blocks a build.
+        # Runs before the cassette RECORD early return (which still builds real
+        # LiteLLM drivers); pure REPLAY returned above and needs no pricing.
+        from .drivers.litellm_model_info import (  # noqa: PLC0415
+            register_operator_model_pricing,
+        )
+
+        register_operator_model_pricing(providers)
+
         if cassette is not None and cassette.is_active:
             return cls._build_cassette_registry(
                 providers,

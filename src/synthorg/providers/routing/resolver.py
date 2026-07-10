@@ -11,10 +11,13 @@ Typically built via the ``from_config`` classmethod from
 immutability after construction.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 
+from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import ModelTier, model_tier_meets
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -23,6 +26,7 @@ from synthorg.observability.events.routing import (
     ROUTING_RESOLVER_BUILT,
     ROUTING_SELECTION_FAILED,
 )
+from synthorg.providers.tier_assignment.classifier import classify_model_tier
 
 from .errors import ModelResolutionError
 from .models import ResolvedModel
@@ -121,12 +125,22 @@ class ModelResolver:
         providers: dict[str, ProviderConfig],
         *,
         selector: ModelCandidateSelector | None = None,
+        tier_map: Mapping[tuple[str, str], ModelTier] | None = None,
     ) -> ModelResolver:
         """Build a resolver from a provider config dict.
+
+        Each resolved model carries its assigned routing tier and whether it is
+        tool-capable, so the stakes router can gate on both without re-reading
+        provider config. The tier is the operator / LLM-overlaid value from
+        *tier_map* when present, else the deterministic heuristic classification
+        of the model's capability metadata.
 
         Args:
             providers: Provider config dict (key = provider name).
             selector: Optional candidate selector override.
+            tier_map: Optional effective ``(provider, model_id) -> tier`` map
+                (heuristic overlaid by operator / LLM overrides). When a model
+                is absent from the map, its tier is classified heuristically.
 
         Returns:
             A new ``ModelResolver`` with all models indexed.
@@ -135,6 +149,22 @@ class ModelResolver:
 
         for provider_name, provider_config in providers.items():
             for model_config in provider_config.models:
+                mapped = (
+                    tier_map.get((provider_name, model_config.id))
+                    if tier_map is not None
+                    else None
+                )
+                if mapped is not None:
+                    tier = mapped
+                else:
+                    tier = classify_model_tier(
+                        model_config.metadata,
+                        model_id=model_config.id,
+                        total_cost_per_1k=(
+                            model_config.cost_per_1k_input
+                            + model_config.cost_per_1k_output
+                        ),
+                    ).tier
                 resolved = ResolvedModel(
                     provider_name=provider_name,
                     model_id=model_config.id,
@@ -143,6 +173,8 @@ class ModelResolver:
                     cost_per_1k_output=model_config.cost_per_1k_output,
                     max_context=model_config.max_context,
                     estimated_latency_ms=model_config.estimated_latency_ms,
+                    tier=tier,
+                    tool_capable=is_tool_capable(model_config.metadata),
                 )
                 for ref in (model_config.id, model_config.alias):
                     if ref is None:
@@ -319,6 +351,26 @@ class ModelResolver:
                 key=lambda m: m.total_cost_per_1k,
             ),
         )
+
+    def models_at_or_above_tier(
+        self,
+        required: ModelTier,
+    ) -> tuple[ResolvedModel, ...]:
+        """Return models whose assigned tier meets *required*, cheapest-first.
+
+        A model with no assigned tier is excluded: stakes routing must not
+        gamble that an untiered model is strong enough for the requirement.
+
+        Returns:
+            The qualifying models ordered by ascending total cost per 1k, so
+            the cheapest model that satisfies the tier is first.
+        """
+        qualifying = [
+            m
+            for m in self.all_models()
+            if m.tier is not None and model_tier_meets(m.tier, required)
+        ]
+        return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 
     def all_models_sorted_by_latency(self) -> tuple[ResolvedModel, ...]:
         """Return models sorted by estimated latency (ascending).

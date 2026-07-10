@@ -18,7 +18,7 @@ from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid
+from tests._shared import as_uuid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -41,6 +41,7 @@ def _resolver() -> ModelResolver:
                 cost_per_1k_output=_TIER_TOTAL_COST[tier] / 2,
                 max_context=128000,
                 estimated_latency_ms=100,
+                tier=tier,
             ),
         )
         for tier in _TIER_MODEL_IDS
@@ -77,10 +78,7 @@ def _task(stakes: Stakes) -> Task:
 async def test_stakes_aware_never_costs_more_than_flat_all_strong(
     stakes_mix: list[Stakes],
 ) -> None:
-    strategy = StakesAwareStrategy(
-        benchmark_provider=FakeTierBenchmarkScoreProvider(),
-        resolver=_resolver(),
-    )
+    strategy = StakesAwareStrategy(resolver=_resolver())
     agent = _agent_large()
     flat_cost = len(stakes_mix) * _TIER_TOTAL_COST["large"]
     aware_cost = 0.0

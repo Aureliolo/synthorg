@@ -146,6 +146,7 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, PinSpec(temperature=0.3)),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, PinSpec(temperature=0.7)),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, PinSpec()),
+    (PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION, PinSpec()),
     (PromptPurposeId.CONFLICT_JUDGE, PinSpec()),
 )
 

@@ -1117,7 +1117,8 @@
         "ProviderPresetsController",
         "ProviderCapabilitiesController",
         "ProviderAllowlistsController",
-        "ProviderAuditController"
+        "ProviderAuditController",
+        "ProviderTierAssignmentsController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -1379,6 +1380,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-09T23:08:21.587531Z",
+  "generated_at": "2026-07-10T10:40:37.981320Z",
   "schema_version": 1
 }

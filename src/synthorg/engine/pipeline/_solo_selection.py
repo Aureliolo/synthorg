@@ -9,6 +9,7 @@ leaf task and return the winner (or raise when none is eligible).
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
+from synthorg.engine.assignment._shared import resolve_low_confidence_outcome
 from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.decomposition.models import SubtaskDefinition
@@ -18,6 +19,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import (
     PIPELINE_ROUTING_UNDECIDABLE,
     PIPELINE_SOLO_AGENT_SELECTED,
+)
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_LOW_CONFIDENCE,
 )
 
 logger = get_logger(__name__)
@@ -81,12 +85,29 @@ def select_solo_agent(
         )
         raise WorkRoutingUndecidableError(msg)
     best = max(viable, key=lambda c: (c.score, str(c.agent_identity.id)))
+    low_confidence = best.score < scorer.low_confidence_score
+    if low_confidence:
+        # Assign the best available agent even for high/critical work rather
+        # than deadlocking the pipeline (a marginal-fit agent can still do the
+        # work). High-stakes marginal fits are logged as an operator-facing
+        # escalation; the low_confidence flag propagates for review and the
+        # stakes-gated red-team gate re-reviews the output downstream.
+        logger.warning(
+            TASK_ASSIGNMENT_LOW_CONFIDENCE,
+            task_id=str(task.id),
+            path="solo",
+            score=best.score,
+            threshold=scorer.low_confidence_score,
+            stakes=task.stakes.value,
+            outcome=resolve_low_confidence_outcome(task.stakes),
+        )
     assigned_id = str(best.agent_identity.id)
     logger.info(
         PIPELINE_SOLO_AGENT_SELECTED,
         task_id=str(task.id),
         agent_id=assigned_id,
         score=best.score,
+        low_confidence=low_confidence,
     )
     return assigned_id
 
@@ -118,6 +139,8 @@ def _select_via_service(
         task=task,
         available_agents=agents,
         min_score=scorer.min_score,
+        low_confidence_score=scorer.low_confidence_score,
+        stakes=task.stakes,
     )
     result = service.assign(request)
     if result.selected is None:
@@ -140,5 +163,6 @@ def _select_via_service(
         task_id=str(task.id),
         agent_id=assigned_id,
         score=result.selected.score,
+        low_confidence=result.low_confidence,
     )
     return assigned_id

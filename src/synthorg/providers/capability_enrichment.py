@@ -18,6 +18,7 @@ than re-deriving it:
 """
 
 import asyncio
+import ipaddress
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
@@ -27,9 +28,11 @@ from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     strip_trailing_slash,
 )
+from synthorg.core.url_locality import LOCALHOST_ALIASES
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
+    PROVIDER_NOT_OLLAMA_NATIVE,
     PROVIDER_OLLAMA_USAGE_TIER_APPLY_FAILED,
 )
 from synthorg.providers.ollama_usage_tier import (
@@ -43,6 +46,13 @@ logger = get_logger(__name__)
 _OLLAMA_VERSION_PATH = "/api/version"
 _OLLAMA_SHOW_PATH = "/api/show"
 _OLLAMA_CLOUD_HOST = "ollama.com"
+_OLLAMA_PRESET = "ollama"
+
+
+def _host_of(base_url: str) -> str:
+    """Return the lowercased host of ``base_url`` (empty when unparseable)."""
+    candidate = base_url if "://" in base_url else f"//{base_url}"
+    return normalize_ascii_lowercase(urlsplit(candidate).hostname or "")
 
 
 def _is_ollama_cloud_host(base_url: str) -> bool:
@@ -55,9 +65,49 @@ def _is_ollama_cloud_host(base_url: str) -> bool:
     Returns:
         True when the URL authority is ``ollama.com`` or a subdomain of it.
     """
-    candidate = base_url if "://" in base_url else f"//{base_url}"
-    host = normalize_ascii_lowercase(urlsplit(candidate).hostname or "")
+    host = _host_of(base_url)
     return host == _OLLAMA_CLOUD_HOST or host.endswith(f".{_OLLAMA_CLOUD_HOST}")
+
+
+def _is_local_or_private_host(base_url: str) -> bool:
+    """Whether ``base_url``'s host is a loopback / private-network address.
+
+    Returns:
+        True for a localhost alias or a loopback / private IP literal (a
+        self-hosted server); False for a public host or a hostname that does
+        not resolve to a literal here.
+    """
+    host = _host_of(base_url)
+    if host in LOCALHOST_ALIASES:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private
+
+
+def _should_probe_ollama_native(native_base: str, preset_name: str | None) -> bool:
+    """Whether the endpoint could plausibly be a native Ollama server.
+
+    Native ``/api/show`` capability introspection only exists on an Ollama
+    server, so the ``/api/version`` probe should run only where the endpoint
+    could be one: the local ``ollama`` preset, the ``ollama.com`` cloud host,
+    or an unknown-preset provider on a loopback / private host (a self-hosted
+    Ollama). A public chat-completion gateway (e.g. an aggregator on a different
+    wire protocol) is never an Ollama server, so probing it would only yield a
+    spurious 404 discovery failure.
+
+    Returns:
+        True when the endpoint is a plausible Ollama server to probe.
+    """
+    if preset_name == _OLLAMA_PRESET:
+        return True
+    if _is_ollama_cloud_host(native_base):
+        return True
+    if preset_name is None:
+        return _is_local_or_private_host(native_base)
+    return False
 
 
 class FetchContext(NamedTuple):
@@ -127,6 +177,7 @@ def _enrich_unknown_via_litellm(
     """
     from synthorg.providers.drivers.litellm_model_info import (  # noqa: PLC0415
         extract_model_metadata,
+        extract_model_pricing,
         get_litellm_model_info,
     )
     from synthorg.providers.family_parser import get_family_parser  # noqa: PLC0415
@@ -147,7 +198,16 @@ def _enrich_unknown_via_litellm(
             model_id=model.id,
             parser=parser,
         )
-        enriched.append(model.model_copy(update={"metadata": metadata}))
+        update: dict[str, object] = {"metadata": metadata}
+        # Back-fill pricing from LiteLLM only when the operator has not already
+        # priced the model: an explicit operator cost is authoritative and must
+        # never be overwritten by the static database.
+        if model.cost_per_1k_input == 0.0 and model.cost_per_1k_output == 0.0:
+            input_cost, output_cost = extract_model_pricing(info)
+            if input_cost > 0.0 or output_cost > 0.0:
+                update["cost_per_1k_input"] = input_cost
+                update["cost_per_1k_output"] = output_cost
+        enriched.append(model.model_copy(update=update))
     return tuple(enriched)
 
 
@@ -176,7 +236,18 @@ async def enrich_discovered_models(
     if not models:
         return models
     native_base = _strip_v1_suffix(base_url)
-    is_native = await _is_ollama_native(native_base, fetch)
+    if _should_probe_ollama_native(native_base, preset_name):
+        is_native = await _is_ollama_native(native_base, fetch)
+    else:
+        # A public non-Ollama gateway (e.g. a cloud aggregator) is not a native
+        # Ollama server; skip the /api/version probe entirely so a discovered
+        # provider does not log a spurious discovery failure for a 404.
+        logger.debug(
+            PROVIDER_NOT_OLLAMA_NATIVE,
+            preset=preset_name,
+            reason="not_ollama_candidate",
+        )
+        is_native = False
     if is_native:
         models = await enrich_models_via_show(
             _join(native_base, _OLLAMA_SHOW_PATH),

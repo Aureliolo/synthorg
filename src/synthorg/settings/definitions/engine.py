@@ -506,6 +506,27 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="routing_low_confidence_score",
+        type=SettingType.FLOAT,
+        default="0.35",
+        description=(
+            "Score below which a winning agent-task fit is low-confidence."
+            " A below-band fit is always assigned (the best available agent is"
+            " never a hard-fail, so the organisation does not deadlock), but it"
+            " is flagged: high/critical-stakes assignments log an operator-facing"
+            " escalation (WARNING) for review while the work proceeds. Should be"
+            " >= routing_min_score."
+        ),
+        group="Task Routing",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
 # ── Model matcher score weights ─────────────────────────────────
 # Capability-aware composite: ``matcher_base_score`` is the floor for a
 # candidate that clears the hard capability filters; ``matcher_capability_fit_weight``

@@ -2,16 +2,14 @@
 
 Dispatches on ``StakesRoutingConfig.strategy`` via a ``StrategyRegistry``
 (mirrors ``loop_selector._LOOP_REGISTRY``). The ``stakes_aware`` strategy
-requires a benchmark provider; ``flat`` needs no dependencies.
+requires a model resolver (to gate on tier + tool capability); ``flat`` needs
+no dependencies.
 """
 
-from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
-from synthorg.engine.routing_policy.protocol import (
-    StakesRoutingStrategy,
-)
+from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
 from synthorg.engine.routing_policy.router import StakesRouter
 from synthorg.engine.routing_policy.strategies import FlatStrategy, StakesAwareStrategy
 from synthorg.providers.routing.resolver import ModelResolver
@@ -20,28 +18,25 @@ from synthorg.providers.routing.resolver import ModelResolver
 def _build_flat(
     *,
     config: StakesRoutingConfig,
-    benchmark_provider: BenchmarkScoreProvider | None = None,
     resolver: ModelResolver | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRoutingStrategy:
-    del config, benchmark_provider, resolver, coordination_store
+    del config, resolver, coordination_store
     return FlatStrategy()
 
 
 def _build_stakes_aware(
     *,
     config: StakesRoutingConfig,
-    benchmark_provider: BenchmarkScoreProvider | None = None,
     resolver: ModelResolver | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRoutingStrategy:
-    if benchmark_provider is None:
-        msg = "stakes_aware routing requires a benchmark score provider"
+    if resolver is None:
+        msg = "stakes_aware routing requires a model resolver"
         raise ValueError(msg)
     return StakesAwareStrategy(
-        benchmark_provider=benchmark_provider,
-        config=config,
         resolver=resolver,
+        config=config,
         coordination_store=coordination_store,
     )
 
@@ -58,7 +53,6 @@ _STRATEGY_REGISTRY: StrategyRegistry[StakesRoutingStrategy] = StrategyRegistry(
 def build_stakes_router(
     config: StakesRoutingConfig | None = None,
     *,
-    benchmark_provider: BenchmarkScoreProvider | None = None,
     resolver: ModelResolver | None = None,
     coordination_store: CoordinationMetricsStore | None = None,
 ) -> StakesRouter:
@@ -66,10 +60,7 @@ def build_stakes_router(
 
     Args:
         config: Routing config; defaults to the ``stakes_aware`` strategy.
-        benchmark_provider: Per-model quality scores (required for
-            ``stakes_aware``).
-        resolver: Tier-to-model resolver. When absent, ``stakes_aware``
-            applies only the red-team mark.
+        resolver: Tier-to-model resolver (required for ``stakes_aware``).
         coordination_store: Recent coordination metrics for the nudge.
 
     Returns:
@@ -77,14 +68,12 @@ def build_stakes_router(
 
     Raises:
         StrategyFactoryNotFoundError: If ``config.strategy`` is unknown.
-        ValueError: If ``stakes_aware`` is selected without a benchmark
-            provider.
+        ValueError: If ``stakes_aware`` is selected without a resolver.
     """
     cfg = config or StakesRoutingConfig()
     strategy = _STRATEGY_REGISTRY.build(
         cfg.strategy,
         config=cfg,
-        benchmark_provider=benchmark_provider,
         resolver=resolver,
         coordination_store=coordination_store,
     )

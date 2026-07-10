@@ -59,6 +59,7 @@ class RoutingScorerConfig(BaseModel):
     role_match_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     seniority_alignment_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
     min_score: float = Field(default=0.1, ge=0.0, le=1.0)
+    low_confidence_score: float = Field(default=0.35, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _check_weight_sum(self) -> RoutingScorerConfig:
@@ -114,6 +115,7 @@ class RoutingScorerConfig(BaseModel):
             role_match_bonus=bridge.routing_weight_role_match_bonus,
             seniority_alignment_bonus=bridge.routing_weight_seniority_alignment_bonus,
             min_score=bridge.routing_min_score,
+            low_confidence_score=bridge.routing_low_confidence_score,
         )
 
 
@@ -184,6 +186,16 @@ class AgentTaskScorer:
     def min_score(self) -> float:
         """Minimum score threshold for a viable candidate."""
         return self._min_score
+
+    @property
+    def low_confidence_score(self) -> float:
+        """Score below which a winning fit is low-confidence.
+
+        Clamped to at least the effective ``min_score`` so a caller that raised
+        the eligibility floor above the configured band never leaves the band
+        below the floor.
+        """
+        return max(self._config.low_confidence_score, self._min_score)
 
     @property
     def config(self) -> RoutingScorerConfig:

@@ -15,6 +15,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
+    resolve_low_confidence_outcome,
     score_and_filter_candidates,
 )
 from synthorg.engine.assignment.models import (
@@ -27,6 +28,7 @@ from synthorg.engine.assignment.ranker_protocol import CandidateRanker, RankingR
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_LOW_CONFIDENCE,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
 )
@@ -98,6 +100,22 @@ class ScoringBasedAssignmentStrategy:
             return self._no_eligible_result(effective_request)
 
         ranking = self._ranker.rank(candidates, effective_request)
+        low_confidence = (
+            ranking.selected.score < effective_request.effective_low_confidence_score
+        )
+        if low_confidence:
+            # The best available agent is a marginal fit. Assign it anyway (a
+            # marginal-fit agent can still do the work, unlike a sub-tier model
+            # that cannot tool-call) so the organisation never deadlocks, but
+            # flag it: high/critical work is logged as an operator-facing
+            # escalation and the low_confidence flag surfaces on the API /
+            # dashboard for review. The stakes-gated red-team review gate
+            # re-reviews consequential output downstream.
+            self._log_low_confidence(
+                effective_request,
+                ranking.selected,
+                outcome=resolve_low_confidence_outcome(effective_request.stakes),
+            )
         reason = self._compose_reason(
             request,
             filter_result.rewrite_success_reason,
@@ -109,6 +127,31 @@ class ScoringBasedAssignmentStrategy:
             selected=ranking.selected,
             alternatives=ranking.alternatives,
             reason=reason,
+            low_confidence=low_confidence,
+        )
+
+    def _log_low_confidence(
+        self,
+        request: AssignmentRequest,
+        selected: AssignmentCandidate,
+        *,
+        outcome: str,
+    ) -> None:
+        """Emit the low-confidence marginal-fit warning (WARNING level).
+
+        For high/critical stakes this is the operator-facing escalation signal:
+        the assignment still proceeds, but the WARNING plus the ``low_confidence``
+        flag on the result make the marginal fit visible for review.
+        """
+        logger.warning(
+            TASK_ASSIGNMENT_LOW_CONFIDENCE,
+            task_id=str(request.task.id),
+            strategy=self.name,
+            agent_id=str(selected.agent_identity.id),
+            score=selected.score,
+            threshold=request.effective_low_confidence_score,
+            stakes=request.stakes.value,
+            outcome=outcome,
         )
 
     def _compose_reason(

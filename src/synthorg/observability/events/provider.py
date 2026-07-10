@@ -34,6 +34,8 @@ PROVIDER_AUTH_ERROR: Final[str] = "provider.auth.error"
 PROVIDER_CONNECTION_ERROR: Final[str] = "provider.connection.error"
 PROVIDER_RETRY_AFTER_PARSE_FAILED: Final[str] = "provider.retry_after.parse_failed"
 PROVIDER_MODEL_INFO_UNAVAILABLE: Final[str] = "provider.model_info.unavailable"
+PROVIDER_MODEL_PRICING_REGISTERED: Final[str] = "provider.model_info.pricing_registered"
+PROVIDER_MODEL_PRICING_CONFLICT: Final[str] = "provider.model_info.pricing_conflict"
 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR: Final[str] = (
     "provider.model_info.unexpected_error"
 )
@@ -117,6 +119,13 @@ PROVIDER_DISCOVERY_SSRF_BYPASSED: Final[str] = (
 PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED: Final[str] = (
     "provider.management.discovery_self_connection_blocked"
 )
+PROVIDER_NOT_OLLAMA_NATIVE: Final[str] = "provider.management.not_ollama_native"
+
+# ── Model tier assignment ─────────────────────────────────
+
+PROVIDER_TIER_CLASSIFIED: Final[str] = "provider.tier.classified"
+PROVIDER_TIER_OVERRIDDEN: Final[str] = "provider.tier.overridden"
+PROVIDER_TIER_LLM_RECOMMENDED: Final[str] = "provider.tier.llm_recommended"
 
 # ── Provider URL probing ──────────────────────────────────
 

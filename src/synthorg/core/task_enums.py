@@ -126,6 +126,19 @@ def compare_stakes(a: Stakes, b: Stakes) -> int:
     return _STAKES_RANK[a] - _STAKES_RANK[b]
 
 
+def is_high_stakes(stakes: Stakes) -> bool:
+    """Whether *stakes* is at or above HIGH.
+
+    High/critical work must not proceed on a marginal fit: the assignment
+    and solo-selection paths reject a below-confidence match at this level
+    rather than routing it with a warning.
+
+    Returns:
+        ``True`` for HIGH or CRITICAL, ``False`` for LOW or NORMAL.
+    """
+    return compare_stakes(stakes, Stakes.HIGH) >= 0
+
+
 class TaskStructure(StrEnum):
     """Classification of how a task's subtasks relate to each other.
 

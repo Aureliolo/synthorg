@@ -256,30 +256,29 @@ async def _build_stakes_router_or_none(
 ) -> StakesRouter | None:
     """Build the stakes-aware model router from live application state.
 
-    Returns ``None`` when the benchmark provider is absent (cost-dial
-    not wired, e.g. a persistence-less boot), so the engine simply skips
-    stakes routing. Reads the benchmark provider and coordination-metrics
-    store off ``AppState`` and builds a tier resolver over the LIVE provider
-    set (the persisted configs the resolver serves, falling back to the boot
-    ``RootConfig.providers``), not the boot-time config snapshot, so a
-    DB-backed deployment routes over the providers actually in force. Uses a
-    deterministic :class:`CheapestSelector` (v1) so a tier can resolve to the
+    Builds a tier resolver over the LIVE provider set (the persisted configs
+    the resolver serves, falling back to the boot ``RootConfig.providers``),
+    not the boot-time config snapshot, so a DB-backed deployment routes over
+    the providers actually in force. Each model's routing tier is the effective
+    assignment from the :class:`TierAssignmentService` (deterministic heuristic
+    classification overlaid by operator / LLM overrides), and its tool
+    capability is read from capability metadata, so the router can gate on both.
+    Uses a deterministic :class:`CheapestSelector` so a tier resolves to the
     cheapest model serving it across providers. The engine then swaps the
     dispatched client to the routed model's provider
-    (``AgentEngine._resolve_provider_instance``), keeping the API called and
-    the cost attribution on the same provider; ships the ``stakes_aware``
-    default strategy.
+    (``AgentEngine._resolve_provider_instance``), keeping the API called and the
+    cost attribution on the same provider; ships the ``stakes_aware`` default
+    strategy.
 
     Returns:
-        The ``StakesRouter``, or ``None`` when the benchmark provider is
-        absent or no providers are configured.
+        The ``StakesRouter``, or ``None`` when no providers are configured.
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
     from synthorg.providers.routing.selector import CheapestSelector  # noqa: PLC0415
+    from synthorg.workers._tier_assignment_wiring import (  # noqa: PLC0415
+        build_tier_assignment_service,
+    )
 
-    benchmark_provider = app_state.slice(BudgetStateSlice).benchmark_provider
-    if benchmark_provider is None:
-        return None
     # Prefer the live persisted provider set; fall back to the boot snapshot
     # when the resolver is not wired (anonymous / test boots) so routing still
     # builds. ``get_provider_configs`` itself falls back to ``RootConfig`` when
@@ -291,11 +290,16 @@ async def _build_stakes_router_or_none(
         providers = dict(await config_resolver.get_provider_configs())
     if not providers:
         return None
-    resolver = ModelResolver.from_config(providers, selector=CheapestSelector())
+    tier_service = build_tier_assignment_service(app_state)
+    tier_map = await tier_service.tier_lookup(providers)
+    resolver = ModelResolver.from_config(
+        providers,
+        selector=CheapestSelector(),
+        tier_map=tier_map,
+    )
     coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
     return build_stakes_router(
         app_state.config.stakes_routing,
-        benchmark_provider=benchmark_provider,
         resolver=resolver,
         coordination_store=coordination_store,
     )

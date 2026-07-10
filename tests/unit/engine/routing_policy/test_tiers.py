@@ -7,8 +7,29 @@ from synthorg.engine.routing_policy.tiers import (
     TIER_LADDER,
     bump_one,
     higher_tier,
+    meets_required,
     tier_rank,
 )
+
+
+@pytest.mark.unit
+class TestMeetsRequired:
+    """A candidate meets a requirement when it is at least as strong."""
+
+    @pytest.mark.parametrize(
+        ("candidate", "required", "expected"),
+        [
+            ("small", "small", True),
+            ("large", "small", True),
+            ("medium", "large", False),
+            ("small", "medium", False),
+            ("large", "large", True),
+        ],
+    )
+    def test_meets(
+        self, candidate: ModelTier, required: ModelTier, expected: bool
+    ) -> None:
+        assert meets_required(candidate, required) is expected
 
 
 @pytest.mark.unit

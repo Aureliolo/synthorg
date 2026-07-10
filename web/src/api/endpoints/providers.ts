@@ -36,6 +36,16 @@ export {
   updateModelConfig,
 } from './providers/models'
 
+export {
+  applyTierRecommendation,
+  getTierClassifierModel,
+  listTierAssignments,
+  recommendAllTiers,
+  recommendModelTier,
+  setTierClassifierModel,
+  setTierOverride,
+} from './providers/tier-assignments'
+
 export { listProviderAudit } from './providers/audit'
 export { getProviderRateLimits, updateProviderRateLimits } from './providers/rate-limits'
 export {

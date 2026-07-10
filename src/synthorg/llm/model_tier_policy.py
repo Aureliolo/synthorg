@@ -133,6 +133,7 @@ _TIER_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptTierKind], ...]] = 
     (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, _L),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, _L),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, _S),
+    (PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION, _S),
     (PromptPurposeId.CONFLICT_JUDGE, _M),
 )
 

@@ -28,6 +28,7 @@
   "system:procedural:propose": "52e471bc153bf4232ab524e1dcec2bb190e2e9fd8cf6167d5ae2cfecc7503b40",
   "system:procedural:success_proposer": "b7f790930e8c741c7b38912f1405be12be18487e579630409f6b3c123b740e9b",
   "system:providers:test_connection": "473d550a6cc607325bd128a2cc1b25ce0b190508a9a7d45c4f25fb4bb05fa37b",
+  "system:providers:tier_classification": "5c0987d4c060ccba5cc8efd3bd6624122cb04ab50983cea39826b3f12bed3be3",
   "system:red_team:grounding": "85f8695c10909680734b152579fabce2ad3d6bd617daf2e597cef1f2fa9d5510",
   "system:red_team:grounding_entailment": "eea52d22d6b5ef52054cdc1a62b7f062f69e91d583a0b3363db687bcbd8aa559",
   "system:research:planning": "76bd3102c1740399222ecc375b2674d9959316eea138de7b19e213260592c026",

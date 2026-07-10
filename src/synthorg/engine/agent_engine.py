@@ -33,6 +33,7 @@ from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
+from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
@@ -43,6 +44,7 @@ from synthorg.engine.errors import (
 from synthorg.engine.loop_protocol import ExecutionResult, make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
     get_logger,
@@ -60,6 +62,9 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
+)
+from synthorg.observability.events.stakes_routing import (
+    STAKES_ROUTING_BUDGET_OVERRODE,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
@@ -170,6 +175,7 @@ class AgentEngine(
     AgentEngineRecoveryMixin,
     AgentEngineResumeMixin,
     AgentEngineRunMixin,
+    AgentEngineStakesErrorsMixin,
 ):
     """Top-level orchestrator for agent execution."""
 
@@ -538,7 +544,21 @@ class AgentEngine(
                         identity,
                         provider,
                     )
+                    pre_downgrade_tier = identity.model.model_tier
                     downgraded = await self._budget_enforcer.resolve_model(identity)
+                    if (
+                        self._stakes_router is not None
+                        and downgraded.model.model_tier != pre_downgrade_tier
+                    ):
+                        # Budget is a hard ceiling that wins over the stakes
+                        # upgrade; record when it clawed a stakes-driven tier back.
+                        logger.info(
+                            STAKES_ROUTING_BUDGET_OVERRODE,
+                            agent_id=agent_id,
+                            task_id=str(task.id),
+                            stakes_tier=pre_downgrade_tier,
+                            downgraded_to=downgraded.model.model_tier,
+                        )
                     # resolve_model may downgrade to a model owned by another
                     # provider; re-dispatch and only commit the new identity
                     # once dispatch succeeds, so a registry miss never leaves a
@@ -661,6 +681,20 @@ class AgentEngine(
                     duration_seconds=self._clock.monotonic() - start,
                     ctx=ctx,
                     system_prompt=system_prompt,
+                )
+            except StakesModelUnavailableError as exc:
+                return await self._handle_stakes_unavailable(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=self._clock.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                    provider=provider,
                 )
             except Exception as exc:  # noqa: BLE001 -- engine fatal-error boundary
                 # lint-allow: swallow-ok -- fatal-error boundary returns FAILED

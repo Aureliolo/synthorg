@@ -21,7 +21,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.providers.routing.selector import CheapestSelector
-from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, mock_of
+from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _DEFAULT_PROVIDER = "default-provider"
@@ -42,6 +42,7 @@ def _multi_provider_resolver() -> ModelResolver:
         cost_per_1k_output=2.0,
         max_context=128000,
         estimated_latency_ms=100,
+        tier="large",
     )
     large_cheap = ResolvedModel(
         provider_name=_CHEAP_PROVIDER,
@@ -51,6 +52,7 @@ def _multi_provider_resolver() -> ModelResolver:
         cost_per_1k_output=0.5,
         max_context=128000,
         estimated_latency_ms=100,
+        tier="large",
     )
     small_default = ResolvedModel(
         provider_name=_DEFAULT_PROVIDER,
@@ -60,6 +62,7 @@ def _multi_provider_resolver() -> ModelResolver:
         cost_per_1k_output=0.1,
         max_context=128000,
         estimated_latency_ms=100,
+        tier="small",
     )
     return ModelResolver(
         {
@@ -101,7 +104,6 @@ def _engine(
 ) -> AgentEngine:
     router = build_stakes_router(
         StakesRoutingConfig(),
-        benchmark_provider=FakeTierBenchmarkScoreProvider(),
         resolver=_multi_provider_resolver(),
     )
     return AgentEngine(
@@ -254,24 +256,15 @@ class TestDispatchClientResolution:
         with pytest.raises(DriverNotRegisteredError):
             engine._dispatch_client_for(identity, default_client)
 
-    async def test_noop_route_on_nondefault_provider_dispatches_to_agent(self) -> None:
-        """The exact failing scenario: agent on a non-default provider whose
-        stakes routing cannot resolve a tier (no-op) still runs on its own
-        provider, not the engine default.
+    async def test_kept_route_on_nondefault_provider_dispatches_to_agent(self) -> None:
+        """An agent already on the cheapest qualifying model keeps it and runs
+        on its own provider, not the engine default.
         """
         default_client, cheap_client, registry = self._clients()
-        # A router whose resolver yields no tiers reproduces the observed
-        # ``no_tier_resolved`` no-op that kept the agent's model unchanged.
-        engine = AgentEngine(
-            provider=default_client,
-            provider_registry=registry,
-            stakes_router=build_stakes_router(
-                StakesRoutingConfig(),
-                benchmark_provider=FakeTierBenchmarkScoreProvider(),
-                resolver=None,
-            ),
-        )
+        engine = _engine(default_provider=default_client, registry=registry)
 
+        # The agent is already on the cheapest large model (cheap-provider), so
+        # HIGH-stakes routing keeps it rather than re-pointing.
         identity = _identity(
             provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
         )
@@ -281,6 +274,6 @@ class TestDispatchClientResolution:
             routed, identity, dispatched
         )
 
-        assert routed.model == identity.model  # routing was a no-op
+        assert routed.model == identity.model  # already satisfied: kept
         assert final_identity.model.provider == _CHEAP_PROVIDER
         assert resolved is cheap_client  # dispatched to the agent's provider

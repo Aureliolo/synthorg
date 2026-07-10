@@ -1,27 +1,30 @@
 """Model-tier ladder helpers for stakes-aware routing.
 
-The canonical tiers (``small`` < ``medium`` < ``large``) double as the
-model aliases the :class:`~synthorg.providers.routing.resolver.ModelResolver`
-resolves, and as the tier keys the benchmark-score provider scores.
-Cheapest-first order lets the policy pick the cheapest tier that clears
-a quality floor.
+The canonical tiers (``small`` < ``medium`` < ``large``) are the routing tier
+vocabulary. The ladder and rank live in :mod:`synthorg.core.types` (the single
+source shared with the provider routing resolver); this module adds the
+stakes-routing helpers layered on top.
 """
 
-from typing import Final
+from synthorg.core.types import (
+    MODEL_TIER_LADDER,
+    ModelTier,
+    model_tier_meets,
+    model_tier_rank,
+)
 
-from synthorg.core.types import ModelTier
+# Cheapest-first ladder. Re-exported for the stakes-routing modules that import
+# it from here; the definition lives in ``core.types``.
+TIER_LADDER = MODEL_TIER_LADDER
 
-# Cheapest-first ladder. Index doubles as the tier rank.
-TIER_LADDER: Final[tuple[ModelTier, ...]] = ("small", "medium", "large")
-
-_TIER_RANK: Final[dict[ModelTier, int]] = {
-    tier: idx for idx, tier in enumerate(TIER_LADDER)
-}
+# The tier-adequacy check lives in ``core.types`` (the single source shared with
+# the provider routing resolver); re-exported here under the stakes-routing name.
+meets_required = model_tier_meets
 
 
 def tier_rank(tier: ModelTier) -> int:
     """Return the cheapest-first rank of *tier* (small=0, large=2)."""
-    return _TIER_RANK[tier]
+    return model_tier_rank(tier)
 
 
 def higher_tier(a: ModelTier, b: ModelTier) -> ModelTier:

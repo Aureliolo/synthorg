@@ -1,24 +1,20 @@
 """Stakes-aware and flat routing strategies."""
 
-from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, compare_stakes
 from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
+from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.routing_policy.models import StakesRoutingDecision
-from synthorg.engine.routing_policy.tiers import (
-    TIER_LADDER,
-    bump_one,
-    higher_tier,
-)
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.engine.routing_policy.tiers import bump_one, higher_tier
+from synthorg.observability import get_logger
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_COORD_NUDGE,
-    STAKES_ROUTING_TIER_UNRESOLVABLE,
+    STAKES_ROUTING_ESCALATED,
+    STAKES_ROUTING_TIER_ADJUSTED,
 )
-from synthorg.providers.errors import ProviderError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 
@@ -28,9 +24,8 @@ logger = get_logger(__name__)
 class FlatStrategy:
     """No-op routing: keeps the agent's configured model, no red-team.
 
-    This is today's behaviour. It is the control arm of the cost/quality
-    comparison test and the opt-out selectable via the ``flat``
-    discriminator.
+    This is the control arm of the cost/quality comparison test and the
+    opt-out selectable via the ``flat`` discriminator.
     """
 
     async def route(
@@ -50,37 +45,45 @@ class FlatStrategy:
 
 
 class StakesAwareStrategy:
-    """Route by stakes, with a coordination nudge and a red-team mark.
+    """Route by stakes to a required model tier, escalating when unmet.
 
-    Picks the cheapest model tier whose benchmark score clears the
-    per-stakes quality floor, bumps it up when recent coordination
-    metrics look unhealthy, and marks high/critical work for the
-    red-team gate. Deterministic given the injected benchmark scores and
-    coordination records; performs no wall-clock reads or live provider
-    calls.
+    Picks the cheapest configured, tool-capable model whose assigned tier
+    meets the per-stakes tier requirement, bumps the requirement one tier when
+    recent coordination metrics look unhealthy, and never routes red-team-gated
+    work (stakes at or above ``config.red_team_min_stakes``) below the agent's
+    configured tier. When no configured tool-capable model meets the
+    requirement it raises :class:`StakesModelUnavailableError` so the engine
+    escalates or fails loudly: consequential work is never silently run on a
+    sub-tier model.
+
+    Selection gates on the resolved model's tier and tool-capability only. Each
+    model's classification ``confidence`` is operator-facing (surfaced in the
+    tier-assignment panel for review) and is deliberately not consulted here, so
+    an unenriched model admitted by the optimistic capability default can still
+    satisfy a tier requirement; the operator lowers a wrong tier via an override.
+
+    Deterministic given the resolver's catalogue and coordination records;
+    performs no wall-clock reads or live provider calls.
 
     Args:
-        benchmark_provider: Source of per-model quality scores.
-        config: Per-stakes floors, nudge thresholds, and red-team
-            threshold.
-        resolver: Resolves a tier alias to a concrete model. When
-            ``None``, the model cannot be adjusted; only the red-team
-            mark is applied.
-        coordination_store: Recent coordination metrics for the nudge.
-            When ``None``, the nudge is skipped.
+        resolver: Resolves the required tier to the cheapest tool-capable
+            configured model. Required: the strategy cannot gate on tier or
+            capability without a catalogue.
+        config: Per-stakes tier requirements, nudge thresholds, and the
+            red-team threshold.
+        coordination_store: Recent coordination metrics for the nudge. When
+            ``None``, the nudge is skipped.
     """
 
     def __init__(
         self,
         *,
-        benchmark_provider: BenchmarkScoreProvider,
+        resolver: ModelResolver,
         config: StakesRoutingConfig | None = None,
-        resolver: ModelResolver | None = None,
         coordination_store: CoordinationMetricsStore | None = None,
     ) -> None:
-        self._benchmark_provider = benchmark_provider
-        self._config = config or StakesRoutingConfig()
         self._resolver = resolver
+        self._config = config or StakesRoutingConfig()
         self._coordination_store = coordination_store
 
     async def route(
@@ -89,49 +92,105 @@ class StakesAwareStrategy:
         task: Task,
         identity: AgentIdentity,
     ) -> StakesRoutingDecision:
-        """Pick a model tier matched to ``task.stakes`` (see class docstring).
+        """Route *task* to a model meeting its stakes tier requirement.
 
         Returns:
-            A :class:`StakesRoutingDecision` carrying the selected
-            model, red-team requirement flag, stakes, reason, and
-            source label.
+            The :class:`StakesRoutingDecision` with the selected model, the
+            red-team requirement, stakes, reason, and source label.
+
+        Raises:
+            StakesModelUnavailableError: When no configured tool-capable model
+                meets the required tier.
         """
         stakes = task.stakes
         red_team_required = (
             compare_stakes(stakes, self._config.red_team_min_stakes) >= 0
         )
-        current_tier = identity.model.model_tier
+        required, nudged = self._adjusted_required_tier(
+            task=task,
+            identity=identity,
+            stakes=stakes,
+            red_team_required=red_team_required,
+        )
 
-        floor = self._config.quality_floors.for_stakes(stakes)
-        target_tier, floor_cleared = await self._cheapest_tier_meeting_floor(floor)
-
-        nudged = False
-        if target_tier is not None and self._coordination_unhealthy(str(task.id)):
-            bumped = bump_one(target_tier)
-            if bumped != target_tier:
-                logger.info(
-                    STAKES_ROUTING_COORD_NUDGE,
-                    task_id=str(task.id),
-                    from_tier=target_tier,
-                    to_tier=bumped,
-                )
-                nudged = True
-            target_tier = bumped
-
-        # Work at or above the configured red_team_min_stakes threshold
-        # must never run below the agent's own tier.
-        if red_team_required and target_tier is not None and current_tier is not None:
-            target_tier = higher_tier(target_tier, current_tier)
+        selected = self._select_model(required)
+        if selected is None:
+            logger.warning(
+                STAKES_ROUTING_ESCALATED,
+                task_id=str(task.id),
+                agent_id=str(identity.id),
+                stakes=stakes.value,
+                required_tier=required,
+                reason="no_tool_capable_model_at_tier",
+            )
+            raise StakesModelUnavailableError(
+                stakes=stakes,
+                required_tier=required,
+            )
 
         return self._build_decision(
             identity=identity,
             stakes=stakes,
             red_team_required=red_team_required,
-            target_tier=target_tier,
+            required_tier=required,
+            selected=selected,
             nudged=nudged,
-            floor=floor,
-            floor_cleared=floor_cleared,
         )
+
+    def _adjusted_required_tier(
+        self,
+        *,
+        task: Task,
+        identity: AgentIdentity,
+        stakes: Stakes,
+        red_team_required: bool,
+    ) -> tuple[ModelTier, bool]:
+        """Base stakes tier adjusted for coordination health + red-team floor.
+
+        Returns:
+            The (possibly bumped then floored) required tier, and whether a
+            coordination nudge fired.
+        """
+        required = self._config.stakes_tiers.for_stakes(stakes)
+        nudged = False
+        if self._coordination_unhealthy(str(task.id)):
+            bumped = bump_one(required)
+            if bumped != required:
+                logger.info(
+                    STAKES_ROUTING_COORD_NUDGE,
+                    task_id=str(task.id),
+                    from_tier=required,
+                    to_tier=bumped,
+                )
+                nudged = True
+            required = bumped
+
+        # Red-team-gated work must never run below the agent's configured tier.
+        current_tier = identity.model.model_tier
+        if red_team_required and current_tier is not None:
+            floored = higher_tier(required, current_tier)
+            if floored != required:
+                logger.info(
+                    STAKES_ROUTING_TIER_ADJUSTED,
+                    task_id=str(task.id),
+                    from_tier=required,
+                    to_tier=floored,
+                    reason="red_team_floor",
+                )
+            required = floored
+        return required, nudged
+
+    def _select_model(self, required: ModelTier) -> ResolvedModel | None:
+        """Return the cheapest tool-capable model at or above *required*.
+
+        Returns:
+            The cheapest resolved model whose tier meets ``required`` and which
+            can execute tool-bearing work, or ``None`` when none qualifies.
+        """
+        for candidate in self._resolver.models_at_or_above_tier(required):
+            if candidate.tool_capable:
+                return candidate
+        return None
 
     def _build_decision(  # noqa: PLR0913 -- keyword-only assembly inputs
         self,
@@ -139,53 +198,44 @@ class StakesAwareStrategy:
         identity: AgentIdentity,
         stakes: Stakes,
         red_team_required: bool,
-        target_tier: ModelTier | None,
+        required_tier: ModelTier,
+        selected: ResolvedModel,
         nudged: bool,
-        floor: float,
-        floor_cleared: bool,
     ) -> StakesRoutingDecision:
-        """Assemble the decision, resolving the target tier to a model.
+        """Assemble the decision from the selected model.
 
         Returns:
-            A :class:`StakesRoutingDecision` whose ``selected_model``
-            is the resolved tier (when changed) or the agent's
-            current model.
+            A :class:`StakesRoutingDecision` whose ``selected_model`` is the
+            routed model (when it differs from the agent's) or the agent's
+            current model (when it already satisfies the requirement).
         """
         current = identity.model
-        selected_model = current
-        source = "stakes_aware:noop"
-        reason = (
-            f"stakes={stakes.value}: kept {current.model_tier or 'configured'} tier"
-        )
-
-        resolved = self._resolve_tier(target_tier) if target_tier is not None else None
         changed = (
-            resolved is not None
-            and target_tier is not None
-            and (
-                resolved.model_id != current.model_id
-                or target_tier != current.model_tier
-            )
+            selected.model_id != current.model_id
+            or selected.provider_name != current.provider
+            or selected.tier != current.model_tier
         )
-        if changed and resolved is not None and target_tier is not None:
+        if changed:
             selected_model = current.model_copy(
                 update={
-                    "provider": resolved.provider_name,
-                    "model_id": resolved.model_id,
-                    "model_tier": target_tier,
-                }
+                    "provider": selected.provider_name,
+                    "model_id": selected.model_id,
+                    "model_tier": selected.tier,
+                },
             )
-            if nudged:
-                source = "stakes_aware:nudge"
-            elif not floor_cleared:
-                source = "stakes_aware:floor_unmet"
-            else:
-                source = "stakes_aware:floor"
+            source = "stakes_aware:nudge" if nudged else "stakes_aware:routed"
             reason = (
-                f"stakes={stakes.value}: routed to {target_tier} tier (floor {floor:g})"
+                f"stakes={stakes.value}: routed to {selected.tier} tier model "
+                f"{selected.model_id} (>= required {required_tier})"
             )
-            if not floor_cleared:
-                reason += " [floor not met; strongest available tier]"
+        else:
+            selected_model = current
+            source = "stakes_aware:kept"
+            reason = (
+                f"stakes={stakes.value}: kept "
+                f"{current.model_tier or 'configured'} tier "
+                f"(meets required {required_tier})"
+            )
 
         return StakesRoutingDecision(
             selected_model=selected_model,
@@ -195,80 +245,12 @@ class StakesAwareStrategy:
             source=source,
         )
 
-    async def _cheapest_tier_meeting_floor(
-        self, floor: float
-    ) -> tuple[ModelTier | None, bool]:
-        """Return the cheapest tier clearing *floor* and whether it cleared.
-
-        The second element is ``True`` only when the returned tier's
-        benchmark score meets the floor. When no resolvable tier clears
-        the floor, the strongest resolvable tier is returned with
-        ``False`` and a logged fallback, so high/critical work is never
-        silently routed under-floor. ``(None, False)`` is returned when no
-        tier resolves at all (no resolver wired, or the provider catalogue
-        lacks the canonical tiers).
-
-        A benchmark-provider failure for one tier is logged and skipped:
-        retries belong to the provider layer, and a transient lookup error
-        must not crash the routing decision for every task.
-        """
-        if self._resolver is None:
-            return None, False
-        strongest_resolvable: ModelTier | None = None
-        strongest_score: float | None = None
-        for tier in TIER_LADDER:
-            resolved = self._resolver.resolve_safe(tier)
-            if resolved is None:
-                continue
-            try:
-                score = await self._benchmark_provider.get_score(resolved.model_id)
-            except ProviderError as exc:
-                logger.warning(
-                    STAKES_ROUTING_TIER_UNRESOLVABLE,
-                    floor=floor,
-                    tier=tier,
-                    reason="benchmark_lookup_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                continue
-            strongest_resolvable = tier
-            strongest_score = score.score if score is not None else None
-            if score is not None and score.score >= floor:
-                return tier, True
-        if strongest_resolvable is None:
-            logger.warning(
-                STAKES_ROUTING_TIER_UNRESOLVABLE,
-                floor=floor,
-                reason="no_tier_resolved",
-            )
-            return None, False
-        logger.warning(
-            STAKES_ROUTING_TIER_UNRESOLVABLE,
-            floor=floor,
-            best_tier=strongest_resolvable,
-            best_score=strongest_score,
-            reason="no_tier_clears_floor",
-        )
-        return strongest_resolvable, False
-
-    def _resolve_tier(self, tier: ModelTier) -> ResolvedModel | None:
-        """Resolve a tier alias to a model, or ``None``.
-
-        Returns:
-            The :class:`ResolvedModel` for ``tier`` when the resolver
-            is wired and finds a match; ``None`` otherwise.
-        """
-        if self._resolver is None:
-            return None
-        return self._resolver.resolve_safe(tier)
-
     def _coordination_unhealthy(self, task_id: str) -> bool:
         """True when recent coordination metrics breach a nudge threshold.
 
         Returns:
-            ``True`` when at least one record in the lookback window
-            shows error amplification past the threshold; ``False``
+            ``True`` when at least one record in the lookback window shows
+            error amplification or overhead past the threshold; ``False``
             otherwise (or when no store is wired).
         """
         if self._coordination_store is None:

@@ -115,6 +115,7 @@ class PromptPurposeId(StrEnum):
     CLIENT_REQUIREMENT_GENERATOR = "system:client:requirement_generator"
 
     PROVIDERS_TEST_CONNECTION = "system:providers:test_connection"
+    PROVIDERS_TIER_CLASSIFICATION = "system:providers:tier_classification"
 
     CONFLICT_JUDGE = "system:conflict:judge"
 
@@ -439,6 +440,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.PROVIDERS_TEST_CONNECTION,
         PromptPurposeCategory.PROVIDER,
         "Probe a provider connection with a minimal completion.",
+    ),
+    (
+        PromptPurposeId.PROVIDERS_TIER_CLASSIFICATION,
+        PromptPurposeCategory.PROVIDER,
+        "Recommend a routing tier for a configured model.",
     ),
     (
         PromptPurposeId.CONFLICT_JUDGE,
