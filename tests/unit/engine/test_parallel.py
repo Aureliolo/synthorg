@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import date
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -627,6 +628,28 @@ class TestParallelExecutorFatalErrors:
         fatals = exc_info.value.exceptions
         assert len(fatals) == 2
         assert all(isinstance(e, MemoryError) for e in fatals)
+
+    async def test_fatal_wins_over_lock_release_failure(self) -> None:
+        """A pending fatal is never masked by a teardown lock-release error.
+
+        The lock-release path raises ``ParallelExecutionError``, which a
+        caller can swallow; a fatal interpreter error collected from an
+        agent must still reach the top of the stack unmasked.
+        """
+
+        class _FailingReleaseLock(InMemoryResourceLock):
+            @override
+            async def release_all(self, holder: str) -> int:
+                msg = "release boom"
+                raise RuntimeError(msg)
+
+        a1 = _make_assignment("a1", "t1", resource_claims=("src/x.py",))
+        engine = _mock_engine(side_effect=MemoryError("OOM"))
+        executor = ParallelExecutor(engine=engine, resource_lock=_FailingReleaseLock())
+        group = _make_group(a1)
+
+        with pytest.raises(MemoryError):
+            await executor.execute_group(group)
 
 
 @pytest.mark.unit

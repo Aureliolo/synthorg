@@ -175,6 +175,12 @@ class ParallelExecutor:
             )
             if task_error is not None:
                 task_error.add_note(lock_msg)
+            elif fatal_errors:
+                # A pending interpreter-fatal must win over a teardown
+                # failure: attach the note to the fatal and let the
+                # fatal re-raise path below surface it, never masked by a
+                # swallowable ParallelExecutionError.
+                fatal_errors[0].add_note(lock_msg)
             else:
                 raise ParallelExecutionError(
                     lock_msg,
