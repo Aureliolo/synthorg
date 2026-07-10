@@ -648,8 +648,10 @@ class TestParallelExecutorFatalErrors:
         executor = ParallelExecutor(engine=engine, resource_lock=_FailingReleaseLock())
         group = _make_group(a1)
 
-        with pytest.raises(MemoryError):
+        with pytest.raises(MemoryError) as exc_info:
             await executor.execute_group(group)
+
+        assert "resource locks could not be released" in exc_info.value.__notes__
 
 
 @pytest.mark.unit
