@@ -54,7 +54,7 @@ from synthorg.meta.models import (
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.models import CompletionResponse, StreamChunk, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
-from tests._shared import mock_of
+from tests._shared import mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -109,39 +109,39 @@ def _org_state(
     return OrgStateSnapshot(
         in_progress_tasks=(
             TaskDigest(
-                task_id="task-1",
+                task_id=sid("task-1"),
                 title=task_title,
                 status=TaskStatus.IN_PROGRESS,
-                project="proj-platform",
-                assigned_to="agent-1",
+                project=sid("proj-platform"),
+                assigned_to=sid("agent-1"),
             ),
         ),
         in_progress_total=1,
         in_review_tasks=(
             TaskDigest(
-                task_id="task-2",
+                task_id=sid("task-2"),
                 title="Ship API",
                 status=TaskStatus.IN_REVIEW,
-                project="proj-platform",
+                project=sid("proj-platform"),
             ),
         ),
         in_review_total=1,
         active_projects=(
             ProjectDigest(
-                project_id="proj-1",
+                project_id=sid("proj-1"),
                 name="Platform Revamp",
                 status=ProjectStatus.ACTIVE,
-                lead="lead-1",
+                lead=sid("lead-1"),
             ),
         ),
         active_projects_total=1,
         pending_approvals=(
             ApprovalDigest(
-                approval_id="appr-1",
+                approval_id=sid("appr-1"),
                 title="Hire SRE",
                 action_type="hiring.request",
                 risk_level=ApprovalRiskLevel.MEDIUM,
-                requested_by="hr_agent",
+                requested_by=sid("hr_agent"),
             ),
         ),
         pending_approvals_total=1,
@@ -630,11 +630,11 @@ class TestFreeFormSources:
         state = OrgStateSnapshot(
             pending_approvals=(
                 ApprovalDigest(
-                    approval_id="a1",
+                    approval_id=sid("a1"),
                     title="Hire SRE",
                     action_type="hiring.request",
                     risk_level=ApprovalRiskLevel.MEDIUM,
-                    requested_by="hr_agent",
+                    requested_by=sid("hr_agent"),
                 ),
             ),
             pending_approvals_total=1,
@@ -647,10 +647,10 @@ class TestFreeFormSources:
         state = OrgStateSnapshot(
             in_review_tasks=(
                 TaskDigest(
-                    task_id="t1",
+                    task_id=sid("t1"),
                     title="Ship API",
                     status=TaskStatus.IN_REVIEW,
-                    project="proj-platform",
+                    project=sid("proj-platform"),
                 ),
             ),
             in_review_total=1,

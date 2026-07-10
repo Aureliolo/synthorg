@@ -53,6 +53,7 @@ def _chat_kwargs(**overrides: str) -> dict[str, str]:
     """Full ``CHAT_QUERY_USER`` format kwargs with overrides."""
     base = {
         "snapshot_summary": "hiring velocity down 12%",
+        "org_state": "In-progress tasks: Fix login (assigned to agent-1)",
         "recent_context": "No recent proposals or alerts.",
         "user_question": "What changed in hiring?",
     }
@@ -65,7 +66,7 @@ class TestCosChatPromptContract:
 
     PINNED_PROPOSAL_FP = "2c0254f1f9781538"
     PINNED_ALERT_FP = "b50bc7c47de8439e"
-    PINNED_QUERY_FP = "d40af1415c7b3c51"
+    PINNED_QUERY_FP = "a9ab35bd7842c81b"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Chat temperature must be drawn from config, not a literal."""
@@ -195,6 +196,16 @@ class TestCosChatPromptGradedExamples:
                 _chat_kwargs(snapshot_summary="hiring velocity down 12%"),
             ),
             expected=("hiring velocity down 12%",),
+        ),
+        LabelledExample(
+            name="chat_surfaces_org_state",
+            inp=(
+                CHAT_QUERY_USER,
+                _chat_kwargs(
+                    org_state="In-progress tasks: Fix login (assigned to agent-1)"
+                ),
+            ),
+            expected=("In-progress tasks: Fix login",),
         ),
     )
 

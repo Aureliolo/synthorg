@@ -38,6 +38,9 @@ _ORG_STATE_UNAVAILABLE: Final[str] = (
     " task, project, or approval state."
 )
 
+# How many recent proposal/alert outcomes to fold into the chat context.
+_RECENT_OUTCOMES_LIMIT: Final[int] = 5
+
 
 def free_form_sources(
     snapshot: OrgSignalSnapshot,
@@ -167,7 +170,7 @@ async def render_free_form_user(
     recent_context = "No recent proposals or alerts."
     if outcome_store is not None:
         try:
-            recent = await outcome_store.recent_outcomes(limit=5)
+            recent = await outcome_store.recent_outcomes(limit=_RECENT_OUTCOMES_LIMIT)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # A graceful degrade (falls back to a placeholder), so WARNING

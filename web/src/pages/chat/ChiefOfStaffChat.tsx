@@ -45,8 +45,9 @@ function AssistantMeta({
               key={`${record.kind}:${record.record_id}`}
               tone="text-secondary"
             >
-              <span className="capitalize">{record.kind}</span>
-              {record.label}
+              <span className="capitalize font-medium">{record.kind}</span>
+              {': '}
+              <span>{record.label}</span>{' '}
               <span className="opacity-70">({record.status})</span>
             </StatusPill>
           ))}

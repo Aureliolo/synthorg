@@ -11,6 +11,7 @@ unexpected fault stays opaque so its message cannot leak.
 
 import json as _json
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,7 +52,9 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.persistence.task_protocol import TaskRepository
-from tests._shared import make_app_state, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of, sid
+
+_NOW = datetime(2026, 4, 15, 12, 0, 0, tzinfo=UTC)
 
 pytestmark = pytest.mark.unit
 
@@ -132,9 +135,9 @@ def _in_progress_task() -> Task:
         title="Fix login",
         description="Fix the login flow",
         type=TaskType.DEVELOPMENT,
-        project="proj-platform",
-        created_by="planner",
-        assigned_to="agent-1",
+        project=sid("proj-platform"),
+        created_by=sid("planner"),
+        assigned_to=sid("agent-1"),
         status=TaskStatus.IN_PROGRESS,
     )
 
@@ -159,7 +162,9 @@ class TestChatAnswerStream:
 
     async def test_complete_frame_carries_org_state_citations(self) -> None:
         store = mock_of[ApprovalStoreProtocol](list_items=AsyncMock(return_value=()))
-        state = make_app_state(approval_store=store, config_resolver=None)
+        state = make_app_state(
+            approval_store=store, config_resolver=None, clock=FakeClock(start=_NOW)
+        )
         state.wire(PersistenceStateSlice, backend=_connected_backend())
 
         complete = ChatAnswerComplete(
@@ -168,7 +173,7 @@ class TestChatAnswerStream:
             cited_records=(
                 CitedRecord(
                     kind="task",
-                    record_id="task-1",
+                    record_id=sid("task-1"),
                     label="Fix login",
                     status="in_progress",
                 ),
@@ -210,7 +215,7 @@ class TestChatAnswerStream:
         assert payload["cited_records"] == [
             {
                 "kind": "task",
-                "record_id": "task-1",
+                "record_id": sid("task-1"),
                 "label": "Fix login",
                 "status": "in_progress",
             }

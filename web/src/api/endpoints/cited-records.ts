@@ -25,14 +25,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
 function isCitedRecord(entry: unknown): entry is CitedRecord {
   return (
     isRecord(entry) &&
     typeof entry['kind'] === 'string' &&
     CITED_KINDS.has(entry['kind'] as CitedRecord['kind']) &&
-    typeof entry['record_id'] === 'string' &&
-    typeof entry['label'] === 'string' &&
-    typeof entry['status'] === 'string'
+    // The backend models record_id / label / status as non-blank strings;
+    // mirror that so a blank wire value never reaches the reference chips.
+    isNonBlankString(entry['record_id']) &&
+    isNonBlankString(entry['label']) &&
+    isNonBlankString(entry['status'])
   )
 }
 

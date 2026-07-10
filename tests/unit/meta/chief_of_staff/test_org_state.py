@@ -27,7 +27,7 @@ from synthorg.persistence.project_protocol import (
     ProjectRepository,
 )
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -39,9 +39,9 @@ def _task(title: str, status: TaskStatus, *, assignee: str | None = "agent-1") -
         title=title,
         description=f"{title} body",
         type=TaskType.DEVELOPMENT,
-        project="proj-platform",
-        created_by="planner",
-        assigned_to=assignee,
+        project=sid("proj-platform"),
+        created_by=sid("planner"),
+        assigned_to=sid(assignee) if assignee is not None else None,
         status=status,
     )
 
@@ -52,7 +52,8 @@ def _project(
     *,
     lead: str | None = "lead-1",
 ) -> Project:
-    return Project(name=name, status=status, lead=lead)
+    resolved_lead = sid(lead) if lead is not None else None
+    return Project(name=name, status=status, lead=resolved_lead)
 
 
 def _approval(title: str) -> ApprovalItem:
@@ -60,7 +61,7 @@ def _approval(title: str) -> ApprovalItem:
         action_type="hiring.request",
         title=title,
         description=f"{title} detail",
-        requested_by="hr_agent",
+        requested_by=sid("hr_agent"),
         risk_level=ApprovalRiskLevel.MEDIUM,
         status=ApprovalStatus.PENDING,
         created_at=_NOW,
@@ -260,17 +261,17 @@ class TestFormatOrgState:
         state = OrgStateSnapshot(
             in_progress_tasks=(
                 TaskDigest(
-                    task_id="t1",
+                    task_id=sid("t1"),
                     title="Fix login",
                     status=TaskStatus.IN_PROGRESS,
-                    project="proj-platform",
+                    project=sid("proj-platform"),
                     assigned_to=None,
                 ),
             ),
             in_progress_total=1,
             active_projects=(
                 ProjectDigest(
-                    project_id="p1",
+                    project_id=sid("p1"),
                     name="Platform",
                     status=ProjectStatus.ACTIVE,
                     lead=None,
@@ -312,10 +313,10 @@ class TestInvariants:
             OrgStateSnapshot(
                 in_progress_tasks=(
                     TaskDigest(
-                        task_id="t1",
+                        task_id=sid("t1"),
                         title="A",
                         status=TaskStatus.IN_PROGRESS,
-                        project="p1",
+                        project=sid("p1"),
                     ),
                 ),
                 in_progress_total=0,
@@ -326,7 +327,7 @@ class TestInvariants:
         with pytest.raises(ValidationError, match="not a valid status for kind"):
             CitedRecord(
                 kind="task",
-                record_id="t1",
+                record_id=sid("t1"),
                 label="A",
                 status="active",  # a ProjectStatus value, not a TaskStatus one
             )
@@ -334,7 +335,7 @@ class TestInvariants:
     def test_cited_record_accepts_matching_status(self) -> None:
         record = CitedRecord(
             kind="project",
-            record_id="p1",
+            record_id=sid("p1"),
             label="Platform",
             status="active",
         )

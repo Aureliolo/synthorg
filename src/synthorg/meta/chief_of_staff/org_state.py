@@ -29,6 +29,7 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
@@ -237,8 +238,10 @@ class OrgStateReader:
             The assembled :class:`OrgStateSnapshot`.
 
         Raises:
-            Exception: The first leaf of a fan-out failure (re-raised from
-                the ``ExceptionGroup``).
+            BaseException: An interpreter-critical leaf
+                (``MemoryError`` / ``RecursionError``) is re-raised via the
+                group first; otherwise the first leaf of a fan-out failure
+                is re-raised from the ``ExceptionGroup``.
         """
         try:
             async with asyncio.TaskGroup() as tg:
@@ -247,6 +250,11 @@ class OrgStateReader:
                 projects = tg.create_task(self._read_projects())
                 approvals = tg.create_task(self._read_approvals())
         except* Exception as eg:
+            # A mixed group may carry an interpreter-critical leaf
+            # (MemoryError / RecursionError) alongside ordinary faults;
+            # re-raise the whole group so that never gets buried behind the
+            # ordinary first leaf _first_leaf would otherwise surface.
+            reraise_critical(eg)
             leaf = _first_leaf(eg)
             raise leaf from eg
 

@@ -165,7 +165,7 @@ describe('fetchSignals', () => {
 
 describe('sendChat', () => {
   it('returns the response on success', async () => {
-    const response = { answer: 'hi', sources: [], confidence: 0.9 }
+    const response = { answer: 'hi', sources: [], cited_records: [], confidence: 0.9 }
     const requestBodies: unknown[] = []
     server.use(
       http.post('/api/v1/meta/chat', async ({ request }) => {

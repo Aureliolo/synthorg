@@ -20,7 +20,7 @@ from synthorg.meta.models import (
 from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.state import MetaStateSlice
 from synthorg.settings.enums import SettingSource
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, sid
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -149,13 +149,13 @@ class TestMetaChat:
             cited_records=(
                 CitedRecord(
                     kind="task",
-                    record_id="task-1",
+                    record_id=sid("task-1"),
                     label="Fix login",
                     status="in_progress",
                 ),
                 CitedRecord(
                     kind="project",
-                    record_id="proj-1",
+                    record_id=sid("proj-1"),
                     label="Platform Revamp",
                     status="active",
                 ),
@@ -182,13 +182,13 @@ class TestMetaChat:
             assert cited == [
                 {
                     "kind": "task",
-                    "record_id": "task-1",
+                    "record_id": sid("task-1"),
                     "label": "Fix login",
                     "status": "in_progress",
                 },
                 {
                     "kind": "project",
-                    "record_id": "proj-1",
+                    "record_id": sid("proj-1"),
                     "label": "Platform Revamp",
                     "status": "active",
                 },

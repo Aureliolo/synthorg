@@ -121,6 +121,12 @@ describe('ChiefOfStaffChat', () => {
               },
               { kind: 'gremlin', record_id: 'x', label: 'Bad', status: 'weird' },
               { kind: 'task', record_id: 'task-2', status: 'in_progress' },
+              {
+                kind: 'task',
+                record_id: '  ',
+                label: 'Blank',
+                status: 'in_progress',
+              },
             ],
             confidence: 0.8,
           }),
@@ -141,8 +147,10 @@ describe('ChiefOfStaffChat', () => {
     })
     expect(screen.queryByText('Bad')).not.toBeInTheDocument()
     expect(screen.queryByText('(weird)')).not.toBeInTheDocument()
-    // The label-less second entry is dropped, so no stray empty chip appears.
+    // The label-less and blank-record_id entries are dropped, so no stray
+    // chip appears for either.
     expect(screen.queryByText('(in_progress)')).not.toBeInTheDocument()
+    expect(screen.queryByText('Blank')).not.toBeInTheDocument()
   })
 
   it('keeps the partial answer and stops streaming when Stop is clicked', async () => {

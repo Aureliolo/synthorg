@@ -24,7 +24,6 @@ interface ChiefOfStaffAssistantMessage {
   role: 'assistant'
   content: string
   sources?: string[]
-  /** Task / project / approval records the answer is grounded in. */
   citedRecords?: readonly CitedRecord[] | undefined
   confidence?: number
   /** True while the reply is still receiving streamed tokens. */
