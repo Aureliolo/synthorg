@@ -87,6 +87,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from synthorg.workers.execution_service import AgentEngineExecutionService
 from synthorg.workers.runtime_builder import build_runtime_services
 from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests._shared.conversation_fakes import (
@@ -307,7 +308,7 @@ async def _build_pipeline(
     task_engine: TaskEngine,
     tmp_path: Path,
     agents: tuple[AgentIdentity, ...],
-) -> DefaultWorkPipeline:
+) -> tuple[DefaultWorkPipeline, AgentEngineExecutionService]:
     provider = ScriptedDriver("test-provider", strategy=_SoloStrategy())
     registry = ProviderRegistry({"test-provider": provider})
     agent_registry = AgentRegistryService()
@@ -351,7 +352,9 @@ async def _build_pipeline(
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline
     assert isinstance(pipeline, DefaultWorkPipeline)
-    return pipeline
+    worker_service = runtime.worker_execution_service
+    assert isinstance(worker_service, AgentEngineExecutionService)
+    return pipeline, worker_service
 
 
 async def test_vague_request_clarifies_then_executes_on_approval(
@@ -361,7 +364,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
 ) -> None:
     await persistence.projects.create(_project("proj-conv"))
     agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
-    pipeline = await _build_pipeline(
+    pipeline, worker_service = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
@@ -430,6 +433,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
         approval_store=approval_store,
         conversational_resume_service=_resume_service(proposal_repo),
         work_pipeline=pipeline,
+        worker_execution_service=worker_service,
     )
     await signal_resume_intent(
         dispatch_state,
@@ -438,6 +442,9 @@ async def test_vague_request_clarifies_then_executes_on_approval(
         decided_by="operator",
         task_id=None,
     )
+    # The decompose+execute spine is backgrounded (only intake is synchronous),
+    # so wait for it before asserting the run's effects on the task.
+    await worker_service.drain_resume_tasks()
 
     # The proposal executed via the pipeline: a real task exists and an
     # agent advanced it past CREATED.
@@ -460,7 +467,7 @@ async def test_rejected_proposal_never_touches_pipeline(
 ) -> None:
     await persistence.projects.create(_project("proj-conv"))
     agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
-    pipeline = await _build_pipeline(
+    pipeline, _ = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
