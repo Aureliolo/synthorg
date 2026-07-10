@@ -5,8 +5,8 @@ Extracted from ``chat.py`` so the service module stays well under its
 size budget. The ``format_*`` helpers each render a readable text block
 from typed inputs; ``render_free_form_user`` assembles the full,
 fully-fenced free-form USER message (reading recent outcomes and
-applying the SEC-1 ``<task-data>`` fencing itself, since it owns the
-whole turn rather than a single block).
+applying the ``<task-data>`` untrusted-content fencing itself, since it
+owns the whole turn rather than a single block).
 """
 
 from typing import Final
