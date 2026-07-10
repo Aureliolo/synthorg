@@ -18,6 +18,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ProjectWorkspaceNotProvisionedError
 from synthorg.engine.health.pipeline import HealthMonitoringPipeline
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.run_result import AgentRunResult
@@ -47,7 +48,7 @@ from synthorg.workers.execution_service import (
     LifecycleAdvancingExecutionService,
     NoProviderExecutionService,
 )
-from tests._shared import mock_of
+from tests._shared import StubWorkPipeline, mock_of, task_from_work_item
 from tests._shared.scripted_provider import make_e2e_identity, make_e2e_task
 
 pytestmark = pytest.mark.unit
@@ -480,12 +481,65 @@ class _StubGate:
 
 
 class _StubEngine:
-    """Minimal AgentEngine surface for dispatch_resume tests."""
+    """Minimal AgentEngine surface for dispatch tests."""
 
     def __init__(self, gate: object) -> None:
         self._approval_gate = gate
         self.resume_parked_run = AsyncMock(return_value=_run_result())
         self.resume_parked_chat_action = AsyncMock()
+        self.project_background_failure = AsyncMock()
+
+
+class TestDispatchConversationalExecution:
+    """The backgrounded spine surfaces an early failure onto the SSE stream."""
+
+    def _service(self, engine: object) -> AgentEngineExecutionService:
+        return AgentEngineExecutionService(
+            engine=engine,  # type: ignore[arg-type]
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+        )
+
+    def _work_item(self) -> WorkItem:
+        return WorkItem(
+            origin_adapter_id=NotBlankStr("conversational-cos"),
+            source=WorkSource.CONVERSATIONAL,
+            title=NotBlankStr("Build the landing page"),
+            raw_intent=NotBlankStr("Create the marketing page"),
+            project=NotBlankStr("marketing"),
+            requested_by=NotBlankStr("user-1"),
+        )
+
+    async def test_spine_failure_projects_run_error(self) -> None:
+        engine = _StubEngine(gate=None)
+        service = self._service(engine)
+        work_item = self._work_item()
+        task = task_from_work_item(work_item)
+        pipeline = StubWorkPipeline(continue_error=RuntimeError("project gone"))
+
+        service.dispatch_conversational_execution(
+            work_pipeline=pipeline, work_item=work_item, task=task
+        )
+        await service.drain_resume_tasks()
+
+        engine.project_background_failure.assert_awaited_once_with(
+            task_id=str(task.id), agent_id="system:pipeline"
+        )
+
+    async def test_success_projects_no_terminal_error(self) -> None:
+        engine = _StubEngine(gate=None)
+        service = self._service(engine)
+        work_item = self._work_item()
+        task = task_from_work_item(work_item)
+        pipeline = StubWorkPipeline()
+
+        service.dispatch_conversational_execution(
+            work_pipeline=pipeline, work_item=work_item, task=task
+        )
+        await service.drain_resume_tasks()
+
+        assert pipeline.continue_calls == [(work_item, task)]
+        engine.project_background_failure.assert_not_awaited()
 
 
 class TestDispatchResume:

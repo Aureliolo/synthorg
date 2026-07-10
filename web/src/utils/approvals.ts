@@ -6,6 +6,7 @@ import type {
   UrgencyLevel,
 } from '@/api/types/enums'
 import type { SemanticColor } from '@/utils/agent-status'
+import { ROUTES } from '@/router/routes'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,6 +20,11 @@ import {
 
 /** Action type stamped on the review approval created for a failed run. */
 const FAILED_RUN_ACTION_TYPE = 'review:task_failed'
+
+/** Deep-link to an approval, pre-selected in the queue. */
+export function approvalDetailPath(approvalId: string): string {
+  return `${ROUTES.APPROVALS}?selected=${encodeURIComponent(approvalId)}`
+}
 
 // ── Risk level color mapping ────────────────────────────────
 
@@ -92,10 +98,10 @@ export function getRunOutcomeIcon(outcome: RunOutcome): LucideIcon {
 }
 
 /**
- * A failed run: either the resolved run outcome is `failed` or the item
- * carries the failed-run action type (the WS frame may arrive before the
- * run summary is resolved). Failed items get danger styling and are never
- * shown as a routine low-risk approval.
+ * A failed run: either the resolved run outcome is `failed`, or the item
+ * carries the failed-run action type (the fallback for a response built
+ * without resolved run context, e.g. the lazy-expiry publish path). Failed
+ * items get danger styling and are never shown as a routine low-risk approval.
  */
 export function isFailedApproval(approval: ApprovalResponse): boolean {
   return approval.run?.outcome === 'failed' || approval.action_type === FAILED_RUN_ACTION_TYPE
@@ -229,6 +235,15 @@ export const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', str
   accent: 'border-accent/30 bg-accent/10 text-accent',
   success: 'border-success/30 bg-success/10 text-success',
   'text-secondary': 'border-border bg-surface text-text-secondary',
+}
+
+/** Bordered pill classes for a risk-level badge (includes the low-risk dim). */
+export const RISK_BADGE_CLASSES: Record<SemanticColor | 'accent-dim', string> = {
+  danger: 'border-danger/30 bg-danger/10 text-danger',
+  warning: 'border-warning/30 bg-warning/10 text-warning',
+  accent: 'border-accent/30 bg-accent/10 text-accent',
+  'accent-dim': 'border-accent-dim/30 bg-accent-dim/10 text-accent-dim',
+  success: 'border-success/30 bg-success/10 text-success',
 }
 
 // ── Client-side filtering ───────────────────────────────────

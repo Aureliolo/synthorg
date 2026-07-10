@@ -139,11 +139,17 @@ durable cross-process signal (the operator cancels in the API process; the agent
 runs in the worker process)."""
 
 TurnObserver = Callable[[int, tuple[str, ...]], Awaitable[None]]
-"""Async callback invoked after each *continuing* turn with ``(turn_number,
-tool_names)``: the 1-based turn index and the tools that turn requested, in
-order. It fires only for a turn that requested tools and so looped again; the
-terminal turn (which ends the loop) returns before the hook, so no observation
-marks it.
+"""Async progress callback invoked with ``(index, labels)``: a 1-based step
+index and a tuple of short labels for that step. Two calling conventions share
+this shape:
+
+- ReAct loop: fires *after* each continuing turn with the tool names that turn
+  requested; the terminal turn (which ends the loop) returns before the hook,
+  so no observation marks it.
+- Plan/Hybrid loops: fire *before* each plan step (unconditionally, including
+  the last), passing a one-element tuple of the step's free-text description in
+  the ``labels`` slot -- there are no per-turn tool names to report at the
+  plan level.
 
 Purely observational: it never affects control flow, and an observer raising
 must not corrupt the run. Used to surface incremental progress on a streamed
@@ -169,6 +175,7 @@ class ExecutionLoop(Protocol):
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Run the execution loop.
 
@@ -185,6 +192,11 @@ class ExecutionLoop(Protocol):
             task_cancellation_checker: Optional async callback; returns
                 ``True`` when the running task was cancelled or superseded
                 externally, so the loop halts at the next safe boundary.
+            turn_observer: Optional per-run progress callback; used to
+                project live execution progress onto the AG-UI stream. Fired
+                with ``(index, labels)`` per the ``TurnObserver`` contract
+                (the labels are tool names or step descriptions depending on
+                the loop; see its type doc for the two conventions).
 
         Returns:
             Execution result with final context and termination reason.

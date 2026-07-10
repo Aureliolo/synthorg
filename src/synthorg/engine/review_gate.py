@@ -1,8 +1,14 @@
+# module-kind: service
 """Review gate service -- IN_REVIEW task transitions on approval decisions.
 
 Handles the post-execution review gate: when a human approves or rejects
 a completed task, this service transitions it from IN_REVIEW to COMPLETED
 (approve) or IN_PROGRESS (reject/rework) via the TaskEngine.
+
+A FAILED task is decided on the same gate but with distinct transition
+targets: approve is an acknowledgement (the task stays FAILED, no task-engine
+transition, no completion gate), reject is a rework retry to ASSIGNED (not
+IN_PROGRESS). See ``_decide_failed_task``.
 
 Enforces structural no-self-review at the approval gate boundary:
 the decider must not be the same agent as the task's original executor.
@@ -24,6 +30,7 @@ from synthorg.engine._review_completion_gates import (
     map_pipeline_verdict,
     run_completion_gates,
 )
+from synthorg.engine._review_gate_drain import await_shielded_drain
 from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_receipt
 from synthorg.engine._review_gate_record import ReviewGateRecordMixin
 from synthorg.engine._review_gate_wiring import ReviewGateWiringMixin
@@ -32,7 +39,6 @@ from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
@@ -191,48 +197,18 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             )
             return
 
-        if approved:
-            target = TaskStatus.COMPLETED
-            transition_reason = f"Review approved by {decided_by}"
-            if normalized_reason is not None:
-                transition_reason += f": {normalized_reason}"
-            event = APPROVAL_GATE_REVIEW_COMPLETED
-            # The configured adversarial gate(s) get the last word before
-            # COMPLETED: a BLOCK reroutes the human-approved task back to
-            # IN_PROGRESS as rework. This is what makes the red-team gate
-            # fire on the real approval path, not only run_pipeline.
-            (
-                target,
-                transition_reason,
-                event,
-                approved,
-            ) = await run_completion_gates(
-                red_team_gate=self._red_team_gate,
-                vision_gate=self._vision_gate,
-                red_team_input_builder=self._red_team_input_builder,
-                on_missing_deliverable=self._red_team_on_missing_deliverable,
-                task=task,
-                target=target,
-                transition_reason=transition_reason,
-                event=event,
-                approved=approved,
-                vision_input=None,
-                red_team_min_stakes=self._red_team_min_stakes,
-            )
-            # A gate that reroutes the human-approved task back to rework
-            # rewrites ``transition_reason`` with its block summary; align
-            # the recorded decision reason so the audit row matches the
-            # transition instead of carrying the stale human note (which
-            # the pipeline path already does via normalized_reason=
-            # transition_reason).
-            if not approved:
-                normalized_reason = transition_reason
-        else:
-            target = TaskStatus.IN_PROGRESS
-            transition_reason = f"Review rejected by {decided_by}"
-            if normalized_reason is not None:
-                transition_reason += f": {normalized_reason}"
-            event = APPROVAL_GATE_REVIEW_REWORK
+        (
+            target,
+            transition_reason,
+            event,
+            approved,
+            normalized_reason,
+        ) = await self._resolve_review_target(
+            task=task,
+            approved=approved,
+            decided_by=decided_by,
+            normalized_reason=normalized_reason,
+        )
 
         await self._apply_decision(
             task=task,
@@ -244,6 +220,62 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             approval_id=approval_id,
             normalized_reason=normalized_reason,
         )
+
+    async def _resolve_review_target(
+        self,
+        *,
+        task: Task,
+        approved: bool,
+        decided_by: str,
+        normalized_reason: str | None,
+    ) -> tuple[TaskStatus, str, str, bool, str | None]:
+        """Resolve the target status + audit fields for an IN_REVIEW decision.
+
+        On reject, the target is a straight rework to IN_PROGRESS. On approve,
+        the configured adversarial gate(s) get the last word before COMPLETED:
+        a BLOCK reroutes the human-approved task back to IN_PROGRESS as rework
+        (this is what makes the red-team gate fire on the real approval path,
+        not only ``run_pipeline``) and rewrites ``transition_reason`` with its
+        block summary; the recorded decision reason is realigned to match so
+        the audit row carries the block reason, not the stale human note (as
+        the pipeline path already does via ``normalized_reason``).
+
+        Returns:
+            ``(target, transition_reason, event, approved, normalized_reason)``.
+        """
+        if not approved:
+            transition_reason = f"Review rejected by {decided_by}"
+            if normalized_reason is not None:
+                transition_reason += f": {normalized_reason}"
+            return (
+                TaskStatus.IN_PROGRESS,
+                transition_reason,
+                APPROVAL_GATE_REVIEW_REWORK,
+                approved,
+                normalized_reason,
+            )
+
+        target = TaskStatus.COMPLETED
+        transition_reason = f"Review approved by {decided_by}"
+        if normalized_reason is not None:
+            transition_reason += f": {normalized_reason}"
+        event = APPROVAL_GATE_REVIEW_COMPLETED
+        target, transition_reason, event, approved = await run_completion_gates(
+            red_team_gate=self._red_team_gate,
+            vision_gate=self._vision_gate,
+            red_team_input_builder=self._red_team_input_builder,
+            on_missing_deliverable=self._red_team_on_missing_deliverable,
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            approved=approved,
+            vision_input=None,
+            red_team_min_stakes=self._red_team_min_stakes,
+        )
+        if not approved:
+            normalized_reason = transition_reason
+        return target, transition_reason, event, approved, normalized_reason
 
     async def dispatch_completion(
         self,
@@ -432,14 +464,25 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 APPROVAL_GATE_REVIEW_ACKNOWLEDGED,
                 task_id=str(task.id),
                 decided_by=decided_by,
+                approval_id=approval_id,
                 status=task.status.value,
             )
-            await self._record_decision(
-                task=task,
-                decided_by=decided_by,
-                approved=True,
-                reason=reason_text,
+            # An acknowledgement records no transition, but the audit write
+            # must still survive a shutdown-drain cancellation exactly as the
+            # transition path's does, so a failure is never left unrecorded.
+            await await_shielded_drain(
+                asyncio.create_task(
+                    self._record_decision(
+                        task=task,
+                        decided_by=decided_by,
+                        approved=True,
+                        reason=reason_text,
+                        approval_id=approval_id,
+                    )
+                ),
+                task_id=str(task.id),
                 approval_id=approval_id,
+                decided_by=decided_by,
             )
             return
 
@@ -472,53 +515,49 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         """Run the transition + log + decision-record side effects.
 
         Shared by :meth:`complete_review` (human-driven) and
-        :meth:`run_pipeline` (pipeline-driven). ``sync_to_task_engine``
-        commits the task-state change first; the audit log, decision
-        record, and deliverable receipt are emitted only after that commit
-        so an observability or persistence failure in those steps never
-        rolls back a completed transition.
+        :meth:`run_pipeline` (pipeline-driven). The strict
+        :meth:`TaskEngine.transition_task` commits the task-state change
+        first and raises a typed error on a rejected mutation (invalid
+        transition, version conflict, task vanished) so the decision is
+        never recorded against a transition that did not land. The audit
+        log, decision record, and deliverable receipt are emitted only
+        after the commit so an observability or persistence failure in
+        those steps never rolls back a completed transition.
 
         Raises:
+            TaskNotFoundError: The task vanished before the transition.
+            TaskVersionConflictError: A concurrent modification was
+                detected.
+            TaskMutationError: The transition was otherwise rejected
+                (e.g. not a legal edge from the current status).
+            TaskEngineError: Any other ``transition_task`` failure
+                (engine not running, queue full, internal error) is
+                logged and re-raised, not swallowed, so the caller
+                surfaces a real status code instead of a phantom 200.
             CancelledError: Re-raised after the shielded decision-record +
                 receipt work has run to completion, so a shutdown-drain
                 cancellation propagates without losing those side effects.
         """
-        try:
-            await sync_to_task_engine(
-                self._task_engine,
-                target_status=target,
-                task_id=str(task.id),
-                agent_id="review-gate-service",
-                reason=transition_reason,
-            )
-        except Exception as exc:
-            logger.warning(
-                APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-                task_id=str(task.id),
-                decided_by=decided_by,
-                target_status=target.value,
-                stage="sync_to_task_engine",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+        await self._transition_or_raise(
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            decided_by=decided_by,
+            approval_id=approval_id,
+        )
 
         logger.info(
             event,
             task_id=str(task.id),
             decided_by=decided_by,
+            approval_id=approval_id,
             target_status=target.value,
         )
 
         # The transition has committed. The audit write and receipt must run
         # to completion as ONE unit even if a shutdown-drain cancels the
         # (possibly backgrounded) completion task, so a COMPLETED task is
-        # never left without a decision record. A bare
-        # ``await asyncio.shield(coro)`` is not enough: cancelling the outer
-        # task re-raises CancelledError here while the shielded work is still
-        # running detached, so the loop can close before it lands. Drive an
-        # explicit task and, if cancelled mid-await, await it to completion
-        # before propagating the cancellation.
+        # never left without a decision record.
         async def _record_and_emit() -> None:
             await self._record_decision(
                 task=task,
@@ -529,11 +568,50 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             )
             await emit_receipt(self._receipt_service, task, target)
 
-        record_and_emit_task = asyncio.create_task(_record_and_emit())
+        await await_shielded_drain(
+            asyncio.create_task(_record_and_emit()),
+            task_id=str(task.id),
+            approval_id=approval_id,
+            decided_by=decided_by,
+        )
+
+    async def _transition_or_raise(
+        self,
+        *,
+        task: Task,
+        target: TaskStatus,
+        transition_reason: str,
+        decided_by: str,
+        approval_id: str | None,
+    ) -> None:
+        """Commit the IN_REVIEW decision's task-state transition.
+
+        A rejected mutation raises here rather than being swallowed as a
+        best-effort sync, so the decision is NOT recorded and the caller
+        surfaces a real status code instead of a phantom 200.
+
+        Raises:
+            TaskEngineError: Any ``transition_task`` failure, logged and
+                re-raised (never swallowed).
+        """
         try:
-            await asyncio.shield(record_and_emit_task)
-        except asyncio.CancelledError:
-            await record_and_emit_task
+            await self._task_engine.transition_task(
+                str(task.id),
+                target,
+                requested_by="review-gate-service",
+                reason=transition_reason,
+            )
+        except Exception as exc:
+            logger.warning(
+                APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+                task_id=str(task.id),
+                decided_by=decided_by,
+                approval_id=approval_id,
+                target_status=target.value,
+                stage="transition_task",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:

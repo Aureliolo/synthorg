@@ -34,6 +34,7 @@ from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.errors import (
     SelfReviewError,
     TaskInternalError,
+    TaskMutationError,
     TaskNotFoundError,
     TaskVersionConflictError,
 )
@@ -202,8 +203,9 @@ class TestSignalResumeIntent:
         Routing is deterministic off the persisted ``source``; the
         live ``has_parked_context`` probe is not consulted.
         """
-        mock_gate = MagicMock()
-        mock_gate.has_parked_context = AsyncMock(return_value=True)
+        mock_gate = mock_of[ApprovalGate](
+            has_parked_context=AsyncMock(return_value=True)
+        )
         mock_worker = mock_of[WorkerExecutionService](
             dispatch_resume=AsyncMock(),
         )
@@ -239,8 +241,9 @@ class TestSignalResumeIntent:
 
     async def test_flow1_review_gate_source_falls_through(self) -> None:
         """A review-gate-sourced approval -> Flow 2 (review gate) runs."""
-        mock_gate = MagicMock()
-        mock_gate.has_parked_context = AsyncMock(return_value=False)
+        mock_gate = mock_of[ApprovalGate](
+            has_parked_context=AsyncMock(return_value=False)
+        )
         mock_worker = mock_of[WorkerExecutionService](
             dispatch_resume=AsyncMock(),
         )
@@ -283,9 +286,8 @@ class TestSignalResumeIntent:
         fallback path, reached only when the approval row cannot be
         re-read (``get`` returns ``None``).
         """
-        mock_gate = MagicMock()
-        mock_gate.has_parked_context = AsyncMock(
-            side_effect=RuntimeError("db error"),
+        mock_gate = mock_of[ApprovalGate](
+            has_parked_context=AsyncMock(side_effect=RuntimeError("db error"))
         )
         mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
@@ -470,9 +472,8 @@ class TestSignalResumeIntent:
         self, error_cls: type[BaseException]
     ) -> None:
         """MemoryError/RecursionError from the fallback probe propagates."""
-        mock_gate = MagicMock()
-        mock_gate.has_parked_context = AsyncMock(
-            side_effect=error_cls("fatal"),
+        mock_gate = mock_of[ApprovalGate](
+            has_parked_context=AsyncMock(side_effect=error_cls("fatal"))
         )
 
         app_state = _app_state(
@@ -653,14 +654,14 @@ class TestTryReviewGateTransition:
         assert "task-1" not in msg
         assert "alice" not in msg
 
-    async def test_task_version_conflict_raises_409(self) -> None:
-        """TaskVersionConflictError maps to ConflictError (409)."""
+    async def test_task_version_conflict_preserves_retryable_409(self) -> None:
+        """Re-raised as TaskVersionConflictError: 409, retryable, redacted."""
         review_gate = mock_of[ReviewGateService]()
         review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskVersionConflictError("Version 3 != 2"),
         )
 
-        with pytest.raises(ConflictError) as exc_info:
+        with pytest.raises(TaskVersionConflictError) as exc_info:
             await try_review_gate_transition(
                 review_gate,
                 "approval-1",
@@ -669,11 +670,14 @@ class TestTryReviewGateTransition:
                 decided_by="bob",
                 decision_reason=None,
             )
-        # Generic message -- never leak task_id via 409.
+        # Discriminating code + retryable preserved; internal detail redacted.
+        assert exc_info.value.retryable is True
+        assert exc_info.value.status_code == 409
+        assert "Version 3 != 2" not in str(exc_info.value)
         assert "task-1" not in str(exc_info.value)
 
-    async def test_task_not_found_raises_404(self) -> None:
-        """TaskNotFoundError maps to NotFoundError with a generic message."""
+    async def test_task_not_found_preserves_code_404(self) -> None:
+        """Re-raised as TaskNotFoundError (still a NotFoundError), redacted."""
         review_gate = mock_of[ReviewGateService]()
         review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
@@ -688,7 +692,26 @@ class TestTryReviewGateTransition:
                 decided_by="bob",
                 decision_reason=None,
             )
+        assert isinstance(exc_info.value, TaskNotFoundError)
         assert "task-xyz" not in str(exc_info.value)
+
+    async def test_invalid_edge_mutation_raises_conflict(self) -> None:
+        """A base TaskMutationError (invalid edge) surfaces as a redacted 409."""
+        review_gate = mock_of[ReviewGateService]()
+        review_gate.dispatch_completion = AsyncMock(
+            side_effect=TaskMutationError("task 'task-1' not in IN_REVIEW"),
+        )
+
+        with pytest.raises(ConflictError) as exc_info:
+            await try_review_gate_transition(
+                review_gate,
+                "approval-1",
+                "task-1",
+                approved=True,
+                decided_by="bob",
+                decision_reason=None,
+            )
+        assert "task-1" not in str(exc_info.value)
 
     async def test_task_internal_error_propagates_500(self) -> None:
         """TaskInternalError propagates as its faithful 500 ENGINE_ERROR."""

@@ -6,6 +6,8 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.task import (
     Task,
 )
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
 
 
 @runtime_checkable
@@ -57,5 +59,24 @@ class WorkerExecutionService(Protocol):
         not blocked by a full agent re-run. Non-runtime implementations
         reject loudly: a parked context with no agent engine to resume
         it is a misconfiguration, not a no-op.
+        """
+        ...
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        """Background the post-intake spine of a conversational-intake run.
+
+        Called by the conversational-resume path once intake has created
+        the task synchronously (so the approve response surfaces its id).
+        The agent runtime implementation runs the remaining
+        decompose+execute spine as a tracked background task, returning
+        immediately so the HTTP response is not blocked. Non-runtime
+        implementations reject loudly: approved work with no agent engine
+        to run it is a misconfiguration, not a no-op.
         """
         ...

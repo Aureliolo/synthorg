@@ -28,8 +28,11 @@ from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.state import EngineStateSlice
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
@@ -53,6 +56,7 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_FAILED,
     COS_GROUP_PARTICIPANTS_ADDED,
 )
+from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
 
@@ -183,10 +187,15 @@ async def _execute_conversational_proposal(
     approval_id: str,
     proposal: ConversationalProposal,
 ) -> None:
-    """Acquire EXECUTING via CAS, run pipeline, finalize EXECUTED.
+    """Acquire EXECUTING via CAS, intake synchronously, dispatch, finalize.
 
-    On pipeline failure the EXECUTING state reverts to PENDING so
-    the proposal stays retryable rather than locked in EXECUTING.
+    Runs intake inline so the task exists (owned by the requesting human)
+    before returning: the chat surfaces its id and subscribes to the task's
+    live progress stream, then the remaining decompose+execute spine is
+    backgrounded so the approve response is not blocked by the full run. On
+    intake/dispatch failure the EXECUTING state reverts to PENDING so the
+    proposal stays retryable. EXECUTED marks the work dispatched (the task
+    tracks the run from there), matching the parked-resume async contract.
 
     Raises:
         ServiceUnavailableError: When the work pipeline is not wired
@@ -197,7 +206,6 @@ async def _execute_conversational_proposal(
     from synthorg.communication.conversation.enums import (  # noqa: PLC0415
         ConversationalProposalStatus,
     )
-    from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
 
     service = conversational_resume_service_of(app_state)
     proposal_id = str(proposal.id)
@@ -244,15 +252,25 @@ async def _execute_conversational_proposal(
         work_pipeline = require_service(
             app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
         )
-        await work_pipeline.run(work_item)
+        # Intake synchronously so the task exists (owned by the requesting
+        # human) before we return; only the decompose+execute spine is
+        # backgrounded, so the chat gets a task id it can subscribe to.
+        task = await _resolve_or_intake_task(
+            app_state, approval_id, work_pipeline, work_item
+        )
+        worker_execution_service_of(app_state).dispatch_conversational_execution(
+            work_pipeline=work_pipeline,
+            work_item=work_item,
+            task=task,
+        )
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
         raise
-    except Exception as exc:  # noqa: BLE001 -- pipeline failure: don't 5xx
-        # The approve decision is already persisted; a pipeline failure
-        # must not 5xx the response. Revert EXECUTING -> PENDING so the
-        # proposal is retryable rather than stuck in EXECUTING forever.
+    except Exception as exc:  # noqa: BLE001 -- intake/dispatch failure: don't 5xx
+        # The approve decision is already persisted; an intake or dispatch
+        # failure must not 5xx the response. Revert EXECUTING -> PENDING so
+        # the proposal is retryable rather than stuck in EXECUTING forever.
         reverted = await service.transition_proposal(
             proposal_id,
             from_status=ConversationalProposalStatus.EXECUTING,
@@ -264,12 +282,17 @@ async def _execute_conversational_proposal(
             exc,
             approval_id=approval_id,
             proposal_id=proposal_id,
-            note="pipeline run failed; proposal reverted to pending"
+            note="intake/dispatch failed; proposal reverted to pending"
             if reverted
-            else "pipeline run failed; proposal left in EXECUTING (revert lost race)",
+            else (
+                "intake/dispatch failed; proposal left in EXECUTING (revert lost race)"
+            ),
         )
         return
 
+    # The proposal's job -- create the task and hand its execution to the
+    # background -- is done; the task tracks the run from here. EXECUTED
+    # therefore means "dispatched", matching the parked-resume contract.
     transitioned = await service.transition_proposal(
         proposal_id,
         from_status=ConversationalProposalStatus.EXECUTING,
@@ -280,22 +303,88 @@ async def _execute_conversational_proposal(
             APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
             approval_id=approval_id,
             proposal_id=proposal_id,
+            task_id=str(task.id),
         )
         return
-    # The acquire CAS guarantees we are the only caller that ran the
-    # pipeline, so this only happens if a non-approval-gate writer
-    # mutated the proposal mid-flight (operator override, future
-    # admin endpoint). Surface the no-op so the log doesn't claim a
-    # CAS success we didn't make.
+    # The acquire CAS guarantees we are the only caller that dispatched the
+    # work, so this only happens if a non-approval-gate writer mutated the
+    # proposal mid-flight (operator override, future admin endpoint).
+    # Surface the no-op so the log doesn't claim a CAS success we didn't make.
     logger.warning(
         APPROVAL_GATE_CONVERSATIONAL_FAILED,
         approval_id=approval_id,
         proposal_id=proposal_id,
         note=(
             "proposal mutated mid-execute (executing->executed CAS "
-            "failed); pipeline run still succeeded"
+            "failed); work already dispatched"
         ),
     )
+
+
+async def _resolve_or_intake_task(
+    app_state: AppState,
+    approval_id: str,
+    work_pipeline: WorkPipeline,
+    work_item: WorkItem,
+) -> Task:
+    """Reuse a prior attempt's task if one exists, else run intake.
+
+    A prior approve that reverted EXECUTING -> PENDING (e.g. a synchronous
+    dispatch rejection when no agent runtime was configured) has already
+    created + stamped a task on the approval. Reuse it on retry rather than
+    minting a duplicate orphan; only mint (and stamp) a fresh task when none
+    is recorded yet.
+
+    Returns:
+        The reused or newly created intake task.
+    """
+    store = app_state.slice(ApprovalStateSlice).store
+    if store is not None:
+        item = await store.get(NotBlankStr(approval_id))
+        if item is not None and item.task_id is not None:
+            existing = await task_engine_of(app_state).get_task(item.task_id)
+            if existing is not None:
+                return existing
+    task = await work_pipeline.intake_only(work_item)
+    await _attach_task_id_to_approval(app_state, approval_id, str(task.id))
+    return task
+
+
+async def _attach_task_id_to_approval(
+    app_state: AppState, approval_id: str, task_id: str
+) -> None:
+    """Stamp the intake-created task id onto the decided approval item.
+
+    Conversational-intake approvals are created without a task id (the task
+    does not exist until intake runs). Once intake creates it, patch the
+    approval so a subsequent GET + the queue carry the id the chat
+    subscribes to for live progress. Overwrites only when the recorded id
+    differs from *task_id*, so a retry that re-minted a task (because a prior
+    attempt's stamped task no longer resolves) re-stamps the live id rather
+    than leaving the approval pointing at the dead one. Best-effort: a patch
+    failure costs only the live-progress deep link, never the dispatched work.
+    """
+    store = app_state.slice(ApprovalStateSlice).store
+    if store is None:
+        return
+    try:
+        item = await store.get(NotBlankStr(approval_id))
+        if item is None or item.task_id == task_id:
+            return
+        await store.save(item.model_copy(update={"task_id": task_id}))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else best-effort
+        # The stamp is a live-progress convenience; a read/save failure here
+        # must not propagate into the caller and revert the already-dispatched
+        # work. Log and return so the work stands and only the deep link is lost.
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            task_id=task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="task-id stamp failed; work dispatched, live-progress link lost",
+        )
 
 
 async def try_conversational_intake_resume(

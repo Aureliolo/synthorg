@@ -423,21 +423,18 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.IN_REVIEW
     ):
-        # A run that reached review with zero tool calls produced nothing; the
-        # DTO re-derives the truthful outcome from artifacts at read time, but
-        # the persisted risk level is escalated from this creation-time proxy
-        # so an empty high-stakes review never reads LOW.
-        outcome = (
-            RunOutcome.EMPTY
-            if execution_result.total_tool_calls == 0
-            else RunOutcome.SUCCEEDED
-        )
+        # Emptiness is an artifact-count fact resolved truthfully at read time,
+        # not a tool-call proxy that can disagree with it. The review approval
+        # is created as a plain completion; the DTO's run summary derives the
+        # SUCCEEDED/EMPTY outcome from the produced artifacts when the operator
+        # opens the queue. The fail-loud path already routes a genuinely empty
+        # work run to FAILED before reaching here.
         await create_review_approval(
             approval_store,
             agent_id=agent_id,
             task_id=task_id,
             task=ctx.task_execution.task,
-            outcome=outcome,
+            outcome=RunOutcome.SUCCEEDED,
         )
         await _maybe_auto_review(
             review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
@@ -460,9 +457,10 @@ async def _transition_to_failed(  # noqa: PLR0913 -- post-exec collaborators
 
     A work task that produced no artifacts must surface a visible failure
     with the reason, never a silent no-op success pushed to review. A
-    FAILED-outcome review approval is created (high risk) so the failure
-    lands in the operator's approval queue as an unmistakable failure
-    rather than being invisible.
+    FAILED-outcome review approval is created (risk escalated one level
+    above the task's stakes, so never LOW) so the failure lands in the
+    operator's approval queue as an unmistakable failure rather than being
+    invisible.
 
     Returns:
         A copy of ``execution_result`` with the context updated to

@@ -41,6 +41,10 @@ from tests._shared.scripted_provider import make_e2e_identity
 pytestmark = pytest.mark.unit
 
 _MIN_SCORE = 0.1
+# The low-confidence threshold is a property on the real scorer (autospec makes
+# it a mock), so a test reaching solo selection sets it explicitly. Matches the
+# scorer's default; candidates above it take the normal (not-low) path.
+_LOW_CONFIDENCE_SCORE = 0.35
 
 
 def _work_item(**overrides: object) -> WorkItem:
@@ -319,6 +323,66 @@ class TestPlanReviewGate:
         assert result.execution_path is ExecutionPath.TEAM
         coordinator.coordinate.assert_awaited_once()
         coordinator.plan_preview.assert_not_called()
+
+
+class TestIntakeSplit:
+    """The intake_only / continue_from_intake split used by the async
+    conversational-execution path (surface the task id, then background the
+    remaining spine)."""
+
+    async def test_intake_only_creates_task_without_executing(self) -> None:
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            verdict=RoutingVerdict.LEAF,
+            coordinator=None,
+            agents=(make_e2e_identity(),),
+        )
+        task = await pipeline.intake_only(_work_item())
+        assert str(task.id) == sid("task-1")
+        # Intake ran; the post-intake spine did not.
+        cast("AsyncMock", handles["worker"]).execute_once.assert_not_called()
+
+    async def test_continue_from_intake_runs_spine_without_reintake(self) -> None:
+        intake_engine = mock_of[IntakeEngine]()
+        task_engine = mock_of[TaskEngine]()
+        task_engine.get_task.return_value = _post_task(TaskStatus.IN_REVIEW)
+        project_repo = mock_of[ProjectRepository]()
+        project_repo.get.return_value = mock_of[Project]()
+        routing_policy = mock_of[WorkRoutingPolicy]()
+        routing_policy.decide.return_value = RoutingVerdict.LEAF
+        scorer = mock_of[AgentTaskScorer]()
+        scorer.min_score = _MIN_SCORE
+        scorer.low_confidence_score = _LOW_CONFIDENCE_SCORE
+        scorer.score.return_value = RoutingCandidate(
+            agent_identity=make_e2e_identity(), score=0.9, reason="test"
+        )
+        worker = mock_of[WorkerExecutionService]()
+        worker.execute_once.return_value = _post_task(TaskStatus.IN_REVIEW)
+        registry = mock_of[AgentRegistryService]()
+        registry.list_active.return_value = (make_e2e_identity(),)
+        pipeline = DefaultWorkPipeline(
+            intake_engine=intake_engine,
+            task_engine=task_engine,
+            project_repository=project_repo,
+            routing_policy=routing_policy,
+            scorer=scorer,
+            worker_execution_service=worker,
+            coordinator=None,
+            agent_registry=registry,
+            clock=FakeClock(),
+        )
+
+        result = await pipeline.continue_from_intake(_work_item(), _task())
+
+        assert result.execution_path is ExecutionPath.SOLO
+        assert result.final_task_status is TaskStatus.IN_REVIEW
+        worker.execute_once.assert_awaited_once()
+        # continue_from_intake must not re-run intake on the already-created task.
+        cast("AsyncMock", intake_engine.process).assert_not_called()
 
 
 class TestNarratorTrigger:

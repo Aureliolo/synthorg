@@ -24,6 +24,7 @@ untrusted-content fence contract. Every LLM message build site under
 ``src/synthorg/engine/`` is already covered by the upstream wrappers.
 """
 
+import asyncio
 import copy
 import hashlib
 import json
@@ -39,6 +40,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TURN_START,
+    EXECUTION_TURN_OBSERVER_FAILED,
 )
 from synthorg.observability.events.quality import (
     QUALITY_STEP_CLASSIFICATION_FAILED,
@@ -60,9 +62,41 @@ from synthorg.tools.protocol import ToolInvokerProtocol
 from .loop_protocol import (
     ExecutionResult,
     TerminationReason,
+    TurnObserver,
 )
 
 logger = get_logger(__name__)
+
+
+async def notify_turn_observer(
+    observer: TurnObserver | None,
+    turn_number: int,
+    tool_names: tuple[str, ...],
+) -> None:
+    """Fire a progress observer best-effort (cancellation propagates).
+
+    Shared by the plan/hybrid loops so a misbehaving observer can never
+    corrupt a run. The ReAct loop keeps its own inline guard because it
+    also extracts the tool names from the turn response.
+
+    Raises:
+        CancelledError: Propagated so a client disconnect halts the run.
+    """
+    if observer is None:
+        return
+    try:
+        await observer(turn_number, tool_names)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort observer
+        reraise_critical(exc)
+        logger.warning(
+            EXECUTION_TURN_OBSERVER_FAILED,
+            turn_number=turn_number,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def call_provider(  # noqa: PLR0913

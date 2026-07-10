@@ -61,8 +61,21 @@ def _mock_task_engine(task: Task) -> TaskEngine:
             ),
         ),
         get_task=AsyncMock(return_value=task),
+        # The review gate drives its transition through the strict
+        # ``transition_task`` seam (which raises on rejection), not ``submit``.
+        transition_task=AsyncMock(return_value=(task, None)),
     )
     return engine
+
+
+def _transition_call(task_engine: TaskEngine) -> tuple[TaskStatus, str]:
+    """Return ``(target_status, reason)`` from the recorded transition_task call.
+
+    Returns:
+        The target status (positional) and reason (keyword) the gate passed.
+    """
+    call = cast("AsyncMock", task_engine.transition_task).call_args
+    return call.args[1], call.kwargs["reason"]
 
 
 def _vision_input() -> VisionReviewInput:
@@ -138,9 +151,9 @@ async def test_block_routes_to_in_progress() -> None:
         decided_by="bob",
         vision_input=_vision_input(),
     )
-    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
-    assert "Vision review blocked" in call.reason
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS
+    assert "Vision review blocked" in reason
 
 
 async def test_missing_vision_input_skips() -> None:
@@ -155,8 +168,8 @@ async def test_missing_vision_input_skips() -> None:
         pipeline=_pipeline(),
         decided_by="bob",  # no vision_input -> non-GUI deliverable -> gate SKIPs
     )
-    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED
 
 
 async def test_no_gate_passes_through() -> None:
@@ -169,8 +182,8 @@ async def test_no_gate_passes_through() -> None:
         decided_by="bob",
         vision_input=_vision_input(),
     )
-    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED
 
 
 async def test_set_vision_gate_seam() -> None:
@@ -184,5 +197,5 @@ async def test_set_vision_gate_seam() -> None:
         decided_by="bob",
         vision_input=_vision_input(),
     )
-    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS

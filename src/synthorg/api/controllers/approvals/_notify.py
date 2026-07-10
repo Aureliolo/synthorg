@@ -12,7 +12,6 @@ re-aliased here to preserve the internal API shape for callers.
 from datetime import UTC, datetime
 
 from litestar import Request
-from litestar.channels import ChannelsPlugin
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
@@ -23,6 +22,10 @@ from synthorg.api.controllers._approval_review_gate import (
     signal_resume_intent,
 )
 from synthorg.api.controllers.approvals._enrichment import build_approval_response
+from synthorg.api.controllers.approvals._shared import (
+    ApprovalResponse,
+    to_response_without_context,
+)
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.approval.enums import ApprovalStatus
@@ -31,13 +34,11 @@ from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import (
-    ConflictError,
-    ServiceUnavailableError,
-)
+from synthorg.core.domain_errors import ConflictError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
+    API_APPROVAL_ENRICH_FAILED,
     API_APPROVAL_PUBLISH_FAILED,
 )
 from synthorg.observability.events.approval_gate import (
@@ -52,68 +53,74 @@ from synthorg.observability.metrics_hub import record_approval_decision
 logger = get_logger(__name__)
 
 
-def _require_channels_plugin(
-    request: Request[object, object, State],
-) -> ChannelsPlugin:
-    """Extract the ChannelsPlugin from the application.
-
-    Args:
-        request: The incoming request.
-
-    Returns:
-        The registered ChannelsPlugin instance.
-
-    Raises:
-        ServiceUnavailableError: If no ChannelsPlugin is registered on
-            the app (the realtime notification surface is unwired).
-    """
-    plugin = get_channels_plugin(request)
-    if plugin is None:
-        msg = "ChannelsPlugin not registered"
-        logger.error(
-            API_APPROVAL_PUBLISH_FAILED,
-            error=msg,
-            error_type=ServiceUnavailableError.__name__,
-        )
-        raise ServiceUnavailableError(msg)
-    return plugin
-
-
 async def _publish_approval_event(
     request: Request[object, object, State],
     app_state: AppState,
     event_type: WsEventType,
     item: ApprovalItem,
-) -> None:
-    """Publish an enriched approval event to the approvals WebSocket channel.
+) -> ApprovalResponse:
+    """Publish an enriched approval event and return the enriched response.
 
     Publishes the full enriched approval under ``payload.approval`` (the
     shape the dashboard's WS handler upserts from), plus ``approval_id`` /
     ``status`` at the top level for cheap envelope routing, so a decision
     or expiry reflects in the queue live instead of waiting for the poll.
+    The same enriched response is returned so the HTTP caller reuses it
+    instead of resolving the identical context a second time.
 
-    Best-effort: if enrichment or the channels plugin fails, the error is
-    logged and the caller continues normally.
+    Best-effort and degrading on two independent axes: an enrichment failure
+    still publishes the un-enriched response (the queue receives the status
+    change rather than dropping the frame), and an unwired channels plugin is a
+    logged no-op rather than a raise. Whichever fired, the response built above
+    (enriched, or degraded when enrichment already failed) is returned for the
+    HTTP body.
 
     Args:
         request: The incoming HTTP request.
         app_state: Application state (source of the enrichment resolvers).
         event_type: Type of the approval event.
         item: The approval item to include in the payload.
+
+    Returns:
+        The enriched :class:`ApprovalResponse` (context-degraded on
+        enrichment failure), for the caller to reuse as the HTTP body.
     """
+    now = datetime.now(UTC)
     try:
         response = await build_approval_response(app_state, item)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APPROVAL_ENRICH_FAILED,
+            approval_id=str(item.id),
+            event_type=event_type.value,
+            stage="publish",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        response = to_response_without_context(item, now=now)
+
+    channels_plugin = get_channels_plugin(request)
+    if channels_plugin is None:
+        logger.warning(
+            API_APPROVAL_PUBLISH_FAILED,
+            approval_id=str(item.id),
+            event_type=event_type.value,
+            reason="channels_plugin_not_registered",
+        )
+        return response
+
+    try:
         event = WsEvent(
             event_type=event_type,
             channel=CHANNEL_APPROVALS,
-            timestamp=datetime.now(UTC),
+            timestamp=now,
             payload={
                 "approval_id": str(item.id),
                 "status": item.status.value,
                 "approval": response.model_dump(mode="json"),
             },
         )
-        channels_plugin = _require_channels_plugin(request)
         channels_plugin.publish(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
@@ -122,22 +129,22 @@ async def _publish_approval_event(
         reraise_critical(exc)
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             event_type=event_type.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+    return response
 
 
 def _decided_attribution() -> tuple[str, str]:
     """Resolve ``(decided_by, decided_by_user_id)`` from the actor seam.
 
-    ADR-0003: the decision attribution comes from the actor
-    bound by ``AuthContextMiddleware`` (``label`` == username,
-    ``actor_id`` == immutable user id) rather than being re-derived
-    from the request's auth user. Values are byte-identical to the
-    previous ``auth_user.username`` / ``auth_user.user_id`` derivation,
-    so the persisted row and observability stream are unchanged.
+    ADR-0003: the decision attribution comes from the actor bound by
+    ``AuthContextMiddleware`` (``label`` == username, ``actor_id`` ==
+    immutable user id) rather than the request's auth user, so the audit
+    row (display name) and the PII-free observability stream (immutable id)
+    draw from a single bound source that cannot drift between them.
 
     Returns:
         ``(decided_by, decided_by_user_id)``.
@@ -281,7 +288,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     previous_status: ApprovalStatus,
     decision_reason: str | None,
     ws_event: WsEventType,
-) -> ApprovalItem:
+) -> ApprovalResponse:
     """Persist decision, publish event, log, and trigger resume.
 
     Args:
@@ -302,7 +309,9 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         ws_event: WebSocket event type to publish.
 
     Returns:
-        The saved approval item.
+        The enriched approval response for the decided item, built once by
+        the WebSocket publish step and reused as the HTTP body so the same
+        review context is not resolved a second time.
 
     Raises:
         ConflictError: If the approval is no longer pending.
@@ -336,7 +345,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         decided_by_user_id=decided_by_user_id,
     )
 
-    await _publish_approval_event(request, app_state, ws_event, saved)
+    response = await _publish_approval_event(request, app_state, ws_event, saved)
     _log_approval_decision(
         approval_id,
         approved=approved,
@@ -350,4 +359,4 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         decision_reason=decision_reason,
         task_id=saved.task_id,
     )
-    return saved
+    return response

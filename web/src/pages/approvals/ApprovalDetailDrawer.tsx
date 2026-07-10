@@ -1,21 +1,26 @@
-import { useRef } from 'react'
-import { motion } from 'motion/react'
-import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
-import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
-import { getApprovalStatusLabel, getRiskLevelLabel, isFailedApproval } from '@/utils/approvals'
-import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
-import { ApprovalDetailContent } from './ApprovalDetailContent'
 import {
-  type ApprovalDecision,
-  useApprovalDecision,
-  useEscapeToClose,
-  useFocusTrap,
-  useRestoreFocusOnClose,
-} from './useApprovalDrawer'
+  DOT_COLOR_CLASSES,
+  RISK_BADGE_CLASSES,
+  getApprovalStatusLabel,
+  getRiskLevelLabel,
+  isFailedApproval,
+} from '@/utils/approvals'
+import type {
+  ApprovalResponse,
+  ApproveRequest,
+  RejectRequest,
+} from '@/api/types/approvals'
+import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
+import { ApprovalDetailContent } from './ApprovalDetailContent'
+import { type ApprovalDecision, useApprovalDecision } from './useApprovalDrawer'
 
 export interface ApprovalDetailDrawerProps {
   approval: ApprovalResponse | null
@@ -33,85 +38,30 @@ export interface ApprovalDetailDrawerProps {
   error?: string | null
 }
 
-const PANEL_VARIANTS = {
-  initial: { x: '100%', opacity: 0 },
-  animate: { x: 0, opacity: 1, transition: springDefault },
-  exit: { x: '100%', opacity: 0, transition: tweenExitFast },
-}
-
-const RISK_DOT_CLASSES: Record<string, string> = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  accent: 'bg-accent',
-  'accent-dim': 'bg-accent-dim',
-}
-
-const RISK_BADGE_CLASSES: Record<string, string> = {
-  danger: 'border-danger/30 bg-danger/10 text-danger',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  accent: 'border-accent/30 bg-accent/10 text-accent',
-  'accent-dim': 'border-accent-dim/30 bg-accent-dim/10 text-accent-dim',
-}
-
 function ApprovalDrawerHeader({
   approval,
   riskColor,
-  onClose,
 }: {
   approval: ApprovalResponse
-  riskColor: string
-  onClose: () => void
+  riskColor: keyof typeof DOT_COLOR_CLASSES
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-border px-6 py-4">
-      <div className="flex items-center gap-2">
-        <span className={cn('size-2 rounded-full', RISK_DOT_CLASSES[riskColor])} aria-hidden="true" />
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none',
-            RISK_BADGE_CLASSES[riskColor],
-          )}
-        >
-          {getRiskLevelLabel(approval.risk_level)}
-        </span>
-        <span className="text-xs text-text-secondary">{getApprovalStatusLabel(approval.status)}</span>
-      </div>
-      <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
-        <X className="size-4" />
-      </Button>
-    </div>
-  )
-}
-
-function ApprovalDrawerFooter({
-  isFailed,
-  onApprove,
-  onReject,
-}: {
-  isFailed: boolean
-  onApprove: () => void
-  onReject: () => void
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
-      <Button
-        size="sm"
-        variant="outline"
-        className="gap-1 border-success/30 text-success hover:bg-success/10"
-        onClick={onApprove}
+    <div className="flex items-center gap-2">
+      <span
+        className={cn('size-2 rounded-full', DOT_COLOR_CLASSES[riskColor])}
+        aria-hidden="true"
+      />
+      <span
+        className={cn(
+          'inline-flex items-center rounded-full border px-1.5 py-0.5 text-micro font-medium leading-none',
+          RISK_BADGE_CLASSES[riskColor],
+        )}
       >
-        <Check className="size-3.5" />
-        {isFailed ? 'Acknowledge' : 'Approve'}
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-        onClick={onReject}
-      >
-        <X className="size-3.5" />
-        {isFailed ? 'Retry' : 'Reject'}
-      </Button>
+        {getRiskLevelLabel(approval.risk_level)}
+      </span>
+      <span className="text-xs text-text-secondary">
+        {getApprovalStatusLabel(approval.status)}
+      </span>
     </div>
   )
 }
@@ -180,18 +130,26 @@ function ApprovalDecisionDialogs({ decision }: { decision: ApprovalDecision }) {
   )
 }
 
-interface ApprovalDrawerPanelProps {
+function ApprovalDrawerBody({
+  approval,
+  showLoadingState,
+  detailError,
+  confidenceLabel,
+  onClose,
+}: {
   approval: ApprovalResponse | null
   showLoadingState: boolean
   detailError: string | null | undefined
-  decision: ApprovalDecision
+  confidenceLabel: string | null
   onClose: () => void
-}
-
-function ApprovalDrawerPanel({ approval, showLoadingState, detailError, decision, onClose }: ApprovalDrawerPanelProps) {
+}) {
   if (showLoadingState && !detailError) {
     return (
-      <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading approval">
+      <div
+        className="flex flex-1 items-center justify-center"
+        role="status"
+        aria-label="Loading approval"
+      >
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
       </div>
     )
@@ -199,7 +157,7 @@ function ApprovalDrawerPanel({ approval, showLoadingState, detailError, decision
   if (detailError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-        <AlertTriangle className="size-8 text-danger" />
+        <AlertTriangle className="size-8 text-danger" aria-hidden />
         <p className="text-sm text-danger">{detailError}</p>
         <Button variant="ghost" size="sm" onClick={onClose}>
           Close
@@ -208,19 +166,35 @@ function ApprovalDrawerPanel({ approval, showLoadingState, detailError, decision
     )
   }
   if (!approval) return null
-  return (
-    <>
-      <ApprovalDrawerHeader approval={approval} riskColor={decision.riskColor} onClose={onClose} />
-      <ApprovalDetailContent approval={approval} confidenceLabel={decision.confidenceLabel} />
-      {decision.isPending && (
-        <ApprovalDrawerFooter
-          isFailed={isFailedApproval(approval)}
-          onApprove={() => decision.setApproveOpen(true)}
-          onReject={() => decision.setRejectOpen(true)}
-        />
-      )}
-    </>
+  return <ApprovalDetailContent approval={approval} confidenceLabel={confidenceLabel} />
+}
+
+/**
+ * Build the drawer's optional `header` / `footer` slots. Extracted so the
+ * component body stays under the complexity cap: the null/decidable branching
+ * lives here and the drawer just spreads the result.
+ */
+function buildDrawerSlots(
+  approval: ApprovalResponse | null,
+  decision: ApprovalDecision,
+  canDecide: boolean,
+): { header?: ReactNode; footer?: ReactNode } {
+  if (!approval) return {}
+  const header = (
+    <ApprovalDrawerHeader approval={approval} riskColor={decision.riskColor} />
   )
+  if (!canDecide) return { header }
+  return {
+    header,
+    footer: (
+      <ApprovalDecisionButtons
+        isFailed={isFailedApproval(approval)}
+        onApprove={() => decision.setApproveOpen(true)}
+        onReject={() => decision.setRejectOpen(true)}
+        className="justify-end p-card"
+      />
+    ),
+  }
 }
 
 export function ApprovalDetailDrawer({
@@ -233,44 +207,28 @@ export function ApprovalDetailDrawer({
   error: detailError,
 }: ApprovalDetailDrawerProps) {
   const decision = useApprovalDecision(approval, onApprove, onReject)
-  const panelRef = useRef<HTMLElement>(null)
-
-  useEscapeToClose(open, onClose, decision.approveOpen || decision.rejectOpen)
-  useRestoreFocusOnClose(open)
-  useFocusTrap(panelRef, open, `${String(loading)}-${approval?.id ?? ''}`)
-
-  if (!open) return null
+  const showLoadingState = Boolean(loading) || !approval
+  const canDecide = !showLoadingState && !detailError && decision.isPending
+  const slots = buildDrawerSlots(approval, decision, canDecide)
 
   return (
     <>
-      <motion.div
-        className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
-        variants={overlayBackdrop}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        onClick={onClose}
-      />
-
-      <motion.aside
-        ref={panelRef}
-        className="fixed top-0 right-0 z-50 flex h-full w-[var(--so-drawer-width-default)] max-w-[100vw] flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)]"
-        variants={PANEL_VARIANTS}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        role="dialog"
-        aria-modal="true"
-        aria-label={approval ? `Approval detail: ${approval.title}` : 'Approval detail'}
+      <Drawer
+        open={open}
+        onClose={onClose}
+        ariaLabel={approval ? `Approval detail: ${approval.title}` : 'Approval detail'}
+        width="default"
+        contentClassName="p-0"
+        {...slots}
       >
-        <ApprovalDrawerPanel
+        <ApprovalDrawerBody
           approval={approval}
-          showLoadingState={loading || !approval}
+          showLoadingState={showLoadingState}
           detailError={detailError}
-          decision={decision}
+          confidenceLabel={decision.confidenceLabel}
           onClose={onClose}
         />
-      </motion.aside>
+      </Drawer>
 
       <ApprovalDecisionDialogs decision={decision} />
     </>

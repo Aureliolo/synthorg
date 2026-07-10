@@ -27,6 +27,16 @@ APPROVAL_GATE_RESUME_CONTEXT_LOADED: Final[str] = "approval_gate.resume.context_
 APPROVAL_GATE_REVIEW_TRANSITION_FAILED: Final[str] = (
     "approval_gate.review.transition_failed"
 )
+APPROVAL_GATE_REVIEW_STORE_RETRYING: Final[str] = "approval_gate.review.store_retrying"
+APPROVAL_GATE_REVIEW_STORE_FAILED: Final[str] = "approval_gate.review.store_failed"
+# The decision transition already succeeded (or, on the acknowledgement path,
+# never applied); only its shielded audit/decision-record side effect did not
+# land before a shutdown cancellation (a drain timeout, or the write failing on
+# its own after the timeout). Kept distinct from TRANSITION_FAILED so a
+# dashboard never reads this as a rejected transition.
+APPROVAL_GATE_REVIEW_AUDIT_DRAIN_FAILED: Final[str] = (
+    "approval_gate.review.audit_drain_failed"
+)
 # approval_gate.self_review.prevented and approval_gate.decision.recorded
 # moved to events.security as SECURITY_APPROVAL_SELF_REVIEW_PREVENTED and
 # SECURITY_APPROVAL_DECISION_RECORDED (audit-chained).

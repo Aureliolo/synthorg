@@ -4,10 +4,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
-from synthorg.api.controllers.approvals._enrichment import build_approval_contexts
+from synthorg.api.controllers.approvals._enrichment import (
+    build_approval_contexts,
+    resolve_approval_context,
+)
 from synthorg.api.controllers.approvals._shared import (
+    ApprovalAgentRef,
+    ApprovalArtifactRef,
     ApprovalContext,
+    ApprovalProjectRef,
+    ApprovalRunSummary,
     _to_approval_response,
 )
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -18,7 +26,7 @@ from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, make_app_state, sid
 
 pytestmark = pytest.mark.unit
 
@@ -74,6 +82,8 @@ async def _resolve(  # noqa: PLR0913 -- test fixture assembling injected fakes
     artifacts: dict[str, tuple[Artifact, ...]] | None = None,
     agent_name_by_id: dict[str, str] | None = None,
     task_calls: list[str] | None = None,
+    raise_tasks: set[str] | None = None,
+    raise_artifacts: set[str] | None = None,
 ) -> dict[str, ApprovalContext]:
     tasks = tasks or {}
     projects = projects or {}
@@ -82,12 +92,18 @@ async def _resolve(  # noqa: PLR0913 -- test fixture assembling injected fakes
     async def get_task(tid: str) -> Task | None:
         if task_calls is not None:
             task_calls.append(tid)
+        if raise_tasks is not None and tid in raise_tasks:
+            msg = "task backend down"
+            raise RuntimeError(msg)
         return tasks.get(tid)
 
     async def get_project(pid: str) -> Project | None:
         return projects.get(pid)
 
     async def list_artifacts(tid: str) -> Sequence[Artifact]:
+        if raise_artifacts is not None and tid in raise_artifacts:
+            msg = "artifact backend down"
+            raise RuntimeError(msg)
         return artifacts.get(tid, ())
 
     return await build_approval_contexts(
@@ -176,6 +192,53 @@ class TestBuildApprovalContexts:
         assert ctx.agent is not None
         assert ctx.agent.name == "Anica Hocevar"
 
+    async def test_in_progress_task_has_no_run_summary(self) -> None:
+        # A run that has not finished shows no produced-output badge.
+        tid = sid("task-live")
+        item = _item("appr-live", task_id=tid)
+        task = _task(
+            tid, project=sid("p"), status=TaskStatus.IN_PROGRESS, stakes=Stakes.LOW
+        )
+        contexts = await _resolve([item], tasks={tid: task})
+        ctx = contexts[str(item.id)]
+        assert ctx.task is not None
+        assert ctx.run is None
+
+    async def test_artifact_failure_leaves_run_unknown_not_empty(self) -> None:
+        # A failed artifact listing must not be laundered into a truthful-
+        # looking "produced nothing" (EMPTY); the outcome is unknown (None).
+        tid = sid("task-io")
+        item = _item("appr-io", task_id=tid)
+        task = _task(
+            tid, project=sid("p"), status=TaskStatus.IN_REVIEW, stakes=Stakes.LOW
+        )
+        contexts = await _resolve([item], tasks={tid: task}, raise_artifacts={tid})
+        ctx = contexts[str(item.id)]
+        assert ctx.task is not None
+        assert ctx.run is None
+
+    async def test_failed_task_summarised_even_when_artifacts_unavailable(self) -> None:
+        # A failure is known from the status, so it is still surfaced when the
+        # artifact listing is unavailable.
+        tid = sid("task-failio")
+        item = _item("appr-failio", task_id=tid)
+        task = _task(
+            tid, project=sid("p"), status=TaskStatus.FAILED, stakes=Stakes.HIGH
+        )
+        contexts = await _resolve([item], tasks={tid: task}, raise_artifacts={tid})
+        ctx = contexts[str(item.id)]
+        assert ctx.run is not None
+        assert ctx.run.outcome is RunOutcome.FAILED
+
+    async def test_task_lookup_failure_keeps_agent(self) -> None:
+        item = _item("appr-taskio", task_id=sid("boom"), requested_by="operator-jane")
+        contexts = await _resolve([item], raise_tasks={sid("boom")})
+        ctx = contexts[str(item.id)]
+        assert ctx.task is None
+        assert ctx.run is None
+        assert ctx.agent is not None
+        assert ctx.agent.name == "operator-jane"
+
 
 class TestToApprovalResponseMapping:
     def test_context_maps_onto_response_fields(self) -> None:
@@ -208,3 +271,55 @@ class TestToApprovalResponseMapping:
         assert resp.task is not None
         assert resp.run is not None
         assert resp.run.outcome is RunOutcome.EMPTY
+
+
+class TestContextInvariants:
+    def test_run_without_task_is_rejected(self) -> None:
+        run = ApprovalRunSummary(outcome=RunOutcome.FAILED, produced_artifact_count=0)
+        with pytest.raises(ValidationError):
+            ApprovalContext(run=run)
+
+    def test_project_without_task_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ApprovalContext(
+                project=ApprovalProjectRef(id=sid("p"), name=NotBlankStr("P"))
+            )
+
+    def test_agent_only_context_is_valid(self) -> None:
+        ctx = ApprovalContext(
+            agent=ApprovalAgentRef(id=sid("a"), name=NotBlankStr("Agent"))
+        )
+        assert ctx.task is None
+
+    def test_artifacts_cannot_exceed_produced_count(self) -> None:
+        ref = ApprovalArtifactRef(
+            id=NotBlankStr("art-1"),
+            path=NotBlankStr("src/a.py"),
+            type=ArtifactType.CODE,
+            content_type="text/x-python",
+            size_bytes=1,
+        )
+        with pytest.raises(ValidationError):
+            ApprovalRunSummary(
+                outcome=RunOutcome.SUCCEEDED,
+                produced_artifact_count=0,
+                artifacts=(ref,),
+            )
+
+
+class TestResolveApprovalContextWiring:
+    async def test_backend_unwired_degrades_to_agent_only(self) -> None:
+        # With no persistence backend, the context still carries the resolved
+        # agent name (from config) rather than failing the queue.
+        state = make_app_state(persistence=None)
+        item = _item("appr-nb", task_id=sid("task-1"), requested_by=sid("agent-x"))
+        contexts = await resolve_approval_context(state, [item])
+        ctx = contexts[str(item.id)]
+        assert ctx.task is None
+        assert ctx.run is None
+        assert ctx.agent is not None
+        assert ctx.agent.id == sid("agent-x")
+
+    async def test_empty_items_short_circuits(self) -> None:
+        state = make_app_state(persistence=None)
+        assert await resolve_approval_context(state, []) == {}

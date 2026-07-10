@@ -38,7 +38,7 @@ describe('ApprovalCard', () => {
   it('renders title and a human step label (not the raw action type)', () => {
     renderCard()
     expect(screen.getByText('Deploy API')).toBeInTheDocument()
-    // The raw action-type string is no longer shown; a human step label is.
+    // Only the human step label is rendered; the raw action_type string is not.
     expect(screen.queryByText('deploy:production')).not.toBeInTheDocument()
     expect(screen.getByText('Review completed work')).toBeInTheDocument()
   })

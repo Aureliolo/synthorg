@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
+import { approvalDetailPath } from '@/utils/approvals'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
@@ -31,7 +32,7 @@ function ApprovalLink({ id, label }: { id: string; label: string }) {
   return (
     <li>
       <Link
-        to={`/approvals?selected=${encodeURIComponent(id)}`}
+        to={approvalDetailPath(id)}
         className="underline underline-offset-2 hover:text-foreground"
       >
         {label}

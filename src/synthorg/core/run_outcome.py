@@ -8,6 +8,8 @@ persistence modules. Only depends on the enum leaves.
 """
 
 from enum import StrEnum
+from types import MappingProxyType
+from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.task_enums import Stakes, TaskStatus
@@ -52,12 +54,15 @@ def derive_run_outcome(
 
 # Base stakes -> risk mapping. Enum-to-enum (no magic numbers); the guard
 # below forces a conscious entry when a new Stakes member is added.
-_STAKES_BASE_RISK: dict[Stakes, ApprovalRiskLevel] = {
-    Stakes.LOW: ApprovalRiskLevel.LOW,
-    Stakes.NORMAL: ApprovalRiskLevel.MEDIUM,
-    Stakes.HIGH: ApprovalRiskLevel.HIGH,
-    Stakes.CRITICAL: ApprovalRiskLevel.CRITICAL,
-}
+_StakesRiskMap = MappingProxyType[Stakes, ApprovalRiskLevel]
+_STAKES_BASE_RISK: Final[_StakesRiskMap] = MappingProxyType(
+    {
+        Stakes.LOW: ApprovalRiskLevel.LOW,
+        Stakes.NORMAL: ApprovalRiskLevel.MEDIUM,
+        Stakes.HIGH: ApprovalRiskLevel.HIGH,
+        Stakes.CRITICAL: ApprovalRiskLevel.CRITICAL,
+    }
+)
 
 _missing_stakes = set(Stakes) - set(_STAKES_BASE_RISK)
 if _missing_stakes:
@@ -70,7 +75,7 @@ del _missing_stakes
 
 # Risk escalation order, lowest to highest. Explicit literal so a step is a
 # conscious placement, not a dynamic ``tuple(ApprovalRiskLevel)``.
-_RISK_ORDER: tuple[ApprovalRiskLevel, ...] = (
+_RISK_ORDER: Final[tuple[ApprovalRiskLevel, ...]] = (
     ApprovalRiskLevel.LOW,
     ApprovalRiskLevel.MEDIUM,
     ApprovalRiskLevel.HIGH,
@@ -93,8 +98,8 @@ def risk_from_task_outcome(stakes: Stakes, outcome: RunOutcome) -> ApprovalRiskL
     """Derive an approval risk level from task stakes and run outcome.
 
     Maps stakes to a base risk, then escalates one level (capped at
-    ``CRITICAL``) when the run failed or produced nothing, so a high-stakes
-    failure never reads ``LOW``.
+    ``CRITICAL``) when the run failed or produced nothing, so a failure or
+    empty run is never shown as ``LOW`` regardless of stakes.
 
     Args:
         stakes: The task's stakes.

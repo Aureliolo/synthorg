@@ -7,6 +7,7 @@ The single coherent path every entry adapter feeds: a typed
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.task import Task
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
@@ -33,6 +34,41 @@ class WorkPipeline(Protocol):
         Raises:
             WorkPipelineError: On any phase failure (subclasses carry
                 the precise RFC 9457 status).
+        """
+        ...
+
+    async def intake_only(self, work_item: WorkItem) -> Task:
+        """Run only intake and return the created task.
+
+        Persists the task (stamping the human owner for the event stream)
+        without running decomposition/execution, so a caller can surface
+        the task id and background the rest via :meth:`continue_from_intake`.
+
+        Args:
+            work_item: The typed entry envelope.
+
+        Returns:
+            The task created by intake.
+
+        Raises:
+            WorkPipelineError: If intake rejects the request.
+        """
+        ...
+
+    async def continue_from_intake(
+        self, work_item: WorkItem, task: Task
+    ) -> WorkPipelineResult:
+        """Run the post-intake spine for an already-created task.
+
+        Args:
+            work_item: The typed entry envelope.
+            task: The task created by a prior :meth:`intake_only` call.
+
+        Returns:
+            The terminal :class:`WorkPipelineResult`.
+
+        Raises:
+            WorkPipelineError: On any phase failure.
         """
         ...
 

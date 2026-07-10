@@ -214,6 +214,9 @@ async def _park_for_approval(
             context=ctx,
             agent_id=agent_id,
             task_id=task_id,
+            # The AG-UI session is the task, so a parked run surfaces an
+            # APPROVAL_INTERRUPT on the same stream the dashboard is watching.
+            session_id=task_id,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- returns ERROR result

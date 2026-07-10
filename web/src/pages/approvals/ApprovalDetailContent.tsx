@@ -14,6 +14,8 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
+import { TaskProgress } from '@/components/ui/task-progress'
+import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { ROUTES } from '@/router/routes'
 import { ApprovalTimeline } from './ApprovalTimeline'
 import {
@@ -26,6 +28,46 @@ import { formatDateTime, formatFileSize } from '@/utils/format'
 import type { ApprovalArtifactRef, ApprovalResponse } from '@/api/types/approvals'
 
 const TOOL_CREATION_ACTION_TYPE = 'proposal:tool_creation'
+
+/**
+ * Task statuses for which a run is still in flight, so live progress is worth
+ * streaming. A terminal / in-review task shows its produced output instead.
+ */
+const RUNNING_TASK_STATUSES: ReadonlySet<string> = new Set([
+  'created',
+  'assigned',
+  'in_progress',
+  'awaiting_input',
+])
+
+/**
+ * Live execution progress for the task this approval spawned, while it runs.
+ *
+ * Fills the gap between approving proposed work and its completion review: the
+ * operator watches the run stream its steps instead of a silent queue. Only
+ * shown while the task is in flight; a finished run surfaces its produced
+ * output. Subscription is owner-gated server-side, so a stream the operator
+ * cannot access simply renders nothing.
+ */
+function LiveProgressSection({ approval }: { approval: ApprovalResponse }) {
+  const task = approval.task
+  const taskId =
+    task !== null && RUNNING_TASK_STATUSES.has(task.status) ? task.id : null
+  const progress = useTaskProgress(taskId)
+  if (progress === null) return null
+  return (
+    <div>
+      <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">
+        Live progress
+      </span>
+      <TaskProgress
+        status={progress.status}
+        stages={progress.stages}
+        className="mt-2"
+      />
+    </div>
+  )
+}
 
 function taskDetailPath(taskId: string): string {
   return ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(taskId))
@@ -40,10 +82,10 @@ function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
   const displayText = approval.metadata['stripped_description'] || approval.description
   return (
     <div>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">
         Description
         {isStripped && (
-          <span className="ml-1.5 text-[10px] font-normal normal-case text-warning">(PII redacted)</span>
+          <span className="ml-1.5 text-micro font-normal normal-case text-warning">(PII redacted)</span>
         )}
       </span>
       <p className="mt-1 text-sm text-text-secondary">{displayText}</p>
@@ -56,7 +98,7 @@ function MetaField({ icon: Icon, label, value }: { icon: LucideIcon; label: stri
     <div className="flex items-start gap-2">
       <Icon className="mt-0.5 size-3.5 text-muted-foreground" aria-hidden="true" />
       <div>
-        <span className="block text-[10px] text-muted-foreground">{label}</span>
+        <span className="block text-micro text-muted-foreground">{label}</span>
         <span className="block text-xs text-foreground">{value}</span>
       </div>
     </div>
@@ -132,7 +174,7 @@ function ProducedOutputSection({ approval }: { approval: ApprovalResponse }) {
   const extra = run.produced_artifact_count - run.artifacts.length
   return (
     <div>
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-compact font-semibold uppercase tracking-wider text-muted-foreground">
         <Package className="size-3.5" aria-hidden="true" />
         What was produced
         <RunOutcomeBadge outcome={run.outcome} className="ml-1" />
@@ -143,7 +185,7 @@ function ProducedOutputSection({ approval }: { approval: ApprovalResponse }) {
             <ProducedArtifactRow key={artifact.id} artifact={artifact} />
           ))}
           {extra > 0 && (
-            <li className="text-[10px] text-muted-foreground">+ {extra} more</li>
+            <li className="text-micro text-muted-foreground">+ {extra} more</li>
           )}
         </ul>
       ) : (
@@ -171,7 +213,7 @@ function EvidenceSection({ approval }: { approval: ApprovalResponse }) {
   if (!evidence.narrative && !hasTrace) return null
   return (
     <div>
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-compact font-semibold uppercase tracking-wider text-muted-foreground">
         <ListChecks className="size-3.5" aria-hidden="true" />
         Agent account
       </span>
@@ -180,8 +222,8 @@ function EvidenceSection({ approval }: { approval: ApprovalResponse }) {
       )}
       {hasTrace && (
         <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-text-secondary">
-          {/* Static, immutable trace: lines never reorder, so a positional
-              key is stable. Prefix keeps duplicate lines distinct. */}
+          {/* Static, immutable trace: the list never reorders or mutates, so
+              a positional index is a stable key here. */}
           {evidence.reasoning_trace.map((line, index) => (
             // eslint-disable-next-line @eslint-react/no-array-index-key
             <li key={`trace-${index}`}>{line}</li>
@@ -255,7 +297,7 @@ function ProposedToolSection({ approval }: { approval: ApprovalResponse }) {
   if (!name && !capability && !description) return null
   return (
     <div className="rounded-lg border border-border p-card">
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-compact font-semibold uppercase tracking-wider text-muted-foreground">
         <Wrench className="size-3.5" aria-hidden="true" />
         Proposed tool
       </span>
@@ -284,7 +326,7 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
     <>
       {approval.decision_reason && (
         <div>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reason</span>
+          <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">Reason</span>
           <p className="mt-1 rounded border border-border bg-surface p-2 text-sm text-text-secondary">
             {approval.decision_reason}
           </p>
@@ -292,7 +334,7 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
       )}
       {approval.task_id && (
         <div>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">
             Linked Task
           </span>
           <Link
@@ -305,7 +347,7 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
       )}
       {Object.keys(approval.metadata).length > 0 && (
         <div>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">
             Metadata
           </span>
           <dl className="mt-1 space-y-1">
@@ -330,19 +372,23 @@ export function ApprovalDetailContent({
   confidenceLabel: string | null
 }) {
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
+    <div className="flex-1 overflow-y-auto p-card space-y-section-gap">
       <h2 className="text-lg font-semibold text-foreground">
         {approval.task?.title ?? approval.title}
       </h2>
       <ApprovalRunFailureBanner approval={approval} />
       <ApprovalSafetyBanners approval={approval} />
+      {/* Key by task id so a different task remounts the section, resetting the
+          accumulated progress instead of showing the prior task's stages for a
+          frame while the new stream connects. */}
+      <LiveProgressSection key={approval.task?.id ?? 'no-task'} approval={approval} />
       {Boolean(approval.description || approval.metadata['stripped_description']) && (
         <DescriptionSection approval={approval} />
       )}
       <ProducedOutputSection approval={approval} />
       <EvidenceSection approval={approval} />
       <div>
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Timeline</span>
+        <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">Timeline</span>
         <ApprovalTimeline approval={approval} className="mt-2" />
       </div>
       <ProposedToolSection approval={approval} />

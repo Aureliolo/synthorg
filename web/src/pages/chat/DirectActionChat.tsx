@@ -7,6 +7,7 @@ import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
+import { approvalDetailPath } from '@/utils/approvals'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
@@ -59,7 +60,7 @@ function ActionBubble({ msg }: ActionBubbleProps) {
         <div className="space-y-1 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
           <p>This action needs human approval before it runs.</p>
           <Button asChild variant="link" size="sm" className="h-auto p-0">
-            <Link to={`/approvals?selected=${encodeURIComponent(msg.parkedApprovalId)}`}>
+            <Link to={approvalDetailPath(msg.parkedApprovalId)}>
               Review in Approvals
             </Link>
           </Button>

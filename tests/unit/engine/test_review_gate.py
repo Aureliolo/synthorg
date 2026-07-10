@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
-from synthorg.engine.errors import SelfReviewError
+from synthorg.engine.errors import SelfReviewError, TaskVersionConflictError
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.engine.task_engine import TaskEngine
@@ -49,8 +50,20 @@ def _make_mock_task_engine(
                 ),
             ),
             get_task=AsyncMock(return_value=task),
+            transition_task=AsyncMock(return_value=(task, None)),
         ),
     )
+
+
+def _transition_call(mock_te: MagicMock) -> tuple[TaskStatus, str]:
+    """Return ``(target_status, reason)`` from the recorded transition_task call.
+
+    The review gate drives its task transition through the strict
+    ``TaskEngine.transition_task`` (which raises on a rejected mutation),
+    so tests assert against that boundary rather than the raw ``submit``.
+    """
+    call = mock_te.transition_task.call_args
+    return call.args[1], call.kwargs["reason"]
 
 
 def _make_mock_decision_repo(
@@ -161,11 +174,11 @@ class TestReviewGateServiceApprove:
             decided_by="bob",
         )
 
-        mock_te.submit.assert_awaited_once()
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.COMPLETED
-        assert "approved" in mutation.reason.lower()
-        assert "bob" in mutation.reason
+        mock_te.transition_task.assert_awaited_once()
+        target, reason = _transition_call(mock_te)
+        assert target == TaskStatus.COMPLETED
+        assert "approved" in reason.lower()
+        assert "bob" in reason
 
     async def test_reject_transitions_to_in_progress(self) -> None:
         """Rejecting a review syncs IN_PROGRESS status to task engine."""
@@ -183,11 +196,11 @@ class TestReviewGateServiceApprove:
             reason="needs rework on error handling",
         )
 
-        mock_te.submit.assert_awaited_once()
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.IN_PROGRESS
-        assert "rejected" in mutation.reason.lower()
-        assert "needs rework on error handling" in mutation.reason
+        mock_te.transition_task.assert_awaited_once()
+        target, reason = _transition_call(mock_te)
+        assert target == TaskStatus.IN_PROGRESS
+        assert "rejected" in reason.lower()
+        assert "needs rework on error handling" in reason
 
     async def test_reject_without_reason(self) -> None:
         """Rejecting without a reason still works."""
@@ -204,9 +217,36 @@ class TestReviewGateServiceApprove:
             decided_by="bob",
         )
 
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.IN_PROGRESS
-        assert "None" not in mutation.reason
+        target, reason = _transition_call(mock_te)
+        assert target == TaskStatus.IN_PROGRESS
+        assert "None" not in reason
+
+
+class TestReviewGateServiceTransitionFailure:
+    """A rejected task transition propagates and skips the decision record."""
+
+    async def test_transition_rejection_propagates_and_skips_record(self) -> None:
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        mock_te.transition_task = AsyncMock(
+            side_effect=TaskVersionConflictError("version 3 != 2")
+        )
+        repo = _make_mock_decision_repo()
+        service = ReviewGateService(
+            task_engine=mock_te, persistence=_make_mock_persistence(repo)
+        )
+
+        with capture_logs() as logs, pytest.raises(TaskVersionConflictError):
+            await service.complete_review(
+                task_id="task-1",
+                approved=True,
+                decided_by="bob",
+            )
+
+        # The audit record + receipt only run after a committed transition, so
+        # a rejected transition must not persist a phantom decision.
+        repo.append_with_next_version.assert_not_awaited()
+        assert any(entry.get("stage") == "transition_task" for entry in logs)
 
 
 class TestReviewGateServiceFailedTask:
@@ -228,7 +268,7 @@ class TestReviewGateServiceFailedTask:
         )
 
         # A failure must never be laundered into COMPLETED.
-        mock_te.submit.assert_not_awaited()
+        mock_te.transition_task.assert_not_awaited()
         # The acknowledgement is still recorded to the audit trail.
         repo.append_with_next_version.assert_awaited_once()
 
@@ -248,10 +288,10 @@ class TestReviewGateServiceFailedTask:
             reason="try a different approach",
         )
 
-        mock_te.submit.assert_awaited_once()
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.ASSIGNED
-        assert "try a different approach" in mutation.reason
+        mock_te.transition_task.assert_awaited_once()
+        target, reason = _transition_call(mock_te)
+        assert target == TaskStatus.ASSIGNED
+        assert "try a different approach" in reason
 
 
 class TestReviewGateServiceSelfReview:
@@ -276,7 +316,7 @@ class TestReviewGateServiceSelfReview:
         assert exc_info.value.task_id == sid("task-1")
         assert exc_info.value.agent_id == "alice"
         # No transition should have been attempted
-        mock_te.submit.assert_not_awaited()
+        mock_te.transition_task.assert_not_awaited()
         repo.append_with_next_version.assert_not_awaited()
 
     async def test_different_reviewer_allowed(self) -> None:
@@ -294,7 +334,7 @@ class TestReviewGateServiceSelfReview:
             decided_by="bob",
         )
 
-        mock_te.submit.assert_awaited_once()
+        mock_te.transition_task.assert_awaited_once()
 
     async def test_task_not_found_raises(self) -> None:
         """When task does not exist, the review cannot complete."""
@@ -342,7 +382,7 @@ class TestReviewGateServiceSelfReview:
             approved=True,
             decided_by="bob",
         )
-        mock_te.submit.assert_awaited_once()
+        mock_te.transition_task.assert_awaited_once()
         # No audit record is persisted for unassigned tasks.
         repo.append_with_next_version.assert_not_awaited()
 
@@ -375,7 +415,7 @@ class TestReviewGateServiceSelfReview:
             approved=True,
             decided_by="bob",
         )
-        mock_te.submit.assert_awaited_once()
+        mock_te.transition_task.assert_awaited_once()
 
 
 class TestReviewGateServiceDecisionRecording:
@@ -476,9 +516,9 @@ class TestReviewGateServiceDecisionRecording:
             "Red-team review blocked completion: "
             "HIGH: hardcoded credential in deliverable."
         )
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.IN_PROGRESS
-        assert mutation.reason == expected_reason
+        target, reason = _transition_call(mock_te)
+        assert target == TaskStatus.IN_PROGRESS
+        assert reason == expected_reason
         kwargs = repo.append_with_next_version.call_args.kwargs
         assert kwargs["decision"] is DecisionOutcome.REJECTED
         assert kwargs["reason"] == expected_reason
@@ -581,7 +621,7 @@ class TestReviewGateServiceDecisionRecording:
             decided_by="bob",
         )
         # Transition still happened
-        mock_te.submit.assert_awaited_once()
+        mock_te.transition_task.assert_awaited_once()
 
     async def test_decision_record_programming_error_propagates(self) -> None:
         """Programming errors in the audit append MUST propagate.
@@ -700,9 +740,8 @@ class TestReviewGateServiceReceiptSeam:
         )
 
         # The transition committed and the seam was invoked exactly once.
-        mock_te.submit.assert_awaited_once()
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.COMPLETED
+        mock_te.transition_task.assert_awaited_once()
+        assert _transition_call(mock_te)[0] == TaskStatus.COMPLETED
         assert len(seam.calls) == 1
 
     async def test_set_receipt_service_attaches_seam_post_construction(
@@ -757,9 +796,8 @@ class TestDispatchCompletion:
         )
 
         assert dispatched is False
-        mock_te.submit.assert_awaited_once()
-        mutation = mock_te.submit.call_args.args[0]
-        assert mutation.target_status == TaskStatus.COMPLETED
+        mock_te.transition_task.assert_awaited_once()
+        assert _transition_call(mock_te)[0] == TaskStatus.COMPLETED
 
     async def test_rejection_runs_inline_even_with_full_wiring(self) -> None:
         """A rejection is never backgrounded, even with gate + registry wired.
@@ -789,8 +827,8 @@ class TestDispatchCompletion:
 
         assert dispatched is False
         registry.spawn.assert_not_called()
-        mock_te.submit.assert_awaited_once()
-        assert mock_te.submit.call_args.args[0].target_status == TaskStatus.IN_PROGRESS
+        mock_te.transition_task.assert_awaited_once()
+        assert _transition_call(mock_te)[0] == TaskStatus.IN_PROGRESS
 
     async def test_below_stakes_approve_runs_inline_despite_full_wiring(
         self,
@@ -822,5 +860,5 @@ class TestDispatchCompletion:
 
         assert dispatched is False
         registry.spawn.assert_not_called()
-        mock_te.submit.assert_awaited_once()
-        assert mock_te.submit.call_args.args[0].target_status == TaskStatus.COMPLETED
+        mock_te.transition_task.assert_awaited_once()
+        assert _transition_call(mock_te)[0] == TaskStatus.COMPLETED

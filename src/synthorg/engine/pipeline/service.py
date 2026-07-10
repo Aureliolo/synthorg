@@ -225,8 +225,71 @@ class DefaultWorkPipeline:
             source=work_item.source.value,
             project=work_item.project,
         )
+        task = await self._phase(phases, _PHASE_INTAKE, self._intake(work_item))
+        return await self._continue_from_task(work_item, task, phases, started)
+
+    async def intake_only(self, work_item: WorkItem) -> Task:
+        """Run only the intake phase and return the created task.
+
+        Persists the task (stamping the human owner so the AG-UI event
+        stream can resolve session ownership) and returns it without running
+        decomposition or execution. Lets a caller surface the task id and
+        subscribe to its progress stream, then background the remaining spine
+        via :meth:`continue_from_intake`.
+
+        Returns:
+            The task created by intake.
+
+        Raises:
+            WorkIntakeRejectedError: If intake rejects the request or does
+                not persist a task.
+        """
+        logger.info(
+            PIPELINE_RUN_STARTED,
+            correlation_id=work_item.correlation_id,
+            source=work_item.source.value,
+            project=work_item.project,
+        )
+        return await self._intake(work_item)
+
+    async def continue_from_intake(
+        self, work_item: WorkItem, task: Task
+    ) -> WorkPipelineResult:
+        """Run the pipeline from an already-created task (intake complete).
+
+        The counterpart to :meth:`intake_only`: resolves the project,
+        decomposes, and executes the solo/team/refine/plan-review path.
+        Used by the conversational-intake path, which runs intake
+        synchronously (to surface the task id) then backgrounds this.
+
+        Returns:
+            The :class:`WorkPipelineResult` for the run.
+        """
+        return await self._continue_from_task(
+            work_item, task, [], self._clock.monotonic()
+        )
+
+    async def _continue_from_task(
+        self,
+        work_item: WorkItem,
+        task: Task,
+        phases: list[WorkPhaseResult],
+        started: float,
+    ) -> WorkPipelineResult:
+        """Run the post-intake spine (project -> decompose -> execute).
+
+        Returns:
+            The :class:`WorkPipelineResult` for the run.
+
+        Raises:
+            ProjectNotFoundError: If ``work_item.project`` does not resolve.
+            WorkRoutingUndecidableError: If no viable path/agent is selected.
+            WorkPipelineTeamPathUnavailableError: If team execution is
+                required but no coordinator is wired.
+            WorkPipelineError: If execution completes without a readable
+                terminal task state.
+        """
         try:
-            task = await self._phase(phases, _PHASE_INTAKE, self._intake(work_item))
             await self._phase(phases, _PHASE_PROJECTS, self._resolve_project(work_item))
             verdict, agents = await self._phase(
                 phases, _PHASE_DECOMPOSE, self._decompose(task)

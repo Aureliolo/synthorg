@@ -26,6 +26,7 @@ from synthorg.engine.loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+    TurnObserver,
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
@@ -529,6 +530,7 @@ class AgentEnginePostExecMixin:
         start: float,
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -547,6 +549,7 @@ class AgentEnginePostExecMixin:
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
             task_cancellation_checker=self._make_task_cancellation_checker(task_id),
+            turn_observer=turn_observer,
         )
         if timeout_seconds is None:
             return await coro

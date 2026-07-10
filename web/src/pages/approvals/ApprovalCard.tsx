@@ -1,9 +1,9 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
+import { AlertTriangle, Clock, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
+import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
 import { useFlash } from '@/hooks/useFlash'
 import {
   DOT_COLOR_CLASSES,
@@ -48,38 +48,36 @@ function useStatusFlash(status: string): ReturnType<typeof useFlash>['flashStyle
 }
 
 /**
- * Local 1s countdown over `seconds_remaining`. Reset + interval-restart
- * are collapsed into one prop-keyed effect so a WS refresh restarts on a
- * clean cadence; the `cancelled` flag guards both the microtask and the
- * tick so a freshly-set countdown is never decremented by a stale tick.
- * A sibling effect stops the timer once the countdown reaches zero so an
- * expired card mounted in the paginated queue does not keep a dormant
- * 1-Hz interval running.
+ * Local 1s countdown over `seconds_remaining`. A WS refresh re-syncs the
+ * countdown to the new server value via the sanctioned adjust-state-on-
+ * prop-change pattern (a `useState` previous-value tracker compared during
+ * render), keeping both setStates inside React's render bookkeeping so a
+ * discarded concurrent render cannot leave the tracker ahead of the value.
+ * A separate effect owns the 1-Hz interval, and a sibling effect stops it
+ * once the countdown reaches zero so an expired card in the paginated queue
+ * does not keep a dormant interval running.
  */
 function useApprovalCountdown(secondsRemaining: number | null, isPending: boolean): number | null {
   const [countdown, setCountdown] = useState(secondsRemaining)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [prevSeconds, setPrevSeconds] = useState(secondsRemaining)
+
+  if (secondsRemaining !== prevSeconds) {
+    setPrevSeconds(secondsRemaining)
+    setCountdown(secondsRemaining)
+  }
 
   useEffect(() => {
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (!cancelled) setCountdown(secondsRemaining)
-    })
     if (!isPending || secondsRemaining === null || secondsRemaining <= 0) {
-      return () => {
-        cancelled = true
-      }
+      return
     }
-    timerRef.current = setInterval(() => {
-      if (cancelled) return
+    const timer = setInterval(() => {
       setCountdown((prev) => (prev === null || prev <= 1 ? 0 : prev - 1))
     }, 1000)
+    timerRef.current = timer
     return () => {
-      cancelled = true
-      if (timerRef.current !== null) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
+      clearInterval(timer)
+      timerRef.current = null
     }
   }, [secondsRemaining, isPending])
 
@@ -233,26 +231,12 @@ function ApprovalCardActions({
   onReject: (id: string) => void
 }) {
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1 border-success/30 text-success hover:bg-success/10"
-        onClick={() => onApprove(id)}
-      >
-        <Check className="size-3.5" />
-        {isFailed ? 'Acknowledge' : 'Approve'}
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1 border-danger/30 text-danger hover:bg-danger/10"
-        onClick={() => onReject(id)}
-      >
-        <X className="size-3.5" />
-        {isFailed ? 'Retry' : 'Reject'}
-      </Button>
-    </div>
+    <ApprovalDecisionButtons
+      isFailed={isFailed}
+      onApprove={() => onApprove(id)}
+      onReject={() => onReject(id)}
+      className="mt-3"
+    />
   )
 }
 

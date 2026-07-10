@@ -11,6 +11,8 @@ from synthorg.core.task import (
     Task,
 )
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import (
     get_logger,
 )
@@ -21,6 +23,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_ATTEMPTED,
     WORKERS_EXECUTION_SERVICE_COMPLETED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
+    WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
 
@@ -165,5 +168,31 @@ class LifecycleAdvancingExecutionService:
         msg = (
             f"Approval {approval_id!r} has a parked agent context but the "
             f"agent runtime is not installed; cannot resume execution."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        """Reject: the lifecycle baseline has no agent engine to run work.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: Always; the lifecycle baseline
+                has no agent engine to execute the approved work.
+        """
+        logger.error(
+            WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+            task_id=str(task.id),
+            source=work_item.source.value,
+            pipeline=type(work_pipeline).__name__,
+            reason="lifecycle_baseline_cannot_execute_conversational_work",
+        )
+        msg = (
+            f"Task {task.id!s} was intake-created for approved conversational "
+            f"work but the agent runtime is not installed; cannot execute."
         )
         raise AgentRuntimeNotConfiguredError(msg)

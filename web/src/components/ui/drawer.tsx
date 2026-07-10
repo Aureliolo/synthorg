@@ -32,6 +32,25 @@ interface DrawerPropsBase {
   width?: DrawerWidth
   /** Additional class names merged into the content wrapper (e.g. `"p-0"` to remove default padding). */
   contentClassName?: string
+  /**
+   * Custom header content rendered in place of the built-in title text, inside
+   * the standard bordered header row (the close button is still supplied). Use
+   * for a composed header (badges, status) that a plain `title` cannot express.
+   *
+   * A custom header replaces `BaseDrawer.Title` (which would otherwise supply
+   * the accessible name), so it never mounts: an explicit `ariaLabel` is
+   * REQUIRED alongside `header` to name the dialog. A DEV-only warning fires
+   * when it is missing (the union below cannot express the requirement across
+   * a dynamically-composed `{...slots}` spread, so the runtime guard is the
+   * enforcement seam).
+   */
+  header?: React.ReactNode
+  /**
+   * Content pinned to the bottom of the drawer as a bordered row, a sibling of
+   * the scrollable body so it never scrolls out of view (e.g. persistent
+   * decision actions). Rendered nothing when omitted.
+   */
+  footer?: React.ReactNode
   children: React.ReactNode
   className?: string
 }
@@ -40,12 +59,33 @@ interface DrawerPropsBase {
  * At least one of `title` or `ariaLabel` must be provided so the dialog
  * always has an accessible name (WAI-ARIA dialog pattern). When `title` is
  * provided the Drawer renders a built-in header; when omitted, the header is
- * skipped and `ariaLabel` supplies the accessible name instead.
+ * skipped and `ariaLabel` supplies the accessible name instead. When a custom
+ * `header` is set, `ariaLabel` is required (see the `header` docstring).
  */
 export type DrawerProps = DrawerPropsBase & (
   | { /** Visible header title. */ title: string; /** Explicit aria-label; when omitted, `title` is used as the accessible name. */ ariaLabel?: string }
   | { title?: undefined; /** Explicit aria-label (required when title is omitted). */ ariaLabel: string }
 )
+
+function DrawerCloseButton() {
+  return (
+    <BaseDrawer.Close
+      render={
+        <button
+          type="button"
+          className={cn(
+            'rounded-md p-1 text-muted-foreground transition-colors',
+            'hover:bg-card-hover hover:text-foreground',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+          )}
+          aria-label="Close"
+        />
+      }
+    >
+      <X className="size-4" aria-hidden />
+    </BaseDrawer.Close>
+  )
+}
 
 function DrawerHeader({
   trimmedTitle,
@@ -67,21 +107,17 @@ function DrawerHeader({
           {trimmedTitle}
         </BaseDrawer.Title>
       )}
-      <BaseDrawer.Close
-        render={
-          <button
-            type="button"
-            className={cn(
-              'rounded-md p-1 text-muted-foreground transition-colors',
-              'hover:bg-card-hover hover:text-foreground',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-            )}
-            aria-label="Close"
-          />
-        }
-      >
-        <X className="size-4" />
-      </BaseDrawer.Close>
+      <DrawerCloseButton />
+    </div>
+  )
+}
+
+/** A composed-header row: caller content on the left, close button on the right. */
+function DrawerCustomHeader({ header }: { header: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border p-card">
+      {header}
+      <DrawerCloseButton />
     </div>
   )
 }
@@ -99,18 +135,26 @@ function _trimToUndefined(value: string | undefined): string | undefined {
 function useAccessibilityWarning(
   trimmedTitle: string | undefined,
   explicitLabel: string | undefined,
+  hasHeader: boolean,
 ): void {
   useEffect(() => {
     if (!import.meta.env.DEV) return
-    if (trimmedTitle || explicitLabel) return
-    log.warn('Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
-  }, [trimmedTitle, explicitLabel])
+    // A custom header replaces BaseDrawer.Title, so only an explicit ariaLabel
+    // can name the dialog; a bare `title` no longer counts. Without a header,
+    // either a title (via BaseDrawer.Title) or an ariaLabel suffices.
+    if (hasHeader ? explicitLabel : trimmedTitle || explicitLabel) return
+    log.warn(
+      hasHeader
+        ? '`ariaLabel` is required when a custom `header` is set (it replaces the built-in title) for accessible dialog naming.'
+        : 'Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.',
+    )
+  }, [trimmedTitle, explicitLabel, hasHeader])
 }
 
-export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width = 'default', contentClassName, children, className }: DrawerProps) {
+export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width = 'default', contentClassName, header, footer, children, className }: DrawerProps) {
   const trimmedTitle = _trimToUndefined(title)
   const explicitLabel = _trimToUndefined(ariaLabel)
-  useAccessibilityWarning(trimmedTitle, explicitLabel)
+  useAccessibilityWarning(trimmedTitle, explicitLabel, header != null)
 
   return (
     <BaseDrawer.Root
@@ -144,12 +188,21 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width 
               className,
             )}
           >
-            {trimmedTitle && (
-              <DrawerHeader trimmedTitle={trimmedTitle} explicitLabel={explicitLabel} />
+            {header ? (
+              <DrawerCustomHeader header={header} />
+            ) : (
+              trimmedTitle && (
+                <DrawerHeader trimmedTitle={trimmedTitle} explicitLabel={explicitLabel} />
+              )
             )}
             <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-card', contentClassName)}>
               {children}
             </div>
+            {footer ? (
+              <div data-testid="drawer-footer" className="border-t border-border">
+                {footer}
+              </div>
+            ) : null}
           </BaseDrawer.Popup>
         </BaseDrawer.Viewport>
       </BaseDrawer.Portal>

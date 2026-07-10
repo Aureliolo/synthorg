@@ -427,6 +427,9 @@ class AgentEngineErrorsMixin:
                 context=park_ctx,
                 agent_id=agent_id,
                 task_id=task_id,
+                # The AG-UI session is the task, so a budget-ceiling park
+                # surfaces an APPROVAL_INTERRUPT on the dashboard's stream.
+                session_id=task_id,
             )
         except Exception as park_exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort side channel

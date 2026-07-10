@@ -32,6 +32,7 @@ from synthorg.budget.forecast_roles import (
 from synthorg.budget.forecaster import BriefSignal, CostForecaster, compute_brief_hash
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
@@ -141,6 +142,29 @@ class ForecastGate:
         if not self._budget_config.forecast_required:
             return await self._work_pipeline.run(work_item)
         return await self._gated_dispatch(work_item)
+
+    async def intake_only(self, work_item: WorkItem) -> Task:
+        """Forward intake to the wrapped pipeline (decorator passthrough).
+
+        The forecast gate guards the batch ``run`` entry seam. The
+        intake/continue split is driven only by the conversational-propose
+        path, whose cost forecast is resolved upstream at proposal time, so
+        the gate forwards the split verbatim without re-consulting a forecast.
+
+        Returns:
+            The task created by the wrapped pipeline's intake.
+        """
+        return await self._work_pipeline.intake_only(work_item)
+
+    async def continue_from_intake(
+        self, work_item: WorkItem, task: Task
+    ) -> WorkPipelineResult:
+        """Forward the post-intake spine to the wrapped pipeline (passthrough).
+
+        Returns:
+            The terminal :class:`WorkPipelineResult` from the wrapped pipeline.
+        """
+        return await self._work_pipeline.continue_from_intake(work_item, task)
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
         """Forward the narrator to the wrapped pipeline (decorator passthrough)."""

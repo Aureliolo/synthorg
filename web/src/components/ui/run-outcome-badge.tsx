@@ -16,8 +16,8 @@ export interface RunOutcomeBadgeProps {
  * Failure-aware badge for a task run's outcome. Colour + icon + label so the
  * signal is never carried by colour alone: `succeeded` reads success,
  * `empty` reads a warning ("produced nothing"), and `failed` reads danger.
- * Shared across the approvals queue, the review drawer, and chat prompts so
- * a failed run looks identical everywhere.
+ * Shared across the approvals queue and the review drawer so a failed run
+ * looks identical everywhere.
  */
 export function RunOutcomeBadge({ outcome, className }: RunOutcomeBadgeProps) {
   const label = getRunOutcomeLabel(outcome)

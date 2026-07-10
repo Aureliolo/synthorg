@@ -11,6 +11,7 @@ The resolvers and the :class:`RunOutcome` value object are reused by the
 dashboard read model; keep this module dependency-light and importable.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Final
@@ -34,6 +35,8 @@ from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.project import Project
 from synthorg.core.run_outcome import derive_run_outcome
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_ENRICH_FAILED
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
@@ -46,9 +49,59 @@ logger = get_logger(__name__)
 # set cannot bloat the queue payload; the count stays truthful.
 _MAX_ARTIFACT_REFS: Final[int] = 20
 
-TaskGetter = Callable[[str], Awaitable[Task | None]]
-ProjectGetter = Callable[[str], Awaitable[Project | None]]
-ArtifactLister = Callable[[str], Awaitable[Sequence[Artifact]]]
+# Bound the concurrent id resolutions per page so a large approval page cannot
+# fan out one DB read per distinct task/project/artifact all at once and starve
+# the connection pool. An internal safety cap, not an operator knob.
+_MAX_CONCURRENT_RESOLVES: Final[int] = 16
+
+type TaskGetter = Callable[[str], Awaitable[Task | None]]
+type ProjectGetter = Callable[[str], Awaitable[Project | None]]
+type ArtifactLister = Callable[[str], Awaitable[Sequence[Artifact]]]
+
+
+def _semaphore_bounded[T](
+    fetch: Callable[[str], Awaitable[T]], sem: asyncio.Semaphore
+) -> Callable[[str], Awaitable[T]]:
+    """Wrap *fetch* so each call holds *sem* for the duration of the read.
+
+    Returns:
+        The semaphore-guarded fetcher.
+    """
+
+    async def _run(id_: str) -> T:
+        async with sem:
+            return await fetch(id_)
+
+    return _run
+
+
+async def _run_all[T](coros: Sequence[Awaitable[T]]) -> list[T]:
+    """Run *coros* concurrently, unwrapping a lone critical from the group.
+
+    Each child is a ``_resolve_id`` call that already degrades its own
+    best-effort failures to ``None``, so the only exception that reaches the
+    group is a critical (``MemoryError`` / ``RecursionError``), which
+    ``TaskGroup`` wraps in an ``ExceptionGroup``. Unwrap and re-raise the bare
+    critical so it keeps propagating rather than being masked by the group.
+
+    Returns:
+        The child results in submission order.
+    """
+    try:
+        async with asyncio.TaskGroup() as group:
+            futures = [group.create_task(_awaited(coro)) for coro in coros]
+    except* (MemoryError, RecursionError) as eg:
+        raise eg.exceptions[0] from eg
+    return [future.result() for future in futures]
+
+
+async def _awaited[T](coro: Awaitable[T]) -> T:
+    """Await *coro* (adapts a bare awaitable to ``create_task``).
+
+    Returns:
+        The awaited value.
+    """
+    return await coro
 
 
 def _agent_ref(requested_by: str, agent_name_by_id: dict[str, str]) -> ApprovalAgentRef:
@@ -89,84 +142,113 @@ def _unique_task_ids(items: Sequence[ApprovalItem]) -> list[str]:
     return list(seen)
 
 
+# Task statuses for which a run has finished and a truthful outcome exists;
+# a run summary is attached only for these, so a live or not-yet-started task
+# never shows a produced-output badge.
+_TERMINAL_RUN_STATES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.IN_REVIEW, TaskStatus.COMPLETED, TaskStatus.FAILED}
+)
+
+
+async def _resolve_id[T](
+    id_: str,
+    fetch: Callable[[str], Awaitable[T]],
+    *,
+    stage: str,
+) -> tuple[str, T | None]:
+    """Resolve one id, degrading to ``None`` on a best-effort failure.
+
+    Returns:
+        ``(id, value)`` on success (``value`` may itself be ``None`` for a
+        404), or ``(id, None)`` when the lookup raised.
+    """
+    try:
+        return id_, await fetch(id_)
+    except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
+        reraise_critical(exc)
+        logger.warning(
+            API_APPROVAL_ENRICH_FAILED,
+            stage=stage,
+            resource_id=id_,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return id_, None
+
+
 async def _resolve_tasks(
     task_ids: Sequence[str], *, get_task: TaskGetter
 ) -> dict[str, Task]:
-    """Resolve each distinct task id once; drop the ones that fail or 404.
+    """Resolve each distinct task id concurrently; drop failures and 404s.
 
     Returns:
         Map of task id to resolved task (missing ids omitted).
     """
-    resolved: dict[str, Task] = {}
-    for tid in task_ids:
-        try:
-            task = await get_task(tid)
-        except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
-            reraise_critical(exc)
-            logger.warning(
-                API_APPROVAL_ENRICH_FAILED,
-                stage="task",
-                task_id=tid,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            continue
-        if task is not None:
-            resolved[tid] = task
-    return resolved
+    resolved = await _run_all(
+        [_resolve_id(tid, get_task, stage="task") for tid in task_ids]
+    )
+    return {tid: task for tid, task in resolved if task is not None}
 
 
 async def _resolve_projects(
     project_ids: Sequence[str], *, get_project: ProjectGetter
 ) -> dict[str, Project]:
-    """Resolve each distinct project id once; drop the ones that fail or 404.
+    """Resolve each distinct project id concurrently; drop failures and 404s.
 
     Returns:
         Map of project id to resolved project (missing ids omitted).
     """
-    resolved: dict[str, Project] = {}
-    for pid in project_ids:
-        try:
-            project = await get_project(pid)
-        except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
-            reraise_critical(exc)
-            logger.warning(
-                API_APPROVAL_ENRICH_FAILED,
-                stage="project",
-                project_id=pid,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            continue
-        if project is not None:
-            resolved[pid] = project
-    return resolved
+    resolved = await _run_all(
+        [_resolve_id(pid, get_project, stage="project") for pid in project_ids]
+    )
+    return {pid: proj for pid, proj in resolved if proj is not None}
 
 
 async def _resolve_artifacts(
     task_ids: Sequence[str], *, list_artifacts: ArtifactLister
 ) -> dict[str, tuple[Artifact, ...]]:
-    """List produced artifacts per task (empty tuple on failure).
+    """List produced artifacts per task concurrently; omit a task on failure.
+
+    A failed listing is omitted from the map (not recorded as empty), so the
+    caller can tell "no artifacts produced" (present, empty) apart from
+    "could not determine" (absent) and never fabricates an EMPTY outcome.
 
     Returns:
-        Map of task id to its produced-artifact tuple.
+        Map of task id to its produced-artifact tuple (failed tasks omitted).
     """
-    resolved: dict[str, tuple[Artifact, ...]] = {}
-    for tid in task_ids:
-        try:
-            produced = await list_artifacts(tid)
-        except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
-            reraise_critical(exc)
-            logger.warning(
-                API_APPROVAL_ENRICH_FAILED,
-                stage="artifacts",
-                task_id=tid,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            produced = ()
-        resolved[tid] = tuple(produced)
-    return resolved
+    resolved = await _run_all(
+        [_resolve_id(tid, list_artifacts, stage="artifacts") for tid in task_ids]
+    )
+    return {tid: tuple(produced) for tid, produced in resolved if produced is not None}
+
+
+def _build_run_summary(
+    task: Task, produced: tuple[Artifact, ...] | None
+) -> ApprovalRunSummary | None:
+    """Build the run summary for a finished task, or ``None`` when it is not.
+
+    ``produced`` is ``None`` when the artifact listing was unavailable. A
+    summary is built only for a finished run (:data:`_TERMINAL_RUN_STATES`);
+    for a completed/in-review run whose artifacts could not be listed, the
+    outcome is unknown (``None``) rather than a fabricated EMPTY. A FAILED
+    run is failed regardless of the artifact count, so it is summarised even
+    when the listing was unavailable.
+
+    Returns:
+        The run summary, or ``None`` when no truthful outcome can be shown.
+    """
+    if task.status not in _TERMINAL_RUN_STATES:
+        return None
+    if produced is None and task.status != TaskStatus.FAILED:
+        return None
+    resolved = produced if produced is not None else ()
+    return ApprovalRunSummary(
+        outcome=derive_run_outcome(
+            status=task.status, produced_artifact_count=len(resolved)
+        ),
+        produced_artifact_count=len(resolved),
+        artifacts=tuple(_artifact_ref(a) for a in resolved[:_MAX_ARTIFACT_REFS]),
+    )
 
 
 def _build_context(
@@ -187,14 +269,6 @@ def _build_context(
     if task is None or item.task_id is None:
         return ApprovalContext(agent=agent)
 
-    produced = artifacts.get(item.task_id, ())
-    run = ApprovalRunSummary(
-        outcome=derive_run_outcome(
-            status=task.status, produced_artifact_count=len(produced)
-        ),
-        produced_artifact_count=len(produced),
-        artifacts=tuple(_artifact_ref(a) for a in produced[:_MAX_ARTIFACT_REFS]),
-    )
     resolved_project = projects.get(task.project)
     project_ref = (
         ApprovalProjectRef(id=task.project, name=resolved_project.name)
@@ -205,7 +279,7 @@ def _build_context(
         task=ApprovalTaskRef(id=str(task.id), title=task.title, status=task.status),
         project=project_ref,
         agent=agent,
-        run=run,
+        run=_build_run_summary(task, artifacts.get(item.task_id)),
     )
 
 
@@ -220,19 +294,32 @@ async def build_approval_contexts(
     """Batch-resolve review context for a page of approvals, keyed by id.
 
     Pure over the injected resolvers (fully unit-testable): resolves each
-    distinct task, project, and per-task artifact set once, then assembles
-    one :class:`ApprovalContext` per approval.
+    distinct task and per-task artifact set concurrently, then the distinct
+    projects, then assembles one :class:`ApprovalContext` per approval. A
+    single malformed row degrades to an agent-only context rather than
+    failing the whole page.
 
     Returns:
         Map of approval id to its resolved :class:`ApprovalContext`.
     """
     task_ids = _unique_task_ids(items)
-    tasks = await _resolve_tasks(task_ids, get_task=get_task)
-    artifacts = await _resolve_artifacts(task_ids, list_artifacts=list_artifacts)
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks_future = group.create_task(
+                _resolve_tasks(task_ids, get_task=get_task)
+            )
+            artifacts_future = group.create_task(
+                _resolve_artifacts(task_ids, list_artifacts=list_artifacts)
+            )
+    except* (MemoryError, RecursionError) as eg:
+        # See _run_all: keep a lone critical unwrapped so it keeps propagating.
+        raise eg.exceptions[0] from eg
+    tasks = tasks_future.result()
+    artifacts = artifacts_future.result()
     project_ids = list(dict.fromkeys(task.project for task in tasks.values()))
     projects = await _resolve_projects(project_ids, get_project=get_project)
     return {
-        str(item.id): _build_context(
+        str(item.id): _context_or_agent_only(
             item,
             tasks=tasks,
             artifacts=artifacts,
@@ -241,6 +328,42 @@ async def build_approval_contexts(
         )
         for item in items
     }
+
+
+def _context_or_agent_only(
+    item: ApprovalItem,
+    *,
+    tasks: dict[str, Task],
+    artifacts: dict[str, tuple[Artifact, ...]],
+    projects: dict[str, Project],
+    agent_name_by_id: dict[str, str],
+) -> ApprovalContext:
+    """Build one approval's context, degrading a bad row to agent-only.
+
+    Returns:
+        The resolved context, or an agent-only context when assembly raised.
+    """
+    try:
+        return _build_context(
+            item,
+            tasks=tasks,
+            artifacts=artifacts,
+            projects=projects,
+            agent_name_by_id=agent_name_by_id,
+        )
+    except Exception as exc:  # noqa: BLE001 -- one bad row must not fail the page
+        reraise_critical(exc)
+        # Assembly runs over already-resolved lookups, so a raise here is a
+        # programming/schema defect (a shape the DTO cannot express), not the
+        # expected 404 the per-id resolvers degrade at WARNING. Log at ERROR.
+        logger.error(
+            API_APPROVAL_ENRICH_FAILED,
+            stage="assemble",
+            resource_id=str(item.id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ApprovalContext(agent=_agent_ref(item.requested_by, agent_name_by_id))
 
 
 async def _agent_name_map(app_state: AppState) -> dict[str, str]:
@@ -290,11 +413,24 @@ async def resolve_approval_context(
     async def _list_artifacts(task_id: str) -> Sequence[Artifact]:
         return await backend.artifacts.query(ArtifactFilterSpec(task_id=task_id))
 
+    # Read tasks through the TaskEngine (the canonical single-writer read
+    # seam) when it is wired, falling back to the repo when it is not, so
+    # enrichment routes through the service layer rather than reaching past
+    # it for the task read.
+    task_engine = app_state.slice(EngineStateSlice).task_engine
+    get_task: TaskGetter = (
+        task_engine.get_task if task_engine is not None else backend.tasks.get
+    )
+
+    # One shared semaphore across all three resolver families bounds the total
+    # concurrent DB reads for a page, so a large page cannot exhaust the pool.
+    sem = asyncio.Semaphore(_MAX_CONCURRENT_RESOLVES)
+
     return await build_approval_contexts(
         items,
-        get_task=backend.tasks.get,
-        get_project=backend.projects.get,
-        list_artifacts=_list_artifacts,
+        get_task=_semaphore_bounded(get_task, sem),
+        get_project=_semaphore_bounded(backend.projects.get, sem),
+        list_artifacts=_semaphore_bounded(_list_artifacts, sem),
         agent_name_by_id=agent_name_by_id,
     )
 

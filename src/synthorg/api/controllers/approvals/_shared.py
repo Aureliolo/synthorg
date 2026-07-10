@@ -1,3 +1,4 @@
+# module-kind: code
 """Shared DTOs, urgency resolution, and fetch helpers for approvals.
 
 Pure helper module consumed by both the approvals query and decision
@@ -10,9 +11,9 @@ import asyncio
 import math
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg._core.features import require_service
 from synthorg.api.responses import require_resource_or_404
@@ -36,8 +37,8 @@ from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
-_URGENCY_CRITICAL_FALLBACK_SECONDS: float = 3600.0
-_URGENCY_HIGH_FALLBACK_SECONDS: float = 14400.0
+_URGENCY_CRITICAL_FALLBACK_SECONDS: Final[float] = 3600.0
+_URGENCY_HIGH_FALLBACK_SECONDS: Final[float] = 14400.0
 
 
 _urgency_threshold_fallback_logged: bool = False
@@ -291,6 +292,21 @@ class ApprovalRunSummary(BaseModel):
         description="Produced-artifact refs, capped for payload size",
     )
 
+    @model_validator(mode="after")
+    def _artifacts_within_count(self) -> Self:
+        """The embedded refs are a (possibly capped) subset of the total.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When more refs are embedded than the produced count.
+        """
+        if len(self.artifacts) > self.produced_artifact_count:
+            msg = "artifacts cannot exceed produced_artifact_count"
+            raise ValueError(msg)
+        return self
+
 
 class ApprovalContext(BaseModel):
     """Resolved enrichment bundle for one approval (read-time only).
@@ -305,6 +321,24 @@ class ApprovalContext(BaseModel):
     project: ApprovalProjectRef | None = None
     agent: ApprovalAgentRef | None = None
     run: ApprovalRunSummary | None = None
+
+    @model_validator(mode="after")
+    def _run_and_project_imply_task(self) -> Self:
+        """A run summary or project ref only exists alongside a resolved task.
+
+        Both are derived from the task in the producer, so their presence
+        without a task would be an inconsistent bundle.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When a run/project ref is present with no task.
+        """
+        if self.task is None and (self.run is not None or self.project is not None):
+            msg = "run/project context requires a resolved task"
+            raise ValueError(msg)
+        return self
 
 
 class ApprovalResponse(ApprovalItem):

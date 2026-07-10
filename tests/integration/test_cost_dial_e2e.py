@@ -44,20 +44,20 @@ from synthorg.budget.pareto import (
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import (
-    ExecutionPath,
-    RoutingVerdict,
     WorkItem,
-    WorkPhaseResult,
-    WorkPipelineResult,
     WorkSource,
 )
-from synthorg.engine.pipeline.narrator_port import RunNarrator
-from tests._shared import FakeTierBenchmarkScoreProvider, as_uuid, sid
+from tests._shared import (
+    FakeTierBenchmarkScoreProvider,
+    StubWorkPipeline,
+    as_uuid,
+    sid,
+)
 from tests._shared.benchmark import FIXTURE_SOURCE
 
 pytestmark = pytest.mark.integration
@@ -133,38 +133,6 @@ class _InMemoryForecastRepo:
 
     async def count(self, filter_spec: object) -> int:
         return len(self.rows)
-
-
-class _StubWorkPipeline:
-    """Bare-bones pipeline that returns a synthetic success."""
-
-    def __init__(self) -> None:
-        self.calls: list[WorkItem] = []
-        self.narrator: RunNarrator | None = None
-        self.refinement_router: object | None = None
-
-    async def run(self, work_item: WorkItem) -> WorkPipelineResult:
-        self.calls.append(work_item)
-        return WorkPipelineResult(
-            work_item=work_item,
-            verdict=RoutingVerdict.LEAF,
-            execution_path=ExecutionPath.SOLO,
-            task_id="task-001",
-            final_task_status=TaskStatus.COMPLETED,
-            phases=(
-                WorkPhaseResult(phase="intake", success=True, duration_seconds=0.01),
-            ),
-            total_duration_seconds=0.01,
-        )
-
-    def attach_narrator(self, narrator: RunNarrator) -> None:
-        self.narrator = narrator
-
-    def attach_refinement_router(self, router: object) -> None:
-        self.refinement_router = router
-
-    def attach_plan_review_gate(self, gate: object) -> None:
-        self.plan_review_gate = gate
 
 
 class _EngineHost(AgentEngineErrorsMixin):
@@ -248,7 +216,7 @@ async def test_cost_dial_full_lifecycle() -> None:
     """End-to-end: forecast gate -> approve -> dispatch -> ceiling -> resume."""
     budget = _budget_config()
     repo = _InMemoryForecastRepo()
-    pipeline = _StubWorkPipeline()
+    pipeline = StubWorkPipeline()
 
     async def _no_history(_tier: str, _role: str) -> Sequence[float]:
         return ()

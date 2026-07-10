@@ -13,8 +13,8 @@ The canonical helper for transient-I/O backoff is `synthorg.core.resilience.Gene
 **Sites**:
 
 - `src/synthorg/workers/dispatcher.py`: NATS publish. The canonical "default" example.
-- `src/synthorg/telemetry/collector.py`: peer-ID file read on local-disk paths. The retry covers the brief window where the file is being atomically replaced by a sibling process.
 - `src/synthorg/engine/workspace/git_backend/external_remote.py`: git push/fetch against a forge remote. The `retryable` predicate retries transient transport failures, forge rate-limits (`GitBackendRateLimitError`), and transient forge-API errors; it never retries auth failures or a confirmed-missing remote (the latter triggers lazy forge-repo creation, not backoff).
+- `src/synthorg/engine/task_sync_review.py::_persist_with_retry` (called from `create_review_approval`): the approval-store write for a review/failed item. The `retryable` predicate retries any transient store fault so a FAILED-outcome approval (the only surface carrying a hard failure to the operator) is not dropped on the first try, but excludes `ConflictError`: the write is not idempotent under blind retry, so a duplicate-id `ConflictError` means a prior attempt's write already landed (its ack lost) and is treated as success rather than a retryable fault. After the budget is exhausted the drop is logged (ERROR for FAILED, WARNING otherwise) and swallowed so the run result is never lost.
 
 **Anti-pattern**: tuning `base=0` to bypass backoff so you can shoehorn semantic self-correction (Pattern B) through the same helper. The retry would observe the same error every attempt because nothing about the request changed; that is what Pattern B exists to address.
 
@@ -58,10 +58,11 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **When**: synchronous code using `urllib.request` runs where `await GeneralRetryHandler.run(...)` cannot. Two sub-contexts qualify: inside a stdlib `logging.Handler` worker thread (no event loop -- the await would deadlock or panic); and standalone `scripts/` CI gates that must not import `synthorg.core` (they run as bare `python3 scripts/x.py` in CI with only the stdlib, so the async helper is not importable).
 
-**How**: a tight synchronous loop with bounded backoff. The logging-thread sites sleep via `time.sleep(delay)` so retries complete during shutdown rather than being dropped mid-flight. The CI-script sites split transient (network error + 5xx, retried) from terminal (4xx, returned immediately) so a registry blip does not red the gate while a genuine 404/auth answer fails fast.
+**How**: a tight synchronous loop with bounded backoff. The logging-thread and `to_thread` sites sleep via `time.sleep(delay)` so retries complete during shutdown rather than being dropped mid-flight. The CI-script sites split transient (network error + 5xx, retried) from terminal (4xx, returned immediately) so a registry blip does not red the gate while a genuine 404/auth answer fails fast.
 
 **Sites**:
 
+- `src/synthorg/telemetry/collector.py` `_read_peer_deployment_id`: peer-ID file read on local-disk paths, retried over the brief window where a sibling process atomically replaces the file. A synchronous helper run via `asyncio.to_thread` (no event loop to `await GeneralRetryHandler` on), so it uses a bounded `for attempt in range(...)` + `time.sleep` loop; `general_retry.py`'s carve-out list names it explicitly.
 - `src/synthorg/observability/http_handler.py` `HttpBatchHandler._send_with_retries`: HTTP collector POST from inside the stdlib logging-handler thread (4xx non-retryable; bounded exponential backoff between attempts).
 - `src/synthorg/observability/otlp_handler.py` `OtlpHandler._send_with_retries`: OTLP/JSON collector POST from inside the stdlib logging-handler thread (same retry + backoff semantics as the HTTP sink, so a transient collector hiccup does not drop a whole batch).
 - `scripts/check_image_signatures.py` `_request_with_retry`: bounded retry on the token-mint and tag->digest HEAD against GHCR (transient network error + 5xx retried, 4xx returned immediately). A standalone CI gate that cannot import `synthorg.core`.
