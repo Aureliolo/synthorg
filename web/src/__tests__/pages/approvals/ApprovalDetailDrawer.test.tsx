@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { ApprovalDetailDrawer } from '@/pages/approvals/ApprovalDetailDrawer'
 import { makeApproval } from '../../helpers/factories'
 import { useToastStore } from '@/stores/toast'
@@ -73,12 +74,14 @@ function renderDrawer(
     ...overrides,
   })
   return render(
-    <ApprovalDetailDrawer
-      approval={approval}
-      open={true}
-      {...defaultHandlers}
-      {...props}
-    />,
+    <MemoryRouter>
+      <ApprovalDetailDrawer
+        approval={approval}
+        open={true}
+        {...defaultHandlers}
+        {...props}
+      />
+    </MemoryRouter>,
   )
 }
 
@@ -139,7 +142,7 @@ describe('ApprovalDetailDrawer', () => {
   it('close button calls onClose', async () => {
     const user = userEvent.setup()
     renderDrawer()
-    await user.click(screen.getByRole('button', { name: /close panel/i }))
+    await user.click(screen.getByRole('button', { name: /^close$/i }))
     expect(defaultHandlers.onClose).toHaveBeenCalledOnce()
   })
 
@@ -164,6 +167,20 @@ describe('ApprovalDetailDrawer', () => {
     await user.click(screen.getByRole('button', { name: /reject/i }))
     expect(screen.getByText('Reject Action')).toBeInTheDocument()
     expect(screen.getByText('Please provide a reason for rejection.')).toBeInTheDocument()
+  })
+
+  it('relabels the approve dialog to Acknowledge for a failed run', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ action_type: 'review:task_failed' })
+    await user.click(screen.getByRole('button', { name: /acknowledge/i }))
+    expect(screen.getByText('Acknowledge failure')).toBeInTheDocument()
+  })
+
+  it('relabels the reject dialog to Retry for a failed run', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ action_type: 'review:task_failed' })
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+    expect(screen.getByText('Retry task')).toBeInTheDocument()
   })
 
   it('reject requires non-empty reason (shows toast error)', async () => {
@@ -278,13 +295,45 @@ describe('ApprovalDetailDrawer', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('declares aria-modal so assistive tech treats the drawer as a modal surface', () => {
-    // The actual focus-trap behaviour is Base UI / the drawer primitive's
-    // responsibility and is tested upstream. Here we only assert the
-    // application-level contract: the drawer advertises itself as a modal.
+  it('auto-closes an open confirm dialog when the approval becomes decided', async () => {
+    // A live WS upsert can flip the approval to decided while the operator has
+    // the approve dialog open; the dialog must close so a stale action cannot
+    // be confirmed against an already-decided approval.
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <MemoryRouter>
+        <ApprovalDetailDrawer
+          approval={makeApproval('test-1', { status: 'pending', risk_level: 'critical' })}
+          open={true}
+          {...defaultHandlers}
+        />
+      </MemoryRouter>,
+    )
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <ApprovalDetailDrawer
+          approval={makeApproval('test-1', { status: 'approved', risk_level: 'critical' })}
+          open={true}
+          {...defaultHandlers}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+  })
+
+  it('renders a modal dialog surface with a dismiss backdrop', () => {
+    // Modality (focus trap, scroll lock, outside-dismiss) is the shared
+    // Base UI Drawer's responsibility and is tested upstream. Here we assert
+    // the application-level contract: a dialog surface plus the modal backdrop
+    // the primitive renders.
     renderDrawer()
-    const dialog = screen.getByRole('dialog')
-    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByTestId('drawer-overlay')).toBeInTheDocument()
   })
 
   it('renders nothing when open is false', () => {
@@ -302,5 +351,54 @@ describe('ApprovalDetailDrawer', () => {
     renderDrawer({ status: 'approved' })
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a confidence label derived from the confidence_score metadata', () => {
+    renderDrawer({ metadata: { confidence_score: '0.42' } })
+    expect(screen.getByText('Confidence')).toBeInTheDocument()
+    expect(screen.getByText('42%')).toBeInTheDocument()
+  })
+
+  it('omits the confidence field when no confidence_score metadata is present', () => {
+    renderDrawer({ metadata: {} })
+    expect(screen.queryByText('Confidence')).not.toBeInTheDocument()
+  })
+
+  it('shows the produced artifacts with type + size', () => {
+    renderDrawer({
+      run: {
+        outcome: 'succeeded',
+        produced_artifact_count: 1,
+        artifacts: [
+          {
+            id: 'artifact-1',
+            path: 'src/auth/oauth.ts',
+            type: 'code',
+            content_type: 'text/x-typescript',
+            size_bytes: 4096,
+          },
+        ],
+      },
+    })
+    expect(screen.getByText('What was produced')).toBeInTheDocument()
+    expect(screen.getByText('src/auth/oauth.ts')).toBeInTheDocument()
+  })
+
+  it('shows an explicit empty state when the run produced nothing', () => {
+    renderDrawer({
+      run: { outcome: 'empty', produced_artifact_count: 0, artifacts: [] },
+    })
+    expect(screen.getByText('No artifacts produced')).toBeInTheDocument()
+  })
+
+  it('shows a failure banner and Acknowledge/Retry for a failed run', () => {
+    renderDrawer({
+      action_type: 'review:task_failed',
+      decision_reason: null,
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    })
+    expect(screen.getByText('This run failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /acknowledge/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 })

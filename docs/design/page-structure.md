@@ -62,6 +62,8 @@ P&L management dashboard, not a billing tab. Current period spend vs budget, per
 
 Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count.
 
+Each row is evidence-backed and failure-aware: it shows the resolved task title, project, and agent name (never raw UUIDs), a run-outcome badge (`succeeded` / `empty` / `failed`), and the produced-artifact set in the detail drawer. A failed run is styled unmistakably (danger surface) and never as a routine low-risk completion; its buttons relabel Approve/Reject to **Acknowledge**/**Retry** (approve acknowledges the failure and leaves the task failed, reject retries it). While an approved task executes, the detail view streams live execution progress (start, tool-call by tool-call, finish/fail) from the task's AG-UI SSE stream, so the completion review is no longer a surprise.
+
 **API endpoints**: `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
 **WS channels**: `approvals`
 

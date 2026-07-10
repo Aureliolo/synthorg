@@ -9,6 +9,7 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -26,15 +27,13 @@ from synthorg.engine.loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+    TurnObserver,
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.engine.task_sync import (
-    apply_post_execution_transitions,
-    sync_to_task_engine,
-)
+from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
@@ -529,6 +528,7 @@ class AgentEnginePostExecMixin:
         start: float,
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -547,6 +547,7 @@ class AgentEnginePostExecMixin:
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
             task_cancellation_checker=self._make_task_cancellation_checker(task_id),
+            turn_observer=turn_observer,
         )
         if timeout_seconds is None:
             return await coro

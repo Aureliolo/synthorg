@@ -16,7 +16,7 @@ the red-team gate's planted-defect acceptance, applied to the UI cousin.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -76,8 +76,20 @@ def _mock_task_engine(task: Task) -> Any:  # type: ignore[explicit-any]  # mock_
                 version=1,
             ),
         ),
+        # The review gate commits through the strict ``transition_task`` seam.
+        transition_task=AsyncMock(return_value=(task, None)),
         get_task=AsyncMock(return_value=task),
     )
+
+
+def _transition_call(task_engine: Any) -> tuple[TaskStatus, str]:  # type: ignore[explicit-any]  # mock element
+    """Return ``(target_status, reason)`` from the recorded transition_task call.
+
+    Returns:
+        The target status (positional arg 1) and reason kwarg of the call.
+    """
+    call = cast("AsyncMock", task_engine.transition_task).call_args
+    return call.args[1], call.kwargs["reason"]
 
 
 class _PassingStage:
@@ -143,9 +155,9 @@ async def test_deliberate_mismatch_blocks_before_done(tmp_path: Path) -> None:
     )
 
     assert result.final_verdict is ReviewVerdict.PASS  # structural pipeline passed
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS  # vision rerouted to rework
-    assert "Vision review blocked" in call.reason
+    target, reason = _transition_call(task_engine)
+    assert target is TaskStatus.IN_PROGRESS  # vision rerouted to rework
+    assert "Vision review blocked" in reason
 
 
 async def test_matching_app_completes(tmp_path: Path) -> None:
@@ -160,5 +172,5 @@ async def test_matching_app_completes(tmp_path: Path) -> None:
         vision_input=_vision_input(),
     )
 
-    call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    target, _ = _transition_call(task_engine)
+    assert target is TaskStatus.COMPLETED

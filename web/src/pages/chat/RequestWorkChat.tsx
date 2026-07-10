@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
+import { approvalDetailPath } from '@/utils/approvals'
 
 import { hasAttribution } from './attribution'
 import { ChatErrorNotice } from './ChatErrorNotice'
@@ -31,7 +32,7 @@ function ApprovalLink({ id, label }: { id: string; label: string }) {
   return (
     <li>
       <Link
-        to={`/approvals?selected=${encodeURIComponent(id)}`}
+        to={approvalDetailPath(id)}
         className="underline underline-offset-2 hover:text-foreground"
       >
         {label}
@@ -46,14 +47,32 @@ function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
   const steering = msg.steering ?? []
   if (proposals.length === 0 && steering.length === 0) return null
   return (
-    <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
-      {proposals.map((p) => (
-        <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
-      ))}
-      {steering.map((s) => (
-        <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
-      ))}
-    </ul>
+    <div className="mt-2 space-y-2 text-xs text-text-secondary">
+      {proposals.length > 0 && (
+        <div>
+          <p className="font-medium text-foreground">Approve to start</p>
+          <p className="text-micro text-muted-foreground">
+            This is the first gate: approving queues the work. Once it runs, a
+            separate review of the result appears in Approvals.
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {proposals.map((p) => (
+              <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {steering.length > 0 && (
+        <div>
+          <p className="font-medium text-foreground">Confirm steering</p>
+          <ul className="mt-1 list-disc pl-4">
+            {steering.map((s) => (
+              <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -213,6 +213,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `TaskStatusIndicator` | `task-status-indicator.tsx` | `status: TaskStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Task status dot with optional label and pulse animation. |
 | `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority coloured pill badge. |
 | `ProviderHealthBadge` | `provider-health-badge.tsx` | `status: ProviderHealthStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Provider health status dot (up/degraded/down/unknown) with optional label. |
+| `RunOutcomeBadge` | `run-outcome-badge.tsx` | `outcome: RunOutcome`, `className?` | Failure-aware badge for a task run's outcome (`succeeded` / `empty` / `failed`): colour + icon + label so the signal is never colour alone. Shared across the approvals queue, review drawer, and chat prompts. |
 
 ### Interaction Components
 
@@ -227,7 +228,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `InlineEdit` | `inline-edit.tsx` | `value`, `onSave`, `validate?`, `type?`, `disabled?` | Click-to-edit with Enter/Escape, inline validation, optimistic save via `useFlash`. |
 | `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Motion AnimatePresence with reduced-motion fallback. |
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
-| `Drawer` | `drawer.tsx` | `open`, `onClose`, `title?`, `ariaLabel?`, `side?`, `contentClassName?`, `children`, `className?` | Slide-in panel (left or right via `side`, default right) with overlay, spring animation, focus trap, and Escape-to-close. At least one of `title` or `ariaLabel` must be provided for accessible naming. Header omitted when `title` is absent. |
+| `Drawer` | `drawer.tsx` | `open`, `onClose`, `title?`, `ariaLabel?`, `side?`, `header?`, `footer?`, `contentClassName?`, `children`, `className?` | Slide-in panel (left or right via `side`, default right) with overlay, spring animation, focus trap, and Escape-to-close. At least one of `title` or `ariaLabel` must be provided for accessible naming. A custom `header` slot (via `DrawerCustomHeader` + `DrawerCloseButton`) replaces the default title bar, and a `footer` slot renders as a bordered sibling below the scroll area (used for the sticky approval decision buttons). Header omitted when neither `title` nor `header` is present. |
 | `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?`, `placeholder?`, `required?`, `disabled?`, `type?`, `value`, `onChange` | Labelled text input with inline error/hint display and optional textarea mode. Extends native input/textarea props. |
 | `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?`, `required?`, `disabled?`, `className?` | Labelled select dropdown with error/hint display and placeholder support. |
 | `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?`, `disabled?`, `className?` | Labelled range slider with custom value formatter and aria-live value display. |
@@ -243,6 +244,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `MetadataGrid` | `metadata-grid.tsx` | `items`, `columns?`, `className?` | Key-value metadata grid for detail pages with configurable 2/3/4 columns and density-aware spacing. |
 | `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colours (planning/active/on_hold/completed/cancelled). |
 | `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
+| `TaskProgress` | `task-progress.tsx` | `status`, `stages`, `className?` | Live task-execution progress panel (`running` / `finished` / `error` header + accumulated `ProgressStage`s). Presentational leaf fed by the `useTaskProgress` hook; shown inline in the chat flows so an operator watches approved work execute instead of a silent gap. |
 
 ### Utility Functions
 
@@ -265,6 +267,12 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getRiskLevelColor()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to `SemanticColor \| "accent-dim"`. |
 | `getRiskLevelLabel()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to display label. |
 | `getRiskLevelIcon()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to `LucideIcon`. |
+| `getRunOutcomeColor()` | `utils/approvals.ts` | Maps `RunOutcome` to `SemanticColor` (succeeded=success, empty=warning, failed=danger). |
+| `getRunOutcomeLabel()` | `utils/approvals.ts` | Maps `RunOutcome` to display label. |
+| `getRunOutcomeIcon()` | `utils/approvals.ts` | Maps `RunOutcome` to `LucideIcon`. |
+| `isFailedApproval()` | `utils/approvals.ts` | Whether an approval represents a failed run (drives the danger styling + Acknowledge/Retry relabel). |
+| `getApprovalStepLabel()` | `utils/approvals.ts` | The source-aware step label ("Approve to start" vs "Review completed work"). |
+| `approvalDetailPath()` | `utils/approvals.ts` | Builds the `/approvals?selected=<id>` deep-link path. |
 | `getApprovalStatusColor()` | `utils/approvals.ts` | Maps `ApprovalStatus` to `SemanticColor \| "text-secondary"`. |
 | `getApprovalStatusLabel()` | `utils/approvals.ts` | Maps `ApprovalStatus` to display label. |
 | `getUrgencyColor()` | `utils/approvals.ts` | Maps `UrgencyLevel` to `SemanticColor \| "text-secondary"`. |
@@ -274,6 +282,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `RISK_LEVEL_ORDER` | `utils/approvals.ts` | Numeric ordering map for risk levels (critical=0 through low=3). |
 | `DOT_COLOR_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "accent-dim"` to Tailwind background classes. |
 | `URGENCY_BADGE_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "text-secondary"` to Tailwind badge classes. |
+| `RISK_BADGE_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "accent-dim"` to Tailwind badge (bg + text + border) classes for the risk pill. |
 | `formatFileSize()` | `utils/format.ts` | Formats byte count to human-readable size string (e.g. "1.2 MB", "340 KB"). |
 
 ### Design System Hooks

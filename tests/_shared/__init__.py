@@ -24,6 +24,11 @@ from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
 from tests._shared.settings_fake import FakeSettingsService
 from tests._shared.trust import NoOpTrustStrategy
+from tests._shared.work_pipeline import (
+    StubWorkPipeline,
+    make_pipeline_result,
+    task_from_work_item,
+)
 
 __all__ = [
     "FIXTURE_SOURCE",
@@ -36,12 +41,15 @@ __all__ = [
     "JsonDict",
     "LoopAsyncClient",
     "NoOpTrustStrategy",
+    "StubWorkPipeline",
     "as_pk",
     "as_uuid",
     "build_test_app",
     "coerce_id",
     "make_app_state",
     "make_in_memory_catalog",
+    "make_pipeline_result",
     "mock_of",
     "sid",
+    "task_from_work_item",
 ]

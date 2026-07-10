@@ -185,6 +185,26 @@ at three layers, each independently sufficient:
    defence at the database boundary. If a direct SQL caller somehow bypasses
    both the service and the model, the DB rejects the write.
 
+### Failed-run review decisions
+
+A hard failure reaches the queue as a `review:task_failed` item (not silently
+dropped), so a human always closes the loop on a failed run. `complete_review`
+branches on the reviewed task's status:
+
+- **Completed run** (`IN_REVIEW`): approve transitions `IN_REVIEW -> COMPLETED`,
+  reject transitions `IN_REVIEW -> IN_PROGRESS` (rework).
+- **Failed run** (`FAILED`): approve **acknowledges** the failure (records the
+  decision and consumes the approval, no phantom `COMPLETED`; the task stays
+  `FAILED`), reject **retries** via the sole valid exit from `FAILED`
+  (`FAILED -> ASSIGNED`). The red-team completion gate does not run on an
+  acknowledgement.
+
+The state change commits through `TaskEngine.transition_task` (strict), so a
+rejected transition raises rather than being swallowed: the failure is logged
+(`APPROVAL_GATE_REVIEW_TRANSITION_FAILED`, with the `approval_id`) and
+propagates, instead of the best-effort sync path silently leaving the task in
+its prior state while the approval reads as decided.
+
 ### Auditable Decisions Drop-Box
 
 Every completed review appends an immutable `DecisionRecord` to the drop-box
@@ -342,6 +362,28 @@ shutdown-time mechanism.
     - **`urgency_level`** (enum): `critical` (< 1 hr), `high` (< 4 hrs),
       `normal` (>= 4 hrs), `no_expiry` (no TTL). Applied to all list, detail,
       create, approve, and reject endpoints.
+
+    On top of urgency, the read layer resolves nested evidence objects at
+    response time (no persistence migration) via `resolve_approval_context`
+    (`api/controllers/approvals/_enrichment.py`), which batch-resolves each
+    distinct task, project, agent, and produced-artifact set once (no N+1) and
+    is best-effort per field: a failed lookup leaves that sub-object `null`
+    rather than breaking the queue.
+
+    - **`task`** (`{ id, title, status } | null`), **`project`** (`{ id, name }`),
+      **`agent`** (`{ id, name }`): resolved names so the queue shows a readable
+      title and attribution instead of raw UUIDs.
+    - **`run`** (`{ outcome, produced_artifact_count, artifacts[] } | null`):
+      the run's truthful `RunOutcome` (`core/run_outcome.py`), derived from the
+      task status and produced-artifact count: `FAILED` (status FAILED),
+      `EMPTY` (terminal with zero artifacts), else `SUCCEEDED`. The outcome is
+      `null` (unknown, never falsely `EMPTY`) when a non-`FAILED` task's artifact
+      listing is unavailable, and `null` while the run is still in flight.
+    - **Risk from outcome**: `risk_from_task_outcome(stakes, outcome)` maps
+      base stakes to risk and escalates one level (capped at `CRITICAL`) for a
+      `FAILED` or `EMPTY` run, so a high-stakes failure never reads `LOW`. A
+      failed run is surfaced as a `review:task_failed` item; a completed run as
+      `review:task_completion`.
 
 !!! abstract "Park/Resume Mechanism"
 

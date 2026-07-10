@@ -9,6 +9,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
 from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
     _get_approval_or_404,
@@ -98,12 +99,14 @@ class ApprovalsQueryController(Controller):
         )
         now = datetime.now(UTC)
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        contexts = await resolve_approval_context(app_state, page)
         enriched = tuple(
             _to_approval_response(
                 i,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
+                context=contexts.get(str(i.id)),
             )
             for i in page
         )
@@ -131,11 +134,13 @@ class ApprovalsQueryController(Controller):
         app_state: AppState = state.app_state
         item = await _get_approval_or_404(app_state, approval_id)
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        contexts = await resolve_approval_context(app_state, (item,))
         return ApiResponse(
             data=_to_approval_response(
                 item,
                 now=datetime.now(UTC),
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
+                context=contexts.get(str(item.id)),
             )
         )

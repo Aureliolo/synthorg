@@ -1,10 +1,18 @@
 /** Approval, coordination, and meeting WebSocket payload interfaces. */
 
+import type { ApprovalResponse } from '@/api/types/approvals'
+
+/**
+ * Approval lifecycle WS payload. Carries `approval_id` / `status` at the top
+ * level for cheap envelope routing plus the full enriched `approval` (resolved
+ * task/project/agent names + run outcome) that the store upserts, so a
+ * decision or expiry reflects in the queue live. Mirrors `_ApprovalEventBase`
+ * in `api/ws_payloads/_lifecycle.py`.
+ */
 export interface WsApprovalEventPayload {
   approval_id: string
   status: string
-  action_type: string
-  risk_level: string
+  approval: ApprovalResponse
 }
 
 export interface WsCoordinationStartedPayload {

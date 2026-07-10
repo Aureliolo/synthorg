@@ -6,11 +6,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (
@@ -27,7 +28,6 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.engine.task_sync import (
     apply_post_execution_transitions,
-    sync_to_task_engine,
     transition_task_if_needed,
 )
 from synthorg.engine.task_sync_review import _REVIEW_ACTION_TYPE
@@ -245,7 +245,7 @@ class TestSyncToTaskEngine:
             side_effect=TaskEngineError("unavailable"),
         )
 
-        with patch("synthorg.engine.task_sync.logger") as mock_logger:
+        with patch("synthorg.engine._task_sync_engine.logger") as mock_logger:
             await sync_to_task_engine(
                 mock_te,
                 target_status=TaskStatus.IN_PROGRESS,
@@ -535,6 +535,54 @@ class TestApplyPostExecutionTransitions:
         assert out.context.task_execution.status == TaskStatus.FAILED
         synced = [c.args[0].target_status for c in mock_te.submit.call_args_list]
         assert synced == [TaskStatus.FAILED]
+        # The failed run surfaces in the approval queue as a distinct failure
+        # (action type review:task_failed), escalated above LOW so it is never
+        # a routine low-risk approval.
+        approval_store.add.assert_awaited_once()
+        created = approval_store.add.await_args.args[0]
+        assert created.action_type == "review:task_failed"
+        assert created.risk_level == ApprovalRiskLevel.HIGH
+
+    async def test_failed_approval_skipped_when_central_sync_rejected(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """No failure approval is queued when the engine rejects the FAILED sync.
+
+        A swallowed/rejected central transition leaves the engine's task
+        IN_PROGRESS; a ``review:task_failed`` item pointing at it would let a
+        later decision transition the wrong state, so creation is gated on the
+        sync landing.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(
+            ctx, reason=TerminationReason.NO_OP, error_message="empty run"
+        )
+        mock_te = _make_mock_task_engine(return_value=_make_sync_failure())
+        approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+            approval_store=approval_store,
+        )
+
+        # Local state still reflects FAILED (the local transition is applied
+        # unconditionally), but the approval is withheld because the engine did
+        # not accept the transition.
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
         approval_store.add.assert_not_awaited()
 
     async def test_completed_empty_work_task_transitions_to_failed(
@@ -877,6 +925,41 @@ class TestReviewApprovalCreation:
         assert item.action_type == _REVIEW_ACTION_TYPE
         assert item.task_id == str(sample_task_with_criteria.id)
         assert item.status == ApprovalStatus.PENDING
+
+    async def test_skips_approval_when_review_sync_rejected(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """No review approval is queued when the engine rejects the IN_REVIEW sync.
+
+        A swallowed/rejected central transition leaves the engine's task
+        IN_PROGRESS; an approval against that stale state would let a later
+        decision act on a status the engine has not applied.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+        mock_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+        mock_te = _make_mock_task_engine(return_value=_make_sync_failure())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+            approval_store=mock_store,
+        )
+
+        # Local state still reflects IN_REVIEW (the local transition is applied
+        # unconditionally), but the approval is withheld because the engine did
+        # not accept the transition.
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+        mock_store.add.assert_not_awaited()
 
     async def test_no_approval_without_store(
         self,

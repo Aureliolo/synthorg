@@ -133,6 +133,46 @@ describe('Drawer', () => {
     })
   })
 
+  describe('header and footer', () => {
+    it('renders custom header content in place of the built-in title', () => {
+      render(
+        <Drawer
+          open={true}
+          onClose={() => {}}
+          title="Built-in Title"
+          ariaLabel="Review"
+          header={<span>Custom Header Badge</span>}
+        >
+          Content
+        </Drawer>,
+      )
+      expect(screen.getByText('Custom Header Badge')).toBeInTheDocument()
+      // A custom header must REPLACE the built-in title, not render alongside it.
+      expect(screen.queryByText('Built-in Title')).not.toBeInTheDocument()
+      // The close button is still supplied inside the custom header row.
+      expect(screen.getByLabelText('Close')).toBeInTheDocument()
+    })
+
+    it('keeps the accessible name from ariaLabel when a header is set', () => {
+      render(
+        <Drawer open={true} onClose={() => {}} ariaLabel="Review approval" header={<span>H</span>}>
+          Content
+        </Drawer>,
+      )
+      expect(screen.getByRole('dialog', { name: 'Review approval' })).toBeInTheDocument()
+    })
+
+    it('renders footer content in the pinned footer region', () => {
+      render(
+        <Drawer open={true} onClose={() => {}} title="Review" footer={<button type="button">Acknowledge</button>}>
+          Content
+        </Drawer>,
+      )
+      const footer = screen.getByTestId('drawer-footer')
+      expect(footer).toContainElement(screen.getByRole('button', { name: 'Acknowledge' }))
+    })
+  })
+
   describe('className prop', () => {
     it('merges className into the popup element', () => {
       render(<Drawer open={true} onClose={() => {}} title="Test" className="custom-class">Content</Drawer>)

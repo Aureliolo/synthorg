@@ -23,6 +23,10 @@ const base: ApprovalResponse = {
   evidence_package: null,
   seconds_remaining: 7200,
   urgency_level: 'high',
+  task: { id: 'task-1', title: 'Deploy API to production', status: 'in_review' },
+  project: { id: 'proj-1', name: 'Platform' },
+  agent: { id: 'agent-eng', name: 'Anica Hocevar' },
+  run: { outcome: 'succeeded', produced_artifact_count: 2, artifacts: [] },
 }
 
 const actions = {
@@ -86,5 +90,26 @@ export const Expired: Story = {
 export const NoExpiry: Story = {
   args: {
     approval: { ...base, expires_at: null, seconds_remaining: null, urgency_level: 'no_expiry' },
+  },
+}
+
+export const FailedRun: Story = {
+  args: {
+    approval: {
+      ...base,
+      action_type: 'review:task_failed',
+      risk_level: 'high',
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    },
+  },
+}
+
+export const EmptyRun: Story = {
+  args: {
+    approval: {
+      ...base,
+      risk_level: 'medium',
+      run: { outcome: 'empty', produced_artifact_count: 0, artifacts: [] },
+    },
   },
 }

@@ -366,12 +366,38 @@ class TestSharedBaseShape:
 
     @pytest.mark.unit
     def test_approval_expired_round_trip_with_realistic_payload(self) -> None:
-        """The actual emit-site shape from app_helpers.py:66 round-trips."""
-        original = WsApprovalExpiredPayload(
-            approval_id="approval-1",
-            status="expired",
+        """The actual emit-site shape from app_helpers.py round-trips.
+
+        The enriched payload carries the full approval under ``approval``
+        (the shape the dashboard upserts), not the old flat scalar fields.
+        """
+        from datetime import UTC, datetime
+
+        from synthorg.api.controllers.approvals._shared import (
+            ApprovalResponse,
+            UrgencyLevel,
+        )
+        from synthorg.approval.enums import ApprovalRiskLevel
+        from tests._shared import as_uuid
+
+        # One shared id so the nested approval PK and the envelope's
+        # approval_id cannot drift into an inconsistent event contract.
+        approval_id = as_uuid("approval-1")
+        approval = ApprovalResponse(
+            id=approval_id,
             action_type="agent_action",
-            risk_level="medium",
+            title="Review: ship it",
+            description="Agent completed task: ship it",
+            requested_by="agent-1",
+            risk_level=ApprovalRiskLevel.MEDIUM,
+            created_at=datetime(2026, 7, 10, tzinfo=UTC),
+            seconds_remaining=0.0,
+            urgency_level=UrgencyLevel.CRITICAL,
+        )
+        original = WsApprovalExpiredPayload(
+            approval_id=str(approval_id),
+            status="expired",
+            approval=approval,
         )
         restored = _ADAPTER.validate_python(original.model_dump())
         assert restored == original

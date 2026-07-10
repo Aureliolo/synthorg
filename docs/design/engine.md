@@ -72,7 +72,13 @@ stateDiagram-v2
 
     - **BLOCKED** returns to `ASSIGNED` when unblocked.
     - **FAILED** returns to `ASSIGNED` for retry when `retry_count < max_retries`
-      (see [Crash Recovery](coordination.md#agent-crash-recovery)).
+      (see [Crash Recovery](coordination.md#agent-crash-recovery)). A hard
+      failure also reaches the approval queue as a `review:task_failed` item; a
+      human reject drives the same `FAILED -> ASSIGNED` edge as a deliberate
+      operator rework override, **not** subject to the `retry_count <
+      max_retries` cap (that cap governs only automatic crash-recovery
+      reassignment). A human approve **acknowledges** the failure and leaves the
+      task `FAILED` (see [Security: Failed-run review decisions](security.md#failed-run-review-decisions)).
     - **INTERRUPTED** returns to `ASSIGNED` on restart
       (see [Graceful Shutdown](coordination.md#graceful-shutdown-protocol)).
     - **SUSPENDED** returns to `ASSIGNED` for resume from checkpoint

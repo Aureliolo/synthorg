@@ -1558,7 +1558,8 @@ class TestDomainErrorMapping:
                 409,
                 ErrorCode.TASK_VERSION_CONFLICT,
                 ErrorCategory.CONFLICT,
-                False,
+                # A stale-version write is retryable: re-read + retry resolves it.
+                True,
                 id="engine_version_conflict",
             ),
             pytest.param(

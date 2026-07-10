@@ -1,6 +1,7 @@
 """Unit tests for the conversational-intake approval dispatch branch."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -13,8 +14,11 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalS
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
+from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.state import MetaStateSlice
@@ -31,7 +35,14 @@ from synthorg.persistence.conversation_protocol import (
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
-from tests._shared import as_uuid, make_app_state, mock_of, sid
+from tests._shared import (
+    StubWorkPipeline,
+    as_uuid,
+    make_app_state,
+    mock_of,
+    sid,
+    task_from_work_item,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -110,35 +121,72 @@ class _FakeProposalRepo:
         return True
 
 
-class _FakePipeline:
-    def __init__(self, *, error: Exception | None = None) -> None:
-        self.error = error
-        self.calls: list[WorkItem] = []
+class _FakeWorkerService:
+    """Records ``dispatch_conversational_execution`` calls.
 
-    async def run(self, work_item: WorkItem) -> object:
-        self.calls.append(work_item)
-        if self.error is not None:
-            raise self.error
-        return object()
+    The controller intakes synchronously then hands the decompose+execute
+    spine to the worker; the background run is the worker's concern (covered
+    by the worker suite), so here it is a recording no-op.
+    """
+
+    def __init__(self) -> None:
+        self.dispatched: list[tuple[WorkItem, Task]] = []
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        del work_pipeline
+        self.dispatched.append((work_item, task))
+
+    async def execute_once(
+        self,
+        *,
+        task_id: str,
+        previous_status: str | None,
+        new_status: str,
+        idempotency_key: str,
+        requested_by: str,
+    ) -> Task:
+        # Unused by the conversational-intake flow; fail loud if reached.
+        msg = "execute_once not expected in the intake flow"
+        raise AssertionError(msg)
+
+    async def dispatch_resume(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        msg = "dispatch_resume not expected in the intake flow"
+        raise AssertionError(msg)
 
 
 def _make_app_state(
     *,
     approval_store: ApprovalStore,
     proposal_repo: _FakeProposalRepo | None,
-    pipeline: _FakePipeline | None,
+    pipeline: StubWorkPipeline | None,
+    worker_service: _FakeWorkerService | None = None,
+    task_engine: object | None = None,
 ) -> AppState:
     """Build an AppState with the conversational-resume slices wired.
 
     The resume flow reads the approval store via
     ``slice(ApprovalStateSlice).store``, the proposal repo (through the
     resume-service facade) via
-    ``slice(MetaStateSlice).conversational_resume_service``, and the work
-    pipeline via ``slice(EngineStateSlice).work_pipeline``. The service
-    is wired only when ``proposal_repo`` is present, so a ``None`` repo
-    exercises the controller's "resume service not wired" 503 path. The
-    invite / participant repos are unused by the intake flow, so typed
-    mocks stand in for them in the facade.
+    ``slice(MetaStateSlice).conversational_resume_service``, the work
+    pipeline via ``slice(EngineStateSlice).work_pipeline``, and the worker
+    execution service via ``slice(RuntimeStateSlice)``. The service is wired
+    only when ``proposal_repo`` is present, so a ``None`` repo exercises the
+    controller's "resume service not wired" 503 path. The invite /
+    participant repos are unused by the intake flow, so typed mocks stand in
+    for them in the facade.
     """
     meta_fields: dict[str, object] = {}
     if proposal_repo is not None:
@@ -153,6 +201,10 @@ def _make_app_state(
     return make_app_state(
         approval_store=approval_store,
         work_pipeline=pipeline,
+        worker_execution_service=worker_service
+        if worker_service is not None
+        else _FakeWorkerService(),
+        task_engine=task_engine,
         slices={MetaStateSlice: meta_fields},
     )
 
@@ -190,7 +242,8 @@ async def _seed(
     *,
     source: ApprovalSource = ApprovalSource.CONVERSATIONAL_INTAKE,
     with_proposal: bool = True,
-    pipeline: _FakePipeline | None = None,
+    pipeline: StubWorkPipeline | None = None,
+    worker_service: _FakeWorkerService | None = None,
 ) -> tuple[AppState, _FakeProposalRepo]:
     store = ApprovalStore()
     await store.add(_approval("a1", source=source))
@@ -201,7 +254,8 @@ async def _seed(
     state = _make_app_state(
         approval_store=store,
         proposal_repo=repo,
-        pipeline=pipeline if pipeline is not None else _FakePipeline(),
+        pipeline=pipeline if pipeline is not None else StubWorkPipeline(),
+        worker_service=worker_service,
     )
     return state, repo
 
@@ -216,24 +270,50 @@ class TestConversationalIntakeResume:
         )
         assert handled is False
 
-    async def test_approve_runs_pipeline_and_marks_executed(self) -> None:
-        pipeline = _FakePipeline()
-        state, repo = await _seed(pipeline=pipeline)
+    async def test_approve_intakes_dispatches_and_marks_executed(self) -> None:
+        pipeline = StubWorkPipeline()
+        worker = _FakeWorkerService()
+        state, repo = await _seed(pipeline=pipeline, worker_service=worker)
         handled = await try_conversational_intake_resume(
             state,
             sid("a1"),
             approved=True,
         )
         assert handled is True
+        # Intake runs synchronously; the decompose+execute spine is handed
+        # to the worker to background. EXECUTED means "dispatched".
         assert len(pipeline.calls) == 1
         assert pipeline.calls[0].source is WorkSource.CONVERSATIONAL
+        assert len(worker.dispatched) == 1
         assert (
             repo.items[sid("prop-a1")].status is ConversationalProposalStatus.EXECUTED
         )
 
+    async def test_approve_stamps_task_id_on_the_approval(self) -> None:
+        # The chat subscribes to the intake task's SSE stream, so the id
+        # must be patched onto the decided approval for the deep link.
+        pipeline = StubWorkPipeline()
+        worker = _FakeWorkerService()
+        store = ApprovalStore()
+        await store.add(_approval("a1"))
+        repo = _FakeProposalRepo()
+        prop = _proposal("a1")
+        repo.items[str(prop.id)] = prop
+        state = _make_app_state(
+            approval_store=store,
+            proposal_repo=repo,
+            pipeline=pipeline,
+            worker_service=worker,
+        )
+        await try_conversational_intake_resume(state, sid("a1"), approved=True)
+        stamped = await store.get(NotBlankStr(sid("a1")))
+        assert stamped is not None
+        assert stamped.task_id == str(worker.dispatched[0][1].id)
+
     async def test_reject_skips_pipeline_and_marks_rejected(self) -> None:
-        pipeline = _FakePipeline()
-        state, repo = await _seed(pipeline=pipeline)
+        pipeline = StubWorkPipeline()
+        worker = _FakeWorkerService()
+        state, repo = await _seed(pipeline=pipeline, worker_service=worker)
         handled = await try_conversational_intake_resume(
             state,
             sid("a1"),
@@ -241,6 +321,7 @@ class TestConversationalIntakeResume:
         )
         assert handled is True
         assert pipeline.calls == []
+        assert worker.dispatched == []
         assert (
             repo.items[sid("prop-a1")].status is ConversationalProposalStatus.REJECTED
         )
@@ -282,7 +363,7 @@ class TestConversationalIntakeResume:
         state = _make_app_state(
             approval_store=store,
             proposal_repo=None,
-            pipeline=_FakePipeline(),
+            pipeline=StubWorkPipeline(),
         )
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_intake_resume(
@@ -291,27 +372,62 @@ class TestConversationalIntakeResume:
                 approved=True,
             )
 
-    async def test_pipeline_failure_reverts_executing_to_pending(self) -> None:
-        # On pipeline failure the proposal must revert from EXECUTING
-        # back to PENDING so a future approval-decision retry can run;
-        # leaving it stuck in EXECUTING would silently lock the row.
-        pipeline = _FakePipeline(error=RuntimeError("boom"))
-        state, repo = await _seed(pipeline=pipeline)
+    async def test_intake_failure_reverts_executing_to_pending(self) -> None:
+        # A synchronous intake failure must revert the proposal from
+        # EXECUTING back to PENDING so a future approval-decision retry can
+        # run; leaving it stuck in EXECUTING would silently lock the row.
+        pipeline = StubWorkPipeline(intake_error=RuntimeError("boom"))
+        worker = _FakeWorkerService()
+        state, repo = await _seed(pipeline=pipeline, worker_service=worker)
         handled = await try_conversational_intake_resume(
             state,
             sid("a1"),
             approved=True,
         )
         assert handled is True
+        assert worker.dispatched == []
         assert repo.items[sid("prop-a1")].status is ConversationalProposalStatus.PENDING
+
+    async def test_retry_reuses_stamped_task_without_reintake(self) -> None:
+        # A prior attempt that reverted to PENDING already created + stamped
+        # a task on the approval; a retry must reuse it, not mint a duplicate
+        # orphan. Seed the approval with a task id and a task engine that
+        # resolves it, then assert intake never runs again.
+        pipeline = StubWorkPipeline()
+        worker = _FakeWorkerService()
+        store = ApprovalStore()
+        existing = _approval("a1")
+        reused_task = task_from_work_item(
+            WorkItem.model_validate_json(_work_item_json())
+        )
+        await store.add(existing.model_copy(update={"task_id": str(reused_task.id)}))
+        repo = _FakeProposalRepo()
+        prop = _proposal("a1")
+        repo.items[str(prop.id)] = prop
+        state = _make_app_state(
+            approval_store=store,
+            proposal_repo=repo,
+            pipeline=pipeline,
+            worker_service=worker,
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=reused_task)
+            ),
+        )
+        handled = await try_conversational_intake_resume(
+            state, sid("a1"), approved=True
+        )
+        assert handled is True
+        assert pipeline.calls == []  # intake_only not re-run
+        assert worker.dispatched[0][1].id == reused_task.id
 
     async def test_concurrent_acquire_only_one_runs_pipeline(self) -> None:
         # Simulate the loser of the PENDING -> EXECUTING CAS: a second
         # caller that arrives after a winner has acquired the proposal
         # must see ``transitioned is False`` and return True without
         # touching the pipeline.
-        pipeline = _FakePipeline()
-        state, repo = await _seed(pipeline=pipeline)
+        pipeline = StubWorkPipeline()
+        worker = _FakeWorkerService()
+        state, repo = await _seed(pipeline=pipeline, worker_service=worker)
         # Pre-acquire: simulate a concurrent winner already in EXECUTING.
         repo.items[sid("prop-a1")] = repo.items[sid("prop-a1")].model_copy(
             update={"status": ConversationalProposalStatus.EXECUTING}

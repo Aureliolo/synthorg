@@ -181,6 +181,7 @@ class ReactLoop:
         self,
         turn_number: int,
         response: CompletionResponse,
+        observer: TurnObserver | None,
     ) -> None:
         """Fire the optional turn observer with this turn's tool names.
 
@@ -191,11 +192,11 @@ class ReactLoop:
         Raises:
             CancelledError: Propagated so a client disconnect halts the run.
         """
-        if self._turn_observer is None:
+        if observer is None:
             return
         tool_names = tuple(call.name for call in response.tool_calls)
         try:
-            await self._turn_observer(turn_number, tool_names)
+            await observer(turn_number, tool_names)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -242,6 +243,7 @@ class ReactLoop:
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Run the ReAct loop until termination.
 
@@ -255,6 +257,10 @@ class ReactLoop:
             completion_config: Optional per-execution config override.
             task_cancellation_checker: Optional async callback; returns
                 ``True`` when the task was cancelled/superseded externally.
+            turn_observer: Optional per-run progress callback; when given,
+                it takes precedence over the construction-time observer so
+                a per-execution stream (e.g. AG-UI task progress) can be
+                wired without rebuilding the shared loop.
 
         Returns:
             Execution result with final context and termination info.
@@ -268,6 +274,7 @@ class ReactLoop:
         )
         ctx = context
         corrections_injected = 0
+        effective_observer = turn_observer or self._turn_observer
 
         while ctx.has_turns_remaining:
             shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
@@ -327,7 +334,7 @@ class ReactLoop:
                 return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
-            await self._notify_turn_observer(turn_number, response)
+            await self._notify_turn_observer(turn_number, response, effective_observer)
 
             # Stagnation detection after successful turn processing
             stag_outcome = await check_stagnation(

@@ -33,6 +33,10 @@ function buildApproval(
     evidence_package: null,
     seconds_remaining: null,
     urgency_level: 'normal',
+    task: null,
+    project: null,
+    agent: null,
+    run: null,
     ...overrides,
   }
 }

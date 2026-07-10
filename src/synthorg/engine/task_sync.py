@@ -9,19 +9,18 @@ and no recorded no-op justification is driven to ``FAILED`` rather than
 pushed to review as a silent no-op success.
 """
 
-import asyncio
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ExecutionStateError, TaskEngineError
+from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.engine.task_sync_review import create_review_approval
 from synthorg.observability import get_logger, safe_error_description
 
@@ -34,8 +33,6 @@ if TYPE_CHECKING:
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
-    EXECUTION_ENGINE_SYNC_FAILED,
-    EXECUTION_ENGINE_TASK_SYNCED,
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
 
@@ -66,109 +63,6 @@ _EMPTY_RUN_REASON: Final[str] = (
 _NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
 
 
-async def sync_to_task_engine(  # noqa: PLR0913
-    task_engine: TaskEngine | None,
-    *,
-    target_status: TaskStatus,
-    task_id: str,
-    agent_id: str,
-    reason: str,
-    critical: bool = False,
-) -> None:
-    """Sync a status transition to the centralized TaskEngine.
-
-    Best-effort: failures are logged and swallowed so that agent
-    execution is never blocked by a TaskEngine issue.
-    ``MemoryError`` and ``RecursionError`` propagate unconditionally.
-
-    Args:
-        task_engine: The task engine to sync to, or ``None`` (no-op).
-        target_status: The status to transition to.
-        task_id: Task identifier.
-        agent_id: Agent performing the transition.
-        reason: Human-readable reason for the transition.
-        critical: If ``True``, sync failure is logged at ERROR level
-            instead of WARNING (severity only -- sync remains best-effort
-            regardless).
-
-    Raises:
-        MemoryError: Propagated unconditionally (non-recoverable).
-        RecursionError: Propagated unconditionally (non-recoverable).
-        asyncio.CancelledError: Propagated so shutdown can proceed.
-    """
-    if task_engine is None:
-        return
-
-    try:
-        mutation = TransitionTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=agent_id,
-            task_id=task_id,
-            target_status=target_status,
-            reason=reason,
-        )
-        result = await task_engine.submit(mutation)
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
-        reraise_critical(exc)
-        _log_sync_issue(
-            critical=critical,
-            agent_id=agent_id,
-            task_id=task_id,
-            target_status=target_status,
-            error=(
-                "TaskEngine unavailable"
-                if isinstance(exc, TaskEngineError)
-                else "Unexpected error syncing to TaskEngine"
-            ),
-        )
-        return
-
-    if result.success:
-        logger.debug(
-            EXECUTION_ENGINE_TASK_SYNCED,
-            agent_id=agent_id,
-            task_id=task_id,
-            target_status=target_status.value,
-            version=result.version,
-        )
-        return
-
-    # Mutation was rejected (e.g. version conflict, invalid
-    # transition, task not found).
-    _log_sync_issue(
-        critical=critical,
-        agent_id=agent_id,
-        task_id=task_id,
-        target_status=target_status,
-        error=result.error or "Mutation rejected (no error detail)",
-        error_code=result.error_code,
-    )
-
-
-def _log_sync_issue(
-    *,
-    critical: bool,
-    agent_id: str,
-    task_id: str,
-    target_status: TaskStatus,
-    **extra: object,
-) -> None:
-    """Log a sync failure at ERROR (critical) or WARNING severity."""
-    common = {
-        "agent_id": agent_id,
-        "task_id": task_id,
-        "target_status": target_status.value,
-        **extra,
-    }
-    if critical:
-        logger.error(EXECUTION_ENGINE_SYNC_FAILED, **common)
-    else:
-        logger.warning(EXECUTION_ENGINE_SYNC_FAILED, **common)
-
-
 async def transition_task_if_needed(
     ctx: AgentContext,
     agent_id: str,
@@ -188,7 +82,7 @@ async def transition_task_if_needed(
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.ASSIGNED
     ):
-        ctx = await _transition_and_sync(
+        ctx, _ = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.IN_PROGRESS,
             reason="Engine starting execution",
@@ -267,7 +161,7 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
     # transition also guards a COMPLETED that slipped through from another loop.
     if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine
+            execution_result, ctx, agent_id, task_id, task_engine, approval_store
         )
 
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
@@ -280,7 +174,7 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
         and empty_run_fails
     ):
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine
+            execution_result, ctx, agent_id, task_id, task_engine, approval_store
         )
 
     return await _transition_to_review(
@@ -347,14 +241,16 @@ async def _transition_and_sync(  # noqa: PLR0913
     task_id: str,
     task_engine: TaskEngine | None,
     critical: bool = False,
-) -> AgentContext:
+) -> tuple[AgentContext, bool]:
     """Apply a local task transition, log it, and sync to TaskEngine.
 
     The local transition (via ``with_task_transition``) is applied
     unconditionally; the remote sync is best-effort.
 
     Returns:
-        The updated :class:`AgentContext` after the local transition.
+        The updated :class:`AgentContext` after the local transition, and
+        whether the central engine now reflects the transition (see
+        :func:`sync_to_task_engine`).
     """
     prev_status = ctx.task_execution.status  # type: ignore[union-attr]
     ctx = ctx.with_task_transition(target_status, reason=reason)
@@ -365,7 +261,7 @@ async def _transition_and_sync(  # noqa: PLR0913
         from_status=prev_status.value,
         to_status=target_status.value,
     )
-    await sync_to_task_engine(
+    synced = await sync_to_task_engine(
         task_engine,
         target_status=target_status,
         task_id=task_id,
@@ -373,7 +269,7 @@ async def _transition_and_sync(  # noqa: PLR0913
         reason=reason,
         critical=critical,
     )
-    return ctx
+    return ctx, synced
 
 
 async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
@@ -397,9 +293,10 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
         The original ``execution_result`` when the context is unchanged, or
         a copy carrying the furthest-reached context.
     """
+    synced = False
     for target, step_reason in _COMPLETION_STEPS:
         try:
-            ctx = await _transition_and_sync(
+            ctx, synced = await _transition_and_sync(
                 ctx,
                 target_status=target,
                 reason=step_reason,
@@ -418,11 +315,28 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
             )
             break
 
+    # Only queue the review approval + auto-review once the central engine
+    # reflects IN_REVIEW: a swallowed/rejected sync leaves the engine's task
+    # IN_PROGRESS, and an approval (or an auto-review decision) against that
+    # stale state would act on a status the engine has not applied.
     if (
-        ctx.task_execution is not None
+        synced
+        and ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.IN_REVIEW
     ):
-        await create_review_approval(approval_store, agent_id=agent_id, task_id=task_id)
+        # Emptiness is an artifact-count fact resolved truthfully at read time,
+        # not a tool-call proxy that can disagree with it. The review approval
+        # is created as a plain completion; the DTO's run summary derives the
+        # SUCCEEDED/EMPTY outcome from the produced artifacts when the operator
+        # opens the queue. The fail-loud path already routes a genuinely empty
+        # work run to FAILED before reaching here.
+        await create_review_approval(
+            approval_store,
+            agent_id=agent_id,
+            task_id=task_id,
+            task=ctx.task_execution.task,
+            outcome=RunOutcome.SUCCEEDED,
+        )
         await _maybe_auto_review(
             review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
         )
@@ -432,18 +346,22 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     return execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(
+async def _transition_to_failed(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
 ) -> ExecutionResult:
-    """Transition an empty/no-op run IN_PROGRESS -> FAILED (no review).
+    """Transition an empty/no-op run IN_PROGRESS -> FAILED, then flag it.
 
     A work task that produced no artifacts must surface a visible failure
-    with the reason, never a silent no-op success pushed to review. No
-    review approval is created.
+    with the reason, never a silent no-op success pushed to review. A
+    FAILED-outcome review approval is created (risk escalated one level
+    above the task's stakes, so never LOW) so the failure lands in the
+    operator's approval queue as an unmistakable failure rather than being
+    invisible.
 
     Returns:
         A copy of ``execution_result`` with the context updated to
@@ -451,7 +369,7 @@ async def _transition_to_failed(
         transition raises.
     """
     try:
-        ctx = await _transition_and_sync(
+        ctx, synced = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.FAILED,
             reason=_EMPTY_RUN_REASON,
@@ -479,6 +397,18 @@ async def _transition_to_failed(
         context="Empty run: no artifacts produced; task failed",
         reason=_EMPTY_RUN_REASON,
     )
+    # Only queue the failure approval once the central engine reflects FAILED:
+    # a swallowed/rejected sync leaves the engine's task IN_PROGRESS, and a
+    # ``review:task_failed`` item pointing at an in-progress task would let a
+    # later decision transition the wrong state.
+    if synced and ctx.task_execution is not None:
+        await create_review_approval(
+            approval_store,
+            agent_id=agent_id,
+            task_id=task_id,
+            task=ctx.task_execution.task,
+            outcome=RunOutcome.FAILED,
+        )
     return execution_result.model_copy(update={"context": ctx})
 
 
@@ -497,7 +427,7 @@ async def _transition_to_interrupted(
         is returned unchanged when the transition raises.
     """
     try:
-        ctx = await _transition_and_sync(
+        ctx, _ = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.INTERRUPTED,
             reason="Graceful shutdown requested",
@@ -542,7 +472,7 @@ async def _transition_to_awaiting_input(
     if task_exec is None or task_exec.status != TaskStatus.IN_PROGRESS:
         return execution_result
     try:
-        ctx = await _transition_and_sync(
+        ctx, _ = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.AWAITING_INPUT,
             reason="Agent paused for human clarification",

@@ -3,7 +3,7 @@
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Final, override
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -17,7 +17,9 @@ from synthorg.core.task import (
 )
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.task_sync import sync_to_task_engine
+from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -64,6 +66,12 @@ if TYPE_CHECKING:
     from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
+
+# Agent id stamped on a terminal RUN_ERROR projected for a background spine
+# failure that never reached the loop (so no real agent identity resolved).
+_SYSTEM_PIPELINE_AGENT_ID: Final[str] = "system:pipeline"
+
+_SPINE_FAILURE_REASON: Final[str] = "Background pipeline spine failed before execution"
 
 
 class AgentEngineExecutionService(ResumeDispatchMixin):
@@ -159,6 +167,70 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         agent.
         """
         return self._autonomy_resolver
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        """Background the post-intake spine of a conversational-intake run.
+
+        Intake has already created + persisted the task synchronously so the
+        approve response can surface its id and the dashboard can subscribe to
+        the task's progress stream. This runs the remaining decompose+execute
+        spine off the approve/reject request path as a tracked task, so the
+        HTTP response is not blocked by a full agent run. Failures surface
+        through the registry's done-callback, the task's own status sync, and a
+        terminal RUN_ERROR projected onto the task's SSE stream.
+        """
+        _ = self._resume_tasks.spawn(
+            self._run_conversational_spine(work_pipeline, work_item, task),
+            event=WORKERS_EXECUTION_SERVICE_FAILED,
+            task_id=str(task.id),
+        )
+
+    async def _run_conversational_spine(
+        self,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        """Run the backgrounded spine, failing the task on early failure.
+
+        A spine failure before the execution loop (project resolution,
+        decomposition, agent assignment) never reaches the engine's own
+        terminal projection nor its status sync, so a dashboard subscribed to
+        this task's stream would hang on "Working" while the board still shows
+        the task un-failed. Persist FAILED (best-effort) and project the
+        terminal error frame before re-raising (so the registry still logs the
+        failure); an in-loop failure has already synced its status and
+        projected its own frame, making both an idempotent no-op. Cancellation
+        (shutdown / disconnect) is a ``BaseException`` and propagates untouched,
+        never reported as a failed run.
+        """
+        try:
+            await work_pipeline.continue_from_intake(work_item, task)
+        except Exception as exc:
+            reraise_critical(exc)
+            # Record the sanitised cause alongside the generic context so the
+            # persisted FAILED reason names what actually broke, not just that
+            # the spine failed; safe_error_description avoids leaking a raw
+            # str(exc) that could carry a secret.
+            reason = f"{_SPINE_FAILURE_REASON}: {safe_error_description(exc)}"
+            await sync_to_task_engine(
+                self._task_engine,
+                target_status=TaskStatus.FAILED,
+                task_id=str(task.id),
+                agent_id=_SYSTEM_PIPELINE_AGENT_ID,
+                reason=reason,
+                critical=True,
+            )
+            await self._engine.project_background_failure(
+                task_id=str(task.id), agent_id=_SYSTEM_PIPELINE_AGENT_ID
+            )
+            raise
 
     @override
     async def _provision_environment(

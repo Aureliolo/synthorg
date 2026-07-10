@@ -43,6 +43,7 @@ from .loop_control_helpers import (
 from .loop_helpers import (
     classify_step,
     get_tool_definitions,
+    notify_turn_observer,
 )
 from .loop_protocol import (
     BudgetChecker,
@@ -50,6 +51,7 @@ from .loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+    TurnObserver,
 )
 from .plan_helpers import (
     update_step_status,
@@ -146,6 +148,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Run the Plan-and-Execute loop until termination.
 
@@ -159,6 +162,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             completion_config: Optional per-execution config override.
             task_cancellation_checker: Optional async callback; returns
                 ``True`` when the task was cancelled/superseded externally.
+            turn_observer: Optional per-run progress callback; fired once
+                per plan step so the AG-UI stream surfaces step-level
+                progress for this loop.
 
         Returns:
             Execution result with final context and termination info.
@@ -221,6 +227,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             budget_checker,
             shutdown_checker,
             task_cancellation_checker,
+            turn_observer,
         )
 
     async def _run_steps(  # noqa: PLR0913
@@ -239,6 +246,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Iterate through plan steps, handling failures and replanning.
 
@@ -264,6 +272,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 execution_id=ctx.execution_id,
                 step_number=step.step_number,
                 description=step.description,
+            )
+            await notify_turn_observer(
+                turn_observer, step.step_number, (step.description,)
             )
 
             step_start = len(turns)

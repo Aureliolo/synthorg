@@ -442,6 +442,9 @@ class TaskVersionConflictError(TaskMutationError):
     status_code: ClassVar[int] = 409
     error_code: ClassVar[ErrorCode] = ErrorCode.TASK_VERSION_CONFLICT
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    # A stale-version write lost an optimistic-concurrency race; re-reading and
+    # retrying against the current version is the correct client response.
+    retryable: ClassVar[bool] = True
     default_message: ClassVar[str] = "Task version conflict"
 
 

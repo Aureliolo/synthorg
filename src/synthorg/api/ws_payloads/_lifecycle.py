@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from synthorg.api.controllers.approvals._shared import ApprovalResponse
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
 from synthorg.budget.currency import CurrencyCode
@@ -345,17 +346,17 @@ class WsSystemShutdownPayload(BaseModel):
 class _ApprovalEventBase(BaseModel):
     """Shared shape for approval lifecycle events.
 
-    All four approval events carry the same wire payload: only the
-    ``event_type`` discriminator differs.  Each variant subclasses this
-    base and pins the ``event_type`` literal.
+    All four approval events carry the same wire payload: ``approval_id`` /
+    ``status`` at the top level for cheap envelope routing, plus the full
+    enriched ``approval`` (the shape the dashboard upserts from). Only the
+    ``event_type`` discriminator differs; each variant pins the literal.
     """
 
     model_config = PAYLOAD_CONFIG
 
     approval_id: NotBlankStr
     status: NotBlankStr
-    action_type: NotBlankStr
-    risk_level: NotBlankStr
+    approval: ApprovalResponse
 
 
 class WsApprovalSubmittedPayload(_ApprovalEventBase):

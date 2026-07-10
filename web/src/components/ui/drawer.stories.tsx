@@ -98,6 +98,46 @@ export const Headerless: Story = {
   },
 }
 
+export const WithHeaderAndFooter: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    // A custom header replaces the built-in title, so ariaLabel is required to
+    // name the dialog (see the Drawer `header` prop docstring).
+    ariaLabel: 'Review approval',
+    header: (
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-foreground">Approval</span>
+        <span className="rounded-full bg-danger/10 px-2 py-0.5 text-micro font-medium text-danger">
+          Failed
+        </span>
+      </div>
+    ),
+    footer: (
+      <div className="flex justify-end gap-2 p-card">
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-1.5 text-sm"
+        >
+          Reject
+        </button>
+        <button
+          type="button"
+          className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
+        >
+          Acknowledge
+        </button>
+      </div>
+    ),
+    children: (
+      <p className="text-sm text-muted-foreground">
+        A composed header (badges, status) with a pinned footer of decision
+        actions that never scrolls out of view.
+      </p>
+    ),
+  },
+}
+
 export const Compact: Story = {
   args: {
     open: true,

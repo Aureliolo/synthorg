@@ -20,20 +20,14 @@ from synthorg.budget.forecast_roles import (
 )
 from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
 from synthorg.core.persistence_errors import ConstraintViolationError
-from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.pipeline.forecast_gate import ForecastGate, _signal_from_work_item
 from synthorg.engine.pipeline.models import (
-    ExecutionPath,
-    RoutingVerdict,
     WorkItem,
-    WorkPhaseResult,
-    WorkPipelineResult,
     WorkSource,
 )
-from synthorg.engine.pipeline.narrator_port import RunNarrator
-from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
-from tests._shared import FakeClock
+from tests._shared import FakeClock, StubWorkPipeline
 
 pytestmark = pytest.mark.unit
 
@@ -65,40 +59,6 @@ _BRIEF_HASH = compute_brief_hash(
         _work_item(), currency="USD", skeleton=DEFAULT_ROLE_SKELETON
     ),
 )
-
-
-def _result(work_item: WorkItem) -> WorkPipelineResult:
-    return WorkPipelineResult(
-        work_item=work_item,
-        verdict=RoutingVerdict.LEAF,
-        execution_path=ExecutionPath.SOLO,
-        task_id="task-001",
-        final_task_status=TaskStatus.COMPLETED,
-        phases=(WorkPhaseResult(phase="intake", success=True, duration_seconds=0.01),),
-        total_duration_seconds=0.01,
-    )
-
-
-class _StubWorkPipeline:
-    """Bare-bones WorkPipeline double used to assert dispatch behavior."""
-
-    def __init__(self) -> None:
-        self.calls: list[WorkItem] = []
-        self.narrator: RunNarrator | None = None
-        self.refinement_router: WorkRefinementRouter | None = None
-
-    async def run(self, work_item: WorkItem) -> WorkPipelineResult:
-        self.calls.append(work_item)
-        return _result(work_item)
-
-    def attach_narrator(self, narrator: RunNarrator) -> None:
-        self.narrator = narrator
-
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
-        self.refinement_router = router
-
-    def attach_plan_review_gate(self, gate: object) -> None:
-        self.plan_review_gate = gate
 
 
 class _FakeForecastRepo:
@@ -223,7 +183,7 @@ def _gate(
     repo: _FakeForecastRepo | None = None,
     history: Sequence[float] | None = None,
     role_skeleton_provider: RoleSkeletonProvider | None = None,
-) -> tuple[ForecastGate, _FakeForecastRepo, _StubWorkPipeline]:
+) -> tuple[ForecastGate, _FakeForecastRepo, StubWorkPipeline]:
     config = _config(forecast_required=forecast_required)
     history_tuple = tuple(history) if history is not None else ()
 
@@ -237,7 +197,7 @@ def _gate(
     )
 
     repo_instance = repo if repo is not None else _FakeForecastRepo()
-    work_pipeline = _StubWorkPipeline()
+    work_pipeline = StubWorkPipeline()
     gate = ForecastGate(
         work_pipeline=work_pipeline,
         forecaster=forecaster,
@@ -252,6 +212,25 @@ class TestForecastGate:
     async def test_disabled_passes_through(self) -> None:
         gate, repo, _ = _gate(forecast_required=False)
         result = await gate.run(_work_item())
+        assert result.task_id == "task-001"
+        assert repo.saves == []
+
+    async def test_intake_only_forwards_without_forecast(self) -> None:
+        # The intake/continue split rides the conversational path, whose
+        # forecast is resolved upstream; the gate forwards verbatim and never
+        # persists a forecast row (even with forecasting enabled).
+        gate, repo, pipeline = _gate(forecast_required=True)
+        work_item = _work_item()
+        await gate.intake_only(work_item)
+        assert pipeline.calls == [work_item]
+        assert repo.saves == []
+
+    async def test_continue_from_intake_forwards_the_spine(self) -> None:
+        gate, repo, pipeline = _gate(forecast_required=True)
+        work_item = _work_item()
+        task = await gate.intake_only(work_item)
+        result = await gate.continue_from_intake(work_item, task)
+        assert pipeline.continue_calls == [(work_item, task)]
         assert result.task_id == "task-001"
         assert repo.saves == []
 

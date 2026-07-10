@@ -64,6 +64,10 @@ test.describe('Approval critical flow', () => {
       decided_by: null,
       decision_reason: null,
       evidence_package: null,
+      task: null,
+      project: null,
+      agent: null,
+      run: null,
     }
     await page.route('**/api/v1/approvals**', (route) => {
       if (route.request().method() !== 'GET') {
@@ -126,6 +130,10 @@ test.describe('Approval critical flow', () => {
       decided_by: null,
       decision_reason: null,
       evidence_package: null,
+      task: null,
+      project: null,
+      agent: null,
+      run: null,
     }
     await page.route('**/api/v1/approvals**', (route) => {
       if (route.request().method() !== 'GET') {

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
@@ -19,6 +20,11 @@ from synthorg.engine._agent_engine_types import (
     KnowledgeToolFactoryProvider,
     ResearchToolFactoryProvider,
     StructureMapToolFactoryProvider,
+)
+from synthorg.engine._stream_progress import (
+    make_turn_observer,
+    publish_run_started,
+    publish_run_terminated,
 )
 from synthorg.engine._validation import (
     validate_agent,
@@ -41,7 +47,11 @@ from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
-from synthorg.engine.loop_protocol import ExecutionResult, make_budget_checker
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+    make_budget_checker,
+)
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
@@ -444,6 +454,23 @@ class AgentEngine(
             raise ExecutionStateError(msg)
         return await self._coordinator.coordinate(context)
 
+    async def project_background_failure(self, *, task_id: str, agent_id: str) -> None:
+        """Project a terminal RUN_ERROR for a run that failed before the loop.
+
+        A backgrounded conversational run can fail in the pipeline spine
+        (project resolution, decomposition, assignment) before the execution
+        loop ever runs to publish its own terminal frame, leaving a dashboard
+        subscribed to the task's SSE stream hung on "Working". Called by the
+        worker's background wrapper on such a failure so the operator sees the
+        run end. No-op when no event-stream hub is wired.
+        """
+        hub = self._event_stream_hub
+        if hub is None:
+            return
+        await publish_run_terminated(
+            hub, task_id=task_id, agent_id=agent_id, reason=TerminationReason.ERROR
+        )
+
     async def run(  # noqa: PLR0913
         self,
         *,
@@ -672,7 +699,7 @@ class AgentEngine(
             except ProjectNotFoundError, ProjectAgentNotMemberError:
                 raise
             except BudgetExhaustedError as exc:
-                return await self._handle_budget_error(
+                budget_result = await self._handle_budget_error(
                     exc=exc,
                     identity=identity,
                     task=task,
@@ -682,6 +709,21 @@ class AgentEngine(
                     ctx=ctx,
                     system_prompt=system_prompt,
                 )
+                # Project the terminal the budget handler actually selected: a
+                # parked hard-ceiling crossing is PARKED (silent -- the pause
+                # surfaces via the approval-interrupt projection), a plain
+                # controlled stop is BUDGET_EXHAUSTED (RUN_ERROR). The inner
+                # handler skips RUN_ERROR for a budget error precisely so a
+                # parked run is never projected as failed.
+                budget_hub = self._event_stream_hub
+                if budget_hub is not None:
+                    await publish_run_terminated(
+                        budget_hub,
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        reason=budget_result.execution_result.termination_reason,
+                    )
+                return budget_result
             except StakesModelUnavailableError as exc:
                 return await self._handle_stakes_unavailable(
                     exc=exc,
@@ -764,6 +806,18 @@ class AgentEngine(
             )
 
             loop = await self._resolve_loop(task, agent_id, task_id)
+            # Project live execution progress onto the AG-UI stream (keyed by
+            # session_id == task_id) so the dashboard can render the run
+            # instead of a silent gap between propose and review. All
+            # best-effort: a missing hub disables projection entirely.
+            hub = self._event_stream_hub
+            turn_observer = (
+                make_turn_observer(hub, task_id=task_id, agent_id=agent_id)
+                if hub is not None
+                else None
+            )
+            if hub is not None:
+                await publish_run_started(hub, task_id=task_id, agent_id=agent_id)
             # before/after_agent fire around the loop run (no-op when unwired);
             # after_agent is guaranteed in a finally inside the helper so a
             # loop timeout/exception cannot skip the end-of-run cleanup seam.
@@ -787,18 +841,48 @@ class AgentEngine(
                     start=start,
                     timeout_seconds=timeout_seconds,
                     provider=provider or self._provider,
+                    turn_observer=turn_observer,
                 )
 
-            execution_result = await _amr.run_with_agent_middleware(
-                self._agent_middleware_chain,
-                loop_runner=_run_loop,
-                ctx=ctx,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-            )
+            try:
+                execution_result = await _amr.run_with_agent_middleware(
+                    self._agent_middleware_chain,
+                    loop_runner=_run_loop,
+                    ctx=ctx,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    effective_autonomy=effective_autonomy,
+                )
+            except Exception as exc:
+                # Let a non-recoverable interpreter signal propagate immediately,
+                # before the terminal publish below allocates/serialises a frame
+                # that could mask the original critical under memory exhaustion.
+                reraise_critical(exc)
+                # A fatal error skips the normal terminal projection below, so
+                # the live panel would hang on "Working" forever: project
+                # RUN_ERROR before the exception propagates. A BudgetExhaustedError
+                # is excluded -- the outer budget handler converts it to a PARKED
+                # approval pause (projected separately) or a BUDGET_EXHAUSTED stop
+                # and projects that terminal itself, so a RUN_ERROR here would show
+                # a paused run as failed. Cancellation is not caught: a
+                # shutdown/disconnect resumes and must not be reported as failed.
+                if hub is not None and not isinstance(exc, BudgetExhaustedError):
+                    await publish_run_terminated(
+                        hub,
+                        task_id=task_id,
+                        agent_id=agent_id,
+                        reason=TerminationReason.ERROR,
+                    )
+                raise
+            if hub is not None:
+                await publish_run_terminated(
+                    hub,
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    reason=execution_result.termination_reason,
+                )
 
             execution_result = await self._post_execution_pipeline(
                 execution_result,

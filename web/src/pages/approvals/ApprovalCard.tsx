@@ -1,16 +1,19 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
+import { AlertTriangle, Clock, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
+import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
+import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
 import { useFlash } from '@/hooks/useFlash'
 import {
   DOT_COLOR_CLASSES,
   URGENCY_BADGE_CLASSES,
   formatUrgency,
+  getApprovalStepLabel,
   getRiskLevelColor,
   getRiskLevelLabel,
   getUrgencyColor,
+  isFailedApproval,
 } from '@/utils/approvals'
 import type { ApprovalResponse } from '@/api/types/approvals'
 
@@ -45,38 +48,36 @@ function useStatusFlash(status: string): ReturnType<typeof useFlash>['flashStyle
 }
 
 /**
- * Local 1s countdown over `seconds_remaining`. Reset + interval-restart
- * are collapsed into one prop-keyed effect so a WS refresh restarts on a
- * clean cadence; the `cancelled` flag guards both the microtask and the
- * tick so a freshly-set countdown is never decremented by a stale tick.
- * A sibling effect stops the timer once the countdown reaches zero so an
- * expired card mounted in the paginated queue does not keep a dormant
- * 1-Hz interval running.
+ * Local 1s countdown over `seconds_remaining`. A WS refresh re-syncs the
+ * countdown to the new server value via the sanctioned adjust-state-on-
+ * prop-change pattern (a `useState` previous-value tracker compared during
+ * render), keeping both setStates inside React's render bookkeeping so a
+ * discarded concurrent render cannot leave the tracker ahead of the value.
+ * A separate effect owns the 1-Hz interval, and a sibling effect stops it
+ * once the countdown reaches zero so an expired card in the paginated queue
+ * does not keep a dormant interval running.
  */
 function useApprovalCountdown(secondsRemaining: number | null, isPending: boolean): number | null {
   const [countdown, setCountdown] = useState(secondsRemaining)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [prevSeconds, setPrevSeconds] = useState(secondsRemaining)
+
+  if (secondsRemaining !== prevSeconds) {
+    setPrevSeconds(secondsRemaining)
+    setCountdown(secondsRemaining)
+  }
 
   useEffect(() => {
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (!cancelled) setCountdown(secondsRemaining)
-    })
     if (!isPending || secondsRemaining === null || secondsRemaining <= 0) {
-      return () => {
-        cancelled = true
-      }
+      return
     }
-    timerRef.current = setInterval(() => {
-      if (cancelled) return
+    const timer = setInterval(() => {
       setCountdown((prev) => (prev === null || prev <= 1 ? 0 : prev - 1))
     }, 1000)
+    timerRef.current = timer
     return () => {
-      cancelled = true
-      if (timerRef.current !== null) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
+      clearInterval(timer)
+      timerRef.current = null
     }
   }, [secondsRemaining, isPending])
 
@@ -141,6 +142,23 @@ function ApprovalBadges({
   )
 }
 
+/** Step label + resolved project / agent names (no raw UUIDs). */
+function ApprovalCardMeta({ approval }: { approval: ApprovalResponse }) {
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+      <span>{getApprovalStepLabel(approval)}</span>
+      {approval.project && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>{approval.project.name}</span>
+        </>
+      )}
+      <span aria-hidden="true">·</span>
+      <span>{approval.agent?.name ?? approval.requested_by}</span>
+    </div>
+  )
+}
+
 interface ApprovalCardHeaderProps {
   approval: ApprovalResponse
   selected: boolean
@@ -181,57 +199,64 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
           onClick={() => props.onSelect(approval.id)}
           className="text-left text-sm font-medium text-foreground hover:text-accent transition-colors truncate block w-full"
         >
-          {approval.title}
+          {approval.task?.title ?? approval.title}
         </button>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-          <span className="font-mono">{approval.action_type}</span>
-          <span aria-hidden="true">·</span>
-          <span>{approval.requested_by}</span>
-        </div>
+        <ApprovalCardMeta approval={approval} />
       </div>
 
-      <ApprovalBadges
-        isPending={isPending}
-        countdown={countdown}
-        urgencyColor={urgencyColor}
-        isBlocked={approval.metadata['safety_classification'] === 'blocked'}
-        isSuspicious={approval.metadata['safety_classification'] === 'suspicious'}
-        showLowConfidence={isLowConfidence(approval)}
-      />
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {approval.run && <RunOutcomeBadge outcome={approval.run.outcome} />}
+        <ApprovalBadges
+          isPending={isPending}
+          countdown={countdown}
+          urgencyColor={urgencyColor}
+          isBlocked={approval.metadata['safety_classification'] === 'blocked'}
+          isSuspicious={approval.metadata['safety_classification'] === 'suspicious'}
+          showLowConfidence={isLowConfidence(approval)}
+        />
+      </div>
     </div>
   )
 }
 
 function ApprovalCardActions({
   id,
+  isFailed,
   onApprove,
   onReject,
 }: {
   id: string
+  isFailed: boolean
   onApprove: (id: string) => void
   onReject: (id: string) => void
 }) {
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1 border-success/30 text-success hover:bg-success/10"
-        onClick={() => onApprove(id)}
-      >
-        <Check className="size-3.5" />
-        Approve
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 gap-1 border-danger/30 text-danger hover:bg-danger/10"
-        onClick={() => onReject(id)}
-      >
-        <X className="size-3.5" />
-        Reject
-      </Button>
-    </div>
+    <ApprovalDecisionButtons
+      isFailed={isFailed}
+      onApprove={() => onApprove(id)}
+      onReject={() => onReject(id)}
+      className="mt-3"
+    />
+  )
+}
+
+/** Surface + border classes: danger tint for a failed run, ring when selected. */
+function cardSurfaceClasses(isFailed: boolean, selected: boolean, isPending: boolean): string {
+  return cn(
+    'rounded-lg border p-card transition-all duration-200',
+    // A failed run is visually unmistakable: danger-tinted surface and border
+    // so it is never read as a routine completion.
+    isFailed ? 'border-danger/40 bg-danger/5' : 'bg-card',
+    // A selected failed card keeps its danger border (twMerge would let a plain
+    // `border-bright` override it and make it read as routine).
+    selected
+      ? isFailed
+        ? 'border-danger/40 ring-1 ring-accent/20'
+        : 'border-bright ring-1 ring-accent/20'
+      : !isFailed && 'border-border',
+    isPending &&
+      'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
+    !isPending && 'opacity-70',
   )
 }
 
@@ -245,21 +270,16 @@ function ApprovalCardImpl({
   className,
 }: ApprovalCardProps) {
   const isPending = approval.status === 'pending'
+  const isFailed = isFailedApproval(approval)
   const flashStyle = useStatusFlash(approval.status)
   const countdown = useApprovalCountdown(approval.seconds_remaining, isPending)
 
   return (
     <div
-      className={cn(
-        'rounded-lg border bg-card p-card transition-all duration-200',
-        selected ? 'border-bright ring-1 ring-accent/20' : 'border-border',
-        isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
-        !isPending && 'opacity-70',
-        className,
-      )}
+      className={cn(cardSurfaceClasses(isFailed, selected, isPending), className)}
       style={flashStyle}
       role="article"
-      aria-label={`Approval: ${approval.title}`}
+      aria-label={`Approval: ${approval.task?.title ?? approval.title}`}
     >
       <ApprovalCardHeader
         approval={approval}
@@ -272,7 +292,14 @@ function ApprovalCardImpl({
         onToggleSelect={onToggleSelect}
       />
 
-      {isPending && <ApprovalCardActions id={approval.id} onApprove={onApprove} onReject={onReject} />}
+      {isPending && (
+        <ApprovalCardActions
+          id={approval.id}
+          isFailed={isFailed}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      )}
     </div>
   )
 }

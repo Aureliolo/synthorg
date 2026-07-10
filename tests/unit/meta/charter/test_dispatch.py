@@ -240,6 +240,13 @@ class _FakeWorkPipeline:
         self.ran.append(work_item)
         return SimpleResult(task_id=NotBlankStr("task-1"), is_success=self._is_success)
 
+    async def intake_only(self, work_item: WorkItem) -> object:
+        # The charter path drives the batch ``run`` entry, never the split.
+        raise NotImplementedError
+
+    async def continue_from_intake(self, work_item: WorkItem, task: object) -> object:
+        raise NotImplementedError
+
     def attach_narrator(self, narrator: object) -> None:
         raise NotImplementedError
 
@@ -492,6 +499,14 @@ class TestApprove:
                 del work_item
                 msg = "spine boom"
                 raise RuntimeError(msg)
+
+            async def intake_only(self, work_item: WorkItem) -> object:
+                raise NotImplementedError
+
+            async def continue_from_intake(
+                self, work_item: WorkItem, task: object
+            ) -> object:
+                raise NotImplementedError
 
             def attach_narrator(self, narrator: object) -> None:
                 raise NotImplementedError

@@ -72,6 +72,7 @@ from .loop_helpers import (
     classify_turn,
     get_tool_definitions,
     make_turn_record,
+    notify_turn_observer,
     response_to_message,
 )
 from .loop_protocol import (
@@ -80,6 +81,7 @@ from .loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+    TurnObserver,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -173,6 +175,7 @@ class HybridLoop:
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Run the Hybrid Plan + ReAct loop until termination.
 
@@ -185,6 +188,9 @@ class HybridLoop:
             completion_config: Optional per-execution config override.
             task_cancellation_checker: Optional async callback; returns
                 ``True`` when the task was cancelled/superseded externally.
+            turn_observer: Optional per-run progress callback; fired once
+                per plan step so the AG-UI stream surfaces step-level
+                progress for this loop.
 
         Returns:
             Execution result with final context and termination info.
@@ -245,6 +251,7 @@ class HybridLoop:
             budget_checker,
             shutdown_checker,
             task_cancellation_checker,
+            turn_observer,
         )
 
     # -- Phase orchestration -----------------------------------------------
@@ -296,6 +303,7 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        turn_observer: TurnObserver | None = None,
     ) -> ExecutionResult:
         """Iterate through plan steps with checkpointing/replanning.
 
@@ -321,6 +329,9 @@ class HybridLoop:
                 execution_id=ctx.execution_id,
                 step_number=step.step_number,
                 description=step.description,
+            )
+            await notify_turn_observer(
+                turn_observer, step.step_number, (step.description,)
             )
 
             step_start = len(turns)

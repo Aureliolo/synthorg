@@ -29,8 +29,10 @@ from synthorg.api.channels import (
     CHANNEL_COCKPIT,
     CHANNEL_MEETINGS,
 )
+from synthorg.api.controllers.approvals._shared import to_response_without_context
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import (
     PersonalityTrimNotifier,
@@ -55,6 +57,7 @@ _POSTGRES_VOLUME_DATA_DIR: Final[str] = "/data"
 
 def _make_expire_callback(
     channels_plugin: ChannelsPlugin,
+    clock: Clock | None = None,
 ) -> Callable[[ApprovalItem], None]:
     """Create a sync callback that publishes APPROVAL_EXPIRED events.
 
@@ -64,25 +67,35 @@ def _make_expire_callback(
 
     Args:
         channels_plugin: Litestar channels plugin for WebSocket delivery.
+        clock: Clock seam for the event timestamp; defaults to
+            ``SystemClock`` so tests can inject a ``FakeClock`` for a
+            deterministic expiry timestamp.
 
     Returns:
         Sync callback accepting an expired ``ApprovalItem``.
     """
+    resolved_clock = clock or SystemClock()
 
     def _on_expire(item: ApprovalItem) -> None:
         """Handle the expire event."""
-        event = WsEvent(
-            event_type=WsEventType.APPROVAL_EXPIRED,
-            channel=CHANNEL_APPROVALS,
-            timestamp=datetime.now(UTC),
-            payload={
-                "approval_id": item.id,
-                "status": item.status.value,
-                "action_type": item.action_type,
-                "risk_level": item.risk_level.value,
-            },
-        )
+        now = resolved_clock.now()
+        # Build the event inside the guard: the WsEvent payload validator
+        # rejects a malformed payload (e.g. a non-string approval_id) at
+        # construction, and this lazy-expiry callback must degrade to a
+        # logged no-op rather than let that error escape into the store's
+        # expiry sweep.
         try:
+            response = to_response_without_context(item, now=now)
+            event = WsEvent(
+                event_type=WsEventType.APPROVAL_EXPIRED,
+                channel=CHANNEL_APPROVALS,
+                timestamp=now,
+                payload={
+                    "approval_id": str(item.id),
+                    "status": item.status.value,
+                    "approval": response.model_dump(mode="json"),
+                },
+            )
             channels_plugin.publish(
                 event.model_dump_json(),
                 channels=[CHANNEL_APPROVALS],
@@ -91,7 +104,7 @@ def _make_expire_callback(
             reraise_critical(exc)
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 event_type=WsEventType.APPROVAL_EXPIRED.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

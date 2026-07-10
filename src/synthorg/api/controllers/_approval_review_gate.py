@@ -31,6 +31,7 @@ from synthorg.core.domain_errors import (
 from synthorg.engine.errors import (
     SelfReviewError,
     TaskInternalError,
+    TaskMutationError,
     TaskNotFoundError,
     TaskVersionConflictError,
 )
@@ -258,15 +259,19 @@ async def try_review_gate_transition(  # noqa: PLR0913
     engine-layer failures below.
 
     Raises:
-        ConflictError: When the task disappears or its version
-            conflicts between the preflight and the transition -- both
-            treated as concurrent-modification races the client should
-            retry.
+        TaskNotFoundError: When the task disappears between the preflight
+            and the transition; re-raised with a redacted message so the
+            client keeps the ``TASK_NOT_FOUND`` code without the UUID.
+        TaskVersionConflictError: When the task version conflicts; re-raised
+            (redacted) so the client keeps the retryable
+            ``TASK_VERSION_CONFLICT`` code and knows to re-read and retry.
+        ConflictError: When the task left ``IN_REVIEW`` before the decision
+            landed (a base ``TaskMutationError`` invalid edge), surfaced as
+            a redacted 409 rather than a raw 422 with internal detail.
         ForbiddenError: When a late self-review race is detected
             (agent reassigned between preflight and transition).
         TaskInternalError: A task-engine internal fault propagates as its
             faithful 500 ``ENGINE_ERROR`` via the centralised handler.
-        NotFoundError: Raised on the corresponding failure path.
     """
     try:
         await review_gate.dispatch_completion(
@@ -293,9 +298,11 @@ async def try_review_gate_transition(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        # Generic message: do not echo task UUIDs to clients via 404.
+        # Re-raise the discriminating type (preserving its TASK_NOT_FOUND code)
+        # with a redacted message, so the client keeps the machine-branchable
+        # signal without seeing internal task UUIDs.
         not_found_msg = "Associated task could not be found"
-        raise NotFoundError(not_found_msg) from exc
+        raise TaskNotFoundError(not_found_msg) from exc
     except TaskVersionConflictError as exc:
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -304,9 +311,24 @@ async def try_review_gate_transition(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        # Generic message: do not echo task UUIDs to clients via 409.
+        # Preserve the retryable TASK_VERSION_CONFLICT code (so the client
+        # knows to re-read and retry) while redacting internal detail.
         conflict_msg = "A concurrent modification was detected; retry the request"
-        raise ConflictError(conflict_msg) from exc
+        raise TaskVersionConflictError(conflict_msg) from exc
+    except TaskMutationError as exc:
+        # Base-family mutation error (e.g. the task left IN_REVIEW before the
+        # decision landed, so the edge is no longer legal): a genuine state
+        # conflict, not a silent success. Surface a redacted 409 rather than
+        # letting the raw 422 propagate with internal detail.
+        logger.warning(
+            APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+            approval_id=approval_id,
+            task_id=task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        mutation_msg = "The task is no longer in a reviewable state"
+        raise ConflictError(mutation_msg) from exc
     except TaskInternalError as exc:
         # A task-engine internal fault is a 500 ENGINE_ERROR, not a
         # not-wired-yet 503: let it propagate via handle_domain_error

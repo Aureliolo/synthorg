@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
+from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
 from synthorg.api.controllers.approvals._notify import (
     _decided_attribution,
     _publish_approval_event,
@@ -206,8 +207,9 @@ class ApprovalsDecisionsController(Controller):
             )
             await store.add(item)
 
-            _publish_approval_event(
+            await _publish_approval_event(
                 request,
+                app_state,
                 WsEventType.APPROVAL_SUBMITTED,
                 item,
             )
@@ -217,11 +219,13 @@ class ApprovalsDecisionsController(Controller):
                 action_type=item.action_type,
                 risk_level=item.risk_level.value,
             )
+            contexts = await resolve_approval_context(app_state, (item,))
             return _to_approval_response(
                 item,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
+                context=contexts.get(str(item.id)),
             ).model_dump(mode="json")
 
         response = await _decide_idempotent(
@@ -291,20 +295,16 @@ class ApprovalsDecisionsController(Controller):
                     "decision_reason": data.comment,
                 },
             )
-            # Pre-resolve urgency thresholds before the durable decision
-            # write so a slow settings backend can't strand a committed
-            # decision behind a blocked response.
-            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
-                app_state
-            )
             # ``_save_decision_and_notify`` emits the
             # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
             # persistence write succeeds, so a downstream notification or
             # resume-signal failure cannot strand the row in a decided
             # state without a corresponding transition entry. The log
             # uses ``decided_by_user_id`` (not username) to keep the
-            # observability stream free of human-readable identifiers.
-            saved = await _save_decision_and_notify(
+            # observability stream free of human-readable identifiers. It
+            # returns the enriched response (built once for the WS publish)
+            # so the review context is not resolved a second time here.
+            response_obj = await _save_decision_and_notify(
                 app_state,
                 request,
                 approval_id,
@@ -316,12 +316,7 @@ class ApprovalsDecisionsController(Controller):
                 decision_reason=data.comment,
                 ws_event=WsEventType.APPROVAL_APPROVED,
             )
-            return _to_approval_response(
-                saved,
-                now=now,
-                urgency_critical_seconds=critical_seconds,
-                urgency_high_seconds=high_seconds,
-            ).model_dump(mode="json")
+            return response_obj.model_dump(mode="json")
 
         response = await _decide_idempotent(
             app_state,
@@ -390,17 +385,12 @@ class ApprovalsDecisionsController(Controller):
                     "decision_reason": data.reason,
                 },
             )
-            # Pre-resolve urgency thresholds before the durable decision
-            # write so a slow settings backend can't strand a committed
-            # decision behind a blocked response.
-            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
-                app_state
-            )
             # ``_save_decision_and_notify`` emits the
             # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-            # persistence write succeeds (see the approve branch above
-            # for the rationale).
-            saved = await _save_decision_and_notify(
+            # persistence write succeeds (see the approve branch above for
+            # the rationale) and returns the enriched response built once for
+            # the WS publish, so the context is not resolved a second time.
+            response_obj = await _save_decision_and_notify(
                 app_state,
                 request,
                 approval_id,
@@ -412,12 +402,7 @@ class ApprovalsDecisionsController(Controller):
                 decision_reason=data.reason,
                 ws_event=WsEventType.APPROVAL_REJECTED,
             )
-            return _to_approval_response(
-                saved,
-                now=now,
-                urgency_critical_seconds=critical_seconds,
-                urgency_high_seconds=high_seconds,
-            ).model_dump(mode="json")
+            return response_obj.model_dump(mode="json")
 
         response = await _decide_idempotent(
             app_state,

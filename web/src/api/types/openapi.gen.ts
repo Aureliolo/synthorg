@@ -7883,6 +7883,31 @@ export type components = {
             /** @description Scale factor applied to existing departments */
             readonly scale_factor: number | null;
         };
+        /** ApprovalAgentRef */
+        readonly ApprovalAgentRef: {
+            /** @description Agent identifier */
+            readonly id: string;
+            /** @description Agent display name (falls back to the id when unresolved) */
+            readonly name: string;
+        };
+        /** ApprovalArtifactRef */
+        readonly ApprovalArtifactRef: {
+            /**
+             * @description MIME content type
+             * @default
+             */
+            readonly content_type: string;
+            /** @description Artifact identifier */
+            readonly id: string;
+            /** @description Artifact path */
+            readonly path: string;
+            /**
+             * @description Content size in bytes
+             * @default 0
+             */
+            readonly size_bytes: number;
+            readonly type: components["schemas"]["ArtifactType"];
+        };
         /** ApprovalChain */
         readonly ApprovalChain: {
             /** @description Action type for this chain */
@@ -7895,9 +7920,18 @@ export type components = {
              */
             readonly min_approvals: number;
         };
+        /** ApprovalProjectRef */
+        readonly ApprovalProjectRef: {
+            /** @description Project identifier */
+            readonly id: string;
+            /** @description Human-readable project name */
+            readonly name: string;
+        };
         /** ApprovalResponse */
         readonly ApprovalResponse: {
             readonly action_type: string;
+            /** @description Resolved requesting-agent identity (display name) */
+            readonly agent: components["schemas"]["ApprovalAgentRef"] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -7928,12 +7962,18 @@ export type components = {
             readonly metadata: {
                 readonly [key: string]: string;
             };
+            /** @description Resolved project identity (name) */
+            readonly project: components["schemas"]["ApprovalProjectRef"] | null;
             readonly requested_by: string;
             readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
+            /** @description Run outcome + produced-artifact summary */
+            readonly run: components["schemas"]["ApprovalRunSummary"] | null;
             /** @description Seconds until expiry (null if no TTL set) */
             readonly seconds_remaining: number | null;
             readonly source: components["schemas"]["ApprovalSource"];
             readonly status: components["schemas"]["ApprovalStatus"];
+            /** @description Resolved task identity (title + status) */
+            readonly task: components["schemas"]["ApprovalTaskRef"] | null;
             readonly task_id: string | null;
             readonly title: string;
             readonly urgency_level: components["schemas"]["UrgencyLevel"];
@@ -7944,6 +7984,17 @@ export type components = {
          * @enum {string}
          */
         readonly ApprovalRiskLevel: "low" | "medium" | "high" | "critical";
+        /** ApprovalRunSummary */
+        readonly ApprovalRunSummary: {
+            /**
+             * @description Produced-artifact refs, capped for payload size
+             * @default []
+             */
+            readonly artifacts: readonly components["schemas"]["ApprovalArtifactRef"][];
+            readonly outcome: components["schemas"]["RunOutcome"];
+            /** @description Total artifacts the run produced (may exceed len(artifacts)) */
+            readonly produced_artifact_count: number;
+        };
         /**
          * ApprovalSource
          * @description Origin of an approval item, fixed at creation.
@@ -7977,6 +8028,14 @@ export type components = {
          * @enum {string}
          */
         readonly ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
+        /** ApprovalTaskRef */
+        readonly ApprovalTaskRef: {
+            /** @description Task identifier */
+            readonly id: string;
+            readonly status: components["schemas"]["TaskStatus"];
+            /** @description Human-readable task title */
+            readonly title: string;
+        };
         /** ApproveRequest */
         readonly ApproveRequest: {
             /** @description Optional comment explaining the approval decision. */
@@ -15468,6 +15527,17 @@ export type components = {
          * @enum {string}
          */
         readonly RuleSeverity: "info" | "warning" | "critical";
+        /**
+         * RunOutcome
+         * @description Truthful outcome of a task run, for failure-aware review surfaces.
+         *
+         *     Attributes:
+         *         SUCCEEDED: The run produced artifacts (a genuine completion).
+         *         EMPTY: The run reached review/completion but produced nothing.
+         *         FAILED: The run failed (fail-loud empty-run or a hard error).
+         * @enum {string}
+         */
+        readonly RunOutcome: "succeeded" | "empty" | "failed";
         /** SafeEvidencePackage */
         readonly SafeEvidencePackage: {
             /**

@@ -1,7 +1,30 @@
-import type { ApprovalResponse } from '@/api/types/approvals'
-import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types/enums'
+import type { ApprovalResponse, RunOutcome } from '@/api/types/approvals'
+import type {
+  ApprovalRiskLevel,
+  ApprovalSource,
+  ApprovalStatus,
+  UrgencyLevel,
+} from '@/api/types/enums'
 import type { SemanticColor } from '@/utils/agent-status'
-import { AlertTriangle, Shield, ShieldAlert, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { ROUTES } from '@/router/routes'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleSlash,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react'
+
+/** Action type stamped on the review approval created for a failed run. */
+const FAILED_RUN_ACTION_TYPE = 'review:task_failed'
+
+/** Deep-link to an approval, pre-selected in the queue. */
+export function approvalDetailPath(approvalId: string): string {
+  return `${ROUTES.APPROVALS}?selected=${encodeURIComponent(approvalId)}`
+}
 
 // ── Risk level color mapping ────────────────────────────────
 
@@ -40,6 +63,70 @@ const RISK_LEVEL_ICONS: Record<ApprovalRiskLevel, LucideIcon> = {
 
 export function getRiskLevelIcon(level: ApprovalRiskLevel): LucideIcon {
   return RISK_LEVEL_ICONS[level]
+}
+
+// ── Run outcome (produced-output / failure) ─────────────────
+
+const RUN_OUTCOME_COLOR_MAP: Record<RunOutcome, SemanticColor> = {
+  succeeded: 'success',
+  empty: 'warning',
+  failed: 'danger',
+}
+
+export function getRunOutcomeColor(outcome: RunOutcome): SemanticColor {
+  return RUN_OUTCOME_COLOR_MAP[outcome]
+}
+
+const RUN_OUTCOME_LABELS: Record<RunOutcome, string> = {
+  succeeded: 'Produced output',
+  empty: 'Produced nothing',
+  failed: 'Run failed',
+}
+
+export function getRunOutcomeLabel(outcome: RunOutcome): string {
+  return RUN_OUTCOME_LABELS[outcome]
+}
+
+const RUN_OUTCOME_ICONS: Record<RunOutcome, LucideIcon> = {
+  succeeded: CheckCircle2,
+  empty: CircleSlash,
+  failed: XCircle,
+}
+
+export function getRunOutcomeIcon(outcome: RunOutcome): LucideIcon {
+  return RUN_OUTCOME_ICONS[outcome]
+}
+
+/**
+ * A failed run: either the resolved run outcome is `failed`, or the item
+ * carries the failed-run action type (the fallback for a response built
+ * without resolved run context, e.g. the lazy-expiry publish path). Failed
+ * items get danger styling and are never shown as a routine low-risk approval.
+ */
+export function isFailedApproval(approval: ApprovalResponse): boolean {
+  return approval.run?.outcome === 'failed' || approval.action_type === FAILED_RUN_ACTION_TYPE
+}
+
+// ── Approval step label (proposal-time vs review-gate) ──────
+
+const APPROVAL_SOURCE_STEP_LABELS: Record<ApprovalSource, string> = {
+  parked_context: 'Approve to continue',
+  review_gate: 'Review completed work',
+  conversational_intake: 'Approve to start',
+  conversational_invite: 'Approve invite',
+  plan_review: 'Review plan',
+}
+
+/**
+ * Human label for which step of the propose then execute then review flow
+ * this approval represents, so proposal-time and completion gates are never
+ * confused. Failed/empty completions get their own truthful label.
+ */
+export function getApprovalStepLabel(approval: ApprovalResponse): string {
+  const outcome = approval.run?.outcome
+  if (outcome === 'failed') return 'Review failed run'
+  if (outcome === 'empty') return 'Review empty run'
+  return APPROVAL_SOURCE_STEP_LABELS[approval.source]
 }
 
 // ── Approval status labels ──────────────────────────────────
@@ -148,6 +235,15 @@ export const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', str
   accent: 'border-accent/30 bg-accent/10 text-accent',
   success: 'border-success/30 bg-success/10 text-success',
   'text-secondary': 'border-border bg-surface text-text-secondary',
+}
+
+/** Bordered pill classes for a risk-level badge (includes the low-risk dim). */
+export const RISK_BADGE_CLASSES: Record<SemanticColor | 'accent-dim', string> = {
+  danger: 'border-danger/30 bg-danger/10 text-danger',
+  warning: 'border-warning/30 bg-warning/10 text-warning',
+  accent: 'border-accent/30 bg-accent/10 text-accent',
+  'accent-dim': 'border-accent-dim/30 bg-accent-dim/10 text-accent-dim',
+  success: 'border-success/30 bg-success/10 text-success',
 }
 
 // ── Client-side filtering ───────────────────────────────────

@@ -1,77 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { RefObject } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { REJECTION_REASON_REQUIRED } from './errors'
 import { getRiskLevelColor } from '@/utils/approvals'
+import type { SemanticColor } from '@/utils/agent-status'
 import { useToastStore } from '@/stores/toast'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
-
-const FOCUSABLE_SELECTOR =
-  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-
-/** Close on Escape, unless a nested confirmation dialog is open. */
-export function useEscapeToClose(active: boolean, onClose: () => void, blocked: boolean): void {
-  useEffect(() => {
-    if (!active) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !blocked) onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [active, onClose, blocked])
-}
-
-/** Remember the opener element and restore focus to it on close. */
-export function useRestoreFocusOnClose(open: boolean): void {
-  const openerRef = useRef<Element | null>(null)
-  useEffect(() => {
-    if (open) openerRef.current = document.activeElement
-    return () => {
-      if (openerRef.current instanceof HTMLElement) openerRef.current.focus()
-      openerRef.current = null
-    }
-  }, [open])
-}
-
-/**
- * Keep Tab cycling within the panel. `reengage` re-runs the effect when
- * async content arrives so focus moves onto the first real control.
- */
-export function useFocusTrap(
-  panelRef: RefObject<HTMLElement | null>,
-  active: boolean,
-  reengage: unknown,
-): void {
-  useEffect(() => {
-    if (!active) return
-    void reengage
-    const panel = panelRef.current
-    if (!panel) return
-    const focusable = panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-    if (focusable.length > 0) {
-      focusable[0]!.focus()
-    } else {
-      panel.setAttribute('tabindex', '-1')
-      panel.focus()
-    }
-
-    const handleTab = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return
-      const nodes = panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      if (nodes.length === 0) return
-      const first = nodes[0]!
-      const last = nodes[nodes.length - 1]!
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', handleTab)
-    return () => document.removeEventListener('keydown', handleTab)
-  }, [active, reengage, panelRef])
-}
 
 /** Run `onChange` during render whenever `value`'s identity changes. */
 function useResetOnChange(value: unknown, onChange: () => void): void {
@@ -95,7 +27,7 @@ export interface ApprovalDecision {
   setReasonError: (value: string | null) => void
   submitting: boolean
   isPending: boolean
-  riskColor: string
+  riskColor: SemanticColor | 'accent-dim'
   confidenceLabel: string | null
   handleApprove: () => Promise<boolean | undefined>
   handleReject: () => Promise<boolean | undefined>

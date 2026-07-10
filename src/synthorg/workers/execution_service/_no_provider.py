@@ -7,6 +7,8 @@ from synthorg.core.domain_errors import (
 from synthorg.core.task import (
     Task,
 )
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import (
     get_logger,
 )
@@ -93,5 +95,32 @@ class NoProviderExecutionService:
             f"Approval {approval_id!r} has a parked agent context but no "
             f"LLM provider is configured; cannot resume execution. "
             f"Restore the provider, then retry the decision."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        """Reject: no provider means no agent engine to run the work.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: Always; no provider means no
+                agent engine to execute the approved work.
+        """
+        logger.error(
+            WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+            task_id=str(task.id),
+            source=work_item.source.value,
+            pipeline=type(work_pipeline).__name__,
+            reason="no_provider_cannot_execute_conversational_work",
+        )
+        msg = (
+            f"Task {task.id!s} was intake-created for approved conversational "
+            f"work but no LLM provider is configured; cannot execute. Restore "
+            f"the provider, then retry."
         )
         raise AgentRuntimeNotConfiguredError(msg)

@@ -1,12 +1,20 @@
-import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
+import { sanitizeWsEnum, sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
 import type {
+  ApprovalAgentRef,
+  ApprovalArtifactRef,
+  ApprovalProjectRef,
   ApprovalResponse,
+  ApprovalRunSummary,
+  ApprovalTaskRef,
   SafeEvidencePackage,
 } from '@/api/types/approvals'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
   APPROVAL_SOURCE_VALUES,
   APPROVAL_STATUS_VALUES,
+  ARTIFACT_TYPE_VALUES,
+  RUN_OUTCOME_VALUES,
+  TASK_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
 import { SIGNATURE_ALGORITHM_VALUES } from '@/api/types/approvals'
@@ -183,6 +191,87 @@ export function isApprovalShape(
   )
 }
 
+/** A plain (non-array) object, the shape every nested ref must have. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Nested review-context refs (task/project/agent/run) arrive on WS frames
+ * from the enriched approval publisher. They are best-effort: a malformed or
+ * absent ref sanitizes to ``null`` so a live upsert never crashes or smuggles
+ * unsanitized strings into the store.
+ */
+function sanitizeTaskRef(value: unknown): ApprovalTaskRef | null {
+  if (!isPlainObject(value)) return null
+  const id = sanitizeWsString(value['id'], 128)
+  const title = sanitizeWsString(value['title'], 256)
+  const status = sanitizeWsEnumOrNull(value['status'], TASK_STATUS_VALUES, {
+    maxLen: 64,
+    field: 'approval.task.status',
+  })
+  // Reject the ref outright when a required field sanitizes away or the status
+  // is invalid: a blank task id would start a progress subscription for nothing.
+  if (id === undefined || title === undefined || status === null) return null
+  return { id, title, status }
+}
+
+function sanitizeProjectRef(value: unknown): ApprovalProjectRef | null {
+  if (!isPlainObject(value)) return null
+  const id = sanitizeWsString(value['id'], 128)
+  const name = sanitizeWsString(value['name'], 256)
+  if (id === undefined || name === undefined) return null
+  return { id, name }
+}
+
+function sanitizeAgentRef(value: unknown): ApprovalAgentRef | null {
+  if (!isPlainObject(value)) return null
+  const id = sanitizeWsString(value['id'], 128)
+  const name = sanitizeWsString(value['name'], 128)
+  if (id === undefined || name === undefined) return null
+  return { id, name }
+}
+
+function sanitizeArtifactRef(value: unknown): ApprovalArtifactRef | null {
+  if (!isPlainObject(value)) return null
+  const id = sanitizeWsString(value['id'], 128)
+  const path = sanitizeWsString(value['path'], 512)
+  const type = sanitizeWsEnumOrNull(value['type'], ARTIFACT_TYPE_VALUES, {
+    maxLen: 64,
+    field: 'approval.run.artifacts[].type',
+  })
+  if (id === undefined || path === undefined || type === null) return null
+  return {
+    id,
+    path,
+    type,
+    content_type: sanitizeWsString(value['content_type'], 128) ?? '',
+    size_bytes: isNonNegInt(value['size_bytes']) ? value['size_bytes'] : 0,
+  }
+}
+
+function sanitizeRunSummary(value: unknown): ApprovalRunSummary | null {
+  if (!isPlainObject(value)) return null
+  // Never synthesize success for untrusted data: a missing/invalid outcome
+  // rejects the whole summary rather than presenting a failed run as succeeded.
+  const outcome = sanitizeWsEnumOrNull(value['outcome'], RUN_OUTCOME_VALUES, {
+    maxLen: 64,
+    field: 'approval.run.outcome',
+  })
+  if (outcome === null) return null
+  const rawArtifacts = Array.isArray(value['artifacts']) ? value['artifacts'] : []
+  const artifacts = rawArtifacts
+    .map(sanitizeArtifactRef)
+    .filter((a): a is ApprovalArtifactRef => a !== null)
+  return {
+    outcome,
+    produced_artifact_count: isNonNegInt(value['produced_artifact_count'])
+      ? value['produced_artifact_count']
+      : artifacts.length,
+    artifacts,
+  }
+}
+
 function sanitizeRecommendedActions(
   actions: SafeEvidencePackage['recommended_actions'],
 ): SafeEvidencePackage['recommended_actions'] {
@@ -348,5 +437,9 @@ export function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
       'normal',
       { maxLen: 64, field: 'approval.urgency_level' },
     ),
+    task: sanitizeTaskRef(c.task),
+    project: sanitizeProjectRef(c.project),
+    agent: sanitizeAgentRef(c.agent),
+    run: sanitizeRunSummary(c.run),
   }
 }

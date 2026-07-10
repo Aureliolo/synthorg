@@ -132,28 +132,27 @@ function ApprovalGroups({ ctrl }: { ctrl: ApprovalsPageController }) {
 
 function ApprovalDrawerHost({ ctrl }: { ctrl: ApprovalsPageController }) {
   const { data, url } = ctrl
+  // The shared <Drawer> (Base UI) owns its own mount + slide/exit transition
+  // off the `open` prop, so it stays mounted and is not wrapped in
+  // AnimatePresence (that is what every other drawer consumer does).
   return (
-    <AnimatePresence>
-      {!!url.selectedId && (
-        <ApprovalDetailDrawer
-          approval={data.selectedApproval}
-          open={!!url.selectedId}
-          onClose={url.handleCloseDrawer}
-          onApprove={async (id, payload) => {
-            const result = await data.approveOne(id, payload)
-            if (result) url.handleCloseDrawer()
-            return result !== null
-          }}
-          onReject={async (id, payload) => {
-            const result = await data.rejectOne(id, payload)
-            if (result) url.handleCloseDrawer()
-            return result !== null
-          }}
-          loading={data.loadingDetail}
-          error={data.detailError}
-        />
-      )}
-    </AnimatePresence>
+    <ApprovalDetailDrawer
+      approval={data.selectedApproval}
+      open={!!url.selectedId}
+      onClose={url.handleCloseDrawer}
+      onApprove={async (id, payload) => {
+        const result = await data.approveOne(id, payload)
+        if (result) url.handleCloseDrawer()
+        return result !== null
+      }}
+      onReject={async (id, payload) => {
+        const result = await data.rejectOne(id, payload)
+        if (result) url.handleCloseDrawer()
+        return result !== null
+      }}
+      loading={data.loadingDetail}
+      error={data.detailError}
+    />
   )
 }
 
