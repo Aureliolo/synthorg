@@ -65,7 +65,7 @@ async def create_review_approval(
         )
         await approval_store.add(item)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort side channel
+        # lint-allow: swallow-ok -- approval creation must not lose the execution result
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,

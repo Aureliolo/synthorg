@@ -248,7 +248,7 @@ class ParallelExecutor:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
-            # lint-allow: swallow-ok -- best-effort side channel
+            # lint-allow: swallow-ok -- per-task errors already logged; suppress group
             logger.warning(
                 PARALLEL_GROUP_SUPPRESSED,
                 note="ExceptionGroup suppressed",
