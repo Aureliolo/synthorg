@@ -7,8 +7,6 @@ above a task's required tier it raises
 the run for an operator decision when an approval gate is wired, and
 otherwise degrades to the fatal-error boundary so the task terminates
 ``FAILED``. A consequential task is never silently run on a sub-tier model.
-Split from :mod:`synthorg.engine.agent_engine_errors` to keep both modules
-under the size budget.
 """
 
 from typing import TYPE_CHECKING

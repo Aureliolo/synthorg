@@ -33,7 +33,7 @@ from synthorg.providers.tier_assignment.models import TierRecommendation
 
 logger = get_logger(__name__)
 
-_SYSTEM_PROMPT = (
+_SYSTEM_PROMPT_BASE = (
     "You classify LLM models into a routing tier for a synthetic-organisation "
     "engine. The three tiers are: 'small' (cheap, light workers for bounded "
     "classification/triage), 'medium' (mid-capability for judgement and "
@@ -134,13 +134,30 @@ class LlmTierRecommender:
         """
         if not models:
             return ()
-        user_prompt = "Classify these models:\n" + "\n".join(
-            _describe_model(m) for m in models
+        # Local import breaks a providers -> engine cold-import cycle; the
+        # untrusted-content fencing helpers live in the engine layer.
+        from synthorg.engine.prompt_safety import (  # noqa: PLC0415
+            TAG_CONFIG_VALUE,
+            untrusted_content_directive,
+            wrap_untrusted,
+        )
+
+        # Model ids + metadata can originate from a third-party provider's model
+        # listing, so treat them as untrusted: fence the whole description block
+        # so an injected id cannot steer the classifier.
+        descriptions = "\n".join(_describe_model(m) for m in models)
+        system_prompt = (
+            _SYSTEM_PROMPT_BASE
+            + "\n\n"
+            + untrusted_content_directive((TAG_CONFIG_VALUE,))
+        )
+        user_prompt = "Classify the models described in the tagged block:\n" + (
+            wrap_untrusted(TAG_CONFIG_VALUE, descriptions)
         )
         content, _cost = await complete_text(
             self._provider,
             self._model_id,
-            system=_SYSTEM_PROMPT,
+            system=system_prompt,
             user=user_prompt,
             task_id=NotBlankStr(
                 f"system:providers:tier_classification:{provider_name}"

@@ -1,7 +1,7 @@
 # module-kind: code
 """Request / response DTOs for the model tier-assignment API."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.providers.tier_assignment.models import (
@@ -22,7 +22,16 @@ class TierAssignmentDTO(BaseModel):
     provenance: TierProvenance = Field(description="heuristic / operator / llm")
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
     reason: NotBlankStr = Field(description="Why the tier was assigned")
-    is_override: bool = Field(description="Whether an override set this tier")
+
+    @computed_field(description="Whether an override set this tier")
+    @property
+    def is_override(self) -> bool:
+        """Whether an operator / LLM override (not the heuristic) set the tier.
+
+        Returns:
+            ``True`` unless the tier came from the deterministic heuristic.
+        """
+        return self.provenance != "heuristic"
 
 
 def to_tier_assignment_dto(assignment: TierAssignment) -> TierAssignmentDTO:
@@ -38,7 +47,6 @@ def to_tier_assignment_dto(assignment: TierAssignment) -> TierAssignmentDTO:
         provenance=assignment.provenance,
         confidence=assignment.confidence,
         reason=assignment.reason,
-        is_override=assignment.provenance != "heuristic",
     )
 
 
@@ -121,6 +129,10 @@ class ClassifierModelDTO(BaseModel):
 
     provider: str = Field(default="", description="Provider name (empty = unset)")
     model_id: str = Field(default="", description="Model id (empty = unset)")
+    enabled: bool = Field(
+        default=False,
+        description="Whether the LLM tier recommender opt-in is on",
+    )
 
 
 __all__ = [

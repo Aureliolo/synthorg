@@ -13,6 +13,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_COORD_NUDGE,
     STAKES_ROUTING_ESCALATED,
+    STAKES_ROUTING_TIER_ADJUSTED,
 )
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
@@ -48,11 +49,18 @@ class StakesAwareStrategy:
 
     Picks the cheapest configured, tool-capable model whose assigned tier
     meets the per-stakes tier requirement, bumps the requirement one tier when
-    recent coordination metrics look unhealthy, and never routes high/critical
-    work below the agent's configured tier. When no configured tool-capable
-    model meets the requirement it raises
-    :class:`StakesModelUnavailableError` so the engine escalates or fails
-    loudly: consequential work is never silently run on a sub-tier model.
+    recent coordination metrics look unhealthy, and never routes red-team-gated
+    work (stakes at or above ``config.red_team_min_stakes``) below the agent's
+    configured tier. When no configured tool-capable model meets the
+    requirement it raises :class:`StakesModelUnavailableError` so the engine
+    escalates or fails loudly: consequential work is never silently run on a
+    sub-tier model.
+
+    Selection gates on the resolved model's tier and tool-capability only. Each
+    model's classification ``confidence`` is operator-facing (surfaced in the
+    tier-assignment panel for review) and is deliberately not consulted here, so
+    an unenriched model admitted by the optimistic capability default can still
+    satisfy a tier requirement; the operator lowers a wrong tier via an override.
 
     Deterministic given the resolver's catalogue and coordination records;
     performs no wall-clock reads or live provider calls.
@@ -114,9 +122,18 @@ class StakesAwareStrategy:
                 nudged = True
             required = bumped
 
-        # High/critical work must never run below the agent's configured tier.
+        # Red-team-gated work must never run below the agent's configured tier.
         if red_team_required and current_tier is not None:
-            required = higher_tier(required, current_tier)
+            floored = higher_tier(required, current_tier)
+            if floored != required:
+                logger.info(
+                    STAKES_ROUTING_TIER_ADJUSTED,
+                    task_id=str(task.id),
+                    from_tier=required,
+                    to_tier=floored,
+                    reason="red_team_floor",
+                )
+            required = floored
 
         selected = self._select_model(required)
         if selected is None:

@@ -9,9 +9,18 @@ recomputed from live capability metadata, so it never goes stale.
 
 from typing import Final, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from synthorg.core.types import ModelTier, NotBlankStr
+
+#: Confidence stamped on an override; an accepted override is authoritative.
+_OVERRIDE_CONFIDENCE: Final[float] = 1.0
 
 #: Where an effective tier came from. ``heuristic`` is the deterministic
 #: classifier; ``operator`` is a manual override; ``llm`` is an accepted LLM
@@ -45,6 +54,29 @@ class TierAssignment(BaseModel):
     provenance: TierProvenance = Field(description="Source of the tier")
     confidence: float = Field(ge=0.0, le=1.0, description="Trust in the tier")
     reason: NotBlankStr = Field(description="Explanation for the assignment")
+
+    @model_validator(mode="after")
+    def _override_is_authoritative(self) -> TierAssignment:
+        """Require an override to be authoritative (confidence 1.0).
+
+        Only a heuristic tier carries a sub-1.0 classifier confidence; an
+        operator- or LLM-sourced override the operator accepted is by
+        definition authoritative, so a fractional-confidence override is an
+        illegal state.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When a non-heuristic tier carries confidence != 1.0.
+        """
+        if self.provenance != "heuristic" and self.confidence != _OVERRIDE_CONFIDENCE:
+            msg = (
+                f"{self.provenance} override must be authoritative "
+                f"(confidence {_OVERRIDE_CONFIDENCE}), got {self.confidence}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TierAssignmentOverride(BaseModel):
@@ -91,6 +123,29 @@ class TierAssignmentMap(BaseModel):
         default=(),
         description="Persisted operator / LLM tier overrides",
     )
+
+    @model_validator(mode="after")
+    def _unique_per_model(self) -> TierAssignmentMap:
+        """Reject two overrides for the same ``(provider, model_id)``.
+
+        The service composes the effective map by indexing overrides on
+        ``(provider, model_id)``, so a duplicate would silently resolve to
+        whichever entry is last in tuple order. A duplicate in the persisted
+        blob (hand-edited or written by a buggy caller) is a corruption the
+        reader must reject rather than mask.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When two overrides target the same model.
+        """
+        keys = [(o.provider, o.model_id) for o in self.overrides]
+        if len(set(keys)) != len(keys):
+            dupes = sorted({k for k in keys if keys.count(k) > 1})
+            msg = f"duplicate tier overrides for {dupes}"
+            raise ValueError(msg)
+        return self
 
 
 class TierRecommendation(BaseModel):

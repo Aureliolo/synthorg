@@ -17,7 +17,7 @@ from types import MappingProxyType
 from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import ModelTier, model_tier_rank
+from synthorg.core.types import ModelTier, model_tier_meets
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -154,9 +154,10 @@ class ModelResolver:
                     if tier_map is not None
                     else None
                 )
-                tier = (
-                    mapped
-                    or classify_model_tier(
+                if mapped is not None:
+                    tier = mapped
+                else:
+                    tier = classify_model_tier(
                         model_config.metadata,
                         model_id=model_config.id,
                         total_cost_per_1k=(
@@ -164,7 +165,6 @@ class ModelResolver:
                             + model_config.cost_per_1k_output
                         ),
                     ).tier
-                )
                 resolved = ResolvedModel(
                     provider_name=provider_name,
                     model_id=model_config.id,
@@ -365,11 +365,10 @@ class ModelResolver:
             The qualifying models ordered by ascending total cost per 1k, so
             the cheapest model that satisfies the tier is first.
         """
-        req_rank = model_tier_rank(required)
         qualifying = [
             m
             for m in self.all_models()
-            if m.tier is not None and model_tier_rank(m.tier) >= req_rank
+            if m.tier is not None and model_tier_meets(m.tier, required)
         ]
         return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 

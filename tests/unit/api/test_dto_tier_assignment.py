@@ -14,26 +14,28 @@ from synthorg.providers.tier_assignment.models import (
 pytestmark = pytest.mark.unit
 
 
-def _assignment(provenance: str) -> TierAssignment:
+def _assignment(provenance: str, confidence: float) -> TierAssignment:
     return TierAssignment(
         provider="p",
         model_id="m",
         tier="medium",
         provenance=provenance,  # type: ignore[arg-type]
-        confidence=0.7,
+        confidence=confidence,
         reason="because",
     )
 
 
 def test_heuristic_assignment_is_not_an_override() -> None:
-    dto = to_tier_assignment_dto(_assignment("heuristic"))
+    # A heuristic tier carries the classifier's sub-1.0 confidence.
+    dto = to_tier_assignment_dto(_assignment("heuristic", 0.7))
     assert dto.is_override is False
     assert dto.tier == "medium"
 
 
 @pytest.mark.parametrize("provenance", ["operator", "llm"])
 def test_override_provenance_flags_is_override(provenance: str) -> None:
-    dto = to_tier_assignment_dto(_assignment(provenance))
+    # An override is authoritative (confidence 1.0), enforced by the model.
+    dto = to_tier_assignment_dto(_assignment(provenance, 1.0))
     assert dto.is_override is True
     assert dto.provenance == provenance
 

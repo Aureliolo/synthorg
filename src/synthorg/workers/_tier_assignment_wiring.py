@@ -14,6 +14,12 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_TIER_LLM_RECOMMENDED
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.providers.model_binding import resolve_ref_provider
+from synthorg.providers.tier_assignment.errors import (
+    TierClassifierDisabledError,
+    TierClassifierModelUnsetError,
+    TierClassifierProviderUnavailableError,
+    TierOverrideStoreReadOnlyError,
+)
 from synthorg.providers.tier_assignment.llm_recommender import LlmTierRecommender
 from synthorg.providers.tier_assignment.models import (
     TIER_ASSIGNMENT_SCHEMA_VERSION,
@@ -34,6 +40,7 @@ logger = get_logger(__name__)
 _NAMESPACE = SettingNamespace.PROVIDERS.value
 _KEY = "tier_assignment_overrides"
 _CLASSIFIER_MODEL_KEY = "tier_classifier_model"
+_CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
 
 
 class SettingsTierOverrideStore:
@@ -110,12 +117,12 @@ class SettingsTierOverrideStore:
         """Persist *overrides* through the settings service.
 
         Raises:
-            RuntimeError: When the store was built without a settings service
-                (read-only), so an override cannot be persisted.
+            TierOverrideStoreReadOnlyError: When the store was built without a
+                settings service (read-only), so an override cannot be
+                persisted.
         """
         if self._settings_service is None:
-            msg = "tier override store is read-only (no settings service wired)"
-            raise RuntimeError(msg)
+            raise TierOverrideStoreReadOnlyError
         await self._settings_service.set(
             _NAMESPACE,
             _KEY,
@@ -138,24 +145,35 @@ def build_tier_assignment_service(app_state: AppState) -> TierAssignmentService:
     return TierAssignmentService(store=store, clock=app_state.clock)
 
 
-async def build_tier_recommender_or_none(
-    app_state: AppState,
-) -> LlmTierRecommender | None:
-    """Build the LLM tier recommender from the classifier-model setting.
+async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
+    """Build the LLM tier recommender from the classifier settings.
+
+    The recommender is opt-in: it runs only when
+    ``providers.tier_classifier_enabled`` is on and
+    ``providers.tier_classifier_model`` names a registered provider. Each
+    precondition raises a distinct error so the caller can tell the operator
+    exactly what to fix (enable the feature, pick a model, or restore the
+    provider) rather than conflating them.
 
     Returns:
-        An :class:`LlmTierRecommender` bound to the provider + model named by
-        ``providers.tier_classifier_model``, or ``None`` when the setting is
-        unset or names an unregistered provider (the caller then surfaces a
-        "set the classifier model first" state to the operator).
+        An :class:`LlmTierRecommender` bound to the configured classifier
+        provider + model.
+
+    Raises:
+        TierClassifierModelUnsetError: When no settings backend is wired or no
+            classifier model is configured.
+        TierClassifierDisabledError: When the recommender opt-in is off.
+        TierClassifierProviderUnavailableError: When the configured model names
+            a provider that is not registered.
     """
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        return None
-    raw = await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY)
-    ref = parse_model_ref(raw)
+        raise TierClassifierModelUnsetError
+    if not await resolver.get_bool(_NAMESPACE, _CLASSIFIER_ENABLED_KEY):
+        raise TierClassifierDisabledError
+    ref = parse_model_ref(await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY))
     if not ref.model_id.strip():
-        return None
+        raise TierClassifierModelUnsetError
     provider = resolve_ref_provider(
         app_state,
         ref,
@@ -164,7 +182,7 @@ async def build_tier_recommender_or_none(
         subject="tier classifier",
     )
     if provider is None:
-        return None
+        raise TierClassifierProviderUnavailableError
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     return LlmTierRecommender(
         provider=provider,
@@ -176,5 +194,5 @@ async def build_tier_recommender_or_none(
 __all__ = [
     "SettingsTierOverrideStore",
     "build_tier_assignment_service",
-    "build_tier_recommender_or_none",
+    "build_tier_recommender",
 ]

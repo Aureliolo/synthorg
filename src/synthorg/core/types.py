@@ -33,6 +33,11 @@ def model_tier_rank(tier: ModelTier) -> int:
     return _MODEL_TIER_RANK[tier]
 
 
+def model_tier_meets(candidate: ModelTier, required: ModelTier) -> bool:
+    """Return whether *candidate* is at least as strong as *required*."""
+    return _MODEL_TIER_RANK[candidate] >= _MODEL_TIER_RANK[required]
+
+
 AutonomyDetailLevel = Literal["full", "summary", "minimal"]
 """Level of autonomy instruction detail in prompt profiles."""
 

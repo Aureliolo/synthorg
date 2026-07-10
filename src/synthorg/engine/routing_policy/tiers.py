@@ -6,11 +6,20 @@ source shared with the provider routing resolver); this module adds the
 stakes-routing helpers layered on top.
 """
 
-from synthorg.core.types import MODEL_TIER_LADDER, ModelTier, model_tier_rank
+from synthorg.core.types import (
+    MODEL_TIER_LADDER,
+    ModelTier,
+    model_tier_meets,
+    model_tier_rank,
+)
 
 # Cheapest-first ladder. Re-exported for the stakes-routing modules that import
 # it from here; the definition lives in ``core.types``.
 TIER_LADDER = MODEL_TIER_LADDER
+
+# The tier-adequacy check lives in ``core.types`` (the single source shared with
+# the provider routing resolver); re-exported here under the stakes-routing name.
+meets_required = model_tier_meets
 
 
 def tier_rank(tier: ModelTier) -> int:
@@ -27,8 +36,3 @@ def bump_one(tier: ModelTier) -> ModelTier:
     """Return the next stronger tier, or *tier* if already the strongest."""
     idx = min(tier_rank(tier) + 1, len(TIER_LADDER) - 1)
     return TIER_LADDER[idx]
-
-
-def meets_required(candidate: ModelTier, required: ModelTier) -> bool:
-    """Return whether *candidate* is at least as strong as *required*."""
-    return tier_rank(candidate) >= tier_rank(required)

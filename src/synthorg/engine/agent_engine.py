@@ -63,6 +63,9 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
+from synthorg.observability.events.stakes_routing import (
+    STAKES_ROUTING_BUDGET_OVERRODE,
+)
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
@@ -541,7 +544,21 @@ class AgentEngine(
                         identity,
                         provider,
                     )
+                    pre_downgrade_tier = identity.model.model_tier
                     downgraded = await self._budget_enforcer.resolve_model(identity)
+                    if (
+                        self._stakes_router is not None
+                        and downgraded.model.model_tier != pre_downgrade_tier
+                    ):
+                        # Budget is a hard ceiling that wins over the stakes
+                        # upgrade; record when it clawed a stakes-driven tier back.
+                        logger.info(
+                            STAKES_ROUTING_BUDGET_OVERRODE,
+                            agent_id=agent_id,
+                            task_id=str(task.id),
+                            stakes_tier=pre_downgrade_tier,
+                            downgraded_to=downgraded.model.model_tier,
+                        )
                     # resolve_model may downgrade to a model owned by another
                     # provider; re-dispatch and only commit the new identity
                     # once dispatch succeeds, so a registry miss never leaves a

@@ -100,6 +100,43 @@ async def test_recommend_degrades_to_empty_on_unparseable_response() -> None:
     assert result == ()
 
 
+async def test_recommend_degrades_to_empty_on_schema_invalid_json() -> None:
+    # Valid JSON, but a tier value outside the schema: the ValidationError
+    # branch degrades to an empty offer rather than raising.
+    provider = _response(
+        {
+            "recommendations": [
+                {
+                    "model_id": "tiny-7b",
+                    "tier": "gigantic",
+                    "confidence": 0.8,
+                    "rationale": "invalid tier",
+                },
+            ],
+        },
+    )
+    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+
+    assert await recommender.recommend("local-host", _models()) == ()
+
+
+async def test_recommend_fences_untrusted_model_ids() -> None:
+    # The model-metadata block is wrapped in a config-value fence so an
+    # attacker-controlled model id cannot inject instructions.
+    provider = _response({"recommendations": []})
+    recommender = LlmTierRecommender(provider=provider, model_id="classifier-model")
+
+    await recommender.recommend("local-host", _models())
+
+    user_content = " ".join(
+        m.content
+        for m in provider.received_messages[0]
+        if m.role == "user" and isinstance(m.content, str)
+    )
+    assert "<config-value>" in user_content
+    assert "</config-value>" in user_content
+
+
 async def test_recommend_empty_models_returns_empty() -> None:
     recommender = LlmTierRecommender(
         provider=_response({"recommendations": []}),

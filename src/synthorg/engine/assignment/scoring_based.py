@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import Stakes, compare_stakes
+from synthorg.core.task_enums import is_high_stakes
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
     score_and_filter_candidates,
@@ -103,7 +103,7 @@ class ScoringBasedAssignmentStrategy:
         low_confidence = (
             ranking.selected.score < effective_request.effective_low_confidence_score
         )
-        if low_confidence and self._is_high_stakes(effective_request.stakes):
+        if low_confidence and is_high_stakes(effective_request.stakes):
             return self._below_confidence_result(effective_request, ranking.selected)
         if low_confidence:
             self._log_low_confidence(
@@ -124,15 +124,6 @@ class ScoringBasedAssignmentStrategy:
             reason=reason,
             low_confidence=low_confidence,
         )
-
-    @staticmethod
-    def _is_high_stakes(stakes: Stakes) -> bool:
-        """Whether *stakes* is at or above HIGH (a marginal fit is rejected).
-
-        Returns:
-            ``True`` when *stakes* is HIGH or CRITICAL.
-        """
-        return compare_stakes(stakes, Stakes.HIGH) >= 0
 
     def _log_low_confidence(
         self,
@@ -162,7 +153,8 @@ class ScoringBasedAssignmentStrategy:
 
         The best candidate cleared eligibility but scored below the
         low-confidence band, and the task's stakes are too high to proceed on a
-        marginal fit, so no agent is selected and the caller escalates.
+        marginal fit, so no agent is selected and the caller surfaces the work
+        as undecidable rather than routing it.
 
         Returns:
             An :class:`AssignmentResult` with ``selected=None`` and a reason

@@ -35,6 +35,7 @@ PROVIDER_CONNECTION_ERROR: Final[str] = "provider.connection.error"
 PROVIDER_RETRY_AFTER_PARSE_FAILED: Final[str] = "provider.retry_after.parse_failed"
 PROVIDER_MODEL_INFO_UNAVAILABLE: Final[str] = "provider.model_info.unavailable"
 PROVIDER_MODEL_PRICING_REGISTERED: Final[str] = "provider.model_info.pricing_registered"
+PROVIDER_MODEL_PRICING_CONFLICT: Final[str] = "provider.model_info.pricing_conflict"
 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR: Final[str] = (
     "provider.model_info.unexpected_error"
 )

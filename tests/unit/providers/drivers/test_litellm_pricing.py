@@ -41,7 +41,9 @@ def test_enrich_backfills_cost_from_litellm(
         },
     )
     models = (ProviderModelConfig(id="cloud-x", metadata=ModelMetadata()),)
-    result = capability_enrichment._enrich_unknown_via_litellm(models, "openai")
+    result = capability_enrichment._enrich_unknown_via_litellm(
+        models, "example-provider"
+    )
     assert result[0].cost_per_1k_input == 0.002
     assert result[0].cost_per_1k_output == 0.008
 
@@ -62,7 +64,9 @@ def test_enrich_preserves_operator_cost(
             metadata=ModelMetadata(),
         ),
     )
-    result = capability_enrichment._enrich_unknown_via_litellm(models, "openai")
+    result = capability_enrichment._enrich_unknown_via_litellm(
+        models, "example-provider"
+    )
     # An explicit operator price is authoritative and is not overwritten.
     assert result[0].cost_per_1k_input == 0.5
     assert result[0].cost_per_1k_output == 0.5
@@ -80,11 +84,11 @@ def test_register_operator_pricing_scales_and_filters(
     providers = {
         "gw": ProviderConfig(
             driver="litellm",
-            litellm_provider="openai",
+            litellm_provider="example-provider",
             auth_type=AuthType.NONE,
             models=(
                 ProviderModelConfig(
-                    id="gpt-5.1-chat",
+                    id="example-large-001",
                     cost_per_1k_input=0.003,
                     cost_per_1k_output=0.006,
                 ),
@@ -100,10 +104,42 @@ def test_register_operator_pricing_scales_and_filters(
 
     register_operator_model_pricing(providers)
 
-    assert "gpt-5.1-chat" in captured
-    assert captured["gpt-5.1-chat"]["input_cost_per_token"] == pytest.approx(0.000003)
-    assert captured["gpt-5.1-chat"]["litellm_provider"] == "openai"
+    assert "example-large-001" in captured
+    entry = captured["example-large-001"]
+    assert entry["input_cost_per_token"] == pytest.approx(0.000003)
+    assert entry["litellm_provider"] == "example-provider"
     # A zero-cost model has nothing to register; a scripted-driver model is
     # never pushed into the LiteLLM cloud pricing database.
     assert "free-model" not in captured
     assert "fake" not in captured
+
+
+def test_register_operator_pricing_last_write_wins_on_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, dict[str, object]] = {}
+
+    def _fake_register(entries: dict[str, dict[str, object]]) -> None:
+        captured.update(entries)
+
+    monkeypatch.setattr(_litellm, "register_model", _fake_register)
+    # Two providers configure the same model id with different prices; LiteLLM's
+    # model_cost is globally keyed by id, so only one entry survives (the last).
+    providers = {
+        "gw-a": ProviderConfig(
+            driver="litellm",
+            litellm_provider="example-provider",
+            auth_type=AuthType.NONE,
+            models=(ProviderModelConfig(id="shared-001", cost_per_1k_input=0.001),),
+        ),
+        "gw-b": ProviderConfig(
+            driver="litellm",
+            litellm_provider="example-provider",
+            auth_type=AuthType.NONE,
+            models=(ProviderModelConfig(id="shared-001", cost_per_1k_input=0.009),),
+        ),
+    }
+
+    register_operator_model_pricing(providers)
+
+    assert captured["shared-001"]["input_cost_per_token"] == pytest.approx(0.000009)

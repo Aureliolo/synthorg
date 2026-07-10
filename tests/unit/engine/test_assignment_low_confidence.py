@@ -82,15 +82,11 @@ async def test_low_stakes_marginal_fit_proceeds_flagged() -> None:
     assert result.low_confidence is True
 
 
-async def test_high_stakes_marginal_fit_is_rejected() -> None:
-    result = _strategy().assign(_request(Stakes.HIGH))
+@pytest.mark.parametrize("stakes", [Stakes.HIGH, Stakes.CRITICAL])
+async def test_high_critical_marginal_fit_is_rejected(stakes: Stakes) -> None:
+    result = _strategy().assign(_request(stakes))
     assert result.selected is None
     assert "low-confidence" in result.reason
-
-
-async def test_critical_stakes_marginal_fit_is_rejected() -> None:
-    result = _strategy().assign(_request(Stakes.CRITICAL))
-    assert result.selected is None
 
 
 async def test_confident_fit_is_not_flagged_at_any_stakes() -> None:

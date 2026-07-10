@@ -56,7 +56,7 @@ function buildRecommendations(): TierRecommendationsResponse {
 }
 
 function buildClassifierModel(): ClassifierModelDTO {
-  return { provider: '', model_id: '' }
+  return { provider: '', model_id: '', enabled: false }
 }
 
 export const tierAssignmentsHandlers = [

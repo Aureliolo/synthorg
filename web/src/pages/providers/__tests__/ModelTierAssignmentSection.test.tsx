@@ -1,11 +1,23 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
-import { apiError } from '@/mocks/handlers'
+import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
+import type { TierAssignmentsResponse } from '@/api/types'
 import { ModelTierAssignmentSection } from '../ModelTierAssignmentSection'
 
 const BASE = '/api/v1/providers/tier-assignments'
+
+/** Pick the classifier model and turn the recommender opt-in on. */
+async function enableRecommender(): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Classifier model'), {
+    target: { value: 'local-host␟tiny-7b' },
+  })
+  await waitFor(() =>
+    expect(screen.getByRole('switch', { name: 'Enable LLM recommender' })).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('switch', { name: 'Enable LLM recommender' }))
+}
 
 describe('ModelTierAssignmentSection', () => {
   it('renders configured models with their tier and provenance', async () => {
@@ -16,42 +28,76 @@ describe('ModelTierAssignmentSection', () => {
     expect(screen.getByText(/Operator ·/)).toBeInTheDocument()
   })
 
-  it('disables the recommend actions until a classifier model is picked', async () => {
+  it('disables the recommend actions until the recommender is enabled', async () => {
     render(<ModelTierAssignmentSection />)
     await screen.findByText('tiny-7b')
     expect(screen.getByRole('button', { name: 'Recommend all fresh' })).toBeDisabled()
-    for (const button of screen.getAllByRole('button', { name: 'Recommend' })) {
-      expect(button).toBeDisabled()
-    }
-  })
-
-  it('enables and runs the LLM recommender once a classifier is chosen', async () => {
-    render(<ModelTierAssignmentSection />)
-    await screen.findByText('tiny-7b')
-
+    expect(
+      screen.getByRole('button', { name: 'Recommend a tier for tiny-7b' }),
+    ).toBeDisabled()
+    // Picking a model alone is not enough; the opt-in is still off.
     fireEvent.change(screen.getByLabelText('Classifier model'), {
       target: { value: 'local-host␟tiny-7b' },
     })
-
-    // The row recommend buttons enable once the classifier PUT resolves.
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Recommend' })[0]).toBeEnabled(),
+      expect(screen.getByRole('switch', { name: 'Enable LLM recommender' })).toBeEnabled(),
     )
-    fireEvent.click(screen.getAllByRole('button', { name: 'Recommend' })[0] as HTMLElement)
-
-    expect(await screen.findByRole('button', { name: 'Apply' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Recommend a tier for tiny-7b' }),
+    ).toBeDisabled()
   })
 
-  it('overrides a tier through the row select', async () => {
+  it('enables and runs the LLM recommender once a model is picked and opt-in is on', async () => {
+    render(<ModelTierAssignmentSection />)
+    await screen.findByText('tiny-7b')
+
+    await enableRecommender()
+
+    const recommend = await screen.findByRole('button', {
+      name: 'Recommend a tier for tiny-7b',
+    })
+    await waitFor(() => expect(recommend).toBeEnabled())
+    fireEvent.click(recommend)
+
+    expect(
+      await screen.findByRole('button', {
+        name: /Apply the Small tier recommendation for tiny-7b/,
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('overrides a tier and reflects the new tier on the row', async () => {
+    const overridden: TierAssignmentsResponse = {
+      assignments: [
+        {
+          provider: 'local-host',
+          model_id: 'tiny-7b',
+          tier: 'large',
+          provenance: 'operator',
+          confidence: 1,
+          reason: 'operator override',
+          is_override: true,
+        },
+      ],
+    }
+    server.use(
+      http.put(`${BASE}/:provider/:modelId`, () =>
+        HttpResponse.json(apiSuccess(overridden)),
+      ),
+    )
     render(<ModelTierAssignmentSection />)
     const modelCell = await screen.findByText('tiny-7b')
-    const row = modelCell.closest('tr')
-    expect(row).not.toBeNull()
-    const select = within(row as HTMLElement).getByLabelText('Override tier for tiny-7b')
+    const select = within(modelCell.closest('tr') as HTMLElement).getByLabelText(
+      'Override tier for tiny-7b',
+    )
     fireEvent.change(select, { target: { value: 'large' } })
-    // The default handler returns the full map; the operator-provenance row
-    // stays present after the write resolves.
-    expect(await screen.findByText('huge-120b')).toBeInTheDocument()
+
+    // The row now shows the operator override at the Large tier.
+    await waitFor(() => {
+      const row = screen.getByText('tiny-7b').closest('tr') as HTMLElement
+      expect(within(row).getByLabelText('Override tier for tiny-7b')).toHaveValue('large')
+      expect(within(row).getByText(/Operator ·/)).toBeInTheDocument()
+    })
   })
 
   it('shows an error banner when the effective map cannot load', async () => {

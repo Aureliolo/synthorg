@@ -7,7 +7,10 @@ from synthorg.providers.tier_assignment.classifier import (
     classify_model_tier,
 )
 from synthorg.providers.tier_assignment.errors import (
+    TierClassifierDisabledError,
     TierClassifierModelUnsetError,
+    TierClassifierProviderUnavailableError,
+    TierOverrideStoreReadOnlyError,
 )
 from synthorg.providers.tier_assignment.llm_recommender import LlmTierRecommender
 from synthorg.providers.tier_assignment.models import (
@@ -31,8 +34,11 @@ __all__ = [
     "TierAssignmentOverride",
     "TierAssignmentService",
     "TierClassification",
+    "TierClassifierDisabledError",
     "TierClassifierModelUnsetError",
+    "TierClassifierProviderUnavailableError",
     "TierOverrideStore",
+    "TierOverrideStoreReadOnlyError",
     "TierProvenance",
     "TierRecommendation",
     "classify_model_tier",

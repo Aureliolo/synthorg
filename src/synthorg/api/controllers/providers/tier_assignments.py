@@ -18,17 +18,21 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId, PathName
 from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
-from synthorg.providers.tier_assignment.errors import TierClassifierModelUnsetError
+from synthorg.providers.errors import (
+    ProviderModelNotFoundError,
+    ProviderNotFoundError,
+)
 from synthorg.providers.tier_assignment.models import TierRecommendation
 from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._tier_assignment_wiring import (
     build_tier_assignment_service,
-    build_tier_recommender_or_none,
+    build_tier_recommender,
 )
 
 _NAMESPACE = "providers"
 _CLASSIFIER_MODEL_KEY = "tier_classifier_model"
+_CLASSIFIER_ENABLED_KEY = "tier_classifier_enabled"
 
 
 async def _providers(app_state: AppState) -> dict[str, ProviderConfig]:
@@ -40,20 +44,34 @@ async def _providers(app_state: AppState) -> dict[str, ProviderConfig]:
     return dict(await config_resolver_of(app_state).get_provider_configs())
 
 
-def _models_for(
+def _require_models(
     providers: dict[str, ProviderConfig],
     provider: str,
     model_id: str,
 ) -> list[ProviderModelConfig]:
-    """Return the matching model config(s) for a ``(provider, model_id)`` pair.
+    """Return the matching model config(s), raising 404 when absent.
+
+    An override or recommendation for a model that is not configured would
+    persist silently and never surface, so an unknown provider or model is
+    rejected up front rather than accepted as a no-op.
 
     Returns:
-        A one-element list when the model exists, else an empty list.
+        The one-element list of the matching model config.
+
+    Raises:
+        ProviderNotFoundError: When *provider* is not configured (404).
+        ProviderModelNotFoundError: When *model_id* is not a model of
+            *provider* (404).
     """
     config = providers.get(provider)
     if config is None:
-        return []
-    return [m for m in config.models if m.id == model_id]
+        msg = f"Provider {provider!r} is not configured"
+        raise ProviderNotFoundError(msg)
+    matches = [m for m in config.models if m.id == model_id]
+    if not matches:
+        msg = f"Model {model_id!r} is not configured on provider {provider!r}"
+        raise ProviderModelNotFoundError(msg)
+    return matches
 
 
 class ProviderTierAssignmentsController(Controller):
@@ -95,10 +113,14 @@ class ProviderTierAssignmentsController(Controller):
             The full effective tier map after the change.
         """
         app_state: AppState = state.app_state
+        providers = await _providers(app_state)
         service = build_tier_assignment_service(app_state)
         if data.tier is None:
+            # Clearing is idempotent cleanup: allow it even for a model that has
+            # since been removed, so a stale override can always be dropped.
             await service.clear_override(provider=provider, model_id=model_id)
         else:
+            _require_models(providers, provider, model_id)
             await service.set_override(
                 provider=provider,
                 model_id=model_id,
@@ -106,7 +128,7 @@ class ProviderTierAssignmentsController(Controller):
                 provenance="operator",
                 reason=data.reason,
             )
-        assignments = await service.effective_assignments(await _providers(app_state))
+        assignments = await service.effective_assignments(providers)
         return ApiResponse(
             data=TierAssignmentsResponse(
                 assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
@@ -126,13 +148,16 @@ class ProviderTierAssignmentsController(Controller):
             The offered tier(s); the offer is not applied.
 
         Raises:
+            ProviderNotFoundError: When *provider* is not configured (404).
+            ProviderModelNotFoundError: When *model_id* is not configured (404).
             TierClassifierModelUnsetError: When no classifier model is set (409).
+            TierClassifierDisabledError: When the recommender opt-in is off (409).
+            TierClassifierProviderUnavailableError: When the classifier
+                provider is not registered (409).
         """
         app_state: AppState = state.app_state
-        recommender = await build_tier_recommender_or_none(app_state)
-        if recommender is None:
-            raise TierClassifierModelUnsetError
-        models = _models_for(await _providers(app_state), provider, model_id)
+        models = _require_models(await _providers(app_state), provider, model_id)
+        recommender = await build_tier_recommender(app_state)
         offers = await recommender.recommend(provider, models)
         return ApiResponse(
             data=TierRecommendationsResponse(
@@ -152,11 +177,12 @@ class ProviderTierAssignmentsController(Controller):
 
         Raises:
             TierClassifierModelUnsetError: When no classifier model is set (409).
+            TierClassifierDisabledError: When the recommender opt-in is off (409).
+            TierClassifierProviderUnavailableError: When the classifier
+                provider is not registered (409).
         """
         app_state: AppState = state.app_state
-        recommender = await build_tier_recommender_or_none(app_state)
-        if recommender is None:
-            raise TierClassifierModelUnsetError
+        recommender = await build_tier_recommender(app_state)
         providers = await _providers(app_state)
         offers: list[TierRecommendation] = []
         for name in sorted(providers):
@@ -177,8 +203,14 @@ class ProviderTierAssignmentsController(Controller):
 
         Returns:
             The full effective tier map after the override.
+
+        Raises:
+            ProviderNotFoundError: When the provider is not configured (404).
+            ProviderModelNotFoundError: When the model is not configured (404).
         """
         app_state: AppState = state.app_state
+        providers = await _providers(app_state)
+        _require_models(providers, data.provider, data.model_id)
         service = build_tier_assignment_service(app_state)
         await service.set_override(
             provider=data.provider,
@@ -187,7 +219,7 @@ class ProviderTierAssignmentsController(Controller):
             provenance="llm",
             reason=data.rationale,
         )
-        assignments = await service.effective_assignments(await _providers(app_state))
+        assignments = await service.effective_assignments(providers)
         return ApiResponse(
             data=TierAssignmentsResponse(
                 assignments=tuple(to_tier_assignment_dto(a) for a in assignments),
@@ -202,15 +234,19 @@ class ProviderTierAssignmentsController(Controller):
         """Return the provider + model the LLM recommender runs on.
 
         Returns:
-            The configured classifier model (empty fields when unset).
+            The configured classifier model (empty fields when unset) and
+            whether the recommender opt-in is enabled.
         """
         app_state: AppState = state.app_state
-        raw = await config_resolver_of(app_state).get_str(
-            _NAMESPACE, _CLASSIFIER_MODEL_KEY
-        )
-        ref = parse_model_ref(raw)
+        resolver = config_resolver_of(app_state)
+        ref = parse_model_ref(await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY))
+        enabled = await resolver.get_bool(_NAMESPACE, _CLASSIFIER_ENABLED_KEY)
         return ApiResponse(
-            data=ClassifierModelDTO(provider=ref.provider, model_id=ref.model_id),
+            data=ClassifierModelDTO(
+                provider=ref.provider,
+                model_id=ref.model_id,
+                enabled=enabled,
+            ),
         )
 
     @put("/classifier-model", guards=[require_ceo_or_manager])
@@ -219,18 +255,24 @@ class ProviderTierAssignmentsController(Controller):
         state: State,
         data: ClassifierModelDTO,
     ) -> ApiResponse[ClassifierModelDTO]:
-        """Set the provider + model the LLM recommender runs on.
+        """Set the provider + model the LLM recommender runs on and its opt-in.
 
         Returns:
-            The stored classifier model.
+            The stored classifier model and enabled state.
         """
         app_state: AppState = state.app_state
         ref = ModelRef(provider=data.provider, model_id=data.model_id)
-        await settings_service_of(app_state).set(
+        settings = settings_service_of(app_state)
+        await settings.set(_NAMESPACE, _CLASSIFIER_MODEL_KEY, serialize_model_ref(ref))
+        await settings.set(
             _NAMESPACE,
-            _CLASSIFIER_MODEL_KEY,
-            serialize_model_ref(ref),
+            _CLASSIFIER_ENABLED_KEY,
+            "true" if data.enabled else "false",
         )
         return ApiResponse(
-            data=ClassifierModelDTO(provider=ref.provider, model_id=ref.model_id),
+            data=ClassifierModelDTO(
+                provider=ref.provider,
+                model_id=ref.model_id,
+                enabled=data.enabled,
+            ),
         )

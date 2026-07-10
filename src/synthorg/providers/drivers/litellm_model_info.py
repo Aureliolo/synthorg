@@ -17,6 +17,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_INFO_UNAVAILABLE,
     PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+    PROVIDER_MODEL_PRICING_CONFLICT,
     PROVIDER_MODEL_PRICING_REGISTERED,
 )
 from synthorg.providers.family_parser import FamilyParser
@@ -106,6 +107,11 @@ def register_operator_model_pricing(
     single token, so the per-1k config costs are scaled down. Only LiteLLM-driver
     providers are registered (a scripted test provider is skipped). Best-effort:
     a LiteLLM failure never blocks provider construction.
+
+    LiteLLM's ``model_cost`` is keyed by the bare model id (the same key
+    capability enrichment queries with), so two providers configured with the
+    same model id but different prices cannot both be represented; the last one
+    wins and the conflict is logged rather than silently swallowed.
     """
     entries: dict[str, dict[str, object]] = {}
     for provider_name, config in providers.items():
@@ -115,7 +121,7 @@ def register_operator_model_pricing(
         for model in config.models:
             if model.cost_per_1k_input <= 0.0 and model.cost_per_1k_output <= 0.0:
                 continue
-            entries[model.id] = {
+            entry = {
                 "input_cost_per_token": (
                     model.cost_per_1k_input / _TOKENS_PER_PRICE_UNIT
                 ),
@@ -124,6 +130,15 @@ def register_operator_model_pricing(
                 ),
                 "litellm_provider": litellm_provider,
             }
+            prior = entries.get(model.id)
+            if prior is not None and prior != entry:
+                logger.warning(
+                    PROVIDER_MODEL_PRICING_CONFLICT,
+                    model=model.id,
+                    provider=provider_name,
+                    reason="duplicate_model_id_differing_price",
+                )
+            entries[model.id] = entry
     if not entries:
         return
     try:

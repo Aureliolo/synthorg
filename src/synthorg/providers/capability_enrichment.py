@@ -94,9 +94,9 @@ def _should_probe_ollama_native(native_base: str, preset_name: str | None) -> bo
     server, so the ``/api/version`` probe should run only where the endpoint
     could be one: the local ``ollama`` preset, the ``ollama.com`` cloud host,
     or an unknown-preset provider on a loopback / private host (a self-hosted
-    Ollama). A public OpenAI-compatible gateway (e.g. an aggregator) is never
-    an Ollama server, so probing it would only yield a spurious 404 discovery
-    failure.
+    Ollama). A public chat-completion gateway (e.g. an aggregator on a different
+    wire protocol) is never an Ollama server, so probing it would only yield a
+    spurious 404 discovery failure.
 
     Returns:
         True when the endpoint is a plausible Ollama server to probe.

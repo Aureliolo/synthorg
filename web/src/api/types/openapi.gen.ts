@@ -8911,6 +8911,11 @@ export type components = {
         /** ClassifierModelDTO */
         readonly ClassifierModelDTO: {
             /**
+             * @description Whether the LLM tier recommender opt-in is on
+             * @default false
+             */
+            readonly enabled: boolean;
+            /**
              * @description Model id (empty = unset)
              * @default
              */
