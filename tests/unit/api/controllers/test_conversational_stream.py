@@ -10,16 +10,48 @@ unexpected fault stays opaque so its message cannot leak.
 """
 
 import json as _json
+from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers._conversational_stream import _error_frame
+from synthorg.api.controllers._conversational_stream import (
+    _error_frame,
+    chat_answer_stream,
+)
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.domain_errors import (
     NotFoundError,
     PerOperationRateLimitError,
     ServiceUnavailableError,
 )
 from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+from synthorg.meta.chief_of_staff.models import (
+    ChatAnswerComplete,
+    ChatAnswerDelta,
+    ChatQuery,
+    CitedRecord,
+)
+from synthorg.meta.models import (
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgTelemetrySummary,
+)
+from synthorg.meta.signal_models import OrgSignalSnapshot
+from synthorg.meta.signals.service import SignalsService
+from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.persistence.task_protocol import TaskRepository
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -69,3 +101,117 @@ class TestErrorFrame:
         assert payload["retryable"] is True
         assert payload["retry_after"] == 30
         assert payload["error_code"] == ErrorCode.PER_OPERATION_RATE_LIMITED.value
+
+
+def _snapshot() -> OrgSignalSnapshot:
+    return OrgSignalSnapshot(
+        performance=OrgPerformanceSummary(
+            avg_quality_score=7.5,
+            avg_success_rate=0.85,
+            avg_collaboration_score=6.0,
+            agent_count=10,
+        ),
+        budget=OrgBudgetSummary(
+            total_spend=150.0,
+            productive_ratio=0.6,
+            coordination_ratio=0.3,
+            system_ratio=0.1,
+            forecast_confidence=0.8,
+            orchestration_overhead=0.5,
+        ),
+        coordination=OrgCoordinationSummary(),
+        scaling=OrgScalingSummary(),
+        errors=OrgErrorSummary(),
+        evolution=OrgEvolutionSummary(),
+        telemetry=OrgTelemetrySummary(),
+    )
+
+
+def _in_progress_task() -> Task:
+    return Task(
+        title="Fix login",
+        description="Fix the login flow",
+        type=TaskType.DEVELOPMENT,
+        project="proj-platform",
+        created_by="planner",
+        assigned_to="agent-1",
+        status=TaskStatus.IN_PROGRESS,
+    )
+
+
+def _connected_backend() -> PersistenceBackend:
+    backend: PersistenceBackend = mock_of[PersistenceBackend](
+        is_connected=True,
+        tasks=mock_of[TaskRepository](
+            query=AsyncMock(side_effect=[(_in_progress_task(),), ()]),
+            count=AsyncMock(side_effect=[1, 0]),
+        ),
+        projects=mock_of[ProjectRepository](
+            query=AsyncMock(return_value=()),
+            count=AsyncMock(return_value=0),
+        ),
+    )
+    return backend
+
+
+class TestChatAnswerStream:
+    """The streaming controller threads org_state and serialises citations."""
+
+    async def test_complete_frame_carries_org_state_citations(self) -> None:
+        store = mock_of[ApprovalStoreProtocol](list_items=AsyncMock(return_value=()))
+        state = make_app_state(approval_store=store, config_resolver=None)
+        state.wire(PersistenceStateSlice, backend=_connected_backend())
+
+        complete = ChatAnswerComplete(
+            answer="Working on the login fix.",
+            sources=(NotBlankStr("tasks"),),
+            cited_records=(
+                CitedRecord(
+                    kind="task",
+                    record_id="task-1",
+                    label="Fix login",
+                    status="in_progress",
+                ),
+            ),
+            confidence=0.9,
+        )
+        captured: dict[str, object] = {}
+
+        async def _fake_ask_stream(
+            query: ChatQuery,
+            snapshot: OrgSignalSnapshot,
+            *,
+            org_state: object = None,
+        ) -> AsyncIterator[ChatAnswerDelta | ChatAnswerComplete]:
+            captured["org_state"] = org_state
+            yield ChatAnswerDelta(delta="Working ")
+            yield complete
+
+        chat = mock_of[ChiefOfStaffChat](ask_stream=_fake_ask_stream)
+        signals = mock_of[SignalsService](
+            get_org_snapshot=AsyncMock(return_value=_snapshot())
+        )
+
+        frames = [
+            frame
+            async for frame in chat_answer_stream(
+                app_state=state,
+                chat_backend=chat,
+                signals_service=signals,
+                question=NotBlankStr("What is the org working on?"),
+            )
+        ]
+
+        # The connected read model was built and threaded into ask_stream.
+        assert getattr(captured["org_state"], "has_work", None) is True
+        complete_frames = [f for f in frames if f["event"] == "complete"]
+        assert len(complete_frames) == 1
+        payload = _json.loads(complete_frames[0]["data"])
+        assert payload["cited_records"] == [
+            {
+                "kind": "task",
+                "record_id": "task-1",
+                "label": "Fix login",
+                "status": "in_progress",
+            }
+        ]

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -12,8 +13,12 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
+from synthorg.meta.chief_of_staff.models import CitedRecord
 from synthorg.meta.chief_of_staff.org_state import (
     OrgStateReader,
+    OrgStateSnapshot,
+    ProjectDigest,
+    TaskDigest,
     cited_records,
     format_org_state,
 )
@@ -41,8 +46,13 @@ def _task(title: str, status: TaskStatus, *, assignee: str | None = "agent-1") -
     )
 
 
-def _project(name: str, status: ProjectStatus = ProjectStatus.ACTIVE) -> Project:
-    return Project(name=name, status=status, lead="lead-1")
+def _project(
+    name: str,
+    status: ProjectStatus = ProjectStatus.ACTIVE,
+    *,
+    lead: str | None = "lead-1",
+) -> Project:
+    return Project(name=name, status=status, lead=lead)
 
 
 def _approval(title: str) -> ApprovalItem:
@@ -113,32 +123,39 @@ class TestOrgStateReader:
         assert state.has_work is True
 
     async def test_filter_specs_target_the_right_statuses(self) -> None:
-        task_query = AsyncMock(
-            side_effect=[
-                (_task("A", TaskStatus.IN_PROGRESS),),
-                (_task("B", TaskStatus.IN_REVIEW),),
-            ]
-        )
+        # Key the task fake by the status arg (not call order) so a
+        # create_task reorder in the concurrent fan-out cannot silently swap
+        # the in-progress / in-review results between sections.
+        by_status = {
+            TaskStatus.IN_PROGRESS: (_task("A", TaskStatus.IN_PROGRESS),),
+            TaskStatus.IN_REVIEW: (_task("B", TaskStatus.IN_REVIEW),),
+        }
+
+        async def _task_query(spec: TaskFilterSpec, *, limit: int) -> tuple[Task, ...]:
+            assert spec.status is not None
+            return by_status[spec.status][:limit]
+
+        task_query = AsyncMock(side_effect=_task_query)
         project_query = AsyncMock(return_value=(_project("P"),))
         list_items = AsyncMock(return_value=())
         reader = OrgStateReader(
             task_repo=mock_of[TaskRepository](
-                query=task_query, count=AsyncMock(side_effect=[1, 1])
+                query=task_query, count=AsyncMock(return_value=1)
             ),
             project_repo=mock_of[ProjectRepository](
                 query=project_query, count=AsyncMock(return_value=1)
             ),
             approval_store=mock_of[ApprovalStoreProtocol](list_items=list_items),
-            max_items_per_section=10,
+            max_items_per_section=7,
             clock=FakeClock(start=_NOW),
         )
         await reader.read()
 
-        query_specs = [call.args[0] for call in task_query.call_args_list]
-        assert query_specs == [
-            TaskFilterSpec(status=TaskStatus.IN_PROGRESS),
-            TaskFilterSpec(status=TaskStatus.IN_REVIEW),
-        ]
+        query_specs = {call.args[0].status for call in task_query.call_args_list}
+        assert query_specs == {TaskStatus.IN_PROGRESS, TaskStatus.IN_REVIEW}
+        # The configured per-section cap is threaded into the repo query.
+        assert task_query.call_args_list[0].kwargs["limit"] == 7
+        assert project_query.call_args.kwargs["limit"] == 7
         assert project_query.call_args.args[0] == ProjectFilterSpec(
             status=ProjectStatus.ACTIVE
         )
@@ -165,7 +182,29 @@ class TestOrgStateReader:
         assert state.in_progress_total == 0
         assert state.pending_approvals_total == 0
 
-    async def test_read_error_propagates(self) -> None:
+    async def test_pending_approvals_alone_are_not_work(self) -> None:
+        # Pending approvals are queued decisions, not active work: has_work
+        # must stay False when only the approval queue is populated.
+        state = await _reader(approvals=(_approval("Hire SRE"),)).read()
+        assert state.pending_approvals_total == 1
+        assert state.has_work is False
+
+    async def test_count_below_sample_is_clamped(self) -> None:
+        # A query/count read race can leave the count trailing the sample;
+        # the reader clamps the total up so it never drops below the rows it
+        # actually returned (which would hide the truncation note).
+        reader = _reader(
+            in_progress=(_task("A", TaskStatus.IN_PROGRESS),),
+            in_progress_total=0,
+        )
+        state = await reader.read()
+        assert len(state.in_progress_tasks) == 1
+        assert state.in_progress_total == 1
+
+    async def test_read_error_propagates_first_leaf(self) -> None:
+        # The TaskGroup wraps a child fault in an ExceptionGroup; read()
+        # unwraps it to the first leaf so the caller's typed-error handling
+        # sees the original error, not an opaque group.
         task_repo = mock_of[TaskRepository](
             query=AsyncMock(side_effect=RuntimeError("db down")),
             count=AsyncMock(return_value=0),
@@ -182,11 +221,8 @@ class TestOrgStateReader:
             max_items_per_section=10,
             clock=FakeClock(start=_NOW),
         )
-        with pytest.raises(BaseException) as exc_info:  # noqa: PT011
+        with pytest.raises(RuntimeError, match="db down"):
             await reader.read()
-        # asyncio.TaskGroup wraps the failure in an ExceptionGroup; the
-        # original fault is preserved (no swallow, no fabricated snapshot).
-        assert "db down" in repr(exc_info.value)
 
 
 class TestFormatOrgState:
@@ -217,6 +253,36 @@ class TestFormatOrgState:
         text = format_org_state(await _reader().read())
         assert "none" in text.lower()
 
+    def test_unassigned_task_and_project_render(self) -> None:
+        # A digest can carry no assignee/lead even though an in-progress Task
+        # entity must; build the snapshot directly to exercise the "unassigned"
+        # rendering branch without a contradictory entity.
+        state = OrgStateSnapshot(
+            in_progress_tasks=(
+                TaskDigest(
+                    task_id="t1",
+                    title="Fix login",
+                    status=TaskStatus.IN_PROGRESS,
+                    project="proj-platform",
+                    assigned_to=None,
+                ),
+            ),
+            in_progress_total=1,
+            active_projects=(
+                ProjectDigest(
+                    project_id="p1",
+                    name="Platform",
+                    status=ProjectStatus.ACTIVE,
+                    lead=None,
+                ),
+            ),
+            active_projects_total=1,
+            read_at=_NOW,
+        )
+        text = format_org_state(state)
+        assert "assigned to unassigned" in text
+        assert "lead unassigned" in text
+
 
 class TestCitedRecords:
     """cited_records mapping tests."""
@@ -236,3 +302,40 @@ class TestCitedRecords:
 
     async def test_empty_state_cites_nothing(self) -> None:
         assert cited_records(await _reader().read()) == ()
+
+
+class TestInvariants:
+    """Cross-field construction invariants on the frozen models."""
+
+    def test_snapshot_rejects_sample_exceeding_total(self) -> None:
+        with pytest.raises(ValidationError, match="exceeds reported total"):
+            OrgStateSnapshot(
+                in_progress_tasks=(
+                    TaskDigest(
+                        task_id="t1",
+                        title="A",
+                        status=TaskStatus.IN_PROGRESS,
+                        project="p1",
+                    ),
+                ),
+                in_progress_total=0,
+                read_at=_NOW,
+            )
+
+    def test_cited_record_rejects_status_not_valid_for_kind(self) -> None:
+        with pytest.raises(ValidationError, match="not a valid status for kind"):
+            CitedRecord(
+                kind="task",
+                record_id="t1",
+                label="A",
+                status="active",  # a ProjectStatus value, not a TaskStatus one
+            )
+
+    def test_cited_record_accepts_matching_status(self) -> None:
+        record = CitedRecord(
+            kind="project",
+            record_id="p1",
+            label="Platform",
+            status="active",
+        )
+        assert record.status == "active"

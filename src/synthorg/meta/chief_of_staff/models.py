@@ -20,12 +20,14 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
-from synthorg.core.task_enums import Complexity, Priority, TaskType
+from synthorg.core.project_enums import ProjectStatus
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
@@ -242,20 +244,28 @@ class ChatQuery(BaseModel):
     alert_id: UUID | None = None
 
 
+_CITED_STATUS_VOCABULARY: Mapping[str, frozenset[str]] = {
+    "task": frozenset(s.value for s in TaskStatus),
+    "project": frozenset(s.value for s in ProjectStatus),
+    "approval": frozenset(s.value for s in ApprovalStatus),
+}
+
+
 class CitedRecord(BaseModel):
     """One org-state record the chat answer is grounded in.
 
     A machine-readable citation of the in-flight task, active project, or
     pending approval the Chief of Staff drew on, so the dashboard can show
-    (and later deep-link) the exact records behind an answer rather than a
-    bare provenance-domain tag.
+    the exact records an answer draws on rather than a bare
+    provenance-domain tag.
 
     Attributes:
         kind: Which read surface the record came from.
         record_id: The record's stable identifier (task / project /
             approval id).
         label: Human-readable label (task or approval title, project name).
-        status: The record's current lifecycle status value.
+        status: The record's current lifecycle status value; must be a
+            valid status for ``kind``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -264,6 +274,27 @@ class CitedRecord(BaseModel):
     record_id: NotBlankStr
     label: NotBlankStr
     status: NotBlankStr
+
+    @model_validator(mode="after")
+    def _validate_status_matches_kind(self) -> Self:
+        """Reject a status that is not a valid value for ``kind``.
+
+        The producer derives ``status`` from the matching domain enum, so
+        a value outside that enum's vocabulary can only be a construction
+        bug (e.g. a swapped ``kind`` / ``status`` pair) and would surface
+        a nonsensical citation to the operator or the model.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: When ``status`` is not a member of ``kind``'s
+                status vocabulary.
+        """
+        if self.status not in _CITED_STATUS_VOCABULARY[self.kind]:
+            msg = f"{self.status!r} is not a valid status for kind {self.kind!r}"
+            raise ValueError(msg)
+        return self
 
 
 class ChatResponse(BaseModel):

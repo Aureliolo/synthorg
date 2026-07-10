@@ -102,6 +102,49 @@ describe('ChiefOfStaffChat', () => {
     expect(screen.getByText('(in_review)')).toBeInTheDocument()
   })
 
+  it('drops malformed cited_records and renders only the valid chips', async () => {
+    // The complete frame is attacker-influenced wire data; a record with an
+    // unknown kind or a missing field must be filtered out, never rendered.
+    server.use(
+      http.post('/api/v1/meta/chat/stream', () =>
+        sseStream([
+          sseFrame('progress', { delta: 'One in-flight task.' }),
+          sseFrame('complete', {
+            answer: 'One in-flight task.',
+            sources: ['tasks'],
+            cited_records: [
+              {
+                kind: 'task',
+                record_id: 'task-1',
+                label: 'Fix login',
+                status: 'in_review',
+              },
+              { kind: 'gremlin', record_id: 'x', label: 'Bad', status: 'weird' },
+              { kind: 'task', record_id: 'task-2', status: 'in_progress' },
+            ],
+            confidence: 0.8,
+          }),
+        ]),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<ChiefOfStaffChat />)
+
+    await user.type(
+      screen.getByLabelText('Chat message'),
+      'what is the org working on?',
+    )
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Fix login')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Bad')).not.toBeInTheDocument()
+    expect(screen.queryByText('(weird)')).not.toBeInTheDocument()
+    // The label-less second entry is dropped, so no stray empty chip appears.
+    expect(screen.queryByText('(in_progress)')).not.toBeInTheDocument()
+  })
+
   it('keeps the partial answer and stops streaming when Stop is clicked', async () => {
     // A stream that emits one delta then never completes, so the turn stays
     // in flight until the client aborts it.

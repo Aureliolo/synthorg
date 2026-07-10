@@ -11,6 +11,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import TaskStatus
+from synthorg.meta.chief_of_staff._chat_format import free_form_sources
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
@@ -262,6 +263,17 @@ class TestExplainProposal:
         result = await chat.explain_proposal(_proposal(), _snap())
         assert len(result.sources) > 0
 
+    async def test_cites_no_org_state_records(self) -> None:
+        # The scoped explain paths answer about a single proposal, not the
+        # org's in-flight work, so they carry no org-state citations.
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(
+            provider=provider,
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
+        )
+        result = await chat.explain_proposal(_proposal(), _snap())
+        assert result.cited_records == ()
+
     async def test_provider_error_propagates(self) -> None:
         provider = mock_of[CompletionProvider](
             complete=AsyncMock(side_effect=RuntimeError("LLM unavailable")),
@@ -421,6 +433,22 @@ class TestExplainAlert:
         assert "performance" in result.sources
         assert "coordination" in result.sources
 
+    async def test_cites_no_org_state_records(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(
+            provider=provider,
+            config=ChiefOfStaffConfig(chat_model="example-small-001"),
+        )
+        alert = Alert(
+            severity=RuleSeverity.WARNING,
+            alert_type="threshold",
+            description="Budget overspend",
+            affected_domains=("budget",),
+            emitted_at=_NOW,
+        )
+        result = await chat.explain_alert(alert, _snap())
+        assert result.cited_records == ()
+
 
 class TestAsk:
     """ChiefOfStaffChat.ask tests."""
@@ -569,6 +597,66 @@ class TestAsk:
         user_message = next(m for m in messages if m.role is MessageRole.USER)
         assert "no measured data yet" in user_message.content
         assert "Quality: 0.0/10" not in user_message.content
+
+    async def test_connected_but_idle_org_state_cites_nothing(self) -> None:
+        # A fully-read but empty org state is distinct from an unavailable
+        # one: no "cannot see" sentinel, but nothing to cite either.
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(
+            provider=provider, config=ChiefOfStaffConfig(chat_model="example-small-001")
+        )
+        result = await chat.ask(
+            ChatQuery(question="What is the org working on?"),
+            _snap(),
+            org_state=_org_state(with_work=False),
+        )
+        messages = provider.complete.call_args.args[0]
+        user_message = next(m for m in messages if m.role is MessageRole.USER)
+        assert "cannot see task, project, or approval state" not in user_message.content
+        assert result.cited_records == ()
+        assert "tasks" not in result.sources
+
+
+class TestFreeFormSources:
+    """free_form_sources domain-tag derivation."""
+
+    def test_none_org_state_with_metrics_tags_performance_only(self) -> None:
+        assert free_form_sources(_snap(), None) == ("performance",)
+
+    def test_empty_everything_yields_no_tags(self) -> None:
+        assert free_form_sources(_empty_perf_snap(), None) == ()
+
+    def test_approvals_only_tags_approvals_not_tasks(self) -> None:
+        state = OrgStateSnapshot(
+            pending_approvals=(
+                ApprovalDigest(
+                    approval_id="a1",
+                    title="Hire SRE",
+                    action_type="hiring.request",
+                    risk_level=ApprovalRiskLevel.MEDIUM,
+                    requested_by="hr_agent",
+                ),
+            ),
+            pending_approvals_total=1,
+            read_at=_NOW,
+        )
+        tags = free_form_sources(_empty_perf_snap(), state)
+        assert tags == ("approvals",)
+
+    def test_in_review_only_tags_tasks(self) -> None:
+        state = OrgStateSnapshot(
+            in_review_tasks=(
+                TaskDigest(
+                    task_id="t1",
+                    title="Ship API",
+                    status=TaskStatus.IN_REVIEW,
+                    project="proj-platform",
+                ),
+            ),
+            in_review_total=1,
+            read_at=_NOW,
+        )
+        assert free_form_sources(_empty_perf_snap(), state) == ("tasks",)
 
 
 class TestPromptTemplates:

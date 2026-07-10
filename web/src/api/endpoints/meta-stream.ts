@@ -152,22 +152,35 @@ export interface ChatStreamResult {
   confidence: number
 }
 
-const CITED_KINDS = new Set(['task', 'project', 'approval'])
+const CITED_KINDS = new Set<CitedRecord['kind']>(['task', 'project', 'approval'])
 
 function isCitedRecord(entry: unknown): entry is CitedRecord {
   return (
     isRecord(entry) &&
     typeof entry['kind'] === 'string' &&
-    CITED_KINDS.has(entry['kind']) &&
+    CITED_KINDS.has(entry['kind'] as CitedRecord['kind']) &&
     typeof entry['record_id'] === 'string' &&
     typeof entry['label'] === 'string' &&
     typeof entry['status'] === 'string'
   )
 }
 
-function parseCitedRecords(value: unknown): CitedRecord[] {
+/**
+ * Validate a wire `cited_records` array, dropping (and warning on) any entry
+ * that doesn't match the contract. Shared by the streaming complete frame and
+ * the buffered `postChat` response so both enter the UI through one guard.
+ */
+export function parseCitedRecords(value: unknown): CitedRecord[] {
   if (!Array.isArray(value)) return []
-  return value.filter(isCitedRecord)
+  const records: CitedRecord[] = []
+  for (const entry of value) {
+    if (isCitedRecord(entry)) {
+      records.push(entry)
+    } else {
+      log.warn('Dropping malformed cited_record entry', sanitizeForLog(entry))
+    }
+  }
+  return records
 }
 
 /** Incremental callbacks for a streaming Chief-of-Staff answer. */

@@ -14,8 +14,16 @@ disconnected) is handled one layer up, in the request helper.
 """
 
 import asyncio
+from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -33,6 +41,17 @@ from synthorg.persistence.project_protocol import ProjectFilterSpec, ProjectRepo
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)
+
+
+def _first_leaf(exc: BaseException) -> BaseException:
+    """Descend an ``ExceptionGroup`` to its first non-group leaf.
+
+    Returns:
+        The first leaf exception (``exc`` itself when it is not a group).
+    """
+    if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        return _first_leaf(exc.exceptions[0])
+    return exc
 
 
 # ── Digests ───────────────────────────────────────────────────────
@@ -128,14 +147,44 @@ class OrgStateSnapshot(BaseModel):
     pending_approvals_total: int = Field(default=0, ge=0)
     read_at: AwareDatetime
 
+    @model_validator(mode="after")
+    def _validate_sample_within_total(self) -> Self:
+        """Reject a snapshot whose sample outnumbers its reported total.
+
+        Each section carries a bounded sample plus the full count; the
+        sample is a prefix of the total, so its length can never exceed
+        it. The reader clamps the total to the sample length to absorb a
+        query/count read race, so a violation here can only come from a
+        construction bug (a transcribed / mismatched pair).
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: When any section's sample is larger than its total.
+        """
+        pairs = (
+            (self.in_progress_tasks, self.in_progress_total),
+            (self.in_review_tasks, self.in_review_total),
+            (self.active_projects, self.active_projects_total),
+            (self.pending_approvals, self.pending_approvals_total),
+        )
+        for sample, total in pairs:
+            if len(sample) > total:
+                msg = f"sample size {len(sample)} exceeds reported total {total}"
+                raise ValueError(msg)
+        return self
+
     @computed_field
     @property
     def has_work(self) -> bool:
         """Whether any task or active project is in flight.
 
-        Pending approvals are queued decisions, not active work, so they
-        do not count towards "the org is working"; a non-zero task or
-        active-project total does.
+        A convenience predicate for consumers of the snapshot: true when
+        a task or active-project total is non-zero. Pending approvals are
+        queued decisions, not active work, so they are excluded. The chat
+        prompt path derives its own per-domain source tags separately
+        (see ``free_form_sources``); this field is not read there.
         """
         return bool(
             self.in_progress_total or self.in_review_total or self.active_projects_total
@@ -175,18 +224,31 @@ class OrgStateReader:
         """Read all four surfaces concurrently into one snapshot.
 
         The four reads fan out over an ``asyncio.TaskGroup`` so snapshot
-        latency is the slowest single read, not their sum. No read is
-        wrapped: a backend fault propagates (fail-loud) rather than
-        yielding a partial or fabricated-empty snapshot.
+        latency is bounded by the slowest surface rather than the sum of
+        all four (each surface itself does a bounded ``query`` plus a
+        ``count``). No read is wrapped: a backend fault propagates
+        (fail-loud) rather than yielding a partial or fabricated-empty
+        snapshot. The ``TaskGroup``'s ``ExceptionGroup`` is unwrapped to
+        its first leaf so the caller's typed-error handling (the SSE
+        error frame / RFC 9457 mapper) sees the original ``DomainError``
+        instead of an opaque group.
 
         Returns:
             The assembled :class:`OrgStateSnapshot`.
+
+        Raises:
+            Exception: The first leaf of a fan-out failure (re-raised from
+                the ``ExceptionGroup``).
         """
-        async with asyncio.TaskGroup() as tg:
-            in_progress = tg.create_task(self._read_tasks(TaskStatus.IN_PROGRESS))
-            in_review = tg.create_task(self._read_tasks(TaskStatus.IN_REVIEW))
-            projects = tg.create_task(self._read_projects())
-            approvals = tg.create_task(self._read_approvals())
+        try:
+            async with asyncio.TaskGroup() as tg:
+                in_progress = tg.create_task(self._read_tasks(TaskStatus.IN_PROGRESS))
+                in_review = tg.create_task(self._read_tasks(TaskStatus.IN_REVIEW))
+                projects = tg.create_task(self._read_projects())
+                approvals = tg.create_task(self._read_approvals())
+        except* Exception as eg:
+            leaf = _first_leaf(eg)
+            raise leaf from eg
 
         ip_digests, ip_total = in_progress.result()
         ir_digests, ir_total = in_review.result()
@@ -225,7 +287,11 @@ class OrgStateReader:
         spec = TaskFilterSpec(status=status)
         tasks = await self._task_repo.query(spec, limit=self._max_items)
         total = await self._task_repo.count(spec)
-        return tuple(_task_digest(task) for task in tasks), total
+        digests = tuple(_task_digest(task) for task in tasks)
+        # Clamp against a query/count read race: if rows transitioned out
+        # between the two reads the count can trail the sample, and a total
+        # below the rendered sample would drop the "showing N of M" note.
+        return digests, max(total, len(digests))
 
     async def _read_projects(self) -> tuple[tuple[ProjectDigest, ...], int]:
         """Read a bounded active-project sample plus the full count.
@@ -236,7 +302,8 @@ class OrgStateReader:
         spec = ProjectFilterSpec(status=ProjectStatus.ACTIVE)
         projects = await self._project_repo.query(spec, limit=self._max_items)
         total = await self._project_repo.count(spec)
-        return tuple(_project_digest(project) for project in projects), total
+        digests = tuple(_project_digest(project) for project in projects)
+        return digests, max(total, len(digests))
 
     async def _read_approvals(self) -> tuple[tuple[ApprovalDigest, ...], int]:
         """Read pending approvals, sampling the head and keeping the total.

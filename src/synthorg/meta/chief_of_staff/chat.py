@@ -7,6 +7,7 @@ LLM calls (retry + rate limiting handled by the provider).
 """
 
 import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 from typing import ClassVar, Final
 
@@ -61,12 +62,17 @@ from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
 )
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.chief_of_staff import (
     COS_CHAT_FAILED,
     COS_CHAT_QUERY,
     COS_CHAT_RESPONSE,
 )
+from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import ProviderTimeoutError
@@ -82,12 +88,15 @@ from synthorg.settings.resolver import ConfigResolver
 logger = get_logger(__name__)
 
 # Rendered into the prompt when the org-state read model could not be built
-# (persistence disconnected). System-authored, so it is NOT fenced as
-# untrusted content; it instructs the model to admit it cannot see task /
-# project / approval state rather than infer idleness.
+# (persistence disconnected or the approval store unwired). System-authored,
+# so it is NOT fenced as untrusted content; it instructs the model to admit
+# it cannot see task / project / approval state rather than infer idleness.
+# Deliberately names no specific missing dependency: the operator-facing
+# cause (which subsystem is unwired) is carried by the WARNING the request
+# helper logs, not baked into the user-facing answer where it could be wrong.
 _ORG_STATE_UNAVAILABLE: Final[str] = (
-    "The org-state read model is currently unavailable (persistence not"
-    " connected), so I cannot see task, project, or approval state."
+    "The org-state read model is currently unavailable, so I cannot see"
+    " task, project, or approval state."
 )
 
 
@@ -319,45 +328,24 @@ class ChiefOfStaffChat:
             query, snapshot, scoped_proposal=None, org_state=org_state
         )
         messages, config, model = await self._prepare_messages(CHAT_QUERY_SYSTEM, user)
-        timeout = self._config.agent_call_timeout_seconds
         parts: list[str] = []
-        try:
-            async with cost_recording_scope(
+        # aclosing() so a client disconnect (the outer SSE aclosing throws
+        # GeneratorExit in at the yield below) propagates into _stream_deltas,
+        # whose finally closes the inner provider stream, rather than stranding
+        # it until GC.
+        async with (
+            cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
                 task_id=NotBlankStr("system:cos:chat"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
-            ):
-                stream = await asyncio.wait_for(
-                    self._provider.stream(messages, model, config=config),
-                    timeout=timeout,
-                )
-                # Per-chunk (inter-token) timeout, not one bound on the whole
-                # stream: a slow-but-live provider must not trip, only a stall.
-                # lint-allow: long-running-loop-kill-switch -- bounded by StopAsyncIteration; the per-chunk asyncio.wait_for trips on a stall and aclosing cancels the generator on client disconnect  # noqa: E501
-                while True:
-                    try:
-                        chunk = await asyncio.wait_for(anext(stream), timeout=timeout)
-                    except StopAsyncIteration:
-                        break
-                    if (
-                        chunk.event_type == StreamEventType.CONTENT_DELTA
-                        and chunk.content
-                    ):
-                        parts.append(chunk.content)
-                        yield ChatAnswerDelta(delta=chunk.content)
-        except TimeoutError as exc:
-            # asyncio.wait_for raises the builtin TimeoutError, not a
-            # DomainError: type it so the client sees a retryable 504 rather
-            # than an opaque in-stream fault while the stream stays open.
-            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
-            msg = "Chief of Staff chat stream timed out"
-            raise ProviderTimeoutError(msg) from exc
-        except Exception as exc:
-            reraise_critical(exc)
-            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
-            raise
+            ),
+            contextlib.aclosing(self._stream_deltas(messages, config, model)) as deltas,
+        ):
+            async for content in deltas:
+                parts.append(content)
+                yield ChatAnswerDelta(delta=content)
         answer = "".join(parts).strip()
         if not answer:
             logger.warning(COS_CHAT_FAILED, reason="provider_returned_empty_content")
@@ -370,6 +358,64 @@ class ChiefOfStaffChat:
             sources=sources,
             cited_records=records,
         )
+
+    async def _stream_deltas(
+        self,
+        messages: list[ChatMessage],
+        config: CompletionConfig,
+        model: str,
+    ) -> AsyncGenerator[str]:
+        """Yield non-empty content deltas from the provider stream.
+
+        Owns the provider's async generator via ``aclosing`` so an early
+        break or a ``GeneratorExit`` thrown in on client disconnect closes
+        it deterministically (releasing its rate-limit slot / connection)
+        instead of leaving it for GC. A per-chunk (inter-token) timeout
+        trips only on a stall, not on a slow-but-live provider.
+
+        Yields:
+            Each non-empty content-delta string, in arrival order.
+
+        Raises:
+            ProviderTimeoutError: When the provider stalls opening the
+                stream or between two content chunks (retryable 504).
+            Exception: Propagated from the provider stream (criticals
+                re-raised; others redacted-logged before re-raise).
+        """
+        timeout = self._config.agent_call_timeout_seconds
+        try:
+            stream = await asyncio.wait_for(
+                self._provider.stream(messages, model, config=config),
+                timeout=timeout,
+            )
+            try:
+                # lint-allow: long-running-loop-kill-switch -- bounded by StopAsyncIteration; the per-chunk asyncio.wait_for trips on a stall and the finally closes the stream on client disconnect  # noqa: E501
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(anext(stream), timeout=timeout)
+                    except StopAsyncIteration:
+                        break
+                    if (
+                        chunk.event_type == StreamEventType.CONTENT_DELTA
+                        and chunk.content
+                    ):
+                        yield chunk.content
+            finally:
+                # Runs on normal end, a stall timeout, or the GeneratorExit
+                # thrown in on client disconnect: closes the provider stream
+                # so its rate-limit slot / connection is released promptly.
+                await aclose_quietly(stream, model=model)
+        except TimeoutError as exc:
+            # asyncio.wait_for raises the builtin TimeoutError, not a
+            # DomainError: type it so the client sees a retryable 504 rather
+            # than an opaque in-stream fault while the stream stays open.
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            msg = "Chief of Staff chat stream timed out"
+            raise ProviderTimeoutError(msg) from exc
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
+            raise
 
     async def _build_query_user(
         self,
@@ -398,7 +444,15 @@ class ChiefOfStaffChat:
                 recent = await self._outcome_store.recent_outcomes(limit=5)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                logger.warning(COS_CHAT_FAILED, reason="outcome_store_read_failed")
+                # A graceful degrade (falls back to a placeholder), so WARNING
+                # not ERROR; carry the redacted error context the sibling
+                # provider-failure logs also emit, so the failure is diagnosable.
+                logger.warning(
+                    COS_CHAT_FAILED,
+                    reason="outcome_store_read_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 recent = ()
             if recent:
                 lines = [
