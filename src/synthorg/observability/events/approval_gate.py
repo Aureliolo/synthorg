@@ -22,6 +22,7 @@ APPROVAL_GATE_NO_PARKED_CONTEXT: Final[str] = "approval_gate.no_parked_context"
 APPROVAL_GATE_REVIEW_CREATED: Final[str] = "approval_gate.review.created"
 APPROVAL_GATE_REVIEW_COMPLETED: Final[str] = "approval_gate.review.completed"
 APPROVAL_GATE_REVIEW_REWORK: Final[str] = "approval_gate.review.rework"
+APPROVAL_GATE_REVIEW_ACKNOWLEDGED: Final[str] = "approval_gate.review.acknowledged"
 APPROVAL_GATE_RESUME_CONTEXT_LOADED: Final[str] = "approval_gate.resume.context_loaded"
 APPROVAL_GATE_REVIEW_TRANSITION_FAILED: Final[str] = (
     "approval_gate.review.transition_failed"

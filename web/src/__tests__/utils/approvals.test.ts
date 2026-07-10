@@ -5,11 +5,15 @@ import {
   formatUrgency,
   getApprovalStatusColor,
   getApprovalStatusLabel,
+  getApprovalStepLabel,
   getRiskLevelColor,
   getRiskLevelIcon,
   getRiskLevelLabel,
+  getRunOutcomeColor,
+  getRunOutcomeLabel,
   getUrgencyColor,
   groupByRiskLevel,
+  isFailedApproval,
 } from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types/enums'
 import { makeApproval } from '@/__tests__/helpers/factories'
@@ -177,6 +181,64 @@ describe('groupByRiskLevel', () => {
     expect(groups.size).toBe(1)
     expect(groups.has('high')).toBe(true)
     expect(groups.has('critical')).toBe(false)
+  })
+})
+
+// ── Run outcome + failure + step label ────────────────────────
+
+describe('getRunOutcomeColor', () => {
+  it('maps succeeded/empty/failed to success/warning/danger', () => {
+    expect(getRunOutcomeColor('succeeded')).toBe('success')
+    expect(getRunOutcomeColor('empty')).toBe('warning')
+    expect(getRunOutcomeColor('failed')).toBe('danger')
+  })
+})
+
+describe('getRunOutcomeLabel', () => {
+  it('gives human labels', () => {
+    expect(getRunOutcomeLabel('succeeded')).toBe('Produced output')
+    expect(getRunOutcomeLabel('empty')).toBe('Produced nothing')
+    expect(getRunOutcomeLabel('failed')).toBe('Run failed')
+  })
+})
+
+describe('isFailedApproval', () => {
+  it('is true when the run outcome is failed', () => {
+    expect(isFailedApproval(makeApproval('1', {
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    }))).toBe(true)
+  })
+
+  it('is true for the failed-run action type even without a resolved run', () => {
+    expect(isFailedApproval(makeApproval('2', { action_type: 'review:task_failed' }))).toBe(true)
+  })
+
+  it('is false for a succeeded run', () => {
+    expect(isFailedApproval(makeApproval('3', {
+      run: { outcome: 'succeeded', produced_artifact_count: 1, artifacts: [] },
+    }))).toBe(false)
+  })
+})
+
+describe('getApprovalStepLabel', () => {
+  it('labels proposal-time vs review-gate distinctly', () => {
+    expect(getApprovalStepLabel(makeApproval('1', { source: 'conversational_intake' }))).toBe(
+      'Approve to start',
+    )
+    expect(getApprovalStepLabel(makeApproval('2', { source: 'review_gate' }))).toBe(
+      'Review completed work',
+    )
+  })
+
+  it('labels failed and empty runs truthfully regardless of source', () => {
+    expect(getApprovalStepLabel(makeApproval('3', {
+      source: 'review_gate',
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    }))).toBe('Review failed run')
+    expect(getApprovalStepLabel(makeApproval('4', {
+      source: 'review_gate',
+      run: { outcome: 'empty', produced_artifact_count: 0, artifacts: [] },
+    }))).toBe('Review empty run')
   })
 })
 

@@ -29,6 +29,7 @@ from synthorg.api.channels import (
     CHANNEL_COCKPIT,
     CHANNEL_MEETINGS,
 )
+from synthorg.api.controllers.approvals._shared import to_response_without_context
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
@@ -71,6 +72,7 @@ def _make_expire_callback(
 
     def _on_expire(item: ApprovalItem) -> None:
         """Handle the expire event."""
+        response = to_response_without_context(item, now=datetime.now(UTC))
         event = WsEvent(
             event_type=WsEventType.APPROVAL_EXPIRED,
             channel=CHANNEL_APPROVALS,
@@ -78,8 +80,7 @@ def _make_expire_callback(
             payload={
                 "approval_id": item.id,
                 "status": item.status.value,
-                "action_type": item.action_type,
-                "risk_level": item.risk_level.value,
+                "approval": response.model_dump(mode="json"),
             },
         )
         try:

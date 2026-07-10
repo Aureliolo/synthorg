@@ -23,6 +23,22 @@ const base: ApprovalResponse = {
   evidence_package: null,
   seconds_remaining: 7200,
   urgency_level: 'high',
+  task: { id: 'task-auth-deploy', title: 'Deploy authentication service v2.3', status: 'in_review' },
+  project: { id: 'proj-auth', name: 'Authentication' },
+  agent: { id: 'agent-eng-lead', name: 'Anica Hocevar' },
+  run: {
+    outcome: 'succeeded',
+    produced_artifact_count: 1,
+    artifacts: [
+      {
+        id: 'artifact-1',
+        path: 'src/auth/oauth.ts',
+        type: 'code',
+        content_type: 'text/x-typescript',
+        size_bytes: 4096,
+      },
+    ],
+  },
 }
 
 const meta: Meta<typeof ApprovalDetailDrawer> = {

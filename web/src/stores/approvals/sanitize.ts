@@ -1,12 +1,20 @@
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import type {
+  ApprovalAgentRef,
+  ApprovalArtifactRef,
+  ApprovalProjectRef,
   ApprovalResponse,
+  ApprovalRunSummary,
+  ApprovalTaskRef,
   SafeEvidencePackage,
 } from '@/api/types/approvals'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
   APPROVAL_SOURCE_VALUES,
   APPROVAL_STATUS_VALUES,
+  ARTIFACT_TYPE_VALUES,
+  RUN_OUTCOME_VALUES,
+  TASK_STATUS_VALUES,
   URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
 import { SIGNATURE_ALGORITHM_VALUES } from '@/api/types/approvals'
@@ -183,6 +191,81 @@ export function isApprovalShape(
   )
 }
 
+/** A plain (non-array) object, the shape every nested ref must have. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Nested review-context refs (task/project/agent/run) arrive on WS frames
+ * from the enriched approval publisher. They are best-effort: a malformed or
+ * absent ref sanitizes to ``null`` so a live upsert never crashes or smuggles
+ * unsanitized strings into the store.
+ */
+function sanitizeTaskRef(value: unknown): ApprovalTaskRef | null {
+  if (!isPlainObject(value)) return null
+  if (typeof value['id'] !== 'string' || typeof value['title'] !== 'string') return null
+  return {
+    id: sanitizeWsString(value['id'], 128) ?? '',
+    title: sanitizeWsString(value['title'], 256) ?? '',
+    status: sanitizeWsEnum(value['status'], TASK_STATUS_VALUES, 'created', {
+      maxLen: 64,
+      field: 'approval.task.status',
+    }),
+  }
+}
+
+function sanitizeProjectRef(value: unknown): ApprovalProjectRef | null {
+  if (!isPlainObject(value)) return null
+  if (typeof value['id'] !== 'string' || typeof value['name'] !== 'string') return null
+  return {
+    id: sanitizeWsString(value['id'], 128) ?? '',
+    name: sanitizeWsString(value['name'], 256) ?? '',
+  }
+}
+
+function sanitizeAgentRef(value: unknown): ApprovalAgentRef | null {
+  if (!isPlainObject(value)) return null
+  if (typeof value['id'] !== 'string' || typeof value['name'] !== 'string') return null
+  return {
+    id: sanitizeWsString(value['id'], 128) ?? '',
+    name: sanitizeWsString(value['name'], 128) ?? '',
+  }
+}
+
+function sanitizeArtifactRef(value: unknown): ApprovalArtifactRef | null {
+  if (!isPlainObject(value)) return null
+  if (typeof value['id'] !== 'string' || typeof value['path'] !== 'string') return null
+  return {
+    id: sanitizeWsString(value['id'], 128) ?? '',
+    path: sanitizeWsString(value['path'], 512) ?? '',
+    type: sanitizeWsEnum(value['type'], ARTIFACT_TYPE_VALUES, 'code', {
+      maxLen: 64,
+      field: 'approval.run.artifacts[].type',
+    }),
+    content_type: sanitizeWsString(value['content_type'], 128) ?? '',
+    size_bytes: isNonNegInt(value['size_bytes']) ? value['size_bytes'] : 0,
+  }
+}
+
+function sanitizeRunSummary(value: unknown): ApprovalRunSummary | null {
+  if (!isPlainObject(value)) return null
+  const rawArtifacts = Array.isArray(value['artifacts']) ? value['artifacts'] : []
+  const artifacts = rawArtifacts
+    .map(sanitizeArtifactRef)
+    .filter((a): a is ApprovalArtifactRef => a !== null)
+  return {
+    outcome: sanitizeWsEnum(value['outcome'], RUN_OUTCOME_VALUES, 'succeeded', {
+      maxLen: 64,
+      field: 'approval.run.outcome',
+    }),
+    produced_artifact_count: isNonNegInt(value['produced_artifact_count'])
+      ? value['produced_artifact_count']
+      : artifacts.length,
+    artifacts,
+  }
+}
+
 function sanitizeRecommendedActions(
   actions: SafeEvidencePackage['recommended_actions'],
 ): SafeEvidencePackage['recommended_actions'] {
@@ -348,5 +431,9 @@ export function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
       'normal',
       { maxLen: 64, field: 'approval.urgency_level' },
     ),
+    task: sanitizeTaskRef(c.task),
+    project: sanitizeProjectRef(c.project),
+    agent: sanitizeAgentRef(c.agent),
+    run: sanitizeRunSummary(c.run),
   }
 }

@@ -209,6 +209,51 @@ class TestReviewGateServiceApprove:
         assert "None" not in mutation.reason
 
 
+class TestReviewGateServiceFailedTask:
+    """A failed-run review acknowledges (approve) or retries (reject)."""
+
+    async def test_failed_approve_acknowledges_without_completing(self) -> None:
+        """Approving a failed run acknowledges it: no COMPLETED transition."""
+        task = _make_task(status=TaskStatus.FAILED)
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        service = ReviewGateService(
+            task_engine=mock_te, persistence=_make_mock_persistence(repo)
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            approved=True,
+            decided_by="bob",
+        )
+
+        # A failure must never be laundered into COMPLETED.
+        mock_te.submit.assert_not_awaited()
+        # The acknowledgement is still recorded to the audit trail.
+        repo.append_with_next_version.assert_awaited_once()
+
+    async def test_failed_reject_requests_retry_to_assigned(self) -> None:
+        """Rejecting a failed run requests a retry: FAILED -> ASSIGNED."""
+        task = _make_task(status=TaskStatus.FAILED)
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        service = ReviewGateService(
+            task_engine=mock_te, persistence=_make_mock_persistence(repo)
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            approved=False,
+            decided_by="bob",
+            reason="try a different approach",
+        )
+
+        mock_te.submit.assert_awaited_once()
+        mutation = mock_te.submit.call_args.args[0]
+        assert mutation.target_status == TaskStatus.ASSIGNED
+        assert "try a different approach" in mutation.reason
+
+
 class TestReviewGateServiceSelfReview:
     """Tests for self-review prevention."""
 

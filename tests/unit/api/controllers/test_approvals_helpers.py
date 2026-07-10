@@ -711,20 +711,21 @@ class TestTryReviewGateTransition:
 class TestPublishApprovalEvent:
     """_publish_approval_event() best-effort WebSocket publishing."""
 
-    def test_logs_warning_when_no_channels_plugin(self) -> None:
+    async def test_logs_warning_when_no_channels_plugin(self) -> None:
         from synthorg.api.ws_models import WsEventType
 
         request = _make_request()
         request.app.plugins = []  # No ChannelsPlugin
         item = _make_pending_item()
         # Should not raise -- best-effort
-        _publish_approval_event(
+        await _publish_approval_event(
             request,
+            make_app_state(),
             WsEventType.APPROVAL_SUBMITTED,
             item,
         )
 
-    def test_publishes_when_plugin_available(self) -> None:
+    async def test_publishes_when_plugin_available(self) -> None:
         from litestar.channels import ChannelsPlugin
 
         from synthorg.api.ws_models import WsEventType
@@ -734,14 +735,15 @@ class TestPublishApprovalEvent:
         request.app.plugins = [plugin]
         item = _make_pending_item()
 
-        _publish_approval_event(
+        await _publish_approval_event(
             request,
+            make_app_state(),
             WsEventType.APPROVAL_SUBMITTED,
             item,
         )
         plugin.publish.assert_called_once()
 
-    def test_logs_warning_when_publish_fails(self) -> None:
+    async def test_logs_warning_when_publish_fails(self) -> None:
         from litestar.channels import ChannelsPlugin
 
         from synthorg.api.ws_models import WsEventType
@@ -753,8 +755,9 @@ class TestPublishApprovalEvent:
         item = _make_pending_item()
 
         # Should not raise -- best-effort
-        _publish_approval_event(
+        await _publish_approval_event(
             request,
+            make_app_state(),
             WsEventType.APPROVAL_SUBMITTED,
             item,
         )

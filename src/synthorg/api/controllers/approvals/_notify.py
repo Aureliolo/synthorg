@@ -22,6 +22,7 @@ from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
     signal_resume_intent,
 )
+from synthorg.api.controllers.approvals._enrichment import build_approval_response
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.approval.enums import ApprovalStatus
@@ -78,33 +79,40 @@ def _require_channels_plugin(
     return plugin
 
 
-def _publish_approval_event(
+async def _publish_approval_event(
     request: Request[object, object, State],
+    app_state: AppState,
     event_type: WsEventType,
     item: ApprovalItem,
 ) -> None:
-    """Publish an approval event to the approvals WebSocket channel.
+    """Publish an enriched approval event to the approvals WebSocket channel.
 
-    Best-effort: if the channels plugin is unavailable or not yet
-    started, the error is logged and the caller continues normally.
+    Publishes the full enriched approval under ``payload.approval`` (the
+    shape the dashboard's WS handler upserts from), plus ``approval_id`` /
+    ``status`` at the top level for cheap envelope routing, so a decision
+    or expiry reflects in the queue live instead of waiting for the poll.
+
+    Best-effort: if enrichment or the channels plugin fails, the error is
+    logged and the caller continues normally.
 
     Args:
         request: The incoming HTTP request.
+        app_state: Application state (source of the enrichment resolvers).
         event_type: Type of the approval event.
         item: The approval item to include in the payload.
     """
-    event = WsEvent(
-        event_type=event_type,
-        channel=CHANNEL_APPROVALS,
-        timestamp=datetime.now(UTC),
-        payload={
-            "approval_id": str(item.id),
-            "status": item.status.value,
-            "action_type": item.action_type,
-            "risk_level": item.risk_level.value,
-        },
-    )
     try:
+        response = await build_approval_response(app_state, item)
+        event = WsEvent(
+            event_type=event_type,
+            channel=CHANNEL_APPROVALS,
+            timestamp=datetime.now(UTC),
+            payload={
+                "approval_id": str(item.id),
+                "status": item.status.value,
+                "approval": response.model_dump(mode="json"),
+            },
+        )
         channels_plugin = _require_channels_plugin(request)
         channels_plugin.publish(
             event.model_dump_json(),
@@ -328,7 +336,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         decided_by_user_id=decided_by_user_id,
     )
 
-    _publish_approval_event(request, ws_event, saved)
+    await _publish_approval_event(request, app_state, ws_event, saved)
     _log_approval_decision(
         approval_id,
         approved=approved,

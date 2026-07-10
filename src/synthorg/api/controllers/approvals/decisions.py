@@ -206,8 +206,9 @@ class ApprovalsDecisionsController(Controller):
             )
             await store.add(item)
 
-            _publish_approval_event(
+            await _publish_approval_event(
                 request,
+                app_state,
                 WsEventType.APPROVAL_SUBMITTED,
                 item,
             )

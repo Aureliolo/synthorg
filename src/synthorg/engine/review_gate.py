@@ -36,6 +36,7 @@ from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_REVIEW_ACKNOWLEDGED,
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -176,6 +177,20 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         # value (a single normalisation site keeps them from diverging).
         normalized_reason = reason.strip() if reason and reason.strip() else None
 
+        # A failed run's review is not an accept/reject of finished work: an
+        # approve acknowledges the failure (the task stays FAILED, no phantom
+        # COMPLETED), a reject requests a retry (FAILED -> ASSIGNED). The
+        # adversarial completion gates never run on a failure.
+        if task.status == TaskStatus.FAILED:
+            await self._decide_failed_task(
+                task=task,
+                approved=approved,
+                decided_by=decided_by,
+                normalized_reason=normalized_reason,
+                approval_id=approval_id,
+            )
+            return
+
         if approved:
             target = TaskStatus.COMPLETED
             transition_reason = f"Review approved by {decided_by}"
@@ -274,8 +289,13 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             # raises TaskNotFoundError synchronously (the caller maps it to a
             # 404) instead of swallowing it in a background task.
             task = await self._task_engine.get_task(task_id)
-            if task is None or (
-                compare_stakes(task.stakes, self._red_team_min_stakes) < 0
+            # A failed-task review never runs the red-team completion gate
+            # (it acknowledges/retries, not accepts work), so run it inline
+            # rather than deferring a no-op to the background.
+            if (
+                task is None
+                or task.status == TaskStatus.FAILED
+                or compare_stakes(task.stakes, self._red_team_min_stakes) < 0
             ):
                 gated = False
         if gated and self._background_tasks is not None:
@@ -387,6 +407,55 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             normalized_reason=transition_reason,
         )
         return result
+
+    async def _decide_failed_task(
+        self,
+        *,
+        task: Task,
+        approved: bool,
+        decided_by: str,
+        normalized_reason: str | None,
+        approval_id: str | None,
+    ) -> None:
+        """Decide a failed-run review: approve acknowledges, reject retries.
+
+        Approve leaves the task FAILED and records the acknowledgement (no
+        task-engine transition, so a failure is never laundered into
+        COMPLETED). Reject requests a retry via the sole valid exit from
+        FAILED (``ASSIGNED``), reusing the shared decision-apply path.
+        """
+        if approved:
+            reason_text = f"Failure acknowledged by {decided_by}"
+            if normalized_reason is not None:
+                reason_text += f": {normalized_reason}"
+            logger.info(
+                APPROVAL_GATE_REVIEW_ACKNOWLEDGED,
+                task_id=str(task.id),
+                decided_by=decided_by,
+                status=task.status.value,
+            )
+            await self._record_decision(
+                task=task,
+                decided_by=decided_by,
+                approved=True,
+                reason=reason_text,
+                approval_id=approval_id,
+            )
+            return
+
+        transition_reason = f"Rework requested by {decided_by}"
+        if normalized_reason is not None:
+            transition_reason += f": {normalized_reason}"
+        await self._apply_decision(
+            task=task,
+            target=TaskStatus.ASSIGNED,
+            transition_reason=transition_reason,
+            event=APPROVAL_GATE_REVIEW_REWORK,
+            decided_by=decided_by,
+            approved=False,
+            approval_id=approval_id,
+            normalized_reason=normalized_reason,
+        )
 
     async def _apply_decision(  # noqa: PLR0913
         self,

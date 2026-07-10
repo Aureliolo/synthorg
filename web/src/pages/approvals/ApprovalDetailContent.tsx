@@ -1,11 +1,39 @@
-import { Calendar, Shield, Tag, User, Wrench, type LucideIcon } from 'lucide-react'
+import { Link } from 'react-router'
+import {
+  Calendar,
+  FolderKanban,
+  ListChecks,
+  Package,
+  Shield,
+  Tag,
+  User,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ContentTypeBadge } from '@/components/ui/content-type-badge'
+import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
+import { ROUTES } from '@/router/routes'
 import { ApprovalTimeline } from './ApprovalTimeline'
-import { getRiskLevelLabel, formatUrgency } from '@/utils/approvals'
-import { formatDateTime } from '@/utils/format'
-import type { ApprovalResponse } from '@/api/types/approvals'
+import {
+  getApprovalStepLabel,
+  getRiskLevelLabel,
+  formatUrgency,
+  isFailedApproval,
+} from '@/utils/approvals'
+import { formatDateTime, formatFileSize } from '@/utils/format'
+import type { ApprovalArtifactRef, ApprovalResponse } from '@/api/types/approvals'
 
 const TOOL_CREATION_ACTION_TYPE = 'proposal:tool_creation'
+
+function taskDetailPath(taskId: string): string {
+  return ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(taskId))
+}
+
+function artifactDetailPath(artifactId: string): string {
+  return ROUTES.ARTIFACT_DETAIL.replace(':artifactId', encodeURIComponent(artifactId))
+}
 
 function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
   const isStripped = !!approval.metadata['stripped_description']
@@ -59,6 +87,111 @@ function ApprovalSafetyBanners({ approval }: { approval: ApprovalResponse }) {
   )
 }
 
+/** Danger banner for a failed run: what happened + what the buttons do. */
+function ApprovalRunFailureBanner({ approval }: { approval: ApprovalResponse }) {
+  if (!isFailedApproval(approval)) return null
+  return (
+    <ErrorBanner
+      variant="inline"
+      severity="error"
+      title="This run failed"
+      description={
+        approval.decision_reason ??
+        'The agent did not complete the task. Acknowledge to close it, or Retry to send it back for rework.'
+      }
+    />
+  )
+}
+
+function ProducedArtifactRow({ artifact }: { artifact: ApprovalArtifactRef }) {
+  return (
+    <li>
+      <Link
+        to={artifactDetailPath(artifact.id)}
+        className="flex items-center justify-between gap-2 rounded border border-border bg-surface px-2 py-1.5 text-xs transition-colors hover:border-bright hover:bg-card-hover"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ContentTypeBadge contentType={artifact.content_type} />
+          <span className="truncate font-mono text-text-secondary">{artifact.path}</span>
+        </span>
+        <span className="shrink-0 text-muted-foreground">{formatFileSize(artifact.size_bytes)}</span>
+      </Link>
+    </li>
+  )
+}
+
+/**
+ * "What was produced": the reviewer's evidence. Lists produced artifacts
+ * (click through to full content) or an explicit empty/failed state, so an
+ * approval is never a black box.
+ */
+function ProducedOutputSection({ approval }: { approval: ApprovalResponse }) {
+  const run = approval.run
+  if (run === null) return null
+  const failed = run.outcome === 'failed'
+  const extra = run.produced_artifact_count - run.artifacts.length
+  return (
+    <div>
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Package className="size-3.5" aria-hidden="true" />
+        What was produced
+        <RunOutcomeBadge outcome={run.outcome} className="ml-1" />
+      </span>
+      {run.artifacts.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {run.artifacts.map((artifact) => (
+            <ProducedArtifactRow key={artifact.id} artifact={artifact} />
+          ))}
+          {extra > 0 && (
+            <li className="text-[10px] text-muted-foreground">+ {extra} more</li>
+          )}
+        </ul>
+      ) : (
+        <div className="mt-2">
+          <EmptyState
+            icon={Package}
+            title={failed ? 'Run failed with no output' : 'No artifacts produced'}
+            description={
+              failed
+                ? 'This run failed before producing any artifacts.'
+                : 'This run reached review but produced no artifacts.'
+            }
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The agent's own account of the run: narrative + step-by-step trace. */
+function EvidenceSection({ approval }: { approval: ApprovalResponse }) {
+  const evidence = approval.evidence_package
+  if (evidence === null) return null
+  const hasTrace = evidence.reasoning_trace.length > 0
+  if (!evidence.narrative && !hasTrace) return null
+  return (
+    <div>
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <ListChecks className="size-3.5" aria-hidden="true" />
+        Agent account
+      </span>
+      {evidence.narrative && (
+        <p className="mt-1 text-sm text-text-secondary">{evidence.narrative}</p>
+      )}
+      {hasTrace && (
+        <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-text-secondary">
+          {/* Static, immutable trace: lines never reorder, so a positional
+              key is stable. Prefix keeps duplicate lines distinct. */}
+          {evidence.reasoning_trace.map((line, index) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key
+            <li key={`trace-${index}`}>{line}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
 function ApprovalMetaGrid({
   approval,
   confidenceLabel,
@@ -66,24 +199,45 @@ function ApprovalMetaGrid({
   approval: ApprovalResponse
   confidenceLabel: string | null
 }) {
+  const safety = approval.metadata['safety_classification']
   return (
     <div className="grid grid-cols-1 gap-grid-gap rounded-lg border border-border p-card md:grid-cols-2">
-      <MetaField icon={Tag} label="Action Type" value={approval.action_type} />
+      <MetaField icon={Tag} label="Step" value={getApprovalStepLabel(approval)} />
       <MetaField icon={Shield} label="Risk Level" value={getRiskLevelLabel(approval.risk_level)} />
-      <MetaField icon={User} label="Requested By" value={approval.requested_by} />
+      <MetaField
+        icon={User}
+        label="Agent"
+        value={approval.agent?.name ?? approval.requested_by}
+      />
+      {approval.project && (
+        <MetaField icon={FolderKanban} label="Project" value={approval.project.name} />
+      )}
       <MetaField icon={Calendar} label="Created" value={formatDateTime(approval.created_at)} />
       {approval.expires_at && (
         <MetaField icon={Calendar} label="Expires" value={formatUrgency(approval.seconds_remaining)} />
       )}
+      <ApprovalDecisionFields approval={approval} confidenceLabel={confidenceLabel} />
+      {safety && <MetaField icon={Shield} label="Safety" value={safety} />}
+    </div>
+  )
+}
+
+/** The decision-time meta fields (only present once an approval is decided). */
+function ApprovalDecisionFields({
+  approval,
+  confidenceLabel,
+}: {
+  approval: ApprovalResponse
+  confidenceLabel: string | null
+}) {
+  return (
+    <>
       {approval.decided_by && <MetaField icon={User} label="Decided By" value={approval.decided_by} />}
       {approval.decided_at && (
         <MetaField icon={Calendar} label="Decided At" value={formatDateTime(approval.decided_at)} />
       )}
       {confidenceLabel && <MetaField icon={Shield} label="Confidence" value={confidenceLabel} />}
-      {approval.metadata['safety_classification'] && (
-        <MetaField icon={Shield} label="Safety" value={approval.metadata['safety_classification']} />
-      )}
-    </div>
+    </>
   )
 }
 
@@ -141,7 +295,12 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Linked Task
           </span>
-          <p className="mt-1 font-mono text-xs text-text-secondary">{approval.task_id}</p>
+          <Link
+            to={taskDetailPath(approval.task_id)}
+            className="mt-1 block text-xs text-accent hover:underline"
+          >
+            {approval.task?.title ?? approval.task_id}
+          </Link>
         </div>
       )}
       {Object.keys(approval.metadata).length > 0 && (
@@ -172,11 +331,16 @@ export function ApprovalDetailContent({
 }) {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
-      <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
+      <h2 className="text-lg font-semibold text-foreground">
+        {approval.task?.title ?? approval.title}
+      </h2>
+      <ApprovalRunFailureBanner approval={approval} />
       <ApprovalSafetyBanners approval={approval} />
       {Boolean(approval.description || approval.metadata['stripped_description']) && (
         <DescriptionSection approval={approval} />
       )}
+      <ProducedOutputSection approval={approval} />
+      <EvidenceSection approval={approval} />
       <div>
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Timeline</span>
         <ApprovalTimeline approval={approval} className="mt-2" />

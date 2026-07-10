@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { ApprovalDetailDrawer } from '@/pages/approvals/ApprovalDetailDrawer'
 import { makeApproval } from '../../helpers/factories'
 import { useToastStore } from '@/stores/toast'
@@ -73,12 +74,14 @@ function renderDrawer(
     ...overrides,
   })
   return render(
-    <ApprovalDetailDrawer
-      approval={approval}
-      open={true}
-      {...defaultHandlers}
-      {...props}
-    />,
+    <MemoryRouter>
+      <ApprovalDetailDrawer
+        approval={approval}
+        open={true}
+        {...defaultHandlers}
+        {...props}
+      />
+    </MemoryRouter>,
   )
 }
 
@@ -302,5 +305,43 @@ describe('ApprovalDetailDrawer', () => {
     renderDrawer({ status: 'approved' })
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the produced artifacts with type + size', () => {
+    renderDrawer({
+      run: {
+        outcome: 'succeeded',
+        produced_artifact_count: 1,
+        artifacts: [
+          {
+            id: 'artifact-1',
+            path: 'src/auth/oauth.ts',
+            type: 'code',
+            content_type: 'text/x-typescript',
+            size_bytes: 4096,
+          },
+        ],
+      },
+    })
+    expect(screen.getByText('What was produced')).toBeInTheDocument()
+    expect(screen.getByText('src/auth/oauth.ts')).toBeInTheDocument()
+  })
+
+  it('shows an explicit empty state when the run produced nothing', () => {
+    renderDrawer({
+      run: { outcome: 'empty', produced_artifact_count: 0, artifacts: [] },
+    })
+    expect(screen.getByText('No artifacts produced')).toBeInTheDocument()
+  })
+
+  it('shows a failure banner and Acknowledge/Retry for a failed run', () => {
+    renderDrawer({
+      action_type: 'review:task_failed',
+      decision_reason: null,
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    })
+    expect(screen.getByText('This run failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /acknowledge/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 })

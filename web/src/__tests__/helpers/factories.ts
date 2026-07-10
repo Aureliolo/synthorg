@@ -250,6 +250,10 @@ export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>):
     evidence_package: null,
     seconds_remaining: null,
     urgency_level: 'no_expiry',
+    task: null,
+    project: null,
+    agent: null,
+    run: null,
     ...overrides,
   }
 }

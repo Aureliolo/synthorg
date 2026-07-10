@@ -59,7 +59,9 @@ function ActionBubble({ msg }: ActionBubbleProps) {
         <div className="space-y-1 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
           <p>This action needs human approval before it runs.</p>
           <Button asChild variant="link" size="sm" className="h-auto p-0">
-            <Link to="/approvals">Review in Approvals</Link>
+            <Link to={`/approvals?selected=${encodeURIComponent(msg.parkedApprovalId)}`}>
+              Review in Approvals
+            </Link>
           </Button>
         </div>
       )}

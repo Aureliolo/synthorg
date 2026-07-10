@@ -19,8 +19,11 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.artifact import ArtifactType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage
+from synthorg.core.run_outcome import RunOutcome
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -227,8 +230,85 @@ def _to_safe_evidence(
     )
 
 
+class ApprovalTaskRef(BaseModel):
+    """Resolved task identity for an approval (a name, not a UUID)."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Task identifier")
+    title: NotBlankStr = Field(description="Human-readable task title")
+    status: TaskStatus = Field(description="Current task status")
+
+
+class ApprovalProjectRef(BaseModel):
+    """Resolved project identity for an approval."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Project identifier")
+    name: NotBlankStr = Field(description="Human-readable project name")
+
+
+class ApprovalAgentRef(BaseModel):
+    """Resolved requesting-agent identity for an approval."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Agent identifier")
+    name: NotBlankStr = Field(
+        description="Agent display name (falls back to the id when unresolved)",
+    )
+
+
+class ApprovalArtifactRef(BaseModel):
+    """A produced-artifact reference shown in the review surface."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Artifact identifier")
+    path: NotBlankStr = Field(description="Artifact path")
+    type: ArtifactType = Field(description="Artifact type")
+    content_type: str = Field(default="", description="MIME content type")
+    size_bytes: int = Field(default=0, ge=0, description="Content size in bytes")
+
+
+class ApprovalRunSummary(BaseModel):
+    """Outcome + produced artifacts for the run under review.
+
+    Read-time derived (never persisted): the dashboard read model reuses
+    this shape and :class:`RunOutcome` directly.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    outcome: RunOutcome = Field(description="Truthful run outcome")
+    produced_artifact_count: int = Field(
+        ge=0,
+        description="Total artifacts the run produced (may exceed len(artifacts))",
+    )
+    artifacts: tuple[ApprovalArtifactRef, ...] = Field(
+        default=(),
+        description="Produced-artifact refs, capped for payload size",
+    )
+
+
+class ApprovalContext(BaseModel):
+    """Resolved enrichment bundle for one approval (read-time only).
+
+    Every field is best-effort: a missing or unwired dependency leaves it
+    ``None`` rather than failing the queue.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    task: ApprovalTaskRef | None = None
+    project: ApprovalProjectRef | None = None
+    agent: ApprovalAgentRef | None = None
+    run: ApprovalRunSummary | None = None
+
+
 class ApprovalResponse(ApprovalItem):
-    """Approval item enriched with computed urgency fields.
+    """Approval item enriched with urgency + resolved review context.
 
     Attributes:
         seconds_remaining: Seconds until expiry, clamped to 0.0 for
@@ -236,6 +316,12 @@ class ApprovalResponse(ApprovalItem):
         urgency_level: Urgency classification based on time remaining.
         evidence_package: Structured evidence with signature bytes
             redacted (see :class:`SafeEvidencePackage`).
+        task: Resolved task identity (title + status), ``None`` when
+            unresolvable.
+        project: Resolved project identity (name), ``None`` when
+            unresolvable.
+        agent: Resolved requesting-agent identity (display name).
+        run: Run outcome + produced-artifact summary for the reviewer.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -251,6 +337,22 @@ class ApprovalResponse(ApprovalItem):
     urgency_level: UrgencyLevel = Field(
         description="Urgency classification based on remaining time",
     )
+    task: ApprovalTaskRef | None = Field(
+        default=None,
+        description="Resolved task identity (title + status)",
+    )
+    project: ApprovalProjectRef | None = Field(
+        default=None,
+        description="Resolved project identity (name)",
+    )
+    agent: ApprovalAgentRef | None = Field(
+        default=None,
+        description="Resolved requesting-agent identity (display name)",
+    )
+    run: ApprovalRunSummary | None = Field(
+        default=None,
+        description="Run outcome + produced-artifact summary",
+    )
 
 
 def _to_approval_response(
@@ -259,8 +361,9 @@ def _to_approval_response(
     now: datetime,
     urgency_critical_seconds: float,
     urgency_high_seconds: float,
+    context: ApprovalContext | None = None,
 ) -> ApprovalResponse:
-    """Convert an ApprovalItem to an ApprovalResponse with urgency fields.
+    """Convert an ApprovalItem to an ApprovalResponse with urgency + context.
 
     Args:
         item: The domain-layer approval item.
@@ -274,10 +377,14 @@ def _to_approval_response(
             startup invariant validator
             (``lifecycle_helpers._validate_approval_urgency_invariant``)
             blocks bad combinations before traffic arrives.
+        context: Resolved review context (task/project/agent/run). When
+            ``None`` the response carries no enrichment fields.
 
     Returns:
-        Response DTO with computed ``seconds_remaining`` and ``urgency_level``.
+        Response DTO with computed urgency and, when ``context`` is
+        supplied, resolved task/project/agent/run fields.
     """
+    ctx = context if context is not None else ApprovalContext()
     if item.expires_at is None:
         seconds_remaining = None
         urgency = UrgencyLevel.NO_EXPIRY
@@ -298,6 +405,36 @@ def _to_approval_response(
         evidence_package=_to_safe_evidence(item.evidence_package),
         seconds_remaining=seconds_remaining,
         urgency_level=urgency,
+        task=ctx.task,
+        project=ctx.project,
+        agent=ctx.agent,
+        run=ctx.run,
+    )
+
+
+def to_response_without_context(
+    item: ApprovalItem, *, now: datetime
+) -> ApprovalResponse:
+    """Build an ApprovalResponse with urgency but no resolved review context.
+
+    For sync publish paths (lazy expiry) that have no ``app_state`` to
+    resolve names: the frontend still receives a valid approval shape to
+    upsert (status change), just without the resolved task/project/agent
+    names. Uses the registry fallback urgency thresholds.
+
+    Args:
+        item: The domain-layer approval item.
+        now: Reference timestamp for computing seconds remaining.
+
+    Returns:
+        Response DTO with urgency fields and no enrichment context.
+    """
+    return _to_approval_response(
+        item,
+        now=now,
+        urgency_critical_seconds=_URGENCY_CRITICAL_FALLBACK_SECONDS,
+        urgency_high_seconds=_URGENCY_HIGH_FALLBACK_SECONDS,
+        context=None,
     )
 
 

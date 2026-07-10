@@ -835,6 +835,13 @@ export const RULE_SEVERITY_VALUES = [
 ] as const
 export type RuleSeverity = (typeof RULE_SEVERITY_VALUES)[number]
 
+export const RUN_OUTCOME_VALUES = [
+    'succeeded',
+    'empty',
+    'failed',
+] as const
+export type RunOutcome = (typeof RUN_OUTCOME_VALUES)[number]
+
 export const SENIORITY_LEVEL_VALUES = [
     'junior',
     'mid',

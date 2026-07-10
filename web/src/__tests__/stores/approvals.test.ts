@@ -375,6 +375,30 @@ describe('handleWsEvent', () => {
     expect(useApprovalsStore.getState().approvals[0]!.id).toBe('ws-1')
   })
 
+  it('carries resolved names + run summary through the WS upsert', () => {
+    useApprovalsStore.setState({ approvals: [] })
+
+    const event = makeWsEvent(
+      makeApproval('ws-enriched', {
+        task: { id: 'task-1', title: 'Ship onboarding', status: 'in_review' },
+        project: { id: 'proj-1', name: 'Platform' },
+        agent: { id: 'agent-1', name: 'Anica Hocevar' },
+        run: {
+          outcome: 'failed',
+          produced_artifact_count: 0,
+          artifacts: [],
+        },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+
+    const upserted = useApprovalsStore.getState().approvals[0]!
+    expect(upserted.task?.title).toBe('Ship onboarding')
+    expect(upserted.project?.name).toBe('Platform')
+    expect(upserted.agent?.name).toBe('Anica Hocevar')
+    expect(upserted.run?.outcome).toBe('failed')
+  })
+
   it('ignores events without approval payload', () => {
     useApprovalsStore.setState({ approvals: [] })
 

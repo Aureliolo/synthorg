@@ -4,7 +4,12 @@ import type { ApprovalRiskLevel, ApprovalStatus } from './enums'
 import type { SafeEvidencePackageSignature } from './dtos.gen'
 
 export type {
+  ApprovalAgentRef,
+  ApprovalArtifactRef,
+  ApprovalProjectRef,
   ApprovalResponse,
+  ApprovalRunSummary,
+  ApprovalTaskRef,
   ApproveRequest,
   CreateApprovalRequest,
   RecommendedAction,
@@ -14,6 +19,7 @@ export type {
   SafeEvidencePackage,
   SafeEvidencePackageSignature,
 } from './dtos.gen'
+export type { RunOutcome } from './enums'
 
 /** Signature algorithm, derived from the generated DTO so it cannot drift
  *  from the backend ``Literal``. The runtime VALUES tuple stays here because

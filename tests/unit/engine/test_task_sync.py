@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
@@ -535,7 +535,13 @@ class TestApplyPostExecutionTransitions:
         assert out.context.task_execution.status == TaskStatus.FAILED
         synced = [c.args[0].target_status for c in mock_te.submit.call_args_list]
         assert synced == [TaskStatus.FAILED]
-        approval_store.add.assert_not_awaited()
+        # The failed run surfaces in the approval queue as a distinct failure
+        # (action type review:task_failed), escalated above LOW so it is never
+        # a routine low-risk approval.
+        approval_store.add.assert_awaited_once()
+        created = approval_store.add.await_args.args[0]
+        assert created.action_type == "review:task_failed"
+        assert created.risk_level == ApprovalRiskLevel.HIGH
 
     async def test_completed_empty_work_task_transitions_to_failed(
         self,

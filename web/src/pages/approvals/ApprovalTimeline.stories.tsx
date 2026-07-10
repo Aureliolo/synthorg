@@ -22,6 +22,10 @@ const base: ApprovalResponse = {
   evidence_package: null,
   seconds_remaining: 14400,
   urgency_level: 'high',
+  task: null,
+  project: null,
+  agent: null,
+  run: null,
 }
 
 const meta: Meta<typeof ApprovalTimeline> = {

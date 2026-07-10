@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
@@ -267,7 +268,7 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
     # transition also guards a COMPLETED that slipped through from another loop.
     if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine
+            execution_result, ctx, agent_id, task_id, task_engine, approval_store
         )
 
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
@@ -280,7 +281,7 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
         and empty_run_fails
     ):
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine
+            execution_result, ctx, agent_id, task_id, task_engine, approval_store
         )
 
     return await _transition_to_review(
@@ -422,7 +423,22 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.IN_REVIEW
     ):
-        await create_review_approval(approval_store, agent_id=agent_id, task_id=task_id)
+        # A run that reached review with zero tool calls produced nothing; the
+        # DTO re-derives the truthful outcome from artifacts at read time, but
+        # the persisted risk level is escalated from this creation-time proxy
+        # so an empty high-stakes review never reads LOW.
+        outcome = (
+            RunOutcome.EMPTY
+            if execution_result.total_tool_calls == 0
+            else RunOutcome.SUCCEEDED
+        )
+        await create_review_approval(
+            approval_store,
+            agent_id=agent_id,
+            task_id=task_id,
+            task=ctx.task_execution.task,
+            outcome=outcome,
+        )
         await _maybe_auto_review(
             review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
         )
@@ -432,18 +448,21 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     return execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(
+async def _transition_to_failed(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
 ) -> ExecutionResult:
-    """Transition an empty/no-op run IN_PROGRESS -> FAILED (no review).
+    """Transition an empty/no-op run IN_PROGRESS -> FAILED, then flag it.
 
     A work task that produced no artifacts must surface a visible failure
-    with the reason, never a silent no-op success pushed to review. No
-    review approval is created.
+    with the reason, never a silent no-op success pushed to review. A
+    FAILED-outcome review approval is created (high risk) so the failure
+    lands in the operator's approval queue as an unmistakable failure
+    rather than being invisible.
 
     Returns:
         A copy of ``execution_result`` with the context updated to
@@ -479,6 +498,14 @@ async def _transition_to_failed(
         context="Empty run: no artifacts produced; task failed",
         reason=_EMPTY_RUN_REASON,
     )
+    if ctx.task_execution is not None:
+        await create_review_approval(
+            approval_store,
+            agent_id=agent_id,
+            task_id=task_id,
+            task=ctx.task_execution.task,
+            outcome=RunOutcome.FAILED,
+        )
     return execution_result.model_copy(update={"context": ctx})
 
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { InputField } from '@/components/ui/input-field'
 import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
-import { getApprovalStatusLabel, getRiskLevelLabel } from '@/utils/approvals'
+import { getApprovalStatusLabel, getRiskLevelLabel, isFailedApproval } from '@/utils/approvals'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 import { ApprovalDetailContent } from './ApprovalDetailContent'
 import {
@@ -83,7 +83,15 @@ function ApprovalDrawerHeader({
   )
 }
 
-function ApprovalDrawerFooter({ onApprove, onReject }: { onApprove: () => void; onReject: () => void }) {
+function ApprovalDrawerFooter({
+  isFailed,
+  onApprove,
+  onReject,
+}: {
+  isFailed: boolean
+  onApprove: () => void
+  onReject: () => void
+}) {
   return (
     <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
       <Button
@@ -93,7 +101,7 @@ function ApprovalDrawerFooter({ onApprove, onReject }: { onApprove: () => void; 
         onClick={onApprove}
       >
         <Check className="size-3.5" />
-        Approve
+        {isFailed ? 'Acknowledge' : 'Approve'}
       </Button>
       <Button
         size="sm"
@@ -102,7 +110,7 @@ function ApprovalDrawerFooter({ onApprove, onReject }: { onApprove: () => void; 
         onClick={onReject}
       >
         <X className="size-3.5" />
-        Reject
+        {isFailed ? 'Retry' : 'Reject'}
       </Button>
     </div>
   )
@@ -206,6 +214,7 @@ function ApprovalDrawerPanel({ approval, showLoadingState, detailError, decision
       <ApprovalDetailContent approval={approval} confidenceLabel={decision.confidenceLabel} />
       {decision.isPending && (
         <ApprovalDrawerFooter
+          isFailed={isFailedApproval(approval)}
           onApprove={() => decision.setApproveOpen(true)}
           onReject={() => decision.setRejectOpen(true)}
         />

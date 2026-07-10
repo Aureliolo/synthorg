@@ -35,15 +35,47 @@ beforeEach(() => {
 })
 
 describe('ApprovalCard', () => {
-  it('renders title and action type', () => {
+  it('renders title and a human step label (not the raw action type)', () => {
     renderCard()
     expect(screen.getByText('Deploy API')).toBeInTheDocument()
-    expect(screen.getByText('deploy:production')).toBeInTheDocument()
+    // The raw action-type string is no longer shown; a human step label is.
+    expect(screen.queryByText('deploy:production')).not.toBeInTheDocument()
+    expect(screen.getByText('Review completed work')).toBeInTheDocument()
   })
 
-  it('renders requester', () => {
+  it('falls back to requested_by when no agent is resolved', () => {
     renderCard()
     expect(screen.getByText('agent-eng')).toBeInTheDocument()
+  })
+
+  it('shows resolved task title, project name, and agent name (no UUIDs)', () => {
+    renderCard({
+      title: 'Review: onboarding',
+      task: { id: '88c5f343-e47e-42bc-a55d-0782aab2e38b', title: 'Ship onboarding', status: 'in_review' },
+      project: { id: 'proj-1', name: 'Platform' },
+      agent: { id: '2019c07a-8bd0', name: 'Anica Hocevar' },
+    })
+    expect(screen.getByText('Ship onboarding')).toBeInTheDocument()
+    expect(screen.getByText('Platform')).toBeInTheDocument()
+    expect(screen.getByText('Anica Hocevar')).toBeInTheDocument()
+    expect(screen.queryByText('88c5f343-e47e-42bc-a55d-0782aab2e38b')).not.toBeInTheDocument()
+    expect(screen.queryByText('2019c07a-8bd0')).not.toBeInTheDocument()
+  })
+
+  it('renders a run-outcome badge when a run summary is present', () => {
+    renderCard({ run: { outcome: 'succeeded', produced_artifact_count: 2, artifacts: [] } })
+    expect(screen.getByLabelText('Run outcome: Produced output')).toBeInTheDocument()
+  })
+
+  it('marks a failed run distinctly: danger badge + Acknowledge/Retry buttons', () => {
+    renderCard({
+      action_type: 'review:task_failed',
+      run: { outcome: 'failed', produced_artifact_count: 0, artifacts: [] },
+    })
+    expect(screen.getByLabelText('Run outcome: Run failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /acknowledge/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^approve$/i })).not.toBeInTheDocument()
   })
 
   it('renders urgency countdown for pending items', () => {

@@ -2,15 +2,18 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { useFlash } from '@/hooks/useFlash'
 import {
   DOT_COLOR_CLASSES,
   URGENCY_BADGE_CLASSES,
   formatUrgency,
+  getApprovalStepLabel,
   getRiskLevelColor,
   getRiskLevelLabel,
   getUrgencyColor,
+  isFailedApproval,
 } from '@/utils/approvals'
 import type { ApprovalResponse } from '@/api/types/approvals'
 
@@ -141,6 +144,23 @@ function ApprovalBadges({
   )
 }
 
+/** Step label + resolved project / agent names (no raw UUIDs). */
+function ApprovalCardMeta({ approval }: { approval: ApprovalResponse }) {
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+      <span>{getApprovalStepLabel(approval)}</span>
+      {approval.project && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>{approval.project.name}</span>
+        </>
+      )}
+      <span aria-hidden="true">·</span>
+      <span>{approval.agent?.name ?? approval.requested_by}</span>
+    </div>
+  )
+}
+
 interface ApprovalCardHeaderProps {
   approval: ApprovalResponse
   selected: boolean
@@ -181,33 +201,34 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
           onClick={() => props.onSelect(approval.id)}
           className="text-left text-sm font-medium text-foreground hover:text-accent transition-colors truncate block w-full"
         >
-          {approval.title}
+          {approval.task?.title ?? approval.title}
         </button>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-          <span className="font-mono">{approval.action_type}</span>
-          <span aria-hidden="true">·</span>
-          <span>{approval.requested_by}</span>
-        </div>
+        <ApprovalCardMeta approval={approval} />
       </div>
 
-      <ApprovalBadges
-        isPending={isPending}
-        countdown={countdown}
-        urgencyColor={urgencyColor}
-        isBlocked={approval.metadata['safety_classification'] === 'blocked'}
-        isSuspicious={approval.metadata['safety_classification'] === 'suspicious'}
-        showLowConfidence={isLowConfidence(approval)}
-      />
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {approval.run && <RunOutcomeBadge outcome={approval.run.outcome} />}
+        <ApprovalBadges
+          isPending={isPending}
+          countdown={countdown}
+          urgencyColor={urgencyColor}
+          isBlocked={approval.metadata['safety_classification'] === 'blocked'}
+          isSuspicious={approval.metadata['safety_classification'] === 'suspicious'}
+          showLowConfidence={isLowConfidence(approval)}
+        />
+      </div>
     </div>
   )
 }
 
 function ApprovalCardActions({
   id,
+  isFailed,
   onApprove,
   onReject,
 }: {
   id: string
+  isFailed: boolean
   onApprove: (id: string) => void
   onReject: (id: string) => void
 }) {
@@ -220,7 +241,7 @@ function ApprovalCardActions({
         onClick={() => onApprove(id)}
       >
         <Check className="size-3.5" />
-        Approve
+        {isFailed ? 'Acknowledge' : 'Approve'}
       </Button>
       <Button
         size="sm"
@@ -229,7 +250,7 @@ function ApprovalCardActions({
         onClick={() => onReject(id)}
       >
         <X className="size-3.5" />
-        Reject
+        {isFailed ? 'Retry' : 'Reject'}
       </Button>
     </div>
   )
@@ -245,14 +266,18 @@ function ApprovalCardImpl({
   className,
 }: ApprovalCardProps) {
   const isPending = approval.status === 'pending'
+  const isFailed = isFailedApproval(approval)
   const flashStyle = useStatusFlash(approval.status)
   const countdown = useApprovalCountdown(approval.seconds_remaining, isPending)
 
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card p-card transition-all duration-200',
-        selected ? 'border-bright ring-1 ring-accent/20' : 'border-border',
+        'rounded-lg border p-card transition-all duration-200',
+        // A failed run is visually unmistakable: danger-tinted surface and
+        // border so it is never read as a routine completion.
+        isFailed ? 'border-danger/40 bg-danger/5' : 'bg-card',
+        selected ? 'border-bright ring-1 ring-accent/20' : !isFailed && 'border-border',
         isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         !isPending && 'opacity-70',
         className,
@@ -272,7 +297,14 @@ function ApprovalCardImpl({
         onToggleSelect={onToggleSelect}
       />
 
-      {isPending && <ApprovalCardActions id={approval.id} onApprove={onApprove} onReject={onReject} />}
+      {isPending && (
+        <ApprovalCardActions
+          id={approval.id}
+          isFailed={isFailed}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      )}
     </div>
   )
 }

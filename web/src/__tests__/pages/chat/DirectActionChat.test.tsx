@@ -146,7 +146,8 @@ describe('DirectActionChat', () => {
       ).toBeInTheDocument()
     })
     const link = screen.getByRole('link', { name: /Review in Approvals/ })
-    expect(link).toHaveAttribute('href', '/approvals')
+    // Deep-links to the specific parked approval, not the generic queue.
+    expect(link).toHaveAttribute('href', '/approvals?selected=appr-act-1')
   })
 
   it('explains a non-clean stop with no final message', async () => {

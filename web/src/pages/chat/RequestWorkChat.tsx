@@ -46,14 +46,32 @@ function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
   const steering = msg.steering ?? []
   if (proposals.length === 0 && steering.length === 0) return null
   return (
-    <ul className="mt-1 list-disc pl-4 text-xs text-text-secondary">
-      {proposals.map((p) => (
-        <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
-      ))}
-      {steering.map((s) => (
-        <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
-      ))}
-    </ul>
+    <div className="mt-2 space-y-2 text-xs text-text-secondary">
+      {proposals.length > 0 && (
+        <div>
+          <p className="font-medium text-foreground">Approve to start</p>
+          <p className="text-micro text-muted-foreground">
+            This is the first gate: approving queues the work. Once it runs, a
+            separate review of the result appears in Approvals.
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {proposals.map((p) => (
+              <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {steering.length > 0 && (
+        <div>
+          <p className="font-medium text-foreground">Confirm steering</p>
+          <ul className="mt-1 list-disc pl-4">
+            {steering.map((s) => (
+              <ApprovalLink key={s.approvalId} id={s.approvalId} label={s.text} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
