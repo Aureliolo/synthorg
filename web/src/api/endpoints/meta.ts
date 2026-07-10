@@ -27,7 +27,9 @@ import {
   type PaginatedResult,
 } from '../client'
 
-import { parseCitedRecords } from './meta-stream'
+import { parseCitedRecords, type CitedRecord } from './cited-records'
+
+export type { CitedRecord } from './cited-records'
 
 // Re-export the generated DTO under a domain name so callers stay insulated
 // from the generated barrel's layout; the source of truth is openapi.gen.ts.
@@ -173,14 +175,6 @@ export interface MetaConfig {
   architecture_proposals_enabled: boolean
   prompt_tuning_enabled: boolean
   code_modification_enabled: boolean
-}
-
-/** One org-state record the chat answer is grounded in. */
-export interface CitedRecord {
-  kind: 'task' | 'project' | 'approval'
-  record_id: string
-  label: string
-  status: string
 }
 
 export interface ChatResponse {

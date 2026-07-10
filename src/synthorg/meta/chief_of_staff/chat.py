@@ -9,7 +9,7 @@ LLM calls (retry + rate limiting handled by the provider).
 import asyncio
 import contextlib
 from collections.abc import AsyncGenerator
-from typing import ClassVar, Final
+from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -30,10 +30,10 @@ from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff._chat_format import (
-    format_scoped_proposal,
     format_signal_context,
     format_snapshot,
     free_form_sources,
+    render_free_form_user,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
@@ -47,13 +47,11 @@ from synthorg.meta.chief_of_staff.models import (
 from synthorg.meta.chief_of_staff.org_state import (
     OrgStateSnapshot,
     cited_records,
-    format_org_state,
 )
 from synthorg.meta.chief_of_staff.prompts import (
     ALERT_EXPLANATION_SYSTEM,
     ALERT_EXPLANATION_USER,
     CHAT_QUERY_SYSTEM,
-    CHAT_QUERY_USER,
     PROPOSAL_EXPLANATION_SYSTEM,
     PROPOSAL_EXPLANATION_USER,
 )
@@ -65,7 +63,6 @@ from synthorg.meta.models import (
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.events.chief_of_staff import (
     COS_CHAT_FAILED,
@@ -86,18 +83,6 @@ from synthorg.settings.kill_switch import (
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
-
-# Rendered into the prompt when the org-state read model could not be built
-# (persistence disconnected or the approval store unwired). System-authored,
-# so it is NOT fenced as untrusted content; it instructs the model to admit
-# it cannot see task / project / approval state rather than infer idleness.
-# Deliberately names no specific missing dependency: the operator-facing
-# cause (which subsystem is unwired) is carried by the WARNING the request
-# helper logs, not baked into the user-facing answer where it could be wrong.
-_ORG_STATE_UNAVAILABLE: Final[str] = (
-    "The org-state read model is currently unavailable, so I cannot see"
-    " task, project, or approval state."
-)
 
 
 class ChiefOfStaffChat:
@@ -277,7 +262,13 @@ class ChiefOfStaffChat:
             has_alert_id=query.alert_id is not None,
             has_org_state=org_state is not None,
         )
-        user = await self._build_query_user(query, snapshot, scoped_proposal, org_state)
+        user = await render_free_form_user(
+            outcome_store=self._outcome_store,
+            query=query,
+            snapshot=snapshot,
+            scoped_proposal=scoped_proposal,
+            org_state=org_state,
+        )
         sources = free_form_sources(snapshot, org_state)
         records = cited_records(org_state) if org_state is not None else ()
         return await self._call_llm(
@@ -324,8 +315,12 @@ class ChiefOfStaffChat:
             question_length=len(query.question),
             has_org_state=org_state is not None,
         )
-        user = await self._build_query_user(
-            query, snapshot, scoped_proposal=None, org_state=org_state
+        user = await render_free_form_user(
+            outcome_store=self._outcome_store,
+            query=query,
+            snapshot=snapshot,
+            scoped_proposal=None,
+            org_state=org_state,
         )
         messages, config, model = await self._prepare_messages(CHAT_QUERY_SYSTEM, user)
         parts: list[str] = []
@@ -416,64 +411,6 @@ class ChiefOfStaffChat:
             reraise_critical(exc)
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)
             raise
-
-    async def _build_query_user(
-        self,
-        query: ChatQuery,
-        snapshot: OrgSignalSnapshot,
-        scoped_proposal: ApprovalItem | None,
-        org_state: OrgStateSnapshot | None,
-    ) -> str:
-        """Render the fenced USER message for a free-form question.
-
-        Reads recent outcomes for context (degrading to a placeholder on
-        a store read failure) and folds a resolved ``scoped_proposal``
-        summary ahead of them, folds the real org-state block (or the
-        "cannot see state" sentinel), then fences every
-        attacker-controllable field in a ``<task-data>`` envelope. The
-        org-state records are human/agent-authored, so the rendered block
-        is fenced; the unavailable sentinel is system-authored and stays
-        unfenced.
-
-        Returns:
-            The rendered, fully fenced USER-role message.
-        """
-        recent_context = "No recent proposals or alerts."
-        if self._outcome_store is not None:
-            try:
-                recent = await self._outcome_store.recent_outcomes(limit=5)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                # A graceful degrade (falls back to a placeholder), so WARNING
-                # not ERROR; carry the redacted error context the sibling
-                # provider-failure logs also emit, so the failure is diagnosable.
-                logger.warning(
-                    COS_CHAT_FAILED,
-                    reason="outcome_store_read_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                recent = ()
-            if recent:
-                lines = [
-                    f"- {o.title} ({o.decision}, {o.decided_at:%Y-%m-%d})"
-                    for o in recent
-                ]
-                recent_context = "Recent outcomes:\n" + "\n".join(lines)
-        if scoped_proposal is not None:
-            recent_context = (
-                f"{format_scoped_proposal(scoped_proposal)}\n\n{recent_context}"
-            )
-        if org_state is not None:
-            org_state_block = wrap_untrusted(TAG_TASK_DATA, format_org_state(org_state))
-        else:
-            org_state_block = _ORG_STATE_UNAVAILABLE
-        return CHAT_QUERY_USER.format(
-            snapshot_summary=wrap_untrusted(TAG_TASK_DATA, format_snapshot(snapshot)),
-            org_state=org_state_block,
-            recent_context=wrap_untrusted(TAG_TASK_DATA, recent_context),
-            user_question=wrap_untrusted(TAG_TASK_DATA, query.question),
-        )
 
     async def _prepare_messages(
         self,

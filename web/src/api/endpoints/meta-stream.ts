@@ -15,7 +15,7 @@ import { sanitizeForLog } from '@/utils/logging'
 import { apiClient } from '../client'
 import type { ChatStreamRequest } from '../types'
 
-import type { CitedRecord } from './meta'
+import { parseCitedRecords, type CitedRecord } from './cited-records'
 
 const log = createLogger('meta-stream')
 
@@ -150,37 +150,6 @@ export interface ChatStreamResult {
   sources: string[]
   citedRecords: CitedRecord[]
   confidence: number
-}
-
-const CITED_KINDS = new Set<CitedRecord['kind']>(['task', 'project', 'approval'])
-
-function isCitedRecord(entry: unknown): entry is CitedRecord {
-  return (
-    isRecord(entry) &&
-    typeof entry['kind'] === 'string' &&
-    CITED_KINDS.has(entry['kind'] as CitedRecord['kind']) &&
-    typeof entry['record_id'] === 'string' &&
-    typeof entry['label'] === 'string' &&
-    typeof entry['status'] === 'string'
-  )
-}
-
-/**
- * Validate a wire `cited_records` array, dropping (and warning on) any entry
- * that doesn't match the contract. Shared by the streaming complete frame and
- * the buffered `postChat` response so both enter the UI through one guard.
- */
-export function parseCitedRecords(value: unknown): CitedRecord[] {
-  if (!Array.isArray(value)) return []
-  const records: CitedRecord[] = []
-  for (const entry of value) {
-    if (isCitedRecord(entry)) {
-      records.push(entry)
-    } else {
-      log.warn('Dropping malformed cited_record entry', sanitizeForLog(entry))
-    }
-  }
-  return records
 }
 
 /** Incremental callbacks for a streaming Chief-of-Staff answer. */
