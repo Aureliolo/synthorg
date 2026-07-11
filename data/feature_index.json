@@ -439,6 +439,7 @@
         "SubworkflowController",
         "EvaluationConfigVersionController",
         "DecompositionController",
+        "PlanController",
         "BoardController",
         "SprintController",
         "ObjectiveController",
@@ -1380,6 +1381,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-10T13:46:22.675292Z",
+  "generated_at": "2026-07-11T18:16:53.459883Z",
   "schema_version": 1
 }
