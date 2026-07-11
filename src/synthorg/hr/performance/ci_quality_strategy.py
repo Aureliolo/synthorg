@@ -115,14 +115,16 @@ class CISignalQualityStrategy:
         # Confidence based on data availability.
         confidence = criteria_confidence * (0.8 if task_result.is_success else 0.6)
 
-        breakdown = (
+        # Omit cost_efficiency entirely when unmeasured: a fabricated 0.0 would
+        # read as "scored zero efficiency" rather than "not scored", the same
+        # not-measured-vs-genuine-zero confusion the nullable telemetry avoids.
+        breakdown_entries: list[tuple[str, float]] = [
             ("acceptance_criteria", round(criteria_score, 4)),
             ("task_success", round(success_score, 4)),
-            (
-                "cost_efficiency",
-                round(cost_score, 4) if cost_score is not None else 0.0,
-            ),
-        )
+        ]
+        if cost_score is not None:
+            breakdown_entries.append(("cost_efficiency", round(cost_score, 4)))
+        breakdown = tuple(breakdown_entries)
 
         result = QualityScoreResult(
             score=round(total, 4),

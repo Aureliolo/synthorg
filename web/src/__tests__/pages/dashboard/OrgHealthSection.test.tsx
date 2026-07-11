@@ -60,6 +60,25 @@ describe('OrgHealthSection', () => {
     expect(screen.getByText('Product')).toBeInTheDocument()
   })
 
+  it('pluralises the run-count label (singular for one run)', () => {
+    const [dept] = makeDepts(1)
+    render(
+      <OrgHealthSection
+        departments={[{ ...dept!, total_runs: 1 }]}
+        overallHealth={70}
+      />,
+    )
+    // "· 1 run", never "· 1 runs".
+    expect(screen.getByText(/·\s*1 run\b/)).toBeInTheDocument()
+  })
+
+  it('hides the run-count label when there are no runs', () => {
+    render(
+      <OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />,
+    )
+    expect(screen.queryByText(/\brun\b/)).not.toBeInTheDocument()
+  })
+
   it('renders overall health gauge when provided', () => {
     render(<OrgHealthSection departments={makeDepts(1)} overallHealth={85} />)
     const meters = screen.getAllByRole('meter')

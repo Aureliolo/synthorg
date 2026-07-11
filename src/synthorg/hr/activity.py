@@ -132,14 +132,16 @@ def _task_metric_to_activity(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
-    """Convert a task metric record to a completed or failed timeline event.
+    """Convert a task metric record to a run-outcome-aware timeline event.
 
-    A successful run yields ``TASK_COMPLETED``; an unsuccessful run (failed
-    or empty) yields ``TASK_FAILED`` so the feed surfaces the failure
-    distinctly rather than as a generic completion. The cost/duration suffix
-    is omitted when the telemetry is unmeasured (a transition-sourced record
-    carries a reliability outcome but no cost/latency), keeping the
-    description truthful.
+    A successful run yields ``TASK_COMPLETED``; an empty run (finished but
+    produced nothing) yields ``TASK_EMPTY``; a failed run yields
+    ``TASK_FAILED`` -- so the feed distinguishes an empty run from a hard
+    failure rather than collapsing both into a generic completion. Records
+    that predate outcome capture (no ``run_outcome``) fall back to
+    ``is_success`` (completed vs failed). The cost/duration suffix is omitted
+    when the telemetry is unmeasured (a transition-sourced record carries a
+    reliability outcome but no cost/latency), keeping the description truthful.
 
     Returns:
         Result of type ``ActivityEvent``.

@@ -23,6 +23,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,
 )
+from synthorg.persistence._shared.query_filters import task_ids_in_clause
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -333,14 +334,9 @@ WHERE id=?""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = ?")
             params.append(filter_spec.task_id)
-        if filter_spec.task_ids is not None:
-            ordered = sorted(filter_spec.task_ids)
-            if ordered:
-                placeholders = ", ".join("?" for _ in ordered)
-                conditions.append(f"task_id IN ({placeholders})")
-                params.extend(ordered)
-            else:
-                conditions.append("1 = 0")
+        task_ids_conds, task_ids_params = task_ids_in_clause(filter_spec.task_ids, "?")
+        conditions.extend(task_ids_conds)
+        params.extend(task_ids_params)
         if filter_spec.created_by is not None:
             conditions.append("created_by = ?")
             params.append(filter_spec.created_by)
@@ -393,14 +389,9 @@ WHERE id=?""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = ?")
             params.append(filter_spec.task_id)
-        if filter_spec.task_ids is not None:
-            ordered = sorted(filter_spec.task_ids)
-            if ordered:
-                placeholders = ", ".join("?" for _ in ordered)
-                conditions.append(f"task_id IN ({placeholders})")
-                params.extend(ordered)
-            else:
-                conditions.append("1 = 0")
+        task_ids_conds, task_ids_params = task_ids_in_clause(filter_spec.task_ids, "?")
+        conditions.extend(task_ids_conds)
+        params.extend(task_ids_params)
         if filter_spec.created_by is not None:
             conditions.append("created_by = ?")
             params.append(filter_spec.created_by)

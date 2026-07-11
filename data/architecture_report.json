@@ -1170,12 +1170,6 @@
       "ratio": 0.934,
       "tier": "repository"
     },
-    "src/synthorg/persistence/sqlite/artifact_repo.py": {
-      "cap": 500,
-      "loc": 404,
-      "ratio": 0.808,
-      "tier": "code"
-    },
     "src/synthorg/persistence/sqlite/charter_repo.py": {
       "cap": 500,
       "loc": 444,

@@ -1,6 +1,8 @@
 # module-kind: controller
 """Department health aggregation controller."""
 
+import asyncio
+
 from litestar import Controller, get
 from litestar.datastructures import State
 
@@ -76,13 +78,19 @@ class DepartmentHealthController(Controller):
         agents = await config_resolver_of(app_state).get_agents()
         dept_agents = filter_agents_by_department(agents, canonical_name)
         resolver = config_resolver_of(app_state)
-        budget_cfg = await resolver.get_budget_config()
-        window_days = await resolver.get_int(
-            SettingNamespace.HR, "department_health_window_days"
-        )
-        min_runs = await resolver.get_int(
-            SettingNamespace.HR, "department_health_min_runs"
-        )
+        # The budget config and the two health settings are independent reads;
+        # resolve them concurrently rather than serialising three round-trips.
+        async with asyncio.TaskGroup() as tg:
+            budget_task = tg.create_task(resolver.get_budget_config())
+            window_task = tg.create_task(
+                resolver.get_int(SettingNamespace.HR, "department_health_window_days")
+            )
+            min_runs_task = tg.create_task(
+                resolver.get_int(SettingNamespace.HR, "department_health_min_runs")
+            )
+        budget_cfg = budget_task.result()
+        window_days = window_task.result()
+        min_runs = min_runs_task.result()
         health = await assemble_department_health(
             app_state,
             canonical_name,

@@ -205,8 +205,10 @@ export async function mockApiRoutes(page: Page) {
             { timestamp: '2026-03-28T00:00:00Z', value: 3 },
             { timestamp: '2026-03-29T00:00:00Z', value: 3 },
           ],
+          // Consistent with tasks_by_status: succeeded + empty == reviewable
+          // (completed 7 + in_review 3 = 10); failed == tasks_by_status.failed (0).
           task_outcomes: {
-            succeeded: 7,
+            succeeded: 9,
             empty: 1,
             failed: 0,
           },
