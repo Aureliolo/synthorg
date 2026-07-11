@@ -50,7 +50,7 @@ class CodeRetrievalSource:
         for position, result in enumerate(results):
             ref_id = make_ref_id(sub_query.index, position)
             snippet = truncate_snippet(result.snippet)
-            uri = (result.url or f"{result.repo}/{result.path}" or "").strip()
+            uri = (result.url or f"{result.repo}/{result.path}").strip()
             if not uri:
                 continue
             citation = ResearchCitation(

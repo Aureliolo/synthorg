@@ -14,7 +14,7 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 import asyncio
 import ipaddress
 from collections.abc import Sequence
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -320,7 +320,11 @@ async def resolve_dns(
             f"DNS resolution for {hostname!r} returned no results",
         )
 
-    return results
+    # getaddrinfo on a hostname yields only AF_INET/AF_INET6 entries, whose
+    # sockaddr is an IP tuple; typeshed types the sockaddr more broadly (it
+    # includes an AF_PACKET ``tuple[int, bytes]`` variant that name
+    # resolution never produces), so the narrower domain type is asserted here.
+    return cast("Sequence[_AddrInfo]", results)
 
 
 def check_resolved_ips(
