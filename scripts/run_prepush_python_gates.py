@@ -35,6 +35,7 @@ monkey-patches a module would silently affect later gates sharing its worker.
 import argparse
 import contextlib
 import io
+import multiprocessing
 import os
 import runpy
 import sys
@@ -262,8 +263,18 @@ def _run_pooled(jobs: int) -> tuple[dict[str, _GateResult], bool]:
                 results[stem] = (code, elapsed, output, detail)
                 _report_gate(stem, code, elapsed)
         except (BrokenProcessPool, TimeoutError) as exc:
-            unfinished = sorted(futures[f] for f in futures if not f.done())
-            pool.shutdown(cancel_futures=True)
+            # A gate whose future raised is already ``done()`` yet never made it
+            # into ``results``, so derive the unreported set from ``results``
+            # membership rather than ``Future.done()`` (which would under-count).
+            unfinished = sorted(stem for stem in _GATES if stem not in results)
+            # A wedged worker never exits on its own, and both
+            # ``shutdown(cancel_futures=True)`` and the context-manager exit
+            # block waiting on it -- which would defeat the batch timeout and
+            # hang the push. Terminate the pool's worker processes (this
+            # runner spawns no other children) so the shutdown returns at once.
+            for child in multiprocessing.active_children():
+                child.terminate()
+            pool.shutdown(wait=False, cancel_futures=True)
             reason = (
                 "a gate worker crashed (BrokenProcessPool)"
                 if isinstance(exc, BrokenProcessPool)

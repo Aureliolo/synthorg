@@ -560,9 +560,9 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     that crashes, so a native crash always surfaces as a failed run
     rather than being silently recovered.  ``_classify_isolation_outcome``
     then parses the captured stdout and BLOCKS on any worker crash
-    (native or repeated) alongside real test failures.  There is no
-    advisory pass -- a crashed worker is a real defect to debug from the
-    faulthandler/core dump, not noise to wave through.
+    alongside real test failures.  There is no advisory pass -- a crashed
+    worker is a real defect to debug from the faulthandler/core dump, not
+    noise to wave through.
     """
     cmd = [
         sys.executable,
