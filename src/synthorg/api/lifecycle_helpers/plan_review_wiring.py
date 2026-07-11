@@ -30,10 +30,9 @@ logger = get_logger(__name__)
 
 _PLAN_ACTION_TYPE = "plan:approve"
 
-#: ``ApprovalItem.metadata`` keys carrying the parked plan + resume context.
-PLAN_METADATA_KEY = "plan"
+#: ``ApprovalItem.metadata`` keys carrying resume context. The plan itself is
+#: durable (referenced by ``plan_id``); the approval only points at it.
 PROJECT_METADATA_KEY = "project"
-#: ``ApprovalItem.metadata`` key referencing the durable persisted plan.
 PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
@@ -138,7 +137,6 @@ class PlanReviewApprovalGate:
                 created_at=now,
                 task_id=NotBlankStr(str(task.id)),
                 metadata={
-                    PLAN_METADATA_KEY: plan.model_dump_json(),
                     PLAN_ID_METADATA_KEY: str(durable_plan.id),
                     PROJECT_METADATA_KEY: work_item.project,
                 },

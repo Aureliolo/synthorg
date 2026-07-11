@@ -77,6 +77,8 @@ def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
         owner=payload.owner,
         acceptance_criteria=payload.acceptance_criteria,
         expected_artifacts=payload.expected_artifacts,
+        required_skills=payload.required_skills,
+        required_tags=payload.required_tags,
         estimated_complexity=payload.estimated_complexity,
         stakes=payload.stakes,
     )

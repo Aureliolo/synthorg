@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -14,12 +15,16 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.decomposition.plan_mapping import plan_from_decomposition
+from synthorg.engine.decomposition.plan_mapping import (
+    decomposition_from_plan,
+    plan_from_decomposition,
+)
 from tests._shared import as_uuid, sid
 
 _CREATED_AT = datetime(2026, 3, 1, 9, 0, tzinfo=UTC)
@@ -115,3 +120,74 @@ class TestPlanFromDecomposition:
             status=PlanStatus.DRAFT,
         )
         assert plan.status is PlanStatus.DRAFT
+
+
+def _parent_task() -> Task:
+    return Task(
+        id=as_uuid("root"),
+        title="Objective",
+        description="Ship the game",
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.MEDIUM,
+        project="beachhead",
+        created_by="ceo",
+    )
+
+
+def _durable_plan() -> Plan:
+    return Plan(
+        id=as_uuid("plan-1"),
+        project=NotBlankStr("beachhead"),
+        objective_id=NotBlankStr("obj-1"),
+        parent_task_id=NotBlankStr(str(as_uuid("root"))),
+        items=(
+            PlanItem(
+                id=NotBlankStr(str(as_uuid("sub-1"))),
+                title=NotBlankStr("Board"),
+                description=NotBlankStr("Grid"),
+                required_skills=(NotBlankStr("frontend"),),
+            ),
+            PlanItem(
+                id=NotBlankStr(str(as_uuid("sub-2"))),
+                title=NotBlankStr("Movement"),
+                description=NotBlankStr("Drop"),
+                dependencies=(NotBlankStr(str(as_uuid("sub-1"))),),
+                owner=NotBlankStr("engineering"),
+            ),
+        ),
+        task_structure=TaskStructure.PARALLEL,
+        coordination_topology=CoordinationTopology.CENTRALIZED,
+        created_at=_CREATED_AT,
+        updated_at=_CREATED_AT,
+    )
+
+
+class TestDecompositionFromPlan:
+    @pytest.mark.unit
+    def test_rebuilds_dispatchable_result(self) -> None:
+        result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())
+
+        assert result.plan.parent_task_id == str(as_uuid("root"))
+        assert result.plan.task_structure is TaskStructure.PARALLEL
+        assert {s.id for s in result.plan.subtasks} == {
+            str(as_uuid("sub-1")),
+            str(as_uuid("sub-2")),
+        }
+        # Child tasks are fresh CREATED work with ids derived from item ids.
+        assert {str(t.id) for t in result.created_tasks} == {
+            str(as_uuid("sub-1")),
+            str(as_uuid("sub-2")),
+        }
+        assert all(
+            str(t.parent_task_id) == str(as_uuid("root")) for t in result.created_tasks
+        )
+        assert result.dependency_edges == (
+            (str(as_uuid("sub-1")), str(as_uuid("sub-2"))),
+        )
+
+    @pytest.mark.unit
+    def test_routing_hints_survive_round_trip(self) -> None:
+        result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())
+        by_id = {s.id: s for s in result.plan.subtasks}
+        assert by_id[str(as_uuid("sub-1"))].required_skills == ("frontend",)
+        assert by_id[str(as_uuid("sub-2"))].required_role == "engineering"

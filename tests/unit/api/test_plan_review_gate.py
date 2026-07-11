@@ -7,7 +7,6 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.plan_review_wiring import (
     PLAN_ID_METADATA_KEY,
-    PLAN_METADATA_KEY,
     PlanReviewApprovalGate,
 )
 from synthorg.core.persistence_errors import QueryError
@@ -110,7 +109,6 @@ class TestPlanReviewApprovalGate:
         assert len(parked) == 1
         metadata = parked[0].metadata
         assert metadata[PLAN_ID_METADATA_KEY] == str(durable.id)
-        assert PLAN_METADATA_KEY in metadata
 
     async def test_persistence_failure_parks_no_approval(self) -> None:
         store = ApprovalStore()

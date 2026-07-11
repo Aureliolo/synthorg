@@ -14082,6 +14082,16 @@ export type components = {
             readonly id: string;
             /** @description Role or agent that owns this item */
             readonly owner: string | null;
+            /**
+             * @description Skill IDs the routing scorer matches against
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
@@ -14110,6 +14120,16 @@ export type components = {
             readonly id: string;
             /** @description Role or agent that owns this item */
             readonly owner?: string | null;
+            /**
+             * @description Skill IDs the routing scorer matches against
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
             readonly stakes?: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;

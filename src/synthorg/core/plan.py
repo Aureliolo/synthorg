@@ -37,6 +37,8 @@ class PlanItem(BaseModel):
         acceptance_criteria: Per-item criteria that define "done" for it.
         expected_artifacts: Deliverables this item must produce (feeds the
             fail-loud zero-artifact guard once the item runs).
+        required_skills: Skill IDs the routing scorer matches against.
+        required_tags: Tags for multi-faceted routing match.
         estimated_complexity: Complexity estimate for routing.
         stakes: Stakes level for stakes-aware model routing.
     """
@@ -61,6 +63,14 @@ class PlanItem(BaseModel):
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Deliverables this item must produce",
+    )
+    required_skills: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Skill IDs the routing scorer matches against",
+    )
+    required_tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Tags for multi-faceted routing match",
     )
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,

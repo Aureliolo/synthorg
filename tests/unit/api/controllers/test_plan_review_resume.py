@@ -8,10 +8,12 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     CoordinationTopology,
@@ -22,15 +24,11 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.decomposition.models import (
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskDefinition,
-)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests._shared.scripted_provider import make_e2e_identity
+from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
 
@@ -39,6 +37,8 @@ pytestmark = pytest.mark.unit
 _Configured = Any  # type: ignore[explicit-any]
 
 _NOW = datetime(2026, 7, 7, 12, 0, tzinfo=UTC)
+_PLAN_ID = "plan-1"
+_SUB_IDS = (str(as_uuid("sub-1")), str(as_uuid("sub-2")))
 
 
 def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
@@ -55,25 +55,28 @@ def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
     )
 
 
-def _plan(parent_label: str) -> DecompositionResult:
-    """Build a two-subtask decomposition parented at *parent_label*."""
-    sub_ids = (str(as_uuid("sub-1")), str(as_uuid("sub-2")))
-    subtasks = tuple(
-        SubtaskDefinition(
+def _durable_plan(parent_label: str) -> Plan:
+    """Build a durable two-item plan parented at *parent_label*."""
+    items = tuple(
+        PlanItem(
             id=NotBlankStr(sub_id),
             title=NotBlankStr(f"Subtask {n}"),
             description=NotBlankStr(f"Do part {n}"),
         )
-        for n, sub_id in enumerate(sub_ids)
+        for n, sub_id in enumerate(_SUB_IDS)
     )
-    plan = DecompositionPlan(
+    return Plan(
+        id=as_uuid(_PLAN_ID),
+        project=NotBlankStr("proj-1"),
+        objective_id=NotBlankStr("obj-1"),
         parent_task_id=NotBlankStr(str(as_uuid(parent_label))),
-        subtasks=subtasks,
+        items=items,
         task_structure=TaskStructure.PARALLEL,
         coordination_topology=CoordinationTopology.CENTRALIZED,
+        status=PlanStatus.PENDING_REVIEW,
+        created_at=_NOW,
+        updated_at=_NOW,
     )
-    created = tuple(_task(f"sub-{n + 1}") for n in range(len(sub_ids)))
-    return DecompositionResult(plan=plan, created_tasks=created)
 
 
 def _approval(
@@ -81,11 +84,11 @@ def _approval(
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
     task_id: str | None,
-    plan_json: str | None,
+    plan_id: str | None,
 ) -> ApprovalItem:
     metadata: dict[str, str] = {}
-    if plan_json is not None:
-        metadata[PLAN_METADATA_KEY] = plan_json
+    if plan_id is not None:
+        metadata[PLAN_ID_METADATA_KEY] = plan_id
     return ApprovalItem(
         id=as_uuid(approval_id),
         action_type=NotBlankStr("plan:approve"),
@@ -105,18 +108,22 @@ async def _seed(
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
     task: Task | None,
-    plan: DecompositionResult | None,
+    plan: Plan | None,
     coordinator_error: Exception | None = None,
-) -> tuple[AppState, _Configured, _Configured]:
+) -> tuple[AppState, _Configured, _Configured, FakePersistenceBackend]:
     store = ApprovalStore()
     await store.add(
         _approval(
             "appr-1",
             source=source,
             task_id=str(task.id) if task is not None else None,
-            plan_json=plan.model_dump_json() if plan is not None else None,
+            plan_id=str(plan.id) if plan is not None else None,
         )
     )
+    backend = FakePersistenceBackend()
+    await backend.connect()
+    if plan is not None:
+        await backend.plans.save(plan)
     coordinator = mock_of[MultiAgentCoordinator](
         coordinate=AsyncMock(
             side_effect=coordinator_error,
@@ -135,17 +142,17 @@ async def _seed(
         coordinator=coordinator,
         task_engine=engine,
         agent_registry=registry,
+        persistence=backend,
     )
-    return state, coordinator, engine
+    return state, coordinator, engine, backend
 
 
 class TestPlanReviewResume:
     async def test_non_plan_source_is_inert(self) -> None:
-        parent = _task("parent-1")
-        state, coordinator, _ = await _seed(
+        state, coordinator, _, _ = await _seed(
             source=ApprovalSource.REVIEW_GATE,
-            task=parent,
-            plan=_plan("parent-1"),
+            task=_task("parent-1"),
+            plan=_durable_plan("parent-1"),
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -153,10 +160,11 @@ class TestPlanReviewResume:
         assert handled is False
         coordinator.coordinate.assert_not_called()
 
-    async def test_approve_dispatches_exact_plan(self) -> None:
+    async def test_approve_dispatches_durable_plan(self) -> None:
         parent = _task("parent-1")
-        plan = _plan("parent-1")
-        state, coordinator, _ = await _seed(task=parent, plan=plan)
+        state, coordinator, _, backend = await _seed(
+            task=parent, plan=_durable_plan("parent-1")
+        )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
@@ -165,12 +173,21 @@ class TestPlanReviewResume:
         context = coordinator.coordinate.await_args.args[0]
         precomputed = coordinator.coordinate.await_args.kwargs["precomputed_plan"]
         assert context.task.id == parent.id
-        # The exact parked plan is dispatched verbatim (no re-decomposition).
-        assert precomputed == plan
+        # The durable plan's items are rebuilt into the dispatched subtask tree.
+        dispatched_ids = {s.id for s in precomputed.plan.subtasks}
+        assert dispatched_ids == set(_SUB_IDS)
+        # Rebuilt child tasks are fresh CREATED work parented on the objective.
+        assert all(t.status is TaskStatus.CREATED for t in precomputed.created_tasks)
+        # The decision is reflected onto the durable plan.
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.APPROVED
 
-    async def test_reject_cancels_task_and_skips_dispatch(self) -> None:
+    async def test_reject_cancels_task_and_marks_plan_rejected(self) -> None:
         parent = _task("parent-1")
-        state, coordinator, engine = await _seed(task=parent, plan=_plan("parent-1"))
+        state, coordinator, engine, backend = await _seed(
+            task=parent, plan=_durable_plan("parent-1")
+        )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=False, decided_by="admin"
         )
@@ -180,21 +197,27 @@ class TestPlanReviewResume:
         call = engine.transition_task.await_args
         assert call.args[0] == str(parent.id)
         assert call.args[1] is TaskStatus.CANCELLED
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.REJECTED
 
     async def test_missing_task_owned_but_noop(self) -> None:
-        # The parked plan's parent task no longer exists: the flow owns the
-        # decision (returns True) but cannot dispatch.
-        state, coordinator, _ = await _seed(task=None, plan=_plan("parent-1"))
-        # Re-seed the approval with a real task_id so ownership routing holds
-        # even though get_task now yields None.
+        # The plan's parent task no longer exists: the flow owns the decision
+        # (returns True) but cannot dispatch.
+        state, coordinator, _, _ = await _seed(
+            task=None, plan=_durable_plan("parent-1")
+        )
         store = ApprovalStore()
         await store.add(
             _approval(
                 "appr-1",
                 task_id=str(as_uuid("parent-1")),
-                plan_json=_plan("parent-1").model_dump_json(),
+                plan_id=str(as_uuid(_PLAN_ID)),
             )
         )
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        await backend.plans.save(_durable_plan("parent-1"))
         state = make_app_state(
             approval_store=store,
             coordinator=coordinator,
@@ -202,6 +225,7 @@ class TestPlanReviewResume:
             agent_registry=mock_of[AgentRegistryService](
                 list_active=AsyncMock(return_value=())
             ),
+            persistence=backend,
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -213,9 +237,9 @@ class TestPlanReviewResume:
         # A dispatch failure must not 5xx the approval-decision request: the
         # flow still owns the decision (True) after logging.
         parent = _task("parent-1")
-        state, coordinator, _ = await _seed(
+        state, coordinator, _, _ = await _seed(
             task=parent,
-            plan=_plan("parent-1"),
+            plan=_durable_plan("parent-1"),
             coordinator_error=RuntimeError("boom"),
         )
         handled = await try_plan_review_resume(

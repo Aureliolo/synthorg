@@ -67,6 +67,16 @@ class PlanItemPayload(BaseModel):
         max_length=_MAX_CRITERIA,
         description="Deliverables this item must produce",
     )
+    required_skills: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="Skill IDs the routing scorer matches against",
+    )
+    required_tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="Tags for multi-faceted routing match",
+    )
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM, description="Complexity estimate for routing"
     )

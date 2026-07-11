@@ -1,12 +1,12 @@
 # module-kind: code
-"""Map a transient ``DecompositionResult`` onto a durable ``Plan``.
+"""Project between a transient ``DecompositionResult`` and a durable ``Plan``.
 
 The decomposition layer produces a ``DecompositionResult`` (the executed
 subtask tree). To make a plan first-class (reviewable, revisable, and
 outliving the approval decision), that transient shape is projected onto the
-persisted :class:`~synthorg.core.plan.Plan` entity. This module owns the
-projection so both the plan-review gate and any future re-plan path build a
-``Plan`` the same way.
+persisted :class:`~synthorg.core.plan.Plan` entity, and back again at dispatch
+time so an operator-edited plan is the one that actually builds. This module
+owns both directions so the gate, the API, and the resume path stay in step.
 """
 
 from datetime import datetime
@@ -14,8 +14,12 @@ from uuid import UUID
 
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
@@ -34,6 +38,8 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         description=subtask.description,
         dependencies=subtask.dependencies,
         owner=subtask.required_role,
+        required_skills=subtask.required_skills,
+        required_tags=subtask.required_tags,
         estimated_complexity=subtask.estimated_complexity,
         stakes=subtask.stakes,
     )
@@ -77,4 +83,92 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         forecast_id=forecast_id,
         created_at=created_at,
         updated_at=created_at,
+    )
+
+
+def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
+    """Project a durable plan item back onto a decomposition subtask.
+
+    Routing hints the plan does not carry (skills, tags) default to empty; the
+    item's ``owner`` maps back to the subtask's ``required_role``.
+
+    Returns:
+        A :class:`SubtaskDefinition` mirroring the plan item.
+    """
+    return SubtaskDefinition(
+        id=item.id,
+        title=item.title,
+        description=item.description,
+        dependencies=item.dependencies,
+        estimated_complexity=item.estimated_complexity,
+        stakes=item.stakes,
+        required_skills=item.required_skills,
+        required_tags=item.required_tags,
+        required_role=item.owner,
+    )
+
+
+def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
+    """Rebuild the child task for a plan item under *parent_task*.
+
+    Uses the same deterministic id mapping as the decomposition service, so a
+    re-dispatch of the same (possibly edited) plan targets stable task ids.
+
+    Returns:
+        A ``CREATED`` child :class:`Task` inheriting the parent's routing
+        context (type, priority, project, delegation chain).
+    """
+    return Task(
+        id=subtask_uuid(item.id),
+        title=item.title,
+        description=item.description,
+        type=parent_task.type,
+        priority=parent_task.priority,
+        project=parent_task.project,
+        created_by=parent_task.created_by,
+        parent_task_id=str(parent_task.id),
+        delegation_chain=parent_task.delegation_chain,
+        dependencies=item.dependencies,
+        status=TaskStatus.CREATED,
+        estimated_complexity=item.estimated_complexity,
+        stakes=item.stakes,
+    )
+
+
+def decomposition_from_plan(
+    plan: Plan,
+    *,
+    parent_task: Task,
+) -> DecompositionResult:
+    """Rebuild the dispatchable ``DecompositionResult`` from a durable plan.
+
+    The inverse of :func:`plan_from_decomposition`: it reconstructs the subtask
+    tree, child tasks, and dependency edges so an operator-edited plan is the
+    one that actually builds on approval (no reliance on the frozen snapshot
+    captured at gate time).
+
+    Args:
+        plan: The durable plan to dispatch (its items become the subtasks).
+        parent_task: The objective task the plan decomposes; supplies the
+            routing context inherited by each child task.
+
+    Returns:
+        A validated :class:`DecompositionResult` ready for
+        ``coordinate(precomputed_plan=...)``.
+    """
+    subtasks = tuple(_subtask_from_item(item) for item in plan.items)
+    created_tasks = tuple(
+        _task_from_item(item, parent_task=parent_task) for item in plan.items
+    )
+    edges = tuple((dep, item.id) for item in plan.items for dep in item.dependencies)
+    decomposition_plan = DecompositionPlan(
+        parent_task_id=str(parent_task.id),
+        subtasks=subtasks,
+        task_structure=plan.task_structure,
+        coordination_topology=plan.coordination_topology,
+    )
+    return DecompositionResult(
+        plan=decomposition_plan,
+        created_tasks=created_tasks,
+        dependency_edges=edges,
     )
