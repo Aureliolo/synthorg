@@ -27,7 +27,9 @@ const DepartmentRow = memo(function DepartmentRow({ dept }: DepartmentRowProps) 
       />
       <div className="mt-0.5 flex justify-between gap-2 font-mono text-xs text-muted-foreground">
         <span>
-          {Math.round(dept.utilization_percent)}% utilised
+          {dept.utilization_degraded
+            ? 'utilisation unknown'
+            : `${Math.round(dept.utilization_percent)}% utilised`}
           {dept.total_runs > 0
             ? ` · ${dept.total_runs} ${dept.total_runs === 1 ? 'run' : 'runs'}`
             : ''}

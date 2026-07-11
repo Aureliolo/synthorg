@@ -1,3 +1,4 @@
+import { paginateAll } from '@/api/client'
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
@@ -24,6 +25,21 @@ import {
 import type { ApprovalsGet, ApprovalsSet } from './types'
 
 const log = createLogger('approvals')
+
+const APPROVAL_PAGE_SIZE = 200
+
+async function listAllApprovals(
+  filters: ApprovalFilters | undefined,
+): Promise<ApprovalResponse[]> {
+  // The badge and the review inbox both derive counts/filters across the whole
+  // approval set, so walk every cursor page rather than trusting a single
+  // capped response. paginateAll threads the opaque cursor and fails loud on a
+  // malformed envelope (hasMore with no cursor) instead of truncating.
+  const pageSize = filters?.limit ?? APPROVAL_PAGE_SIZE
+  return paginateAll<ApprovalResponse>((cursor) =>
+    approvalsApi.listApprovals({ ...filters, cursor, limit: pageSize }),
+  )
+}
 
 function mergePreservingOptimistic(
   serverData: readonly ApprovalResponse[],
@@ -60,9 +76,9 @@ async function fetchApprovalsImpl(
   const seq = nextListRequestSeq()
   set({ loading: true, error: null })
   try {
-    const result = await approvalsApi.listApprovals(filters)
+    const all = await listAllApprovals(filters)
     if (epoch !== getRequestEpoch() || seq !== getListRequestSeq()) return
-    const merged = mergePreservingOptimistic(result.data, get)
+    const merged = mergePreservingOptimistic(all, get)
     const prunedSelected = prunePendingSelection(get().selectedIds, merged)
     const currentSelected = get().selectedApproval
     const freshSelected = currentSelected

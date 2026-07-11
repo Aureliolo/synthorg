@@ -168,6 +168,7 @@ nav:
       - Mid-Flight Steering: design/mid-flight-steering.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md
+      - Plan Review: design/plan-review.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
       - Memory Organizational: design/memory-organizational.md

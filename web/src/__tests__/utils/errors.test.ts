@@ -188,14 +188,16 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toContain('operator')
   })
 
-  it('does NOT leak 5xx error body', () => {
-    const error = makeAxiosError(500, { error: 'Internal: SQL deadlock on users table' })
-    // Message refined to escalate on the unknown-5xx path; SQL detail
-    // must still never reach the user.
-    const message = getErrorMessage(error)
-    expect(message).not.toContain('SQL')
-    expect(message).not.toContain('deadlock')
-    expect(message).toContain('contact support')
+  it('surfaces the real 5xx error the backend returned', () => {
+    // The backend redacts credential-shaped substrings server-side
+    // (safe_error_description) and sends the real error; the client shows
+    // it rather than a generic "contact support" placeholder.
+    const error = makeAxiosError(500, {
+      error: 'PersistenceError: SQL deadlock on users table',
+    })
+    expect(getErrorMessage(error)).toBe(
+      'PersistenceError: SQL deadlock on users table',
+    )
   })
 
   it('returns network error for no response', () => {
@@ -226,16 +228,23 @@ describe('getErrorMessage', () => {
     )
   })
 
-  it('keeps the canned copy for an INTERNAL-category 502', () => {
+  it('surfaces the real error for an INTERNAL-category 502', () => {
+    // INTERNAL 5xx are no longer suppressed: the backend already redacted
+    // secrets, and the real error is what an operator needs to see.
     const error = makeAxiosError(502, {
-      error: 'Traceback (most recent call last): boom',
+      error: 'RuntimeError: connection pool exhausted',
       error_detail: makeDetail(ErrorCategory.INTERNAL),
     })
-    expect(getErrorMessage(error)).toContain('connectivity')
+    expect(getErrorMessage(error)).toBe('RuntimeError: connection pool exhausted')
   })
 
-  it('keeps the canned copy for an unstructured 502 body', () => {
-    const error = makeAxiosError(502, { error: 'raw upstream text' })
+  it('surfaces the real error for a 502 with a plain error body', () => {
+    const error = makeAxiosError(502, { error: 'upstream refused the connection' })
+    expect(getErrorMessage(error)).toBe('upstream refused the connection')
+  })
+
+  it('falls back to the connectivity hint for a 502 with no error body', () => {
+    const error = makeAxiosError(502)
     expect(getErrorMessage(error)).toContain('connectivity')
   })
 
@@ -336,13 +345,13 @@ describe('getErrorMessage', () => {
   })
 
   it('returns generic message for Error starting with {', () => {
-    expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+    expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An error occurred but no details were available. Check the browser console.')
   })
 
   it('returns generic message for non-error values', () => {
-    expect(getErrorMessage('string')).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
-    expect(getErrorMessage(42)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
-    expect(getErrorMessage(null)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+    expect(getErrorMessage('string')).toBe('An error occurred but no details were available. Check the browser console.')
+    expect(getErrorMessage(42)).toBe('An error occurred but no details were available. Check the browser console.')
+    expect(getErrorMessage(null)).toBe('An error occurred but no details were available. Check the browser console.')
   })
 })
 

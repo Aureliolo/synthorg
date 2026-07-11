@@ -1,6 +1,6 @@
 /** Artifact, project, memory.fine_tune, and client WebSocket payload interfaces. */
 
-import type { WorkflowExecutionStatus } from '../enum-values.gen'
+import type { PlanStatus, WorkflowExecutionStatus } from '../enum-values.gen'
 
 export interface WsArtifactCreatedPayload {
   artifact_id: string
@@ -36,6 +36,18 @@ export interface WsProjectStatusChangedPayload {
   project_id: string
   status: string
   previous_status?: string | null
+}
+
+export interface WsPlanUpdatedPayload {
+  plan_id: string
+  version: number
+  status: PlanStatus
+}
+
+export interface WsPlanChangesRequestedPayload {
+  plan_id: string
+  status: PlanStatus
+  note: string
 }
 
 export interface WsWorkflowExecutionStatusChangedPayload {

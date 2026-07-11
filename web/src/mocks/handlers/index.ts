@@ -82,6 +82,7 @@ import { oauthDefaultHandlers } from './oauth'
 import { objectivesHandlers } from './objectives'
 import { ontologyHandlers } from './ontology'
 import { personalitiesHandlers } from './personalities'
+import { plansHandlers } from './plans'
 import { projectBrainHandlers } from './projectBrain'
 import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
@@ -154,6 +155,7 @@ export const defaultHandlers = [
   ...objectivesHandlers,
   ...ontologyHandlers,
   ...personalitiesHandlers,
+  ...plansHandlers,
   ...projectBrainHandlers,
   ...projectDocsHandlers,
   ...projectsHandlers,

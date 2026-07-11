@@ -44,6 +44,8 @@ export const WS_EVENT_TYPE_VALUES = [
   "project.created",
   "project.deleted",
   "project.status_changed",
+  "plan.updated",
+  "plan.changes_requested",
   "workflow_execution.status_changed",
   "memory.fine_tune.progress",
   "memory.fine_tune.stage_changed",

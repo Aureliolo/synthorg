@@ -447,6 +447,7 @@ dialogs
 dicts
 disambiguates
 discoverability
+dispatchable
 doc_type
 docs_engine
 docstring
@@ -703,6 +704,7 @@ retag
 retention_days
 retryable
 review_gate
+reworkable
 rgba
 risk_budget
 risk_tolerance
@@ -742,6 +744,7 @@ snake_case
 snapshot_at
 sparkline
 sparklines
+splittable
 springDefault
 sprint_id
 sqlglot

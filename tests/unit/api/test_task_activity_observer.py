@@ -102,6 +102,7 @@ def _observer(
     *,
     artifact_count: int = 0,
     list_error: Exception | None = None,
+    resolve_agent: object = None,
 ) -> TaskActivityObserver:
     lister: object
     if list_error is not None:
@@ -116,6 +117,7 @@ def _observer(
         publish=channels.publish,
         list_artifacts=lister,  # type: ignore[arg-type]
         record_metric=recorder,
+        resolve_agent=resolve_agent,  # type: ignore[arg-type]
     )
 
 
@@ -140,6 +142,60 @@ class TestTaskActivityObserver:
         assert payload["from_status"] == "assigned"
         assert payload["run_outcome"] is None
         assert recorder.records == []
+
+    async def test_publish_enriches_assignee_identity(self) -> None:
+        from synthorg.api.task_activity_observer import ActivityAgentRef
+        from synthorg.core.types import NotBlankStr
+
+        channels, recorder = _FakeChannels(), _Recorder()
+
+        async def _resolve(agent_id: str) -> ActivityAgentRef | None:
+            assert agent_id == "agent-1"
+            return ActivityAgentRef(
+                name=NotBlankStr("Alex"),
+                role=NotBlankStr("Engineer"),
+                department=NotBlankStr("Engineering"),
+            )
+
+        await _observer(channels, recorder, resolve_agent=_resolve)(
+            _event(
+                new_status=TaskStatus.IN_PROGRESS,
+                previous_status=TaskStatus.ASSIGNED,
+            )
+        )
+        payload = _payload(channels)
+        assert payload["agent_name"] == "Alex"
+        assert payload["agent_role"] == "Engineer"
+        assert payload["department"] == "Engineering"
+
+    async def test_publish_without_resolver_leaves_identity_null(self) -> None:
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder)(
+            _event(
+                new_status=TaskStatus.IN_PROGRESS,
+                previous_status=TaskStatus.ASSIGNED,
+            )
+        )
+        payload = _payload(channels)
+        assert payload["agent_name"] is None
+        assert payload["department"] is None
+
+    async def test_publish_survives_resolver_fault(self) -> None:
+        channels, recorder = _FakeChannels(), _Recorder()
+
+        async def _boom(_agent_id: str) -> object:
+            msg = "resolver down"
+            raise RuntimeError(msg)
+
+        await _observer(channels, recorder, resolve_agent=_boom)(
+            _event(
+                new_status=TaskStatus.IN_PROGRESS,
+                previous_status=TaskStatus.ASSIGNED,
+            )
+        )
+        # The publish still fires; only the name enrichment is dropped.
+        assert len(channels.published) == 1
+        assert _payload(channels)["agent_name"] is None
 
     async def test_failed_transition_publishes_and_records_failure(self) -> None:
         channels, recorder = _FakeChannels(), _Recorder()

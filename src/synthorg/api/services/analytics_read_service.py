@@ -11,6 +11,7 @@ services; this service owns the one remaining direct repository touch
 from typing import Final
 
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_TASK_LIST_COLLECTED
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
@@ -37,17 +38,39 @@ class AnalyticsReadService:
     async def list_tasks(self) -> tuple[Task, ...]:
         """Return the task list the analytics aggregates are built from.
 
-        Pages through the repository in ``_FETCH_PAGE_SIZE`` windows until
-        exhausted: the analytics overview / trends endpoints fold the FULL
-        task set into their counts, so a single default-window ``query``
-        (capped at the repository's default page size) would silently
-        undercount once the org exceeds that many tasks.
+        Pages through the repository until exhausted: the analytics overview /
+        trends endpoints fold the FULL task set into their counts, so a single
+        default-window ``query`` (capped at the repository's default page size)
+        would silently undercount once the org exceeds that many tasks.
 
         Returns:
             Every task matching the empty filter spec, ordered by id
             ascending.
         """
-        spec = TaskFilterSpec()
+        tasks = await self._query_all(TaskFilterSpec())
+        logger.debug(ANALYTICS_TASK_LIST_COLLECTED, task_count=len(tasks))
+        return tasks
+
+    async def list_in_progress(self) -> tuple[Task, ...]:
+        """Return only the tasks currently executing (``IN_PROGRESS``).
+
+        Utilisation surfaces (per-department health) need just the in-flight
+        tasks to derive busy assignees, so this filters at the repository
+        rather than scanning the whole task set per department.
+
+        Returns:
+            Every ``IN_PROGRESS`` task, ordered by id ascending.
+        """
+        tasks = await self._query_all(TaskFilterSpec(status=TaskStatus.IN_PROGRESS))
+        logger.debug(ANALYTICS_TASK_LIST_COLLECTED, task_count=len(tasks))
+        return tasks
+
+    async def _query_all(self, spec: TaskFilterSpec) -> tuple[Task, ...]:
+        """Page the repository in ``_FETCH_PAGE_SIZE`` windows until exhausted.
+
+        Returns:
+            Every task matching ``spec``, ordered by id ascending.
+        """
         tasks: list[Task] = []
         offset = 0
         page = await self._task_repo.query(spec, limit=_FETCH_PAGE_SIZE, offset=offset)
@@ -62,7 +85,6 @@ class AnalyticsReadService:
             page = await self._task_repo.query(
                 spec, limit=_FETCH_PAGE_SIZE, offset=offset
             )
-        logger.debug(ANALYTICS_TASK_LIST_COLLECTED, task_count=len(tasks))
         return tuple(tasks)
 
 

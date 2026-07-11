@@ -28,6 +28,7 @@ CHANNEL_APPROVALS: Final[str] = "approvals"
 CHANNEL_MEETINGS: Final[str] = "meetings"
 CHANNEL_ARTIFACTS: Final[str] = "artifacts"
 CHANNEL_PROJECTS: Final[str] = "projects"
+CHANNEL_PLANS: Final[str] = "plans"
 CHANNEL_COMPANY: Final[str] = "company"
 CHANNEL_DEPARTMENTS: Final[str] = "departments"
 CHANNEL_CLIENTS: Final[str] = "clients"
@@ -54,6 +55,7 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_MEETINGS,
     CHANNEL_ARTIFACTS,
     CHANNEL_PROJECTS,
+    CHANNEL_PLANS,
     CHANNEL_COMPANY,
     CHANNEL_DEPARTMENTS,
     CHANNEL_CLIENTS,

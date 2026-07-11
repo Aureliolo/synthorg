@@ -71,6 +71,12 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
     ? DOT_COLOR_CLASSES[getRunOutcomeColor(activity.run_outcome)]
     : getActionDotColor(activity.action_type)
 
+  // The assignee's function + department, shown as a subtle metadata line so
+  // the feed reads "Alex / Engineer · Engineering" instead of a bare id.
+  const agentMeta = [activity.agent_role, activity.department]
+    .filter((part): part is string => Boolean(part))
+    .join(' · ')
+
   return (
     <div
       className={cn(
@@ -108,6 +114,11 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
             <RunOutcomeBadge outcome={activity.run_outcome} className="shrink-0" />
           )}
         </div>
+        {agentMeta && (
+          <span className="block truncate text-xs text-muted-foreground">
+            {agentMeta}
+          </span>
+        )}
         {activity.task_id && (
           <Link
             to={`/tasks/${activity.task_id}`}

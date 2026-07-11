@@ -61,7 +61,14 @@ def test_raise_not_implemented_with_args_flagged(tmp_path: Path) -> None:
     assert len(_scan(tmp_path, "m.py", source)) == 1
 
 
-def test_abstractmethod_raise_exempt(tmp_path: Path) -> None:
+def test_abstractmethod_raise_flagged(tmp_path: Path) -> None:
+    """``raise NotImplementedError`` is banned even in an abstract seam.
+
+    The seam declares its interface-only body as ``...`` (see
+    :func:`test_abstractmethod_ellipsis_body_exempt`); the builtin raise
+    is redundant there and banned outright so it can never masquerade as
+    working code anywhere.
+    """
     source = (
         "from abc import ABC, abstractmethod\n\n\n"
         "class C(ABC):\n"
@@ -69,17 +76,20 @@ def test_abstractmethod_raise_exempt(tmp_path: Path) -> None:
         "    def f(self) -> None:\n"
         "        raise NotImplementedError\n"
     )
-    assert _scan(tmp_path, "m.py", source) == []
+    violations = _scan(tmp_path, "m.py", source)
+    assert len(violations) == 1
+    assert "NotImplementedError" in violations[0].detail
 
 
-def test_overload_raise_exempt(tmp_path: Path) -> None:
+def test_overload_raise_flagged(tmp_path: Path) -> None:
+    """``raise NotImplementedError`` is banned even in an ``@overload`` seam."""
     source = (
         "from typing import overload\n\n\n"
         "@overload\n"
         "def f(x: int) -> int:\n"
         "    raise NotImplementedError\n"
     )
-    assert _scan(tmp_path, "m.py", source) == []
+    assert len(_scan(tmp_path, "m.py", source)) == 1
 
 
 def test_lint_allow_marker_suppresses(tmp_path: Path) -> None:

@@ -11,7 +11,7 @@ import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { createLogger } from '@/lib/logger'
 import { formatCurrency } from '@/utils/format'
-import { sanitizeWsEnumOrNull } from '@/utils/ws-sanitize'
+import { sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
 
 const log = createLogger('dashboard')
 
@@ -149,6 +149,14 @@ function _resolveAgentName(payload: WsEventPayload): string {
   return 'System'
 }
 
+function _resolveAgentRole(payload: WsEventPayload): string | null {
+  // Untrusted WS field: strip control chars / bidi overrides / overlong values
+  // before it reaches activity-feed state.
+  return _isNonEmptyString(payload['agent_role'])
+    ? (sanitizeWsString(payload['agent_role']) ?? null)
+    : null
+}
+
 function _resolveTaskId(payload: WsEventPayload): string | null {
   return _isNonEmptyString(payload['task_id']) ? payload['task_id'] : null
 }
@@ -204,6 +212,7 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
     id: _resolveActivityId({ event, payload, taskId, agentName }),
     timestamp: event.timestamp,
     agent_name: agentName,
+    agent_role: _resolveAgentRole(payload),
     action_type: event.event_type,
     description: _resolveDescription(payload, event.event_type),
     task_id: taskId,

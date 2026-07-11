@@ -75,11 +75,13 @@ def _payload(exc: Exception) -> dict[str, object]:
 class TestErrorFrame:
     """The SSE ``error`` frame's redaction + discrimination contract."""
 
-    def test_non_domain_error_stays_opaque(self) -> None:
-        payload = _payload(ValueError("connection string user:hunter2@db"))
-        # Only the class name crosses the wire; the message never does.
-        assert payload == {"error": "Internal error: ValueError"}
-        assert "hunter2" not in str(payload["error"])
+    def test_non_domain_error_surfaces_type_and_redacts_secrets(self) -> None:
+        payload = _payload(ValueError("bad token Authorization: Bearer sk-leak-me"))
+        # The real error (type + message) crosses the wire...
+        assert str(payload["error"]).startswith("ValueError")
+        assert "bad token" in str(payload["error"])
+        # ...but a credential token in the message is redacted.
+        assert "sk-leak-me" not in str(payload["error"])
 
     def test_client_error_surfaces_detail_and_code(self) -> None:
         payload = _payload(NotFoundError("The requested agent is not registered"))
@@ -88,14 +90,14 @@ class TestErrorFrame:
         assert payload["retryable"] is False
         assert "retry_after" not in payload
 
-    def test_server_error_scrubs_to_fallback(self) -> None:
-        # A 503 carries a 5xx-safe fallback, never the constructed detail
-        # (which could name an internal dependency).
+    def test_server_error_surfaces_real_detail(self) -> None:
+        # A 5xx surfaces the real reason (with type prefix) so the operator
+        # sees what actually failed, not a bare "Service unavailable".
         payload = _payload(
-            ServiceUnavailableError("chat backend down: internal-host:5432")
+            ServiceUnavailableError("chat backend down: register a provider")
         )
-        assert payload["error"] == "Service unavailable"
-        assert "5432" not in str(payload["error"])
+        assert str(payload["error"]).startswith("ServiceUnavailableError")
+        assert "chat backend down" in str(payload["error"])
         assert payload["error_code"] == ErrorCode.SERVICE_UNAVAILABLE.value
         assert payload["retryable"] is True
 

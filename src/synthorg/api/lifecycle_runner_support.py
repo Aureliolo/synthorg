@@ -237,9 +237,13 @@ def _wire_task_activity_observer(
     from litestar.channels import ChannelsPlugin  # noqa: PLC0415
 
     from synthorg.api.task_activity_observer import (  # noqa: PLC0415
+        ActivityAgentRef,
         TaskActivityObserver,
     )
     from synthorg.core.artifact import Artifact  # noqa: PLC0415
+    from synthorg.core.normalization import (  # noqa: PLC0415
+        normalize_ascii_lowercase,
+    )
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.persistence.artifact_protocol import (  # noqa: PLC0415
         ArtifactFilterSpec,
@@ -272,6 +276,19 @@ def _wire_task_activity_observer(
     async def _list_artifacts(task_id: str) -> Sequence[Artifact]:
         return await persistence.artifacts.query(ArtifactFilterSpec(task_id=task_id))
 
+    async def _resolve_agent(agent_id: str) -> ActivityAgentRef | None:
+        # Resolve the assignee's display identity at event time so a live
+        # config change (renamed agent, moved department) is reflected without
+        # reconstructing the observer. ``get_agents`` is config-resolver cached.
+        agents = await config_resolver_of(app_state).get_agents()
+        target = normalize_ascii_lowercase(agent_id)
+        for agent in agents:
+            if normalize_ascii_lowercase(str(agent.id)) == target:
+                return ActivityAgentRef(
+                    name=agent.name, role=agent.role, department=agent.department
+                )
+        return None
+
     observer = TaskActivityObserver(
         # ``wait_published`` (direct backend delivery), NOT ``publish`` (background
         # pub-queue): a transition can publish while the channels plugin is being
@@ -280,6 +297,7 @@ def _wire_task_activity_observer(
         publish=channels_plugin.wait_published,
         list_artifacts=_list_artifacts,
         record_metric=tracker.record_task_metric,
+        resolve_agent=_resolve_agent,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
     logger.info(API_SERVICE_AUTO_WIRED, service="task_activity_observer")

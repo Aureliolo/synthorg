@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 
@@ -108,6 +109,40 @@ class WsProjectStatusChangedPayload(BaseModel):
     project_id: NotBlankStr
     status: NotBlankStr
     previous_status: NotBlankStr | None = None
+
+
+# ── Plan-review domain ──────────────────────────────────────────────
+
+
+class WsPlanUpdatedPayload(BaseModel):
+    """Payload for ``plan.updated``.
+
+    Emitted by ``api/controllers/plans.py`` when an operator reworks a plan.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PLAN_UPDATED] = WsEventType.PLAN_UPDATED
+    plan_id: NotBlankStr
+    version: int = Field(ge=1)
+    status: PlanStatus
+
+
+class WsPlanChangesRequestedPayload(BaseModel):
+    """Payload for ``plan.changes_requested``.
+
+    Emitted by ``api/controllers/plans.py`` when an operator sends a plan back
+    for revision; ``note`` carries the requested change.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PLAN_CHANGES_REQUESTED] = (
+        WsEventType.PLAN_CHANGES_REQUESTED
+    )
+    plan_id: NotBlankStr
+    status: PlanStatus
+    note: NotBlankStr
 
 
 class WsWorkflowExecutionStatusChangedPayload(BaseModel):

@@ -3,13 +3,17 @@
 
 Attaches a plan-review gate to the work pipeline when
 ``coordination.plan_approval_required`` is set: splittable team work is then
-parked for human approval (the decomposed plan) before any team builds, and
-the approved plan is dispatched verbatim on approval. Default off, so
-behaviour is unchanged unless an operator opts in.
+parked for human approval before any team builds. The decomposed plan is
+persisted as a durable :class:`~synthorg.core.plan.Plan` and the parked
+approval carries only its ``plan_id``; on approval the plan is loaded and
+rebuilt into a dispatch tree, so an operator's edits between parking and
+approval are exactly what builds. Default off, so behaviour is unchanged
+unless an operator opts in.
 """
 
 import uuid
 from typing import Final
+from uuid import UUID
 
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -17,22 +21,48 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.decomposition.plan_mapping import plan_from_decomposition
 from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.plan_protocol import PlanRepository
 
 logger = get_logger(__name__)
 
 _PLAN_ACTION_TYPE = "plan:approve"
 
-#: ``ApprovalItem.metadata`` keys carrying the parked plan + resume context.
-PLAN_METADATA_KEY = "plan"
+#: ``ApprovalItem.metadata`` keys carrying resume context. The plan itself is
+#: durable (referenced by ``plan_id``); the approval only points at it.
 PROJECT_METADATA_KEY = "project"
+PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
+
+# Plan-approval risk scales with plan size: a larger plan commits more work and
+# budget in one decision, so it warrants proportionally more scrutiny. (Risk
+# level is otherwise a mostly-decorative label; scaling it with size at least
+# makes it an honest signal here rather than a hardcoded constant.)
+_LOW_RISK_MAX_SUBTASKS: Final[int] = 3
+_MEDIUM_RISK_MAX_SUBTASKS: Final[int] = 8
+
+
+def _plan_risk_level(plan: DecompositionResult) -> ApprovalRiskLevel:
+    """Scale plan-approval risk with the size of the decomposed plan.
+
+    Returns:
+        ``LOW`` for a small plan, ``MEDIUM`` for a mid-sized one, ``HIGH``
+        for a large plan (more subtasks commit more work in one approval).
+    """
+    count = len(plan.plan.subtasks)
+    if count <= _LOW_RISK_MAX_SUBTASKS:
+        return ApprovalRiskLevel.LOW
+    if count <= _MEDIUM_RISK_MAX_SUBTASKS:
+        return ApprovalRiskLevel.MEDIUM
+    return ApprovalRiskLevel.HIGH
 
 
 def _plan_detail(plan: DecompositionResult) -> str:
@@ -53,20 +83,22 @@ class PlanReviewApprovalGate:
 
     Structurally satisfies the engine's ``PlanReviewGate`` port; wired onto
     the work pipeline by the startup hook so the engine never imports the
-    approval store. The full :class:`DecompositionResult` is serialised into
-    the approval's metadata so the approved plan is dispatched verbatim on
-    approval (no re-decomposition).
+    approval store. The plan is persisted durably and the parked approval
+    carries only its ``plan_id``; on approval the plan is reloaded and rebuilt
+    into a dispatch tree, so an operator's edits are what actually build.
     """
 
-    __slots__ = ("_approval_store", "_clock")
+    __slots__ = ("_approval_store", "_clock", "_plans")
 
     def __init__(
         self,
         *,
         approval_store: ApprovalStoreProtocol,
+        plans: PlanRepository,
         clock: Clock,
     ) -> None:
         self._approval_store = approval_store
+        self._plans = plans
         self._clock = clock
 
     async def request_plan_approval(
@@ -76,36 +108,78 @@ class PlanReviewApprovalGate:
         task: Task,
         plan: DecompositionResult,
     ) -> PlanReviewHandoff:
-        """Park *plan* as a plan-approval item and return the handoff.
+        """Persist *plan* durably and park it as an approval item.
+
+        The plan is persisted first so the parked approval always references
+        a durable :class:`~synthorg.core.plan.Plan`; a persistence failure
+        surfaces before any dangling approval is created.
 
         Returns:
             A :class:`PlanReviewHandoff` naming the parked approval item.
         """
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
-        await self._approval_store.add(
-            ApprovalItem(
-                id=approval_id,
-                action_type=NotBlankStr(_PLAN_ACTION_TYPE),
-                title=NotBlankStr(f"Approve plan for: {task.title}"),
-                description=NotBlankStr(detail),
-                requested_by=work_item.requested_by,
-                risk_level=ApprovalRiskLevel.MEDIUM,
-                source=ApprovalSource.PLAN_REVIEW,
-                status=ApprovalStatus.PENDING,
-                created_at=self._clock.now(),
-                task_id=NotBlankStr(str(task.id)),
-                metadata={
-                    PLAN_METADATA_KEY: plan.model_dump_json(),
-                    PROJECT_METADATA_KEY: work_item.project,
-                },
-            )
+        now = self._clock.now()
+        durable_plan = plan_from_decomposition(
+            plan,
+            project=work_item.project,
+            objective_id=work_item.correlation_id,
+            parent_task_id=NotBlankStr(str(task.id)),
+            created_at=now,
+            forecast_id=work_item.forecast_id,
         )
+        await self._plans.create(durable_plan)
+        approval = ApprovalItem(
+            id=approval_id,
+            action_type=NotBlankStr(_PLAN_ACTION_TYPE),
+            title=NotBlankStr(f"Approve plan for: {task.title}"),
+            description=NotBlankStr(detail),
+            requested_by=work_item.requested_by,
+            risk_level=_plan_risk_level(plan),
+            source=ApprovalSource.PLAN_REVIEW,
+            status=ApprovalStatus.PENDING,
+            created_at=now,
+            task_id=NotBlankStr(str(task.id)),
+            metadata={
+                PLAN_ID_METADATA_KEY: str(durable_plan.id),
+                PROJECT_METADATA_KEY: work_item.project,
+            },
+        )
+        try:
+            await self._approval_store.add(approval)
+        except Exception as exc:
+            reraise_critical(exc)
+            # The plan committed but the approval did not: without the
+            # approval there is no route to ever approve or reject this plan,
+            # so the row would be a permanent orphan (a retry mints a fresh
+            # plan id, never colliding). Compensate by deleting the plan so
+            # the failure surfaces cleanly and leaves no dangling record.
+            await self._delete_orphan_plan(durable_plan.id)
+            raise
         return PlanReviewHandoff(
             approval_id=NotBlankStr(str(approval_id)),
             subtask_count=len(plan.plan.subtasks),
             detail=NotBlankStr(detail),
         )
+
+    async def _delete_orphan_plan(self, plan_id: UUID) -> None:
+        """Best-effort delete of a plan orphaned by an approval-write failure.
+
+        A secondary failure here is logged, not raised, so it never masks the
+        original approval-store error the caller is propagating.
+        """
+        try:
+            await self._plans.delete(NotBlankStr(str(plan_id)))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="plan_review_gate",
+                note="failed to delete orphaned plan after approval-write failure",
+                plan_id=str(plan_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
 
 async def wire_plan_review_gate(app_state: AppState) -> None:
@@ -121,6 +195,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         EngineStateSlice,
         work_pipeline_of,
     )
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
@@ -130,13 +205,30 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     )
     if not required:
         return
-    # Best-effort: the approval store is normally always wired, but an early
-    # boot (before persistence connects) can reach here without it. Skip
-    # rather than let ``approval_store_of`` raise a 503 out of a wiring hook.
+    # Best-effort: the approval store + persistence backend are normally wired
+    # by the time this hook runs, but an early boot (before persistence
+    # connects) can reach here without them. Skip rather than let an accessor
+    # raise a 503 out of a wiring hook. The operator explicitly opted into a
+    # mandatory gate, so a skip is warn-worthy: without it every splittable
+    # plan builds ungated, and a silent skip would hide that regression.
     if app_state.slice(ApprovalStateSlice).store is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="plan_review_gate",
+            note="skipped: plan_approval_required but approval store not wired",
+        )
+        return
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if backend is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="plan_review_gate",
+            note="skipped: plan_approval_required but persistence not wired",
+        )
         return
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
+        plans=backend.plans,
         clock=app_state.clock,
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)

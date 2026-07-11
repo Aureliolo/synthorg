@@ -9,6 +9,7 @@ import type { Artifact } from '@/api/types/artifacts'
 import type { MeetingResponse } from '@/api/types/meetings'
 import type { Channel, Message } from '@/api/types/messages'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
+import type { Plan, PlanItem } from '@/api/types/plans'
 import type { Project } from '@/api/types/projects'
 import type { DashboardTask } from '@/api/types/tasks'
 
@@ -140,6 +141,7 @@ export function makeDepartmentHealth(name: string, overrides?: Partial<Departmen
     total_runs: 12,
     task_success_rate: 0.83,
     utilization_percent: 85,
+    utilization_degraded: false,
     health_score: 83,
     ...overrides,
   }
@@ -319,6 +321,41 @@ export function makeProject(id: string, overrides?: Partial<Project>): Project {
     deadline: '2026-06-01T00:00:00Z',
     budget: 500,
     status: 'active',
+    ...overrides,
+  }
+}
+
+export function makePlanItem(id: string, overrides?: Partial<PlanItem>): PlanItem {
+  return {
+    id,
+    title: `Item ${id}`,
+    description: `Description for ${id}`,
+    dependencies: [],
+    owner: null,
+    acceptance_criteria: [],
+    expected_artifacts: [],
+    required_skills: [],
+    required_tags: [],
+    estimated_complexity: 'medium',
+    stakes: 'normal',
+    ...overrides,
+  }
+}
+
+export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
+  return {
+    id,
+    project: 'beachhead',
+    objective_id: `objective-${id}`,
+    parent_task_id: 'task-root',
+    items: [makePlanItem('item-1')],
+    task_structure: 'sequential',
+    coordination_topology: 'auto',
+    status: 'pending_review',
+    forecast_id: null,
+    version: 1,
+    created_at: '2026-07-01T10:00:00Z',
+    updated_at: '2026-07-01T10:00:00Z',
     ...overrides,
   }
 }

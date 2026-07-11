@@ -42,6 +42,12 @@ vi.mock('@/hooks/useBreakpoint', () => ({
   useBreakpoint: () => getBreakpoint(),
 }))
 
+// The sidebar badge's live-data hook (poll + WebSocket) is not under test here;
+// stub it so these presentational tests don't spin up event-loop handles.
+vi.mock('@/hooks/usePendingApprovalsCount', () => ({
+  usePendingApprovalsCount: () => ({ pendingCount: 0, loading: false }),
+}))
+
 // Prevent window.location side effects from auth store
 const originalLocation = window.location
 beforeAll(() => {

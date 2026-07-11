@@ -108,10 +108,10 @@ const mockForecast: ForecastResponse = {
 }
 
 const mockDepartments: DepartmentHealth[] = [
-  { department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: DEFAULT_CURRENCY, avg_performance_score: 8.0, department_cost_7d: 18.5, cost_trend: [], collaboration_score: 7.0, total_runs: 20, task_success_rate: 0.92, utilization_percent: 92, health_score: 92 },
-  { department_name: 'design', agent_count: 2, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 8.2, cost_trend: [], collaboration_score: 6.5, total_runs: 14, task_success_rate: 0.78, utilization_percent: 78, health_score: 78 },
-  { department_name: 'product', agent_count: 2, active_agent_count: 2, currency: DEFAULT_CURRENCY, avg_performance_score: 8.2, department_cost_7d: 7.1, cost_trend: [], collaboration_score: 7.5, total_runs: 11, task_success_rate: 0.85, utilization_percent: 85, health_score: 85 },
-  { department_name: 'operations', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 6.0, department_cost_7d: 4.3, cost_trend: [], collaboration_score: null, total_runs: 0, task_success_rate: null, utilization_percent: 60, health_score: null },
+  { department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: DEFAULT_CURRENCY, avg_performance_score: 8.0, department_cost_7d: 18.5, cost_trend: [], collaboration_score: 7.0, total_runs: 20, task_success_rate: 0.92, utilization_percent: 92, utilization_degraded: false, health_score: 92 },
+  { department_name: 'design', agent_count: 2, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 8.2, cost_trend: [], collaboration_score: 6.5, total_runs: 14, task_success_rate: 0.78, utilization_percent: 78, utilization_degraded: false, health_score: 78 },
+  { department_name: 'product', agent_count: 2, active_agent_count: 2, currency: DEFAULT_CURRENCY, avg_performance_score: 8.2, department_cost_7d: 7.1, cost_trend: [], collaboration_score: 7.5, total_runs: 11, task_success_rate: 0.85, utilization_percent: 85, utilization_degraded: false, health_score: 85 },
+  { department_name: 'operations', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 6.0, department_cost_7d: 4.3, cost_trend: [], collaboration_score: null, total_runs: 0, task_success_rate: null, utilization_percent: 60, utilization_degraded: false, health_score: null },
 ]
 
 const mockActivities: ActivityItem[] = [

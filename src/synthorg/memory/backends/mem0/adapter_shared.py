@@ -46,12 +46,12 @@ class Mem0AdapterSharedMixin(ABC):
     @abstractmethod
     def supports_sparse_search(self) -> bool:
         """Whether BM25 sparse search is available."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _require_connected(self) -> Mem0Client:
         """Return the connected Mem0 client, or raise if disconnected."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _validate_agent_id(
@@ -61,7 +61,7 @@ class Mem0AdapterSharedMixin(ABC):
         error_cls: type[DomainMemoryError] = MemoryRetrievalError,
     ) -> None:
         """Validate that the agent id is well-formed for this backend."""
-        raise NotImplementedError
+        ...
 
     async def retrieve_sparse(
         self,

@@ -19,6 +19,8 @@ const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
 const BudgetForecastPage = lazy(() => import('@/pages/BudgetForecastPage'))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
+const PlansPage = lazy(() => import('@/pages/PlansPage'))
+const PlanDetailPage = lazy(() => import('@/pages/PlanDetailPage'))
 const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
 const ChatPage = lazy(() => import('@/pages/ChatPage'))
@@ -153,6 +155,8 @@ const appRoutes = [
               { path: 'budget/forecast', element: <BudgetForecastPage /> },
               { path: 'reports', element: <ReportsPage /> },
               { path: 'approvals', element: <ApprovalsPage /> },
+              { path: 'plans', element: <PlansPage /> },
+              { path: 'plans/:planId', element: <PlanDetailPage /> },
               { path: 'scaling', element: <ScalingPage /> },
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
               { path: ROUTES.CHAT.slice(1), element: <ChatPage /> },

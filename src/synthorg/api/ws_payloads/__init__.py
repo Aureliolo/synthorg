@@ -50,6 +50,8 @@ from synthorg.api.ws_payloads._domain import (
     WsMemoryFineTuneFailedPayload,
     WsMemoryFineTuneProgressPayload,
     WsMemoryFineTuneStageChangedPayload,
+    WsPlanChangesRequestedPayload,
+    WsPlanUpdatedPayload,
     WsProjectCreatedPayload,
     WsProjectDeletedPayload,
     WsProjectStatusChangedPayload,
@@ -151,6 +153,8 @@ WsEventPayload = Annotated[
     | WsProjectCreatedPayload
     | WsProjectDeletedPayload
     | WsProjectStatusChangedPayload
+    | WsPlanUpdatedPayload
+    | WsPlanChangesRequestedPayload
     | WsWorkflowExecutionStatusChangedPayload
     | WsMemoryFineTuneProgressPayload
     | WsMemoryFineTuneStageChangedPayload
@@ -236,6 +240,8 @@ __all__ = [
     "WsMemoryFineTuneStageChangedPayload",
     "WsMessageSentPayload",
     "WsPersonalityTrimmedPayload",
+    "WsPlanChangesRequestedPayload",
+    "WsPlanUpdatedPayload",
     "WsProjectCreatedPayload",
     "WsProjectDeletedPayload",
     "WsProjectStatusChangedPayload",

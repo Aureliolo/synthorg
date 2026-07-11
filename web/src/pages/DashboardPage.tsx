@@ -11,6 +11,8 @@ import { computeMetricCards } from '@/utils/dashboard'
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
 import { OrgHealthSection } from './dashboard/OrgHealthSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
+import { PendingApprovalsCard } from './dashboard/PendingApprovalsCard'
+import { useApprovalsStore } from '@/stores/approvals'
 
 const BudgetBurnChart = lazy(() =>
   import('./dashboard/BudgetBurnChart').then((m) => ({ default: m.BudgetBurnChart })),
@@ -61,6 +63,14 @@ export default function DashboardPage() {
     error,
   } = useDashboardData()
 
+  // The always-mounted sidebar badge owns the approvals fetch/poll/WS; read the
+  // derived count + load state off the shared store via selectors only, so the
+  // panel neither issues a second request nor flashes an empty state early.
+  const pendingCount = useApprovalsStore(
+    (s) => s.approvals.filter((a) => a.status === 'pending').length,
+  )
+  const approvalsLoading = useApprovalsStore((s) => s.loading)
+
   const metricCards = useMemo(
     () => (overview ? computeMetricCards(overview, budgetConfig) : []),
     [overview, budgetConfig],
@@ -95,9 +105,14 @@ export default function DashboardPage() {
             overallHealth={orgHealthPercent}
           />
         </ErrorBoundary>
-        <ErrorBoundary level="section">
-          <ActivityFeed activities={activities} />
-        </ErrorBoundary>
+        <div className="flex flex-col gap-grid-gap">
+          <ErrorBoundary level="section">
+            <ActivityFeed activities={activities} />
+          </ErrorBoundary>
+          <ErrorBoundary level="section">
+            <PendingApprovalsCard count={pendingCount} loading={approvalsLoading} />
+          </ErrorBoundary>
+        </div>
       </div>
 
       <DashboardBudgetSection overview={overview} forecast={forecast} budgetConfig={budgetConfig} />

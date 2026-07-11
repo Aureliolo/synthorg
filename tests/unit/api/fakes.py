@@ -18,9 +18,11 @@ from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     JsonbQueryUnsupportedError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
+from synthorg.core.plan import Plan
 from synthorg.core.project import Project
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
@@ -47,6 +49,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
 )
 from synthorg.persistence.message_protocol import MessageFilterSpec
+from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
@@ -1254,6 +1257,77 @@ class FakeProjectRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._projects.pop(entity_id, None) is not None
+
+
+class FakePlanRepository:
+    """In-memory plan repository for tests."""
+
+    def __init__(self) -> None:
+        self._plans: dict[str, Plan] = {}
+
+    async def create(self, plan: Plan) -> None:
+        if str(plan.id) in self._plans:
+            msg = f"Plan with id {plan.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._plans[str(plan.id)] = plan
+
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
+        existing = self._plans.get(str(plan.id))
+        if existing is None:
+            msg = f"No plan with id {plan.id!r}"
+            raise RecordNotFoundError(msg)
+        if expected_version is not None and existing.version != expected_version:
+            msg = f"Plan {plan.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
+        self._plans[str(plan.id)] = plan
+
+    async def save(self, entity: Plan) -> None:
+        self._plans[str(entity.id)] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> Plan | None:
+        return self._plans.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        return await self.query(PlanFilterSpec(), limit=limit, offset=offset)
+
+    def _matches(self, plan: Plan, filter_spec: PlanFilterSpec) -> bool:
+        """Whether a plan satisfies every set filter field.
+
+        Returns:
+            ``True`` when the plan matches all non-``None`` filter fields.
+        """
+        if filter_spec.status is not None and plan.status != filter_spec.status:
+            return False
+        if filter_spec.project is not None and plan.project != filter_spec.project:
+            return False
+        return not (
+            filter_spec.objective_id is not None
+            and plan.objective_id != filter_spec.objective_id
+        )
+
+    async def query(
+        self,
+        filter_spec: PlanFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        result = sorted(
+            (p for p in self._plans.values() if self._matches(p, filter_spec)),
+            key=lambda p: str(p.id),
+        )
+        return tuple(result[offset : offset + limit])
+
+    async def count(self, filter_spec: PlanFilterSpec) -> int:
+        return sum(1 for p in self._plans.values() if self._matches(p, filter_spec))
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._plans.pop(entity_id, None) is not None
 
 
 class FakeArtifactStorage:

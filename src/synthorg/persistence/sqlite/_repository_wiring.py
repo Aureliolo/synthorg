@@ -139,6 +139,9 @@ from synthorg.persistence.sqlite.org_fact_repo import (
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
+from synthorg.persistence.sqlite.plan_repo import (
+    SQLitePlanRepository,
+)
 from synthorg.persistence.sqlite.preset_override_repo import (
     SQLitePresetOverrideRepo,
 )
@@ -259,6 +262,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._db = None
         self._artifacts = None
         self._projects = None
+        self._plans = None
         self._project_workspaces = None
         self._codebase_structure_maps = None
         self._project_environments = None
@@ -342,6 +346,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._projects = SQLiteProjectRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._plans = SQLitePlanRepository(
             self._db,
             write_context=self.write_context,
         )

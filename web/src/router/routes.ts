@@ -22,6 +22,8 @@ export const ROUTES = {
   BUDGET_FORECAST: '/budget/forecast',
   REPORTS: '/reports',
   APPROVALS: '/approvals',
+  PLANS: '/plans',
+  PLAN_DETAIL: '/plans/:planId',
   SCALING: '/scaling',
   META: '/meta',
   AGENTS: '/agents',

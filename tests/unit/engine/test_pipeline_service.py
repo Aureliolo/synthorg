@@ -325,6 +325,68 @@ class TestPlanReviewGate:
         coordinator.plan_preview.assert_not_called()
 
 
+class TestPlanRequired:
+    """An objective/charter (``plan_required``) is never a solo leaf.
+
+    The spine forces the plan path regardless of the solo-vs-team router, so
+    a product brief the router would classify LEAF still decomposes into a
+    plan: parked for approval when the gate is wired, dispatched to the team
+    otherwise. It never collapses to a single solo agent.
+    """
+
+    async def test_plan_required_parks_plan_over_leaf_verdict(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            # The router says LEAF; plan_required overrides it to SPLITTABLE.
+            verdict=RoutingVerdict.LEAF,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=3,
+                    detail="3 subtasks awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        result = await pipeline.run(_work_item(plan_required=True))
+
+        assert result.execution_path is ExecutionPath.PLAN_REVIEW
+        assert result.verdict is RoutingVerdict.SPLITTABLE
+        coordinator.plan_preview.assert_awaited_once()
+        cast("AsyncMock", handles["worker"]).execute_once.assert_not_called()
+
+    async def test_plan_required_dispatches_team_over_leaf_without_gate(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            verdict=RoutingVerdict.LEAF,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+            post_task=_post_task(TaskStatus.COMPLETED),
+        )
+
+        result = await pipeline.run(_work_item(plan_required=True))
+
+        assert result.execution_path is ExecutionPath.TEAM
+        coordinator.coordinate.assert_awaited_once()
+        cast("AsyncMock", handles["worker"]).execute_once.assert_not_called()
+
+
 class TestIntakeSplit:
     """The intake_only / continue_from_intake split used by the async
     conversational-execution path (surface the task id, then background the

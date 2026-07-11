@@ -3455,6 +3455,58 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListPlans */
+        readonly get: operations["ApiV1PlansListPlans"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/plans/{plan_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetPlan */
+        readonly get: operations["ApiV1PlansPlanIdGetPlan"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** EditPlan */
+        readonly patch: operations["ApiV1PlansPlanIdEditPlan"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/plans/{plan_id}/request-changes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RequestChanges */
+        readonly post: operations["ApiV1PlansPlanIdRequestChangesRequestChanges"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects": {
         readonly parameters: {
             readonly query?: never;
@@ -7109,6 +7161,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[Plan] */
+        readonly ApiResponse_Plan_: {
+            readonly data: components["schemas"]["Plan"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[PreflightResult] */
         readonly ApiResponse_PreflightResult_: {
             readonly data: components["schemas"]["PreflightResult"] | null;
@@ -10308,6 +10368,11 @@ export type components = {
              */
             readonly total_runs: number;
             /**
+             * @description True when the in-flight-task query failed; utilization_percent is then a floor, not a measured value.
+             * @default false
+             */
+            readonly utilization_degraded: boolean;
+            /**
              * @description Roster utilisation: percentage of agents currently active.
              *
              *     A lifecycle/roster ratio, not a measure of work quality. The
@@ -10478,6 +10543,21 @@ export type components = {
             readonly old_value: {
                 readonly [key: string]: unknown;
             } | null;
+        };
+        /** EditPlanRequest */
+        readonly EditPlanRequest: {
+            /**
+             * @description Optional override of the coordination topology
+             * @enum {string|null}
+             */
+            readonly coordination_topology?: "sas" | "centralized" | "decentralized" | "context_dependent" | "auto" | null;
+            /** @description The full revised plan item list */
+            readonly items: readonly components["schemas"]["PlanItemPayload"][];
+            /**
+             * @description Optional override of the classified structure
+             * @enum {string|null}
+             */
+            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
         };
         /** EfficiencyAnalysis */
         readonly EfficiencyAnalysis: {
@@ -13273,6 +13353,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[Plan] */
+        readonly PaginatedResponse_Plan_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["Plan"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[PresetSummaryResponse] */
         readonly PaginatedResponse_PresetSummaryResponse_: {
             /** @default [] */
@@ -13929,6 +14024,121 @@ export type components = {
              */
             readonly total_duration_ms: number;
         };
+        /** Plan */
+        readonly Plan: {
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /**
+             * Format: uuid
+             * @description Cost forecast released alongside the plan
+             */
+            readonly forecast_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan identifier
+             */
+            readonly id: string;
+            /** @description Ordered plan items */
+            readonly items: readonly components["schemas"]["PlanItem"][];
+            /** @description Charter/objective the plan serves */
+            readonly objective_id: string;
+            /** @description Objective task the plan decomposes */
+            readonly parent_task_id: string;
+            /** @description Project the plan belongs to */
+            readonly project: string;
+            readonly status: components["schemas"]["PlanStatus"];
+            readonly task_structure: components["schemas"]["TaskStructure"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+            /**
+             * @description Revision number, bumped on each edit / re-plan
+             * @default 1
+             */
+            readonly version: number;
+        };
+        /** PlanItem */
+        readonly PlanItem: {
+            /**
+             * @description Per-item criteria that define done
+             * @default []
+             */
+            readonly acceptance_criteria: readonly string[];
+            /**
+             * @description IDs of items this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed item description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            /**
+             * @description Deliverables this item must produce
+             * @default []
+             */
+            readonly expected_artifacts: readonly string[];
+            /** @description Unique item identifier within the plan */
+            readonly id: string;
+            /** @description Role or agent that owns this item */
+            readonly owner: string | null;
+            /**
+             * @description Skill IDs the routing scorer matches against
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
+            readonly stakes: components["schemas"]["Stakes"];
+            /** @description Short item title */
+            readonly title: string;
+        };
+        /** PlanItemPayload */
+        readonly PlanItemPayload: {
+            /**
+             * @description Per-item criteria that define done
+             * @default []
+             */
+            readonly acceptance_criteria: readonly string[];
+            /**
+             * @description IDs of items this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed item description */
+            readonly description: string;
+            readonly estimated_complexity?: components["schemas"]["Complexity"];
+            /**
+             * @description Deliverables this item must produce
+             * @default []
+             */
+            readonly expected_artifacts: readonly string[];
+            /** @description Stable item identifier within the plan */
+            readonly id: string;
+            /** @description Role or agent that owns this item */
+            readonly owner?: string | null;
+            /**
+             * @description Skill IDs the routing scorer matches against
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
+            readonly stakes?: components["schemas"]["Stakes"];
+            /** @description Short item title */
+            readonly title: string;
+        };
         /** PlanRevisionPayload */
         readonly PlanRevisionPayload: {
             /**
@@ -13941,6 +14151,21 @@ export type components = {
             /** @description entry_id of the plan revision this one replaces */
             readonly supersedes_plan_entry_id: string | null;
         };
+        /**
+         * PlanStatus
+         * @description Lifecycle status of a decomposed plan through CEO review.
+         *
+         *     A plan is DRAFT while it is being shaped and PENDING_REVIEW once it is
+         *     parked for the operator's decision. APPROVED, REJECTED, and SUPERSEDED are
+         *     terminal: an operator rework or a request-changes is only accepted from a
+         *     non-terminal status (see :data:`REWORKABLE_STATUSES`). SUPERSEDED is
+         *     reserved for a plan retired by a fresh re-plan; the current edit path
+         *     revises a plan in place (bumping :attr:`Plan.version`) rather than
+         *     retaining prior revisions.
+         * @default draft
+         * @enum {string}
+         */
+        readonly PlanStatus: "draft" | "pending_review" | "approved" | "rejected" | "superseded";
         /**
          * PolicyFieldOrigin
          * @description Origin level for a resolved ceremony policy field.
@@ -15189,6 +15414,11 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly start: string;
+        };
+        /** RequestPlanChangesRequest */
+        readonly RequestPlanChangesRequest: {
+            /** @description What the operator wants changed */
+            readonly note: string;
         };
         /**
          * RequestStatus
@@ -26012,6 +26242,143 @@ export interface operations {
             };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansListPlans: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Filter by the charter/objective the plan serves */
+                readonly objective_id?: string | null;
+                /** @description Filter by project id */
+                readonly project?: string | null;
+                /** @description Filter by plan lifecycle status */
+                readonly status?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdGetPlan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdEditPlan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EditPlanRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdRequestChangesRequestChanges: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RequestPlanChangesRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

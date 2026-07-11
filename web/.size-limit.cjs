@@ -3,8 +3,9 @@
  *
  * Captured gzipped sizes on 2026-04-26 against ``main`` with the
  * existing Vite + Rollup config. Per-vendor budgets carry ~10-15%
- * headroom; the total-app-JS budget carries ~5% headroom (current
- * ~950 KB gzipped, ceiling 1000 KB). Re-baselined 2026-05-15 for
+ * headroom and the total-app-JS budget ~5-10% over its measured
+ * baseline; the per-budget ``limit`` values below are the source of
+ * truth for the current ceilings. Re-baselined 2026-05-15 for
  * the pydantic-to-typescript codegen pipeline (PR #1909): the
  * generated ``enum-values.gen.ts`` ships runtime ``*_VALUES`` tuples
  * for ~90 backend StrEnums that the dashboard relies on for select
@@ -46,11 +47,12 @@ module.exports = [
   {
     name: 'Total app JS (gzipped)',
     path: 'dist/assets/*.js',
-    // Raised from 1100 KB for the setup-wizard rework: the new model /
-    // embedder pickers, mini org chart, tier-profile + currency company
-    // controls, and the pure-API-consumer store migration (appearance /
-    // dashboard / org-chart hydrate from the backend) ship real UI.
-    limit: '1150 KB',
+    // The budget covers the full dashboard: the setup wizard (model /
+    // embedder pickers, mini org chart, tier-profile + currency controls),
+    // the pure-API-consumer store layer, and the Plan Review workspace
+    // (plans list / detail / editor + stores). Headroom absorbs routine
+    // dependency churn; raise only for real shipping UI, never a CI red.
+    limit: '1250 KB',
     gzip: true,
   },
   // Initial entry chunk -- everything that blocks first paint.

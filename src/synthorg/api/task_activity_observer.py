@@ -18,6 +18,8 @@ metric record and vice versa, and neither ever propagates out of the observer
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict
+
 from synthorg.api.channels import CHANNEL_TASKS
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.api.ws_payloads._lifecycle import WsTaskStatusChangedPayload
@@ -31,6 +33,7 @@ from synthorg.core.run_outcome import (
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -47,8 +50,29 @@ logger = get_logger(__name__)
 # subscriber on every transition, so the broadcast copy is truncated.
 _MAX_DESCRIPTION_TITLE_LENGTH: Final[int] = 120
 
+
+class ActivityAgentRef(BaseModel):
+    """Resolved display identity of a task's assignee for the activity feed.
+
+    Attributes:
+        name: Agent display name.
+        role: Agent role (its "function").
+        department: Agent department.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    name: NotBlankStr
+    role: NotBlankStr
+    department: NotBlankStr
+
+
 type ArtifactLister = Callable[[str], Awaitable[Sequence[Artifact]]]
 type MetricRecorder = Callable[[TaskMetricRecord], Awaitable[object]]
+#: Resolve an agent id to its display identity, or ``None`` when unknown.
+#: Injected so the observer can name the assignee without a registry import;
+#: best-effort, so a fault or unknown id simply yields an unnamed row.
+type AgentRefResolver = Callable[[str], Awaitable[ActivityAgentRef | None]]
 #: Publish a serialised ``WsEvent`` to the named channels. Matches the
 #: positional ``ChannelsPlugin.wait_published(data, channels)`` surface: the
 #: boot wiring passes that bound method (NOT ``publish``) so delivery goes
@@ -74,10 +98,12 @@ class TaskActivityObserver:
         publish: PublishFn,
         list_artifacts: ArtifactLister,
         record_metric: MetricRecorder,
+        resolve_agent: AgentRefResolver | None = None,
     ) -> None:
         self._publish_fn = publish
         self._list_artifacts = list_artifacts
         self._record_metric = record_metric
+        self._resolve_agent = resolve_agent
 
     async def __call__(self, event: TaskStateChanged) -> None:
         """Handle one task state change (WS publish + terminal metric record)."""
@@ -135,6 +161,7 @@ class TaskActivityObserver:
         outcome: RunOutcome | None,
     ) -> None:
         """Publish the ``task.status_changed`` event to the tasks WS channel."""
+        agent_ref = await self._resolve_agent_ref(task.assigned_to)
         payload = WsTaskStatusChangedPayload(
             task_id=str(task.id),
             from_status=(
@@ -142,6 +169,9 @@ class TaskActivityObserver:
             ),
             to_status=new_status.value,
             assigned_to=task.assigned_to,
+            agent_name=agent_ref.name if agent_ref else None,
+            agent_role=agent_ref.role if agent_ref else None,
+            department=agent_ref.department if agent_ref else None,
             description=_describe(task, new_status, outcome),
             run_outcome=outcome,
         )
@@ -163,6 +193,32 @@ class TaskActivityObserver:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    async def _resolve_agent_ref(
+        self, assigned_to: str | None
+    ) -> ActivityAgentRef | None:
+        """Resolve the assignee's display identity, best-effort.
+
+        Returns:
+            The resolved :class:`ActivityAgentRef`, or ``None`` when there is
+            no assignee, no resolver wired, or resolution faults (the feed row
+            then simply shows no agent name rather than blocking the publish).
+        """
+        if assigned_to is None or self._resolve_agent is None:
+            return None
+        try:
+            return await self._resolve_agent(assigned_to)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort name enrichment for the feed
+            reraise_critical(exc)
+            logger.warning(
+                TASK_ACTIVITY_PUBLISH_FAILED,
+                agent_id=assigned_to,
+                stage="agent_resolve",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
     async def _record(
         self,

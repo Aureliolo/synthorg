@@ -10,14 +10,15 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.task_enums import Complexity, TaskType
+from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests.unit.api.conftest import (
     FakeMessageBus,
     make_auth_headers,
@@ -70,6 +71,25 @@ def _make_cost_record(
     )
 
 
+def _make_inprogress_task(
+    *,
+    label: str,
+    assigned_to: str,
+    status: TaskStatus = TaskStatus.IN_PROGRESS,
+) -> Task:
+    return Task(
+        id=as_uuid(label),
+        title=f"Task {label}",
+        description="Department utilisation fixture.",
+        type=TaskType.DEVELOPMENT,
+        project="project-1",
+        priority=Priority.MEDIUM,
+        status=status,
+        assigned_to=assigned_to,
+        created_by="engine",
+    )
+
+
 def _make_task_metric(
     *,
     agent_id: str,
@@ -92,13 +112,14 @@ def _make_task_metric(
     )
 
 
-def _build_dept_client(
+async def _build_dept_client(  # noqa: PLR0913 -- optional injectable test deps
     *,
     fake_message_bus: FakeMessageBus,
     config: RootConfig,
     cost_tracker: CostTracker | None = None,
     performance_tracker: PerformanceTracker | None = None,
     agent_registry: AgentRegistryService | None = None,
+    tasks: tuple[Task, ...] = (),
 ) -> LoopAsyncClient:
     """Build a LoopAsyncClient with the given config for department tests.
 
@@ -108,6 +129,9 @@ def _build_dept_client(
     leaks settings written by other tests (via ``_shared_app``
     consumers) into the config-resolver lookup, which surfaces as
     spurious 404s on departments the test config explicitly declares.
+
+    ``tasks`` seeds the task repository so utilisation (busy assignees of
+    ``IN_PROGRESS`` tasks) can be exercised end-to-end.
     """
     from synthorg.api.auth.service import AuthService
     from tests._shared import build_test_app as create_app
@@ -115,6 +139,8 @@ def _build_dept_client(
 
     fake_persistence = FakePersistenceBackend()
     fake_persistence.mark_connected()
+    for task in tasks:
+        await fake_persistence.tasks.save(task)
     auth_service: AuthService = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
     settings_service = SettingsService(
@@ -165,7 +191,7 @@ class TestDepartmentHealth:
             company_name="test",
             departments=(Department(name="eng", budget_percent=50.0),),
         )
-        async with _build_dept_client(
+        async with await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -199,7 +225,6 @@ class TestDepartmentHealth:
             ),
         )
 
-        # Set up agent registry with 1 active, 1 inactive
         registry = AgentRegistryService()
         identity_a = _make_identity(
             agent_id=_AGENT_ID_A,
@@ -215,6 +240,10 @@ class TestDepartmentHealth:
         )
         await registry.register(identity_a)
         await registry.register(identity_b)
+
+        # Utilisation is runtime, not lifecycle: alice is executing a task and
+        # bob is not, so 1 of 2 agents is busy regardless of employment status.
+        tasks = (_make_inprogress_task(label="t-alice", assigned_to=_AGENT_ID_A),)
 
         # Set up cost tracker with records in last 7 days
         cost_tracker = CostTracker()
@@ -242,12 +271,13 @@ class TestDepartmentHealth:
             ),
         )
 
-        async with _build_dept_client(
+        async with await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,
             performance_tracker=perf,
             agent_registry=registry,
+            tasks=tasks,
         ) as client:
             resp = await client.get(
                 "/api/v1/departments/eng/health",
@@ -285,7 +315,7 @@ class TestDepartmentHealth:
                 AgentConfig(name="bob", role="rep", department="sales"),
             ),
         )
-        async with _build_dept_client(
+        async with await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -309,7 +339,7 @@ class TestDepartmentHealth:
             departments=(Department(name="eng", budget_percent=100.0),),
             agents=(AgentConfig(name="alice", role="dev", department="eng"),),
         )
-        async with _build_dept_client(
+        async with await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
@@ -337,6 +367,7 @@ class TestDepartmentHealthScore:
         fake_message_bus: FakeMessageBus,
         *,
         perf: PerformanceTracker,
+        tasks: tuple[Task, ...] = (),
     ) -> LoopAsyncClient:
         from synthorg.core.company_departments import Department
 
@@ -354,26 +385,70 @@ class TestDepartmentHealthScore:
                 status=AgentStatus.ACTIVE,
             ),
         )
-        return _build_dept_client(
+        return await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
             performance_tracker=perf,
             agent_registry=registry,
+            tasks=tasks,
         )
 
-    async def test_full_utilisation_is_not_full_health_at_zero_activity(
+    async def test_idle_roster_is_zero_utilisation_and_no_health(
         self,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        """The vanity-metric fix: a fully-active roster with no runs is no-data."""
-        perf = PerformanceTracker()  # no metrics recorded
+        """An enabled-but-idle roster reads 0% utilised, not 100%.
+
+        Utilisation is a runtime measure: with no ``IN_PROGRESS`` tasks nobody
+        is working, so a fully-employed roster is 0% utilised (never the old
+        vanity 100% off the ``AgentStatus.ACTIVE`` lifecycle flag), and health
+        stays no-data until runs complete.
+        """
+        perf = PerformanceTracker()  # no metrics recorded, no tasks in flight
         async with await self._eng_client(fake_message_bus, perf=perf) as client:
             resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
             data = resp.json()["data"]
-            assert data["utilization_percent"] == 100.0
+            assert data["active_agent_count"] == 0
+            assert data["utilization_percent"] == 0.0
             assert data["total_runs"] == 0
             assert data["health_score"] is None
             assert data["task_success_rate"] is None
+
+    async def test_busy_agent_drives_utilisation(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """A single-agent dept with that agent mid-task reads 100% utilised."""
+        perf = PerformanceTracker()
+        tasks = (_make_inprogress_task(label="t-alice", assigned_to=_AGENT_ID_A),)
+        async with await self._eng_client(
+            fake_message_bus, perf=perf, tasks=tasks
+        ) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["active_agent_count"] == 1
+            assert data["utilization_percent"] == 100.0
+
+    async def test_only_in_progress_tasks_count_as_utilised(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """A non-``IN_PROGRESS`` task (e.g. awaiting review) is not utilisation."""
+        perf = PerformanceTracker()
+        tasks = (
+            _make_inprogress_task(
+                label="t-alice",
+                assigned_to=_AGENT_ID_A,
+                status=TaskStatus.IN_REVIEW,
+            ),
+        )
+        async with await self._eng_client(
+            fake_message_bus, perf=perf, tasks=tasks
+        ) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["active_agent_count"] == 0
+            assert data["utilization_percent"] == 0.0
 
     async def test_health_score_from_real_success_rate(
         self,
@@ -676,7 +751,7 @@ class TestDepartmentHealthDegradation:
             spec=CostTracker.collect_records,
             side_effect=RuntimeError("simulated cost failure"),
         )
-        async with _build_dept_client(
+        async with await _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,

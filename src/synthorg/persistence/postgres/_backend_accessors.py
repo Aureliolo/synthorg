@@ -105,6 +105,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.postgres.agent_contribution_repo import (
     PostgresAgentContributionRepository,
 )
@@ -255,6 +256,7 @@ class _PostgresBackendRepositoryAccessors:
     _pool: AsyncConnectionPool | None
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
+    _plans: PlanRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
     _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
@@ -498,6 +500,11 @@ class _PostgresBackendRepositoryAccessors:
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def plans(self) -> PlanRepository:
+        """Repository for durable Plan persistence."""
+        return self._require_connected(self._plans, "plans")
 
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:

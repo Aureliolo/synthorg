@@ -37,6 +37,17 @@ function paginated(
   })
 }
 
+function pageEnvelope(data: ApprovalResponse[], nextCursor: string | null) {
+  const hasMore = nextCursor !== null
+  return paginatedFor<typeof listApprovals>({
+    data,
+    limit: 200,
+    nextCursor,
+    hasMore,
+    pagination: { limit: 200, next_cursor: nextCursor, has_more: hasMore },
+  })
+}
+
 function resetStore() {
   _resetPendingTransitions()
   useApprovalsStore.setState({
@@ -76,6 +87,36 @@ describe('fetchApprovals', () => {
     expect(state.approvals).toHaveLength(2)
     expect(state.total).toBe(2)
     expect(state.error).toBeNull()
+  })
+
+  it('walks every cursor page so the set is not capped at one page', async () => {
+    const page1 = Array.from({ length: 200 }, (_, i) =>
+      makeApproval(`p1-${String(i)}`, { status: 'pending' }),
+    )
+    const page2 = Array.from({ length: 50 }, (_, i) =>
+      makeApproval(`p2-${String(i)}`, { status: 'pending' }),
+    )
+    const forwarded: (string | null)[] = []
+    server.use(
+      http.get('/api/v1/approvals', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        forwarded.push(cursor)
+        // Page one hands back an opaque cursor; the consumer must forward it
+        // (not compute an offset) to fetch page two, then stop when it is null.
+        return HttpResponse.json(
+          cursor === null
+            ? pageEnvelope(page1, 'opaque-cursor-2')
+            : pageEnvelope(page2, null),
+        )
+      }),
+    )
+
+    await useApprovalsStore.getState().fetchApprovals({ limit: 200 })
+
+    const state = useApprovalsStore.getState()
+    expect(state.approvals).toHaveLength(250)
+    expect(state.error).toBeNull()
+    expect(forwarded).toEqual([null, 'opaque-cursor-2'])
   })
 
   it('sets error on failure', async () => {

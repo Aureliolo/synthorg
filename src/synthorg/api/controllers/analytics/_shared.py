@@ -29,7 +29,7 @@ from synthorg.budget.trends import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_activity import busy_agent_ids
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
@@ -314,11 +314,7 @@ async def _resolve_agent_counts(
             return 0, config_agent_count
         # Without the registry we cannot distinguish employed agents,
         # but we can still count busy assignees from the task list.
-        active_ids: set[str] = set()
-        for task in all_tasks:
-            if task.status == TaskStatus.IN_PROGRESS and task.assigned_to:
-                active_ids.add(task.assigned_to)
-        active = len(active_ids)
+        active = len(busy_agent_ids(all_tasks))
         idle = max(config_agent_count - active, 0)
         logger.debug(
             ANALYTICS_OVERVIEW_QUERIED,
@@ -353,14 +349,6 @@ async def _resolve_agent_counts(
         )
         return 0, len(employed_ids)
 
-    busy_ids: set[str] = set()
-    for task in all_tasks:
-        if (
-            task.status == TaskStatus.IN_PROGRESS
-            and task.assigned_to
-            and task.assigned_to in employed_ids
-        ):
-            busy_ids.add(task.assigned_to)
-    active = len(busy_ids)
+    active = len(busy_agent_ids(all_tasks, employed_ids))
     idle = max(len(employed_ids) - active, 0)
     return active, idle

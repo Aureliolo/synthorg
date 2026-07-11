@@ -2590,3 +2590,24 @@ CREATE INDEX idx_sprints_project_status ON sprints (project, status);
 CREATE INDEX idx_sprints_number_id ON sprints (sprint_number DESC, id DESC);
 CREATE UNIQUE INDEX idx_sprints_org_wide_number ON sprints (sprint_number)
 WHERE project IS NULL;
+
+CREATE TABLE plans (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    project TEXT NOT NULL CHECK (LENGTH(TRIM(project)) > 0),
+    objective_id TEXT NOT NULL CHECK (LENGTH(TRIM(objective_id)) > 0),
+    parent_task_id TEXT NOT NULL CHECK (LENGTH(TRIM(parent_task_id)) > 0),
+    items TEXT NOT NULL
+    CHECK (JSON_VALID(items) AND JSON_TYPE(items) = 'array' AND JSON_ARRAY_LENGTH(items) > 0),
+    task_structure TEXT NOT NULL DEFAULT 'sequential',
+    coordination_topology TEXT NOT NULL DEFAULT 'auto',
+    status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected', 'superseded')),
+    forecast_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_plans_status ON plans (status);
+CREATE INDEX idx_plans_project ON plans (project);
+CREATE INDEX idx_plans_objective ON plans (objective_id);
+CREATE INDEX idx_plans_project_status ON plans (project, status, id);

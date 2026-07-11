@@ -52,7 +52,7 @@ class DockerSandboxSidecarMixin(ABC):
     @abstractmethod
     def _parse_memory_limit(limit: str) -> int:
         """Parse a docker memory-limit string into a byte count."""
-        raise NotImplementedError
+        ...
 
     async def _create_sidecar(
         self,

@@ -19,6 +19,7 @@ function makeDepts(count: number): DepartmentHealth[] {
       total_runs: 10,
       task_success_rate: (60 + i * 10) / 100,
       utilization_percent: 60 + i * 10,
+      utilization_degraded: false,
       health_score: 60 + i * 10,
     }
   })
@@ -38,6 +39,7 @@ function makeNoDataDept(): DepartmentHealth {
     total_runs: 0,
     task_success_rate: null,
     utilization_percent: 100,
+    utilization_degraded: false,
     health_score: null,
   }
 }

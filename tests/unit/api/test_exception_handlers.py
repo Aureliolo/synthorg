@@ -146,7 +146,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Internal server error"
+            assert body["error"] == "PersistenceError: db fail"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.PERSISTENCE_ERROR,
@@ -330,10 +330,10 @@ class TestExceptionHandlers:
                 assert resp.status_code == 500
                 body = resp.json()
                 assert body["success"] is False
-                # 5xx scrubs the upstream message to the class default; the
-                # distinct ``BACKUP_MANIFEST_ERROR`` code lets clients tell
-                # a corrupt-manifest failure apart from a generic 500.
-                assert body["error"] == "Backup manifest is invalid or corrupt"
+                # 5xx surfaces the real, secret-redacted error; the distinct
+                # ``BACKUP_MANIFEST_ERROR`` code still lets clients tell a
+                # corrupt-manifest failure apart from a generic 500.
+                assert body["error"] == "ManifestError: Manifest checksum mismatch"
                 _assert_error_detail(
                     body,
                     error_code=ErrorCode.BACKUP_MANIFEST_ERROR,
@@ -352,11 +352,9 @@ class TestExceptionHandlers:
 
         Without the ``BackupError`` entry in ``EXCEPTION_HANDLERS``, any
         subtype not explicitly caught in a controller would fall through
-        to ``handle_unexpected``, producing a generic 500 with no
-        backup-specific ``error_code``.  This test pins the contract:
-        the response must carry a structured envelope with
-        ``ErrorCode.INTERNAL_ERROR`` and the scrubbed
-        ``"Backup operation failed"`` detail.
+        to ``handle_unexpected``.  This test pins the contract: the
+        response carries a structured envelope with
+        ``ErrorCode.INTERNAL_ERROR`` and the real, secret-redacted error.
         """
 
         @get("/test")
@@ -368,27 +366,15 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
-            assert body["error"] == "Backup operation failed"
+            assert body["error"] == "BackupError: generic backup failure"
             assert body["error_detail"]["error_code"] == ErrorCode.INTERNAL_ERROR
 
     @pytest.mark.parametrize(
-        ("exc_cls", "expected_detail", "expected_code"),
+        ("exc_cls", "expected_code"),
         [
-            (
-                RetentionError,
-                "Backup retention pruning failed",
-                ErrorCode.BACKUP_RETENTION_FAILED,
-            ),
-            (
-                ComponentBackupError,
-                "Component backup or restore step failed",
-                ErrorCode.BACKUP_COMPONENT_FAILED,
-            ),
-            (
-                BackupConfigurationError,
-                "Backup handler configuration is invalid",
-                ErrorCode.BACKUP_CONFIGURATION_INVALID,
-            ),
+            (RetentionError, ErrorCode.BACKUP_RETENTION_FAILED),
+            (ComponentBackupError, ErrorCode.BACKUP_COMPONENT_FAILED),
+            (BackupConfigurationError, ErrorCode.BACKUP_CONFIGURATION_INVALID),
         ],
         ids=[
             "retention_error",
@@ -399,15 +385,14 @@ class TestExceptionHandlers:
     async def test_other_backup_subtypes_map_to_structured_500(
         self,
         exc_cls: type[BackupError],
-        expected_detail: str,
         expected_code: ErrorCode,
     ) -> None:
         """Backup subtypes carry distinct, structured 5xx error codes.
 
         Each routes through the structured 5xx dispatch with its own
         ``error_code`` so operators can alert on a pruning failure or a
-        per-component step failure specifically, while the upstream
-        message is still scrubbed to the class default.
+        per-component step failure specifically, and the response surfaces
+        the real, secret-redacted error.
         """
 
         @get("/test")
@@ -419,7 +404,7 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
-            assert body["error"] == expected_detail
+            assert body["error"] == f"{exc_cls.__name__}: subtype failure"
             _assert_error_detail(
                 body,
                 error_code=expected_code,
@@ -432,9 +417,9 @@ class TestExceptionHandlers:
     ) -> None:
         """``RestoreError`` carries the distinct ``BACKUP_RESTORE_FAILED``.
 
-        5xx still scrubs the upstream message to the class default, but
-        the distinct code lets clients/operators alert on restore
-        failures specifically rather than a generic internal error.
+        The distinct code lets clients/operators alert on restore failures
+        specifically, and the response surfaces the real, secret-redacted
+        error rather than a generic internal message.
         """
 
         @get("/test")
@@ -446,7 +431,7 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
-            assert body["error"] == "Restore operation failed"
+            assert body["error"] == "RestoreError: restore subtype failure"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.BACKUP_RESTORE_FAILED,
@@ -570,7 +555,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Internal server error"
+            assert body["error"] == "RuntimeError: boom"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.INTERNAL_ERROR,
@@ -827,8 +812,8 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    async def test_http_exception_5xx_returns_scrubbed_message(self) -> None:
-        """5xx HTTPException scrubs detail to prevent info leakage."""
+    async def test_http_exception_5xx_surfaces_real_error(self) -> None:
+        """A 5xx HTTPException surfaces its real detail (secret-redacted)."""
 
         @get("/test")
         async def handler() -> None:
@@ -842,7 +827,8 @@ class TestExceptionHandlers:
             assert resp.status_code == 502
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Internal server error"
+            assert body["error"].startswith("HTTPException")
+            assert "upstream db connection refused" in body["error"]
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.INTERNAL_ERROR,
@@ -1158,7 +1144,7 @@ class TestStructuredErrorMetadata:
             resp = await client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
-            assert body["error"] == "Service unavailable"
+            assert body["error"] == "ServiceUnavailableError: Service unavailable"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.SERVICE_UNAVAILABLE,
@@ -1271,21 +1257,22 @@ class TestStructuredErrorMetadata:
             body = resp.json()
             assert body["error_detail"]["retry_after"] is None
 
-    async def test_5xx_scrubs_custom_message(self) -> None:
-        """ServiceUnavailableError with custom message returns default."""
+    async def test_5xx_surfaces_real_error_but_redacts_secrets(self) -> None:
+        """A 5xx surfaces the real error message, credential tokens redacted."""
 
         @get("/test")
         async def handler() -> None:
-            msg = "Connection pool exhausted: 10.0.0.5:5432"
+            msg = "upstream rejected Authorization: Bearer sk-secret-leak-me"
             raise ServiceUnavailableError(msg)
 
         async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
             resp = await client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
-            # 5xx must scrub to class-level default, not leak internals
-            assert body["error"] == "Service unavailable"
-            assert "10.0.0.5" not in body["error"]
+            # The real error is surfaced (no generic placeholder)...
+            assert "upstream rejected" in body["error"]
+            # ...but a credential token in the message is still redacted.
+            assert "sk-secret-leak-me" not in body["error"]
 
 
 class TestGetInstanceId:

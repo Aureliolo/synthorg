@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import {
   Calendar,
   FolderKanban,
+  Hourglass,
   ListChecks,
   Package,
   Shield,
@@ -30,11 +31,14 @@ import type { ApprovalArtifactRef, ApprovalResponse } from '@/api/types/approval
 const TOOL_CREATION_ACTION_TYPE = 'proposal:tool_creation'
 
 /**
- * Task statuses for which a run is still in flight, so live progress is worth
- * streaming. A terminal / in-review task shows its produced output instead.
+ * Task statuses for which a run is genuinely in flight, so live progress is
+ * worth streaming. A ``created`` task has NOT started, e.g. a plan-review
+ * approval whose task is parked until the plan is approved, so it must not be
+ * treated as running (that showed a misleading "Starting run" bar on a plan
+ * that was actually waiting on the operator). A terminal / in-review task
+ * shows its produced output instead.
  */
 const RUNNING_TASK_STATUSES: ReadonlySet<string> = new Set([
-  'created',
   'assigned',
   'in_progress',
   'awaiting_input',
@@ -45,16 +49,26 @@ const RUNNING_TASK_STATUSES: ReadonlySet<string> = new Set([
  *
  * Fills the gap between approving proposed work and its completion review: the
  * operator watches the run stream its steps instead of a silent queue. Only
- * shown while the task is in flight; a finished run surfaces its produced
- * output. Subscription is owner-gated server-side, so a stream the operator
- * cannot access simply renders nothing.
+ * shown while the task is genuinely in flight; a pending approval with nothing
+ * running (a plan parked for approval spends nothing until approved) says so
+ * rather than streaming a placeholder bar. Subscription is owner-gated
+ * server-side, so a stream the operator cannot access simply renders nothing.
  */
 function LiveProgressSection({ approval }: { approval: ApprovalResponse }) {
   const task = approval.task
   const taskId =
     task !== null && RUNNING_TASK_STATUSES.has(task.status) ? task.id : null
   const progress = useTaskProgress(taskId)
-  if (progress === null) return null
+  if (progress === null) {
+    if (approval.status !== 'pending') return null
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-secondary">
+        <Hourglass className="size-4 shrink-0 text-accent" aria-hidden="true" />
+        Waiting for your decision. Nothing runs, and no budget is spent, until
+        you approve.
+      </div>
+    )
+  }
   return (
     <div>
       <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">

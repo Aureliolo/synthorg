@@ -254,6 +254,17 @@ API_PROJECT_DELETED: Final[str] = "api.project.deleted"
 API_PROJECT_LISTED: Final[str] = "api.project.listed"
 API_PROJECT_FETCH_FAILED: Final[str] = "api.project.fetch_failed"
 
+# Plan review (durable, revisable decomposition plans)
+API_PLAN_LISTED: Final[str] = "api.plan.listed"
+API_PLAN_LIST_FAILED: Final[str] = "api.plan.list_failed"
+API_PLAN_FETCH_FAILED: Final[str] = "api.plan.fetch_failed"
+API_PLAN_UPDATED: Final[str] = "api.plan.updated"
+API_PLAN_UPDATE_FAILED: Final[str] = "api.plan.update_failed"
+API_PLAN_CHANGES_REQUESTED: Final[str] = "api.plan.changes_requested"
+API_PLAN_CHANGES_REQUEST_FAILED: Final[str] = "api.plan.changes_request_failed"
+API_PLAN_STATUS_TRANSITIONED: Final[str] = "api.plan.status_transitioned"
+API_PLAN_TRANSITION_REJECTED: Final[str] = "api.plan.transition_rejected"
+
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"
 API_ARTIFACT_UPDATED: Final[str] = "api.artifact.updated"

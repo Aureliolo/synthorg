@@ -11,7 +11,7 @@ the coordinator; the spine records the stage but never re-collects.
 """
 
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.agent import AgentIdentity
@@ -95,6 +95,15 @@ _PHASE_METRICS = "coordination_metrics"
 _HUMAN_ORIGINATED_SOURCES: frozenset[WorkSource] = frozenset(
     {WorkSource.TASK_BOARD, WorkSource.CONVERSATIONAL}
 )
+
+
+class _ExecutionOutcome(NamedTuple):
+    """Result of the routed execution path within a single pipeline run."""
+
+    path: ExecutionPath
+    final_status: TaskStatus
+    refinement_handoff: RefinementHandoff | None
+    plan_review_handoff: PlanReviewHandoff | None
 
 
 class DefaultWorkPipeline:
@@ -294,42 +303,15 @@ class DefaultWorkPipeline:
             verdict, agents = await self._phase(
                 phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
-            refinement_handoff: RefinementHandoff | None = None
-            plan_review_handoff: PlanReviewHandoff | None = None
-            if verdict is RoutingVerdict.LEAF:
-                path = ExecutionPath.SOLO
-                final_status = await self._phase(
-                    phases, _PHASE_SOLO, self._run_solo(work_item, task, agents)
-                )
-                await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
-            elif self._should_refine(task):
-                # Team-bound work with no definition of done: refine with a
-                # human before mobilising a team (the clarification gate
-                # would otherwise block decomposition). No coordination
-                # runs, so the coordination-metrics stage is skipped.
-                path = ExecutionPath.REFINEMENT
-                refinement_handoff = await self._phase(
-                    phases, _PHASE_REFINE, self._refine(work_item, task)
-                )
-                final_status = task.status
-            elif self._should_gate_plan():
-                # Splittable team work under a human plan-approval gate:
-                # decompose into a plan, park it for approval, and stop.
-                # Nothing builds until the plan is approved, at which point
-                # the approved plan is dispatched verbatim.
-                path = ExecutionPath.PLAN_REVIEW
-                plan_review_handoff = await self._phase(
-                    phases,
-                    _PHASE_PLAN_REVIEW,
-                    self._plan_review(work_item, task, agents),
-                )
-                final_status = task.status
-            else:
-                path = ExecutionPath.TEAM
-                final_status = await self._phase(
-                    phases, _PHASE_TEAM, self._run_team(work_item, task, agents)
-                )
-                await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
+            # A charter/objective is a brief to be planned, so it must never
+            # collapse to a single solo agent: force the splittable path and
+            # let the solo-vs-team router decide only how each child task in
+            # the resulting plan runs.
+            if work_item.plan_required:
+                verdict = RoutingVerdict.SPLITTABLE
+            outcome = await self._execute_selected_path(
+                work_item, task, agents, verdict, phases
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -343,12 +325,12 @@ class DefaultWorkPipeline:
         result = WorkPipelineResult(
             work_item=work_item,
             verdict=verdict,
-            execution_path=path,
+            execution_path=outcome.path,
             task_id=str(task.id),
-            final_task_status=final_status,
+            final_task_status=outcome.final_status,
             phases=tuple(phases),
-            refinement_handoff=refinement_handoff,
-            plan_review_handoff=plan_review_handoff,
+            refinement_handoff=outcome.refinement_handoff,
+            plan_review_handoff=outcome.plan_review_handoff,
             total_duration_seconds=total,
         )
         logger.info(
@@ -356,12 +338,60 @@ class DefaultWorkPipeline:
             correlation_id=work_item.correlation_id,
             task_id=str(task.id),
             verdict=verdict.value,
-            execution_path=path.value,
-            final_task_status=final_status.value,
+            execution_path=outcome.path.value,
+            final_task_status=outcome.final_status.value,
             total_duration_seconds=total,
         )
         await self._try_generate_narrative(work_item, task)
         return result
+
+    async def _execute_selected_path(
+        self,
+        work_item: WorkItem,
+        task: Task,
+        agents: tuple[AgentIdentity, ...],
+        verdict: RoutingVerdict,
+        phases: list[WorkPhaseResult],
+    ) -> _ExecutionOutcome:
+        """Run the routed execution path (solo / refine / plan-review / team).
+
+        Returns:
+            The :class:`_ExecutionOutcome` naming the path taken, the final
+            task status, and any refinement / plan-review handoff produced.
+        """
+        if verdict is RoutingVerdict.LEAF:
+            final_status = await self._phase(
+                phases, _PHASE_SOLO, self._run_solo(work_item, task, agents)
+            )
+            await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
+            return _ExecutionOutcome(ExecutionPath.SOLO, final_status, None, None)
+        if self._should_refine(task):
+            # Team-bound work with no definition of done: refine with a human
+            # before mobilising a team (the clarification gate would otherwise
+            # block decomposition). No coordination runs, so the
+            # coordination-metrics stage is skipped.
+            refine_handoff = await self._phase(
+                phases, _PHASE_REFINE, self._refine(work_item, task)
+            )
+            return _ExecutionOutcome(
+                ExecutionPath.REFINEMENT, task.status, refine_handoff, None
+            )
+        if self._should_gate_plan():
+            # Splittable team work under a human plan-approval gate: decompose
+            # into a plan, park it for approval, and stop. Nothing builds until
+            # the plan is approved, at which point the durable plan (with any
+            # operator edits) is rebuilt and dispatched.
+            plan_handoff = await self._phase(
+                phases, _PHASE_PLAN_REVIEW, self._plan_review(work_item, task, agents)
+            )
+            return _ExecutionOutcome(
+                ExecutionPath.PLAN_REVIEW, task.status, None, plan_handoff
+            )
+        final_status = await self._phase(
+            phases, _PHASE_TEAM, self._run_team(work_item, task, agents)
+        )
+        await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
+        return _ExecutionOutcome(ExecutionPath.TEAM, final_status, None, None)
 
     async def _try_generate_narrative(self, work_item: WorkItem, task: Task) -> None:
         """Generate the run narrative, best-effort.

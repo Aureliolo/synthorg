@@ -35,7 +35,9 @@ describe('recommendations store', () => {
     server.use(http.get(`${BASE}/recommendations`, () => failJson(500)))
     await useRecommendationsStore.getState().fetchRecommendations()
     const state = useRecommendationsStore.getState()
-    expect(state.listError).toMatch(/server error/i)
+    // A 5xx surfaces the backend's real (already credential-redacted) error
+    // rather than a canned "server error" placeholder.
+    expect(state.listError).toBe('boom')
     expect(state.listLoading).toBe(false)
   })
 

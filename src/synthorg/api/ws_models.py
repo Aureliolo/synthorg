@@ -108,6 +108,9 @@ class WsEventType(StrEnum):
     # Reserved for future status-update endpoint (not yet published).
     PROJECT_STATUS_CHANGED = "project.status_changed"
 
+    PLAN_UPDATED = "plan.updated"
+    PLAN_CHANGES_REQUESTED = "plan.changes_requested"
+
     WORKFLOW_EXECUTION_STATUS_CHANGED = "workflow_execution.status_changed"
 
     MEMORY_FINE_TUNE_PROGRESS = "memory.fine_tune.progress"

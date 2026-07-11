@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the web dashboard. It was validated against the backend API surface (108+ controllers, 21 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the web dashboard. It was validated against the backend API surface (controllers and WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
 
@@ -68,6 +68,13 @@ Each row is evidence-backed and failure-aware: it shows the resolved task title,
 
 **API endpoints**: `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
 **WS channels**: `approvals`
+
+#### Plan Review (`/plans`)
+
+Durable-plan review inbox: when the plan-approval gate is enabled, the decomposed plan for an objective lands here for a human decision before any team builds. The list surfaces plans awaiting review first, then the rest by recency, with client-side status filtering across the whole set. The detail page (`/plans/:planId`) shows the plan's items and lets an operator rework them (title, description, owner, complexity, stakes) or send the plan back for changes with a note; approve/reject stay on the linked approval. A disconnected-updates banner shows when the live channel drops. See [Plan Review](plan-review.md).
+
+**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`
+**WS channels**: `plans`
 
 ### Secondary Navigation
 
@@ -409,6 +416,8 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, detail drawer with parents and delete |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
+| `/plans` | Plan Review | Durable-plan review inbox with status filter |
+| `/plans/:planId` | Plan detail | Item view + rework / request-changes |
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
 | `/messages?channel=:name&type=:type` | Messages (filtered) | Filtered by message type |
@@ -466,6 +475,7 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Projects** (detail) | `projects`, `tasks` | Project and task changes |
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
+| **Plan Review** (list + detail) | `plans` | Plan rework and request-changes events |
 | **Providers** | (none) | N/A; polling via TanStack Query |
 | **Workflows** (list) | (none) | N/A |
 | **Subworkflows** | (none) | N/A; refreshes via polling (30s) |
@@ -542,6 +552,7 @@ Every backend controller has a home in the page structure. No orphans.
 | AuditController | Settings (security namespace) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
+| PlanController | Plan Review page (list, detail, rework, request-changes) |
 | WorkflowController | Workflows, Workflow Editor |
 | WorkflowVersionController | Workflows, Workflow Editor |
 | ClientController | Client List, Client Detail |

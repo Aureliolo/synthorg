@@ -27,6 +27,7 @@ from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
 from synthorg.api.controllers.objectives import ObjectiveController
+from synthorg.api.controllers.plans import PlanController
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.subworkflows import SubworkflowController
@@ -56,6 +57,7 @@ FEATURE: FeatureModule = FeatureManifest(
         SubworkflowController,
         EvaluationConfigVersionController,
         DecompositionController,
+        PlanController,
         BoardController,
         SprintController,
         # Mounted unconditionally: their work-entry adapters wire during
