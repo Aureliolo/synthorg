@@ -83,6 +83,9 @@ class WorkItem(BaseModel):
         acceptance_criteria: Optional acceptance criteria strings.
         correlation_id: End-to-end trace id (auto-generated if absent).
         created_at: Construction timestamp (tz-aware UTC).
+        plan_required: When set, the spine always decomposes this brief
+            into a plan and never runs it as a single solo leaf, whatever
+            the solo-vs-team router decides.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -140,6 +143,15 @@ class WorkItem(BaseModel):
             " ceiling_amount. The intake phase stamps this onto the Task"
             " so the in-loop BudgetChecker enforces the operator-approved"
             " ceiling (None falls back to the global budget.run_hard_ceiling)"
+        ),
+    )
+    plan_required: bool = Field(
+        default=False,
+        description=(
+            "When True the spine always decomposes this brief into a plan"
+            " rather than running it as a single solo leaf, regardless of the"
+            " solo-vs-team router. Set by objective/charter entry adapters, for"
+            " which a single task is never a valid outcome."
         ),
     )
 

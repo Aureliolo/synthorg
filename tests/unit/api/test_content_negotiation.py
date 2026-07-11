@@ -145,12 +145,14 @@ class TestContentNegotiation:
             assert body["title"] == category_title(error_category)
             assert body["type"] == category_type_uri(error_category)
 
-    async def test_problem_json_5xx_scrubs_detail(self) -> None:
-        """5xx problem+json responses scrub internal details."""
+    async def test_problem_json_5xx_surfaces_real_error_but_redacts_secrets(
+        self,
+    ) -> None:
+        """5xx problem+json surfaces the real error, credential tokens redacted."""
 
         @get("/test")
         async def handler() -> None:
-            msg = "Connection pool exhausted: 10.0.0.5:5432"
+            msg = "upstream rejected Authorization: Bearer sk-secret-leak-me"
             raise ServiceUnavailableError(msg)
 
         async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
@@ -160,8 +162,10 @@ class TestContentNegotiation:
             )
             assert resp.status_code == 503
             body = resp.json()
-            assert body["detail"] == "Service unavailable"
-            assert "10.0.0.5" not in body["detail"]
+            # The real error is surfaced (no generic placeholder)...
+            assert "upstream rejected" in body["detail"]
+            # ...but a credential token in the message is still redacted.
+            assert "sk-secret-leak-me" not in body["detail"]
 
     async def test_problem_json_for_http_exception_headers(self) -> None:
         """HTTPException safe headers pass through in problem+json."""

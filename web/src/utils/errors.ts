@@ -18,13 +18,16 @@ const log = createLogger('errors')
 const MAX_ERROR_MESSAGE_LEN = 1000
 
 const GENERIC_FALLBACK_MESSAGE =
-  'An unexpected error occurred. Please refresh the page or contact support if this persists.'
+  'An error occurred but no details were available. Check the browser console.'
 
 const NETWORK_ERROR_MESSAGE = 'Network error. Please check your connection.'
 
+// Only reached when a 5xx arrives with no error body at all (e.g. a proxy
+// error, or the backend process died before writing a response). The real
+// error, when the backend produced one, is surfaced by `_extractServerError`;
+// this fallback points at the server logs rather than an imaginary support desk.
 const INTERNAL_SERVER_ERROR_MESSAGE =
-  'An unexpected server error occurred. Please try again later or '
-  + 'contact support if this persists.'
+  'Server error with no detail returned. Check the backend logs.'
 
 const GENERIC_VALIDATION_MESSAGE =
   'Validation error. Please check the highlighted fields and try again.'
@@ -327,22 +330,21 @@ function _extractBackendClientError(
 }
 
 /**
- * For a 5xx carrying a structured envelope whose category is not
- * INTERNAL, surface the backend's curated `error` string. A
- * categorised DomainError (e.g. a tunnel 502 in PROVIDER_ERROR)
- * writes its message for the operator, and flattening it to the
- * canned "Temporary connectivity issue" copy hides the actionable
- * detail. Uncategorised / INTERNAL 5xx bodies stay suppressed so
- * server internals never leak.
+ * Surface the backend's real error string for any 5xx. The backend
+ * emits the actual error for every 5xx via `safe_error_description`
+ * (`{ExcType}: {message}` with credential-shaped substrings stripped
+ * and the length bounded), so there is nothing to suppress: showing it
+ * is strictly more useful than the canned "contact support" copy, and
+ * INTERNAL failures are exactly the ones an operator most needs to see.
+ * Reads the flat `error` string (the backend sets it identical to
+ * `error_detail.detail`), falling back to the structured detail.
  */
-function _extractCuratedServerError(
+function _extractServerError(
   data: AxiosErrorData | undefined,
   status: number | undefined,
 ): string | null {
   if (status === undefined || status < 500) return null
-  const category = data?.error_detail?.error_category
-  if (category === undefined || category === ErrorCategory.INTERNAL) return null
-  return _trimmedOrNull(data?.error)
+  return _trimmedOrNull(data?.error) ?? _trimmedOrNull(data?.error_detail?.detail)
 }
 
 /** Canned per-status copy from `STATUS_FALLBACK_MESSAGES`, or null. */
@@ -373,7 +375,7 @@ function _formatAxiosErrorMessage(error: AxiosError): string {
   return (
     _handleSpecialisedAxiosStatus(error, data, status)
     ?? _extractBackendClientError(data, status)
-    ?? _extractCuratedServerError(data, status)
+    ?? _extractServerError(data, status)
     ?? _statusFallback(status)
     ?? _fallbackAxiosMessage(error, status)
   )

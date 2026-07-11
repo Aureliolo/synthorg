@@ -62,17 +62,17 @@ class OrgDepartmentMutationsMixin(ABC):
         self, namespace: str, key: str
     ) -> tuple[str, str]:
         """Read a setting value together with its concurrency version token."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _read_departments(self) -> tuple[Department, ...]:
         """Read the company's departments."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _read_agents(self) -> tuple[AgentConfig, ...]:
         """Read the company's agents."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _write_departments(
@@ -82,24 +82,24 @@ class OrgDepartmentMutationsMixin(ABC):
         expected_updated_at: str | None = None,
     ) -> None:
         """Persist the department roster under optimistic-concurrency control."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _snapshot_company(self) -> None:
         """Record a company snapshot attributed to the saver."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _find_department(
         self, departments: tuple[Department, ...], name: str
     ) -> Department | None:
         """Find a department by name within the given tuple."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _check_budget_sum(self, departments: tuple[Department, ...]) -> None:
         """Validate that department budgets stay within the company ceiling."""
-        raise NotImplementedError
+        ...
 
     @staticmethod
     @abstractmethod
@@ -107,7 +107,7 @@ class OrgDepartmentMutationsMixin(ABC):
         data: UpdateDepartmentRequest,
     ) -> dict[str, object]:
         """Collect the mutable department fields from an update request."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _validate_permutation(
@@ -117,7 +117,7 @@ class OrgDepartmentMutationsMixin(ABC):
         entity: str,
     ) -> None:
         """Validate that requested names are a permutation of current names."""
-        raise NotImplementedError
+        ...
 
     async def create_department(
         self,

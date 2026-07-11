@@ -73,7 +73,9 @@ class TestMetaChat:
             assert resp.status_code == 503
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Service unavailable"
+            # The 503 surfaces the real reason (which dependency is missing)
+            # rather than a bare "Service unavailable" placeholder.
+            assert body["error"].startswith("ServiceUnavailableError:")
         finally:
             app_state.swap_slice(original_slice)
 
@@ -305,6 +307,8 @@ class TestMetaChat:
             assert resp.status_code == 503
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Service unavailable"
+            # The 503 surfaces the real reason (which dependency is missing)
+            # rather than a bare "Service unavailable" placeholder.
+            assert body["error"].startswith("ServiceUnavailableError:")
         finally:
             app_state.swap_slice(original_slice)

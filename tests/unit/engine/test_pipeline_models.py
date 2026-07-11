@@ -55,6 +55,9 @@ class TestWorkItem:
         assert item.acceptance_criteria == ()
         assert item.correlation_id  # auto-generated, non-blank
         assert item.created_at is not None
+        # Ordinary work defaults to router-decided routing; only objective
+        # adapters opt in to the always-plan path.
+        assert item.plan_required is False
 
     def test_explicit_fields_preserved(self) -> None:
         item = _work_item(
@@ -63,12 +66,14 @@ class TestWorkItem:
             estimated_complexity=Complexity.COMPLEX,
             acceptance_criteria=("returns 200", "json body"),
             correlation_id="corr-xyz",
+            plan_required=True,
         )
         assert item.priority is Priority.HIGH
         assert item.task_type is TaskType.RESEARCH
         assert item.estimated_complexity is Complexity.COMPLEX
         assert item.acceptance_criteria == ("returns 200", "json body")
         assert item.correlation_id == "corr-xyz"
+        assert item.plan_required is True
 
     def test_frozen(self) -> None:
         item = _work_item()

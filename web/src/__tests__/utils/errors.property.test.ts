@@ -45,16 +45,19 @@ describe('errors property tests', () => {
     )
   })
 
-  it('getErrorMessage for 5xx never leaks response body', () => {
-    const statusArb = fc.integer({ min: 500, max: 599 })
-    // Use identifiable strings that would never appear in generic messages
+  it('getErrorMessage for 5xx surfaces the backend error body', () => {
+    // 503 has specialised "service restarting/unavailable" copy that
+    // intentionally overrides the body; every other 5xx surfaces the real
+    // error the backend returned (secrets are redacted server-side).
+    const statusArb = fc.integer({ min: 500, max: 599 }).filter((s) => s !== 503)
     const bodyArb = fc.stringMatching(/^[A-Z][a-z]{4,20}Error: .{5,50}$/)
 
     fc.assert(
       fc.property(statusArb, bodyArb, (status, body) => {
         const error = makeFakeAxiosError(status, { error: body })
         const msg = getErrorMessage(error)
-        expect(msg).not.toContain(body)
+        // The backend error is surfaced verbatim modulo whitespace trimming.
+        expect(msg).toContain(body.trim())
       }),
       FC_OPTIONS,
     )

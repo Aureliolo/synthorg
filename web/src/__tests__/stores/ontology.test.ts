@@ -92,11 +92,9 @@ describe('useOntologyStore', () => {
 
     await useOntologyStore.getState().fetchEntities()
 
-    // A 500 surfaces the generic user-facing server-error copy (not the raw
-    // backend string), so assert that concrete recorded message.
-    expect(useOntologyStore.getState().entitiesError).toContain(
-      'unexpected server error',
-    )
+    // A 500 now surfaces the backend's real (secret-redacted) error rather
+    // than a generic placeholder.
+    expect(useOntologyStore.getState().entitiesError).toContain('Network down')
     expect(useOntologyStore.getState().entitiesLoading).toBe(false)
   })
 

@@ -61,22 +61,22 @@ class OrgAgentMutationsMixin(ABC):
         self, namespace: str, key: str
     ) -> tuple[str, str]:
         """Read a setting value together with its concurrency version token."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _read_departments(self) -> tuple[Department, ...]:
         """Read the company's departments."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _read_agents(self) -> _AgentRoster:
         """Read the company's agents."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _read_provider_configs(self) -> Mapping[str, ProviderConfig]:
         """Read the resolved provider configs for catalog validation."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _write_agents(
@@ -86,24 +86,24 @@ class OrgAgentMutationsMixin(ABC):
         expected_updated_at: str | None = None,
     ) -> None:
         """Persist the agent roster under optimistic-concurrency control."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _snapshot_company(self) -> None:
         """Record a company snapshot attributed to the bound actor."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _find_department(
         self, departments: tuple[Department, ...], name: str
     ) -> Department | None:
         """Find a department by name within the given tuple."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _find_agent(self, agents: _AgentRoster, name: str) -> AgentConfig | None:
         """Find an agent by name within the given tuple."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _validate_permutation(
@@ -113,7 +113,7 @@ class OrgAgentMutationsMixin(ABC):
         entity: str,
     ) -> None:
         """Validate that requested names are a permutation of current names."""
-        raise NotImplementedError
+        ...
 
     def _roster_writer(self) -> _RosterWriter:
         """Return the shared CAS write step (persist + snapshot).

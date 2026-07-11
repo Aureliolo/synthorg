@@ -5,10 +5,12 @@ Each handler returns either an ``ApiResponse`` envelope (default) or a
 bare RFC 9457 ``ProblemDetail`` body when the client sends
 ``Accept: application/problem+json``.
 
-5xx responses return a generic scrubbed message; 4xx responses pass
-through the exception detail (authored by SynthOrg's guards/middleware
-and user-safe).  Detailed error context is logged server-side for all
-status codes.
+Both 4xx and 5xx responses surface the real error, secret-redacted:
+5xx via ``safe_error_description`` (``{ExcType}: {message}``, credential
+patterns stripped, length-bounded), 4xx via ``scrub_secret_tokens`` over
+the guard/middleware-authored detail. No response body is a generic
+"contact support" placeholder. Detailed error context is also logged
+server-side for all status codes.
 
 All handlers populate structured RFC 9457 metadata (error code, category,
 retryability, title, type URI, request correlation ID).
@@ -599,7 +601,7 @@ def handle_persistence_error(
     _log_error(request, exc, status=500)
     return _build_response(
         request,
-        detail="Internal server error",
+        detail=safe_error_description(exc),
         error_code=ErrorCode.PERSISTENCE_ERROR,
         error_category=ErrorCategory.INTERNAL,
         status_code=500,
@@ -785,23 +787,24 @@ def _determine_retryable(exc: Exception) -> bool:
 
 
 def _select_message(exc: Exception, status_code: int) -> str:
-    """Pick a user-safe message for the RFC 9457 envelope.
+    """Pick the real, secret-redacted error message for the envelope.
 
-    5xx responses return the class-level ``default_message`` to avoid
-    leaking internal detail. 4xx responses pass through the exception
-    message (controller / service-authored) but route it through
-    ``scrub_secret_tokens`` first: a defence-in-depth pass that redacts
-    any credential / token-shaped substring (Bearer tokens, URL
-    userinfo, Fernet ciphertext, JSON secret fields) a raise site may
-    have interpolated, without altering ordinary validation text. This
-    is what lets domain errors propagate straight to this handler with
-    no controller-level catch-and-sanitise.
+    Every response surfaces the actual error rather than a generic
+    "contact support" placeholder. 5xx responses return
+    ``safe_error_description`` (the ``{ExcType}: {message}`` form, with
+    credential-shaped substrings stripped and the length bounded) so an
+    operator sees exactly what failed without any secret reaching the
+    wire. 4xx responses pass the controller/service-authored message
+    through ``scrub_secret_tokens`` (the message is already user-facing;
+    the scrub is defence-in-depth against a credential a raise site may
+    have interpolated). This is what lets domain errors propagate straight
+    to this handler with no controller-level catch-and-sanitise.
 
     Returns:
         Resulting string.
     """
     if status_code >= _SERVER_ERROR_THRESHOLD:
-        return str(getattr(exc, "default_message", "Internal server error"))
+        return safe_error_description(exc)
     raw = str(exc) or str(getattr(exc, "default_message", "Request error"))
     return scrub_secret_tokens(raw)
 
@@ -841,9 +844,9 @@ def handle_domain_error(
     ``ToolError`` hierarchies -- one handler function covers all eight
     via MRO dispatch.
 
-    5xx responses return the class-level ``default_message`` to avoid
-    leaking internal detail; 4xx responses pass through the exception
-    message which is controller-authored and user-safe.
+    Both 4xx and 5xx responses surface the real, secret-redacted error
+    (see ``_select_message``); no 5xx is flattened to a generic
+    placeholder.
 
     Returns:
         ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
@@ -885,7 +888,7 @@ def handle_unexpected(
     _log_error(request, exc, status=500)
     return _build_response(
         request,
-        detail="Internal server error",
+        detail=safe_error_description(exc),
         error_code=ErrorCode.INTERNAL_ERROR,
         error_category=ErrorCategory.INTERNAL,
         status_code=500,
@@ -1096,7 +1099,7 @@ def handle_http_exception(
     status = exc.status_code
     _log_error(request, exc, status=status)
     if status >= _SERVER_ERROR_THRESHOLD:
-        msg = "Internal server error"
+        msg = safe_error_description(exc)
     else:
         try:
             fallback = HTTPStatus(status).phrase

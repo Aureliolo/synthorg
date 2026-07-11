@@ -64,7 +64,7 @@ class CostTrackerSummaryMixin(ABC):
     @abstractmethod
     async def _snapshot(self, *, now: datetime | None = None) -> tuple[CostRecord, ...]:
         """Return an immutable snapshot of the tracked cost records."""
-        raise NotImplementedError
+        ...
 
     async def build_summary(
         self,

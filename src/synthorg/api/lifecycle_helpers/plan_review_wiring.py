@@ -34,6 +34,28 @@ PROJECT_METADATA_KEY = "project"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
+# Plan-approval risk scales with plan size: a larger plan commits more work and
+# budget in one decision, so it warrants proportionally more scrutiny. (Risk
+# level is otherwise a mostly-decorative label; scaling it with size at least
+# makes it an honest signal here rather than a hardcoded constant.)
+_LOW_RISK_MAX_SUBTASKS: Final[int] = 3
+_MEDIUM_RISK_MAX_SUBTASKS: Final[int] = 8
+
+
+def _plan_risk_level(plan: DecompositionResult) -> ApprovalRiskLevel:
+    """Scale plan-approval risk with the size of the decomposed plan.
+
+    Returns:
+        ``LOW`` for a small plan, ``MEDIUM`` for a mid-sized one, ``HIGH``
+        for a large plan (more subtasks commit more work in one approval).
+    """
+    count = len(plan.plan.subtasks)
+    if count <= _LOW_RISK_MAX_SUBTASKS:
+        return ApprovalRiskLevel.LOW
+    if count <= _MEDIUM_RISK_MAX_SUBTASKS:
+        return ApprovalRiskLevel.MEDIUM
+    return ApprovalRiskLevel.HIGH
+
 
 def _plan_detail(plan: DecompositionResult) -> str:
     """Human-readable one-line summary of a decomposed plan.
@@ -90,7 +112,7 @@ class PlanReviewApprovalGate:
                 title=NotBlankStr(f"Approve plan for: {task.title}"),
                 description=NotBlankStr(detail),
                 requested_by=work_item.requested_by,
-                risk_level=ApprovalRiskLevel.MEDIUM,
+                risk_level=_plan_risk_level(plan),
                 source=ApprovalSource.PLAN_REVIEW,
                 status=ApprovalStatus.PENDING,
                 created_at=self._clock.now(),

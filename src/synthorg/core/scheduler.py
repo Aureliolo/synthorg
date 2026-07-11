@@ -353,7 +353,7 @@ class AsyncCycleScheduler(ABC):
     @abstractmethod
     async def _run_cycle_once(self) -> None:
         """Run one unit of domain work (abstract; a subclass must override)."""
-        raise NotImplementedError
+        ...
 
     def _log_cycle_paused(self) -> None:  # noqa: B027 -- intentional default no-op hook, not abstract
         """Emit a skipped-tick log when the cycle is disabled (default no-op)."""

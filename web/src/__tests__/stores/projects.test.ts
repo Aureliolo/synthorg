@@ -336,7 +336,8 @@ describe('useProjectsStore', () => {
       // failures; per-id context is logged separately via the
       // failedDetails channel inside the store.
       expect(result.failedReasons).toHaveLength(1)
-      expect(result.failedReasons[0]).toContain('contact support')
+      // 5xx now surfaces the backend's real (secret-redacted) error.
+      expect(result.failedReasons[0]).toContain('boom')
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
     })

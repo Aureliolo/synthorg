@@ -15,6 +15,7 @@ from typing import Final, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api.api_core_state import analytics_read_service_of
 from synthorg.api.controllers._department_health_outcomes import (
     health_from_outcomes,
     resolve_task_outcomes,
@@ -34,8 +35,9 @@ from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.normalization import compare_ci
+from synthorg.core.task import Task
+from synthorg.core.task_activity import busy_agent_ids
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -174,35 +176,32 @@ def filter_agents_by_department(
     return tuple(a for a in agents if compare_ci(a.department, dept_name))
 
 
-async def _resolve_active_count(
+async def _resolve_inprogress_tasks(
     app_state: AppState,
-    dept_name: str,
-) -> int:
-    """Count active agents in the department via the registry.
+) -> tuple[Task, ...]:
+    """Fetch the in-flight tasks used to derive department utilisation.
+
+    Utilisation is a runtime measure: an agent counts as active only while
+    it is executing a task (assignee of an ``IN_PROGRESS`` task), never by
+    its ``AgentStatus`` lifecycle flag. A read failure degrades to no
+    in-flight work (zero utilisation) rather than collapsing the whole
+    health response, so costs and performance still surface.
 
     Returns:
-        Resulting integer.
+        Every ``IN_PROGRESS`` task, or ``()`` on read failure.
     """
-    if app_state.slice(HrStateSlice).agent_registry is None:
-        return 0
     try:
-        registry = require_service(
-            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
-        )
-        dept_agents = await registry.list_by_department(
-            dept_name,
-        )
-        return sum(1 for a in dept_agents if a.status == AgentStatus.ACTIVE)
+        return await analytics_read_service_of(app_state).list_in_progress()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health",
-            detail="agent_registry_query_failed",
+            detail="inprogress_tasks_query_failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return 0
+        return ()
 
 
 async def _resolve_snapshots(
@@ -494,8 +493,8 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
             app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
         )
         async with asyncio.TaskGroup() as tg:
-            t_active = tg.create_task(
-                _resolve_active_count(app_state, dept_name),
+            t_tasks = tg.create_task(
+                _resolve_inprogress_tasks(app_state),
             )
             t_cost = tg.create_task(
                 collect_all_records(
@@ -553,10 +552,12 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
         window_start=health_window_start,
     )
 
+    active_count = len(busy_agent_ids(t_tasks.result(), t_ids.result()))
+
     return _build_health_from_data(
         dept_name=dept_name,
         agent_count=agent_count,
-        active_count=t_active.result(),
+        active_count=active_count,
         cost_records=t_cost.result(),
         agent_ids=t_ids.result(),
         snapshots=snapshots,

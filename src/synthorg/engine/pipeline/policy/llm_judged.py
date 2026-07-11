@@ -34,7 +34,13 @@ from synthorg.providers.protocol import CompletionProvider
 logger = get_logger(__name__)
 
 _LLM_TEMPERATURE: Final[float] = 0.0
-_LLM_MAX_OUTPUT_TOKENS: Final[int] = 16
+# A reasoning model spends hidden thinking tokens before it emits the visible
+# verdict, and that thinking draws down the same budget. A tiny cap is consumed
+# entirely by reasoning, so the response comes back with empty content and is
+# forced onto the deterministic fallback. The budget must cover the reasoning
+# plus the one-word answer; 4096 is comfortable headroom for a binary decision
+# (matching the heaviest reason-then-decide call in the codebase).
+_LLM_MAX_OUTPUT_TOKENS: Final[int] = 4096
 
 _SPLITTABLE_RE: Final = re.compile(r"\bsplittable\b")
 _LEAF_RE: Final = re.compile(r"\bleaf\b")

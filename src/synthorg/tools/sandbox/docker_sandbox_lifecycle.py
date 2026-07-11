@@ -52,12 +52,12 @@ class DockerSandboxLifecycleMixin(ABC):
     @abstractmethod
     async def _ensure_docker(self) -> aiodocker.Docker:
         """Return the connected aiodocker client, connecting if needed."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     async def _destroy_handle(self, handle: ContainerHandle) -> None:
         """Destroy the container behind *handle*."""
-        raise NotImplementedError
+        ...
 
     async def _safe_collect_logs(
         self,

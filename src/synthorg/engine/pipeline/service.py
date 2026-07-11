@@ -294,6 +294,12 @@ class DefaultWorkPipeline:
             verdict, agents = await self._phase(
                 phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
+            # A charter/objective is a brief to be planned, so it must never
+            # collapse to a single solo agent: force the splittable path and
+            # let the solo-vs-team router decide only how each child task in
+            # the resulting plan runs.
+            if work_item.plan_required:
+                verdict = RoutingVerdict.SPLITTABLE
             refinement_handoff: RefinementHandoff | None = None
             plan_review_handoff: PlanReviewHandoff | None = None
             if verdict is RoutingVerdict.LEAF:

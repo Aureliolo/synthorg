@@ -37,7 +37,7 @@ class _GiteaFamilyAuthenticator(ABC):
     @abstractmethod
     def connection_type(self) -> ConnectionType:
         """The connection type this authenticator handles."""
-        raise NotImplementedError
+        ...
 
     def validate_credentials(
         self,

@@ -411,14 +411,15 @@ class CharterDispatcher:
             requested_by=charter.created_by,
             priority=Priority.HIGH,
             task_type=TaskType.DEVELOPMENT,
-            # The charter carries no complexity; the spine's decompose +
-            # routing phases decide solo-vs-team from the brief + agent pool.
             estimated_complexity=Complexity.MEDIUM,
             acceptance_criteria=charter.success_criteria,
             correlation_id=charter.conversation_id,
             created_at=now,
             forecast_id=forecast.forecast_id,
             hard_ceiling=charter.envelope.amount,
+            # A charter is an objective: the spine always decomposes it into a
+            # plan, never runs it as a single solo agent.
+            plan_required=True,
         )
 
     async def _stamp_approved(  # noqa: PLR0913 -- dispatch provenance columns

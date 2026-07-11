@@ -10,6 +10,7 @@ high-level worktree coordination logic.
 
 import asyncio
 import os
+import subprocess
 
 # ``Path`` is imported at runtime (not under TYPE_CHECKING) because it is used
 # in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
@@ -74,6 +75,14 @@ async def run_git_subprocess(
 ) -> tuple[int, str, str]:
     """Run ``git *args`` in *repo_root* and decode stdout/stderr.
 
+    Prefers the loop-native :func:`asyncio.create_subprocess_exec` (truly
+    non-blocking, kills the child on timeout / cancellation). That call
+    raises ``NotImplementedError`` on the Windows ``SelectorEventLoop``,
+    which has no IOCP subprocess integration and which psycopg's async
+    pool forces on Windows; in that one case it transparently falls back
+    to a blocking :func:`subprocess.run` on a worker thread so git-backed
+    provisioning still runs under every event-loop policy and platform.
+
     Args:
         repo_root: Working directory for the git command.
         *args: Git command arguments (e.g. ``"worktree"``, ``"add"``).
@@ -81,11 +90,13 @@ async def run_git_subprocess(
         log_event: Structured-log event constant used on timeout.
 
     Returns:
-        Tuple ``(return_code, stdout_text, stderr_text)``. On timeout,
-        returns ``(-1, "", <message>)`` after killing the process.
+        Tuple ``(return_code, stdout_text, stderr_text)``. On spawn
+        failure or timeout, returns ``(-1, "", <message>)``.
 
     Raises:
-        asyncio.CancelledError: Propagated (process is killed first).
+        asyncio.CancelledError: Propagated (the native path kills the
+            child first; the thread fallback lets the short-lived git
+            command finish on its worker thread).
     """
     # ``create_subprocess_exec`` can raise ``OSError`` before the process
     # ever starts (missing ``git`` binary, bad ``cwd``, resource limits,
@@ -100,6 +111,10 @@ async def run_git_subprocess(
             env=_sanitised_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+        )
+    except NotImplementedError:
+        return await _run_git_in_thread(
+            repo_root, args, cmd_timeout=cmd_timeout, log_event=log_event
         )
     except OSError as exc:
         msg = f"failed to spawn git subprocess: {exc.__class__.__name__}"
@@ -143,3 +158,63 @@ async def run_git_subprocess(
         stdout_bytes.decode("utf-8", errors="replace").strip(),
         stderr_bytes.decode("utf-8", errors="replace").strip(),
     )
+
+
+async def _run_git_in_thread(
+    repo_root: Path,
+    args: tuple[str, ...],
+    *,
+    cmd_timeout: float,
+    log_event: str,
+) -> tuple[int, str, str]:
+    """Loop-agnostic git fallback: blocking ``subprocess.run`` on a thread.
+
+    Used only when the running event loop cannot spawn subprocesses (the
+    Windows ``SelectorEventLoop``). Honours the same
+    ``(return_code, stdout, stderr)`` / ``(-1, "", <message>)`` contract as
+    the native path.
+
+    Returns:
+        Tuple ``(return_code, stdout_text, stderr_text)``, or
+        ``(-1, "", <message>)`` on spawn failure or timeout.
+    """
+
+    def _run() -> tuple[int, str, str]:
+        # A list argv with no ``shell=True`` is injection-safe: git and its
+        # args go straight to ``CreateProcessW`` with no shell interpreting
+        # metacharacters. ``check=False`` because callers handle the
+        # non-zero rc branch themselves.
+        completed = subprocess.run(  # noqa: S603 -- list argv, no shell
+            ["git", *args],  # noqa: S607 -- git resolved from PATH, as everywhere
+            cwd=str(repo_root),
+            env=_sanitised_env(),
+            capture_output=True,
+            timeout=cmd_timeout,
+            check=False,
+        )
+        return (
+            completed.returncode,
+            completed.stdout.decode("utf-8", errors="replace").strip(),
+            completed.stderr.decode("utf-8", errors="replace").strip(),
+        )
+
+    try:
+        return await asyncio.to_thread(_run)
+    except subprocess.TimeoutExpired:
+        msg = f"git {args[0] if args else ''} timed out after {cmd_timeout}s"
+        logger.warning(
+            log_event,
+            error_type="TimeoutExpired",
+            error=msg,
+            args=_redact_args(args),
+        )
+        return (-1, "", msg)
+    except OSError as exc:
+        msg = f"failed to spawn git subprocess: {exc.__class__.__name__}"
+        logger.warning(
+            log_event,
+            error_type=exc.__class__.__name__,
+            error=msg,
+            args=_redact_args(args),
+        )
+        return (-1, "", msg)

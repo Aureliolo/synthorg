@@ -332,6 +332,9 @@ class TestApprove:
         assert work_item.hard_ceiling == pytest.approx(5000.0)
         assert work_item.acceptance_criteria == ("recall +10%",)
         assert work_item.project == _EXPECTED_NEW_PROJECT_ID
+        # A charter is an objective: it must always be planned, never run as a
+        # single solo leaf, so the spine decomposes it into a plan.
+        assert work_item.plan_required is True
 
     async def test_charter_stamped_approved(self) -> None:
         dispatcher, _, _, _ = _dispatcher(_charter())

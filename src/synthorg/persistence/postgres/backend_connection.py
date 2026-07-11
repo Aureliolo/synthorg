@@ -95,12 +95,12 @@ class PostgresConnectionMixin(ABC):
     @abstractmethod
     def _clear_state(self) -> None:
         """Reset connection state to the disconnected baseline."""
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def _create_repositories(self) -> None:
         """Instantiate the pool-bound repositories."""
-        raise NotImplementedError
+        ...
 
     async def _configure_connection(
         self,

@@ -45,7 +45,7 @@ class PostgresMigrationMixin(ABC):
     @abstractmethod
     def _clear_state(self) -> None:
         """Reset connection state to the disconnected baseline."""
-        raise NotImplementedError
+        ...
 
     async def migrate(self) -> None:
         """Apply pending schema migrations via yoyo-migrations.

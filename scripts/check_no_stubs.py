@@ -10,12 +10,14 @@ or fail loud with a typed :class:`DomainError` (e.g.
 AST-based (string/comment mentions never false-positive). Flags, under
 ``src/synthorg/``:
 
-* ``raise NotImplementedError`` in a concrete method body. An
-  ``@abstractmethod`` seam is exempt because Python already blocks
-  instantiating a class with an unimplemented abstract method, so the
-  raise cannot masquerade as working code; an ``@overload`` seam is
-  exempt because its signature is namespace-shadowed by the real
-  implementation that follows, so the placeholder body never runs.
+* ``raise NotImplementedError`` in ANY body, with no exemption. An
+  ``@abstractmethod`` / ``@overload`` / ``Protocol`` seam declares an
+  interface-only body as ``...`` (Python already blocks instantiating a
+  class with an unimplemented abstract method); a concrete method that
+  cannot do its job fails loud with a typed :class:`DomainError`
+  (e.g. ``FeatureNotImplementedError``). Either way the builtin
+  ``NotImplementedError`` is never the right tool, so it is banned
+  outright rather than merely in concrete bodies.
 * A function/method whose body is exactly ``pass`` or ``...`` (after an
   optional docstring), unless the enclosing class is a ``Protocol``, the
   method is ``@abstractmethod`` / ``@overload``, or the definition sits
@@ -183,7 +185,6 @@ class _StubVisitor(ast.NodeVisitor):
         self._lines = source_lines
         self.violations: list[Violation] = []
         self._protocol_stack: list[bool] = []
-        self._exempt_func_stack: list[bool] = []
         self._type_checking_depth = 0
 
     def _marked(self, lineno: int) -> bool:
@@ -221,9 +222,7 @@ class _StubVisitor(ast.NodeVisitor):
                 placeholder.lineno,
                 f"function {node.name!r} has an empty ({kind}) body",
             )
-        self._exempt_func_stack.append(exempt)
         self.generic_visit(node)
-        self._exempt_func_stack.pop()
 
     @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -236,13 +235,13 @@ class _StubVisitor(ast.NodeVisitor):
     @override
     def visit_Raise(self, node: ast.Raise) -> None:
         if _raises_not_implemented(node):
-            exempt = bool(self._exempt_func_stack and self._exempt_func_stack[-1])
-            if not exempt:
-                self._record(
-                    node.lineno,
-                    "raise NotImplementedError in a concrete body (implement it or "
-                    "fail loud with a typed DomainError)",
-                )
+            self._record(
+                node.lineno,
+                "raise NotImplementedError is banned everywhere: use '...' in an "
+                "@abstractmethod / @overload / Protocol seam, or fail loud with a "
+                "typed DomainError (e.g. FeatureNotImplementedError) in a concrete "
+                "body",
+            )
         self.generic_visit(node)
 
     @override
