@@ -446,7 +446,7 @@ class TestA2AClientTimeoutContract:
         # passing timeout positionally, which would reintroduce the
         # silent-default drift this contract is meant to prevent.
         with pytest.raises(TypeError):
-            A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[misc]
+            A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[call-arg]
 
 
 def _rpc_echo(
