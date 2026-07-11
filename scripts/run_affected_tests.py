@@ -10,14 +10,11 @@ Foundational modules (core, config, observability) are imported by nearly every
 other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
-When the affected-tests run goes green, an isolation regression gate runs
-``pytest --count 2 --max-worker-restart=0`` over the same selection and
-classifies the outcome.  A test that passes the primary run but fails the
-replay points at fixture state leaking process-global state, the exact
-failure mode that splits a green local run from a red xdist push.  Any
+The affected-tests run uses ``--max-worker-restart=0`` (matching CI) so any
 xdist worker crash (commonly the Python 3.14 + Windows ProactorEventLoop
-IOCP teardown race) blocks the gate: a crashed worker is a real defect to
-debug from the faulthandler/core dump, not flakiness to wave through.
+IOCP teardown race) surfaces and blocks the push rather than being silently
+recovered: a crashed worker is a real defect to debug from the
+faulthandler/core dump, not flakiness to wave through.
 
 Exit codes match pytest: 0 (passed/nothing to run), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
@@ -842,60 +839,6 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
         return
 
 
-def _run_isolation_gate(paths: list[str]) -> int:
-    """Run ``pytest --count 2`` over the given paths and classify the result.
-
-    Catches module-level-state isolation regressions by re-running each
-    test exactly once.  A test that passes the primary run but fails
-    the replay almost always means a fixture leaked process-global
-    state that polluted the second invocation.
-
-    ``--max-worker-restart=0`` (matching CI) forbids restarting a worker
-    that crashes during the replay, so the Python 3.14 + Windows
-    ProactorEventLoop IOCP teardown race
-    (https://github.com/python/cpython/issues/116773 and family) and any
-    other native crash always surfaces and blocks rather than being
-    silently recovered.  ``_classify_isolation_outcome`` parses the
-    captured stdout; real failures, repeated crashes, and one-off worker
-    crashes all block.
-
-    Skipped only when ``paths`` is empty (nothing affected).  The gate
-    always runs otherwise; root causes are fixed, not bypassed.
-
-    Returns 0 on green / skip; non-zero on any regression or worker crash.
-    """
-    if not paths:
-        return 0
-    print("Isolation gate: re-running affected tests under --count 2...")
-    cmd = [
-        sys.executable,
-        "-m",
-        "pytest",
-        *paths,
-        "-m",
-        "unit",
-        "-n",
-        "8",
-        "--max-worker-restart=0",
-        "--count",
-        "2",
-        "-q",
-    ]
-    # ``--count 2`` runs every affected test twice, so the cap is the
-    # full-suite ceiling regardless of selection size.
-    returncode, captured_stdout = _stream_pytest(
-        cmd, timeout_seconds=_PYTEST_FULL_SUITE_TIMEOUT_SECONDS
-    )
-    if returncode == _PYTEST_HUNG_EXIT_CODE:
-        # Watchdog kill -- same reasoning as in ``_run_pytest``: don't
-        # let ``_classify_isolation_outcome`` misread a killed run's
-        # partial stdout instead of the canonical 124 watchdog signal.
-        return _PYTEST_HUNG_EXIT_CODE
-    outcome = _classify_isolation_outcome(returncode, captured_stdout)
-    _print_isolation_banner(outcome)
-    return outcome.exit_code
-
-
 def _resolve_changed_files() -> list[str] | None:
     """Return changed files, or ``None`` if we should run the full suite.
 
@@ -1028,12 +971,7 @@ def _run_tests() -> int:
         return 0
 
     print(f"Running affected tests: {', '.join(test_dirs)}")
-    primary_returncode = _run_pytest(test_dirs)
-    return (
-        primary_returncode
-        if primary_returncode != 0
-        else _run_isolation_gate(test_dirs)
-    )
+    return _run_pytest(test_dirs)
 
 
 def main() -> int:

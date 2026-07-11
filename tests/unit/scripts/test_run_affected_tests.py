@@ -780,81 +780,7 @@ def test_print_isolation_banner_regression_no_evidence_uses_failclosed_text(
     assert "(2)" in err
 
 
-# ── _run_isolation_gate orchestrator ─────────────────────────────
-
-
-def test_run_isolation_gate_skips_when_paths_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Empty path list short-circuits to exit 0 before running pytest."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd: pytest.fail("_stream_pytest must not run on empty paths"),
-    )
-    assert _MODULE._run_isolation_gate([]) == 0
-
-
-def test_run_isolation_gate_passes_through_classifier_pass(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Green pytest output -> classifier returns pass -> exit 0."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (0, "500 passed in 12.34s\n"),
-    )
-    assert _MODULE._run_isolation_gate(["tests/unit/foo/"]) == 0
-
-
-def test_run_isolation_gate_blocks_on_native_crash(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Native worker crashes -> classifier returns regression -> blocks (exit >= 1)."""
-    stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (1, stdout),
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
-    assert rc == 1
-    assert "ISOLATION CRASH" in capsys.readouterr().err
-
-
-def test_run_isolation_gate_returns_nonzero_on_real_regression(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Real test failure -> classifier returns regression -> exit non-zero."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (1, _FAILED_LINE + "499 passed, 1 failed in 12s\n"),
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
-    assert rc == 1
-    assert "ISOLATION REGRESSION" in capsys.readouterr().err
-
-
-def test_run_isolation_gate_invokes_pytest_with_correct_flags(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The gate command embeds ``--count 2`` and ``--max-worker-restart=0``."""
-    captured: dict[str, list[str]] = {}
-
-    def _capture(cmd: list[str], **_kwargs: object) -> tuple[int, str]:
-        captured["cmd"] = cmd
-        return 0, "1 passed in 0.1s\n"
-
-    monkeypatch.setattr(_MODULE, "_stream_pytest", _capture)
-    _MODULE._run_isolation_gate(["tests/unit/foo/"])
-    cmd = captured["cmd"]
-    assert "--count" in cmd
-    assert "2" in cmd
-    assert "--max-worker-restart=0" in cmd
-    assert "tests/unit/foo/" in cmd
+# ── _run_pytest orchestrator ─────────────────────────────────────
 
 
 def test_run_pytest_short_circuits_on_hung_exit_code(
@@ -909,36 +835,6 @@ def test_run_pytest_blocks_on_timing_regression_even_when_tests_pass(
     )
     rc = _MODULE._run_pytest(["tests/unit/foo/"], run_all=True)
     assert rc == 1
-
-
-def test_run_isolation_gate_short_circuits_on_hung_exit_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Isolation gate also short-circuits on watchdog kill (same reasoning).
-
-    A hung ``--count 2`` replay must NOT be classified from its partial
-    stdout; the watchdog kill returns the canonical 124 so a replay that
-    timed out before finishing blocks cleanly.
-    """
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (
-            _MODULE._PYTEST_HUNG_EXIT_CODE,
-            "[gw0] node down: Not properly terminated\n",
-        ),
-    )
-
-    def _classifier_must_not_run(*_args: object, **_kwargs: object) -> object:
-        msg = "classifier must not run on hung-pytest fast path"
-        raise AssertionError(msg)
-
-    monkeypatch.setattr(
-        _MODULE, "_classify_isolation_outcome", _classifier_must_not_run
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/foo/"])
-    assert rc == _MODULE._PYTEST_HUNG_EXIT_CODE
-    assert rc == 124
 
 
 # ── event loop policy fixtures ───────────────────────────────────

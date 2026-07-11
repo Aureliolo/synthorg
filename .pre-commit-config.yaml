@@ -83,17 +83,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         types: []
-      # Consolidated single-process runner for the pre-push-only Python
-      # gates (scripts/run_prepush_python_gates.py). Folding ~40 individual
-      # `uv run python scripts/check_*.py` hooks into one process collapses
-      # the per-push spawn count -- the desktop-heap / STATUS_DLL_INIT_FAILED
-      # (0xC0000142) pressure on Windows -- and pays the synthorg import once.
-      # The underlying scripts/check_*.py files stay on disk so the
-      # convention-gate-inventory meta-gate still resolves each gate path, and
-      # CI's `pre-commit run --all-files` runs this one hook from the same
-      # config so local<->CI parity holds.
+      # Consolidated runner for the pre-push-only Python gates
+      # (scripts/run_prepush_python_gates.py). Folding ~48 individual
+      # `uv run python scripts/check_*.py` hooks into one runner keeps the
+      # concurrent spawn count bounded -- the desktop-heap / STATUS_DLL_INIT_
+      # FAILED (0xC0000142) pressure on Windows -- while fanning the CPU-bound
+      # whole-tree AST gates across a reused-worker pool. The underlying
+      # scripts/check_*.py files stay on disk so the convention-gate-inventory
+      # meta-gate still resolves each gate path, and CI's `pre-commit run
+      # --all-files` runs this one hook from the same config so local<->CI
+      # parity holds.
       - id: consolidated-python-gates
-        name: consolidated pre-push Python gates (single process)
+        name: consolidated pre-push Python gates
         entry: uv run python scripts/run_prepush_python_gates.py
         language: system
         always_run: true
@@ -779,17 +780,6 @@ repos:
         language: system
         files: ^(src/synthorg/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-push]
-
-      # Spelling check; configuration in .codespellrc.
-      - id: codespell
-        name: codespell (spelling)
-        entry: uv run codespell --config .codespellrc
-        language: system
-        files: ^(src/synthorg|tests|scripts|docs|README\.md|CLAUDE\.md|\.codespellrc).*$
-        pass_filenames: false
-        # Full-tree spell scan is the slowest pre-commit gate; defer to
-        # pre-push alongside the other prose gates (vale, lychee).
         stages: [pre-push]
 
       # SQL lint for migration revisions and the canonical schema.

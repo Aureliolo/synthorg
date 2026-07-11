@@ -178,6 +178,11 @@ jobs:
           docker run --rm -v "$PWD:/work" -w /work
           caddy:2.10.2-alpine
           caddy validate --config web/Caddyfile --adapter caddyfile
+      # Spell-check runs as a dedicated step rather than a pre-commit hook so
+      # the ~11s full-tree scan gates every push in CI without sitting on the
+      # local pre-push critical path. Config in .codespellrc.
+      - name: Spell check (codespell)
+        run: uv run codespell --config .codespellrc
 
   # ── Runtime Stats Freshness ──
   # Fails the build when data/runtime_stats.yaml has drifted (any
