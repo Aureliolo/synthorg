@@ -194,14 +194,17 @@ class PlanService:
         self._log_transition(existing.status, revised)
         return revised
 
-    async def request_changes(self, existing: Plan) -> Plan:
+    async def request_changes(self, existing: Plan, *, note: str | None = None) -> Plan:
         """Send a plan back for revision (status -> draft).
 
-        The operator's note is surfaced by the controller (WS event + audit);
-        turning it into a concrete replan is the wiring layer's concern.
+        The operator's *note* is recorded on the durable audit event so the
+        rationale outlives the transient WebSocket notification; turning it
+        into a concrete replan is the wiring layer's concern.
 
         Args:
             existing: The plan being sent back (already fetched by the caller).
+            note: The operator's rationale for the change request, recorded on
+                the ``API_PLAN_CHANGES_REQUESTED`` audit event.
 
         Returns:
             The persisted, drafted plan.
@@ -225,7 +228,7 @@ class PlanService:
             expected_version=existing.version,
             failure_event=API_PLAN_CHANGES_REQUEST_FAILED,
         )
-        logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id))
+        logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id), note=note)
         self._log_transition(existing.status, drafted)
         return drafted
 

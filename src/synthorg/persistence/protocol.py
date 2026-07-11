@@ -241,6 +241,7 @@ class PersistenceBackend(Protocol):
         settings: Repository for namespaced settings persistence.
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
+        plans: Repository for durable Plan persistence.
         project_docs: Repository for living-documentation metadata persistence.
         knowledge_sources: Repository for the knowledge-source registry.
         knowledge_provenance: Repository for per-chunk knowledge provenance.

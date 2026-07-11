@@ -2,10 +2,12 @@ import { Link } from 'react-router'
 import { ChevronRight, ClipboardCheck } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ROUTES } from '@/router/routes'
 
 export interface PendingApprovalsCardProps {
   count: number
+  loading?: boolean
 }
 
 /**
@@ -13,7 +15,19 @@ export interface PendingApprovalsCardProps {
  * decision, linking through to the approvals queue. Presentational: the
  * count is supplied by the caller (from ``usePendingApprovalsCount``).
  */
-export function PendingApprovalsCard({ count }: PendingApprovalsCardProps) {
+export function PendingApprovalsCard({
+  count,
+  loading = false,
+}: PendingApprovalsCardProps) {
+  // Hold the loading state until the shared fetch settles so an in-progress
+  // load never flashes the "No approvals waiting" empty state.
+  if (loading && count === 0) {
+    return (
+      <SectionCard title="Pending Approvals" icon={ClipboardCheck}>
+        <Skeleton className="h-10 w-full" />
+      </SectionCard>
+    )
+  }
   return (
     <SectionCard title="Pending Approvals" icon={ClipboardCheck}>
       {count === 0 ? (

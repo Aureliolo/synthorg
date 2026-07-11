@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from typing import Final
 from uuid import UUID
 
 import aiosqlite
@@ -38,7 +39,7 @@ from synthorg.persistence.sqlite._shared import (
 
 logger = get_logger(__name__)
 
-_MAX_LIST_ROWS: int = 10_000
+_MAX_LIST_ROWS: Final[int] = 10_000
 
 _COLUMNS = (
     "id, project, objective_id, parent_task_id, items, task_structure, "

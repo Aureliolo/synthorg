@@ -12,7 +12,7 @@ import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
 import { OrgHealthSection } from './dashboard/OrgHealthSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
 import { PendingApprovalsCard } from './dashboard/PendingApprovalsCard'
-import { useApprovalsStore } from '@/stores/approvals'
+import { usePendingApprovalsCount } from '@/hooks/usePendingApprovalsCount'
 
 const BudgetBurnChart = lazy(() =>
   import('./dashboard/BudgetBurnChart').then((m) => ({ default: m.BudgetBurnChart })),
@@ -63,11 +63,10 @@ export default function DashboardPage() {
     error,
   } = useDashboardData()
 
-  // The always-mounted sidebar badge owns the approvals fetch; read the
-  // derived pending count off the shared store (no second request).
-  const pendingApprovals = useApprovalsStore(
-    (s) => s.approvals.filter((a) => a.status === 'pending').length,
-  )
+  // Share the sidebar badge's fetch: it exposes both the derived pending
+  // count and the load state, so the panel neither refetches nor flashes an
+  // empty state before the approvals arrive.
+  const { pendingCount, loading: approvalsLoading } = usePendingApprovalsCount()
 
   const metricCards = useMemo(
     () => (overview ? computeMetricCards(overview, budgetConfig) : []),
@@ -108,7 +107,7 @@ export default function DashboardPage() {
             <ActivityFeed activities={activities} />
           </ErrorBoundary>
           <ErrorBoundary level="section">
-            <PendingApprovalsCard count={pendingApprovals} />
+            <PendingApprovalsCard count={pendingCount} loading={approvalsLoading} />
           </ErrorBoundary>
         </div>
       </div>

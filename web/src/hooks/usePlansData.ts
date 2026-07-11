@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import type { Plan } from '@/api/types'
+import type { Plan } from '@/api/types/plans'
 import type { WsChannel } from '@/api/types/websocket'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { usePolling } from '@/hooks/usePolling'

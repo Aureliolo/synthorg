@@ -2,6 +2,7 @@
 
 import type { PlanStatus } from './enum-values.gen'
 
+export type { PlanStatus } from './enum-values.gen'
 export type {
   EditPlanRequest,
   Plan,

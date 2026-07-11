@@ -7,9 +7,12 @@ End-to-end through the REAL components, no mocks on the seam under test:
 * a real ``CharterDispatcher``: on approval it creates the project,
   persists an APPROVED forecast, and drives the kickoff ``WorkItem``
   through the REAL work pipeline built by ``build_runtime_services``,
-* a real ``TaskEngine``: the approved charter becomes a persisted task an
-  agent actually advances past CREATED, carrying the charter's budget
-  ceiling and forecast id (the budget-truth-end-to-end claim).
+* a real ``TaskEngine`` + multi-agent coordinator: a charter is an
+  objective, so the spine always decomposes it into a plan rather than
+  running it as a single solo agent. The approved charter becomes a
+  persisted task carrying the charter's budget ceiling and forecast id
+  (the budget-truth-end-to-end claim), and the team coordinator lands a
+  coordination-metrics record.
 
 Zero real LLM spend: every provider is scripted/deterministic.
 """
@@ -33,7 +36,8 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Skill
-from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -59,6 +63,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
     TokenUsage,
+    ToolCall,
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
@@ -76,6 +81,8 @@ from tests.unit.api.fakes import FakePersistenceBackend
 pytestmark = pytest.mark.e2e
 
 _RESEARCH_SKILL = "research"
+_ANALYSIS_SKILL = "analysis"
+_DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _AMOUNT = 5000.0
 _CURRENCY = "USD"
 
@@ -98,8 +105,12 @@ _DRAFT = (
 )
 
 
-class _SoloStrategy:
-    """Plain STOP completion for every agent turn (no decomposition)."""
+class _DecompositionAwareStrategy:
+    """Returns a decomposition plan for the decompose tool, else plain STOP.
+
+    A charter is forced onto the splittable path, so the coordinator asks
+    for a decomposition; every other turn is a plain STOP completion.
+    """
 
     def next_response(
         self,
@@ -108,11 +119,46 @@ class _SoloStrategy:
         tools: list[ToolDefinition] | None,
         config: CompletionConfig | None,
     ) -> CompletionResponse:
-        del messages, config, tools
+        del messages, config
+        usage = TokenUsage(input_tokens=8, output_tokens=4, cost=0.0001)
+        is_decomposition = tools is not None and any(
+            t.name == _DECOMPOSITION_TOOL for t in tools
+        )
+        if is_decomposition:
+            return CompletionResponse(
+                content=None,
+                tool_calls=(
+                    ToolCall(
+                        id="decomp-1",
+                        name=_DECOMPOSITION_TOOL,
+                        arguments={
+                            "task_structure": "parallel",
+                            "coordination_topology": "centralized",
+                            "subtasks": [
+                                {
+                                    "id": "sub-research",
+                                    "title": "Research the recall baseline",
+                                    "description": "Investigate the incumbent.",
+                                    "required_skills": [_RESEARCH_SKILL],
+                                },
+                                {
+                                    "id": "sub-analysis",
+                                    "title": "Analyse the retrieval design",
+                                    "description": "Synthesise the approach.",
+                                    "required_skills": [_ANALYSIS_SKILL],
+                                },
+                            ],
+                        },
+                    ),
+                ),
+                finish_reason=FinishReason.TOOL_USE,
+                usage=usage,
+                model=model,
+            )
         return CompletionResponse(
             content="Work complete.",
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=8, output_tokens=4, cost=0.0001),
+            usage=usage,
             model=model,
         )
 
@@ -134,6 +180,10 @@ class _TaskCreatingIntakeStrategy:
                 created_by=str(meta["requested_by"]),
                 priority=Priority.MEDIUM,
                 estimated_complexity=Complexity.MEDIUM,
+                acceptance_criteria=tuple(
+                    AcceptanceCriterion(description=c)
+                    for c in request.requirement.acceptance_criteria
+                ),
             ),
             requested_by=str(meta["requested_by"]),
         )
@@ -361,8 +411,9 @@ async def _build_pipeline(
     task_engine: TaskEngine,
     tmp_path: Path,
     agents: tuple[AgentIdentity, ...],
+    metrics_store: CoordinationMetricsStore,
 ) -> DefaultWorkPipeline:
-    provider = ScriptedDriver("test-provider", strategy=_SoloStrategy())
+    provider = ScriptedDriver("test-provider", strategy=_DecompositionAwareStrategy())
     registry = ProviderRegistry({"test-provider": provider})
     agent_registry = AgentRegistryService()
     for agent in agents:
@@ -395,7 +446,7 @@ async def _build_pipeline(
             intake_engine=intake,
         ),
         cost_tracker=CostTracker(),
-        coordination_metrics_store=CoordinationMetricsStore(),
+        coordination_metrics_store=metrics_store,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline
@@ -408,12 +459,15 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    researcher = _make_agent("alice", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    analyst = _make_agent("bob", _ANALYSIS_SKILL, level=SeniorityLevel.MID)
+    metrics_store = CoordinationMetricsStore()
     pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
-        agents=(agent,),
+        agents=(researcher, analyst),
+        metrics_store=metrics_store,
     )
     conversation_repo = _FakeConversationRepo()
     charter_repo = _FakeCharterRepo()
@@ -501,17 +555,20 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     assert forecast.decision is ForecastDecision.APPROVED
     assert forecast.ceiling_amount == pytest.approx(_AMOUNT)
 
-    # The spine created a real task carrying the budget ceiling + forecast id
-    # (the charter actually drove the run end-to-end).
-    tasks = await persistence.tasks.list_items()
-    assert len(tasks) == 1
-    task = tasks[0]
+    # The spine created a real parent task carrying the budget ceiling +
+    # forecast id (the charter actually drove the run end-to-end).
+    task = await task_engine.get_task(result.task_id)
+    assert task is not None
     assert task.project == expected_project
-    assert str(task.id) == result.task_id
     assert task.hard_ceiling == pytest.approx(_AMOUNT)
     assert task.forecast_id == forecast.forecast_id
-    assert task.status is not TaskStatus.CREATED
-    assert task.assigned_to == str(agent.id)
+
+    # A charter is an objective, so the spine decomposed it and ran the team
+    # coordinator rather than a single solo agent: a coordination-metrics
+    # record for the parent task is the proof the team path executed.
+    records, total = metrics_store.query(limit=10)
+    assert total >= 1
+    assert records[0].task_id == result.task_id
 
     # The interview conversation was closed on approval.
     conversation = conversation_repo.items[conv_id]

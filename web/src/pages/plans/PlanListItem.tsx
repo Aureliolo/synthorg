@@ -1,7 +1,7 @@
 import { ChevronRight, ListTree } from 'lucide-react'
 import { Link } from 'react-router'
 
-import type { Plan } from '@/api/types'
+import type { Plan } from '@/api/types/plans'
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'

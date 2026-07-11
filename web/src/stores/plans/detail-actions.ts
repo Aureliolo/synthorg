@@ -3,7 +3,7 @@ import {
   getPlan,
   requestPlanChanges as requestPlanChangesApi,
 } from '@/api/endpoints/plans'
-import type { EditPlanRequest, Plan } from '@/api/types'
+import type { EditPlanRequest, Plan } from '@/api/types/plans'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
@@ -15,8 +15,13 @@ import type { PlansSet } from './types'
 const log = createLogger('plans')
 
 function upsertPlan(set: PlansSet, plan: Plan): void {
+  // A mutation result is authoritative, so retire any in-flight detail read:
+  // an older getPlan() must not resolve afterwards and clobber selectedPlan.
+  nextDetailRequestToken()
   set((state) => ({
-    plans: state.plans.map((p) => (p.id === plan.id ? plan : p)),
+    plans: state.plans.some((p) => p.id === plan.id)
+      ? state.plans.map((p) => (p.id === plan.id ? plan : p))
+      : [...state.plans, plan],
     selectedPlan: state.selectedPlan?.id === plan.id ? plan : state.selectedPlan,
   }))
 }

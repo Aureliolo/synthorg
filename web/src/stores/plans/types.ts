@@ -1,10 +1,11 @@
 import type { StoreApi } from 'zustand'
 
-import type { EditPlanRequest, Plan, PlanStatus, WsEvent } from '@/api/types'
+import type { EditPlanRequest, Plan, PlanStatus } from '@/api/types/plans'
+import type { WsEvent } from '@/api/types/websocket'
 
 export interface PlansState {
   // List page. The review inbox filters across the whole set, so every
-  // cursor page is walked on load (see web/CLAUDE.md client-side pagination).
+  // cursor page is walked on load.
   plans: readonly Plan[]
   listLoading: boolean
   listError: string | null

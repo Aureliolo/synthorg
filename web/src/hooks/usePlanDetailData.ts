@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 
-import type { Plan } from '@/api/types'
+import type { Plan } from '@/api/types/plans'
 import type { WsChannel } from '@/api/types/websocket'
 import { type ChannelBinding, useWebSocket } from '@/hooks/useWebSocket'
 import { usePlansStore } from '@/stores/plans'

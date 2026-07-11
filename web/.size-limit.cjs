@@ -46,11 +46,12 @@ module.exports = [
   {
     name: 'Total app JS (gzipped)',
     path: 'dist/assets/*.js',
-    // Raised from 1100 KB for the setup-wizard rework: the new model /
-    // embedder pickers, mini org chart, tier-profile + currency company
-    // controls, and the pure-API-consumer store migration (appearance /
-    // dashboard / org-chart hydrate from the backend) ship real UI.
-    limit: '1150 KB',
+    // The budget covers the full dashboard: the setup wizard (model /
+    // embedder pickers, mini org chart, tier-profile + currency controls),
+    // the pure-API-consumer store layer, and the Plan Review workspace
+    // (plans list / detail / editor + stores). Headroom absorbs routine
+    // dependency churn; raise only for real shipping UI, never a CI red.
+    limit: '1250 KB',
     gzip: true,
   },
   // Initial entry chunk -- everything that blocks first paint.

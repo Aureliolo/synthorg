@@ -2,10 +2,12 @@ import { useMemo } from 'react'
 
 import { ListChecks } from 'lucide-react'
 
-import type { Plan, PlanStatus } from '@/api/types'
+import type { Plan, PlanStatus } from '@/api/types/plans'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { usePlansData } from '@/hooks/usePlansData'
 
 import { PlanListItem } from './plans/PlanListItem'
@@ -33,6 +35,12 @@ export default function PlansPage() {
     usePlansData()
 
   const ordered = useMemo(() => sortForReview(filteredPlans), [filteredPlans])
+
+  // URL-persisted browser pagination over the fully-loaded, sorted set: the
+  // review inbox filters/sorts across every plan, so a server cursor would
+  // only ever see one slice.
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
+    useListPagination({ items: ordered, namespace: 'plans' })
 
   if (loading && totalPlans === 0) {
     return <PlansSkeleton />
@@ -68,11 +76,20 @@ export default function PlansPage() {
           description="When the org decomposes an objective into a plan, it lands here for your review before any team is mobilised."
         />
       ) : (
-        <div className="flex flex-col gap-2">
-          {ordered.map((plan) => (
-            <PlanListItem key={plan.id} plan={plan} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-2">
+            {paginatedItems.map((plan) => (
+              <PlanListItem key={plan.id} plan={plan} />
+            ))}
+          </div>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </>
       )}
     </div>
   )

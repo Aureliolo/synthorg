@@ -115,7 +115,7 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
           )}
         </div>
         {agentMeta && (
-          <span className="truncate text-[11px] text-muted-foreground">
+          <span className="block truncate text-xs text-muted-foreground">
             {agentMeta}
           </span>
         )}

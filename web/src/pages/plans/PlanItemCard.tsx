@@ -1,4 +1,4 @@
-import type { PlanItem } from '@/api/types'
+import type { PlanItem } from '@/api/types/plans'
 
 export interface PlanItemCardProps {
   item: PlanItem

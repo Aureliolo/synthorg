@@ -25,6 +25,33 @@ import type { ApprovalsGet, ApprovalsSet } from './types'
 
 const log = createLogger('approvals')
 
+const APPROVAL_PAGE_SIZE = 200
+const MAX_APPROVAL_PAGES = 50
+
+async function listAllApprovals(
+  filters: ApprovalFilters | undefined,
+): Promise<ApprovalResponse[]> {
+  // The badge and the review inbox both derive counts/filters across the whole
+  // approval set, so walk every offset page rather than trusting a single
+  // capped response. Fail loud on a runaway rather than silently truncating.
+  const pageSize = filters?.limit ?? APPROVAL_PAGE_SIZE
+  const collected: ApprovalResponse[] = []
+  let offset = filters?.offset ?? 0
+  for (let page = 0; page < MAX_APPROVAL_PAGES; page++) {
+    const result = await approvalsApi.listApprovals({
+      ...filters,
+      offset,
+      limit: pageSize,
+    })
+    collected.push(...result.data)
+    if (!result.hasMore || result.data.length === 0) return collected
+    offset += result.data.length
+  }
+  throw new Error(
+    `listAllApprovals exceeded ${String(MAX_APPROVAL_PAGES)} pages without exhausting the set`,
+  )
+}
+
 function mergePreservingOptimistic(
   serverData: readonly ApprovalResponse[],
   get: ApprovalsGet,
@@ -60,9 +87,9 @@ async function fetchApprovalsImpl(
   const seq = nextListRequestSeq()
   set({ loading: true, error: null })
   try {
-    const result = await approvalsApi.listApprovals(filters)
+    const all = await listAllApprovals(filters)
     if (epoch !== getRequestEpoch() || seq !== getListRequestSeq()) return
-    const merged = mergePreservingOptimistic(result.data, get)
+    const merged = mergePreservingOptimistic(all, get)
     const prunedSelected = prunePendingSelection(get().selectedIds, merged)
     const currentSelected = get().selectedApproval
     const freshSelected = currentSelected

@@ -38,14 +38,9 @@ from synthorg.core.domain_errors import ValidationError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
-)
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.persistence.state import persistence_of
 
-logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
 
 
@@ -281,7 +276,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        drafted = await service.request_changes(existing)
+        drafted = await service.request_changes(existing, note=data.note)
         publish_ws_event(
             request,
             WsEventType.PLAN_CHANGES_REQUESTED,
@@ -311,10 +306,4 @@ def _parse_status(status: NotBlankStr | None) -> PlanStatus | None:
     except ValueError as exc:
         valid = ", ".join(e.value for e in PlanStatus)
         msg = f"Invalid plan status: {status!r}. Valid values: {valid}"
-        logger.warning(
-            API_VALIDATION_FAILED,
-            reason="invalid_plan_status",
-            status=status,
-            valid=valid,
-        )
         raise ValidationError(msg) from exc

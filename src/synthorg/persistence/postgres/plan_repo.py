@@ -1,5 +1,6 @@
 """Postgres repository implementation for Plan."""
 
+from typing import Final
 from uuid import UUID
 
 import psycopg
@@ -35,7 +36,7 @@ from synthorg.persistence.plan_protocol import PlanFilterSpec
 
 logger = get_logger(__name__)
 
-_MAX_LIST_ROWS: int = 10_000
+_MAX_LIST_ROWS: Final[int] = 10_000
 
 
 def _row_to_plan(row: DictRow) -> Plan:
@@ -43,23 +44,21 @@ def _row_to_plan(row: DictRow) -> Plan:
 
     ``items`` arrives as a Python list of dicts (JSONB auto-deserialized by
     psycopg); ``created_at`` / ``updated_at`` arrive as aware ``datetime``
-    values from their ``TIMESTAMPTZ`` columns.
+    values from their ``TIMESTAMPTZ`` columns. ``dict_row`` yields a fresh
+    mutable ``dict`` per row, so the coercions rewrite it in place.
 
     Returns:
         Validated ``Plan`` model instance.
     """
-    data = dict(row)
-    data["items"] = tuple(
-        PlanItem.model_validate(item) for item in (data["items"] or [])
-    )
-    data["task_structure"] = TaskStructure(data["task_structure"])
-    data["coordination_topology"] = CoordinationTopology(data["coordination_topology"])
-    data["status"] = PlanStatus(data["status"])
-    forecast_id = data["forecast_id"]
-    data["forecast_id"] = UUID(forecast_id) if forecast_id else None
-    data["created_at"] = coerce_row_timestamp(data["created_at"])
-    data["updated_at"] = coerce_row_timestamp(data["updated_at"])
-    return Plan.model_validate(data)
+    row["items"] = tuple(PlanItem.model_validate(item) for item in (row["items"] or []))
+    row["task_structure"] = TaskStructure(row["task_structure"])
+    row["coordination_topology"] = CoordinationTopology(row["coordination_topology"])
+    row["status"] = PlanStatus(row["status"])
+    forecast_id = row["forecast_id"]
+    row["forecast_id"] = UUID(forecast_id) if forecast_id else None
+    row["created_at"] = coerce_row_timestamp(row["created_at"])
+    row["updated_at"] = coerce_row_timestamp(row["updated_at"])
+    return Plan.model_validate(row)
 
 
 class PostgresPlanRepository:
@@ -221,6 +220,12 @@ class PostgresPlanRepository:
                 return await cur.fetchone() is not None
         except psycopg.Error as exc:
             msg = f"Failed to probe plan {plan_id!r}"
+            logger.warning(
+                PERSISTENCE_PLAN_FETCH_FAILED,
+                plan_id=str(plan_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
     async def save(self, plan: Plan) -> None:

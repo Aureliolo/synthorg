@@ -37,6 +37,16 @@ function paginated(
   })
 }
 
+function pageEnvelope(data: ApprovalResponse[], hasMore: boolean) {
+  return paginatedFor<typeof listApprovals>({
+    data,
+    limit: 200,
+    nextCursor: null,
+    hasMore,
+    pagination: { limit: 200, next_cursor: null, has_more: hasMore },
+  })
+}
+
 function resetStore() {
   _resetPendingTransitions()
   useApprovalsStore.setState({
@@ -75,6 +85,31 @@ describe('fetchApprovals', () => {
     expect(state.loading).toBe(false)
     expect(state.approvals).toHaveLength(2)
     expect(state.total).toBe(2)
+    expect(state.error).toBeNull()
+  })
+
+  it('walks every offset page so the set is not capped at one page', async () => {
+    const page1 = Array.from({ length: 200 }, (_, i) =>
+      makeApproval(`p1-${String(i)}`, { status: 'pending' }),
+    )
+    const page2 = Array.from({ length: 50 }, (_, i) =>
+      makeApproval(`p2-${String(i)}`, { status: 'pending' }),
+    )
+    server.use(
+      http.get('/api/v1/approvals', ({ request }) => {
+        const offset = Number(
+          new URL(request.url).searchParams.get('offset') ?? '0',
+        )
+        return HttpResponse.json(
+          offset === 0 ? pageEnvelope(page1, true) : pageEnvelope(page2, false),
+        )
+      }),
+    )
+
+    await useApprovalsStore.getState().fetchApprovals({ limit: 200 })
+
+    const state = useApprovalsStore.getState()
+    expect(state.approvals).toHaveLength(250)
     expect(state.error).toBeNull()
   })
 

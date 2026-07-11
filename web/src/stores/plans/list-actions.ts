@@ -1,8 +1,9 @@
 import { paginateAll } from '@/api/client'
 import { listPlans } from '@/api/endpoints/plans'
-import type { Plan, PlanStatus } from '@/api/types'
+import type { Plan, PlanStatus } from '@/api/types/plans'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 import { bumpDetailRequestToken, isStaleListRequest, nextListRequestToken } from './_state'
 import type { PlansSet } from './types'
@@ -24,7 +25,7 @@ async function fetchPlansImpl(set: PlansSet): Promise<void> {
     set({ plans })
   } catch (err) {
     if (isStaleListRequest(token)) return
-    log.error('Failed to fetch plans:', getErrorMessage(err))
+    log.error('Failed to fetch plans:', sanitizeForLog(err))
     set({ listError: getErrorMessage(err) })
   } finally {
     if (!isStaleListRequest(token)) set({ listLoading: false })
