@@ -80,14 +80,22 @@ class DepartmentHealthController(Controller):
         resolver = config_resolver_of(app_state)
         # The budget config and the two health settings are independent reads;
         # resolve them concurrently rather than serialising three round-trips.
-        async with asyncio.TaskGroup() as tg:
-            budget_task = tg.create_task(resolver.get_budget_config())
-            window_task = tg.create_task(
-                resolver.get_int(SettingNamespace.HR, "department_health_window_days")
-            )
-            min_runs_task = tg.create_task(
-                resolver.get_int(SettingNamespace.HR, "department_health_min_runs")
-            )
+        # A failed read escapes TaskGroup as an ExceptionGroup, which would skip
+        # the controller's typed exception handlers -- unwrap and re-raise the
+        # leaf so the failure is handled as if the reads ran sequentially.
+        try:
+            async with asyncio.TaskGroup() as tg:
+                budget_task = tg.create_task(resolver.get_budget_config())
+                window_task = tg.create_task(
+                    resolver.get_int(
+                        SettingNamespace.HR, "department_health_window_days"
+                    )
+                )
+                min_runs_task = tg.create_task(
+                    resolver.get_int(SettingNamespace.HR, "department_health_min_runs")
+                )
+        except BaseExceptionGroup as eg:
+            raise eg.exceptions[0] from None
         budget_cfg = budget_task.result()
         window_days = window_task.result()
         min_runs = min_runs_task.result()
