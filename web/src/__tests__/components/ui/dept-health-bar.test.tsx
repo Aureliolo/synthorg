@@ -51,11 +51,14 @@ describe('DeptHealthBar', () => {
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
-  it('has accessible meter role', () => {
+  it('has accessible meter role labelled as health, not utilisation', () => {
     render(<DeptHealthBar name="Eng" health={75} agentCount={3} />)
 
     const meter = screen.getByRole('meter')
     expect(meter).toHaveAttribute('aria-valuenow', '75')
+    // The bar renders health_score, so its accessible name must say "health"
+    // and never mislabel it as utilisation.
+    expect(meter).toHaveAccessibleName('Eng health: 75%')
   })
 
   it('applies custom className', () => {

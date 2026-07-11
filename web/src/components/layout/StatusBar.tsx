@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import axios from 'axios'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
@@ -13,6 +13,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { HealthPopover } from '@/components/ui/health-popover'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { ReadinessProbe } from '@/api/types/system'
+
+const log = createLogger('status-bar')
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
@@ -138,25 +140,23 @@ function HealthStatusButton() {
   const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
 
   // Poll system health. Readiness returns a binary outcome (``ok`` /
-  // ``unavailable``); map ``unavailable`` to ``down`` so the StatusBar's
-  // richer tri-state (unknown/ok/degraded/down) surfaces a failed
-  // readiness probe as a hard-down signal rather than leaking through
-  // as unknown. A 503 on the wire is the backend's explicit "I am not
-  // ready" answer (not a transport blip) and MUST flip the badge to
-  // ``down`` per the readiness contract in ``web/CLAUDE.md`` ("Any new
-  // caller must handle the 503 path explicitly"); other failures
-  // (network timeout, DNS, CORS) preserve the last-known state because
-  // they don't carry a readiness verdict.
+  // ``unavailable``); ``unavailable`` maps to ``down``. Any failure to obtain
+  // a readiness verdict at all -- a 503, a network error, a timeout, CORS, or
+  // a malformed body -- also resolves to ``down``: once a poll has run we can
+  // no longer confirm the backend is ready, so the badge must show a definite
+  // state rather than hang on "checking..." forever. The pill recovers to
+  // ``ok`` automatically on the next poll that succeeds, so a transient blip
+  // self-heals on the following tick.
   const pollHealth = useCallback(async () => {
     try {
       const health: ReadinessProbe = await getReadiness()
       setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 503) {
-        setHealthStatus('down')
-      }
-      // Preserve last known state on transient transport failures;
-      // only authoritative payloads or a 503 verdict flip the badge.
+      // Debug, not warn: a probe failing while the backend is down is the
+      // expected steady state, not an anomaly worth escalating; the trail
+      // just distinguishes "backend down" from a poll-implementation bug.
+      log.debug('health poll failed', err)
+      setHealthStatus('down')
     }
   }, [])
 

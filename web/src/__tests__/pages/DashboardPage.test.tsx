@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseDashboardDataReturn } from '@/hooks/useDashboardData'
 import type { OverviewMetrics } from '@/api/types/analytics'
@@ -31,6 +31,10 @@ const mockOverview: OverviewMetrics = {
   review_7d_trend: [],
   active_agents_count: 5,
   idle_agents_count: 4,
+  // Deliberately distinct from tasks_by_status.failed (1): the FAILED RUNS card
+  // must read task_outcomes.failed, and 6 appears nowhere else in this fixture,
+  // so a wrong-source-field wiring bug fails the value assertion below.
+  task_outcomes: { succeeded: 9, empty: 3, failed: 6 },
   currency: 'EUR',
 }
 
@@ -125,13 +129,24 @@ describe('DashboardPage', () => {
     expect(screen.getByText('TASKS')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE AGENTS')).toBeInTheDocument()
     expect(screen.getByText('SPEND')).toBeInTheDocument()
-    expect(screen.getByText('IN REVIEW')).toBeInTheDocument()
+    expect(screen.getByText('FAILED RUNS')).toBeInTheDocument()
   })
 
   it('renders metric values', () => {
     renderDashboard()
     expect(screen.getByText('24')).toBeInTheDocument() // total_tasks
     expect(screen.getByText('5')).toBeInTheDocument()  // active_agents
+    // FAILED RUNS reads task_outcomes.failed (6), not tasks_by_status.failed (1).
+    // Scope to the FAILED RUNS card so the value assertion can't accidentally
+    // match a '6' rendered by any other card.
+    const failedRunsCard = screen
+      .getByText('FAILED RUNS')
+      .closest<HTMLElement>('div.rounded-lg')!
+    expect(within(failedRunsCard).getByTestId('metric-value')).toHaveTextContent(
+      '6',
+    )
+    // Subtext binds the succeeded + empty counts from task_outcomes.
+    expect(screen.getByText('9 succeeded, 3 produced nothing')).toBeInTheDocument()
   })
 
   it('renders Org Health section', () => {

@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.delegation_types import DelegationRecord
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -131,19 +132,43 @@ def _task_metric_to_activity(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
-    """Convert a task metric record to a task_completed event (success or failure).
+    """Convert a task metric record to a run-outcome-aware timeline event.
+
+    A successful run yields ``TASK_COMPLETED``; an empty run (finished but
+    produced nothing) yields ``TASK_EMPTY``; a failed run yields
+    ``TASK_FAILED`` -- so the feed distinguishes an empty run from a hard
+    failure rather than collapsing both into a generic completion. Records
+    that predate outcome capture (no ``run_outcome``) fall back to
+    ``is_success`` (completed vs failed). The cost/duration suffix is omitted
+    when the telemetry is unmeasured (a transition-sourced record carries a
+    reliability outcome but no cost/latency), keeping the description truthful.
 
     Returns:
         Result of type ``ActivityEvent``.
     """
-    status = "succeeded" if record.is_success else "failed"
-    desc = (
-        f"Task {record.task_id} {status} "
-        f"({record.duration_seconds:.1f}s, "
-        f"{format_cost_detail(record.cost, currency)})"
-    )
+    # A stored ``run_outcome`` distinguishes an empty run (finished, produced
+    # nothing) from a hard failure; ``is_success`` alone collapses both. Fall
+    # back to ``is_success`` for records that predate outcome capture.
+    if record.run_outcome == RunOutcome.EMPTY:
+        event_type = ActivityEventType.TASK_EMPTY
+        status = "produced no artifacts"
+    elif record.run_outcome == RunOutcome.FAILED or (
+        record.run_outcome is None and not record.is_success
+    ):
+        event_type = ActivityEventType.TASK_FAILED
+        status = "failed"
+    else:
+        event_type = ActivityEventType.TASK_COMPLETED
+        status = "succeeded"
+    desc = f"Task {record.task_id} {status}"
+    if record.duration_seconds is not None and record.cost is not None:
+        # lint-allow: currency-aggregation -- formats this one record's own
+        # cost in the resolved display ``currency`` (not ``record.currency``);
+        # a single record, so no cross-record/currency aggregation occurs.
+        cost_detail = format_cost_detail(record.cost, currency)
+        desc += f" ({record.duration_seconds:.1f}s, {cost_detail})"
     return ActivityEvent(
-        event_type=ActivityEventType.TASK_COMPLETED,
+        event_type=event_type,
         timestamp=record.completed_at,
         description=desc,
         related_ids={

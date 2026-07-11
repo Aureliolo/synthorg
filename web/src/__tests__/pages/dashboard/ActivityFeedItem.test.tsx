@@ -48,4 +48,35 @@ describe('ActivityFeedItem', () => {
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/tasks/task-42')
   })
+
+  it('surfaces a failed run outcome with the run-outcome badge', () => {
+    renderWithRouter(
+      <ActivityFeedItem
+        activity={makeActivity({
+          action_type: 'task.status_changed',
+          description: 'Ship auth failed',
+          run_outcome: 'failed',
+        })}
+      />,
+    )
+    expect(screen.getByText('Run failed')).toBeInTheDocument()
+  })
+
+  it('flags an empty run as having produced nothing', () => {
+    renderWithRouter(
+      <ActivityFeedItem
+        activity={makeActivity({
+          action_type: 'task.status_changed',
+          run_outcome: 'empty',
+        })}
+      />,
+    )
+    expect(screen.getByText('Produced nothing')).toBeInTheDocument()
+  })
+
+  it('renders no run-outcome badge for a plain activity row', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity()} />)
+    expect(screen.queryByText('Run failed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Produced nothing')).not.toBeInTheDocument()
+  })
 })

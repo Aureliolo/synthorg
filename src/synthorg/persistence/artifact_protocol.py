@@ -1,8 +1,8 @@
 """Artifact repository protocol."""
 
-from typing import Protocol, override, runtime_checkable
+from typing import Protocol, Self, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.artifact import (
     Artifact,
@@ -30,6 +30,14 @@ class ArtifactFilterSpec(BaseModel):
         default=None,
         description="Filter by originating task ID",
     )
+    task_ids: frozenset[NotBlankStr] | None = Field(
+        default=None,
+        description=(
+            "Filter by a set of originating task IDs (task_id IN ...), so a "
+            "caller classifying many tasks does one query instead of one per "
+            "task. Mutually exclusive with ``task_id``."
+        ),
+    )
     created_by: NotBlankStr | None = Field(
         default=None,
         description="Filter by creator agent ID",
@@ -38,6 +46,24 @@ class ArtifactFilterSpec(BaseModel):
         default=None,
         description="Filter by artifact type",
     )
+
+    @model_validator(mode="after")
+    def _reject_both_task_filters(self) -> Self:
+        """Reject setting both ``task_id`` and ``task_ids``.
+
+        The two express different intents (one task vs a set); allowing both
+        would make the AND semantics ambiguous.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If both task filters are set.
+        """
+        if self.task_id is not None and self.task_ids is not None:
+            msg = "task_id and task_ids are mutually exclusive"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

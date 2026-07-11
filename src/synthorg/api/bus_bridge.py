@@ -115,6 +115,20 @@ class MessageBusBridge:
         self._drain_timeout_fallback_logged: bool = False
         self._enabled_fallback_logged: bool = False
 
+    @property
+    def plugin(self) -> ChannelsPlugin:
+        """The wired ``ChannelsPlugin`` (for boot-time observer registration).
+
+        Exposes the plugin the bridge already holds so startup wiring can
+        register additional best-effort WS publishers (e.g. the task-activity
+        observer) without threading the plugin through the two-phase boot
+        separately.
+
+        Returns:
+            The channels plugin bound at construction.
+        """
+        return self._plugin
+
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
 

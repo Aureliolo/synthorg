@@ -1,7 +1,9 @@
 import { memo } from 'react'
 import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
+import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { cn } from '@/lib/utils'
+import { DOT_COLOR_CLASSES, getRunOutcomeColor } from '@/utils/approvals'
 import { formatRelativeTime } from '@/utils/format'
 import type { ActivityEventType } from '@/api/types/agents'
 import type { ActivityItem } from '@/api/types/analytics'
@@ -24,6 +26,8 @@ const ACTION_DOT_COLORS: Partial<Record<ActivityEventType | WsEventType, string>
   demoted: 'bg-warning',
   task_started: 'bg-accent',
   task_completed: 'bg-success',
+  task_failed: 'bg-danger',
+  task_empty: 'bg-warning',
   cost_incurred: 'bg-warning',
   tool_used: 'bg-accent',
   delegation_sent: 'bg-accent',
@@ -60,7 +64,12 @@ function getActionDotColor(actionType: ActivityEventType | WsEventType): string 
 }
 
 function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
-  const dotColor = getActionDotColor(activity.action_type)
+  // A run outcome (failed / empty / succeeded) drives the dot colour so a
+  // failed or empty task run is unmistakable, overriding the generic
+  // action-type colour.
+  const dotColor = activity.run_outcome
+    ? DOT_COLOR_CLASSES[getRunOutcomeColor(activity.run_outcome)]
+    : getActionDotColor(activity.action_type)
 
   return (
     <div
@@ -77,7 +86,14 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
             'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-card',
             dotColor,
           )}
-          aria-label={`Action: ${activity.action_type.replace(/[._]/g, ' ')}`}
+          // With a run outcome the dot's colour mirrors the outcome and the
+          // RunOutcomeBadge already supplies the accessible name, so the dot
+          // is decorative; otherwise it announces the action type.
+          {...(activity.run_outcome
+            ? { 'aria-hidden': true }
+            : {
+                'aria-label': `Action: ${activity.action_type.replace(/[._]/g, ' ')}`,
+              })}
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -85,9 +101,12 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
           <span className="truncate text-sm font-semibold text-foreground">
             {activity.agent_name}
           </span>
-          <span className="shrink-0 text-xs text-text-secondary">
+          <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">
             {activity.description}
           </span>
+          {activity.run_outcome && (
+            <RunOutcomeBadge outcome={activity.run_outcome} className="shrink-0" />
+          )}
         </div>
         {activity.task_id && (
           <Link

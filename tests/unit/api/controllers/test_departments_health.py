@@ -259,12 +259,13 @@ class TestDepartmentHealth:
             assert data["agent_count"] == 2
             assert data["active_agent_count"] == 1
             assert data["utilization_percent"] == 50.0
-            assert data["department_cost_7d"] == 0.80
+            assert data["department_cost_7d"] == pytest.approx(0.80)
             assert isinstance(data["cost_trend"], list)
-            # Performance scores may be None if snapshot
-            # resolution failed, but they should be present
-            assert "avg_performance_score" in data
-            assert "collaboration_score" in data
+            # A single recorded metric is below the snapshot min-data-points
+            # gate, so the derived scores are a deterministic no-data ``None``
+            # (not merely "present").
+            assert data["avg_performance_score"] is None
+            assert data["collaboration_score"] is None
 
     async def test_other_department_agents_excluded(
         self,
@@ -327,30 +328,176 @@ class TestDepartmentHealth:
                 assert "value" in pt
 
 
+@pytest.mark.unit
+class TestDepartmentHealthScore:
+    """Honest health derivation: real task-outcome signal or explicit no-data."""
+
+    async def _eng_client(
+        self,
+        fake_message_bus: FakeMessageBus,
+        *,
+        perf: PerformanceTracker,
+    ) -> LoopAsyncClient:
+        from synthorg.core.company_departments import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=100.0),),
+            agents=(AgentConfig(name="alice", role="dev", department="eng"),),
+        )
+        registry = AgentRegistryService()
+        await registry.register(
+            _make_identity(
+                agent_id=_AGENT_ID_A,
+                name="alice",
+                department="eng",
+                status=AgentStatus.ACTIVE,
+            ),
+        )
+        return _build_dept_client(
+            fake_message_bus=fake_message_bus,
+            config=config,
+            performance_tracker=perf,
+            agent_registry=registry,
+        )
+
+    async def test_full_utilisation_is_not_full_health_at_zero_activity(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """The vanity-metric fix: a fully-active roster with no runs is no-data."""
+        perf = PerformanceTracker()  # no metrics recorded
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["utilization_percent"] == 100.0
+            assert data["total_runs"] == 0
+            assert data["health_score"] is None
+            assert data["task_success_rate"] is None
+
+    async def test_health_score_from_real_success_rate(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        recent = _NOW - timedelta(hours=1)
+        perf = PerformanceTracker()
+        for _ in range(3):
+            await perf.record_task_metric(
+                _make_task_metric(
+                    agent_id=_AGENT_ID_A, completed_at=recent, is_success=True
+                ),
+            )
+        await perf.record_task_metric(
+            _make_task_metric(
+                agent_id=_AGENT_ID_A, completed_at=recent, is_success=False
+            ),
+        )
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["total_runs"] == 4
+            assert data["task_success_rate"] == 0.75
+            assert data["health_score"] == 75.0
+
+    async def test_health_score_none_below_min_runs(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Below the min-runs gate the score is no-data, never a guess."""
+        perf = PerformanceTracker()
+        await perf.record_task_metric(
+            _make_task_metric(
+                agent_id=_AGENT_ID_A,
+                completed_at=_NOW - timedelta(hours=1),
+                is_success=True,
+            ),
+        )
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            assert data["total_runs"] == 1
+            assert data["health_score"] is None
+
+    async def test_runs_outside_the_window_are_excluded(
+        self,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Only runs within ``department_health_window_days`` (default 7) count."""
+        recent = _NOW - timedelta(hours=1)
+        stale = _NOW - timedelta(days=30)  # outside the 7-day window
+        perf = PerformanceTracker()
+        for _ in range(3):
+            await perf.record_task_metric(
+                _make_task_metric(
+                    agent_id=_AGENT_ID_A, completed_at=recent, is_success=True
+                ),
+            )
+        for _ in range(5):
+            await perf.record_task_metric(
+                _make_task_metric(
+                    agent_id=_AGENT_ID_A, completed_at=stale, is_success=False
+                ),
+            )
+        async with await self._eng_client(fake_message_bus, perf=perf) as client:
+            resp = await client.get("/api/v1/departments/eng/health", headers=_HEADERS)
+            data = resp.json()["data"]
+            # The 5 stale failures are excluded; only the 3 recent successes
+            # count, so health reads 100% rather than being dragged down.
+            assert data["total_runs"] == 3
+            assert data["task_success_rate"] == 1.0
+            assert data["health_score"] == 100.0
+
+
 # ── _mean_optional unit tests ─────────────────────────────────
 
 
 @pytest.mark.unit
 class TestMeanOptional:
-    def test_empty_list(self) -> None:
+    @pytest.mark.parametrize(
+        ("values", "expected"),
+        [
+            ([], None),
+            ([None, None], None),
+            ([5.0, None, 10.0], 7.5),
+            ([3.0, 6.0, 9.0], 6.0),
+        ],
+        ids=["empty", "all-none", "mixed", "all-present"],
+    )
+    def test_mean_optional(
+        self, values: list[float | None], expected: float | None
+    ) -> None:
         from synthorg.api.controllers._department_health import _mean_optional
 
-        assert _mean_optional([]) is None
+        assert _mean_optional(values) == expected
 
-    def test_all_none(self) -> None:
-        from synthorg.api.controllers._department_health import _mean_optional
 
-        assert _mean_optional([None, None]) is None
+@pytest.mark.unit
+class TestHealthFromOutcomes:
+    """The no-data gate + rate math in ``health_from_outcomes``."""
 
-    def test_mixed_values(self) -> None:
-        from synthorg.api.controllers._department_health import _mean_optional
+    @pytest.mark.parametrize(
+        ("total_runs", "success_count", "min_runs", "expected"),
+        [
+            (0, 0, 1, None),  # no runs -> no data
+            (2, 2, 3, None),  # below the gate -> no data
+            (3, 3, 3, 1.0),  # exactly at the gate, all success
+            (4, 3, 3, 0.75),  # above the gate, partial success
+            (1, 0, 1, 0.0),  # single failed run at min_runs=1
+        ],
+        ids=["no-runs", "below-gate", "at-gate", "above-gate", "single-fail"],
+    )
+    def test_gate_and_rate(
+        self,
+        total_runs: int,
+        success_count: int,
+        min_runs: int,
+        expected: float | None,
+    ) -> None:
+        from synthorg.api.controllers._department_health_outcomes import (
+            health_from_outcomes,
+        )
 
-        assert _mean_optional([5.0, None, 10.0]) == 7.5
-
-    def test_all_present(self) -> None:
-        from synthorg.api.controllers._department_health import _mean_optional
-
-        assert _mean_optional([3.0, 6.0, 9.0]) == 6.0
+        assert health_from_outcomes(total_runs, success_count, min_runs) == expected
 
 
 # ── DepartmentHealth model validation tests ───────────────────
@@ -402,11 +549,10 @@ class TestDepartmentHealthModel:
 class TestAggregateDeptCost:
     """Same-currency invariant in ``_aggregate_dept_cost``.
 
-    Per the budget design (``docs/design/budget.md``) and audit
-    finding 126, cost aggregation across distinct currencies is
-    rejected at the aggregator boundary -- the helper raises
-    ``MixedCurrencyAggregationError`` rather than silently summing
-    a meaningless number.
+    Per the budget design (``docs/design/budget.md``), cost aggregation
+    across distinct currencies is rejected at the aggregator boundary: the
+    helper raises ``MixedCurrencyAggregationError`` rather than silently
+    summing a meaningless number.
     """
 
     def _make_record(

@@ -17,6 +17,7 @@ from typeguard import suppress_type_checks
 
 from synthorg.api._tunnel_wiring import resolve_tunnel_state_dir, wire_tunnel_provider
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.channels import create_channels_plugin
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle import _wire_ontology_service
 from synthorg.api.lifecycle_builder import (
@@ -31,13 +32,17 @@ from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
 from synthorg.api.lifecycle_helpers.startup_steps import _publish_red_team_runtime
+from synthorg.api.lifecycle_runner_support import _wire_task_activity_observer
 from synthorg.api.state import AppState
+from synthorg.api.task_activity_observer import TaskActivityObserver
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.state import HrStateSlice
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
 from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSource
@@ -86,6 +91,9 @@ class _FakeTaskEngine:
     def register_observer(self, observer: object) -> None:
         self.registered.append(observer)
         self._observers.append(observer)
+
+    def has_observer_type(self, observer_type: type[object]) -> bool:
+        return any(isinstance(o, observer_type) for o in self._observers)
 
 
 @dataclass
@@ -824,3 +832,99 @@ class TestPublishRedTeamRuntime:
         )
 
         assert state.slice(SecurityStateSlice).red_team_reports is repo
+
+
+@pytest.mark.unit
+class TestWireTaskActivityObserver:
+    """The boot hook that turns the dashboard live-activity feature on.
+
+    Guards the reachability of the whole signal path: a flipped guard or a
+    broken observer-registration check would silently ship the feature unwired.
+    """
+
+    def _state_with_tracker(self, *, tracker: PerformanceTracker | None) -> AppState:
+        state = _make_state()
+        if tracker is not None:
+            state.wire(HrStateSlice, performance_tracker=tracker)
+        return state
+
+    def test_registers_observer_when_prerequisites_present(self) -> None:
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+        persistence = FakePersistenceBackend()
+
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                persistence,
+                state,
+                create_channels_plugin(),
+            )
+
+        assert len(task_engine.registered) == 1
+        assert isinstance(task_engine.registered[0], TaskActivityObserver)
+        wired = [
+            e
+            for e in captured
+            if e["event"] == API_SERVICE_AUTO_WIRED
+            and e.get("service") == "task_activity_observer"
+        ]
+        assert len(wired) == 1
+
+    def test_skips_and_logs_when_channels_plugin_absent(self) -> None:
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
+            # ``object()`` is not a ChannelsPlugin, so wiring must skip.
+            _wire_task_activity_observer(
+                task_engine,
+                FakePersistenceBackend(),
+                state,
+                object(),
+            )
+
+        assert task_engine.registered == []
+        skips = [
+            e
+            for e in captured
+            if e["event"] == API_APP_STARTUP
+            and e.get("component") == "task_activity_observer"
+        ]
+        assert len(skips) == 1
+
+    def test_skips_and_logs_when_tracker_absent(self) -> None:
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=None)
+
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                FakePersistenceBackend(),
+                state,
+                create_channels_plugin(),
+            )
+
+        assert task_engine.registered == []
+        skips = [
+            e
+            for e in captured
+            if e["event"] == API_APP_STARTUP
+            and e.get("component") == "task_activity_observer"
+        ]
+        assert len(skips) == 1
+
+    def test_idempotent_when_observer_already_registered(self) -> None:
+        existing = TaskActivityObserver.__new__(TaskActivityObserver)
+        task_engine = _FakeTaskEngine(_observers=[existing])
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+
+        with suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                FakePersistenceBackend(),
+                state,
+                create_channels_plugin(),
+            )
+
+        assert task_engine.registered == []

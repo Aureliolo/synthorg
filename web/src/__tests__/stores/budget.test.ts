@@ -21,6 +21,7 @@ const mockOverview: OverviewMetrics = {
   review_7d_trend: [],
   active_agents_count: 3,
   idle_agents_count: 2,
+  task_outcomes: { succeeded: 0, empty: 0, failed: 0 },
   currency: DEFAULT_CURRENCY,
 }
 

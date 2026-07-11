@@ -23,6 +23,8 @@ High-frequency destinations, always visible in the sidebar.
 
 Org overview: department health indicators (green/amber/red), recent activity widget, budget snapshot with sparkline, active task summary, agent status counts, approval badge count. The central "is the company healthy?" view.
 
+Department health is the real terminal task-outcome success rate over a rolling window (`hr.department_health_window_days`), rendered as a 0-100 `health_score` and gated by `hr.department_health_min_runs`: below the gate the department reads as an explicit no-data state ("Awaiting task activity") rather than a fabricated full-health number, and the overall gauge is suppressed when every department is no-data. Roster utilisation (active-vs-total headcount) is a separate, explicitly-labelled stat, never health, so an idle-but-fully-staffed org never reads as fully healthy. Both settings are hot-reloadable (re-read per request). The Live Activity feed and the outcome tile (succeeded / empty / failed) are fed by real task-lifecycle metrics, so a failed or empty run surfaces distinctly instead of hiding behind a generic in-review count.
+
 **API endpoints**: `GET /analytics/overview`, `GET /analytics/forecast`, `GET /budget/config`, `GET /departments`, `GET /departments/{name}/health`, `GET /activities`
 **WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all aggregated into health indicators and activity feed)
 

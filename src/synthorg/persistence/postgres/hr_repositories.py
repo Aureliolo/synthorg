@@ -218,9 +218,10 @@ class PostgresTaskMetricRepository:
                     INSERT INTO task_metrics (
                         id, agent_id, task_id, task_type, completed_at,
                         is_success, duration_seconds, cost, currency,
-                        turns_used, tokens_used, quality_score, complexity
+                        turns_used, tokens_used, quality_score, complexity,
+                        run_outcome
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
@@ -237,6 +238,7 @@ class PostgresTaskMetricRepository:
                         data["tokens_used"],
                         data["quality_score"],
                         data["complexity"],
+                        data["run_outcome"],
                     ),
                 )
                 await conn.commit()
@@ -317,7 +319,7 @@ class PostgresTaskMetricRepository:
         sql = """\
 SELECT id, agent_id, task_id, task_type, completed_at,
        is_success, duration_seconds, cost, currency, turns_used,
-       tokens_used, quality_score, complexity
+       tokens_used, quality_score, complexity, run_outcome
 FROM task_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

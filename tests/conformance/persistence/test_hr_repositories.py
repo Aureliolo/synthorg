@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -196,6 +197,41 @@ class TestTaskMetricRepository:
         # unrecoverable "numeric cost without a unit" state.
         assert saved.currency == "EUR"
         assert saved.cost == pytest.approx(0.50)
+
+    async def test_run_outcome_round_trips(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """A persisted run_outcome (EMPTY) survives save + query.
+
+        Guards the empty-vs-failed distinction end-to-end: without the stored
+        column the REST activity feed could not tell an empty run from a
+        failure (``is_success`` is False for both).
+        """
+        task_repo = backend.tasks
+        metric_repo = backend.task_metrics
+        now = datetime.now(UTC)
+        await task_repo.save(
+            make_task(task_id="task-empty", task_type=TaskType.RESEARCH)
+        )
+
+        metric = TaskMetricRecord(
+            id=as_uuid("tm-empty"),
+            agent_id="agent-empty",
+            task_id=sid("task-empty"),
+            task_type=TaskType.RESEARCH,
+            completed_at=now,
+            is_success=False,
+            run_outcome=RunOutcome.EMPTY,
+            currency="USD",
+            complexity=Complexity.MEDIUM,
+        )
+        await metric_repo.save(metric)
+
+        records = await metric_repo.query(agent_id="agent-empty")
+        assert len(records) == 1
+        assert records[0].run_outcome == RunOutcome.EMPTY
+        assert records[0].is_success is False
 
     async def test_query_metrics_by_agent(
         self,

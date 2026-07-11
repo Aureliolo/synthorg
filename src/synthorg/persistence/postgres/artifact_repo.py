@@ -27,6 +27,7 @@ from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.query_filters import task_ids_in_clause
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 
 logger = get_logger(__name__)
@@ -259,6 +260,9 @@ RETURNING (xmax = 0) AS created""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = %s")
             params.append(filter_spec.task_id)
+        task_ids_conds, task_ids_params = task_ids_in_clause(filter_spec.task_ids, "%s")
+        conditions.extend(task_ids_conds)
+        params.extend(task_ids_params)
         if filter_spec.created_by is not None:
             conditions.append("created_by = %s")
             params.append(filter_spec.created_by)
@@ -322,6 +326,9 @@ RETURNING (xmax = 0) AS created""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = %s")
             params.append(filter_spec.task_id)
+        task_ids_conds, task_ids_params = task_ids_in_clause(filter_spec.task_ids, "%s")
+        conditions.extend(task_ids_conds)
+        params.extend(task_ids_params)
         if filter_spec.created_by is not None:
             conditions.append("created_by = %s")
             params.append(filter_spec.created_by)

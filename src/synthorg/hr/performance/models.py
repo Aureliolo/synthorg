@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
@@ -39,11 +40,19 @@ class TaskMetricRecord(BaseModel):
         started_at: When the task started (None if not tracked).
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
-        duration_seconds: Wall-clock execution time.
-        cost: Numeric cost of the task, denominated in ``currency``.
+        run_outcome: Fine-grained run outcome (succeeded / empty / failed),
+            distinguishing an empty run (finished, produced nothing) from a
+            hard failure where ``is_success`` alone cannot. None for records
+            that carry no classified outcome; when set it must agree with
+            ``is_success`` (success iff SUCCEEDED).
+        duration_seconds: Wall-clock execution time, None when not measured
+            (e.g. a record sourced from a task state transition, which
+            carries reliability but no execution telemetry).
+        cost: Numeric cost of the task, denominated in ``currency``; None
+            when not measured.
         currency: ISO 4217 currency code for ``cost``.
-        turns_used: Number of LLM turns used.
-        tokens_used: Total tokens consumed.
+        turns_used: Number of LLM turns used, None when not measured.
+        tokens_used: Total tokens consumed, None when not measured.
         quality_score: Quality score (0.0-10.0), None if not scored.
         complexity: Estimated task complexity.
     """
@@ -63,19 +72,36 @@ class TaskMetricRecord(BaseModel):
     )
     completed_at: AwareDatetime = Field(description="When the task was completed")
     is_success: bool = Field(description="Whether the task completed successfully")
-    duration_seconds: float = Field(
-        ge=0.0,
-        description="Wall-clock execution time",
+    run_outcome: RunOutcome | None = Field(
+        default=None,
+        description=(
+            "Fine-grained run outcome (succeeded / empty / failed); None when "
+            "unclassified. When set, agrees with ``is_success``."
+        ),
     )
-    cost: float = Field(
+    duration_seconds: float | None = Field(
+        default=None,
         ge=0.0,
-        description="Numeric cost of the task, denominated in ``currency``",
+        description="Wall-clock execution time; None when not measured",
+    )
+    cost: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Numeric cost of the task in ``currency``; None when not measured",
     )
     currency: CurrencyCode = Field(
         description="ISO 4217 currency code for ``cost``",
     )
-    turns_used: int = Field(ge=0, description="Number of LLM turns used")
-    tokens_used: int = Field(ge=0, description="Total tokens consumed")
+    turns_used: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of LLM turns used; None when not measured",
+    )
+    tokens_used: int | None = Field(
+        default=None,
+        ge=0,
+        description="Total tokens consumed; None when not measured",
+    )
     quality_score: float | None = Field(
         default=None,
         ge=0.0,
@@ -100,6 +126,29 @@ class TaskMetricRecord(BaseModel):
                 f"before completed_at ({self.completed_at.isoformat()})"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_outcome_agrees_with_success(self) -> Self:
+        """Ensure ``run_outcome``, when set, agrees with ``is_success``.
+
+        A stored record must not claim a SUCCEEDED outcome for a non-success
+        run (or vice versa); an empty/failed run is never a success.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        if self.run_outcome is not None:
+            expected_success = self.run_outcome == RunOutcome.SUCCEEDED
+            if self.is_success != expected_success:
+                msg = (
+                    f"run_outcome ({self.run_outcome.value}) disagrees with "
+                    f"is_success ({self.is_success})"
+                )
+                raise ValueError(msg)
         return self
 
 

@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.core.delegation_types import DelegationRecord
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -50,6 +51,7 @@ def _make_task_metric(  # noqa: PLR0913
     agent_id: str = "agent-001",
     task_id: str = "task-001",
     is_success: bool = True,
+    run_outcome: RunOutcome | None = None,
     duration_seconds: float = 60.0,
     cost: float = 0.05,
 ) -> TaskMetricRecord:
@@ -60,6 +62,7 @@ def _make_task_metric(  # noqa: PLR0913
         started_at=started_at,
         completed_at=completed_at,
         is_success=is_success,
+        run_outcome=run_outcome,
         duration_seconds=duration_seconds,
         cost=cost,
         currency="USD",
@@ -210,12 +213,51 @@ class TestMergeActivityTimeline:
         )
 
         assert len(timeline) == 2
-        assert timeline[0].event_type == "task_completed"
+        # A failed run surfaces as task_failed, distinct from a completion, so
+        # the feed never hides a failure behind a generic "completed" row.
+        assert timeline[0].event_type == "task_failed"
         assert timeline[0].related_ids["task_id"] == "task-b"
         assert "failed" in timeline[0].description
+        assert timeline[1].event_type == "task_completed"
         assert timeline[1].related_ids["task_id"] == "task-a"
         assert "succeeded" in timeline[1].description
         assert "$" in timeline[1].description
+
+    def test_empty_run_maps_to_task_empty_not_failed(self) -> None:
+        # A stored EMPTY outcome is a run that finished but produced nothing;
+        # it must surface as task_empty, distinct from a hard task_failed, so
+        # the historical feed does not render an empty run as a failure.
+        empty = _make_task_metric(
+            task_id="task-empty",
+            is_success=False,
+            run_outcome=RunOutcome.EMPTY,
+        )
+
+        timeline = merge_activity_timeline(
+            lifecycle_events=(),
+            task_metrics=(empty,),
+        )
+
+        assert len(timeline) == 1
+        assert timeline[0].event_type == "task_empty"
+        assert "produced no artifacts" in timeline[0].description
+
+    def test_failed_outcome_maps_to_task_failed(self) -> None:
+        # A stored FAILED outcome stays task_failed (distinct from empty).
+        failed = _make_task_metric(
+            task_id="task-failed",
+            is_success=False,
+            run_outcome=RunOutcome.FAILED,
+        )
+
+        timeline = merge_activity_timeline(
+            lifecycle_events=(),
+            task_metrics=(failed,),
+        )
+
+        assert len(timeline) == 1
+        assert timeline[0].event_type == "task_failed"
+        assert "failed" in timeline[0].description
 
     def test_currency_passed_to_task_metric_descriptions(self) -> None:
         task = _make_task_metric(task_id="task-usd", cost=1.5)

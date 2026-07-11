@@ -16,9 +16,30 @@ function makeDepts(count: number): DepartmentHealth[] {
       department_cost_7d: 0,
       cost_trend: [],
       collaboration_score: 6.0,
+      total_runs: 10,
+      task_success_rate: (60 + i * 10) / 100,
       utilization_percent: 60 + i * 10,
+      health_score: 60 + i * 10,
     }
   })
+}
+
+/** A no-data department: fully staffed/utilised but no runs to judge. */
+function makeNoDataDept(): DepartmentHealth {
+  return {
+    department_name: 'engineering',
+    agent_count: 4,
+    active_agent_count: 4,
+    currency: 'EUR',
+    avg_performance_score: null,
+    department_cost_7d: 0,
+    cost_trend: [],
+    collaboration_score: null,
+    total_runs: 0,
+    task_success_rate: null,
+    utilization_percent: 100,
+    health_score: null,
+  }
 }
 
 describe('OrgHealthSection', () => {
@@ -39,6 +60,28 @@ describe('OrgHealthSection', () => {
     expect(screen.getByText('Product')).toBeInTheDocument()
   })
 
+  it('pluralises the run-count label (singular for one run)', () => {
+    const [dept] = makeDepts(1)
+    render(
+      <OrgHealthSection
+        departments={[{ ...dept!, total_runs: 1 }]}
+        overallHealth={70}
+      />,
+    )
+    // "· 1 run", never "· 1 runs".
+    expect(screen.getByText(/·\s*1 run\b/)).toBeInTheDocument()
+  })
+
+  it('hides the run-count label when there are no runs', () => {
+    render(
+      <OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />,
+    )
+    // The count label ("· N run" / "· N runs") must be absent entirely; the
+    // pattern spans the separator + count + singular-or-plural so a "· 0 runs"
+    // regression is caught, not silently passed by a singular-only match.
+    expect(screen.queryByText(/·\s*\d+\s+runs?\b/)).not.toBeInTheDocument()
+  })
+
   it('renders overall health gauge when provided', () => {
     render(<OrgHealthSection departments={makeDepts(1)} overallHealth={85} />)
     const meters = screen.getAllByRole('meter')
@@ -55,5 +98,16 @@ describe('OrgHealthSection', () => {
     const depts = makeDepts(1).map((d) => ({ ...d, department_cost_7d: 100, currency: 'JPY' }))
     render(<OrgHealthSection departments={depts} overallHealth={80} />)
     expect(screen.getByText(formatCurrency(100, 'JPY'))).toBeInTheDocument()
+  })
+
+  it('shows an explicit no-data state instead of a gauge when overall is null', () => {
+    render(<OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />)
+    expect(screen.getByText(/awaiting task activity/i)).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
+  })
+
+  it('renders a no-data department bar as N/A, not full health', () => {
+    render(<OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />)
+    expect(screen.getByText('N/A')).toBeInTheDocument()
   })
 })

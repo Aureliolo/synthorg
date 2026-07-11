@@ -5,6 +5,10 @@ from typing import Final
 ANALYTICS_TRENDS_QUERIED: Final[str] = "analytics.trends.queried"
 ANALYTICS_FORECAST_QUERIED: Final[str] = "analytics.forecast.queried"
 ANALYTICS_OVERVIEW_QUERIED: Final[str] = "analytics.overview.queried"
+ANALYTICS_OVERVIEW_TREND_SOURCE_DEGRADED: Final[str] = (
+    "analytics.overview.trend_source_degraded"
+)
+ANALYTICS_OVERVIEW_OUTCOME_DEGRADED: Final[str] = "analytics.overview.outcome_degraded"
 ANALYTICS_TASK_LIST_COLLECTED: Final[str] = "analytics.task_list.collected"
 
 # Per-call analytics layer

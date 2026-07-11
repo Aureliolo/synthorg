@@ -73,59 +73,51 @@ class CISignalQualityStrategy:
         Returns:
             Quality score result with breakdown and confidence.
         """
-        # Criteria met ratio.
+        # No acceptance criteria -> trivially met at full score, lower confidence.
         if acceptance_criteria:
-            met_count = sum(1 for c in acceptance_criteria if c.met)
-            criteria_ratio = met_count / len(acceptance_criteria)
+            met = sum(1 for c in acceptance_criteria if c.met)
+            criteria_score = (met / len(acceptance_criteria)) * _MAX_SCORE
             criteria_confidence = 1.0
         else:
-            criteria_ratio = 1.0
+            criteria_score = _MAX_SCORE
             criteria_confidence = 0.5
-
-        criteria_score = criteria_ratio * _MAX_SCORE
-
-        # Task success bonus.
         success_score = _MAX_SCORE if task_result.is_success else 0.0
-
-        # Cost efficiency: log-scaled relative to budget.
-        # Tasks at or below budget get full marks; above budget the
-        # score decays logarithmically so high-cost tasks still
-        # differentiate instead of all collapsing to 0.
-        ratio = task_result.cost / self._cost_budget
-        if ratio <= 1.0:
-            cost_score = _MAX_SCORE
-        else:
-            cost_score = max(0.0, _MAX_SCORE * (1.0 - math.log10(ratio)))
-
-        # Weighted total.
-        total = (
-            criteria_score * _CRITERIA_WEIGHT
-            + success_score * _SUCCESS_WEIGHT
-            + cost_score * _COST_EFFICIENCY_WEIGHT
-        )
-        total = max(0.0, min(_MAX_SCORE, total))
-
-        # Confidence based on data availability.
+        # Cost efficiency: full marks at/below budget, then log-decays; an
+        # unmeasured cost drops the component (renormalising the weights below).
+        cost_score: float | None = None
+        if task_result.cost is not None:
+            ratio = task_result.cost / self._cost_budget
+            cost_score = (
+                _MAX_SCORE
+                if ratio <= 1.0
+                else max(0.0, _MAX_SCORE * (1.0 - math.log10(ratio)))
+            )
+        weighted = criteria_score * _CRITERIA_WEIGHT + success_score * _SUCCESS_WEIGHT
+        weight_sum = _CRITERIA_WEIGHT + _SUCCESS_WEIGHT
+        if cost_score is not None:
+            weighted += cost_score * _COST_EFFICIENCY_WEIGHT
+            weight_sum += _COST_EFFICIENCY_WEIGHT
+        total = max(0.0, min(_MAX_SCORE, weighted / weight_sum))
         confidence = criteria_confidence * (0.8 if task_result.is_success else 0.6)
-
-        breakdown = (
+        # Omit cost_efficiency when unmeasured: a 0.0 would read as "scored zero
+        # efficiency" rather than "not scored".
+        breakdown: list[tuple[str, float]] = [
             ("acceptance_criteria", round(criteria_score, 4)),
             ("task_success", round(success_score, 4)),
-            ("cost_efficiency", round(cost_score, 4)),
-        )
-
-        result = QualityScoreResult(
-            score=round(total, 4),
-            strategy_name=NotBlankStr(self.name),
-            breakdown=breakdown,
-            confidence=round(confidence, 4),
-        )
+        ]
+        if cost_score is not None:
+            breakdown.append(("cost_efficiency", round(cost_score, 4)))
 
         logger.debug(
             PERF_QUALITY_SCORED,
             agent_id=agent_id,
             task_id=task_id,
-            score=result.score,
+            score=round(total, 4),
             strategy=self.name,
         )
-        return result
+        return QualityScoreResult(
+            score=round(total, 4),
+            strategy_name=NotBlankStr(self.name),
+            breakdown=tuple(breakdown),
+            confidence=round(confidence, 4),
+        )

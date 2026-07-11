@@ -1,7 +1,7 @@
 /** Analytics metrics, trends, forecasts, activity feed and department health. */
 
 import type { ActivityEventType } from './enum-values.gen'
-import type { DepartmentName } from './enums'
+import type { DepartmentName, RunOutcome } from './enums'
 import type { WsEventType } from './websocket'
 
 export type {
@@ -30,4 +30,12 @@ export interface ActivityItem {
   description: string
   task_id: string | null
   department: DepartmentName | null
+  /**
+   * Truthful run outcome for a task-lifecycle row (succeeded / empty /
+   * failed), when the source event carries one. Drives the failure-aware
+   * badge + danger styling so a failed or empty run is unmistakable in the
+   * feed. Absent/null for non-task rows and task rows without a terminal
+   * outcome.
+   */
+  run_outcome?: RunOutcome | null
 }

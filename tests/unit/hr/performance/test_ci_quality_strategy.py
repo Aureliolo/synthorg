@@ -141,6 +141,27 @@ class TestCISignalQualityStrategy:
         breakdown_dict = dict(result.breakdown)
         assert breakdown_dict["cost_efficiency"] == 10.0
 
+    async def test_unmeasured_cost_omits_cost_efficiency_entry(self) -> None:
+        """A None cost drops the cost_efficiency entry, not a fabricated 0.0.
+
+        A 0.0 entry would read as "scored zero efficiency"; omitting it keeps
+        not-measured distinct from a genuine zero, matching the renormalised
+        weighted total.
+        """
+        strategy = self._make_strategy()
+        task_result = make_task_metric(cost=None)
+
+        result = await strategy.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=task_result,
+            acceptance_criteria=(),
+        )
+
+        breakdown_dict = dict(result.breakdown)
+        assert "cost_efficiency" not in breakdown_dict
+        assert len(result.breakdown) == 2
+
     async def test_cost_efficiency_high_cost(self) -> None:
         """Cost exceeding budget by 10x -> zero cost efficiency score."""
         strategy = self._make_strategy()

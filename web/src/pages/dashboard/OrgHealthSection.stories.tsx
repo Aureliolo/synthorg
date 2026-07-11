@@ -14,7 +14,27 @@ function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): De
     department_cost_7d: 10 + i * 3,
     cost_trend: [],
     collaboration_score: 6.0,
+    total_runs: 10,
+    task_success_rate: c.health / 100,
     utilization_percent: c.health,
+    health_score: c.health,
+  }))
+}
+
+function makeNoDataDepts(names: DepartmentName[]): DepartmentHealth[] {
+  return names.map((name, i) => ({
+    department_name: name,
+    agent_count: 2 + i,
+    active_agent_count: 1 + i,
+    currency: DEFAULT_CURRENCY,
+    avg_performance_score: null,
+    department_cost_7d: 0,
+    cost_trend: [],
+    collaboration_score: null,
+    total_runs: 0,
+    task_success_rate: null,
+    utilization_percent: 50 + i * 10,
+    health_score: null,
   }))
 }
 
@@ -59,4 +79,14 @@ export const Mixed: Story = {
 
 export const Empty: Story = {
   args: { departments: [], overallHealth: null },
+}
+
+// Departments exist but none has enough terminal runs to score yet: each bar
+// reads "N/A" and the overall gauge is replaced by an explicit no-data note
+// rather than a misleading full-health number.
+export const NoData: Story = {
+  args: {
+    departments: makeNoDataDepts(['engineering', 'design']),
+    overallHealth: null,
+  },
 }

@@ -152,6 +152,30 @@ class TestArtifactRepository:
         )
         assert [r.id for r in rows] == ["x"]
 
+    async def test_query_filter_by_task_ids_batch(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """query filters by a set of task ids (task_id IN ...)."""
+        await backend.artifacts.save(_artifact(artifact_id="x", task_id="t1"))
+        await backend.artifacts.save(_artifact(artifact_id="y", task_id="t2"))
+        await backend.artifacts.save(_artifact(artifact_id="z", task_id="t3"))
+
+        rows = await backend.artifacts.query(
+            ArtifactFilterSpec(
+                task_ids=frozenset({NotBlankStr("t1"), NotBlankStr("t3")})
+            )
+        )
+        assert [r.id for r in rows] == ["x", "z"]
+
+    async def test_query_filter_by_empty_task_ids_matches_nothing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """An empty task_ids set matches no rows (not every row)."""
+        await backend.artifacts.save(_artifact(artifact_id="x", task_id="t1"))
+
+        rows = await backend.artifacts.query(ArtifactFilterSpec(task_ids=frozenset()))
+        assert rows == ()
+
     async def test_query_filter_by_type(self, backend: PersistenceBackend) -> None:
         """query filters by artifact_type."""
         await backend.artifacts.save(

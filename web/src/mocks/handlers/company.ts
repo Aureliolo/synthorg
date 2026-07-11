@@ -72,7 +72,10 @@ function buildDepartmentHealth(name: string): DepartmentHealth {
     department_cost_7d: 0,
     cost_trend: [],
     collaboration_score: null,
+    total_runs: 0,
+    task_success_rate: null,
     utilization_percent: 0,
+    health_score: null,
   }
 }
 

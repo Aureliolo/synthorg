@@ -9,6 +9,7 @@ the startup + shutdown runners and the builder import them without a cycle.
 """
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
@@ -216,6 +217,72 @@ async def _wire_workflow_observer(
         config_resolver=config_resolver,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
+
+
+def _wire_task_activity_observer(
+    task_engine: object,
+    persistence: PersistenceBackend,
+    app_state: AppState,
+    channels_plugin: object,
+) -> None:
+    """Register the task-activity observer on ``task_engine`` once.
+
+    Publishes every persisted task transition to the ``tasks`` WS channel and
+    records a terminal run's outcome as a task metric, so the dashboard Live
+    Activity feed and org-health derive from real execution. Logs and skips
+    when a prerequisite (task engine / channels plugin / performance tracker)
+    is absent; the feed then simply lacks live task rows rather than the boot
+    failing. Idempotent: never double-registers.
+    """
+    from litestar.channels import ChannelsPlugin  # noqa: PLC0415
+
+    from synthorg.api.task_activity_observer import (  # noqa: PLC0415
+        TaskActivityObserver,
+    )
+    from synthorg.core.artifact import Artifact  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.persistence.artifact_protocol import (  # noqa: PLC0415
+        ArtifactFilterSpec,
+    )
+
+    if task_engine is None or not isinstance(channels_plugin, ChannelsPlugin):
+        logger.warning(
+            API_APP_STARTUP,
+            component="task_activity_observer",
+            note=(
+                "task engine or channels plugin absent; skipping observer "
+                "wiring (dashboard live-activity feed lacks live task rows)"
+            ),
+        )
+        return
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is None:
+        logger.warning(
+            API_APP_STARTUP,
+            component="task_activity_observer",
+            note=(
+                "performance tracker absent; skipping observer wiring "
+                "(org health and live-activity task rows lack real data)"
+            ),
+        )
+        return
+    if task_engine.has_observer_type(TaskActivityObserver):  # type: ignore[attr-defined]
+        return
+
+    async def _list_artifacts(task_id: str) -> Sequence[Artifact]:
+        return await persistence.artifacts.query(ArtifactFilterSpec(task_id=task_id))
+
+    observer = TaskActivityObserver(
+        # ``wait_published`` (direct backend delivery), NOT ``publish`` (background
+        # pub-queue): a transition can publish while the channels plugin is being
+        # torn down, and the plugin's pub worker races its own shutdown; the
+        # direct path has no such worker. See TaskActivityObserver.PublishFn.
+        publish=channels_plugin.wait_published,
+        list_artifacts=_list_artifacts,
+        record_metric=tracker.record_task_metric,
+    )
+    task_engine.register_observer(observer)  # type: ignore[attr-defined]
+    logger.info(API_SERVICE_AUTO_WIRED, service="task_activity_observer")
 
 
 def _wire_workflow_execution_service(

@@ -137,7 +137,10 @@ export function makeDepartmentHealth(name: string, overrides?: Partial<Departmen
     department_cost_7d: 12.5,
     cost_trend: [],
     collaboration_score: 6.0,
+    total_runs: 12,
+    task_success_rate: 0.83,
     utilization_percent: 85,
+    health_score: 83,
     ...overrides,
   }
 }

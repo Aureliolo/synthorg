@@ -6078,7 +6078,7 @@ export type components = {
          *     and delegation records.
          * @enum {string}
          */
-        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received";
+        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received";
         /**
          * ActivityWindowHours
          * @description Time window (24, 48, or 168 hours)
@@ -10291,7 +10291,29 @@ export type components = {
             readonly department_cost_7d: number;
             /** @description Department name */
             readonly department_name: string;
-            /** @description Percentage of agents that are active. */
+            /**
+             * @description Real department health: task-outcome success rate as a 0-100 score.
+             *
+             *     Derived from ``task_success_rate`` so the two never drift. ``None``
+             *     when there is insufficient activity to judge (``task_success_rate`` is
+             *     ``None``), which the dashboard renders as an explicit no-data state
+             *     rather than a misleading full-health number.
+             */
+            readonly health_score: number | null;
+            /** @description Fraction of terminal runs that genuinely produced output (empty and failed runs count as non-success). None below the minimum-runs gate (no honest signal yet). */
+            readonly task_success_rate: number | null;
+            /**
+             * @description Terminal task runs by this department in the health window
+             * @default 0
+             */
+            readonly total_runs: number;
+            /**
+             * @description Roster utilisation: percentage of agents currently active.
+             *
+             *     A lifecycle/roster ratio, not a measure of work quality. The
+             *     dashboard shows it as utilisation, never as health (which is
+             *     ``health_score``, derived from real task outcomes).
+             */
             readonly utilization_percent: number;
         };
         /**
@@ -12649,6 +12671,7 @@ export type components = {
              * @default []
              */
             readonly review_7d_trend: readonly components["schemas"]["TrendDataPoint"][];
+            readonly task_outcomes: components["schemas"]["TaskOutcomeCounts"];
             /**
              * @description Daily task completions for the last 7 days
              * @default []
@@ -16718,6 +16741,27 @@ export type components = {
             readonly title: string;
         };
         /**
+         * TaskOutcomeCounts
+         * @description Terminal-run outcome breakdown (succeeded / empty / failed), derived from real artifact counts so failed and empty runs surface distinctly on the dashboard instead of hiding behind a generic in-review count.
+         */
+        readonly TaskOutcomeCounts: {
+            /**
+             * @description Finished runs that produced nothing
+             * @default 0
+             */
+            readonly empty: number;
+            /**
+             * @description Failed runs
+             * @default 0
+             */
+            readonly failed: number;
+            /**
+             * @description Runs that produced output
+             * @default 0
+             */
+            readonly succeeded: number;
+        };
+        /**
          * TaskRequirement
          * @description The task requirement being requested
          */
@@ -18526,7 +18570,7 @@ export interface operations {
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
                 /** @description Filter by event_type */
-                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received" | null;
+                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received" | null;
             };
             readonly header?: never;
             readonly path?: never;

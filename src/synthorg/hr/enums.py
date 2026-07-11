@@ -59,6 +59,8 @@ class ActivityEventType(StrEnum):
     DEMOTED = "demoted"
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
+    TASK_EMPTY = "task_empty"
     COST_INCURRED = "cost_incurred"
     TOOL_USED = "tool_used"
     DELEGATION_SENT = "delegation_sent"

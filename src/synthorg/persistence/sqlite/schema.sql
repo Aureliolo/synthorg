@@ -172,14 +172,16 @@ CREATE TABLE task_metrics (
     task_type TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     is_success INTEGER NOT NULL,
-    duration_seconds REAL NOT NULL,
-    cost REAL NOT NULL,
+    duration_seconds REAL,
+    cost REAL,
     currency TEXT NOT NULL DEFAULT 'USD'
     CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
-    turns_used INTEGER NOT NULL,
-    tokens_used INTEGER NOT NULL,
+    turns_used INTEGER,
+    tokens_used INTEGER,
     quality_score REAL,
-    complexity TEXT NOT NULL
+    complexity TEXT NOT NULL,
+    run_outcome TEXT
+    CHECK (run_outcome IN ('succeeded', 'empty', 'failed'))
 );
 
 CREATE INDEX idx_tm_agent_id ON task_metrics (agent_id);
