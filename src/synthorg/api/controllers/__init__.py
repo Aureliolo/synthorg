@@ -103,6 +103,7 @@ from synthorg.api.controllers.ontology.versions import OntologyVersionsControlle
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
+from synthorg.api.controllers.plans import PlanController
 from synthorg.api.controllers.project_brain import ProjectBrainController
 from synthorg.api.controllers.project_docs import ProjectDocsController
 from synthorg.api.controllers.project_knowledge import (
@@ -218,6 +219,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     BoardController,
     SprintController,
     DecompositionController,
+    PlanController,
     ExperimentsController,
     MessageController,
     MeetingController,
@@ -427,6 +429,7 @@ __all__ = [
     "OntologyDriftController",
     "OntologyVersionsController",
     "PersonalityPresetController",
+    "PlanController",
     "ProjectBrainController",
     "ProjectController",
     "ProjectDocsController",

@@ -632,6 +632,15 @@ export const ORG_ROLE_VALUES = [
 ] as const
 export type OrgRole = (typeof ORG_ROLE_VALUES)[number]
 
+export const PLAN_STATUS_VALUES = [
+    'draft',
+    'pending_review',
+    'approved',
+    'rejected',
+    'superseded',
+] as const
+export type PlanStatus = (typeof PLAN_STATUS_VALUES)[number]
+
 export const POLICY_FIELD_ORIGIN_VALUES = [
     'project',
     'department',

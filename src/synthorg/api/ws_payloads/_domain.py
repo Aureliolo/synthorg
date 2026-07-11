@@ -110,6 +110,40 @@ class WsProjectStatusChangedPayload(BaseModel):
     previous_status: NotBlankStr | None = None
 
 
+# ── Plan-review domain ──────────────────────────────────────────────
+
+
+class WsPlanUpdatedPayload(BaseModel):
+    """Payload for ``plan.updated``.
+
+    Emitted by ``api/controllers/plans.py`` when an operator reworks a plan.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PLAN_UPDATED] = WsEventType.PLAN_UPDATED
+    plan_id: NotBlankStr
+    version: int = Field(ge=1)
+    status: NotBlankStr
+
+
+class WsPlanChangesRequestedPayload(BaseModel):
+    """Payload for ``plan.changes_requested``.
+
+    Emitted by ``api/controllers/plans.py`` when an operator sends a plan back
+    for revision; ``note`` carries the requested change.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PLAN_CHANGES_REQUESTED] = (
+        WsEventType.PLAN_CHANGES_REQUESTED
+    )
+    plan_id: NotBlankStr
+    status: NotBlankStr
+    note: NotBlankStr
+
+
 class WsWorkflowExecutionStatusChangedPayload(BaseModel):
     """Payload for ``workflow_execution.status_changed``.
 
