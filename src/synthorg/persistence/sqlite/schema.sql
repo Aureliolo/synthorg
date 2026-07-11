@@ -179,7 +179,9 @@ CREATE TABLE task_metrics (
     turns_used INTEGER,
     tokens_used INTEGER,
     quality_score REAL,
-    complexity TEXT NOT NULL
+    complexity TEXT NOT NULL,
+    run_outcome TEXT
+    CHECK (run_outcome IN ('succeeded', 'empty', 'failed'))
 );
 
 CREATE INDEX idx_tm_agent_id ON task_metrics (agent_id);

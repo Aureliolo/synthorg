@@ -37,9 +37,9 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.run_outcome import RunOutcome, derive_run_outcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.state import performance_tracker_of
@@ -51,14 +51,44 @@ from synthorg.observability.events.analytics import (
 )
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
-# Bounds concurrent artifact reads for the outcome breakdown so a large task
-# set cannot fan out one DB read per task at once. Internal safety cap.
-_MAX_CONCURRENT_ARTIFACT_READS: Final[int] = 16
+# Page size for the batched artifact-presence scan. One filtered query
+# (task_id IN ...) with offset paging replaces one read per reviewable task, so
+# a polled /overview never fans out an N+1 read path. Internal, not a knob.
+_ARTIFACT_SCAN_PAGE_SIZE: Final[int] = 500
+
+
+async def _task_ids_with_artifacts(
+    backend: PersistenceBackend, task_ids: frozenset[str]
+) -> set[str]:
+    """Return the subset of ``task_ids`` that produced at least one artifact.
+
+    One filtered ``task_id IN (...)`` query (offset-paged over a stable filter),
+    short-circuiting once every task id has been seen, so classifying many tasks
+    costs one query path rather than one per task.
+
+    Returns:
+        The task ids that have at least one artifact.
+    """
+    present: set[str] = set()
+    spec = ArtifactFilterSpec(task_ids=frozenset(NotBlankStr(t) for t in task_ids))
+    offset = 0
+    while True:
+        batch = await backend.artifacts.query(
+            spec, limit=_ARTIFACT_SCAN_PAGE_SIZE, offset=offset
+        )
+        present.update(str(art.task_id) for art in batch)
+        if present >= task_ids or len(batch) < _ARTIFACT_SCAN_PAGE_SIZE:
+            # Every reviewable task accounted for, or the last (partial) page
+            # is exhausted.
+            break
+        offset += _ARTIFACT_SCAN_PAGE_SIZE
+    return present
 
 
 async def _resolve_task_outcomes(
@@ -67,12 +97,12 @@ async def _resolve_task_outcomes(
     """Break terminal tasks into succeeded / empty / failed outcome counts.
 
     ``failed`` comes straight from the task status; ``empty`` vs ``succeeded``
-    is derived from the real produced-artifact count via
-    :func:`derive_run_outcome`. When the artifact count is unavailable (no
-    backend or a read fault) a finished run is credited as succeeded rather
-    than fabricating an empty outcome, and the degradation is logged. This is
-    a per-request display value, never persisted, so an optimistic credit here
-    (unlike the observer's persisted metric record) cannot corrupt history.
+    is the real produced-artifact split (a reviewable task with no artifact is
+    empty). When the artifact presence is unavailable (no backend or a read
+    fault) a finished run is credited as succeeded rather than fabricating an
+    empty outcome, and the degradation is logged. This is a per-request display
+    value, never persisted, so an optimistic credit here (unlike the observer's
+    persisted metric record) cannot corrupt history.
 
     Returns:
         The outcome breakdown across terminal tasks.
@@ -95,33 +125,23 @@ async def _resolve_task_outcomes(
         )
         return TaskOutcomeCounts(succeeded=len(reviewable), failed=failed)
 
-    sem = asyncio.Semaphore(_MAX_CONCURRENT_ARTIFACT_READS)
+    reviewable_ids = frozenset(str(t.id) for t in reviewable)
+    try:
+        produced_ids = await _task_ids_with_artifacts(backend, reviewable_ids)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            ANALYTICS_OVERVIEW_OUTCOME_DEGRADED,
+            reason="artifact_count_unavailable",
+            reviewable=len(reviewable),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        # Unknown artifact presence: credit finished runs as succeeded rather
+        # than fabricate empty outcomes.
+        return TaskOutcomeCounts(succeeded=len(reviewable), failed=failed)
 
-    async def _classify(task: Task) -> RunOutcome:
-        async with sem:
-            try:
-                produced = await backend.artifacts.query(
-                    ArtifactFilterSpec(task_id=str(task.id)),
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    ANALYTICS_OVERVIEW_OUTCOME_DEGRADED,
-                    reason="artifact_count_unavailable",
-                    task_id=str(task.id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                # Unknown artifact count: credit the finished run as succeeded
-                # rather than fabricate an empty outcome.
-                return RunOutcome.SUCCEEDED
-            return derive_run_outcome(
-                status=task.status, produced_artifact_count=len(produced)
-            )
-
-    async with asyncio.TaskGroup() as tg:
-        futures = [tg.create_task(_classify(task)) for task in reviewable]
-    empty = sum(1 for f in futures if f.result() == RunOutcome.EMPTY)
+    empty = sum(1 for tid in reviewable_ids if tid not in produced_ids)
     succeeded = len(reviewable) - empty
     return TaskOutcomeCounts(succeeded=succeeded, empty=empty, failed=failed)
 

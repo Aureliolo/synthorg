@@ -13,6 +13,7 @@ import pytest
 
 from synthorg.api.task_activity_observer import TaskActivityObserver
 from synthorg.core.artifact import Artifact, ArtifactType
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.task_engine_models import TaskStateChanged
@@ -25,7 +26,9 @@ class _FakeChannels:
         self.published: list[tuple[str, list[str]]] = []
         self.error: Exception | None = None
 
-    def publish(self, data: str, channels: list[str]) -> None:
+    async def publish(self, data: str, channels: list[str]) -> None:
+        # Async to mirror ``ChannelsPlugin.wait_published`` (the direct-delivery
+        # surface the observer is wired to), not the sync ``publish``.
         if self.error is not None:
             raise self.error
         self.published.append((data, channels))
@@ -146,6 +149,7 @@ class TestTaskActivityObserver:
         assert _payload(channels)["run_outcome"] == "failed"
         assert len(recorder.records) == 1
         assert recorder.records[0].is_success is False
+        assert recorder.records[0].run_outcome == RunOutcome.FAILED
         assert recorder.records[0].agent_id == "agent-1"
 
     async def test_review_with_artifacts_records_success(self) -> None:
@@ -158,6 +162,7 @@ class TestTaskActivityObserver:
         )
         assert _payload(channels)["run_outcome"] == "succeeded"
         assert recorder.records[0].is_success is True
+        assert recorder.records[0].run_outcome == RunOutcome.SUCCEEDED
 
     async def test_empty_review_records_non_success(self) -> None:
         channels, recorder = _FakeChannels(), _Recorder()
@@ -169,6 +174,9 @@ class TestTaskActivityObserver:
         )
         assert _payload(channels)["run_outcome"] == "empty"
         assert recorder.records[0].is_success is False
+        # The persisted record keeps EMPTY distinct from a hard FAILED so the
+        # REST activity feed can tell an empty run from a failure.
+        assert recorder.records[0].run_outcome == RunOutcome.EMPTY
 
     async def test_reentry_into_terminal_does_not_double_record(self) -> None:
         channels, recorder = _FakeChannels(), _Recorder()

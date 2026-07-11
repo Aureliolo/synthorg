@@ -18,6 +18,7 @@ export interface ActivityFilterParams extends PaginationParams {
 const ACTIVITY_EVENT_OUTCOME: Partial<Record<ActivityEventType, RunOutcome>> = {
   task_completed: 'succeeded',
   task_failed: 'failed',
+  task_empty: 'empty',
 }
 
 /** Map a REST ActivityEvent to the display-oriented ActivityItem shape. */

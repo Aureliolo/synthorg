@@ -229,11 +229,11 @@ class SQLiteTaskMetricRepository:
 INSERT INTO task_metrics (
     id, agent_id, task_id, task_type, completed_at,
     is_success, duration_seconds, cost, currency, turns_used,
-    tokens_used, quality_score, complexity
+    tokens_used, quality_score, complexity, run_outcome
 ) VALUES (
     :id, :agent_id, :task_id, :task_type, :completed_at,
     :is_success, :duration_seconds, :cost, :currency, :turns_used,
-    :tokens_used, :quality_score, :complexity
+    :tokens_used, :quality_score, :complexity, :run_outcome
 )""",
                     data,
                 )
@@ -315,7 +315,7 @@ INSERT INTO task_metrics (
         sql = """\
 SELECT id, agent_id, task_id, task_type, completed_at,
        is_success, duration_seconds, cost, currency, turns_used,
-       tokens_used, quality_score, complexity
+       tokens_used, quality_score, complexity, run_outcome
 FROM task_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

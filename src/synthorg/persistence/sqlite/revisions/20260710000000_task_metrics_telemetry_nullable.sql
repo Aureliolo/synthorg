@@ -5,6 +5,12 @@
 -- pillar as a perfect score; NULL keeps "not measured" distinct from a genuine
 -- zero-cost run so the pillar reports insufficient data instead.
 --
+-- Also add a nullable run_outcome column: is_success collapses an empty run
+-- (finished, produced nothing) and a hard failure into one "not success" bit,
+-- so the historical (REST) activity feed cannot tell them apart. Persisting the
+-- classified outcome keeps empty distinct from failed everywhere. Existing rows
+-- copy across with run_outcome left NULL (no classification recorded).
+--
 -- SQLite cannot drop a column NOT NULL constraint in place, so the table is
 -- rebuilt (create-new, copy, drop, rename) and its indexes recreated. task_id
 -- keeps its FK to tasks (id); no other table references task_metrics.
@@ -23,7 +29,9 @@ CREATE TABLE task_metrics_new (
     turns_used INTEGER,
     tokens_used INTEGER,
     quality_score REAL,
-    complexity TEXT NOT NULL
+    complexity TEXT NOT NULL,
+    run_outcome TEXT
+    CHECK (run_outcome IN ('succeeded', 'empty', 'failed'))
 );
 
 INSERT INTO task_metrics_new (

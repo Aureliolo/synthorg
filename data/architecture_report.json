@@ -710,8 +710,8 @@
     },
     "src/synthorg/hr/performance/tracker.py": {
       "cap": 1100,
-      "loc": 1087,
-      "ratio": 0.988,
+      "loc": 1085,
+      "ratio": 0.986,
       "tier": "complex_service"
     },
     "src/synthorg/hr/promotion/service.py": {
@@ -1088,8 +1088,8 @@
     },
     "src/synthorg/persistence/postgres/hr_repositories.py": {
       "cap": 500,
-      "loc": 428,
-      "ratio": 0.856,
+      "loc": 430,
+      "ratio": 0.86,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/idempotency_repo.py": {
@@ -1169,6 +1169,12 @@
       "loc": 467,
       "ratio": 0.934,
       "tier": "repository"
+    },
+    "src/synthorg/persistence/sqlite/artifact_repo.py": {
+      "cap": 500,
+      "loc": 404,
+      "ratio": 0.808,
+      "tier": "code"
     },
     "src/synthorg/persistence/sqlite/charter_repo.py": {
       "cap": 500,
@@ -1606,7 +1612,7 @@
     "synthorg.core.role": 21,
     "synthorg.core.task": 118,
     "synthorg.core.task_enums": 104,
-    "synthorg.core.types": 1245,
+    "synthorg.core.types": 1246,
     "synthorg.engine.context": 42,
     "synthorg.engine.decomposition.models": 31,
     "synthorg.engine.errors": 92,
@@ -1692,7 +1698,7 @@
     "synthorg.persistence._shared.datetime_marshaller": 29,
     "synthorg.persistence._shared.pagination": 65,
     "synthorg.persistence.ontology_protocol": 21,
-    "synthorg.persistence.protocol": 49,
+    "synthorg.persistence.protocol": 50,
     "synthorg.persistence.sqlite._shared": 91,
     "synthorg.persistence.state": 80,
     "synthorg.project_brain.models": 25,
@@ -1815,7 +1821,7 @@
     },
     "synthorg.hr.performance.tracker:PerformanceTracker": {
       "lcom4": 6,
-      "loc": 978
+      "loc": 976
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,

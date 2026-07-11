@@ -276,7 +276,11 @@ def _wire_task_activity_observer(
         return await persistence.artifacts.query(ArtifactFilterSpec(task_id=task_id))
 
     observer = TaskActivityObserver(
-        publish=channels_plugin.publish,
+        # ``wait_published`` (direct backend delivery), NOT ``publish`` (background
+        # pub-queue): a transition can publish while the channels plugin is being
+        # torn down, and the plugin's pub worker races its own shutdown; the
+        # direct path has no such worker. See TaskActivityObserver.PublishFn.
+        publish=channels_plugin.wait_published,
         list_artifacts=_list_artifacts,
         record_metric=tracker.record_task_metric,
     )

@@ -826,27 +826,26 @@ class FakeArtifactRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        result = list(self._artifacts.values())
-        if filter_spec.task_id is not None:
-            result = [a for a in result if a.task_id == filter_spec.task_id]
-        if filter_spec.created_by is not None:
-            result = [a for a in result if a.created_by == filter_spec.created_by]
-        if filter_spec.artifact_type is not None:
-            result = [a for a in result if a.type == filter_spec.artifact_type]
+        result = self._apply_filters(filter_spec)
         # Match the SQLite repo contract (``ORDER BY id``) so tests
         # asserting list order do not depend on dict insertion order.
         result.sort(key=lambda a: a.id)
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: ArtifactFilterSpec) -> int:
+        return len(self._apply_filters(filter_spec))
+
+    def _apply_filters(self, filter_spec: ArtifactFilterSpec) -> list[Artifact]:
         result = list(self._artifacts.values())
         if filter_spec.task_id is not None:
             result = [a for a in result if a.task_id == filter_spec.task_id]
+        if filter_spec.task_ids is not None:
+            result = [a for a in result if a.task_id in filter_spec.task_ids]
         if filter_spec.created_by is not None:
             result = [a for a in result if a.created_by == filter_spec.created_by]
         if filter_spec.artifact_type is not None:
             result = [a for a in result if a.type == filter_spec.artifact_type]
-        return len(result)
+        return result
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._artifacts.pop(entity_id, None) is not None

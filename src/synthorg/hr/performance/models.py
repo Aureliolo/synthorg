@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
@@ -39,6 +40,11 @@ class TaskMetricRecord(BaseModel):
         started_at: When the task started (None if not tracked).
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
+        run_outcome: Fine-grained run outcome (succeeded / empty / failed),
+            distinguishing an empty run (finished, produced nothing) from a
+            hard failure where ``is_success`` alone cannot. None for records
+            that carry no classified outcome; when set it must agree with
+            ``is_success`` (success iff SUCCEEDED).
         duration_seconds: Wall-clock execution time, None when not measured
             (e.g. a record sourced from a task state transition, which
             carries reliability but no execution telemetry).
@@ -66,6 +72,13 @@ class TaskMetricRecord(BaseModel):
     )
     completed_at: AwareDatetime = Field(description="When the task was completed")
     is_success: bool = Field(description="Whether the task completed successfully")
+    run_outcome: RunOutcome | None = Field(
+        default=None,
+        description=(
+            "Fine-grained run outcome (succeeded / empty / failed); None when "
+            "unclassified. When set, agrees with ``is_success``."
+        ),
+    )
     duration_seconds: float | None = Field(
         default=None,
         ge=0.0,
@@ -113,6 +126,29 @@ class TaskMetricRecord(BaseModel):
                 f"before completed_at ({self.completed_at.isoformat()})"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_outcome_agrees_with_success(self) -> Self:
+        """Ensure ``run_outcome``, when set, agrees with ``is_success``.
+
+        A stored record must not claim a SUCCEEDED outcome for a non-success
+        run (or vice versa); an empty/failed run is never a success.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        if self.run_outcome is not None:
+            expected_success = self.run_outcome == RunOutcome.SUCCEEDED
+            if self.is_success != expected_success:
+                msg = (
+                    f"run_outcome ({self.run_outcome.value}) disagrees with "
+                    f"is_success ({self.is_success})"
+                )
+                raise ValueError(msg)
         return self
 
 

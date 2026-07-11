@@ -46,6 +46,23 @@ describe('listActivities run-outcome mapping', () => {
     expect(result.data[0]?.run_outcome).toBe('failed')
   })
 
+  it('maps task_empty to an empty outcome, distinct from failed', async () => {
+    server.use(
+      http.get('/api/v1/activities', () =>
+        HttpResponse.json(
+          pageEnvelope<ActivityEvent>([
+            event({
+              event_type: 'task_empty',
+              description: 'Task produced no artifacts',
+            }),
+          ]),
+        ),
+      ),
+    )
+    const result = await listActivities()
+    expect(result.data[0]?.run_outcome).toBe('empty')
+  })
+
   it('leaves non-task events without a run outcome', async () => {
     server.use(
       http.get('/api/v1/activities', () =>

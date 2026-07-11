@@ -50,9 +50,14 @@ _MAX_DESCRIPTION_TITLE_LENGTH: Final[int] = 120
 type ArtifactLister = Callable[[str], Awaitable[Sequence[Artifact]]]
 type MetricRecorder = Callable[[TaskMetricRecord], Awaitable[object]]
 #: Publish a serialised ``WsEvent`` to the named channels. Matches the
-#: positional ``ChannelsPlugin.publish(data, channels)`` surface so the boot
-#: wiring passes the plugin's bound method and tests pass a plain callable.
-type PublishFn = Callable[[str, list[str]], None]
+#: positional ``ChannelsPlugin.wait_published(data, channels)`` surface: the
+#: boot wiring passes that bound method (NOT ``publish``) so delivery goes
+#: straight to the backend rather than the plugin's background pub queue. That
+#: queue's worker races its own teardown (``task_done`` on a ``None`` queue)
+#: when a transition publishes during lifespan shutdown, since Litestar unwinds
+#: the channels plugin before the on_shutdown hook that stops the task engine;
+#: the direct path sidesteps that worker entirely.
+type PublishFn = Callable[[str, list[str]], Awaitable[None]]
 
 
 class TaskActivityObserver:
@@ -147,7 +152,7 @@ class TaskActivityObserver:
             payload=payload.model_dump(mode="json"),
         )
         try:
-            self._publish_fn(ws_event.model_dump_json(), [CHANNEL_TASKS])
+            await self._publish_fn(ws_event.model_dump_json(), [CHANNEL_TASKS])
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort live-activity fan-out
             reraise_critical(exc)
@@ -191,6 +196,10 @@ class TaskActivityObserver:
                 task_type=task.type,
                 completed_at=event.timestamp,
                 is_success=is_success,
+                # Persist the classified outcome so the historical (REST)
+                # activity feed can distinguish an empty run from a hard
+                # failure -- ``is_success`` alone collapses both to non-success.
+                run_outcome=outcome,
                 currency=DEFAULT_CURRENCY,
                 complexity=task.estimated_complexity,
             )

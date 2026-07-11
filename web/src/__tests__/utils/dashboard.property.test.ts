@@ -149,13 +149,20 @@ describe('computeOrgHealth (properties)', () => {
       total_runs: fc.nat({ max: 100 }),
       task_success_rate: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: null }),
       utilization_percent: fc.float({ min: 0, max: 100, noNaN: true }),
-      health_score: fc.float({ min: 0, max: 100, noNaN: true }),
+      // Nullable so randomized inputs exercise computeOrgHealth's no-data
+      // filtering path (departments below the min-activity gate report a null
+      // health_score), not just the all-finite branch.
+      health_score: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
     })
 
     fc.assert(
       fc.property(fc.array(arbDeptHealth, { minLength: 0, maxLength: 9 }), (depts) => {
         const result = computeOrgHealth(depts)
-        if (depts.length === 0) {
+        const hasSignal = depts.some(
+          (d) => d.health_score !== null && Number.isFinite(d.health_score),
+        )
+        if (depts.length === 0 || !hasSignal) {
+          // No departments, or every department is no-data -> explicit null.
           expect(result).toBeNull()
         } else {
           expect(result).toBeGreaterThanOrEqual(0)

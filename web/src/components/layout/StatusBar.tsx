@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
@@ -12,6 +13,8 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { HealthPopover } from '@/components/ui/health-popover'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { ReadinessProbe } from '@/api/types/system'
+
+const log = createLogger('status-bar')
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
@@ -148,7 +151,11 @@ function HealthStatusButton() {
     try {
       const health: ReadinessProbe = await getReadiness()
       setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
-    } catch {
+    } catch (err) {
+      // Debug, not warn: a probe failing while the backend is down is the
+      // expected steady state, not an anomaly worth escalating; the trail
+      // just distinguishes "backend down" from a poll-implementation bug.
+      log.debug('health poll failed', err)
       setHealthStatus('down')
     }
   }, [])

@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.delegation_types import DelegationRecord
+from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -143,12 +144,20 @@ def _task_metric_to_activity(
     Returns:
         Result of type ``ActivityEvent``.
     """
-    status = "succeeded" if record.is_success else "failed"
-    event_type = (
-        ActivityEventType.TASK_COMPLETED
-        if record.is_success
-        else ActivityEventType.TASK_FAILED
-    )
+    # A stored ``run_outcome`` distinguishes an empty run (finished, produced
+    # nothing) from a hard failure; ``is_success`` alone collapses both. Fall
+    # back to ``is_success`` for records that predate outcome capture.
+    if record.run_outcome == RunOutcome.EMPTY:
+        event_type = ActivityEventType.TASK_EMPTY
+        status = "produced no artifacts"
+    elif record.run_outcome == RunOutcome.FAILED or (
+        record.run_outcome is None and not record.is_success
+    ):
+        event_type = ActivityEventType.TASK_FAILED
+        status = "failed"
+    else:
+        event_type = ActivityEventType.TASK_COMPLETED
+        status = "succeeded"
     desc = f"Task {record.task_id} {status}"
     if record.duration_seconds is not None and record.cost is not None:
         # lint-allow: currency-aggregation -- formats this one record's own

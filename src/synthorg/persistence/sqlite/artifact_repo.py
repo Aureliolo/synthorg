@@ -333,6 +333,14 @@ WHERE id=?""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = ?")
             params.append(filter_spec.task_id)
+        if filter_spec.task_ids is not None:
+            ordered = sorted(filter_spec.task_ids)
+            if ordered:
+                placeholders = ", ".join("?" for _ in ordered)
+                conditions.append(f"task_id IN ({placeholders})")
+                params.extend(ordered)
+            else:
+                conditions.append("1 = 0")
         if filter_spec.created_by is not None:
             conditions.append("created_by = ?")
             params.append(filter_spec.created_by)
@@ -385,6 +393,14 @@ WHERE id=?""",
         if filter_spec.task_id is not None:
             conditions.append("task_id = ?")
             params.append(filter_spec.task_id)
+        if filter_spec.task_ids is not None:
+            ordered = sorted(filter_spec.task_ids)
+            if ordered:
+                placeholders = ", ".join("?" for _ in ordered)
+                conditions.append(f"task_id IN ({placeholders})")
+                params.extend(ordered)
+            else:
+                conditions.append("1 = 0")
         if filter_spec.created_by is not None:
             conditions.append("created_by = ?")
             params.append(filter_spec.created_by)
