@@ -17,6 +17,7 @@ function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): De
     total_runs: 10,
     task_success_rate: c.health / 100,
     utilization_percent: c.health,
+    utilization_degraded: false,
     health_score: c.health,
   }))
 }
@@ -34,6 +35,7 @@ function makeNoDataDepts(names: DepartmentName[]): DepartmentHealth[] {
     total_runs: 0,
     task_success_rate: null,
     utilization_percent: 50 + i * 10,
+    utilization_degraded: false,
     health_score: null,
   }))
 }

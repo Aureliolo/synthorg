@@ -18,6 +18,7 @@ from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     JsonbQueryUnsupportedError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -1270,10 +1271,14 @@ class FakePlanRepository:
             raise DuplicateRecordError(msg)
         self._plans[str(plan.id)] = plan
 
-    async def update(self, plan: Plan) -> None:
-        if str(plan.id) not in self._plans:
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
+        existing = self._plans.get(str(plan.id))
+        if existing is None:
             msg = f"No plan with id {plan.id!r}"
             raise RecordNotFoundError(msg)
+        if expected_version is not None and existing.version != expected_version:
+            msg = f"Plan {plan.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
         self._plans[str(plan.id)] = plan
 
     async def save(self, entity: Plan) -> None:

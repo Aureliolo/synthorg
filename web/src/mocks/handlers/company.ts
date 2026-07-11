@@ -75,6 +75,7 @@ function buildDepartmentHealth(name: string): DepartmentHealth {
     total_runs: 0,
     task_success_rate: null,
     utilization_percent: 0,
+    utilization_degraded: false,
     health_score: null,
   }
 }

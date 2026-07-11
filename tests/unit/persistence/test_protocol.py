@@ -804,7 +804,7 @@ class _FakePlanRepository:
     async def create(self, plan: Plan) -> None:
         pass
 
-    async def update(self, plan: Plan) -> None:
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
         pass
 
     async def save(self, entity: Plan) -> None:

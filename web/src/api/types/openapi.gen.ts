@@ -10368,6 +10368,11 @@ export type components = {
              */
             readonly total_runs: number;
             /**
+             * @description True when the in-flight-task query failed; utilization_percent is then a floor, not a measured value.
+             * @default false
+             */
+            readonly utilization_degraded: boolean;
+            /**
              * @description Roster utilisation: percentage of agents currently active.
              *
              *     A lifecycle/roster ratio, not a measure of work quality. The
@@ -14024,7 +14029,7 @@ export type components = {
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
             /**
              * Format: date-time
-             * @description Creation timestamp (tz-aware UTC)
+             * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
             /**
@@ -14049,7 +14054,7 @@ export type components = {
             readonly task_structure: components["schemas"]["TaskStructure"];
             /**
              * Format: date-time
-             * @description Last-revision timestamp (tz-aware UTC)
+             * @description datetime with the constraint that the value must have timezone info
              */
             readonly updated_at: string;
             /**
@@ -14150,10 +14155,13 @@ export type components = {
          * PlanStatus
          * @description Lifecycle status of a decomposed plan through CEO review.
          *
-         *     A plan is DRAFT while it is being shaped, PENDING_REVIEW once it is parked
-         *     for the operator's decision, and terminal once decided. SUPERSEDED marks a
-         *     plan replaced by a revised version (a re-plan after "request changes"), so
-         *     the history of what was proposed is preserved rather than overwritten.
+         *     A plan is DRAFT while it is being shaped and PENDING_REVIEW once it is
+         *     parked for the operator's decision. APPROVED, REJECTED, and SUPERSEDED are
+         *     terminal: an operator rework or a request-changes is only accepted from a
+         *     non-terminal status (see :data:`REWORKABLE_STATUSES`). SUPERSEDED is
+         *     reserved for a plan retired by a fresh re-plan; the current edit path
+         *     revises a plan in place (bumping :attr:`Plan.version`) rather than
+         *     retaining prior revisions.
          * @default draft
          * @enum {string}
          */

@@ -11,8 +11,7 @@ const PLAN_EVENT_TYPES = new Set(['plan.updated', 'plan.changes_requested'])
 
 function updateFromWsEventImpl(get: PlansGet, event: WsEvent): void {
   if (!PLAN_EVENT_TYPES.has(event.event_type)) return
-  const payload = event.payload as { plan_id?: unknown }
-  const planId = sanitizeWsString(payload.plan_id) ?? null
+  const planId = sanitizeWsString(event.payload['plan_id']) ?? null
   // Refresh the open detail view first so an edit/decision landing over WS is
   // reflected immediately; then refetch the list. Incremental payload merges
   // are not worth the complexity given the list is a small review inbox.

@@ -76,8 +76,8 @@ const mockConfig: CompanyConfig = {
 }
 
 const mockHealths: DepartmentHealth[] = [
-  { department_name: 'engineering', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 10.0, cost_trend: [], collaboration_score: 6.0, total_runs: 10, task_success_rate: 0.85, utilization_percent: 85, health_score: 85 },
-  { department_name: 'product', agent_count: 0, active_agent_count: 0, currency: DEFAULT_CURRENCY, avg_performance_score: null, department_cost_7d: 0, cost_trend: [], collaboration_score: null, total_runs: 0, task_success_rate: null, utilization_percent: 60, health_score: null },
+  { department_name: 'engineering', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 10.0, cost_trend: [], collaboration_score: 6.0, total_runs: 10, task_success_rate: 0.85, utilization_percent: 85, utilization_degraded: false, health_score: 85 },
+  { department_name: 'product', agent_count: 0, active_agent_count: 0, currency: DEFAULT_CURRENCY, avg_performance_score: null, department_cost_7d: 0, cost_trend: [], collaboration_score: null, total_runs: 0, task_success_rate: null, utilization_percent: 60, utilization_degraded: false, health_score: null },
 ]
 
 const meta = {

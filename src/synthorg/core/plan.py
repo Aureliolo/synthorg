@@ -3,17 +3,16 @@
 
 First-class replacement for a plan that previously lived only as a transient
 ``DecompositionResult`` serialised into an approval's metadata. A ``Plan`` is
-persisted, versioned, and revisable, so the operator can review, edit, and
-converse about it before approving, and so it outlives the approval decision
-(the approval merely references ``plan_id``).
+persisted, versioned, and revisable, so the operator can review and edit it
+before approving, and so it outlives the approval decision (the approval merely
+references ``plan_id``).
 """
 
 from collections import Counter
-from datetime import datetime
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task_enums import (
@@ -82,17 +81,37 @@ class PlanItem(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_self_dependency(self) -> Self:
-        """Reject an item that depends on itself.
+    def _validate_item(self) -> Self:
+        """Reject an id that is not a canonical UUID, or a bad dependency list.
+
+        The id must be a canonical UUID string: the dispatch path rebuilds each
+        child task via ``subtask_uuid(item.id)``, which rejects a non-UUID id,
+        so an operator edit adding ``"my-item"`` would otherwise pass here and
+        only fail (silently, into a FAILED task) at approval-dispatch time.
+        Dependencies must be unique and must not include the item itself.
 
         Returns:
-            ``self`` unchanged when no self-cycle exists.
+            ``self`` unchanged when the id is a canonical UUID and the
+            dependency list is free of self-references and duplicates.
 
         Raises:
-            ValueError: When the item's id appears in its ``dependencies``.
+            ValueError: When the id is not a canonical UUID, the item depends
+                on itself, or a dependency is listed more than once.
         """
+        try:
+            canonical = str(UUID(self.id))
+        except ValueError as exc:
+            msg = f"Plan item id {self.id!r} must be a canonical UUID string"
+            raise ValueError(msg) from exc
+        if self.id != canonical:
+            msg = f"Plan item id {self.id!r} is not in canonical UUID form"
+            raise ValueError(msg)
         if self.id in self.dependencies:
             msg = f"Plan item {self.id!r} cannot depend on itself"
+            raise ValueError(msg)
+        if len(self.dependencies) != len(set(self.dependencies)):
+            dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
+            msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -145,23 +164,27 @@ class Plan(BaseModel):
         ge=1,
         description="Revision number, bumped on each edit / re-plan",
     )
-    created_at: datetime = Field(description="Creation timestamp (tz-aware UTC)")
-    updated_at: datetime = Field(description="Last-revision timestamp (tz-aware UTC)")
+    created_at: AwareDatetime = Field(description="Creation timestamp (tz-aware UTC)")
+    updated_at: AwareDatetime = Field(
+        description="Last-revision timestamp (tz-aware UTC)"
+    )
 
     @model_validator(mode="after")
     def _validate_items(self) -> Self:
-        """Validate item-collection integrity (non-empty, unique, resolvable).
+        """Validate the item DAG (non-empty, unique, resolvable, acyclic).
 
-        Cycle detection across the DAG is a service-layer concern (the
-        dependency-graph validator); this guards the entity's own invariants.
+        The items form a dependency DAG that dispatch walks in topological
+        order, so a cycle is an entity invariant, not a downstream concern:
+        it is rejected here (via a topological sort) rather than surfacing as
+        a generic dispatch failure at approval time.
 
         Returns:
-            ``self`` unchanged when items are non-empty, ids are unique, and
-            every dependency points to a known item.
+            ``self`` unchanged when items are non-empty, ids are unique, every
+            dependency points to a known item, and the graph is acyclic.
 
         Raises:
-            ValueError: When ``items`` is empty, ids duplicate, or a
-                dependency references an unknown item id.
+            ValueError: When ``items`` is empty, ids duplicate, a dependency
+                references an unknown item id, or the graph contains a cycle.
         """
         if not self.items:
             msg = "a plan must contain at least one item"
@@ -177,4 +200,27 @@ class Plan(BaseModel):
             if missing:
                 msg = f"plan item {item.id!r} references unknown items: {missing}"
                 raise ValueError(msg)
+        self._reject_dependency_cycle()
         return self
+
+    def _reject_dependency_cycle(self) -> None:
+        """Reject a plan whose item dependency graph contains a cycle.
+
+        Raises:
+            ValueError: When the items cannot be ordered topologically (Kahn's
+                algorithm leaves at least one item with unresolved
+                dependencies), naming the items caught in the cycle.
+        """
+        pending = {item.id: set(item.dependencies) for item in self.items}
+        while True:
+            ready = {item_id for item_id, deps in pending.items() if not deps}
+            if not ready:
+                break
+            for item_id in ready:
+                del pending[item_id]
+            for deps in pending.values():
+                deps.difference_update(ready)
+        if pending:
+            cyclic = sorted(pending)
+            msg = f"plan items form a dependency cycle: {cyclic}"
+            raise ValueError(msg)

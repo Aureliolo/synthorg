@@ -18,6 +18,8 @@ const defaultHookReturn: UsePlanDetailDataReturn = {
   plan,
   loading: false,
   error: null,
+  wsConnected: true,
+  wsSetupError: null,
 }
 
 let hookReturn = { ...defaultHookReturn }
@@ -54,7 +56,13 @@ describe('PlanDetailPage', () => {
   })
 
   it('shows a not-found banner on error with no plan', () => {
-    hookReturn = { plan: null, loading: false, error: 'gone' }
+    hookReturn = {
+      plan: null,
+      loading: false,
+      error: 'gone',
+      wsConnected: true,
+      wsSetupError: null,
+    }
     renderPage()
     expect(screen.getByText('Plan not found')).toBeInTheDocument()
   })
@@ -64,6 +72,8 @@ describe('PlanDetailPage', () => {
       plan: makePlan('plan-1', { status: 'approved' }),
       loading: false,
       error: null,
+      wsConnected: true,
+      wsSetupError: null,
     }
     renderPage()
     expect(

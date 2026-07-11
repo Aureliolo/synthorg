@@ -8,10 +8,15 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient, as_uuid
+from tests._shared import LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 _CREATED_AT = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+
+# Plan item ids must be canonical UUID strings (dispatch rebuilds child tasks
+# from them); use stable, labelled UUIDs so payloads read clearly.
+_I1 = sid("item-1")
+_I2 = sid("item-2")
 
 
 def _plan(
@@ -28,15 +33,15 @@ def _plan(
         parent_task_id=NotBlankStr("task-root"),
         items=(
             PlanItem(
-                id=NotBlankStr("i1"),
+                id=NotBlankStr(_I1),
                 title=NotBlankStr("Scaffold"),
                 description=NotBlankStr("Set up the board"),
             ),
             PlanItem(
-                id=NotBlankStr("i2"),
+                id=NotBlankStr(_I2),
                 title=NotBlankStr("Movement"),
                 description=NotBlankStr("Drop + rotate"),
-                dependencies=(NotBlankStr("i1"),),
+                dependencies=(NotBlankStr(_I1),),
             ),
         ),
         status=status,
@@ -104,6 +109,28 @@ class TestPlanController:
         assert body["success"] is False
         assert "Invalid plan status" in body["error"]
 
+    async def test_list_pagination_walks_past_first_page(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        for i in range(3):
+            await _seed(async_test_client, _plan(plan_id=f"pg-{i}"))
+
+        first = await async_test_client.get("/api/v1/plans?limit=2")
+        assert first.status_code == 200
+        body = first.json()
+        assert len(body["data"]) == 2
+        cursor = body["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = await async_test_client.get(f"/api/v1/plans?limit=2&cursor={cursor}")
+        assert second.status_code == 200
+        second_body = second.json()
+        assert len(second_body["data"]) == 1
+        # The second page surfaces the third plan, not a repeat of page one.
+        first_ids = {row["id"] for row in body["data"]}
+        second_ids = {row["id"] for row in second_body["data"]}
+        assert first_ids.isdisjoint(second_ids)
+
     async def test_edit_reworks_items_and_bumps_version(
         self, async_test_client: LoopAsyncClient
     ) -> None:
@@ -115,7 +142,7 @@ class TestPlanController:
             json={
                 "items": [
                     {
-                        "id": "i1",
+                        "id": _I1,
                         "title": "Reworked scaffold",
                         "description": "New scope for the board",
                         "owner": "engineering",
@@ -143,10 +170,10 @@ class TestPlanController:
             json={
                 "items": [
                     {
-                        "id": "i1",
+                        "id": _I1,
                         "title": "Broken",
                         "description": "Depends on a ghost",
-                        "dependencies": ["does-not-exist"],
+                        "dependencies": [sid("ghost")],
                     },
                 ],
             },
@@ -155,12 +182,87 @@ class TestPlanController:
         assert resp.status_code == 422
         assert resp.json()["success"] is False
 
+    async def test_edit_rejects_dependency_cycle(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "A",
+                        "description": "depends on B",
+                        "dependencies": [_I2],
+                    },
+                    {
+                        "id": _I2,
+                        "title": "B",
+                        "description": "depends on A",
+                        "dependencies": [_I1],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["success"] is False
+
+    async def test_edit_rejects_non_uuid_item_id(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={"items": [{"id": "not-a-uuid", "title": "X", "description": "Y"}]},
+            headers=make_auth_headers("ceo"),
+        )
+        # A malformed item payload is rejected at the request boundary (400),
+        # never reaching dispatch.
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
+    async def test_edit_rejects_empty_items(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={"items": []},
+            headers=make_auth_headers("ceo"),
+        )
+        # EditPlanRequest.items has min_length=1: a body-schema violation (400).
+        assert resp.status_code == 400
+
+    async def test_edit_rejects_terminal_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(
+            async_test_client, _plan(plan_id="decided", status=PlanStatus.APPROVED)
+        )
+        plan_id = str(as_uuid("decided"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        assert resp.json()["success"] is False
+
     async def test_edit_missing_plan_404(
         self, async_test_client: LoopAsyncClient
     ) -> None:
         resp = await async_test_client.patch(
             "/api/v1/plans/ghost",
-            json={"items": [{"id": "i1", "title": "X", "description": "Y"}]},
+            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
@@ -178,6 +280,21 @@ class TestPlanController:
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "draft"
+
+    async def test_request_changes_rejects_terminal_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(
+            async_test_client, _plan(plan_id="decided", status=PlanStatus.REJECTED)
+        )
+        plan_id = str(as_uuid("decided"))
+
+        resp = await async_test_client.post(
+            f"/api/v1/plans/{plan_id}/request-changes",
+            json={"note": "please revise"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
 
     async def test_request_changes_missing_plan_404(
         self, async_test_client: LoopAsyncClient

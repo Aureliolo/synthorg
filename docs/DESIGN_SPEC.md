@@ -25,6 +25,7 @@ The design specification has been split into focused documentation pages for bet
 | [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, reproducible per-project environments, task decomposability, coordination topology |
 | [Mid-Flight Steering](design/mid-flight-steering.md) | In-run operator intervention | Steering directives (hint / redirect), steering store, adoption at safe execution boundaries, project-brain integration, agent-execution links |
 | [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
+| [Plan Review](design/plan-review.md) | Durable Plan Entity | First-class `Plan`/`PlanItem` model, `PlanStatus` lifecycle, `/plans` API, decomposition projection, review workspace, dispatch-on-approval |
 | [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, embedding selection, consolidation |
 | [Memory Organisational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |
 | [Memory Operational](design/memory-operational.md) | Operational Data Persistence | PersistenceBackend protocol, per-entity repositories, SQLite + Postgres, multi-tenancy, invariants |

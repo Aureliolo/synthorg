@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 
@@ -124,7 +125,7 @@ class WsPlanUpdatedPayload(BaseModel):
     event_type: Literal[WsEventType.PLAN_UPDATED] = WsEventType.PLAN_UPDATED
     plan_id: NotBlankStr
     version: int = Field(ge=1)
-    status: NotBlankStr
+    status: PlanStatus
 
 
 class WsPlanChangesRequestedPayload(BaseModel):
@@ -140,7 +141,7 @@ class WsPlanChangesRequestedPayload(BaseModel):
         WsEventType.PLAN_CHANGES_REQUESTED
     )
     plan_id: NotBlankStr
-    status: NotBlankStr
+    status: PlanStatus
     note: NotBlankStr
 
 

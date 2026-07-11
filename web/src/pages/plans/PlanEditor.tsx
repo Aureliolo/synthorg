@@ -3,9 +3,14 @@ import { useCallback, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import type { EditPlanRequest, Plan, PlanItem } from '@/api/types'
+import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enum-values.gen'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
+
+const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
+const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
 
 interface DraftItem {
   id: string
@@ -111,6 +116,24 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
         value={draft.owner}
         onValueChange={(value) => onChange(index, { owner: value })}
       />
+      <div className="grid grid-cols-2 gap-grid-gap">
+        <SelectField
+          label="Complexity"
+          options={COMPLEXITY_OPTIONS}
+          value={draft.complexity}
+          onChange={(value) =>
+            onChange(index, { complexity: value as DraftItem['complexity'] })
+          }
+        />
+        <SelectField
+          label="Stakes"
+          options={STAKES_OPTIONS}
+          value={draft.stakes}
+          onChange={(value) =>
+            onChange(index, { stakes: value as DraftItem['stakes'] })
+          }
+        />
+      </div>
     </div>
   )
 }

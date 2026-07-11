@@ -9,15 +9,13 @@ export type { PlansState } from './plans/types'
 
 export const usePlansStore = create<PlansState>()((set, get) => ({
   plans: [],
-  nextCursor: null,
-  hasMore: false,
   listLoading: false,
   listError: null,
   statusFilter: null,
   selectedPlan: null,
   detailLoading: false,
   detailError: null,
-  ...createListActions(set, get),
+  ...createListActions(set),
   ...createDetailActions(set),
   ...createWsHandler(get),
 }))

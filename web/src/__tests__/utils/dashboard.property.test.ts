@@ -149,6 +149,7 @@ describe('computeOrgHealth (properties)', () => {
       total_runs: fc.nat({ max: 100 }),
       task_success_rate: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: null }),
       utilization_percent: fc.float({ min: 0, max: 100, noNaN: true }),
+      utilization_degraded: fc.boolean(),
       // Nullable so randomized inputs exercise computeOrgHealth's no-data
       // filtering path (departments below the min-activity gate report a null
       // health_score), not just the all-finite branch.

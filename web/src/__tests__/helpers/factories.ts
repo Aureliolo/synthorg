@@ -141,6 +141,7 @@ export function makeDepartmentHealth(name: string, overrides?: Partial<Departmen
     total_runs: 12,
     task_success_rate: 0.83,
     utilization_percent: 85,
+    utilization_degraded: false,
     health_score: 83,
     ...overrides,
   }

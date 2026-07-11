@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.artifact import ArtifactType
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
@@ -26,6 +27,8 @@ from synthorg.engine.decomposition.plan_mapping import (
     plan_from_decomposition,
 )
 from tests._shared import as_uuid, sid
+
+pytestmark = pytest.mark.unit
 
 _CREATED_AT = datetime(2026, 3, 1, 9, 0, tzinfo=UTC)
 
@@ -71,7 +74,6 @@ def _decomposition() -> DecompositionResult:
 
 
 class TestPlanFromDecomposition:
-    @pytest.mark.unit
     def test_maps_structure_and_items(self) -> None:
         plan = plan_from_decomposition(
             _decomposition(),
@@ -91,7 +93,6 @@ class TestPlanFromDecomposition:
         assert plan.updated_at == _CREATED_AT
         assert plan.version == 1
 
-    @pytest.mark.unit
     def test_item_fields_projected(self) -> None:
         plan = plan_from_decomposition(
             _decomposition(),
@@ -109,7 +110,6 @@ class TestPlanFromDecomposition:
         assert second.dependencies == (sid("sub-1"),)
         assert second.owner is None
 
-    @pytest.mark.unit
     def test_status_override(self) -> None:
         plan = plan_from_decomposition(
             _decomposition(),
@@ -163,7 +163,6 @@ def _durable_plan() -> Plan:
 
 
 class TestDecompositionFromPlan:
-    @pytest.mark.unit
     def test_rebuilds_dispatchable_result(self) -> None:
         result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())
 
@@ -185,9 +184,58 @@ class TestDecompositionFromPlan:
             (str(as_uuid("sub-1")), str(as_uuid("sub-2"))),
         )
 
-    @pytest.mark.unit
     def test_routing_hints_survive_round_trip(self) -> None:
         result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())
         by_id = {s.id: s for s in result.plan.subtasks}
         assert by_id[str(as_uuid("sub-1"))].required_skills == ("frontend",)
         assert by_id[str(as_uuid("sub-2"))].required_role == "engineering"
+
+    def test_plan_from_decomposition_round_trips(self) -> None:
+        # A plan built from a decomposition, then projected back, preserves the
+        # item identity, dependency edges, and structure (the mapping's contract).
+        plan = plan_from_decomposition(
+            _decomposition(),
+            project="beachhead",
+            objective_id="obj-1",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+        )
+        rebuilt = decomposition_from_plan(plan, parent_task=_parent_task())
+        assert {s.id for s in rebuilt.plan.subtasks} == {item.id for item in plan.items}
+        assert rebuilt.plan.task_structure is plan.task_structure
+        assert rebuilt.dependency_edges == ((sid("sub-1"), sid("sub-2")),)
+
+    def test_expected_artifacts_and_criteria_reach_the_task(self) -> None:
+        # The item's acceptance criteria + expected artifacts must land on the
+        # dispatched Task so the fail-loud zero-artifact guard can engage.
+        plan = Plan(
+            id=as_uuid("plan-2"),
+            project=NotBlankStr("beachhead"),
+            objective_id=NotBlankStr("obj-1"),
+            parent_task_id=NotBlankStr(str(as_uuid("root"))),
+            items=(
+                PlanItem(
+                    id=NotBlankStr(str(as_uuid("sub-1"))),
+                    title=NotBlankStr("Board"),
+                    description=NotBlankStr("Grid"),
+                    acceptance_criteria=(NotBlankStr("renders an 8x8 grid"),),
+                    expected_artifacts=(
+                        NotBlankStr("src/board.py"),
+                        NotBlankStr("tests/test_board.py"),
+                    ),
+                ),
+            ),
+            created_at=_CREATED_AT,
+            updated_at=_CREATED_AT,
+        )
+        result = decomposition_from_plan(plan, parent_task=_parent_task())
+        task = result.created_tasks[0]
+        assert tuple(c.description for c in task.acceptance_criteria) == (
+            "renders an 8x8 grid",
+        )
+        paths = {a.path for a in task.artifacts_expected}
+        assert paths == {"src/board.py", "tests/test_board.py"}
+        # The test path is typed TESTS, the source path CODE (inferred).
+        by_path = {a.path: a.type for a in task.artifacts_expected}
+        assert by_path["tests/test_board.py"] is ArtifactType.TESTS
+        assert by_path["src/board.py"] is ArtifactType.CODE

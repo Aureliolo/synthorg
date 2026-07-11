@@ -74,8 +74,8 @@
     },
     "src/synthorg/api/controllers/_department_health.py": {
       "cap": 600,
-      "loc": 482,
-      "ratio": 0.803,
+      "loc": 503,
+      "ratio": 0.838,
       "tier": "service"
     },
     "src/synthorg/api/controllers/activities/_shared.py": {
@@ -1110,6 +1110,12 @@
       "ratio": 0.976,
       "tier": "repository"
     },
+    "src/synthorg/persistence/postgres/plan_repo.py": {
+      "cap": 500,
+      "loc": 423,
+      "ratio": 0.846,
+      "tier": "code"
+    },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
       "loc": 451,
@@ -1211,6 +1217,12 @@
       "loc": 476,
       "ratio": 0.952,
       "tier": "repository"
+    },
+    "src/synthorg/persistence/sqlite/plan_repo.py": {
+      "cap": 500,
+      "loc": 436,
+      "ratio": 0.872,
+      "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
       "cap": 500,
@@ -1555,7 +1567,7 @@
     "synthorg.api.api_core_state": 39,
     "synthorg.api.channels": 22,
     "synthorg.api.construction_wiring": 21,
-    "synthorg.api.cursor": 35,
+    "synthorg.api.cursor": 36,
     "synthorg.api.dto": 128,
     "synthorg.api.guards": 123,
     "synthorg.api.pagination": 64,
@@ -1592,7 +1604,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 65,
     "synthorg.core.clock": 224,
-    "synthorg.core.critical_errors": 662,
+    "synthorg.core.critical_errors": 663,
     "synthorg.core.domain_errors": 242,
     "synthorg.core.effective_autonomy": 24,
     "synthorg.core.error_taxonomy": 63,
@@ -1600,7 +1612,7 @@
     "synthorg.core.memory_enums": 49,
     "synthorg.core.normalization": 113,
     "synthorg.core.pagination": 32,
-    "synthorg.core.persistence_errors": 247,
+    "synthorg.core.persistence_errors": 248,
     "synthorg.core.project_enums": 30,
     "synthorg.core.registry": 27,
     "synthorg.core.role": 21,
@@ -1783,7 +1795,7 @@
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,
-      "loc": 631
+      "loc": 644
     },
     "synthorg.engine.review_gate:ReviewGateService": {
       "lcom4": 1,

@@ -63,13 +63,18 @@ class PlanRepository(
         """
         ...
 
-    async def update(self, plan: Plan) -> None:
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
         """Update an existing plan, failing if no row matches.
 
         Args:
             plan: The plan to update; ``plan.id`` selects the row.
+            expected_version: When set, an optimistic-concurrency guard: the
+                write only lands if the stored row still carries this version,
+                otherwise a :class:`PersistenceVersionConflictError` is raised.
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No plan with this id exists.
             QueryError: If the database operation fails.
         """

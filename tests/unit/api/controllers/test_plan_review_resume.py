@@ -104,30 +104,41 @@ def _approval(
     )
 
 
-async def _seed(
+_UNSET: Any = object()  # type: ignore[explicit-any]
+
+
+async def _seed(  # noqa: PLR0913 -- test seam composing several independent knobs
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
     task: Task | None,
     plan: Plan | None,
     coordinator_error: Exception | None = None,
+    coordinator_missing: bool = False,
+    approval_task_id: str | None = _UNSET,
+    save_plan: bool = True,
 ) -> tuple[AppState, _Configured, _Configured, FakePersistenceBackend]:
+    resolved_task_id = (
+        (str(task.id) if task is not None else None)
+        if approval_task_id is _UNSET
+        else approval_task_id
+    )
+    plan_id = str(plan.id) if plan is not None else None
     store = ApprovalStore()
     await store.add(
-        _approval(
-            "appr-1",
-            source=source,
-            task_id=str(task.id) if task is not None else None,
-            plan_id=str(plan.id) if plan is not None else None,
-        )
+        _approval("appr-1", source=source, task_id=resolved_task_id, plan_id=plan_id)
     )
     backend = FakePersistenceBackend()
     await backend.connect()
-    if plan is not None:
+    if plan is not None and save_plan:
         await backend.plans.save(plan)
-    coordinator = mock_of[MultiAgentCoordinator](
-        coordinate=AsyncMock(
-            side_effect=coordinator_error,
-            return_value=None if coordinator_error else object(),
+    coordinator = (
+        None
+        if coordinator_missing
+        else mock_of[MultiAgentCoordinator](
+            coordinate=AsyncMock(
+                side_effect=coordinator_error,
+                return_value=None if coordinator_error else object(),
+            )
         )
     )
     engine = mock_of[TaskEngine](
@@ -201,43 +212,57 @@ class TestPlanReviewResume:
         assert stored is not None
         assert stored.status is PlanStatus.REJECTED
 
-    async def test_missing_task_owned_but_noop(self) -> None:
-        # The plan's parent task no longer exists: the flow owns the decision
-        # (returns True) but cannot dispatch.
-        state, coordinator, _, _ = await _seed(
-            task=None, plan=_durable_plan("parent-1")
-        )
-        store = ApprovalStore()
-        await store.add(
-            _approval(
-                "appr-1",
-                task_id=str(as_uuid("parent-1")),
-                plan_id=str(as_uuid(_PLAN_ID)),
-            )
-        )
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        await backend.plans.save(_durable_plan("parent-1"))
-        state = make_app_state(
-            approval_store=store,
-            coordinator=coordinator,
-            task_engine=mock_of[TaskEngine](get_task=AsyncMock(return_value=None)),
-            agent_registry=mock_of[AgentRegistryService](
-                list_active=AsyncMock(return_value=())
-            ),
-            persistence=backend,
+    async def test_missing_task_marks_task_failed(self) -> None:
+        # The approval references a task that no longer exists (get_task -> None):
+        # the flow owns the decision but the parent task is marked FAILED so the
+        # stuck plan surfaces rather than sitting silently in pre-approval status.
+        state, coordinator, engine, _ = await _seed(
+            task=None,
+            plan=_durable_plan("parent-1"),
+            approval_task_id=str(as_uuid("parent-1")),
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is True
         coordinator.coordinate.assert_not_called()
+        engine.transition_task.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
 
-    async def test_dispatch_failure_still_owns_decision(self) -> None:
-        # A dispatch failure must not 5xx the approval-decision request: the
-        # flow still owns the decision (True) after logging.
+    async def test_missing_plan_marks_task_failed(self) -> None:
+        # The approval references a plan_id that is not persisted: the flow marks
+        # the parent task FAILED rather than returning a silent no-op.
         parent = _task("parent-1")
-        state, coordinator, _, _ = await _seed(
+        state, _, engine, _ = await _seed(
+            task=parent, plan=_durable_plan("parent-1"), save_plan=False
+        )
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        assert handled is True
+        engine.transition_task.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+
+    async def test_missing_coordinator_marks_task_failed(self) -> None:
+        parent = _task("parent-1")
+        state, _, engine, _ = await _seed(
+            task=parent, plan=_durable_plan("parent-1"), coordinator_missing=True
+        )
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        assert handled is True
+        engine.transition_task.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+
+    async def test_dispatch_failure_marks_task_failed_and_keeps_plan_approved(
+        self,
+    ) -> None:
+        # A dispatch failure must not 5xx the approval-decision request: the flow
+        # still owns the decision (True), marks the task FAILED, and the plan
+        # stays APPROVED (the decision stands; the dispatch failure is on the task).
+        parent = _task("parent-1")
+        state, coordinator, engine, backend = await _seed(
             task=parent,
             plan=_durable_plan("parent-1"),
             coordinator_error=RuntimeError("boom"),
@@ -247,3 +272,8 @@ class TestPlanReviewResume:
         )
         assert handled is True
         coordinator.coordinate.assert_awaited_once()
+        engine.transition_task.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.APPROVED

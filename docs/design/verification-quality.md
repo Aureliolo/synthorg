@@ -138,8 +138,11 @@ Key design decisions:
 Beyond the review pipeline, the lifecycle exposes additional human gates that all
 route through the same `signal_resume_intent` approvals-resume path, each off by
 default: the **plan-approval gate** (`ApprovalSource.PLAN_REVIEW`,
-`coordination.plan_approval_required`) parks a decomposed team plan before any team
-builds; the **mid-task clarification pause** (`AWAITING_INPUT`,
+`coordination.plan_approval_required`) persists a decomposed team plan as a durable,
+versioned, human-editable `Plan` entity and parks an approval referencing it before
+any team builds, so an operator can review, rework, or send the plan back for changes
+through the `/plans` API and Plan Review workspace before approving (see
+[Plan Review](plan-review.md)); the **mid-task clarification pause** (`AWAITING_INPUT`,
 `engine.clarification_enabled`) lets an agent ask a human an open-ended question; and
 the **project-decision gate** (`engine.scoping_enabled`) records the human's choice as
 a project-brain `DECISION` entry.

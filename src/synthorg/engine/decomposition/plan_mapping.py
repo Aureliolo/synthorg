@@ -12,9 +12,10 @@ owns both directions so the gate, the API, and the resume path stay in step.
 from datetime import datetime
 from uuid import UUID
 
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._ids import subtask_uuid
@@ -23,6 +24,27 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+
+
+def _expected_artifact(spec: NotBlankStr) -> ExpectedArtifact:
+    """Project a free-text expected-artifact spec onto a typed declaration.
+
+    The plan item carries the artifact as free text; the type is inferred from
+    the path so the dispatched task's fail-loud zero-artifact guard has a typed
+    declaration to check against, defaulting to ``CODE``.
+
+    Returns:
+        An :class:`ExpectedArtifact` with an inferred type and the spec as its
+        path.
+    """
+    lowered = spec.lower()
+    if "test" in lowered:
+        artifact_type = ArtifactType.TESTS
+    elif lowered.endswith(".md") or "doc" in lowered:
+        artifact_type = ArtifactType.DOCUMENTATION
+    else:
+        artifact_type = ArtifactType.CODE
+    return ExpectedArtifact(type=artifact_type, path=spec)
 
 
 def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
@@ -116,7 +138,9 @@ def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
 
     Returns:
         A ``CREATED`` child :class:`Task` inheriting the parent's routing
-        context (type, priority, project, delegation chain).
+        context (type, priority, project, delegation chain) and carrying the
+        item's acceptance criteria and expected artifacts, so the task's
+        fail-loud zero-artifact guard engages on the plan-review dispatch path.
     """
     return Task(
         id=subtask_uuid(item.id),
@@ -129,6 +153,12 @@ def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
         parent_task_id=str(parent_task.id),
         delegation_chain=parent_task.delegation_chain,
         dependencies=item.dependencies,
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=c) for c in item.acceptance_criteria
+        ),
+        artifacts_expected=tuple(
+            _expected_artifact(a) for a in item.expected_artifacts
+        ),
         status=TaskStatus.CREATED,
         estimated_complexity=item.estimated_complexity,
         stakes=item.stakes,

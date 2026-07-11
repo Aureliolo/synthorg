@@ -17,6 +17,22 @@ import { PlanRequestChanges } from './plans/PlanRequestChanges'
 
 type Mode = 'view' | 'edit' | 'request-changes'
 
+/**
+ * View mode that resets to 'view' whenever the plan id changes. react-router
+ * reuses the route element on a param change, so without this a stale
+ * edit/request-changes pane would carry over to the next plan. The reset runs
+ * during render (React's derived-state pattern), not in an effect.
+ */
+function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => void] {
+  const [mode, setMode] = useState<Mode>('view')
+  const [seenPlanId, setSeenPlanId] = useState(planId)
+  if (planId !== seenPlanId) {
+    setSeenPlanId(planId)
+    setMode('view')
+  }
+  return [mode, setMode]
+}
+
 function PlanDetailHeader({ plan }: { plan: Plan }) {
   return (
     <div className="space-y-2">
@@ -77,7 +93,7 @@ function PlanDetailBody({ plan, mode, setMode }: {
   setMode: (mode: Mode) => void
 }) {
   if (mode === 'edit') {
-    return <PlanEditor plan={plan} onDone={() => setMode('view')} />
+    return <PlanEditor key={plan.id} plan={plan} onDone={() => setMode('view')} />
   }
   if (mode === 'request-changes') {
     return (
@@ -102,8 +118,8 @@ function PlanDetailBody({ plan, mode, setMode }: {
 
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
-  const { plan, loading, error } = usePlanDetailData(planId)
-  const [mode, setMode] = useState<Mode>('view')
+  const { plan, loading, error, wsConnected, wsSetupError } = usePlanDetailData(planId)
+  const [mode, setMode] = usePlanViewMode(planId)
 
   if (loading && !plan) {
     return (
@@ -129,6 +145,15 @@ export default function PlanDetailPage() {
   return (
     <div className="space-y-section-gap">
       <PlanDetailHeader plan={plan} />
+      {!wsConnected && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={
+            wsSetupError ?? 'This plan may be stale until the connection recovers.'
+          }
+        />
+      )}
       <PlanDetailBody plan={plan} mode={mode} setMode={setMode} />
     </div>
   )

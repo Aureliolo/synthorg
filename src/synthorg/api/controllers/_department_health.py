@@ -71,6 +71,10 @@ class DepartmentHealth(BaseModel):
             0-100 score; None when task_success_rate is None (no-data).
         utilization_percent: Derived (computed_field) from
             active_agent_count / agent_count.
+        utilization_degraded: True when the in-flight-task query failed, so
+            active_agent_count (and thus utilization_percent) is a floor, not
+            a measured value; the dashboard renders utilisation as "unknown"
+            rather than a confident number.
         currency: ISO 4217 currency code.
     """
 
@@ -106,6 +110,13 @@ class DepartmentHealth(BaseModel):
         default=0,
         ge=0,
         description="Terminal task runs by this department in the health window",
+    )
+    utilization_degraded: bool = Field(
+        default=False,
+        description=(
+            "True when the in-flight-task query failed; utilization_percent is"
+            " then a floor, not a measured value."
+        ),
     )
     task_success_rate: float | None = Field(
         default=None,
@@ -178,20 +189,23 @@ def filter_agents_by_department(
 
 async def _resolve_inprogress_tasks(
     app_state: AppState,
-) -> tuple[Task, ...]:
+) -> tuple[tuple[Task, ...], bool]:
     """Fetch the in-flight tasks used to derive department utilisation.
 
     Utilisation is a runtime measure: an agent counts as active only while
     it is executing a task (assignee of an ``IN_PROGRESS`` task), never by
     its ``AgentStatus`` lifecycle flag. A read failure degrades to no
     in-flight work (zero utilisation) rather than collapsing the whole
-    health response, so costs and performance still surface.
+    health response, so costs and performance still surface, but the degraded
+    flag rides along so the caller can mark utilisation "unknown" instead of a
+    confident zero.
 
     Returns:
-        Every ``IN_PROGRESS`` task, or ``()`` on read failure.
+        ``(tasks, degraded)``: every ``IN_PROGRESS`` task and ``False`` on
+        success, or ``((), True)`` on read failure.
     """
     try:
-        return await analytics_read_service_of(app_state).list_in_progress()
+        return await analytics_read_service_of(app_state).list_in_progress(), False
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -201,7 +215,7 @@ async def _resolve_inprogress_tasks(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return ()
+        return (), True
 
 
 async def _resolve_snapshots(
@@ -383,6 +397,9 @@ def _build_degraded_health(
 ) -> DepartmentHealth:
     """Build a minimal DepartmentHealth for when queries fail.
 
+    The whole first stage failed, so utilisation is unknown (not a measured
+    zero): mark it degraded.
+
     Returns:
         ``DepartmentHealth`` instance.
     """
@@ -397,6 +414,7 @@ def _build_degraded_health(
             now,
             BucketSize.DAY,
         ),
+        utilization_degraded=True,
         currency=currency,
     )
 
@@ -413,6 +431,7 @@ def _build_health_from_data(  # noqa: PLR0913
     total_runs: int = 0,
     success_count: int = 0,
     min_runs: int = _DEFAULT_HEALTH_MIN_RUNS,
+    utilization_degraded: bool = False,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results.
@@ -447,6 +466,7 @@ def _build_health_from_data(  # noqa: PLR0913
         ),
         total_runs=total_runs,
         task_success_rate=success_rate,
+        utilization_degraded=utilization_degraded,
         currency=aggregate.currency if aggregate.currency is not None else currency,
     )
 
@@ -552,7 +572,8 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
         window_start=health_window_start,
     )
 
-    active_count = len(busy_agent_ids(t_tasks.result(), t_ids.result()))
+    inprogress_tasks, utilization_degraded = t_tasks.result()
+    active_count = len(busy_agent_ids(inprogress_tasks, t_ids.result()))
 
     return _build_health_from_data(
         dept_name=dept_name,
@@ -565,5 +586,6 @@ async def assemble_department_health(  # noqa: PLR0913 -- health data sources
         total_runs=total_runs,
         success_count=success_count,
         min_runs=health_min_runs,
+        utilization_degraded=utilization_degraded,
         currency=currency,
     )

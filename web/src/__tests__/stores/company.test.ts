@@ -25,6 +25,7 @@ const mockDeptHealth: DepartmentHealth = {
   total_runs: 10,
   task_success_rate: 0.85,
   utilization_percent: 85,
+  utilization_degraded: false,
   health_score: 85,
 }
 

@@ -11,8 +11,6 @@ import { makePlan } from '../helpers/factories'
 function resetStore(): void {
   usePlansStore.setState({
     plans: [],
-    nextCursor: null,
-    hasMore: false,
     listLoading: false,
     listError: null,
     statusFilter: null,

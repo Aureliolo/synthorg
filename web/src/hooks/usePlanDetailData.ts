@@ -11,6 +11,8 @@ export interface UsePlanDetailDataReturn {
   plan: Plan | null
   loading: boolean
   error: string | null
+  wsConnected: boolean
+  wsSetupError: string | null
 }
 
 export function usePlanDetailData(planId: string | undefined): UsePlanDetailDataReturn {
@@ -36,7 +38,7 @@ export function usePlanDetailData(planId: string | undefined): UsePlanDetailData
       })),
     [],
   )
-  useWebSocket({ bindings })
+  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
 
-  return { plan, loading, error }
+  return { plan, loading, error, wsConnected, wsSetupError }
 }

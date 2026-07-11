@@ -6,9 +6,11 @@ how the projects controller returns ``Project`` directly. Only the mutation
 payloads need their own request models, and they live here.
 """
 
-from typing import Final
+from collections import Counter
+from typing import Final, Self
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.task_enums import (
     Complexity,
@@ -84,6 +86,39 @@ class PlanItemPayload(BaseModel):
         default=Stakes.NORMAL, description="Stakes level for routing"
     )
 
+    @model_validator(mode="after")
+    def _validate_item(self) -> Self:
+        """Reject a non-UUID id or a self-referential / duplicated dependency.
+
+        Mirrors :class:`~synthorg.core.plan.PlanItem` so a malformed edit is
+        rejected at the request boundary (with field detail) rather than
+        surfacing later as a dispatch failure.
+
+        Returns:
+            ``self`` when the id is a canonical UUID and the dependency list is
+            free of self-references and duplicates.
+
+        Raises:
+            ValueError: When the id is not a canonical UUID, the item depends
+                on itself, or a dependency is listed more than once.
+        """
+        try:
+            canonical = str(UUID(self.id))
+        except ValueError as exc:
+            msg = f"Plan item id {self.id!r} must be a canonical UUID string"
+            raise ValueError(msg) from exc
+        if self.id != canonical:
+            msg = f"Plan item id {self.id!r} is not in canonical UUID form"
+            raise ValueError(msg)
+        if self.id in self.dependencies:
+            msg = f"Plan item {self.id!r} cannot depend on itself"
+            raise ValueError(msg)
+        if len(self.dependencies) != len(set(self.dependencies)):
+            dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
+            msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
+            raise ValueError(msg)
+        return self
+
 
 class EditPlanRequest(BaseModel):
     """Payload for an operator rework of a plan under review.
@@ -117,7 +152,9 @@ class RequestPlanChangesRequest(BaseModel):
     """Payload asking the org to revise a plan before approval.
 
     Attributes:
-        note: What the operator wants changed (routed to the org on replan).
+        note: What the operator wants changed. Surfaced to WS subscribers and
+            the audit log; sending the plan back to draft is immediate, but
+            auto-routing the note into a concrete replan is not yet wired.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

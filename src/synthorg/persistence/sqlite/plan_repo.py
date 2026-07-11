@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -19,12 +20,14 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_DELETE_FAILED,
+    PERSISTENCE_PLAN_DELETED,
     PERSISTENCE_PLAN_DESERIALIZE_FAILED,
     PERSISTENCE_PLAN_FETCH_FAILED,
     PERSISTENCE_PLAN_FETCHED,
     PERSISTENCE_PLAN_LIST_FAILED,
     PERSISTENCE_PLAN_LISTED,
     PERSISTENCE_PLAN_SAVE_FAILED,
+    PERSISTENCE_PLAN_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
@@ -86,10 +89,10 @@ class SQLitePlanRepository:
 
     @staticmethod
     def _row_params(plan: Plan) -> tuple[object, ...]:
-        """Row params.
+        """Serialise a plan into positional SQL params in ``_COLUMNS`` order.
 
         Returns:
-            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+            Scalar param values for INSERT/UPDATE, aligned with ``_COLUMNS``.
         """
         return (
             str(plan.id),
@@ -121,6 +124,7 @@ class SQLitePlanRepository:
                     self._row_params(plan),
                 )
                 await self._db.commit()
+                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
                 await self._safe_rollback()
                 logger.warning(
@@ -161,17 +165,24 @@ class SQLitePlanRepository:
                 rollback_failed=True,
             )
 
-    async def update(self, plan: Plan) -> None:
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
         """Update an existing plan, failing if no row matched.
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No plan with this id exists.
             QueryError: If the database operation fails.
         """
+        params: list[object] = [*self._row_params(plan)[1:], str(plan.id)]
+        guard = ""
+        if expected_version is not None:
+            guard = " AND version=?"
+            params.append(expected_version)
         async with self._write_context():
             try:
                 async with self._db.execute(
-                    """\
+                    f"""\
 UPDATE plans SET
     project=?,
     objective_id=?,
@@ -184,8 +195,8 @@ UPDATE plans SET
     version=?,
     created_at=?,
     updated_at=?
-WHERE id=?""",
-                    (*self._row_params(plan)[1:], str(plan.id)),
+WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values parameterized
+                    params,
                 ) as cursor:
                     await self._db.commit()
                     rowcount = cursor.rowcount
@@ -200,14 +211,51 @@ WHERE id=?""",
                 )
                 raise QueryError(msg) from exc
             if rowcount == 0:
-                logger.warning(
-                    PERSISTENCE_PLAN_SAVE_FAILED,
-                    plan_id=str(plan.id),
-                    error_type="RecordNotFoundError",
-                    error="No plan with matching id",
-                )
-                msg = f"No plan with id {plan.id!r}"
-                raise RecordNotFoundError(msg)
+                await self._raise_update_miss(plan, expected_version)
+            logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
+
+    async def _raise_update_miss(
+        self, plan: Plan, expected_version: int | None
+    ) -> None:
+        """Classify a zero-rowcount update as a version conflict or a miss.
+
+        Raises:
+            PersistenceVersionConflictError: The row exists but its version
+                moved (only distinguishable when ``expected_version`` is set).
+            RecordNotFoundError: No plan with this id exists at all.
+        """
+        if expected_version is not None and await self._row_exists(plan.id):
+            logger.warning(
+                PERSISTENCE_PLAN_SAVE_FAILED,
+                plan_id=str(plan.id),
+                error_type="PersistenceVersionConflictError",
+                reason="version_conflict",
+            )
+            msg = f"Plan {plan.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
+        logger.warning(
+            PERSISTENCE_PLAN_SAVE_FAILED,
+            plan_id=str(plan.id),
+            error_type="RecordNotFoundError",
+            error="No plan with matching id",
+        )
+        msg = f"No plan with id {plan.id!r}"
+        raise RecordNotFoundError(msg)
+
+    async def _row_exists(self, plan_id: UUID) -> bool:
+        """Return whether a plan row exists (id lookup only).
+
+        Raises:
+            QueryError: If the existence probe fails.
+        """
+        try:
+            async with self._db.execute(
+                "SELECT 1 FROM plans WHERE id = ?", (str(plan_id),)
+            ) as cursor:
+                return await cursor.fetchone() is not None
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to probe plan {plan_id!r}"
+            raise QueryError(msg) from exc
 
     async def save(self, plan: Plan) -> None:
         """Persist a plan via upsert (migration / import paths).
@@ -235,6 +283,7 @@ WHERE id=?""",
                     self._row_params(plan),
                 )
                 await self._db.commit()
+                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to save plan {plan.id!r}"
@@ -426,4 +475,6 @@ WHERE id=?""",
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
+            if rowcount > 0:
+                logger.debug(PERSISTENCE_PLAN_DELETED, plan_id=plan_id)
             return rowcount > 0

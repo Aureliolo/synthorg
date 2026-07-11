@@ -15,6 +15,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.channels import CHANNEL_PLANS, publish_ws_event
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_plans import (
     EditPlanRequest,
@@ -26,7 +27,7 @@ from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -145,19 +146,25 @@ class PlanController(Controller):
             ValidationError: ``status`` is not a valid :class:`PlanStatus`.
         """
         parsed_status = _parse_status(status)
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        # Fetch ``limit + 1`` at the decoded offset so the next-page flag comes
+        # from a bounded window and the cursor walks the whole result set
+        # rather than re-reading the first page.
         plans = await _service(state).list_plans(
             status=parsed_status,
             project=project,
             objective_id=objective_id,
             limit=limit + 1,
+            offset=offset,
         )
-        page, meta = paginate_cursor(
-            plans,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(plans),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
-        return PaginatedResponse[Plan](data=page, pagination=meta)
+        return PaginatedResponse[Plan](data=plans[:limit], pagination=meta)
 
     @get("/{plan_id:str}", guards=[require_read_access])
     async def get_plan(

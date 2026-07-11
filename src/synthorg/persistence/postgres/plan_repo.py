@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -20,15 +21,17 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_DELETE_FAILED,
+    PERSISTENCE_PLAN_DELETED,
     PERSISTENCE_PLAN_DESERIALIZE_FAILED,
     PERSISTENCE_PLAN_FETCH_FAILED,
     PERSISTENCE_PLAN_FETCHED,
     PERSISTENCE_PLAN_LIST_FAILED,
     PERSISTENCE_PLAN_LISTED,
     PERSISTENCE_PLAN_SAVE_FAILED,
+    PERSISTENCE_PLAN_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.plan_protocol import PlanFilterSpec
 
@@ -41,7 +44,8 @@ def _row_to_plan(row: DictRow) -> Plan:
     """Reconstruct a ``Plan`` from a Postgres dict_row.
 
     ``items`` arrives as a Python list of dicts (JSONB auto-deserialized by
-    psycopg); ``created_at`` / ``updated_at`` arrive as ISO-8601 TEXT.
+    psycopg); ``created_at`` / ``updated_at`` arrive as aware ``datetime``
+    values from their ``TIMESTAMPTZ`` columns.
 
     Returns:
         Validated ``Plan`` model instance.
@@ -72,10 +76,10 @@ class PostgresPlanRepository:
 
     @staticmethod
     def _row_params(plan: Plan) -> tuple[object, ...]:
-        """Row params.
+        """Serialise a plan into positional SQL params in column order.
 
         Returns:
-            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+            Scalar param values for INSERT/UPDATE in the fixed column order.
         """
         return (
             str(plan.id),
@@ -88,8 +92,8 @@ class PostgresPlanRepository:
             plan.status.value,
             str(plan.forecast_id) if plan.forecast_id is not None else None,
             plan.version,
-            format_iso_utc(plan.created_at),
-            format_iso_utc(plan.updated_at),
+            plan.created_at,
+            plan.updated_at,
         )
 
     async def create(self, plan: Plan) -> None:
@@ -112,6 +116,7 @@ class PostgresPlanRepository:
                     self._row_params(plan),
                 )
                 await conn.commit()
+                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
         except psycopg.errors.UniqueViolation as exc:
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,
@@ -131,17 +136,24 @@ class PostgresPlanRepository:
             )
             raise QueryError(msg) from exc
 
-    async def update(self, plan: Plan) -> None:
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
         """Update an existing plan, failing if no row matched.
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No plan with this id exists.
             QueryError: If the database operation fails.
         """
+        params: list[object] = [*self._row_params(plan)[1:], str(plan.id)]
+        guard = ""
+        if expected_version is not None:
+            guard = " AND version=%s"
+            params.append(expected_version)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
+                    f"""
                     UPDATE plans SET
                         project=%s,
                         objective_id=%s,
@@ -154,9 +166,9 @@ class PostgresPlanRepository:
                         version=%s,
                         created_at=%s,
                         updated_at=%s
-                    WHERE id=%s
-                    """,
-                    (*self._row_params(plan)[1:], str(plan.id)),
+                    WHERE id=%s{guard}
+                    """,  # noqa: S608 -- guard is a fixed literal, values parameterized
+                    params,
                 )
                 rowcount = cur.rowcount
                 await conn.commit()
@@ -170,14 +182,50 @@ class PostgresPlanRepository:
             )
             raise QueryError(msg) from exc
         if rowcount == 0:
+            await self._raise_update_miss(plan, expected_version)
+        logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
+
+    async def _raise_update_miss(
+        self, plan: Plan, expected_version: int | None
+    ) -> None:
+        """Classify a zero-rowcount update as a version conflict or a miss.
+
+        Raises:
+            PersistenceVersionConflictError: The row exists but its version
+                moved (only distinguishable when ``expected_version`` is set).
+            RecordNotFoundError: No plan with this id exists at all.
+        """
+        if expected_version is not None and await self._row_exists(plan.id):
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,
                 plan_id=str(plan.id),
-                error_type="RecordNotFoundError",
-                error="No plan with matching id",
+                error_type="PersistenceVersionConflictError",
+                reason="version_conflict",
             )
-            msg = f"No plan with id {plan.id!r}"
-            raise RecordNotFoundError(msg)
+            msg = f"Plan {plan.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
+        logger.warning(
+            PERSISTENCE_PLAN_SAVE_FAILED,
+            plan_id=str(plan.id),
+            error_type="RecordNotFoundError",
+            error="No plan with matching id",
+        )
+        msg = f"No plan with id {plan.id!r}"
+        raise RecordNotFoundError(msg)
+
+    async def _row_exists(self, plan_id: UUID) -> bool:
+        """Return whether a plan row exists (id lookup only).
+
+        Raises:
+            QueryError: If the existence probe fails.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute("SELECT 1 FROM plans WHERE id = %s", (str(plan_id),))
+                return await cur.fetchone() is not None
+        except psycopg.Error as exc:
+            msg = f"Failed to probe plan {plan_id!r}"
+            raise QueryError(msg) from exc
 
     async def save(self, plan: Plan) -> None:
         """Persist a plan via upsert.
@@ -210,6 +258,7 @@ class PostgresPlanRepository:
                     self._row_params(plan),
                 )
                 await conn.commit()
+                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
         except psycopg.Error as exc:
             msg = f"Failed to save plan {plan.id!r}"
             logger.warning(
@@ -404,6 +453,8 @@ class PostgresPlanRepository:
                 await cur.execute("DELETE FROM plans WHERE id = %s", (plan_id,))
                 deleted = cur.rowcount > 0
                 await conn.commit()
+                if deleted:
+                    logger.debug(PERSISTENCE_PLAN_DELETED, plan_id=plan_id)
         except psycopg.Error as exc:
             msg = f"Failed to delete plan {plan_id!r}"
             logger.warning(

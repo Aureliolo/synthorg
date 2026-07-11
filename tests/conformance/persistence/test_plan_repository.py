@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -36,16 +37,16 @@ def _plan(
         parent_task_id=NotBlankStr("task-root"),
         items=(
             PlanItem(
-                id=NotBlankStr("i1"),
+                id=NotBlankStr(sid("item-1")),
                 title=NotBlankStr("Scaffold board"),
                 description=NotBlankStr("Set up the game board grid"),
                 estimated_complexity=Complexity.MEDIUM,
             ),
             PlanItem(
-                id=NotBlankStr("i2"),
+                id=NotBlankStr(sid("item-2")),
                 title=NotBlankStr("Piece movement"),
                 description=NotBlankStr("Implement piece drop + rotation"),
-                dependencies=(NotBlankStr("i1"),),
+                dependencies=(NotBlankStr(sid("item-1")),),
                 owner=NotBlankStr("engineering"),
             ),
         ),
@@ -67,7 +68,7 @@ class TestPlanRepository:
         assert fetched.objective_id == "obj-001"
         assert fetched.status is PlanStatus.PENDING_REVIEW
         assert len(fetched.items) == 2
-        assert fetched.items[1].dependencies == ("i1",)
+        assert fetched.items[1].dependencies == (sid("item-1"),)
         assert fetched.items[1].owner == "engineering"
         assert fetched.created_at == _CREATED_AT
 
@@ -189,6 +190,35 @@ class TestPlanRepository:
     async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
         with pytest.raises(RecordNotFoundError):
             await backend.plans.update(_plan(plan_id="p-ghost"))
+
+    async def test_update_version_guard_rejects_stale_writer(
+        self, backend: PersistenceBackend
+    ) -> None:
+        original = _plan(plan_id="p-ver")  # version 1
+        await backend.plans.create(original)
+
+        # A first writer, holding version 1, bumps the row to version 2.
+        await backend.plans.update(
+            original.model_copy(update={"version": 2}), expected_version=1
+        )
+
+        # A second writer still holding the stale version 1 is rejected rather
+        # than silently clobbering the first writer's edit.
+        with pytest.raises(PersistenceVersionConflictError):
+            await backend.plans.update(
+                original.model_copy(
+                    update={"status": PlanStatus.APPROVED, "version": 2}
+                ),
+                expected_version=1,
+            )
+
+    async def test_update_version_guard_missing_row_is_not_found(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A version-guarded update on a row that does not exist at all is a
+        # not-found, not a version conflict.
+        with pytest.raises(RecordNotFoundError):
+            await backend.plans.update(_plan(plan_id="p-absent"), expected_version=1)
 
     async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.list_items() == ()

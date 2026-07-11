@@ -3,12 +3,9 @@ import type { StoreApi } from 'zustand'
 import type { EditPlanRequest, Plan, PlanStatus, WsEvent } from '@/api/types'
 
 export interface PlansState {
-  // List page
+  // List page. The review inbox filters across the whole set, so every
+  // cursor page is walked on load (see web/CLAUDE.md client-side pagination).
   plans: readonly Plan[]
-  /** Opaque cursor for the next page; null on the final page. */
-  nextCursor: string | null
-  /** Whether more items follow the current page. */
-  hasMore: boolean
   listLoading: boolean
   listError: string | null
 
@@ -23,7 +20,6 @@ export interface PlansState {
   // Actions. Mutations follow the canonical store error contract:
   // log + error toast + return sentinel (`null`) on failure.
   fetchPlans: () => Promise<void>
-  fetchMorePlans: () => Promise<void>
   fetchPlanDetail: (id: string) => Promise<void>
   editPlan: (id: string, data: EditPlanRequest) => Promise<Plan | null>
   requestPlanChanges: (id: string, note: string) => Promise<Plan | null>

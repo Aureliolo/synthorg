@@ -247,6 +247,7 @@ function dh(
     task_success_rate: health === null ? null : health / 100,
     // Roster utilisation is deliberately full to prove health does NOT read it.
     utilization_percent: 100,
+    utilization_degraded: false,
     health_score: health,
   }
 }

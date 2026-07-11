@@ -132,6 +132,7 @@ function makeHealth(name: DepartmentName, utilizationPercent: number): Departmen
     total_runs: 10,
     task_success_rate: utilizationPercent / 100,
     utilization_percent: utilizationPercent,
+    utilization_degraded: false,
     health_score: utilizationPercent,
   }
 }

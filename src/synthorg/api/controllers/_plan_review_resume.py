@@ -13,6 +13,7 @@ resume flows.
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan_enums import PlanStatus
@@ -51,12 +52,13 @@ async def try_plan_review_resume(
     decision is fully resolved on this path and ``True`` is returned even on
     failure so the approval is never double-handled.
 
-    On approval the durable plan (referenced by ``plan_id``) is loaded and
-    rebuilt into a ``DecompositionResult`` dispatched via
-    ``coordinate(precomputed_plan=...)``, so the tree that builds is exactly
-    the (possibly operator-edited) plan under review. On rejection the parent
-    task is cancelled and nothing builds. Either decision is reflected onto
-    the durable plan's status.
+    The decision is reflected onto the durable plan first (APPROVED / REJECTED)
+    so the ``/plans`` view matches the recorded decision regardless of what
+    happens next. On approval the durable plan (referenced by ``plan_id``) is
+    then loaded and rebuilt into a ``DecompositionResult`` dispatched via
+    ``coordinate(precomputed_plan=...)``; a dispatch failure marks the parent
+    task ``FAILED`` (the plan stays APPROVED, since the decision stands). On
+    rejection the parent task is cancelled and nothing builds.
 
     Returns:
         ``True`` when this flow owns the decision, ``False`` otherwise.
@@ -82,34 +84,57 @@ async def try_plan_review_resume(
         await _sync_plan_status(app_state, plan_id, PlanStatus.REJECTED)
         await _cancel_task(app_state, task_id, decided_by)
         return True
+    await _sync_plan_status(app_state, plan_id, PlanStatus.APPROVED)
+    await _dispatch_approved_plan(
+        app_state,
+        approval_id=approval_id,
+        task_id=task_id,
+        plan_id=plan_id,
+        decided_by=decided_by,
+    )
+    return True
+
+
+async def _dispatch_approved_plan(
+    app_state: AppState,
+    *,
+    approval_id: str,
+    task_id: str | None,
+    plan_id: str | None,
+    decided_by: str,
+) -> None:
+    """Rebuild the durable plan into a subtask tree and dispatch it.
+
+    The approval is already recorded APPROVED and the plan already synced, so
+    any failure here marks the parent task ``FAILED`` (surfacing the stuck plan
+    on the board and keeping it re-runnable) rather than silently returning.
+
+    Raises:
+        MemoryError: Re-raised uncaught so a genuine OOM is never masked.
+        RecursionError: Re-raised uncaught alongside ``MemoryError``.
+    """
     coordinator = app_state.slice(RuntimeStateSlice).coordinator
     if coordinator is None or task_id is None:
-        logger.error(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            note="approved plan cannot dispatch: coordinator/task missing",
+        await _fail_dispatch(
+            app_state, approval_id, task_id, decided_by, "coordinator/task missing"
         )
-        return True
+        return
     task = await task_engine_of(app_state).get_task(task_id)
     if task is None:
-        logger.error(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            note="approved plan's parent task no longer exists",
+        await _fail_dispatch(
+            app_state, approval_id, task_id, decided_by, "parent task no longer exists"
         )
-        return True
+        return
+    plan = await persistence_of(app_state).plans.get(plan_id) if plan_id else None
+    if plan is None:
+        await _fail_dispatch(
+            app_state, approval_id, task_id, decided_by, "durable plan not found"
+        )
+        return
     try:
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
-        plan = await persistence_of(app_state).plans.get(plan_id) if plan_id else None
-        if plan is None:
-            logger.error(
-                APPROVAL_GATE_RESUME_FAILED,
-                approval_id=approval_id,
-                note="approved plan cannot dispatch: durable plan not found",
-            )
-            return True
         decomposition = decomposition_from_plan(plan, parent_task=task)
         agents = await agent_registry_of(app_state).list_active()
         await coordinator.coordinate(
@@ -127,11 +152,6 @@ async def try_plan_review_resume(
             approval_id=approval_id,
             note="approved plan could not be resumed; marking task failed",
         )
-        # The approval is already persisted APPROVED, so a swallowed failure
-        # (missing plan, registry lookup, or dispatch) would leave the parent
-        # silently stuck in its pre-approval status with no board-visible
-        # signal. Move it to FAILED so the stuck plan surfaces and stays
-        # re-runnable (FAILED -> ASSIGNED is valid).
         await _mark_task(
             app_state,
             task_id,
@@ -139,9 +159,34 @@ async def try_plan_review_resume(
             target=TaskStatus.FAILED,
             reason="approved plan could not be resumed",
         )
-        return True
-    await _sync_plan_status(app_state, plan_id, PlanStatus.APPROVED)
-    return True
+
+
+async def _fail_dispatch(
+    app_state: AppState,
+    approval_id: str,
+    task_id: str | None,
+    decided_by: str,
+    why: str,
+) -> None:
+    """Log an approved-plan dispatch precondition failure and fail the task.
+
+    The approval is already persisted APPROVED, so a swallowed failure would
+    leave the parent silently stuck in its pre-approval status with no
+    board-visible signal. Move it to FAILED so the stuck plan surfaces and
+    stays re-runnable (FAILED -> ASSIGNED is valid).
+    """
+    logger.error(
+        APPROVAL_GATE_RESUME_FAILED,
+        approval_id=approval_id,
+        note=f"approved plan cannot dispatch: {why}",
+    )
+    await _mark_task(
+        app_state,
+        task_id,
+        decided_by,
+        target=TaskStatus.FAILED,
+        reason=f"approved plan could not be resumed: {why}",
+    )
 
 
 async def _cancel_task(
@@ -203,15 +248,17 @@ async def _sync_plan_status(
 ) -> None:
     """Reflect an approval decision onto the durable plan's status.
 
-    Best-effort: the decision is already persisted on the approval, so a
-    failure here (plan gone, write error) is logged, not raised. Keeps the
+    Routed through :class:`PlanService` so the decision transition gets the
+    same ``API_PLAN_*`` audit coverage as an operator edit. Best-effort: the
+    decision is already persisted on the approval, so a failure here (plan
+    gone, write error, concurrent edit) is logged, not raised. Keeps the
     ``/plans`` view honest without ever mislabelling a recorded decision.
     """
     if not plan_id:
         return
+    service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
     try:
-        backend = persistence_of(app_state)
-        plan = await backend.plans.get(plan_id)
+        plan = await service.get(plan_id)
         if plan is None:
             logger.warning(
                 APPROVAL_GATE_RESUME_FAILED,
@@ -220,11 +267,7 @@ async def _sync_plan_status(
                 note="plan-status sync skipped: durable plan not found",
             )
             return
-        await backend.plans.update(
-            plan.model_copy(
-                update={"status": status, "updated_at": app_state.clock.now()},
-            )
-        )
+        await service.sync_status(plan, status)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
