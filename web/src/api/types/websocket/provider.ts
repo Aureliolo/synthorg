@@ -38,6 +38,18 @@ export interface WsProjectStatusChangedPayload {
   previous_status?: string | null
 }
 
+export interface WsPlanUpdatedPayload {
+  plan_id: string
+  version: number
+  status: string
+}
+
+export interface WsPlanChangesRequestedPayload {
+  plan_id: string
+  status: string
+  note: string
+}
+
 export interface WsWorkflowExecutionStatusChangedPayload {
   execution_id: string
   definition_id: string

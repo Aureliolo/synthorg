@@ -30,6 +30,7 @@ function mapActivityEventToItem(event: ActivityEvent): ActivityItem {
     id: taskId ?? `${event.timestamp}-${event.event_type}-${agentId}`,
     timestamp: event.timestamp,
     agent_name: agentId,
+    agent_role: null,
     action_type: event.event_type,
     description: event.description,
     task_id: taskId,

@@ -149,6 +149,10 @@ function _resolveAgentName(payload: WsEventPayload): string {
   return 'System'
 }
 
+function _resolveAgentRole(payload: WsEventPayload): string | null {
+  return _isNonEmptyString(payload['agent_role']) ? payload['agent_role'] : null
+}
+
 function _resolveTaskId(payload: WsEventPayload): string | null {
   return _isNonEmptyString(payload['task_id']) ? payload['task_id'] : null
 }
@@ -204,6 +208,7 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
     id: _resolveActivityId({ event, payload, taskId, agentName }),
     timestamp: event.timestamp,
     agent_name: agentName,
+    agent_role: _resolveAgentRole(payload),
     action_type: event.event_type,
     description: _resolveDescription(payload, event.event_type),
     task_id: taskId,

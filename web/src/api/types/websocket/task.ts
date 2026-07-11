@@ -22,6 +22,9 @@ export interface WsTaskStatusChangedPayload {
   from_status?: string | null
   to_status: string
   assigned_to?: string | null
+  agent_name?: string | null
+  agent_role?: string | null
+  department?: string | null
   description?: string | null
   run_outcome?: RunOutcome | null
 }

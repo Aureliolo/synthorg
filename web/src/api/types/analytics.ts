@@ -26,6 +26,8 @@ export interface ActivityItem {
   id: string
   timestamp: string
   agent_name: string
+  /** The assignee's role ("function"), when the source event names it. */
+  agent_role?: string | null
   action_type: ActivityEventType | WsEventType
   description: string
   task_id: string | null

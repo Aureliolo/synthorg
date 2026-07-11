@@ -33,6 +33,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.BUDGET_FORECAST]: 'Budget Forecast',
   [ROUTES.REPORTS]: 'Reports',
   [ROUTES.APPROVALS]: 'Approvals',
+  [ROUTES.PLANS]: 'Plan Review',
   [ROUTES.SCALING]: 'Scaling',
   [ROUTES.META]: 'Meta',
   [ROUTES.CHAT]: 'Chat',
