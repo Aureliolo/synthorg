@@ -123,6 +123,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import (
     PresetOverrideRepo,
 )
@@ -518,6 +519,11 @@ class PersistenceBackend(Protocol):
     @property
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
+        ...
+
+    @property
+    def plans(self) -> PlanRepository:
+        """Repository for durable Plan persistence (reviewable decompositions)."""
         ...
 
     @property

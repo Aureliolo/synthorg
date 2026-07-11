@@ -20,9 +20,11 @@ from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.decomposition.plan_mapping import plan_from_decomposition
 from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.plan_protocol import PlanRepository
 
 logger = get_logger(__name__)
 
@@ -31,6 +33,8 @@ _PLAN_ACTION_TYPE = "plan:approve"
 #: ``ApprovalItem.metadata`` keys carrying the parked plan + resume context.
 PLAN_METADATA_KEY = "plan"
 PROJECT_METADATA_KEY = "project"
+#: ``ApprovalItem.metadata`` key referencing the durable persisted plan.
+PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
@@ -80,15 +84,17 @@ class PlanReviewApprovalGate:
     approval (no re-decomposition).
     """
 
-    __slots__ = ("_approval_store", "_clock")
+    __slots__ = ("_approval_store", "_clock", "_plans")
 
     def __init__(
         self,
         *,
         approval_store: ApprovalStoreProtocol,
+        plans: PlanRepository,
         clock: Clock,
     ) -> None:
         self._approval_store = approval_store
+        self._plans = plans
         self._clock = clock
 
     async def request_plan_approval(
@@ -98,13 +104,27 @@ class PlanReviewApprovalGate:
         task: Task,
         plan: DecompositionResult,
     ) -> PlanReviewHandoff:
-        """Park *plan* as a plan-approval item and return the handoff.
+        """Persist *plan* durably and park it as an approval item.
+
+        The plan is persisted first so the parked approval always references
+        a durable :class:`~synthorg.core.plan.Plan`; a persistence failure
+        surfaces before any dangling approval is created.
 
         Returns:
             A :class:`PlanReviewHandoff` naming the parked approval item.
         """
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
+        now = self._clock.now()
+        durable_plan = plan_from_decomposition(
+            plan,
+            project=work_item.project,
+            objective_id=work_item.correlation_id,
+            parent_task_id=NotBlankStr(str(task.id)),
+            created_at=now,
+            forecast_id=work_item.forecast_id,
+        )
+        await self._plans.create(durable_plan)
         await self._approval_store.add(
             ApprovalItem(
                 id=approval_id,
@@ -115,10 +135,11 @@ class PlanReviewApprovalGate:
                 risk_level=_plan_risk_level(plan),
                 source=ApprovalSource.PLAN_REVIEW,
                 status=ApprovalStatus.PENDING,
-                created_at=self._clock.now(),
+                created_at=now,
                 task_id=NotBlankStr(str(task.id)),
                 metadata={
                     PLAN_METADATA_KEY: plan.model_dump_json(),
+                    PLAN_ID_METADATA_KEY: str(durable_plan.id),
                     PROJECT_METADATA_KEY: work_item.project,
                 },
             )
@@ -143,6 +164,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         EngineStateSlice,
         work_pipeline_of,
     )
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
@@ -152,13 +174,18 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     )
     if not required:
         return
-    # Best-effort: the approval store is normally always wired, but an early
-    # boot (before persistence connects) can reach here without it. Skip
-    # rather than let ``approval_store_of`` raise a 503 out of a wiring hook.
+    # Best-effort: the approval store + persistence backend are normally wired
+    # by the time this hook runs, but an early boot (before persistence
+    # connects) can reach here without them. Skip rather than let an accessor
+    # raise a 503 out of a wiring hook.
     if app_state.slice(ApprovalStateSlice).store is None:
+        return
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if backend is None:
         return
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
+        plans=backend.plans,
         clock=app_state.clock,
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)

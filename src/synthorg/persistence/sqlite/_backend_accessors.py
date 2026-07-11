@@ -107,6 +107,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 from synthorg.persistence.preset_protocol import PersonalityPresetRepository
 from synthorg.persistence.principle_override_protocol import (
@@ -200,6 +201,7 @@ class _BackendRepositoryAccessors:
     _settings: SettingsRepository | None
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
+    _plans: PlanRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
     _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
@@ -423,6 +425,11 @@ class _BackendRepositoryAccessors:
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def plans(self) -> PlanRepository:
+        """Repository for durable Plan persistence."""
+        return self._require_connected(self._plans, "plans")
 
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:

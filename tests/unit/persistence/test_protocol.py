@@ -60,6 +60,7 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
+from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
 )
@@ -116,6 +117,7 @@ if TYPE_CHECKING:
     from synthorg.communication.message import Message
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
+    from synthorg.core.plan import Plan
     from synthorg.core.project import Project
     from synthorg.core.project_environment import ProjectEnvironment
     from synthorg.core.project_workspace import ProjectWorkspace
@@ -798,6 +800,48 @@ class _FakeProjectRepository:
         return False
 
 
+class _FakePlanRepository:
+    async def create(self, plan: Plan) -> None:
+        pass
+
+    async def update(self, plan: Plan) -> None:
+        pass
+
+    async def save(self, entity: Plan) -> None:
+        pass
+
+    async def get(self, entity_id: NotBlankStr) -> Plan | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: object) -> int:
+        del filter_spec
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeSsrfViolationRepository:
     async def save(self, entity: object) -> None:
         pass
@@ -1441,6 +1485,10 @@ class _FakeBackend:
         return _FakeProjectRepository()
 
     @property
+    def plans(self) -> _FakePlanRepository:
+        return _FakePlanRepository()
+
+    @property
     def project_workspaces(self) -> _FakeProjectWorkspaceRepository:
         return _FakeProjectWorkspaceRepository()
 
@@ -1730,6 +1778,11 @@ class TestProtocolCompliance:
 
     def test_fake_task_repo_is_task_repository(self) -> None:
         assert isinstance(_FakeTaskRepository(), TaskRepository)
+
+    def test_fake_plan_repo_is_plan_repository(self) -> None:
+        backend = _FakeBackend()
+        assert isinstance(backend.plans, PlanRepository)
+        assert isinstance(_FakePlanRepository(), PlanRepository)
 
     def test_fake_cost_repo_is_cost_record_repository(self) -> None:
         assert isinstance(_FakeCostRecordRepository(), CostRecordRepository)

@@ -127,6 +127,7 @@ from synthorg.persistence.postgres.org_fact_repo import (
 from synthorg.persistence.postgres.parked_context_repo import (
     PostgresParkedContextRepository,
 )
+from synthorg.persistence.postgres.plan_repo import PostgresPlanRepository
 from synthorg.persistence.postgres.preset_override_repo import (
     PostgresPresetOverrideRepo,
 )
@@ -230,6 +231,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._pool = None
         self._artifacts = None
         self._projects = None
+        self._plans = None
         self._project_workspaces = None
         self._codebase_structure_maps = None
         self._knowledge_sources = None
@@ -319,6 +321,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         # Core domain repositories.
         self._artifacts = PostgresArtifactRepository(pool)
         self._projects = PostgresProjectRepository(pool)
+        self._plans = PostgresPlanRepository(pool)
         self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
         self._codebase_structure_maps = PostgresCodebaseStructureMapRepository(pool)
         self._knowledge_sources = PostgresKnowledgeSourceRepository(pool)
