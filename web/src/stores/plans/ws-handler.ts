@@ -21,13 +21,13 @@ function updateFromWsEventImpl(get: PlansGet, event: WsEvent): void {
   // the list never resolves ahead of the detail. Incremental payload merges
   // are not worth the complexity given the list is a small review inbox.
   if (planId && get().selectedPlan?.id === planId) {
-    get()
+    void get()
       .fetchPlanDetail(planId)
       .catch((err: unknown) => log.warn('plan ws detail refetch failed', sanitizeForLog(err)))
       .finally(refreshList)
     return
   }
-  refreshList()
+  void refreshList()
 }
 
 export function createWsHandler(get: PlansGet) {
