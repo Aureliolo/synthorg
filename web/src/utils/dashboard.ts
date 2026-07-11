@@ -9,8 +9,11 @@ import type { BudgetConfig } from '@/api/types/budget'
 import type { RunOutcome } from '@/api/types/enums'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
+import { createLogger } from '@/lib/logger'
 import { formatCurrency } from '@/utils/format'
 import { sanitizeWsEnumOrNull } from '@/utils/ws-sanitize'
+
+const log = createLogger('dashboard')
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
@@ -108,9 +111,21 @@ export function computeOrgHealth(departments: readonly DepartmentHealth[]): numb
   // health_score === null and are skipped; when every department is no-data
   // the overall is null, which the UI renders as an explicit no-data state
   // rather than a misleading number.
-  const scores = departments
-    .map((d) => d.health_score)
-    .filter((score): score is number => score !== null && Number.isFinite(score))
+  const scores: number[] = []
+  for (const dept of departments) {
+    const score = dept.health_score
+    if (score === null) continue // below the min-activity gate: expected no-data
+    if (!Number.isFinite(score)) {
+      // A non-finite score can't come from the API (frozen DTOs reject
+      // inf/nan), so one here means upstream data corruption worth surfacing.
+      log.warn('department reported a non-finite health_score; excluding it', {
+        department: dept.department_name,
+        healthScore: score,
+      })
+      continue
+    }
+    scores.push(score)
+  }
   if (scores.length === 0) return null
   const sum = scores.reduce((acc, score) => acc + score, 0)
   return Math.round(sum / scores.length)

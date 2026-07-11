@@ -458,10 +458,15 @@ async def _run_startup(  # noqa: PLR0913
         if persistence is not None:
             await _wire_workflow_observer(task_engine, persistence, app_state)
             _wire_workflow_execution_service(persistence, app_state)
-            if bridge is not None:
-                _wire_task_activity_observer(
-                    task_engine, persistence, app_state, bridge.plugin
-                )
+            # Pass the plugin (or None) through unconditionally so a missing
+            # bridge is logged by the observer's own guard rather than skipped
+            # silently here.
+            _wire_task_activity_observer(
+                task_engine,
+                persistence,
+                app_state,
+                bridge.plugin if bridge is not None else None,
+            )
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(

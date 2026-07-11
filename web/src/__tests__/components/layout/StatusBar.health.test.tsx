@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useWebSocketStore } from '@/stores/websocket'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { apiError } from '@/mocks/handlers'
 import { server } from '@/test-setup'
@@ -38,6 +39,9 @@ describe('StatusBar health pill resolution', () => {
     // StatusBar fires on mount so one test's store/data cannot leak into the
     // next (each test owns only its /readyz handler). Mirrors StatusBar.test.
     resetStore()
+    // Reset the WS store too: the combined pill folds WS state into its label,
+    // so a leaked "connected" from another test would change what resolves.
+    useWebSocketStore.setState({ connected: false, reconnectExhausted: false })
     server.use(
       http.get('/api/v1/analytics/overview', () =>
         HttpResponse.json(apiError('blocked for StatusBar health test')),
@@ -79,12 +83,16 @@ describe('StatusBar health pill resolution', () => {
     expect(screen.queryByText('checking...')).not.toBeInTheDocument()
   })
 
-  it('leaves "checking..." once a readiness probe succeeds', async () => {
+  it('resolves to healthy once a readiness probe succeeds', async () => {
+    // WS connected so the combined pill can reach the fully-healthy label
+    // rather than "reconnecting"; the probe drives the HTTP half to ok.
+    useWebSocketStore.setState({ connected: true })
     server.use(http.get('/api/v1/readyz', readyzOk))
     render(<StatusBar />)
     await waitFor(() =>
-      expect(screen.queryByText('checking...')).not.toBeInTheDocument(),
+      expect(screen.getByText('all systems normal')).toBeInTheDocument(),
     )
+    expect(screen.queryByText('checking...')).not.toBeInTheDocument()
   })
 
   it('recovers from "system down" to healthy on the next successful poll', async () => {

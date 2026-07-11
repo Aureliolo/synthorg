@@ -92,6 +92,9 @@ class _FakeTaskEngine:
         self.registered.append(observer)
         self._observers.append(observer)
 
+    def has_observer_type(self, observer_type: type[object]) -> bool:
+        return any(isinstance(o, observer_type) for o in self._observers)
+
 
 @dataclass
 class _FakeWorkflowPersistence:
@@ -835,8 +838,8 @@ class TestPublishRedTeamRuntime:
 class TestWireTaskActivityObserver:
     """The boot hook that turns the dashboard live-activity feature on.
 
-    Guards the reachability of the whole #2560 signal path: a flipped guard or
-    a renamed ``_observers`` attribute would silently ship the feature unwired.
+    Guards the reachability of the whole signal path: a flipped guard or a
+    broken observer-registration check would silently ship the feature unwired.
     """
 
     def _state_with_tracker(self, *, tracker: PerformanceTracker | None) -> AppState:

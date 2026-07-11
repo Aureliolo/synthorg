@@ -157,6 +157,20 @@ class TaskEngine(TaskEngineLoopsMixin):
         """
         self._observers.append(callback)
 
+    def has_observer_type(self, observer_type: type[object]) -> bool:
+        """Return whether an observer of the given type is registered.
+
+        Lets callers assert idempotency without reaching into the private
+        observer list.
+
+        Args:
+            observer_type: Observer class to look for.
+
+        Returns:
+            True if at least one registered observer is an instance of it.
+        """
+        return any(isinstance(o, observer_type) for o in self._observers)
+
     # -- Lifecycle ---------------------------------------------------------
 
     async def start(self) -> None:

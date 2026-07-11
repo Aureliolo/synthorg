@@ -144,6 +144,21 @@ class TestRegisterObserver:
         assert received[0].mutation_type == "create"
 
     @pytest.mark.unit
+    async def test_has_observer_type_reports_registration(
+        self,
+        started_engine: TaskEngine,
+    ) -> None:
+        """has_observer_type detects a registered observer by its class."""
+
+        class _TypedObserver:
+            async def __call__(self, event: TaskStateChanged) -> None:
+                return None
+
+        assert not started_engine.has_observer_type(_TypedObserver)
+        started_engine.register_observer(_TypedObserver())
+        assert started_engine.has_observer_type(_TypedObserver)
+
+    @pytest.mark.unit
     async def test_observer_error_logged_not_propagated(
         self,
         started_engine: TaskEngine,

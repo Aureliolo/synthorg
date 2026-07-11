@@ -230,14 +230,14 @@
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
       "cap": 600,
-      "loc": 569,
-      "ratio": 0.948,
+      "loc": 571,
+      "ratio": 0.952,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_runner_support.py": {
       "cap": 500,
-      "loc": 439,
-      "ratio": 0.878,
+      "loc": 436,
+      "ratio": 0.872,
       "tier": "code"
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
@@ -1568,7 +1568,7 @@
     "synthorg.approval.protocol": 55,
     "synthorg.approval.state": 32,
     "synthorg.budget.call_category": 51,
-    "synthorg.budget.config": 29,
+    "synthorg.budget.config": 30,
     "synthorg.budget.coordination_config": 24,
     "synthorg.budget.cost_record": 27,
     "synthorg.budget.currency": 72,
@@ -1713,7 +1713,7 @@
     "synthorg.settings.mirrors": 38,
     "synthorg.settings.models": 45,
     "synthorg.settings.registry": 46,
-    "synthorg.settings.resolver": 54,
+    "synthorg.settings.resolver": 55,
     "synthorg.settings.resolver_protocol": 21,
     "synthorg.settings.service": 45,
     "synthorg.settings.state": 119,
@@ -1791,7 +1791,7 @@
     },
     "synthorg.engine.task_engine:TaskEngine": {
       "lcom4": 3,
-      "loc": 693
+      "loc": 703
     },
     "synthorg.engine.workflow.ceremony_scheduler:CeremonyScheduler": {
       "lcom4": 1,

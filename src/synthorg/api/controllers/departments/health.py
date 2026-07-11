@@ -16,6 +16,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.budget.config import BudgetConfig
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.observability import get_logger
@@ -24,6 +25,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -61,9 +63,9 @@ class DepartmentHealthController(Controller):
             NotFoundError: If the department is not found.
         """
         app_state: AppState = state.app_state
+        resolver = config_resolver_of(app_state)
 
-        # Fetch departments and agents (both are config reads)
-        departments = await config_resolver_of(app_state).get_departments()
+        departments = await resolver.get_departments()
         dept = find_by_name_ci(departments, name)
         if dept is None:
             msg = f"Department {name!r} not found"
@@ -75,30 +77,9 @@ class DepartmentHealthController(Controller):
             raise NotFoundError(msg)
         canonical_name = dept.name
 
-        agents = await config_resolver_of(app_state).get_agents()
+        agents = await resolver.get_agents()
         dept_agents = filter_agents_by_department(agents, canonical_name)
-        resolver = config_resolver_of(app_state)
-        # The budget config and the two health settings are independent reads;
-        # resolve them concurrently rather than serialising three round-trips.
-        # A failed read escapes TaskGroup as an ExceptionGroup, which would skip
-        # the controller's typed exception handlers -- unwrap and re-raise the
-        # leaf so the failure is handled as if the reads ran sequentially.
-        try:
-            async with asyncio.TaskGroup() as tg:
-                budget_task = tg.create_task(resolver.get_budget_config())
-                window_task = tg.create_task(
-                    resolver.get_int(
-                        SettingNamespace.HR, "department_health_window_days"
-                    )
-                )
-                min_runs_task = tg.create_task(
-                    resolver.get_int(SettingNamespace.HR, "department_health_min_runs")
-                )
-        except BaseExceptionGroup as eg:
-            raise eg.exceptions[0] from None
-        budget_cfg = budget_task.result()
-        window_days = window_task.result()
-        min_runs = min_runs_task.result()
+        budget_cfg, window_days, min_runs = await _resolve_health_settings(resolver)
         health = await assemble_department_health(
             app_state,
             canonical_name,
@@ -116,3 +97,36 @@ class DepartmentHealthController(Controller):
             cost_7d=health.department_cost_7d,
         )
         return ApiResponse(data=health)
+
+
+async def _resolve_health_settings(
+    resolver: ConfigResolver,
+) -> tuple[BudgetConfig, int, int]:
+    """Resolve budget config and the health-window/min-runs settings concurrently.
+
+    The three reads are independent, so they run in one TaskGroup rather than
+    three serial round-trips.
+
+    Args:
+        resolver: Wired config resolver.
+
+    Returns:
+        The budget config, health window in days, and minimum runs.
+
+    Raises:
+        BaseException: The first failing read, unwrapped from the TaskGroup's
+            ExceptionGroup (with the group preserved as the cause) so the
+            controller's typed exception handlers see the leaf.
+    """
+    try:
+        async with asyncio.TaskGroup() as tg:
+            budget_task = tg.create_task(resolver.get_budget_config())
+            window_task = tg.create_task(
+                resolver.get_int(SettingNamespace.HR, "department_health_window_days")
+            )
+            min_runs_task = tg.create_task(
+                resolver.get_int(SettingNamespace.HR, "department_health_min_runs")
+            )
+    except BaseExceptionGroup as eg:
+        raise eg.exceptions[0] from eg
+    return budget_task.result(), window_task.result(), min_runs_task.result()

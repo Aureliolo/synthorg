@@ -76,7 +76,10 @@ describe('OrgHealthSection', () => {
     render(
       <OrgHealthSection departments={[makeNoDataDept()]} overallHealth={null} />,
     )
-    expect(screen.queryByText(/\brun\b/)).not.toBeInTheDocument()
+    // The count label ("· N run" / "· N runs") must be absent entirely; the
+    // pattern spans the separator + count + singular-or-plural so a "· 0 runs"
+    // regression is caught, not silently passed by a singular-only match.
+    expect(screen.queryByText(/·\s*\d+\s+runs?\b/)).not.toBeInTheDocument()
   })
 
   it('renders overall health gauge when provided', () => {

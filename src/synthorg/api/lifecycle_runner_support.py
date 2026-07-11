@@ -266,10 +266,7 @@ def _wire_task_activity_observer(
             ),
         )
         return
-    if any(
-        isinstance(o, TaskActivityObserver)
-        for o in getattr(task_engine, "_observers", ())
-    ):
+    if task_engine.has_observer_type(TaskActivityObserver):  # type: ignore[attr-defined]
         return
 
     async def _list_artifacts(task_id: str) -> Sequence[Artifact]:

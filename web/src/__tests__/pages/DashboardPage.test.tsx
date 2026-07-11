@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseDashboardDataReturn } from '@/hooks/useDashboardData'
 import type { OverviewMetrics } from '@/api/types/analytics'
@@ -137,7 +137,14 @@ describe('DashboardPage', () => {
     expect(screen.getByText('24')).toBeInTheDocument() // total_tasks
     expect(screen.getByText('5')).toBeInTheDocument()  // active_agents
     // FAILED RUNS reads task_outcomes.failed (6), not tasks_by_status.failed (1).
-    expect(screen.getByText('6')).toBeInTheDocument()
+    // Scope to the FAILED RUNS card so the value assertion can't accidentally
+    // match a '6' rendered by any other card.
+    const failedRunsCard = screen
+      .getByText('FAILED RUNS')
+      .closest<HTMLElement>('div.rounded-lg')!
+    expect(within(failedRunsCard).getByTestId('metric-value')).toHaveTextContent(
+      '6',
+    )
     // Subtext binds the succeeded + empty counts from task_outcomes.
     expect(screen.getByText('9 succeeded, 3 produced nothing')).toBeInTheDocument()
   })
