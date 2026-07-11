@@ -35,7 +35,7 @@ import asyncio
 import ipaddress
 import re
 from collections.abc import Sequence
-from typing import Final, Self
+from typing import Final, Self, cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -392,7 +392,11 @@ async def _resolve_dns(
             f"DNS resolution for {hostname!r} returned no results",
         )
 
-    return results
+    # getaddrinfo on a hostname yields only AF_INET/AF_INET6 entries, whose
+    # sockaddr is an IP tuple; typeshed types the sockaddr more broadly (it
+    # includes an AF_PACKET ``tuple[int, bytes]`` variant that name
+    # resolution never produces), so the narrower domain type is asserted here.
+    return cast("Sequence[_AddrInfo]", results)
 
 
 def _check_resolved_ips(

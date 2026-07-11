@@ -26,7 +26,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.knowledge import KNOWLEDGE_GRAMMAR_LOAD_FAILED
 
 if TYPE_CHECKING:
-    from tree_sitter_language_pack import Node, Parser
+    from tree_sitter import Node, Parser
 
 logger = get_logger(__name__)
 
@@ -104,6 +104,9 @@ def _load_parser(language: str) -> Parser | None:
             installed.
     """
     try:
+        from tree_sitter_language_pack import (  # noqa: PLC0415
+            Error as TreeSitterPackError,
+        )
         from tree_sitter_language_pack import get_parser  # noqa: PLC0415
     except ImportError as exc:
         msg = (
@@ -113,13 +116,14 @@ def _load_parser(language: str) -> Parser | None:
         raise KnowledgeDependencyError(msg) from exc
     try:
         return get_parser(language)
-    except (LookupError, OSError, ValueError, RuntimeError) as exc:
+    except (LookupError, OSError, ValueError, RuntimeError, TreeSitterPackError) as exc:
         # A missing grammar is the expected "degrade to line-window"
         # path; log at WARNING so a corrupt grammar pack or I/O failure
         # is distinguishable from the clean not-installed fallback.
-        # ``RuntimeError`` covers a language name this pack maps but does
-        # not actually provide a grammar for (e.g. "c_sharp"), which
-        # ``get_parser`` raises rather than one of the lookup/IO errors.
+        # ``TreeSitterPackError`` is the pack's base exception; it covers a
+        # language this pack maps but cannot supply a grammar for (e.g.
+        # "c_sharp"), raised as ``DownloadError``/``LanguageNotFoundError``
+        # rather than one of the lookup/IO errors.
         logger.warning(
             KNOWLEDGE_GRAMMAR_LOAD_FAILED,
             language=language,
@@ -170,13 +174,12 @@ class CodeChunker:
             The chunk pieces for the parsed tree: one per top-level
             definition plus packed module-level runs.
         """
-        tree = parser.parse(text)
-        if tree is None:
-            return self._line_windows(path=path, lines=lines)
-        # ``Node`` exposes byte offsets, not the matched text, so the
-        # UTF-8 encoding is sliced to recover a definition's name.
+        # tree-sitter parses bytes and ``Node`` exposes byte offsets (not
+        # the matched text), so the UTF-8 encoding is both fed to the parser
+        # and sliced later to recover a definition's name.
         source = text.encode("utf-8")
-        root = tree.root_node()
+        tree = parser.parse(source)
+        root = tree.root_node
         pieces: list[ChunkPiece] = []
         buffer: list[int] = []  # 0-indexed line numbers of pending module-level run
 
@@ -188,13 +191,13 @@ class CodeChunker:
             )
             buffer.clear()
 
-        for index in range(root.named_child_count()):
+        for index in range(root.named_child_count):
             child = root.named_child(index)
             if child is None:
                 continue
-            start_row = child.start_position().row
-            end_row = child.end_position().row
-            if _is_definition(child.kind()):
+            start_row = child.start_point.row
+            end_row = child.end_point.row
+            if _is_definition(child.type):
                 flush_buffer()
                 self._emit_lines(
                     pieces,
@@ -353,7 +356,7 @@ def _node_symbol(node: Node, source: bytes) -> str | None:
     name_node = node.child_by_field_name("name")
     if name_node is None:
         return None
-    raw = source[name_node.start_byte() : name_node.end_byte()]
+    raw = source[name_node.start_byte : name_node.end_byte]
     symbol = raw.decode("utf-8", errors="replace").strip()
     return symbol or None
 
