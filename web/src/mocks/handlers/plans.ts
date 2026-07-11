@@ -27,7 +27,7 @@ function buildItem(overrides: Partial<PlanItem> = {}): PlanItem {
   }
 }
 
-export function buildPlan(overrides: Partial<Plan> = {}): Plan {
+function buildPlan(overrides: Partial<Plan> = {}): Plan {
   return {
     id: 'plan-default',
     project: 'beachhead',

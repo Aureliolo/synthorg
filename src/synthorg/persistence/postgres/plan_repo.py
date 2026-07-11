@@ -21,14 +21,12 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_DELETE_FAILED,
-    PERSISTENCE_PLAN_DELETED,
     PERSISTENCE_PLAN_DESERIALIZE_FAILED,
     PERSISTENCE_PLAN_FETCH_FAILED,
     PERSISTENCE_PLAN_FETCHED,
     PERSISTENCE_PLAN_LIST_FAILED,
     PERSISTENCE_PLAN_LISTED,
     PERSISTENCE_PLAN_SAVE_FAILED,
-    PERSISTENCE_PLAN_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
@@ -116,7 +114,6 @@ class PostgresPlanRepository:
                     self._row_params(plan),
                 )
                 await conn.commit()
-                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
         except psycopg.errors.UniqueViolation as exc:
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,
@@ -183,7 +180,6 @@ class PostgresPlanRepository:
             raise QueryError(msg) from exc
         if rowcount == 0:
             await self._raise_update_miss(plan, expected_version)
-        logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
 
     async def _raise_update_miss(
         self, plan: Plan, expected_version: int | None
@@ -258,7 +254,6 @@ class PostgresPlanRepository:
                     self._row_params(plan),
                 )
                 await conn.commit()
-                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
         except psycopg.Error as exc:
             msg = f"Failed to save plan {plan.id!r}"
             logger.warning(
@@ -453,8 +448,6 @@ class PostgresPlanRepository:
                 await cur.execute("DELETE FROM plans WHERE id = %s", (plan_id,))
                 deleted = cur.rowcount > 0
                 await conn.commit()
-                if deleted:
-                    logger.debug(PERSISTENCE_PLAN_DELETED, plan_id=plan_id)
         except psycopg.Error as exc:
             msg = f"Failed to delete plan {plan_id!r}"
             logger.warning(

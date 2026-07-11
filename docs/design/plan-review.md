@@ -29,7 +29,7 @@ carries only the plan's `plan_id`.
 
 ### Lifecycle (`PlanStatus`)
 
-```
+```text
 DRAFT ──▶ PENDING_REVIEW ──▶ APPROVED
               │      ▲
               │      └── edit / request-changes (only from a non-terminal status)

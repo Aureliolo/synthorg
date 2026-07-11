@@ -20,14 +20,12 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_DELETE_FAILED,
-    PERSISTENCE_PLAN_DELETED,
     PERSISTENCE_PLAN_DESERIALIZE_FAILED,
     PERSISTENCE_PLAN_FETCH_FAILED,
     PERSISTENCE_PLAN_FETCHED,
     PERSISTENCE_PLAN_LIST_FAILED,
     PERSISTENCE_PLAN_LISTED,
     PERSISTENCE_PLAN_SAVE_FAILED,
-    PERSISTENCE_PLAN_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
@@ -124,7 +122,6 @@ class SQLitePlanRepository:
                     self._row_params(plan),
                 )
                 await self._db.commit()
-                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
                 await self._safe_rollback()
                 logger.warning(
@@ -212,7 +209,6 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
                 raise QueryError(msg) from exc
             if rowcount == 0:
                 await self._raise_update_miss(plan, expected_version)
-            logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
 
     async def _raise_update_miss(
         self, plan: Plan, expected_version: int | None
@@ -283,7 +279,6 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
                     self._row_params(plan),
                 )
                 await self._db.commit()
-                logger.debug(PERSISTENCE_PLAN_SAVED, plan_id=str(plan.id))
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to save plan {plan.id!r}"
@@ -475,6 +470,4 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            if rowcount > 0:
-                logger.debug(PERSISTENCE_PLAN_DELETED, plan_id=plan_id)
             return rowcount > 0

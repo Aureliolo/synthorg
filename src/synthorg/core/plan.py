@@ -1,11 +1,11 @@
 # module-kind: code
 """Durable Plan entity: the reviewable, revisable breakdown of an objective.
 
-First-class replacement for a plan that previously lived only as a transient
-``DecompositionResult`` serialised into an approval's metadata. A ``Plan`` is
-persisted, versioned, and revisable, so the operator can review and edit it
-before approving, and so it outlives the approval decision (the approval merely
-references ``plan_id``).
+A ``Plan`` is the first-class, persisted, versioned form of an objective's
+decomposition: the operator can review and edit it before approving, and it
+outlives the approval decision (the approval references only ``plan_id``). It
+is distinct from the transient ``DecompositionResult`` the engine dispatches;
+the two are projected onto each other by ``engine.decomposition.plan_mapping``.
 """
 
 from collections import Counter
