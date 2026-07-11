@@ -12,7 +12,7 @@ import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
 import { OrgHealthSection } from './dashboard/OrgHealthSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
 import { PendingApprovalsCard } from './dashboard/PendingApprovalsCard'
-import { usePendingApprovalsCount } from '@/hooks/usePendingApprovalsCount'
+import { useApprovalsStore } from '@/stores/approvals'
 
 const BudgetBurnChart = lazy(() =>
   import('./dashboard/BudgetBurnChart').then((m) => ({ default: m.BudgetBurnChart })),
@@ -63,10 +63,13 @@ export default function DashboardPage() {
     error,
   } = useDashboardData()
 
-  // Share the sidebar badge's fetch: it exposes both the derived pending
-  // count and the load state, so the panel neither refetches nor flashes an
-  // empty state before the approvals arrive.
-  const { pendingCount, loading: approvalsLoading } = usePendingApprovalsCount()
+  // The always-mounted sidebar badge owns the approvals fetch/poll/WS; read the
+  // derived count + load state off the shared store via selectors only, so the
+  // panel neither issues a second request nor flashes an empty state early.
+  const pendingCount = useApprovalsStore(
+    (s) => s.approvals.filter((a) => a.status === 'pending').length,
+  )
+  const approvalsLoading = useApprovalsStore((s) => s.loading)
 
   const metricCards = useMemo(
     () => (overview ? computeMetricCards(overview, budgetConfig) : []),

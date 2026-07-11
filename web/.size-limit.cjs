@@ -3,8 +3,9 @@
  *
  * Captured gzipped sizes on 2026-04-26 against ``main`` with the
  * existing Vite + Rollup config. Per-vendor budgets carry ~10-15%
- * headroom; the total-app-JS budget carries ~5% headroom (current
- * ~950 KB gzipped, ceiling 1000 KB). Re-baselined 2026-05-15 for
+ * headroom and the total-app-JS budget ~5-10% over its measured
+ * baseline; the per-budget ``limit`` values below are the source of
+ * truth for the current ceilings. Re-baselined 2026-05-15 for
  * the pydantic-to-typescript codegen pipeline (PR #1909): the
  * generated ``enum-values.gen.ts`` ships runtime ``*_VALUES`` tuples
  * for ~90 backend StrEnums that the dashboard relies on for select

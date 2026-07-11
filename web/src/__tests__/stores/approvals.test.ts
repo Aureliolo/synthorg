@@ -37,13 +37,14 @@ function paginated(
   })
 }
 
-function pageEnvelope(data: ApprovalResponse[], hasMore: boolean) {
+function pageEnvelope(data: ApprovalResponse[], nextCursor: string | null) {
+  const hasMore = nextCursor !== null
   return paginatedFor<typeof listApprovals>({
     data,
     limit: 200,
-    nextCursor: null,
+    nextCursor,
     hasMore,
-    pagination: { limit: 200, next_cursor: null, has_more: hasMore },
+    pagination: { limit: 200, next_cursor: nextCursor, has_more: hasMore },
   })
 }
 
@@ -88,20 +89,24 @@ describe('fetchApprovals', () => {
     expect(state.error).toBeNull()
   })
 
-  it('walks every offset page so the set is not capped at one page', async () => {
+  it('walks every cursor page so the set is not capped at one page', async () => {
     const page1 = Array.from({ length: 200 }, (_, i) =>
       makeApproval(`p1-${String(i)}`, { status: 'pending' }),
     )
     const page2 = Array.from({ length: 50 }, (_, i) =>
       makeApproval(`p2-${String(i)}`, { status: 'pending' }),
     )
+    const forwarded: (string | null)[] = []
     server.use(
       http.get('/api/v1/approvals', ({ request }) => {
-        const offset = Number(
-          new URL(request.url).searchParams.get('offset') ?? '0',
-        )
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        forwarded.push(cursor)
+        // Page one hands back an opaque cursor; the consumer must forward it
+        // (not compute an offset) to fetch page two, then stop when it is null.
         return HttpResponse.json(
-          offset === 0 ? pageEnvelope(page1, true) : pageEnvelope(page2, false),
+          cursor === null
+            ? pageEnvelope(page1, 'opaque-cursor-2')
+            : pageEnvelope(page2, null),
         )
       }),
     )
@@ -111,6 +116,7 @@ describe('fetchApprovals', () => {
     const state = useApprovalsStore.getState()
     expect(state.approvals).toHaveLength(250)
     expect(state.error).toBeNull()
+    expect(forwarded).toEqual([null, 'opaque-cursor-2'])
   })
 
   it('sets error on failure', async () => {

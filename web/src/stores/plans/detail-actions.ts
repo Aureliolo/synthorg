@@ -17,12 +17,15 @@ const log = createLogger('plans')
 function upsertPlan(set: PlansSet, plan: Plan): void {
   // A mutation result is authoritative, so retire any in-flight detail read:
   // an older getPlan() must not resolve afterwards and clobber selectedPlan.
+  // The retired fetch skips its own `finally`, so clear detailLoading here or
+  // the pane would stay on the spinner until navigation.
   nextDetailRequestToken()
   set((state) => ({
     plans: state.plans.some((p) => p.id === plan.id)
       ? state.plans.map((p) => (p.id === plan.id ? plan : p))
       : [...state.plans, plan],
     selectedPlan: state.selectedPlan?.id === plan.id ? plan : state.selectedPlan,
+    detailLoading: false,
   }))
 }
 

@@ -37,6 +37,6 @@ export interface ApprovalFilters {
   status?: ApprovalStatus
   risk_level?: ApprovalRiskLevel
   action_type?: string
-  offset?: number
+  cursor?: string | null
   limit?: number
 }
