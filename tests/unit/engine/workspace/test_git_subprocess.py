@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.engine.workspace import _git_subprocess
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.observability.events.workspace import GIT_BACKEND_PROVISION_START
 
@@ -34,9 +33,7 @@ async def test_falls_back_to_thread_when_loop_cannot_spawn() -> None:
             "asyncio.create_subprocess_exec",
             side_effect=NotImplementedError,
         ),
-        patch.object(
-            _git_subprocess.subprocess, "run", return_value=completed
-        ) as run_mock,
+        patch.object(subprocess, "run", return_value=completed) as run_mock,
     ):
         rc, stdout, stderr = await run_git_subprocess(
             Path(),
@@ -60,7 +57,7 @@ async def test_thread_fallback_reports_timeout() -> None:
             side_effect=NotImplementedError,
         ),
         patch.object(
-            _git_subprocess.subprocess,
+            subprocess,
             "run",
             side_effect=subprocess.TimeoutExpired(cmd="git", timeout=5.0),
         ),
@@ -85,7 +82,7 @@ async def test_thread_fallback_reports_missing_git() -> None:
             side_effect=NotImplementedError,
         ),
         patch.object(
-            _git_subprocess.subprocess,
+            subprocess,
             "run",
             side_effect=FileNotFoundError("git not found"),
         ),
