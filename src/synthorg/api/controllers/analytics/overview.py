@@ -78,6 +78,9 @@ async def _task_ids_with_artifacts(
     present: set[str] = set()
     spec = ArtifactFilterSpec(task_ids=frozenset(NotBlankStr(t) for t in task_ids))
     offset = 0
+    # Bounded offset pagination over a finite artifact table: terminates on a
+    # partial/empty page or once every task id is seen -- not a daemon loop.
+    # lint-allow: long-running-loop-kill-switch -- bounded pagination, see above
     while True:
         batch = await backend.artifacts.query(
             spec, limit=_ARTIFACT_SCAN_PAGE_SIZE, offset=offset
