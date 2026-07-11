@@ -52,8 +52,12 @@ class WsTaskStatusChangedPayload(BaseModel):
     ``run_outcome`` is populated only when ``to_status`` is a terminal run
     state (``in_review`` / ``completed`` / ``failed``); it is the truthful,
     artifact-count-derived outcome so the Live Activity feed can flag a
-    failed or empty run distinctly instead of a neutral status change. The
-    field is optional and additive: older clients ignore it.
+    failed or empty run distinctly instead of a neutral status change.
+
+    ``agent_name`` / ``agent_role`` / ``department`` name the assignee so the
+    feed reads "Alex (Engineering) ..." instead of a bare agent UUID; they are
+    resolved best-effort and stay ``None`` when the assignee is unknown. All
+    added fields are optional and additive: older clients ignore them.
     """
 
     model_config = PAYLOAD_CONFIG
@@ -65,6 +69,9 @@ class WsTaskStatusChangedPayload(BaseModel):
     from_status: NotBlankStr | None = None
     to_status: NotBlankStr
     assigned_to: NotBlankStr | None = None
+    agent_name: NotBlankStr | None = None
+    agent_role: NotBlankStr | None = None
+    department: NotBlankStr | None = None
     description: str | None = None
     run_outcome: RunOutcome | None = None
 
