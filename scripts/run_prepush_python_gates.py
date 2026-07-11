@@ -2,21 +2,20 @@
 """Runner for the pre-push-only pure-Python gates.
 
 The ~48 gates in ``_GATES`` are folded into this one runner rather than ~48
-individual ``uv run python scripts/check_*.py`` pre-commit hooks. Each gate
-is a whole-tree AST analysis costing several seconds -- parsing the ~6k-file
-source tree dominates each gate's runtime -- so the runner fans them out
-across a bounded reused-worker pool (``--jobs``; default ``min(12, cores)``,
-override via ``PREPUSH_GATE_JOBS``). ``--jobs 1`` runs them serially in this
-one process.
+individual ``uv run python scripts/check_*.py`` pre-commit hooks. Each gate is
+a whole-tree static analysis (AST parse, tokenize, or regex over the tracked
+source) costing several seconds -- reading and analysing the tree dominates
+each gate's runtime -- so the runner fans them out across a bounded reused-
+worker pool (``--jobs``; default ``min(12, cores)``, override via
+``PREPUSH_GATE_JOBS``). ``--jobs 1`` runs them serially in this one process.
 
-The pool is BOUNDED -- a handful of workers spawned once and reused for the
-whole batch, not one process per gate -- so the concurrent process count
-stays modest. That is the guard against the desktop-heap / STATUS_DLL_INIT_
-FAILED (0xC0000142) pressure on Windows that a naive one-spawn-per-gate
-fan-out would reintroduce. Each ``scripts/check_*.py`` file stays on disk so
-the convention-gate-inventory meta-gate resolves each gate path, and CI's
-``pre-commit run --all-files`` runs this one hook from the same config, so
-local<->CI parity holds.
+The pool is BOUNDED -- a handful of workers reused across the whole batch, not
+one process per gate -- so the concurrent process count stays modest. That is
+what avoids the desktop-heap / STATUS_DLL_INIT_FAILED (0xC0000142) pressure on
+Windows that an unbounded 48-way fan-out would cause. Each ``scripts/check_*.py``
+file stays on disk so the convention-gate-inventory meta-gate resolves each gate
+path, and CI's ``pre-commit run --all-files`` runs this one hook from the same
+config, so local<->CI parity holds.
 
 Each gate runs as if ``__main__`` in a fresh module namespace via
 :func:`runpy.run_path`; its ``sys.exit(code)`` is caught and aggregated, and
@@ -41,7 +40,8 @@ import runpy
 import sys
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Final
 
@@ -49,14 +49,21 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-# Gate work is CPU-bound whole-tree AST analysis, so the 48 gates fan out
-# across a bounded reused-worker pool. The cap is bounded (not one worker per
-# gate) so the concurrent process count stays modest -- the desktop-heap /
-# STATUS_DLL_INIT_FAILED pressure the single-process consolidation originally
-# dodged. Workers are reused for the whole batch (no maxtasksperchild), so the
-# total distinct spawns equal the pool size, created once at pool startup.
+# Each gate is a whole-tree static analysis (AST parse, tokenize, or regex over
+# the tracked source) costing several seconds, so the 48 gates fan out across a
+# bounded reused-worker pool. Bounding the pool (rather than one process per
+# gate) keeps the concurrent process count modest, which avoids the desktop-heap
+# / STATUS_DLL_INIT_FAILED (0xC0000142) pressure on Windows that an unbounded
+# 48-way fan-out would cause. Workers are reused for the whole batch
+# (``max_tasks_per_child`` left at its default), so one worker handles many
+# gates over its lifetime rather than respawning per gate.
 _DEFAULT_MAX_JOBS: Final[int] = 12
 _FALLBACK_CPU: Final[int] = 8
+# Wall-clock ceiling for the whole gate batch: gates are static analysis that
+# finishes in seconds, so this is a safety net that fails the push loudly if a
+# gate wedges, rather than hanging every push forever (the sibling pytest
+# runner carries the same watchdog shape).
+_BATCH_TIMEOUT_SECONDS: Final[float] = 600.0
 
 
 def _default_jobs() -> int:
@@ -67,8 +74,15 @@ def _default_jobs() -> int:
     otherwise the count is bounded by both the core count and the job cap.
     """
     override = os.environ.get("PREPUSH_GATE_JOBS")
-    if override and override.strip().lstrip("-").isdigit():
-        return max(1, int(override))
+    if override is not None and override.strip():
+        cleaned = override.strip()
+        if cleaned.lstrip("-").isdigit():
+            return max(1, int(cleaned))
+        print(
+            f"run_prepush_python_gates: ignoring PREPUSH_GATE_JOBS={override!r} "
+            "(not an integer); using the core-count default.",
+            file=sys.stderr,
+        )
     cores = os.cpu_count() or _FALLBACK_CPU
     return max(1, min(_DEFAULT_MAX_JOBS, cores))
 
@@ -131,6 +145,24 @@ _GATES: tuple[str, ...] = (
 )
 
 
+def _recover_cwd(saved_cwd: Path) -> None:
+    """Restore the working directory after a gate ran.
+
+    A gate that chdir'd into a tempdir it then removed leaves ``Path.cwd()``
+    raising and the process in an invalid directory, so the next gate sharing
+    this worker gets broken relative-path reads. Recover to *saved_cwd*, or the
+    repo root when the saved cwd is itself gone, rather than advancing broken.
+    """
+    try:
+        current_cwd: Path | None = Path.cwd()
+    except OSError:
+        current_cwd = None
+    target_cwd = saved_cwd if saved_cwd.is_dir() else _SCRIPTS.parent
+    with contextlib.suppress(OSError):
+        if current_cwd != target_cwd:
+            os.chdir(target_cwd)
+
+
 def _run_one(stem: str) -> tuple[int, str]:
     """Run one gate as ``__main__`` in-process; return ``(exit_code, detail)``.
 
@@ -156,6 +188,12 @@ def _run_one(stem: str) -> tuple[int, str]:
         if isinstance(code, int):
             return code, ""
         return 1, str(code)
+    except MemoryError, RecursionError:
+        # Resource exhaustion is not a gate violation; let it propagate so an
+        # OOM under parallel load surfaces distinctly (crashing the worker,
+        # handled by the pool caller) instead of masquerading as a gate that
+        # "failed" with a traceback.
+        raise
     except Exception:
         return 1, traceback.format_exc()
     else:
@@ -164,25 +202,10 @@ def _run_one(stem: str) -> tuple[int, str]:
     finally:
         sys.argv = saved_argv
         # A gate that mutates ``sys.path`` (directly or via ``runpy.run_path``)
-        # must not leak that change into the next gate; restore the snapshot so
-        # each gate sees the same import path the runner started with.
+        # must not leak that change into the next gate sharing this worker;
+        # restore the snapshot so each gate sees the same import path.
         sys.path = saved_path
-        # Best-effort cwd restore: if a gate chdir'd into a tempdir it then
-        # removed, ``Path.cwd()`` raises and the process is left in an invalid
-        # directory, so the next gate's relative-path reads break. Recover to a
-        # known-good dir -- the saved cwd, or the repo root when the saved cwd
-        # is itself gone -- rather than swallowing the error and advancing with
-        # a broken cwd.
-        try:
-            current_cwd: Path | None = Path.cwd()
-        except OSError:
-            current_cwd = None
-        target_cwd = saved_cwd if saved_cwd.is_dir() else _SCRIPTS.parent
-        try:
-            if current_cwd != target_cwd:
-                os.chdir(target_cwd)
-        except OSError:
-            pass
+        _recover_cwd(saved_cwd)
 
 
 def _run_gate(stem: str) -> tuple[str, int, float, str, str]:
@@ -201,13 +224,71 @@ def _run_gate(stem: str) -> tuple[str, int, float, str, str]:
     return stem, code, elapsed, buffer.getvalue(), detail
 
 
+_GateResult = tuple[int, float, str, str]
+
+
+def _report_gate(stem: str, code: int, elapsed: float) -> None:
+    """Print one gate's live status line as it completes."""
+    status = "ok  " if code == 0 else "FAIL"
+    print(f"  [{status}] {elapsed:5.1f}s  {stem}", file=sys.stderr)
+
+
+def _run_serial() -> dict[str, _GateResult]:
+    """Run every gate in this process, reporting each as it finishes."""
+    results: dict[str, _GateResult] = {}
+    for stem in _GATES:
+        _, code, elapsed, output, detail = _run_gate(stem)
+        results[stem] = (code, elapsed, output, detail)
+        _report_gate(stem, code, elapsed)
+    return results
+
+
+def _run_pooled(jobs: int) -> tuple[dict[str, _GateResult], bool]:
+    """Run gates across a bounded worker pool; report each as it lands.
+
+    Returns ``(results, crashed)``. A worker dying (the STATUS_DLL_INIT_FAILED /
+    OOM class the pool is bounded to avoid) breaks the whole pool, and a wedged
+    gate trips the batch timeout: both are caught here and turned into a loud,
+    attributed failure (naming the gates that never reported) rather than an
+    unhandled ``BrokenProcessPool`` traceback or an indefinite hang. Gates that
+    did report keep their results so their findings still surface.
+    """
+    results: dict[str, _GateResult] = {}
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        futures = {pool.submit(_run_gate, stem): stem for stem in _GATES}
+        try:
+            for future in as_completed(futures, timeout=_BATCH_TIMEOUT_SECONDS):
+                stem, code, elapsed, output, detail = future.result()
+                results[stem] = (code, elapsed, output, detail)
+                _report_gate(stem, code, elapsed)
+        except (BrokenProcessPool, TimeoutError) as exc:
+            unfinished = sorted(futures[f] for f in futures if not f.done())
+            pool.shutdown(cancel_futures=True)
+            reason = (
+                "a gate worker crashed (BrokenProcessPool)"
+                if isinstance(exc, BrokenProcessPool)
+                else f"the {_BATCH_TIMEOUT_SECONDS:.0f}s batch timeout fired"
+            )
+            print(
+                f"\nconsolidated pre-push gates: {reason}; "
+                f"{len(unfinished)} gate(s) never reported: "
+                f"{', '.join(unfinished)}.\n"
+                "Re-run with PREPUSH_GATE_JOBS=1 to isolate the offending gate.",
+                file=sys.stderr,
+            )
+            return results, True
+    return results, False
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run every consolidated gate, then report the aggregate result.
 
-    Gates run across a bounded reused-worker pool (``--jobs``); a job count of
-    1 runs them serially in this process. Every gate always runs even if an
-    earlier one fails, and results are reported in ``_GATES`` order regardless
-    of completion order so the output is stable run to run.
+    Gates run across a bounded reused-worker pool (``--jobs``); a job count of 1
+    runs them serially in this process. Each gate's status prints live as it
+    finishes (completion order under the pool, ``_GATES`` order when serial);
+    the final failure detail is reported in ``_GATES`` order for stable output.
+    A worker crash or the batch timeout fails the push loudly (see ``_run_pooled``)
+    rather than masking which gates ran.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -220,27 +301,23 @@ def main(argv: list[str] | None = None) -> int:
     jobs = max(1, args.jobs)
 
     start = time.monotonic()
-    results: dict[str, tuple[int, float, str, str]] = {}
+    crashed = False
     if jobs == 1:
-        for stem in _GATES:
-            _, code, elapsed, output, detail = _run_gate(stem)
-            results[stem] = (code, elapsed, output, detail)
+        results = _run_serial()
     else:
-        with ProcessPoolExecutor(max_workers=jobs) as pool:
-            for stem, code, elapsed, output, detail in pool.map(_run_gate, _GATES):
-                results[stem] = (code, elapsed, output, detail)
+        results, crashed = _run_pooled(jobs)
 
-    failures: list[tuple[str, int, str, str]] = []
-    for stem in _GATES:
-        code, elapsed, output, detail = results[stem]
-        status = "ok  " if code == 0 else "FAIL"
-        print(f"  [{status}] {elapsed:5.1f}s  {stem}", file=sys.stderr)
-        if code != 0:
-            failures.append((stem, code, output, detail))
+    failures = [
+        (stem, results[stem][0], results[stem][2], results[stem][3])
+        for stem in _GATES
+        if stem in results and results[stem][0] != 0
+    ]
+    unreported = [stem for stem in _GATES if stem not in results]
     total = time.monotonic() - start
+    tail = f", {len(unreported)} did not complete" if unreported else ""
     print(
-        f"\nconsolidated pre-push gates: {len(_GATES)} run in {total:.1f}s "
-        f"across {jobs} job(s), {len(failures)} failed",
+        f"\nconsolidated pre-push gates: {len(results)}/{len(_GATES)} reported "
+        f"in {total:.1f}s across {jobs} job(s), {len(failures)} failed{tail}",
         file=sys.stderr,
     )
     for stem, code, output, detail in failures:
@@ -249,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
             print(output, file=sys.stderr)
         if detail.strip():
             print(detail, file=sys.stderr)
-    return 1 if failures else 0
+    return 1 if (failures or crashed or unreported) else 0
 
 
 if __name__ == "__main__":
