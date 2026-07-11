@@ -41,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
         result = subprocess.run(
             ["ruff", "check", f"--select={_DOC_RULES}", *paths],
             check=False,
+            capture_output=True,
+            text=True,
         )
     except OSError as exc:
         print(
@@ -49,6 +51,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    # Re-emit ruff's report through Python-level stdout/stderr (not the raw file
+    # descriptors a bare subprocess would inherit) so the consolidated pre-push
+    # runner -- which captures each gate's Python-level output to attribute
+    # findings to it under the parallel pool -- surfaces the violations instead
+    # of losing them.
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
     return 1 if result.returncode != 0 else 0
 
 

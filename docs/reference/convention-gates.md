@@ -195,7 +195,7 @@ The justification after `--` is mandatory and must be non-empty. The gate also a
 
 ## Registration procedure
 
-1. Wire each new gate so it runs locally and in CI. A `commit+push` Python gate that must also run at pre-commit gets its own `.pre-commit-config.yaml` hook entry. A **push-only** Python gate is instead appended to the `_GATES` tuple in `scripts/run_prepush_python_gates.py`: the single `consolidated-python-gates` pre-push hook runs every entry in one process (the per-gate failure reporting and exit codes are preserved), so adding a separate per-gate pre-push hook is redundant. `check_local_ci_parity.py` verifies the consolidated hook, not the individual push-only gate ids.
+1. Wire each new gate so it runs locally and in CI. A `commit+push` Python gate that must also run at pre-commit gets its own `.pre-commit-config.yaml` hook entry. A **push-only** Python gate is instead appended to the `_GATES` tuple in `scripts/run_prepush_python_gates.py`: the single `consolidated-python-gates` pre-push hook runs every entry, fanned across a bounded reused-worker pool (the per-gate failure reporting and exit codes are preserved), so adding a separate per-gate pre-push hook is redundant. `check_local_ci_parity.py` verifies the consolidated hook, not the individual push-only gate ids.
 2. Per-line opt-outs use a stable `# lint-allow: <gate-name> -- <reason>` comment; the reason is mandatory non-empty.
 3. Add a corresponding entry in the machine-readable inventory at `scripts/convention_gate_map.yaml`.
 4. Add a row to the gate-inventory table above and bump the `<!--RS:convention_gates-->` count macro.

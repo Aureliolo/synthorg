@@ -2,8 +2,8 @@
 
 Covers ``_check_timing_regression`` and its helpers
 (``_load_baseline_snapshot``, ``_check_per_test_regression``,
-``_check_env_cap``), the isolation-gate output classifier, the banner
-emitter, the ``_run_isolation_gate`` orchestrator, and the
+``_check_env_cap``), the affected-run outcome classifier, the banner
+emitter, the ``_run_pytest`` orchestrator, and the
 ``pytest_asyncio_loop_factories`` hook wired by ``tests/unit/conftest.py``.
 Loads the script as a module so the private helpers are callable.
 """
@@ -343,7 +343,7 @@ def test_load_baseline_snapshot_derives_per_test_ms_when_absent(
     assert snapshot.baseline_test_count == 10_000
 
 
-# ── isolation-gate output classifier ─────────────────────────────
+# ── affected-run outcome classifier ──────────────────────────────
 
 
 _CRASH_LINE = (
@@ -354,11 +354,6 @@ _CRASH_LINE = (
 _CRASH_LINE_OTHER_TEST = (
     "worker 'gw1' crashed while running "
     "'tests/unit/api/controllers/test_meetings.py::test_completed[2-2]'\n"
-)
-_CRASH_LINE_SAME_TEST_OTHER_ITER = (
-    "worker 'gw2' crashed while running "
-    "'tests/unit/api/auth/test_postgres_session_store.py"
-    "::test_enforce_session_limit_revokes_oldest[1-2]'\n"
 )
 _FAILED_LINE = (
     "FAILED tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]"
@@ -415,7 +410,6 @@ def test_classify_pass_when_returncode_zero_and_no_crashes() -> None:
     assert outcome.exit_code == 0
     assert outcome.crashed_tests == ()
     assert outcome.failed_tests == ()
-    assert outcome.repeated_crashes == ()
 
 
 def test_classify_regression_when_returncode_zero_with_crashes() -> None:
@@ -467,23 +461,6 @@ def test_classify_regression_when_failure_alongside_crash() -> None:
     )
 
 
-def test_classify_regression_when_same_test_crashed_twice() -> None:
-    """Same logical test crashing on both repeat iterations -> real bug."""
-    # Same test, ``[1-2]`` and ``[2-2]`` -- both pytest-repeat iterations crashed.
-    stdout = _CRASH_LINE + _CRASH_LINE_SAME_TEST_OTHER_ITER
-    outcome = _MODULE._classify_isolation_outcome(
-        returncode=1,
-        stdout=stdout,
-    )
-    assert outcome.kind == "regression"
-    assert outcome.exit_code == 1
-    # Repeat suffix stripped before counting.
-    assert outcome.repeated_crashes == (
-        "tests/unit/api/auth/test_postgres_session_store.py"
-        "::test_enforce_session_limit_revokes_oldest",
-    )
-
-
 def test_classify_regression_when_distinct_crashes_only() -> None:
     """Crashes spread across distinct tests, no real failures -> still blocks."""
     stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
@@ -500,7 +477,6 @@ def test_classify_regression_when_distinct_crashes_only() -> None:
         "::test_enforce_session_limit_revokes_oldest[2-2]",
         "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
     )
-    assert outcome.repeated_crashes == ()
 
 
 def test_classify_filters_crashed_test_from_failed_line() -> None:
@@ -533,7 +509,6 @@ def test_classify_regression_when_returncode_nonzero_no_signals() -> None:
     assert outcome.kind == "regression"
     assert outcome.exit_code == 2
     assert outcome.failed_tests == ()
-    assert outcome.repeated_crashes == ()
 
 
 def test_classify_regression_when_node_down_with_internal_error() -> None:
@@ -563,7 +538,6 @@ def test_classify_regression_when_node_down_with_internal_error() -> None:
     # lacks a per-test attribution).
     assert outcome.crashed_tests == ("<worker gw5>", "<worker gw0>")
     assert outcome.failed_tests == ()
-    assert outcome.repeated_crashes == ()
 
 
 def test_classify_regression_when_node_down_without_internal_error() -> None:
@@ -586,7 +560,6 @@ def test_classify_regression_when_node_down_without_internal_error() -> None:
     assert outcome.exit_code == 1
     assert outcome.crashed_tests == ("<worker gw5>",)
     assert outcome.failed_tests == ()
-    assert outcome.repeated_crashes == ()
 
 
 def test_classify_node_down_with_zero_returncode_blocks() -> None:
@@ -630,39 +603,22 @@ def test_classify_real_failure_outranks_node_down_signature() -> None:
 
 
 def test_classify_regression_when_single_crash_blocks() -> None:
-    """A single one-off worker crash blocks (regression); repeated_crashes empty.
+    """A single one-off worker crash blocks (regression).
 
-    The repeated-crash threshold (``>= 2``) no longer decides block vs
-    pass -- every worker crash blocks. It only decides which banner the
-    operator sees (repeated-bug vs one-off crash); a one-off crash has
-    empty ``repeated_crashes`` but is still a regression.
+    Every worker crash blocks regardless of how many tests crashed; a
+    lone crash with returncode 1 is still a regression the gate surfaces.
     """
-    stdout = _CRASH_LINE  # Single crash, no repeat iteration.
+    stdout = _CRASH_LINE  # Single crash.
     outcome = _MODULE._classify_isolation_outcome(
         returncode=1,
         stdout=stdout,
     )
     assert outcome.kind == "regression"
     assert outcome.exit_code == 1
-    assert outcome.repeated_crashes == ()
-
-
-def test_classify_regression_when_three_iteration_run_all_crash() -> None:
-    """Pytest-repeat ``--count 3`` -- all three iterations crash on the same test.
-
-    The classifier strips ``[N-3]`` suffixes the same way as ``[N-2]``,
-    so three crashes of the same logical test count as a real bug.
-    """
-    base = "tests/unit/foo.py::test_bar"
-    stdout = "".join(
-        f"worker 'gw{i}' crashed while running '{base}[{i + 1}-3]'\n" for i in range(3)
+    assert outcome.crashed_tests == (
+        "tests/unit/api/auth/test_postgres_session_store.py"
+        "::test_enforce_session_limit_revokes_oldest[2-2]",
     )
-    outcome = _MODULE._classify_isolation_outcome(
-        returncode=1,
-        stdout=stdout,
-    )
-    assert outcome.kind == "regression"
-    assert outcome.repeated_crashes == (base,)
 
 
 def test_parse_worker_crashes_ignores_malformed_line() -> None:
@@ -713,10 +669,10 @@ def test_print_isolation_banner_pass_emits_nothing(
     assert captured.out == ""
 
 
-def test_print_isolation_banner_regression_failed_tests_blames_state_leak(
+def test_print_isolation_banner_regression_failed_tests_names_failure(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Regression with failed_tests names module-level state leak."""
+    """Regression with failed_tests reports a plain test failure."""
     outcome = _MODULE.IsolationOutcome(
         kind="regression",
         exit_code=1,
@@ -724,34 +680,14 @@ def test_print_isolation_banner_regression_failed_tests_blames_state_leak(
     )
     _MODULE._print_isolation_banner(outcome)
     err = capsys.readouterr().err
-    assert "Module-level state likely leaked" in err
-    assert "tests/unit/foo.py::test_bar" in err
-
-
-def test_print_isolation_banner_regression_repeated_crash_blames_real_bug(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Regression with repeated_crashes blames a real test bug."""
-    outcome = _MODULE.IsolationOutcome(
-        kind="regression",
-        exit_code=1,
-        crashed_tests=(
-            "tests/unit/foo.py::test_bar[1-2]",
-            "tests/unit/foo.py::test_bar[2-2]",
-        ),
-        repeated_crashes=("tests/unit/foo.py::test_bar",),
-    )
-    _MODULE._print_isolation_banner(outcome)
-    err = capsys.readouterr().err
-    assert "crashed the xdist worker on" in err
-    assert "real bug" in err
+    assert "TEST FAILURE" in err
     assert "tests/unit/foo.py::test_bar" in err
 
 
 def test_print_isolation_banner_regression_one_off_crash_demands_dump(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A one-off worker crash blocks and demands a dump + teardown review."""
+    """A worker crash blocks and demands a dump + teardown review."""
     outcome = _MODULE.IsolationOutcome(
         kind="regression",
         exit_code=1,
@@ -759,7 +695,7 @@ def test_print_isolation_banner_regression_one_off_crash_demands_dump(
     )
     _MODULE._print_isolation_banner(outcome)
     err = capsys.readouterr().err
-    assert "ISOLATION CRASH" in err
+    assert "WORKER CRASH" in err
     assert "dump" in err
     assert "no bypass and no advisory" in err
     assert "tests/unit/foo.py::test_bar[2-2]" in err
@@ -780,81 +716,7 @@ def test_print_isolation_banner_regression_no_evidence_uses_failclosed_text(
     assert "(2)" in err
 
 
-# ── _run_isolation_gate orchestrator ─────────────────────────────
-
-
-def test_run_isolation_gate_skips_when_paths_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Empty path list short-circuits to exit 0 before running pytest."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd: pytest.fail("_stream_pytest must not run on empty paths"),
-    )
-    assert _MODULE._run_isolation_gate([]) == 0
-
-
-def test_run_isolation_gate_passes_through_classifier_pass(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Green pytest output -> classifier returns pass -> exit 0."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (0, "500 passed in 12.34s\n"),
-    )
-    assert _MODULE._run_isolation_gate(["tests/unit/foo/"]) == 0
-
-
-def test_run_isolation_gate_blocks_on_native_crash(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Native worker crashes -> classifier returns regression -> blocks (exit >= 1)."""
-    stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (1, stdout),
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
-    assert rc == 1
-    assert "ISOLATION CRASH" in capsys.readouterr().err
-
-
-def test_run_isolation_gate_returns_nonzero_on_real_regression(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Real test failure -> classifier returns regression -> exit non-zero."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (1, _FAILED_LINE + "499 passed, 1 failed in 12s\n"),
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
-    assert rc == 1
-    assert "ISOLATION REGRESSION" in capsys.readouterr().err
-
-
-def test_run_isolation_gate_invokes_pytest_with_correct_flags(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The gate command embeds ``--count 2`` and ``--max-worker-restart=0``."""
-    captured: dict[str, list[str]] = {}
-
-    def _capture(cmd: list[str], **_kwargs: object) -> tuple[int, str]:
-        captured["cmd"] = cmd
-        return 0, "1 passed in 0.1s\n"
-
-    monkeypatch.setattr(_MODULE, "_stream_pytest", _capture)
-    _MODULE._run_isolation_gate(["tests/unit/foo/"])
-    cmd = captured["cmd"]
-    assert "--count" in cmd
-    assert "2" in cmd
-    assert "--max-worker-restart=0" in cmd
-    assert "tests/unit/foo/" in cmd
+# ── _run_pytest orchestrator ─────────────────────────────────────
 
 
 def test_run_pytest_short_circuits_on_hung_exit_code(
@@ -909,36 +771,6 @@ def test_run_pytest_blocks_on_timing_regression_even_when_tests_pass(
     )
     rc = _MODULE._run_pytest(["tests/unit/foo/"], run_all=True)
     assert rc == 1
-
-
-def test_run_isolation_gate_short_circuits_on_hung_exit_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Isolation gate also short-circuits on watchdog kill (same reasoning).
-
-    A hung ``--count 2`` replay must NOT be classified from its partial
-    stdout; the watchdog kill returns the canonical 124 so a replay that
-    timed out before finishing blocks cleanly.
-    """
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd, **_kwargs: (
-            _MODULE._PYTEST_HUNG_EXIT_CODE,
-            "[gw0] node down: Not properly terminated\n",
-        ),
-    )
-
-    def _classifier_must_not_run(*_args: object, **_kwargs: object) -> object:
-        msg = "classifier must not run on hung-pytest fast path"
-        raise AssertionError(msg)
-
-    monkeypatch.setattr(
-        _MODULE, "_classify_isolation_outcome", _classifier_must_not_run
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/foo/"])
-    assert rc == _MODULE._PYTEST_HUNG_EXIT_CODE
-    assert rc == 124
 
 
 # ── event loop policy fixtures ───────────────────────────────────

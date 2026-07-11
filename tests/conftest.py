@@ -750,15 +750,13 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/api/controllers/test_learning.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
-# pytest-repeat's ``--count`` flag is used exclusively by
-# ``scripts/run_affected_tests.py``'s isolation regression gate (a
-# ``--count 2`` replay of every affected test to detect fixture
-# state leaks). That replay doubles xdist contention; legitimate
-# unit tests routinely cross the 6s wall-clock guard on Windows
-# under that load even though they run well under it in the primary
-# pass. The primary run (no ``--count``) still enforces the guard;
-# disabling it on the replay keeps the gate focused on its actual
-# purpose (fixture leak detection) rather than re-litigating timing.
+# pytest-repeat's ``--count`` flag is no longer produced by any automated
+# caller; it now appears only when a developer runs ``pytest --count N`` by
+# hand to reproduce a fixture state leak. Such a replay multiplies xdist
+# contention, and legitimate unit tests routinely cross the 6s wall-clock guard
+# on Windows under that load even though they run well under it in a single
+# pass, so the guard is disabled while ``--count`` is present. The single-pass
+# run (no ``--count``) that every push and CI job uses still enforces the guard.
 _COUNT_ISOLATION_RUN = "--count" in sys.argv or any(
     arg.startswith("--count=") for arg in sys.argv
 )
