@@ -387,6 +387,10 @@ class TestRequestController:
             # Off by default -> honest 503, no state mutation.
             first = await client.post(f"/api/v1/requests/{rid}/approve")
             assert first.status_code == 503
+            # The rejected approval must leave the request untouched: the gate
+            # fails closed before any state transition.
+            unchanged = await client.get(f"/api/v1/requests/{rid}")
+            assert unchanged.json()["data"]["status"] == "submitted"
 
             # Flip the flag live through the settings service (DB write).
             app_state = client.app.state.app_state
