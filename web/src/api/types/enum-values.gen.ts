@@ -891,7 +891,6 @@ export const SETTING_NAMESPACE_VALUES = [
     'chief_of_staff',
     'knowledge',
     'notifications',
-    'objectives',
     'simulations',
     'tools',
     'settings',

@@ -302,12 +302,37 @@ class TestRequestController:
             assert listing.status_code == 200
             assert len(listing.json()["data"]) == 1
 
-    async def test_approve_without_adapter_returns_409(
+    async def test_approve_disabled_by_default_returns_503(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        """No work-entry adapter wired -> honest runtime-not-configured."""
+        """The client-intake door is off by default -> honest 503."""
+        async with _build_client(fake_persistence, fake_message_bus) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            await client.post(
+                "/api/v1/clients/",
+                json={"client_id": "off", "name": "Off", "persona": "P"},
+            )
+            submit = await client.post(
+                "/api/v1/requests/",
+                json={
+                    "client_id": "off",
+                    "requirement": {"title": "T", "description": "D"},
+                },
+            )
+            rid = submit.json()["data"]["request_id"]
+            approve = await client.post(f"/api/v1/requests/{rid}/approve")
+            assert approve.status_code == 503
+
+    async def test_approve_without_adapter_returns_409(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Door enabled but no adapter wired -> honest runtime-not-configured."""
+        monkeypatch.setenv("SYNTHORG_SIMULATIONS_CLIENT_INTAKE_ENABLED", "true")
         async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
             await client.post(
@@ -329,8 +354,10 @@ class TestRequestController:
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Approve returns 202 APPROVED and spawns the pipeline task."""
+        monkeypatch.setenv("SYNTHORG_SIMULATIONS_CLIENT_INTAKE_ENABLED", "true")
         gate = asyncio.Event()
         client, sim_state = _build_client_with_adapter(
             fake_persistence,

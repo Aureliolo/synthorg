@@ -1,29 +1,23 @@
 """Unit coverage for the real-objective boot wiring.
 
-``wire_real_objective_entry`` ensures the configured objectives
-project exists and attaches the :class:`ObjectiveEntryAdapter` to
-``AppState`` once the work pipeline is online. It is a no-op when the
-pipeline is absent (empty company).
+``wire_real_objective_entry`` attaches the
+:class:`ObjectiveEntryAdapter` to ``AppState`` once the work pipeline
+and persistence are online. It seeds no project (the adapter mints a
+per-initiative project per submission); it is a no-op when the
+pipeline or persistence is absent (empty company).
 """
 
-from collections.abc import Mapping
 from unittest.mock import MagicMock
 
 import pytest
 
 from synthorg.api.state import AppState
-from synthorg.core.project import Project
-from synthorg.core.project_enums import ProjectStatus
-from synthorg.engine.pipeline.entry.boot import (
-    _project_uuid,
-    wire_real_objective_entry,
-)
+from synthorg.engine.pipeline.entry.boot import wire_real_objective_entry
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -32,96 +26,57 @@ pytestmark = pytest.mark.unit
 def _app_state(
     *,
     has_work_pipeline: bool,
-    project: Project | None = None,
+    has_persistence: bool = True,
 ) -> tuple[AppState, MagicMock]:
-    projects = mock_of[ProjectRepository]()
-    projects.get.return_value = project
-    app_state = make_app_state(
-        work_pipeline=mock_of[WorkPipeline]() if has_work_pipeline else None,
-        persistence=mock_of[PersistenceBackend](projects=projects),
-    )
-    return app_state, projects
-
-
-def _app_state_with_resolver(
-    *,
-    project_value: str = "objectives",
-    raises: BaseException | None = None,
-) -> tuple[AppState, MagicMock]:
-    """App state with a live config resolver (post-init objective path)."""
     projects = mock_of[ProjectRepository]()
     projects.get.return_value = None
-    resolver = mock_of[ConfigResolver]()
-    if raises is not None:
-        resolver.get_str.side_effect = raises
-    else:
-        resolver.get_str.return_value = project_value
+    persistence = (
+        mock_of[PersistenceBackend](projects=projects) if has_persistence else None
+    )
     app_state = make_app_state(
-        work_pipeline=mock_of[WorkPipeline](),
-        persistence=mock_of[PersistenceBackend](projects=projects),
-        config_resolver=resolver,
+        work_pipeline=mock_of[WorkPipeline]() if has_work_pipeline else None,
+        persistence=persistence,
     )
     return app_state, projects
-
-
-_EMPTY_ENV: Mapping[str, str] = {}
 
 
 async def test_noop_without_work_pipeline() -> None:
     app_state, projects = _app_state(has_work_pipeline=False)
-    await wire_real_objective_entry(app_state, env=_EMPTY_ENV)
-    projects.get.assert_not_called()
+    await wire_real_objective_entry(app_state)
+    projects.create.assert_not_called()
     assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
 
 
-async def test_creates_project_when_absent_and_attaches_adapter() -> None:
-    app_state, projects = _app_state(has_work_pipeline=True, project=None)
-    await wire_real_objective_entry(app_state, env=_EMPTY_ENV)
-    created = projects.create.call_args.args[0]
-    assert isinstance(created, Project)
-    assert created.id == _project_uuid("objectives")
-    assert created.status is ProjectStatus.ACTIVE
+async def test_noop_without_persistence() -> None:
+    app_state, projects = _app_state(has_work_pipeline=True, has_persistence=False)
+    await wire_real_objective_entry(app_state)
+    projects.create.assert_not_called()
+    assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
+
+
+async def test_attaches_adapter_without_seeding_a_project() -> None:
+    app_state, projects = _app_state(has_work_pipeline=True)
+    await wire_real_objective_entry(app_state)
+    # No project is seeded at wire time; the adapter mints one per submission.
+    projects.create.assert_not_called()
     adapter = app_state.slice(EngineStateSlice).objective_entry_adapter
     assert isinstance(adapter, ObjectiveEntryAdapter)
 
 
-async def test_skips_create_when_project_exists() -> None:
-    existing = Project(id=_project_uuid("objectives"), name="objectives")
-    app_state, projects = _app_state(has_work_pipeline=True, project=existing)
-    await wire_real_objective_entry(app_state, env=_EMPTY_ENV)
-    projects.create.assert_not_called()
-    assert app_state.slice(EngineStateSlice).objective_entry_adapter is not None
-
-
 async def test_hot_swap_uses_swap_seam() -> None:
-    app_state, projects = _app_state(has_work_pipeline=True, project=None)
+    app_state, _projects = _app_state(has_work_pipeline=True)
     sentinel = object()
     app_state.wire(EngineStateSlice, objective_entry_adapter=sentinel)
-    await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
-    projects.create.assert_called_once()
+    await wire_real_objective_entry(app_state, hot_swap=True)
     replaced = app_state.slice(EngineStateSlice).objective_entry_adapter
     assert replaced is not sentinel
     assert isinstance(replaced, ObjectiveEntryAdapter)
 
 
-async def test_hot_swap_blank_project_unwires_adapter() -> None:
-    """Clearing objectives.default_project unwires the live adapter."""
-    app_state, projects = _app_state_with_resolver(project_value="")
+async def test_hot_swap_without_pipeline_clears_adapter() -> None:
+    """A hot reload that lost the pipeline uninstalls the stale adapter."""
+    app_state, _projects = _app_state(has_work_pipeline=False)
     sentinel = object()
     app_state.wire(EngineStateSlice, objective_entry_adapter=sentinel)
-    await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
+    await wire_real_objective_entry(app_state, hot_swap=True)
     assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
-    projects.create.assert_not_called()
-
-
-async def test_post_init_resolver_outage_propagates_and_keeps_adapter() -> None:
-    """A live-resolver outage propagates without repointing to bootstrap."""
-    app_state, projects = _app_state_with_resolver(
-        raises=RuntimeError("resolver outage")
-    )
-    sentinel = object()
-    app_state.wire(EngineStateSlice, objective_entry_adapter=sentinel)
-    with pytest.raises(RuntimeError, match="resolver outage"):
-        await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
-    assert app_state.slice(EngineStateSlice).objective_entry_adapter is sentinel
-    projects.create.assert_not_called()

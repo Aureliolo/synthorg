@@ -2,28 +2,42 @@
 
 Maps a human-stated :class:`ObjectiveSubmission` onto a
 :class:`WorkItem` with ``source=OBJECTIVE`` and drives the pipeline
-spine. Thin by design: the adapter owns no persistence, no
-decomposition logic, no rejection state. The downstream routing
-policy decides solo-vs-team and the
+spine. Each objective stands up its **own** initiative project (the
+same per-initiative shape the charter approval path uses), minted just
+before dispatch from a deterministic id so a retried submission reuses
+its project rather than duplicating it. The downstream routing policy
+decides solo-vs-team and the
 :class:`~synthorg.engine.coordination.service.MultiAgentCoordinator`
 handles the goal-to-subtasks decomposition under the ``SPLITTABLE``
 verdict.
 """
 
-from uuid import uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger
-from synthorg.observability.events.objectives import OBJECTIVE_SUBMISSION_RECEIVED
+from synthorg.observability.events.objectives import (
+    OBJECTIVE_PROJECT_PROVISIONED,
+    OBJECTIVE_SUBMISSION_RECEIVED,
+)
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
 _ORIGIN_ADAPTER_ID = "objective-entry-adapter"
+
+# Stable seed for per-objective initiative project ids so a retried
+# submission (same submission id) resolves to the same project rather
+# than minting a duplicate.
+_PROJECT_NAMESPACE: UUID = uuid5(NAMESPACE_URL, "synthorg:objective-initiative")
 
 
 class ObjectiveSubmission(BaseModel):
@@ -90,26 +104,32 @@ class ObjectiveSubmission(BaseModel):
 
 
 class ObjectiveEntryAdapter:
-    """Feeds human-stated objectives into the pipeline spine."""
+    """Feeds human-stated objectives into the pipeline spine.
 
-    __slots__ = ("_default_project", "_work_pipeline")
+    Unlike the intake adapter this owns a :class:`ProjectRepository`:
+    every objective is its own initiative, so the adapter mints a
+    dedicated project per submission rather than filing into a shared
+    bucket. Minting is idempotent (the project id is derived from the
+    submission id), so a redelivered submission reuses its project.
+    """
+
+    __slots__ = ("_project_repo", "_work_pipeline")
 
     def __init__(
         self,
         *,
         work_pipeline: WorkPipeline,
-        default_project: NotBlankStr,
+        project_repo: ProjectRepository,
     ) -> None:
         """Initialise the adapter.
 
         Args:
             work_pipeline: The composed pipeline spine to drive.
-            default_project: Project every objective work item is
-                filed into (created at boot if absent by
-                :func:`wire_real_objective_entry`).
+            project_repo: Repository used to mint the per-objective
+                initiative project before dispatch.
         """
         self._work_pipeline = work_pipeline
-        self._default_project = default_project
+        self._project_repo = project_repo
 
     @property
     def source(self) -> WorkSource:
@@ -117,7 +137,7 @@ class ObjectiveEntryAdapter:
         return WorkSource.OBJECTIVE
 
     async def submit(self, request: ObjectiveSubmission) -> WorkPipelineResult:
-        """Map ``request`` onto a work item and drive the spine.
+        """Mint the objective's initiative project and drive the spine.
 
         Optional submission fields (``priority``,
         ``estimated_complexity``, ``task_type``) fall through to the
@@ -134,15 +154,53 @@ class ObjectiveEntryAdapter:
         Raises:
             WorkPipelineError: Propagated unchanged from the spine.
         """
-        work_item = self._build_work_item(request)
+        project_id = await self._provision_project(request)
+        work_item = self._build_work_item(request, project_id)
         logger.info(
             OBJECTIVE_SUBMISSION_RECEIVED,
             submission_id=request.submission_id,
-            project=self._default_project,
+            project=project_id,
         )
         return await self._work_pipeline.run(work_item)
 
-    def _build_work_item(self, request: ObjectiveSubmission) -> WorkItem:
+    async def _provision_project(self, request: ObjectiveSubmission) -> NotBlankStr:
+        """Create the objective's own initiative project (idempotent).
+
+        The project id is derived from the submission id so a retried
+        submission reuses the same project; a concurrent winner surfaces
+        as ``DuplicateRecordError``, which is benign here (the project
+        exists, the post-condition we want).
+
+        Returns:
+            The minted project's id as a ``NotBlankStr``.
+        """
+        project_uuid = uuid5(_PROJECT_NAMESPACE, f"objective-{request.submission_id}")
+        project_id = NotBlankStr(str(project_uuid))
+        if await self._project_repo.get(project_id) is not None:
+            return project_id
+        try:
+            await self._project_repo.create(
+                Project(
+                    id=project_uuid,
+                    name=request.title,
+                    description=request.description,
+                    status=ProjectStatus.PLANNING,
+                )
+            )
+        except DuplicateRecordError:
+            return project_id
+        logger.info(
+            OBJECTIVE_PROJECT_PROVISIONED,
+            submission_id=request.submission_id,
+            project=project_id,
+        )
+        return project_id
+
+    def _build_work_item(
+        self,
+        request: ObjectiveSubmission,
+        project_id: NotBlankStr,
+    ) -> WorkItem:
         """Compose the :class:`WorkItem` envelope for the spine.
 
         Optional submission fields fall through to the WorkItem
@@ -159,7 +217,7 @@ class ObjectiveEntryAdapter:
             source=WorkSource.OBJECTIVE,
             title=request.title,
             raw_intent=request.description,
-            project=self._default_project,
+            project=project_id,
             requested_by=request.requested_by,
             acceptance_criteria=request.acceptance_criteria,
             correlation_id=request.submission_id,

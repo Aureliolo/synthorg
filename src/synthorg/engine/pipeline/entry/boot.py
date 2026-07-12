@@ -20,8 +20,6 @@ seam. Each is a logged no-op for an empty company (no pipeline / no
 simulation runtime).
 """
 
-import os
-from collections.abc import Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.api.state import AppState
@@ -39,6 +37,7 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.entry.factory import (
     build_brownfield_entry_adapter,
+    build_objective_entry_adapter,
     build_work_entry_adapter,
 )
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
@@ -51,14 +50,12 @@ from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
 from synthorg.observability.events.budget import BUDGET_FORECAST_UNAVAILABLE
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
-from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice
 
@@ -76,9 +73,6 @@ def _project_uuid(slug: str) -> UUID:
         The deterministic ``UUID`` derived from *slug*.
     """
     return uuid5(NAMESPACE_URL, f"synthorg:project:{slug}")
-
-
-_OBJECTIVES_DEFAULT_PROJECT_KEY = "default_project"
 
 
 def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
@@ -170,12 +164,38 @@ async def _resolve_intake_default_project(app_state: AppState) -> str:
     return value or cached
 
 
+async def _client_intake_enabled(app_state: AppState) -> bool:
+    """Return whether the client-request intake door is enabled (default off).
+
+    The synthetic-client intake path (``POST /requests/{id}/approve``) is a
+    benchmark door that role-plays external customers; it is off by default and
+    only wired when an operator opts in via
+    ``simulations.client_intake_enabled``. Reads the live resolver
+    (DB > env > default) and treats a pre-resolver boot as disabled, matching
+    the ``false`` registered default.
+
+    Returns:
+        ``True`` when the flag resolves truthy, else ``False``.
+    """
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return False
+    return await resolver.get_bool(
+        SettingNamespace.SIMULATIONS.value, "client_intake_enabled"
+    )
+
+
 async def wire_real_intake_entry(
     app_state: AppState,
     *,
     hot_swap: bool = False,
 ) -> None:
-    """Ensure the intake project exists and attach the entry adapter.
+    """Wire the client-intake door when opted in; else keep it offline.
+
+    Gated on ``simulations.client_intake_enabled`` (off by default): the
+    synthetic-client intake path is a benchmark door, not a standing
+    production front door, so nothing is wired and no project is seeded
+    unless an operator turns it on.
 
     Args:
         app_state: Live application state (work pipeline, simulation
@@ -196,6 +216,21 @@ async def wire_real_intake_entry(
             service="intake_entry_adapter",
             mode="disabled",
             note="no work pipeline / simulation runtime; real intake offline",
+        )
+        return
+    if not await _client_intake_enabled(app_state):
+        # Off by default: the client-intake door stays a dormant benchmark
+        # entry. Uninstall a previously-wired adapter on the hot path (an
+        # operator turning it off must actually stop intake); a boot install
+        # has nothing wired yet. No project is seeded, so no empty ACTIVE
+        # ``client-intake`` project appears in a default deployment.
+        if hot_swap:
+            app_state.clear_intake_entry_adapter()
+        logger.info(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            service="intake_entry_adapter",
+            mode="disabled",
+            note="client intake door off (simulations.client_intake_enabled=false)",
         )
         return
     default_project = await _resolve_intake_default_project(app_state)
@@ -228,123 +263,44 @@ async def wire_real_intake_entry(
         app_state.set_intake_entry_adapter_if_absent(adapter)
 
 
-async def _resolve_objectives_default_project(
-    app_state: AppState,
-    env: Mapping[str, str],
-) -> str:
-    """Resolve ``objectives.default_project`` through the live chain.
-
-    Post-init (settings service wired) this reads the full DB > env >
-    default chain so an operator override applies on the next re-wire; a
-    transient resolver outage propagates (the caller preserves the current
-    wiring). Pre-init it falls back to the bootstrap resolver (env > default),
-    the same value the boot path used before persistence connected.
-
-    Returns:
-        The resolved project slug (un-stripped; caller strips).
-
-    Raises:
-        Exception: Propagated when the live resolver read fails post-init, so
-            a transient outage does not silently repoint to the bootstrap slug.
-    """
-    from synthorg.settings.state import (  # noqa: PLC0415
-        SettingsStateSlice,
-        config_resolver_of,
-    )
-
-    if app_state.slice(SettingsStateSlice).config_resolver is None:
-        return str(
-            resolve_init_value(
-                SettingNamespace.OBJECTIVES,
-                _OBJECTIVES_DEFAULT_PROJECT_KEY,
-                env=env,
-            ).value
-        )
-    try:
-        return await config_resolver_of(app_state).get_str(
-            SettingNamespace.OBJECTIVES.value,
-            _OBJECTIVES_DEFAULT_PROJECT_KEY,
-        )
-    except Exception as exc:
-        reraise_critical(exc)
-        logger.warning(
-            OBJECTIVE_ENTRY_WIRED,
-            service="objective_entry_adapter",
-            setting="objectives.default_project",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="resolver outage; preserving current objective-entry wiring",
-        )
-        # Post-init (resolver wired) a transient outage must NOT silently
-        # repoint the adapter to the bootstrap (env>default) slug or re-enable
-        # intake when the DB value was deliberately blank. Propagate so the
-        # subscriber's error path keeps the current adapter; the env>default
-        # fallback above is reserved for the genuine pre-init boot case.
-        raise
-
-
 async def wire_real_objective_entry(
     app_state: AppState,
     *,
     hot_swap: bool = False,
-    env: Mapping[str, str] = os.environ,
 ) -> None:
-    """Ensure the objectives project exists and attach the entry adapter.
+    """Attach the objective work-entry adapter to ``AppState``.
 
     Unlike the intake hook this does NOT depend on the client
-    simulation runtime: a configured provider (i.e.
-    ``has_work_pipeline``) is sufficient. The objectives default
-    project is resolved through the live settings chain (DB > env >
-    default) when the settings service is wired, falling back to the
-    bootstrap resolver (env > default) pre-init only; a post-init resolver
-    outage propagates so the current adapter is preserved. On the hot path a
-    blank resolved project unwires the adapter (intake stops).
+    simulation runtime: a wired work pipeline plus connected
+    persistence is sufficient. The adapter mints a per-initiative
+    project per submission from the project repository (the same
+    per-initiative shape the charter approval path uses), so no shared
+    default project is resolved or seeded at boot.
 
     Args:
-        app_state: Live application state (work pipeline,
-            persistence).
+        app_state: Live application state (work pipeline, persistence).
         hot_swap: When ``True`` replace an already-wired adapter
             (provider-reinit path); otherwise install once at boot.
-        env: Environment mapping override for tests.
     """
-    if app_state.slice(EngineStateSlice).work_pipeline is None:
-        # Hot reload lost the pipeline: uninstall the stale adapter (it holds the
-        # old pipeline by reference); a boot install has nothing wired yet.
+    if (
+        app_state.slice(EngineStateSlice).work_pipeline is None
+        or app_state.slice(PersistenceStateSlice).backend is None
+    ):
+        # Hot reload lost the pipeline / persistence: uninstall the stale
+        # adapter (it holds the old pipeline + repo by reference); a boot
+        # install has nothing wired yet.
         if hot_swap:
             app_state.clear_objective_entry_adapter()
         logger.info(
             OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
             mode="disabled",
-            note="no work pipeline; real objective entry offline",
+            note="no work pipeline / persistence; real objective entry offline",
         )
         return
-    resolved_project = await _resolve_objectives_default_project(app_state, env)
-    default_project = resolved_project.strip()
-    if not default_project:
-        logger.warning(
-            OBJECTIVE_ENTRY_WIRED,
-            service="objective_entry_adapter",
-            mode="disabled",
-            note="objectives.default_project resolved blank",
-        )
-        # An operator clearing the setting must actually stop intake: unwire
-        # the previously-installed adapter on the hot path rather than leave
-        # it filing against the old project. (Pre-init/boot has nothing wired.)
-        if hot_swap:
-            app_state.clear_objective_entry_adapter()
-        return
-    await _ensure_project(
-        app_state,
-        default_project,
-        service="objective_entry_adapter",
-        event=OBJECTIVE_ENTRY_WIRED,
-        description="Default project for real goal/objective intake.",
-    )
-    adapter = build_work_entry_adapter(
-        WorkSource.OBJECTIVE,
+    adapter = build_objective_entry_adapter(
         work_pipeline=work_pipeline_of(app_state),
-        default_project=str(_project_uuid(default_project)),
+        project_repo=persistence_of(app_state).projects,
         forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:

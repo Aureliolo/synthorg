@@ -31,6 +31,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
+        key="client_intake_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether the synthetic-client intake door is a live work-entry"
+            " path. Off by default: the client-request door"
+            " (``POST /requests/{id}/approve``) role-plays external customers"
+            " and is a benchmark surface, not a standing production front"
+            " door, so the real intake entry adapter is wired only when this"
+            " is on. SimulationsSettingsSubscriber re-wires the intake entry"
+            " adapter on a change, so it applies without a restart; the"
+            " ``/objectives`` door is the always-on operator work-entry path."
+        ),
+        group="Intake",
+        level=SettingLevel.ADVANCED,
+        restart_required=False,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
         key="intake_strategy",
         type=SettingType.ENUM,
         default="direct",

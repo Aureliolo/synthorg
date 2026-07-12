@@ -6,9 +6,14 @@ from typing import Annotated, Final
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
-from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
+from synthorg.api.controllers.requests._payloads import (
+    CreateRequestPayload,
+    RejectionPayload,
+    ScopingPayload,
+)
 from synthorg.api.controllers.requests.pipeline import _spawn_intake_pipeline
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -29,7 +34,6 @@ from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
 )
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
@@ -37,36 +41,6 @@ from synthorg.observability.events.client import CLIENT_REQUEST_STATUS_TRANSITIO
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-
-
-class CreateRequestPayload(BaseModel):
-    """Request payload for submitting a new client request."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    client_id: NotBlankStr = Field(description="Requesting client id")
-    requirement: TaskRequirement = Field(description="Task requirement")
-
-
-class RejectionPayload(BaseModel):
-    """Payload carrying a rejection reason."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    reason: NotBlankStr = Field(description="Reason for rejection")
-
-
-class ScopingPayload(BaseModel):
-    """Payload carrying scoping notes and an optional refined requirement."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    notes: NotBlankStr = Field(description="Scoping notes from the reviewer")
-    refined_title: NotBlankStr | None = Field(default=None)
-    refined_description: NotBlankStr | None = Field(default=None)
-    refined_acceptance_criteria: tuple[NotBlankStr, ...] | None = Field(
-        default=None,
-    )
 
 
 def _publish(
@@ -357,6 +331,10 @@ class RequestController(Controller):
             NotFoundError: If the request is not known.
             ConflictError: If the request cannot be approved from its
                 current state.
+            ServiceUnavailableError: If the client-intake door is
+                disabled (``simulations.client_intake_enabled`` off, the
+                default): the synthetic-client intake path is a benchmark
+                surface, not a standing production door.
             AgentRuntimeNotConfiguredError: If no work-entry adapter
                 is wired (empty company / no provider): the request
                 stays approvable once a provider is configured.
@@ -365,6 +343,16 @@ class RequestController(Controller):
             ``ApiResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
+        # Off by default: the client-request intake path role-plays external
+        # customers and is a benchmark door, gated so it never doubles as a
+        # standing production front door. Read live so a Settings toggle
+        # applies on the next request with no restart.
+        await ensure_feature_enabled(
+            app_state,
+            "simulations",
+            "client_intake_enabled",
+            feature_label="Client-request intake",
+        )
         sim_state = client_simulation_state_of(app_state)
         async with app_state.request_locks.acquire(request_id):
             try:

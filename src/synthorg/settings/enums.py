@@ -29,7 +29,6 @@ class SettingNamespace(StrEnum):
     CHIEF_OF_STAFF = "chief_of_staff"
     KNOWLEDGE = "knowledge"
     NOTIFICATIONS = "notifications"
-    OBJECTIVES = "objectives"
     SIMULATIONS = "simulations"
     TOOLS = "tools"
     SETTINGS = "settings"

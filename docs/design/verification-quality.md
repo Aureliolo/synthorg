@@ -151,11 +151,12 @@ a project-brain `DECISION` entry.
 
 The intake engine processes `ClientRequest` submissions through an independent
 state machine (`RequestStatus`) before creating tasks in the task engine. The
-real work-entry path (`POST /requests/{id}/approve`) approves a request and
-runs it through the `IntakeEntryAdapter` into the work pipeline spine so an
-agent executes it; the terminal state lands asynchronously. See
+synthetic-client work-entry path (`POST /requests/{id}/approve`, a benchmark
+door gated off by default behind `simulations.client_intake_enabled`) approves
+a request and runs it through the `IntakeEntryAdapter` into the work pipeline
+spine so an agent executes it; the terminal state lands asynchronously. See
 [Client Simulation](client-simulation.md) for the full request lifecycle,
-intake strategy contracts, and the real work-entry path.
+intake strategy contracts, and the gated work-entry path.
 
 ---
 
