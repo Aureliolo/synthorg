@@ -11,11 +11,12 @@ shared bucket.
 
 from typing import cast
 from unittest.mock import AsyncMock
-from uuid import uuid5
+from uuid import UUID, uuid5
 
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
@@ -159,7 +160,10 @@ def test_submission_id_defaults_to_uuid() -> None:
         requested_by="r",
     )
     assert one.submission_id != two.submission_id
-    assert len(one.submission_id) >= 32
+    # The auto-generated id must be a real (canonical) UUID, not just a
+    # long string: parsing it and re-stringifying round-trips exactly.
+    assert str(UUID(one.submission_id)) == one.submission_id
+    assert str(UUID(two.submission_id)) == two.submission_id
 
 
 def test_submission_accepts_full_optional_fields() -> None:
@@ -273,6 +277,33 @@ async def test_submit_is_idempotent_when_project_exists() -> None:
     await _adapter(pipeline, repo).submit(submission)
 
     cast(AsyncMock, repo.create).assert_not_awaited()
+    assert captured["item"].project == _expected_project(submission.submission_id)
+
+
+async def test_submit_swallows_duplicate_record_on_create_race() -> None:
+    """A concurrent winner racing on ``create`` is benign, not a failure.
+
+    Both callers miss the ``get`` fast-path, race on ``create``, and the
+    loser's ``DuplicateRecordError`` is swallowed: the project exists (the
+    post-condition we want), so ``submit`` still succeeds and the work item
+    routes into the deterministic per-initiative project.
+    """
+    pipeline = mock_of[WorkPipeline]()
+    captured: dict[str, WorkItem] = {}
+
+    async def _run(work_item: WorkItem) -> WorkPipelineResult:
+        captured["item"] = work_item
+        return _result(work_item)
+
+    pipeline.run.side_effect = _run
+    submission = _submission()
+    repo = _repo()
+    cast(AsyncMock, repo.create).side_effect = DuplicateRecordError("project exists")
+
+    result = await _adapter(pipeline, repo).submit(submission)
+
+    cast(AsyncMock, repo.create).assert_awaited_once()
+    assert result.task_id == "task-99"
     assert captured["item"].project == _expected_project(submission.submission_id)
 
 

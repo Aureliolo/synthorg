@@ -374,10 +374,9 @@ class AppState(AppStateSliceMixin):
         """Uninstall the objective entry adapter (hot disable / offline).
 
         The adapter holds the work pipeline by reference, so a hot reload that
-        takes objective intake offline (the provider is removed, or
-        ``objectives.default_project`` is cleared) must remove it rather than
-        leave it routing through the stale pipeline / filing against the old
-        project.
+        takes objective intake offline (the provider or persistence is
+        removed) must remove it rather than leave it routing through the
+        stale pipeline.
         """
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 

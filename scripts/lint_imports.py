@@ -10,8 +10,8 @@ that write encode as UTF-8 instead, so the report renders cleanly.
 
 The wrapper re-execs itself with ``-X utf8`` when UTF-8 mode is off, then
 delegates to import-linter's own CLI so behaviour is otherwise identical
-on every platform (a no-op re-exec where UTF-8 mode is already the
-default, e.g. CI on Linux).
+on every platform (the re-exec is skipped entirely where UTF-8 mode is
+already on, e.g. CI on Linux).
 """
 
 import os
@@ -24,4 +24,4 @@ if sys.flags.utf8_mode == 0:
 from importlinter.cli import lint_imports_command
 
 if __name__ == "__main__":
-    lint_imports_command()
+    lint_imports_command(prog_name="lint-imports")

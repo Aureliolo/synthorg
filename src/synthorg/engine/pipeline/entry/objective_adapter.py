@@ -25,8 +25,9 @@ from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult, WorkSo
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger
 from synthorg.observability.events.objectives import (
+    OBJECTIVE_PROJECT_ALREADY_EXISTS,
     OBJECTIVE_PROJECT_PROVISIONED,
-    OBJECTIVE_SUBMISSION_RECEIVED,
+    OBJECTIVE_SUBMISSION_DISPATCHED,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
 
@@ -157,7 +158,7 @@ class ObjectiveEntryAdapter:
         project_id = await self._provision_project(request)
         work_item = self._build_work_item(request, project_id)
         logger.info(
-            OBJECTIVE_SUBMISSION_RECEIVED,
+            OBJECTIVE_SUBMISSION_DISPATCHED,
             submission_id=request.submission_id,
             project=project_id,
         )
@@ -177,6 +178,12 @@ class ObjectiveEntryAdapter:
         project_uuid = uuid5(_PROJECT_NAMESPACE, f"objective-{request.submission_id}")
         project_id = NotBlankStr(str(project_uuid))
         if await self._project_repo.get(project_id) is not None:
+            logger.info(
+                OBJECTIVE_PROJECT_ALREADY_EXISTS,
+                submission_id=request.submission_id,
+                project=project_id,
+                note="project already provisioned on a prior attempt",
+            )
             return project_id
         try:
             await self._project_repo.create(
@@ -188,6 +195,12 @@ class ObjectiveEntryAdapter:
                 )
             )
         except DuplicateRecordError:
+            logger.info(
+                OBJECTIVE_PROJECT_ALREADY_EXISTS,
+                submission_id=request.submission_id,
+                project=project_id,
+                note="concurrent winner created the project first",
+            )
             return project_id
         logger.info(
             OBJECTIVE_PROJECT_PROVISIONED,

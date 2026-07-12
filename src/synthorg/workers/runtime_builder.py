@@ -659,8 +659,8 @@ async def reload_runtime_services(app_state: AppState) -> None:
                 error=safe_error_description(exc),
             )
             raise
-    logger.info(
-        WORKERS_RUNTIME_RELOADED,
-        coordinator_swapped=services.coordinator is not None,
-        pipeline_swapped=services.work_pipeline is not None,
-    )
+        logger.info(
+            WORKERS_RUNTIME_RELOADED,
+            coordinator_swapped=services.coordinator is not None,
+            pipeline_swapped=services.work_pipeline is not None,
+        )

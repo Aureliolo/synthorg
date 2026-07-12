@@ -69,7 +69,7 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 
 | Library | Role |
 |---------|------|
-| **LiteLLM** | Provider abstraction (<!--RS:providers_via_litellm-->90+<!--/RS--> providers, unified API) |
+| **LiteLLM** | Provider abstraction (<!--RS:providers_via_litellm-->95+<!--/RS--> providers, unified API) |
 | **Mem0** | Agent memory (initial backend; custom stack future) |
 | **Litestar** | API layer (see [Tech Stack](../architecture/tech-stack.md#why-litestar-over-fastapi) for rationale) |
 | **MCP** | Tool integration standard |
@@ -84,7 +84,7 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 - [ChatDev 2.0](https://github.com/openbmb/ChatDev): zero-code multi-agent platform (31.2k stars) <!-- lint-allow: doc-numeric-macros -- third-party GitHub star count, not a build-time stat -->
 - [CrewAI](https://github.com/crewAIInc/crewAI): role-based agent collaboration framework
 - [AutoGen](https://github.com/microsoft/autogen): Microsoft async multi-agent framework
-- [LiteLLM](https://github.com/BerriAI/litellm): unified LLM API gateway (<!--RS:providers_via_litellm-->90+<!--/RS--> providers)
+- [LiteLLM](https://github.com/BerriAI/litellm): unified LLM API gateway (<!--RS:providers_via_litellm-->95+<!--/RS--> providers)
 - [Mem0](https://github.com/mem0ai/mem0): universal memory layer for AI agents
 - [A2A Protocol](https://github.com/a2aproject/A2A): Agent-to-Agent protocol (Linux Foundation)
 - [MCP Specification](https://modelcontextprotocol.io/specification/2025-11-25): Model Context Protocol

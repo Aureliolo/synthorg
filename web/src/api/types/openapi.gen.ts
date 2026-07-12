@@ -16758,14 +16758,23 @@ export type components = {
             readonly acceptance_criteria: readonly string[];
             /** @description Detailed statement of the objective. */
             readonly description: string;
-            /** @description Optional complexity override (Complexity enum value). */
-            readonly estimated_complexity?: string | null;
-            /** @description Optional priority override (Priority enum value). */
-            readonly priority?: string | null;
+            /**
+             * @description Optional complexity override.
+             * @enum {string|null}
+             */
+            readonly estimated_complexity?: "simple" | "medium" | "complex" | "epic" | null;
+            /**
+             * @description Optional priority override.
+             * @enum {string|null}
+             */
+            readonly priority?: "critical" | "high" | "medium" | "low" | null;
             /** @description Identifier of the human / service requesting the work. */
             readonly requested_by: string;
-            /** @description Optional task-type override (TaskType enum value). */
-            readonly task_type?: string | null;
+            /**
+             * @description Optional task-type override.
+             * @enum {string|null}
+             */
+            readonly task_type?: "development" | "design" | "research" | "review" | "meeting" | "admin" | "analysis" | null;
             /** @description Short human-readable objective title. */
             readonly title: string;
         };

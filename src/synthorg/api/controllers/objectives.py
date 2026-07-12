@@ -25,6 +25,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
@@ -56,17 +57,17 @@ class SubmitObjectivePayload(BaseModel):
     requested_by: NotBlankStr = Field(
         description="Identifier of the human / service requesting the work.",
     )
-    priority: str | None = Field(
+    priority: Priority | None = Field(
         default=None,
-        description="Optional priority override (Priority enum value).",
+        description="Optional priority override.",
     )
-    estimated_complexity: str | None = Field(
+    estimated_complexity: Complexity | None = Field(
         default=None,
-        description="Optional complexity override (Complexity enum value).",
+        description="Optional complexity override.",
     )
-    task_type: str | None = Field(
+    task_type: TaskType | None = Field(
         default=None,
-        description="Optional task-type override (TaskType enum value).",
+        description="Optional task-type override.",
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -176,28 +177,25 @@ class ObjectiveController(Controller):
 def _build_submission(data: SubmitObjectivePayload) -> ObjectiveSubmission:
     """Map the HTTP payload to a typed :class:`ObjectiveSubmission`.
 
-    Optional enum fields are passed through as strings; Pydantic
-    coerces them against the enum members defined on
-    :class:`ObjectiveSubmission`, raising a validation error if a
-    caller supplies an unknown value.
+    The payload's enum fields are already the real
+    :class:`Priority` / :class:`Complexity` / :class:`TaskType` members
+    (Litestar rejects an unknown value at the request boundary with a
+    structured 400 before this runs), so the mapping is a direct,
+    ``Any``-free construction with a freshly minted ``submission_id``.
 
     Returns:
         ``ObjectiveSubmission`` instance.
     """
-    # Enum fields arrive as strings; ObjectiveSubmission coerces them
-    # against its enum members. model_validate (not a **splat) keeps that
-    # coercion while staying Any-free.
-    raw: dict[str, str | tuple[NotBlankStr, ...] | None] = {
-        "submission_id": str(uuid4()),
-        "title": data.title,
-        "description": data.description,
-        "requested_by": data.requested_by,
-        "acceptance_criteria": data.acceptance_criteria,
-        "priority": data.priority,
-        "estimated_complexity": data.estimated_complexity,
-        "task_type": data.task_type,
-    }
-    return ObjectiveSubmission.model_validate(raw)
+    return ObjectiveSubmission(
+        submission_id=NotBlankStr(str(uuid4())),
+        title=data.title,
+        description=data.description,
+        requested_by=data.requested_by,
+        acceptance_criteria=data.acceptance_criteria,
+        priority=data.priority,
+        estimated_complexity=data.estimated_complexity,
+        task_type=data.task_type,
+    )
 
 
 async def _drive_pipeline(

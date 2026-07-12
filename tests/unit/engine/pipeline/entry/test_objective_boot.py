@@ -61,6 +61,8 @@ async def test_attaches_adapter_without_seeding_a_project() -> None:
     projects.create.assert_not_called()
     adapter = app_state.slice(EngineStateSlice).objective_entry_adapter
     assert isinstance(adapter, ObjectiveEntryAdapter)
+    # The adapter mints projects through the live persistence repository.
+    assert adapter._project_repo is projects
 
 
 async def test_hot_swap_uses_swap_seam() -> None:

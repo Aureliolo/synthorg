@@ -4,11 +4,13 @@ Once the work pipeline spine is online:
 
 * :func:`wire_real_intake_entry` ensures the configured intake project
   exists and attaches an :class:`IntakeEntryAdapter` to ``AppState``
-  (the ``POST /requests/{id}/approve`` path).
-* :func:`wire_real_objective_entry` ensures the configured objectives
-  default project exists and attaches an
+  (the ``POST /requests/{id}/approve`` path) when
+  ``simulations.client_intake_enabled`` is on; off by default, in which
+  case nothing is wired and no project is seeded.
+* :func:`wire_real_objective_entry` attaches an
   :class:`ObjectiveEntryAdapter` to ``AppState`` (the ``POST
-  /objectives`` path).
+  /objectives`` path); no project is seeded here, the adapter mints its
+  own per-initiative project per submission.
 * :func:`wire_real_task_board_entry` attaches a
   :class:`TaskBoardEntryAdapter` to ``AppState`` (the ``POST /tasks``
   path). The board input carries its own project, so no project
@@ -261,6 +263,12 @@ async def wire_real_intake_entry(
         app_state.swap_intake_entry_adapter(adapter)
     else:
         app_state.set_intake_entry_adapter_if_absent(adapter)
+    logger.info(
+        CLIENT_SIMULATION_RUNTIME_WIRED,
+        service="intake_entry_adapter",
+        mode="enabled",
+        note="client intake door on; adapter wired",
+    )
 
 
 async def wire_real_objective_entry(
@@ -307,6 +315,12 @@ async def wire_real_objective_entry(
         app_state.swap_objective_entry_adapter(adapter)
     else:
         app_state.set_objective_entry_adapter_if_absent(adapter)
+    logger.info(
+        OBJECTIVE_ENTRY_WIRED,
+        service="objective_entry_adapter",
+        mode="enabled",
+        note="objective entry adapter wired",
+    )
 
 
 async def _ensure_project(

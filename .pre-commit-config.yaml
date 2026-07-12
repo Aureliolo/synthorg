@@ -750,7 +750,7 @@ repos:
         name: import-linter layering contracts
         entry: uv run python scripts/lint_imports.py --config .importlinter
         language: system
-        files: ^(src/synthorg/.*\.py|\.importlinter|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/.*\.py|scripts/lint_imports\.py|\.importlinter|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

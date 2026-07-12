@@ -171,22 +171,20 @@ def test_payload_rejects_blank_fields() -> None:
         SubmitObjectivePayload(title="   ", description="d", requested_by="r")
 
 
-async def test_submit_rejects_unknown_enum_string() -> None:
-    """A bogus enum string in the payload surfaces as ValidationError.
+def test_submit_rejects_unknown_enum_string() -> None:
+    """A bogus enum value is rejected at the payload boundary.
 
-    The HTTP payload accepts ``priority`` / ``estimated_complexity`` /
-    ``task_type`` as strings (Litestar deserialises whatever the client
-    sends). ``_build_submission`` then constructs
-    :class:`ObjectiveSubmission` which coerces the string against the
-    real enum; an unknown value must fail loudly rather than silently
-    falling through.
+    ``priority`` / ``estimated_complexity`` / ``task_type`` are typed as
+    the real :class:`Priority` / :class:`Complexity` / :class:`TaskType`
+    enums, so Litestar validates them when it builds the payload from the
+    request body. An unknown value fails there (a structured 400 at the
+    HTTP boundary), never reaching the controller to raise an unguarded
+    500.
     """
-    app_state, _ = _state_with_recording_adapter()
-    bogus = SubmitObjectivePayload(
-        title="t",
-        description="d",
-        requested_by="r",
-        priority="BOGUS_PRIORITY",
-    )
     with pytest.raises(ValidationError):
-        await submit_objective_impl(app_state, bogus)
+        SubmitObjectivePayload(
+            title="t",
+            description="d",
+            requested_by="r",
+            priority="BOGUS_PRIORITY",  # type: ignore[arg-type]
+        )

@@ -29,6 +29,7 @@ from synthorg.engine.pipeline.models import (
 )
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
+from synthorg.settings.state import settings_service_of
 from tests._shared import LoopAsyncClient
 from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
@@ -349,6 +350,61 @@ class TestRequestController:
             rid = submit.json()["data"]["request_id"]
             approve = await client.post(f"/api/v1/requests/{rid}/approve")
             assert approve.status_code == 409
+
+    async def test_approve_door_opens_live_via_settings_write(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """A live settings write opens the door on the same app, no restart.
+
+        The client-intake door is off by default (503). Flipping
+        ``simulations.client_intake_enabled`` to ``true`` through the live
+        settings service (DB-backed; the resolver reads DB first) makes the
+        very next ``/approve`` on the SAME running app succeed with 202: the
+        per-request feature gate re-reads the flag live, and the injected
+        adapter is already wired, so no restart is needed.
+        """
+        client, sim_state = _build_client_with_adapter(
+            fake_persistence,
+            fake_message_bus,
+        )
+        async with client:
+            client.headers.update(make_auth_headers("ceo"))
+            await client.post(
+                "/api/v1/clients/",
+                json={"client_id": "live", "name": "Live", "persona": "P"},
+            )
+            submit = await client.post(
+                "/api/v1/requests/",
+                json={
+                    "client_id": "live",
+                    "requirement": {"title": "T", "description": "D"},
+                },
+            )
+            rid = submit.json()["data"]["request_id"]
+
+            # Off by default -> honest 503, no state mutation.
+            first = await client.post(f"/api/v1/requests/{rid}/approve")
+            assert first.status_code == 503
+
+            # Flip the flag live through the settings service (DB write).
+            app_state = client.app.state.app_state
+            await settings_service_of(app_state).set(
+                "simulations",
+                "client_intake_enabled",
+                "true",
+            )
+
+            # Same app, next request: the gate re-reads live -> 202.
+            approve = await client.post(f"/api/v1/requests/{rid}/approve")
+            assert approve.status_code == 202
+            assert approve.json()["data"]["status"] == "approved"
+
+            # Drain the detached pipeline task rather than leak it past the test.
+            pending = list(sim_state.background_tasks)
+            if pending:
+                await asyncio.gather(*pending)
 
     async def test_approve_accepts_and_spawns_pipeline(
         self,
