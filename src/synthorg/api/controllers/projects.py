@@ -76,6 +76,7 @@ async def _cascade_supersede_children(
     persistence = persistence_of(app_state)
     plan_service = PlanService(repo=persistence.plans, clock=app_state.clock)
     offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         plans = await persistence.plans.query(
             PlanFilterSpec(project=project_id),
@@ -91,6 +92,7 @@ async def _cascade_supersede_children(
 
     task_engine = task_engine_of(app_state)
     offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         tasks = await persistence.tasks.query(
             TaskFilterSpec(project=project_id),
