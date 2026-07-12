@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -61,8 +62,10 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
     PIPELINE_PLAN_REVIEW_REQUESTED,
+    PIPELINE_PROJECT_LEAD_ORPHANED,
     PIPELINE_PROJECT_LEAD_STAMPED,
     PIPELINE_PROJECT_NOT_FOUND,
+    PIPELINE_PROJECT_ROSTER_EMPTY,
     PIPELINE_REFINEMENT_REQUESTED,
     PIPELINE_ROUTING_UNDECIDABLE,
     PIPELINE_RUN_COMPLETED,
@@ -134,6 +137,7 @@ class DefaultWorkPipeline:
         "_intake_engine",
         "_narrator",
         "_plan_review_gate",
+        "_project_locks",
         "_project_repository",
         "_refinement_router",
         "_routing_policy",
@@ -176,6 +180,10 @@ class DefaultWorkPipeline:
         self._narrator: RunNarrator | None = None
         self._refinement_router: WorkRefinementRouter | None = None
         self._plan_review_gate: PlanReviewGate | None = None
+        # Serialises the owner read-modify-write per project so two concurrent
+        # work items for the same project cannot both observe an unled project
+        # and race to stamp a different lead (lost update on ``Project.lead``).
+        self._project_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
         """Attach the post-run narrator (documentary mode).
@@ -302,11 +310,11 @@ class DefaultWorkPipeline:
                 terminal task state.
         """
         try:
-            owner = await self._phase(
+            owner, active = await self._phase(
                 phases, _PHASE_PROJECTS, self._resolve_project(work_item, task)
             )
             verdict, agents = await self._phase(
-                phases, _PHASE_DECOMPOSE, self._decompose(task)
+                phases, _PHASE_DECOMPOSE, self._decompose(task, active)
             )
             # A charter/objective is a brief to be planned, so it must never
             # collapse to a single solo agent: force the splittable path and
@@ -640,18 +648,23 @@ class DefaultWorkPipeline:
 
     async def _resolve_project(
         self, work_item: WorkItem, task: Task
-    ) -> AgentIdentity | None:
+    ) -> tuple[AgentIdentity | None, tuple[AgentIdentity, ...]]:
         """Bind the work to its project and staff an accountable owner.
 
-        Beyond the existence check, this staffs a single owner for the
+        Beyond the existence check, this staffs a single owner for a planned
         initiative from the standing roster: a greenlit objective is owned,
         never run anonymously. The owner is stamped as the project's durable
         ``lead`` (idempotently: an already-led project keeps its lead) and
-        returned so the planning stage can run AS the owner.
+        returned so the planning stage can run AS the owner. The active roster
+        is read once here and threaded out so the decompose phase reuses it
+        rather than issuing a second registry read per run.
 
         Returns:
-            The owning :class:`AgentIdentity`, or ``None`` when the roster is
-            empty (the initiative proceeds unowned).
+            A ``(owner, active_agents)`` pair. ``owner`` is ``None`` when the
+            work is a one-off leaf task (not a planned initiative), when the
+            roster is empty, or when an already-led project's lead no longer
+            resolves to a known agent (an orphaned lead). ``active_agents`` is
+            the active roster snapshot for the run.
 
         Raises:
             ProjectNotFoundError: If the project referenced by
@@ -665,16 +678,53 @@ class DefaultWorkPipeline:
                 error_type=ProjectNotFoundError.__name__,
             )
             raise ProjectNotFoundError(project_id=work_item.project)
+        active = await self._agent_registry.list_active()
         # Only a planned initiative (a greenlit objective / charter) is
         # staffed with an accountable owner. A one-off leaf task landing in an
         # existing project must never hijack that project's lead.
         if not work_item.plan_required:
+            return None, active
+        async with self._project_locks.acquire(work_item.project):
+            owner = await self._staff_owner_locked(work_item, task, active)
+        return owner, active
+
+    async def _staff_owner_locked(
+        self,
+        work_item: WorkItem,
+        task: Task,
+        active: tuple[AgentIdentity, ...],
+    ) -> AgentIdentity | None:
+        """Resolve or stamp the project's owner while holding the project lock.
+
+        Re-reads the project under the per-project lock so a lead stamped by a
+        concurrent run for the same project is observed here (no lost update on
+        ``Project.lead``). An already-led project resolves its lead via the
+        registry regardless of status, so a paused or offboarded lead is
+        surfaced as an orphan rather than silently dropped.
+
+        Returns:
+            The owning :class:`AgentIdentity`, or ``None`` when the project
+            vanished mid-flight, the durable lead no longer resolves, the
+            roster is empty, or the selector abstains.
+        """
+        project = await self._project_repository.get(work_item.project)
+        if project is None:
             return None
-        active = await self._agent_registry.list_active()
         if project.lead is not None:
-            # An already-led project keeps its durable lead; resolve that
-            # agent from the active pool so planning still runs as the owner.
-            return next((a for a in active if str(a.id) == project.lead), None)
+            owner = await self._agent_registry.get(project.lead)
+            if owner is None:
+                logger.warning(
+                    PIPELINE_PROJECT_LEAD_ORPHANED,
+                    project=work_item.project,
+                    lead=project.lead,
+                )
+            return owner
+        if not active:
+            logger.warning(
+                PIPELINE_PROJECT_ROSTER_EMPTY,
+                project=work_item.project,
+            )
+            return None
         owner = select_project_owner(task, active, scorer=self._scorer)
         if owner is None:
             return None
@@ -691,19 +741,18 @@ class DefaultWorkPipeline:
     async def _decompose(
         self,
         task: Task,
+        agents: tuple[AgentIdentity, ...],
     ) -> tuple[RoutingVerdict, tuple[AgentIdentity, ...]]:
-        """Fetch the active-agent pool and decide solo-vs-team.
+        """Decide solo-vs-team over the run's active-agent roster.
 
-        Both the agent-registry lookup and the routing decision run
-        inside the decompose phase so registry errors and lookup
-        latency are captured by the phase telemetry.
+        The roster is resolved once in the project phase and threaded in, so
+        the routing decision reuses it rather than issuing a second registry
+        read per run.
 
         Returns:
-            ``(verdict, agents)`` where ``verdict`` is the
-            solo-vs-team decision and ``agents`` is the tuple of
-            active agents passed to the routing policy.
+            ``(verdict, agents)`` where ``verdict`` is the solo-vs-team
+            decision and ``agents`` is the roster passed to the routing policy.
         """
-        agents = await self._agent_registry.list_active()
         verdict = await self._routing_policy.decide(task=task, available_agents=agents)
         return verdict, agents
 

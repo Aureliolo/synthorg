@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Coordination namespace setting definitions."""
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -84,15 +85,58 @@ _r.register(
         description=(
             "How the coordinator turns a greenlit objective into a plan."
             " 'agent-session' (default) runs a bounded planning session as the"
-            " staffed owner: the owner researches with any granted tools,"
-            " drafts subtasks with per-item expected artifacts and acceptance"
-            " criteria, self-reviews, then submits the plan (falling back to a"
-            " single LLM call when no owner is staffed). 'llm' uses one"
-            " structured LLM call. Resolved at boot; a runtime change applies"
-            " on the next coordinator rebuild (provider re-init)."
+            " staffed owner: the owner reasons across turns, researches with"
+            " any read-only tools it is granted (none are wired by default"
+            " until a decomposition tool provider is supplied), drafts subtasks"
+            " with per-item expected artifacts and acceptance criteria,"
+            " self-reviews, then submits the plan (falling back to a single LLM"
+            " call when no owner is staffed or no plan is submitted). 'llm' uses"
+            " one structured LLM call. Resolved at boot; a runtime change"
+            " applies on the next coordinator rebuild (provider re-init)."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_agent_max_turns",
+        type=SettingType.INTEGER,
+        default="12",
+        description=(
+            "Hard turn cap for the 'agent-session' decomposer's owner-run"
+            " planning loop: the maximum number of research/self-review turns"
+            " before the owner must submit a plan. Ignored by the 'llm'"
+            " strategy. Resolved at boot; a runtime change applies on the next"
+            " coordinator rebuild (provider re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_agent_cost_ceiling",
+        type=SettingType.FLOAT,
+        default="2.0",
+        description=(
+            "Per-session spend ceiling (base currency) for the 'agent-session'"
+            " decomposer's planning loop: the session halts once accumulated"
+            " cost reaches it, then falls back to a single LLM call if no plan"
+            " was submitted. Ignored by the 'llm' strategy. Resolved at boot; a"
+            " runtime change applies on the next coordinator rebuild (provider"
+            " re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=0.01,
+        max_value=100.0,
     )
 )
 

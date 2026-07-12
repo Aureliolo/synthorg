@@ -23,6 +23,10 @@ DECOMPOSITION_SESSION_STARTED: Final[str] = "decomposition.session.started"
 DECOMPOSITION_SESSION_COMPLETED: Final[str] = "decomposition.session.completed"
 DECOMPOSITION_SESSION_NO_PLAN: Final[str] = "decomposition.session.no_plan"
 DECOMPOSITION_SESSION_FALLBACK: Final[str] = "decomposition.session.fallback"
+DECOMPOSITION_SESSION_TOOL_DROPPED: Final[str] = "decomposition.session.tool_dropped"
+DECOMPOSITION_SESSION_DUPLICATE_SUBMIT: Final[str] = (
+    "decomposition.session.duplicate_submit"
+)
 
 # Coordination-constraints middleware received an empty plan text from
 # the LLM.  Caller falls back to a default plan; the event preserves the

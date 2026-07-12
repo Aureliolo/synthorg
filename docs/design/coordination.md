@@ -578,15 +578,19 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
 1. **Decompose**: `DecompositionService` breaks the parent task into subtasks
    with a dependency DAG via a pluggable `DecompositionStrategy` selected by the
    `coordination.decomposition_strategy` setting (`StrategyRegistry` in
-   `coordination/factory.py`):
+   `engine/coordination/factory.py`):
    - **`agent-session`** (default): a bounded agent session runs AS the staffed
      project owner (`DecompositionContext.owner_identity`, resolved and stamped
      onto `Project.lead` in the work pipeline). The owner reasons across turns,
-     may call granted read/research tools (memory recall, project brain, web
-     search when configured), self-reviews, and submits the plan through a
-     terminal `submit_decomposition_plan` tool. With no owner staffed, or if the
-     session submits no usable plan, it degrades to the single-shot strategy so a
-     greenlight is never blocked.
+     may call any read-only tools it is granted (a decomposition tool provider
+     supplies them; none are wired by default, and any non-read-only tool is
+     dropped before the session runs), self-reviews, and submits the plan
+     through a terminal `submit_decomposition_plan` tool. The turn cap and
+     per-session spend ceiling come from
+     `coordination.decomposition_agent_max_turns` /
+     `coordination.decomposition_agent_cost_ceiling`. With no owner staffed, or
+     if the session submits no usable plan, it degrades to the single-shot
+     strategy so a greenlight is never blocked.
    - **`llm`**: one structured LLM tool call produces the plan.
 
    Both strategies emit per-subtask `expected_artifacts` + `acceptance_criteria`,

@@ -61,6 +61,8 @@ _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
 _DECOMPOSITION_STRATEGY_KEY: str = "decomposition_strategy"
+_DECOMPOSITION_AGENT_MAX_TURNS_KEY: str = "decomposition_agent_max_turns"
+_DECOMPOSITION_AGENT_COST_CEILING_KEY: str = "decomposition_agent_cost_ceiling"
 _MIDDLEWARE_KEY: str = "enable_coordination_middleware"
 _ROUTING_POLICY_KEY: str = "routing_policy"
 _LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
@@ -157,40 +159,58 @@ async def _resolve_coordinator_dependencies(
 ) -> tuple[
     str,
     str,
+    int,
+    float,
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
     bool,
 ]:
-    """Resolve decomposition model/strategy, scorer, workspace, middleware.
+    """Resolve decomposition model/strategy, session tuning, scorer, workspace.
 
     The resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
-    failure cancels the siblings and propagates). The middleware-enabled
-    flag is resolved here too so every remote read happens in one group
-    rather than a serial tail read at the build site.
+    failure cancels the siblings and propagates). The agent-session turn cap
+    and spend ceiling plus the middleware-enabled flag are resolved here too
+    so every remote read happens in one group rather than serial tail reads at
+    the build site.
 
     Returns:
-        A ``(decomposition_model, decomposition_strategy, routing_scorer_config,
-        (workspace_strategy, workspace_config), middleware_enabled)`` tuple.
+        A ``(decomposition_model, decomposition_strategy,
+        agent_session_max_turns, agent_session_cost_ceiling,
+        routing_scorer_config, (workspace_strategy, workspace_config),
+        middleware_enabled)`` tuple.
     """
     try:
         async with asyncio.TaskGroup() as tg:
+            resolver = config_resolver_of(app_state)
             model_task = tg.create_task(
-                config_resolver_of(app_state).get_str(
+                resolver.get_str(
                     _DECOMPOSITION_NS,
                     _DECOMPOSITION_KEY,
                 )
             )
             strategy_task = tg.create_task(
-                config_resolver_of(app_state).get_str(
+                resolver.get_str(
                     _DECOMPOSITION_NS,
                     _DECOMPOSITION_STRATEGY_KEY,
+                )
+            )
+            max_turns_task = tg.create_task(
+                resolver.get_int(
+                    _DECOMPOSITION_NS,
+                    _DECOMPOSITION_AGENT_MAX_TURNS_KEY,
+                )
+            )
+            cost_ceiling_task = tg.create_task(
+                resolver.get_float(
+                    _DECOMPOSITION_NS,
+                    _DECOMPOSITION_AGENT_COST_CEILING_KEY,
                 )
             )
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
             workspace_task = tg.create_task(_build_workspace_strategy(app_state))
             middleware_task = tg.create_task(
-                config_resolver_of(app_state).get_bool(
+                resolver.get_bool(
                     _DECOMPOSITION_NS,
                     _MIDDLEWARE_KEY,
                 )
@@ -209,6 +229,8 @@ async def _resolve_coordinator_dependencies(
     return (
         model_task.result(),
         strategy_task.result(),
+        max_turns_task.result(),
+        cost_ceiling_task.result(),
         scorer_task.result(),
         workspace_task.result(),
         middleware_task.result(),
@@ -291,12 +313,13 @@ async def _build_runtime_coordinator(
 ) -> tuple[MultiAgentCoordinator, AgentTaskScorer, CompletionProvider, str]:
     """Build the coordinator and the shared scorer + decomposition binding.
 
-    Resolves the operator-tuned decomposition model reference and
-    routing-scorer weights, wires real git-worktree workspace isolation,
-    then delegates to the unit-tested :func:`build_coordinator` factory. The
-    four resolution steps are independent, so they run concurrently under a
-    ``TaskGroup`` to keep boot latency down (structured concurrency: any
-    failure cancels the siblings and propagates). The ``AgentTaskScorer``
+    Resolves the operator-tuned decomposition model reference, agent-session
+    turn cap + spend ceiling, and routing-scorer weights, wires real
+    git-worktree workspace isolation, then delegates to the unit-tested
+    :func:`build_coordinator` factory. The resolution steps are independent, so
+    they run concurrently under a ``TaskGroup`` to keep boot latency down
+    (structured concurrency: any failure cancels the siblings and
+    propagates). The ``AgentTaskScorer``
     is constructed here and injected into the coordinator so the work
     pipeline's solo-path selection can share the very same instance
     (one routing surface, no divergence). The resolved decomposition
@@ -317,6 +340,8 @@ async def _build_runtime_coordinator(
     (
         raw_decomposition_ref,
         decomposition_strategy,
+        agent_session_max_turns,
+        agent_session_cost_ceiling,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
         middleware_enabled,
@@ -364,6 +389,10 @@ async def _build_runtime_coordinator(
         if project_workspace_service is not None
         else None
     )
+    # The agent-session decomposer records its planning spend against the
+    # shared cost tracker under the owner + objective task, so charter
+    # planning is attributed rather than silently unmetered.
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     # ``AgentEngineExecutionService`` provisions the per-project workspace
     # lazily on first task; bare construction (no service) keeps the
     # persistence-less dev paths working as before.
@@ -374,6 +403,9 @@ async def _build_runtime_coordinator(
         provider=decomp_provider,
         decomposition_model=decomposition_model,
         decomposition_strategy=decomposition_strategy,
+        decomposition_cost_tracker=cost_tracker,
+        agent_session_max_turns=agent_session_max_turns,
+        agent_session_cost_ceiling=agent_session_cost_ceiling,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,

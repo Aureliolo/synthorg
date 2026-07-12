@@ -124,9 +124,7 @@ class TestPlanFromDecomposition:
     def test_artifacts_and_criteria_projected_from_subtask(self) -> None:
         # The subtask-level expected_artifacts + acceptance_criteria must land
         # on the plan item so the durable plan (and every task built from it)
-        # arms the fail-loud zero-artifact guard. This closes the source-side
-        # break: before, SubtaskDefinition carried no such fields, so the plan
-        # items were always empty and the guard stayed disarmed.
+        # arms the fail-loud zero-artifact guard.
         decomposition = DecompositionResult(
             plan=DecompositionPlan(
                 parent_task_id=sid("root"),

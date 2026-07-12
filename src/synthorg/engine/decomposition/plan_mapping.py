@@ -12,39 +12,18 @@ owns both directions so the gate, the API, and the resume path stay in step.
 from datetime import datetime
 from uuid import UUID
 
-from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-
-
-def _expected_artifact(spec: NotBlankStr) -> ExpectedArtifact:
-    """Project a free-text expected-artifact spec onto a typed declaration.
-
-    The plan item carries the artifact as free text; the type is inferred from
-    the path so the dispatched task's fail-loud zero-artifact guard has a typed
-    declaration to check against, defaulting to ``CODE``.
-
-    Returns:
-        An :class:`ExpectedArtifact` with an inferred type and the spec as its
-        path.
-    """
-    lowered = spec.lower()
-    if "test" in lowered:
-        artifact_type = ArtifactType.TESTS
-    elif lowered.endswith(".md") or "doc" in lowered:
-        artifact_type = ArtifactType.DOCUMENTATION
-    else:
-        artifact_type = ArtifactType.CODE
-    return ExpectedArtifact(type=artifact_type, path=spec)
 
 
 def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
@@ -164,7 +143,7 @@ def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
             AcceptanceCriterion(description=c) for c in item.acceptance_criteria
         ),
         artifacts_expected=tuple(
-            _expected_artifact(a) for a in item.expected_artifacts
+            expected_artifact_from_spec(a) for a in item.expected_artifacts
         ),
         status=TaskStatus.CREATED,
         estimated_complexity=item.estimated_complexity,

@@ -5,9 +5,10 @@ to decompose a parent task into executable subtasks.
 """
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.dag import DependencyGraph
@@ -145,6 +146,14 @@ class DecompositionService:
                 parent_task_id=str(task.id),
                 delegation_chain=task.delegation_chain,
                 dependencies=subtask_def.dependencies,
+                acceptance_criteria=tuple(
+                    AcceptanceCriterion(description=c)
+                    for c in subtask_def.acceptance_criteria
+                ),
+                artifacts_expected=tuple(
+                    expected_artifact_from_spec(a)
+                    for a in subtask_def.expected_artifacts
+                ),
                 status=TaskStatus.CREATED,
                 estimated_complexity=subtask_def.estimated_complexity,
                 stakes=subtask_def.stakes,

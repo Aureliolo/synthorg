@@ -37,9 +37,10 @@ class SubtaskDefinition(BaseModel):
             matched-skill tags cover every required tag.  Empty tuple
             disables the tag-match tier.
         required_role: Optional role name for routing.
-        expected_artifacts: Deliverables this subtask must produce.  A
-            non-empty tuple arms the fail-loud zero-artifact guard once the
-            subtask runs, so a solo agent cannot park an empty "done".
+        expected_artifacts: Deliverables this subtask must produce.  When
+            non-empty, these project onto the dispatched task's
+            ``artifacts_expected`` and arm the fail-loud zero-artifact guard,
+            so the subtask cannot terminate a success having produced nothing.
         acceptance_criteria: Per-subtask criteria that define "done" for it.
     """
 

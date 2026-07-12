@@ -5,10 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.config.agent_schema import TaskAssignmentConfig
-from synthorg.engine.coordination.factory import (
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.coordination.decomposition_strategy_factory import (
     _NoProviderDecompositionStrategy,
-    build_coordinator,
 )
+from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
@@ -17,13 +18,15 @@ from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
+from synthorg.engine.shutdown import ShutdownManager
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.providers.protocol import CompletionProvider
 
 
 def _mock_engine() -> MagicMock:
-    """Create a mock AgentEngine for the factory."""
-    return MagicMock()
+    """Create a spec'd mock AgentEngine for the factory."""
+    return MagicMock(spec=AgentEngine)
 
 
 @pytest.mark.unit
@@ -40,7 +43,7 @@ class TestBuildCoordinator:
 
     def test_with_provider_and_model(self) -> None:
         """Provider and model are wired into decomposition strategy."""
-        provider = AsyncMock()
+        provider = AsyncMock(spec=CompletionProvider)
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
@@ -66,7 +69,7 @@ class TestBuildCoordinator:
 
     def test_with_task_engine(self) -> None:
         """task_engine is wired into the coordinator."""
-        task_engine = AsyncMock()
+        task_engine = AsyncMock(spec=TaskEngine)
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
@@ -84,7 +87,7 @@ class TestBuildCoordinator:
             WorkspaceIsolationService,
         )
 
-        ws_strategy = MagicMock()
+        ws_strategy = MagicMock(spec=WorkspaceIsolationStrategy)
         ws_config = WorkspaceIsolationConfig()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
@@ -109,7 +112,7 @@ class TestBuildCoordinator:
 
     def test_shutdown_manager_passed_to_executor(self) -> None:
         """shutdown_manager is forwarded to the parallel executor."""
-        shutdown_mgr = MagicMock()
+        shutdown_mgr = MagicMock(spec=ShutdownManager)
         engine = _mock_engine()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),

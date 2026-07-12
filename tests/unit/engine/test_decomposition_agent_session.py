@@ -1,10 +1,11 @@
 """Tests for the owner-run agent-session decomposition strategy."""
 
+from types import SimpleNamespace
 from typing import override
 from uuid import UUID
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
@@ -20,7 +21,10 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.tools.base import ToolExecutionResult
+from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.errors import DecompositionDepthError
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
 from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -178,3 +182,134 @@ class TestSubmitDecompositionPlanTool:
         result = await tool.execute(arguments={"subtasks": "not-a-list"})
         assert result.is_error
         assert capture.plan is None
+
+    async def test_double_submit_overwrites_with_latest(self) -> None:
+        capture = _PlanCapture()
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        await tool.execute(arguments=dict(_plan_args()))
+        assert capture.plan is not None
+        assert len(capture.plan.subtasks) == 2
+        # A second submission supersedes the first (the agent revised).
+        single: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "s1",
+                    "title": "Only subtask",
+                    "description": "d",
+                    "expected_artifacts": ["src/only.tsx"],
+                    "acceptance_criteria": ["works"],
+                }
+            ],
+            "task_structure": "sequential",
+            "coordination_topology": "auto",
+        }
+        await tool.execute(arguments=single)
+        assert capture.plan is not None
+        assert len(capture.plan.subtasks) == 1
+
+
+class _FixedTool(BaseTool):
+    """A no-op tool whose action type is derived from its category."""
+
+    def __init__(self, *, name: str, category: ToolCategory) -> None:
+        super().__init__(
+            name=name,
+            description=f"{name} tool",
+            parameters_schema={"type": "object", "properties": {}},
+            category=category,
+        )
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        del arguments
+        return ToolExecutionResult(content="ok")
+
+
+class _ListToolProvider:
+    """Decomposition tool provider returning a fixed tool list."""
+
+    def __init__(self, tools: tuple[BaseTool, ...]) -> None:
+        self._tools = tools
+
+    def build_tools(
+        self, *, owner_id: str, project_id: str | None
+    ) -> tuple[BaseTool, ...]:
+        del owner_id, project_id
+        return self._tools
+
+
+class TestReadOnlyToolBoundary:
+    def test_write_tools_are_dropped(self) -> None:
+        # MEMORY -> memory:read (read-only); VERSION_CONTROL -> vcs:commit
+        # (write). Only the read-only tool survives into the session.
+        provider: DecompositionToolProvider = _ListToolProvider(
+            (
+                _FixedTool(name="recall", category=ToolCategory.MEMORY),
+                _FixedTool(name="commit", category=ToolCategory.VERSION_CONTROL),
+            )
+        )
+        strategy = AgentSessionDecompositionStrategy(
+            provider=ScriptedProvider([]),
+            fallback=_SentinelFallback(),
+            tool_provider=provider,
+        )
+        kept = strategy._planning_tools(_task(), make_e2e_identity())
+        assert [tool.name for tool in kept] == ["recall"]
+
+    def test_no_provider_yields_no_planning_tools(self) -> None:
+        strategy = _strategy(ScriptedProvider([]), _SentinelFallback())
+        assert strategy._planning_tools(_task(), make_e2e_identity()) == ()
+
+
+class TestAgentSessionGuards:
+    async def test_over_max_subtasks_falls_back(self) -> None:
+        # The session submits 2 subtasks but the context caps at 1, so the
+        # oversized plan is rejected and the fallback runs.
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("done"),
+            ]
+        )
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(
+            owner_identity=make_e2e_identity(), max_subtasks=1
+        )
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert fallback.called
+        assert plan is fallback.plan
+
+    async def test_depth_limit_raises(self) -> None:
+        strategy = _strategy(ScriptedProvider([]), _SentinelFallback())
+        context = DecompositionContext(
+            owner_identity=make_e2e_identity(),
+            current_depth=3,
+            max_depth=3,
+        )
+        with pytest.raises(DecompositionDepthError):
+            await strategy.decompose(_task(), context)
+
+    def test_budget_checker_halts_at_ceiling(self) -> None:
+        strategy = AgentSessionDecompositionStrategy(
+            provider=ScriptedProvider([]),
+            fallback=_SentinelFallback(),
+            config=AgentSessionDecompositionConfig(cost_ceiling=1.5),
+        )
+        checker = strategy._budget_checker()
+        below = SimpleNamespace(accumulated_cost=SimpleNamespace(cost=1.0))
+        at_ceiling = SimpleNamespace(accumulated_cost=SimpleNamespace(cost=1.5))
+        assert checker(below) is False  # type: ignore[arg-type]
+        assert checker(at_ceiling) is True  # type: ignore[arg-type]
+
+
+class TestAgentSessionConfig:
+    def test_rejects_out_of_range_turns(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentSessionDecompositionConfig(max_turns=100)
+
+    def test_rejects_non_positive_ceiling(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentSessionDecompositionConfig(cost_ceiling=0.0)

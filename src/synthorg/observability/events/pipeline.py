@@ -18,6 +18,12 @@ PIPELINE_PROJECT_OWNER_SELECTED: Final[str] = "pipeline.project.owner_selected"
 PIPELINE_PROJECT_LEAD_STAMPED: Final[str] = "pipeline.project.lead_stamped"
 """The staffed owner was persisted as the project's durable lead."""
 
+PIPELINE_PROJECT_LEAD_ORPHANED: Final[str] = "pipeline.project.lead_orphaned"
+"""A project's durable lead no longer resolves to a known agent."""
+
+PIPELINE_PROJECT_ROSTER_EMPTY: Final[str] = "pipeline.project.roster_empty"
+"""No agents exist to staff as the initiative's owner."""
+
 PIPELINE_WORK_INTAKE_REJECTED: Final[str] = "pipeline.work_intake.rejected"
 """Work intake rejected the request (or produced no usable task)."""
 

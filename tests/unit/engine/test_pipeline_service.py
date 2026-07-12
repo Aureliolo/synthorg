@@ -1,9 +1,11 @@
 """Unit tests for the default work pipeline service."""
 
+import asyncio
 from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.project import Project
@@ -140,6 +142,7 @@ def _pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
         "worker": worker,
         "task_engine": task_engine,
         "project_repo": project_repo,
+        "registry": registry,
     }
     return pipeline, handles
 
@@ -455,6 +458,9 @@ class TestOwnerStaffing:
             coordinator=coordinator,
             agents=(owner,),
         )
+        # The durable lead resolves via the registry regardless of status, so
+        # a paused or offboarded lead is still threaded in rather than dropped.
+        cast("AsyncMock", handles["registry"]).get.return_value = owner
         gate = mock_of[PlanReviewGate](
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
@@ -469,8 +475,132 @@ class TestOwnerStaffing:
         await pipeline.run(_work_item(plan_required=True))
 
         # An already-led project is not re-stamped, and the existing lead is
-        # resolved from the roster and threaded into planning.
+        # resolved via the registry and threaded into planning.
         cast("AsyncMock", handles["project_repo"]).update.assert_not_awaited()
+        cast("AsyncMock", handles["registry"]).get.assert_awaited_once_with(
+            str(owner.id)
+        )
+
+    async def test_orphaned_lead_proceeds_unowned(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(lead="ghost-agent"),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        # The durable lead no longer resolves to a known agent (offboarded).
+        cast("AsyncMock", handles["registry"]).get.return_value = None
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=1,
+                    detail="1 subtask awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        await pipeline.run(_work_item(plan_required=True))
+
+        # An orphaned lead is not re-stamped; planning proceeds unowned rather
+        # than threading a phantom identity.
+        cast("AsyncMock", handles["project_repo"]).update.assert_not_awaited()
+        ctx = coordinator.plan_preview.await_args.args[0]
+        assert ctx.decomposition_context.owner_identity is None
+
+    async def test_empty_roster_stamps_no_lead(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(lead=None),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(),
+        )
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=1,
+                    detail="1 subtask awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        # With no agent to staff, owner resolution yields no lead (the
+        # roster-empty path); the run then fails downstream because a team
+        # plan needs at least one agent. The critical invariant is that no
+        # phantom lead is stamped on the way to that failure.
+        with pytest.raises(ValidationError):
+            await pipeline.run(_work_item(plan_required=True))
+        cast("AsyncMock", handles["project_repo"]).update.assert_not_awaited()
+
+    async def test_concurrent_runs_stamp_a_single_lead(self) -> None:
+        """The per-project lock serialises the owner read-modify-write.
+
+        Two concurrent runs for the same unled project must not both observe
+        ``lead is None`` and race to stamp a different lead: the first stamps,
+        the second re-reads under the lock and resolves the stamped lead.
+        """
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(lead=None),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        owner = cast("AgentIdentity", handles["identity"])
+        # A stateful project store: ``update`` persists the stamped lead so the
+        # second run's re-read under the lock observes it.
+        stored = {"project": _project(lead=None)}
+
+        async def _get(_project_id: str) -> Project:
+            return stored["project"]
+
+        async def _update(project: Project) -> Project:
+            stored["project"] = project
+            return project
+
+        project_repo = cast("AsyncMock", handles["project_repo"])
+        project_repo.get.side_effect = _get
+        project_repo.update.side_effect = _update
+        cast("AsyncMock", handles["registry"]).get.return_value = owner
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=1,
+                    detail="1 subtask awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        await asyncio.gather(
+            pipeline.run(_work_item(plan_required=True)),
+            pipeline.run(_work_item(plan_required=True)),
+        )
+
+        # Exactly one stamp survives, and both runs agree on the same lead.
+        project_repo.update.assert_awaited_once()
+        assert stored["project"].lead == str(owner.id)
         ctx = coordinator.plan_preview.await_args.args[0]
         assert ctx.decomposition_context.owner_identity is not None
         assert ctx.decomposition_context.owner_identity.id == owner.id

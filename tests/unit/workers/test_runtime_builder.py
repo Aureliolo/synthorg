@@ -147,8 +147,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
         task_engine=mock_of[TaskEngine](),
         agent_registry=AgentRegistryService(),
         # A real store: the engine builder's ``require_service`` needs a
-        # wired approval store. The old ``mock_of[AppState]`` auto-filled
-        # the slice read, masking that requirement with ``approval_store=None``.
+        # wired approval store, so the slice read must resolve to a real one.
         approval_store=ApprovalStore(),
         client_simulation_state=(
             mock_of[ClientSimulationState](

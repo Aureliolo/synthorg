@@ -14,7 +14,7 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import cast, override
+from typing import Final, cast, override
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -25,10 +25,8 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
-from synthorg.engine.decomposition.llm_prompt import (
-    args_to_decomposition_plan,
-    build_decomposition_tool,
-)
+from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
+from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -36,22 +34,28 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import DecompositionDepthError, DecompositionError
-from synthorg.engine.loop_protocol import BudgetChecker
+from synthorg.engine.loop_protocol import (
+    BudgetChecker,
+    ExecutionResult,
+    ShutdownChecker,
+)
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_COMPLETED,
+    DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
     DECOMPOSITION_SESSION_FALLBACK,
     DECOMPOSITION_SESSION_NO_PLAN,
     DECOMPOSITION_SESSION_STARTED,
+    DECOMPOSITION_SESSION_TOOL_DROPPED,
     DECOMPOSITION_VALIDATION_ERROR,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
-from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
@@ -59,6 +63,22 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 _STRATEGY_NAME = "agent-session"
+
+# A planning session may only be granted tools that observe state, never ones
+# that mutate it: the objective text is attacker-controllable, so an
+# LLM-driven write tool would execute ungated. Any provided tool whose action
+# type is outside this read-only allowlist is dropped before the session runs.
+_READ_ONLY_ACTION_TYPES: Final[frozenset[ActionType]] = frozenset(
+    {
+        ActionType.CODE_READ,
+        ActionType.VCS_READ,
+        ActionType.DB_QUERY,
+        ActionType.MEMORY_READ,
+        ActionType.EXTERNAL_DATA_REQUEST,
+        ActionType.RESEARCH_RUN,
+        ActionType.BROWSER_NAVIGATE,
+    }
+)
 
 
 class AgentSessionDecompositionConfig(BaseModel):
@@ -106,7 +126,7 @@ class SubmitDecompositionPlanTool(BaseTool):
     within the same session.
     """
 
-    def __init__(self, *, parent_task_id: str, capture: _PlanCapture) -> None:
+    def __init__(self, *, parent_task_id: NotBlankStr, capture: _PlanCapture) -> None:
         super().__init__(
             name="submit_decomposition_plan",
             description=(
@@ -146,6 +166,13 @@ class SubmitDecompositionPlanTool(BaseTool):
                 ),
                 is_error=True,
             )
+        if self._capture.plan is not None:
+            logger.warning(
+                DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
+                parent_task_id=self._parent_task_id,
+                previous_subtask_count=len(self._capture.plan.subtasks),
+                new_subtask_count=len(plan.subtasks),
+            )
         self._capture.plan = plan
         return ToolExecutionResult(
             content=(
@@ -157,13 +184,22 @@ class SubmitDecompositionPlanTool(BaseTool):
 class AgentSessionDecompositionStrategy(DecompositionStrategy):
     """Decomposition strategy that plans via a bounded owner-run agent session.
 
-    Runs a governed-free, read-and-submit planning loop as the staffed owner,
-    then returns the plan the owner submitted through the terminal tool.
+    Runs a read-only, submit-terminated planning loop as the staffed owner,
+    then returns the plan the owner submitted through the terminal tool. Only
+    read/research tools are granted (write tools are dropped before the loop
+    runs), so the session observes state but never mutates it.
     """
 
-    __slots__ = ("_config", "_cost_tracker", "_fallback", "_provider", "_tool_provider")
+    __slots__ = (
+        "_config",
+        "_cost_tracker",
+        "_fallback",
+        "_provider",
+        "_shutdown_checker",
+        "_tool_provider",
+    )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
         self,
         *,
         provider: CompletionProvider,
@@ -171,6 +207,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         tool_provider: DecompositionToolProvider | None = None,
         config: AgentSessionDecompositionConfig | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
+        shutdown_checker: ShutdownChecker | None = None,
     ) -> None:
         """Initialise the agent-session decomposition strategy.
 
@@ -181,17 +218,22 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 blocked on the session).
             tool_provider: Optional builder of the owner's read/research
                 planning tools; ``None`` runs the session with only the
-                terminal submit tool.
+                terminal submit tool. Any non-read-only tool it returns is
+                dropped before the session runs.
             config: Optional session configuration (turn cap, temperature,
                 cost ceiling). Uses defaults when omitted.
             cost_tracker: Optional cost tracker; when wired the session's
                 provider calls record against it under the owner + task.
+            shutdown_checker: Optional callback returning ``True`` when a
+                graceful shutdown is in progress; the planning loop halts at
+                the next turn boundary when it fires.
         """
         self._provider = provider
         self._fallback = fallback
         self._tool_provider = tool_provider
         self._config = config or AgentSessionDecompositionConfig()
         self._cost_tracker = cost_tracker
+        self._shutdown_checker = shutdown_checker
 
     @override
     def get_strategy_name(self) -> str:
@@ -226,7 +268,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             return await self._fallback.decompose(task, context)
 
         capture = _PlanCapture()
-        result_reason = await self._run_session(task, context, owner, capture)
+        result = await self._run_session(task, context, owner, capture)
         plan = capture.plan
         if plan is not None and len(plan.subtasks) <= context.max_subtasks:
             logger.info(
@@ -234,14 +276,15 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 task_id=str(task.id),
                 owner_id=str(owner.id),
                 subtask_count=len(plan.subtasks),
-                termination=result_reason,
+                termination=result.termination_reason.value,
             )
             return plan
         logger.warning(
             DECOMPOSITION_SESSION_NO_PLAN,
             task_id=str(task.id),
             owner_id=str(owner.id),
-            termination=result_reason,
+            termination=result.termination_reason.value,
+            termination_detail=result.error_message,
             over_limit=plan is not None,
         )
         return await self._fallback.decompose(task, context)
@@ -252,38 +295,20 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         context: DecompositionContext,
         owner: AgentIdentity,
         capture: _PlanCapture,
-    ) -> str:
+    ) -> ExecutionResult:
         """Run the bounded planning loop as *owner*, capturing the plan.
 
         Returns:
-            The loop's termination reason (for observability).
+            The loop's execution result (termination reason + error detail
+            for observability).
         """
-        submit_tool = SubmitDecompositionPlanTool(
-            parent_task_id=str(task.id),
-            capture=capture,
-        )
-        extra_tools = (
-            self._tool_provider.build_tools(
-                owner_id=str(owner.id),
-                project_id=task.project,
-            )
-            if self._tool_provider is not None
-            else ()
-        )
-        registry = ToolRegistry([submit_tool, *extra_tools])
-        invoker = ToolInvoker(
-            registry,
-            permission_checker=None,
-            agent_id=str(owner.id),
-            task_id=None,
-            cost_tracker=self._cost_tracker,
-        )
+        invoker, granted_tools = self._build_invoker(task, owner, capture)
         ctx = self._build_context(task, context, owner)
         logger.info(
             DECOMPOSITION_SESSION_STARTED,
             task_id=str(task.id),
             owner_id=str(owner.id),
-            granted_tools=len(extra_tools) + 1,
+            granted_tools=granted_tools,
             max_turns=self._config.max_turns,
         )
         loop = ReactLoop(approval_gate=None)
@@ -295,16 +320,75 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             purpose=None,
             call_category=LLMCallCategory.SYSTEM,
         ):
-            result = await loop.execute(
+            return await loop.execute(
                 context=ctx,
                 provider=self._provider,
                 tool_invoker=invoker,
                 budget_checker=self._budget_checker(),
+                shutdown_checker=self._shutdown_checker,
                 completion_config=CompletionConfig(
                     temperature=self._config.temperature
                 ),
             )
-        return result.termination_reason.value
+
+    def _build_invoker(
+        self,
+        task: Task,
+        owner: AgentIdentity,
+        capture: _PlanCapture,
+    ) -> tuple[ToolInvoker, int]:
+        """Assemble the session's tool invoker over the submit + read tools.
+
+        Returns:
+            A ``(invoker, granted_tool_count)`` pair; the count includes the
+            terminal submit tool plus every read-only planning tool kept.
+        """
+        submit_tool = SubmitDecompositionPlanTool(
+            parent_task_id=NotBlankStr(str(task.id)),
+            capture=capture,
+        )
+        planning_tools = self._planning_tools(task, owner)
+        registry = ToolRegistry([submit_tool, *planning_tools])
+        invoker = ToolInvoker(
+            registry,
+            permission_checker=None,
+            agent_id=str(owner.id),
+            task_id=None,
+            cost_tracker=self._cost_tracker,
+        )
+        return invoker, len(planning_tools) + 1
+
+    def _planning_tools(
+        self,
+        task: Task,
+        owner: AgentIdentity,
+    ) -> tuple[BaseTool, ...]:
+        """Resolve the owner's read-only planning tools from the provider.
+
+        Returns:
+            The provider's tools filtered to the read-only allowlist (an
+            empty tuple when no provider is wired); any write-capable tool is
+            logged and dropped so the session cannot mutate state.
+        """
+        if self._tool_provider is None:
+            return ()
+        built = self._tool_provider.build_tools(
+            owner_id=str(owner.id),
+            project_id=task.project,
+        )
+        kept: list[BaseTool] = []
+        for tool in built:
+            if tool.action_type in _READ_ONLY_ACTION_TYPES:
+                kept.append(tool)
+                continue
+            logger.warning(
+                DECOMPOSITION_SESSION_TOOL_DROPPED,
+                task_id=str(task.id),
+                owner_id=str(owner.id),
+                tool_name=tool.name,
+                action_type=tool.action_type,
+            )
+        return tuple(kept)
 
     def _build_context(
         self,
