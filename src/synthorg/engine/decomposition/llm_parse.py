@@ -162,6 +162,53 @@ def _string_array(raw: dict[str, JsonValue], field: str) -> tuple[str, ...]:
     return tuple(str(v) for v in values)
 
 
+def _remap_subtask_ids(
+    parsed: tuple[SubtaskDefinition, ...],
+) -> tuple[SubtaskDefinition, ...]:
+    """Remap model-assigned subtask ids to fresh UUIDs, validating the DAG.
+
+    The model assigns its own subtask ids (e.g. ``"subtask-1"``) purely to
+    express the dependency edges; this remaps each to a globally unique UUID
+    while preserving those edges. Duplicate ids (which would collapse distinct
+    subtasks onto one identifier) and dependencies naming a subtask the model
+    never defined (a hallucination) are both rejected with a correctable
+    :class:`DecompositionError` so the agent-session strategy can resubmit,
+    rather than passing a dangling id through to fail opaquely at DAG
+    validation.
+
+    Args:
+        parsed: The parsed subtasks carrying the model-assigned ids.
+
+    Returns:
+        The subtasks with UUID ids and remapped dependency edges.
+
+    Raises:
+        DecompositionError: On a duplicate id or an unknown dependency id.
+    """
+    id_map: dict[str, str] = {}
+    for sub in parsed:
+        if sub.id in id_map:
+            msg = f"Duplicate subtask id: {sub.id!r}"
+            logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+            raise DecompositionError(msg)
+        id_map[sub.id] = str(uuid4())
+    for sub in parsed:
+        for dep in sub.dependencies:
+            if dep not in id_map:
+                msg = f"Subtask {sub.id!r} depends on unknown subtask {dep!r}"
+                logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+                raise DecompositionError(msg)
+    return tuple(
+        sub.model_copy(
+            update={
+                "id": id_map[sub.id],
+                "dependencies": tuple(id_map[dep] for dep in sub.dependencies),
+            }
+        )
+        for sub in parsed
+    )
+
+
 def _args_to_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
@@ -181,62 +228,19 @@ def _args_to_plan(
     raw_subtasks = args.get("subtasks")
     if not isinstance(raw_subtasks, list):
         msg = "Field 'subtasks' must be an array"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
     if not raw_subtasks:
         msg = "No subtasks found in response"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
     if any(not isinstance(s, dict) for s in raw_subtasks):
         msg = "Each subtask must be an object"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
 
-    # The model assigns its own subtask ids (e.g. ``"subtask-1"``) purely
-    # to express the dependency DAG; remap them to fresh UUIDs so each
-    # child task carries a globally unique identifier while preserving the
-    # dependency edges between siblings.
     parsed = tuple(_parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
-    # Duplicate LLM ids would collapse to a single UUID and corrupt the
-    # dependency DAG (distinct subtasks sharing one id), so reject them.
-    id_map: dict[str, str] = {}
-    for sub in parsed:
-        if sub.id in id_map:
-            msg = f"Duplicate subtask id: {sub.id!r}"
-            logger.warning(
-                DECOMPOSITION_LLM_PARSE_ERROR,
-                error=msg,
-            )
-            raise DecompositionError(msg)
-        id_map[sub.id] = str(uuid4())
-    # A dependency naming a subtask id the model never defined is a
-    # hallucination; reject it here with a correctable error so the
-    # agent-session strategy can resubmit, rather than passing the dangling
-    # id through to fail opaquely at DAG validation.
-    for sub in parsed:
-        for dep in sub.dependencies:
-            if dep not in id_map:
-                msg = f"Subtask {sub.id!r} depends on unknown subtask {dep!r}"
-                logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
-                raise DecompositionError(msg)
-    subtasks = tuple(
-        sub.model_copy(
-            update={
-                "id": id_map[sub.id],
-                "dependencies": tuple(id_map[dep] for dep in sub.dependencies),
-            }
-        )
-        for sub in parsed
-    )
+    subtasks = _remap_subtask_ids(parsed)
 
     structure = _enum_or_default(
         args.get("task_structure", "sequential"),
