@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
+        ("simulations", "client_intake_enabled"),
         ("simulations", "intake_strategy"),
         ("simulations", "intake_model"),
         ("simulations", "intake_default_project"),

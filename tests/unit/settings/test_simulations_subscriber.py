@@ -52,6 +52,7 @@ class TestProtocol:
     def test_watches_intake_and_review_keys(self) -> None:
         watched = _make_subscriber(_make_state()).watched_keys
         for key in (
+            "client_intake_enabled",
             "intake_strategy",
             "intake_model",
             "intake_default_project",

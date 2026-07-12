@@ -37,7 +37,6 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   chief_of_staff: true,
   charter: true,
   notifications: true,
-  objectives: true,
   simulations: true,
   tools: true,
   settings: true,

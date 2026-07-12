@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->35<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->34<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 
@@ -74,10 +74,9 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `settings` | Dispatcher polling interval, change-notification channel |
 | `client` | Human-response timeout, scored-feedback passing score / strictness multiplier / floor for synthesised AIClients |
 | `hr` | Training-pipeline kill switch, evaluation metric toggles (quality, cost, latency, task count) |
-| `simulations` | Per-run timeouts for synthetic-client task and code-review simulations |
+| `simulations` | Client-intake benchmark door toggle (`client_intake_enabled`, off by default) and per-run timeouts for synthetic-client task and code-review simulations |
 | `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
 | `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
-| `objectives` | Default project for stated-objective intake |
 | `research` | Research-mode provider/model and pipeline strategies (query planning, credibility triage, deduplication, synthesis) |
 | `charter` | Deep CEO-interview charter pacing (model, turns, temperature, token budget) and default currency |
 | `external_api` | Governed external API access: provider, response-size cap, timeout, and per-minute rate limit |

@@ -43,9 +43,12 @@ provider, zero LLM spend, unless noted):
   decompose to solo/team to execute to coordination metrics) is the single
   integration point every entry adapter feeds, with solo-vs-team decided
   internally by decomposition.
-- **Entry adapters**: real work-entry paths for the intake engine
-  (`POST /requests/{id}/approve`), the task board (`POST /tasks`), and stated
-  objectives (`POST /objectives`), all driving the pipeline spine.
+- **Entry adapters**: work-entry paths into the pipeline spine. Stated
+  objectives (`POST /objectives`) are the always-on operator door, each
+  standing up its own per-initiative project; the task board (`POST /tasks`)
+  files against a caller-named project; the synthetic-client intake door
+  (`POST /requests/{id}/approve`) is a benchmark surface, off by default
+  behind `simulations.client_intake_enabled`.
 - **Sandbox lifecycle dispatch**: `DockerSandbox.execute()` honours `owner_id`
   and dispatches to the configured per-call / per-agent / per-task lifecycle
   strategy, with grace-period teardown.

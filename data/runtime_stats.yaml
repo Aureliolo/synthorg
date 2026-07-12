@@ -1,6 +1,6 @@
 schema_version: 1
-last_generated_utc: '2026-07-11T19:30:25Z'
-generator_revision: c06d31896
+last_generated_utc: '2026-07-12T12:35:53Z'
+generator_revision: aa4e27d89
 stats:
   tests:
     raw: 40216
@@ -25,8 +25,8 @@ stats:
     raw: 22
     display: '22'
   settings_namespaces:
-    raw: 35
-    display: '35'
+    raw: 34
+    display: '34'
 sources:
   tests: uv run python -m pytest --collect-only -q
   providers_curated: synthorg.providers.presets.list_featured_presets

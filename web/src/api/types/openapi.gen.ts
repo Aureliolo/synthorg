@@ -16109,7 +16109,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard" | "design";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard" | "design";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -16758,14 +16758,23 @@ export type components = {
             readonly acceptance_criteria: readonly string[];
             /** @description Detailed statement of the objective. */
             readonly description: string;
-            /** @description Optional complexity override (Complexity enum value). */
-            readonly estimated_complexity?: string | null;
-            /** @description Optional priority override (Priority enum value). */
-            readonly priority?: string | null;
+            /**
+             * @description Optional complexity override.
+             * @enum {string|null}
+             */
+            readonly estimated_complexity?: "simple" | "medium" | "complex" | "epic" | null;
+            /**
+             * @description Optional priority override.
+             * @enum {string|null}
+             */
+            readonly priority?: "critical" | "high" | "medium" | "low" | null;
             /** @description Identifier of the human / service requesting the work. */
             readonly requested_by: string;
-            /** @description Optional task-type override (TaskType enum value). */
-            readonly task_type?: string | null;
+            /**
+             * @description Optional task-type override.
+             * @enum {string|null}
+             */
+            readonly task_type?: "development" | "design" | "research" | "review" | "meeting" | "admin" | "analysis" | null;
             /** @description Short human-readable objective title. */
             readonly title: string;
         };

@@ -20,7 +20,6 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.pipeline.entry.boot import (
     _project_uuid,
     wire_real_intake_entry,
-    wire_real_objective_entry,
     wire_real_task_board_entry,
 )
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
@@ -29,7 +28,9 @@ from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -41,16 +42,24 @@ def _app_state(
     has_simulation_runtime: bool = True,
     project: Project | None = None,
     default_project: str | None = "client-intake",
+    client_intake_enabled: bool = True,
 ) -> tuple[AppState, MagicMock]:
     projects = mock_of[ProjectRepository]()
     projects.get.return_value = project
     sim_state = mock_of[ClientSimulationState](
         intake_default_project=default_project,
     )
+    # The intake door is gated on ``simulations.client_intake_enabled`` (off by
+    # default); wire a resolver returning the flag plus a blank project value so
+    # ``_resolve_intake_default_project`` falls back to the cached sim state.
+    resolver = mock_of[ConfigResolver]()
+    resolver.get_bool.return_value = client_intake_enabled
+    resolver.get_str.return_value = ""
     app_state = make_app_state(
         work_pipeline=mock_of[WorkPipeline]() if has_work_pipeline else None,
         client_simulation_state=sim_state if has_simulation_runtime else None,
         persistence=mock_of[PersistenceBackend](projects=projects),
+        config_resolver=resolver,
     )
     return app_state, projects
 
@@ -69,6 +78,58 @@ async def test_noop_without_simulation_runtime() -> None:
     )
     await wire_real_intake_entry(app_state)
     projects.get.assert_not_called()
+    assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
+
+
+async def test_noop_when_client_intake_disabled() -> None:
+    """Off by default: no adapter is wired and no project is seeded."""
+    app_state, projects = _app_state(
+        has_work_pipeline=True,
+        project=None,
+        client_intake_enabled=False,
+    )
+    await wire_real_intake_entry(app_state)
+    projects.create.assert_not_called()
+    assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
+    # The gate reads exactly ``simulations.client_intake_enabled``.
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    assert resolver is not None
+    cast(AsyncMock, resolver.get_bool).assert_awaited_with(
+        SettingNamespace.SIMULATIONS.value,
+        "client_intake_enabled",
+    )
+
+
+async def test_noop_when_config_resolver_absent() -> None:
+    """A pre-resolver boot (no config resolver) keeps the door closed.
+
+    During the two-phase boot the settings resolver is not yet wired;
+    ``_client_intake_enabled`` treats that window as disabled rather than
+    raising, so the intake door stays closed and no adapter is installed.
+    """
+    projects = mock_of[ProjectRepository]()
+    projects.get.return_value = None
+    app_state = make_app_state(
+        work_pipeline=mock_of[WorkPipeline](),
+        client_simulation_state=mock_of[ClientSimulationState](
+            intake_default_project="client-intake",
+        ),
+        persistence=mock_of[PersistenceBackend](projects=projects),
+        config_resolver=None,
+    )
+    await wire_real_intake_entry(app_state)
+    projects.create.assert_not_called()
+    assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
+
+
+async def test_hot_swap_disabled_uninstalls_intake_adapter() -> None:
+    """Toggling the door off unwires a previously-wired intake adapter."""
+    app_state, _ = _app_state(
+        has_work_pipeline=True,
+        client_intake_enabled=False,
+    )
+    app_state.wire(EngineStateSlice, intake_entry_adapter=object())
+    await wire_real_intake_entry(app_state, hot_swap=True)
     assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
 
 
@@ -106,7 +167,10 @@ async def test_intake_default_project_read_live_from_db_resolver() -> None:
     )
     resolver = cast(
         "ConfigResolver",
-        mock_of[ConfigResolver](get_str=AsyncMock(return_value="db-project")),
+        mock_of[ConfigResolver](
+            get_str=AsyncMock(return_value="db-project"),
+            get_bool=AsyncMock(return_value=True),
+        ),
     )
     app_state = make_app_state(
         work_pipeline=mock_of[WorkPipeline](),
@@ -143,13 +207,6 @@ async def test_hot_swap_offline_uninstalls_intake_adapter() -> None:
     app_state.wire(EngineStateSlice, intake_entry_adapter=object())
     await wire_real_intake_entry(app_state, hot_swap=True)
     assert app_state.slice(EngineStateSlice).intake_entry_adapter is None
-
-
-async def test_hot_swap_offline_uninstalls_objective_adapter() -> None:
-    app_state, _ = _app_state(has_work_pipeline=False)
-    app_state.wire(EngineStateSlice, objective_entry_adapter=object())
-    await wire_real_objective_entry(app_state, hot_swap=True)
-    assert app_state.slice(EngineStateSlice).objective_entry_adapter is None
 
 
 async def test_boot_offline_leaves_intake_adapter_untouched() -> None:

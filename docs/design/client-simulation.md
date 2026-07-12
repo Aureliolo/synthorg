@@ -226,7 +226,11 @@ constructs the `IntakeEngine` (plus a `ReviewPipeline` of
 `verification_review_enabled`) during app construction whenever a
 `TaskEngine` is present, and `create_app` attaches the resulting
 `ClientSimulationState` so `has_simulation_runtime` is true and the
-`/simulations` + `/requests` controllers register. The strategy is
+`/simulations` + `/requests` controllers register. (The
+`/requests/{id}/approve` work-entry door is separately gated off by
+default via `simulations.client_intake_enabled`; see [Client-intake
+work-entry path](#client-intake-work-entry-path-benchmark-door-off-by-default).)
+The strategy is
 selected from the `simulations` settings namespace
 (`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`,
 `intake_default_project`, `review_pipeline_strategy`, plus the
@@ -246,16 +250,22 @@ verification stage) onto the existing `ClientSimulationState` (via
 request / simulation / feedback stores so in-flight work is never
 discarded. `intake_default_project` is the project the intake
 strategy files tasks into and the real work-entry adapter stamps on
-the work item (see [Real work-entry path](#real-work-entry-path)). The
+the work item (see [Client-intake work-entry path](#client-intake-work-entry-path-benchmark-door-off-by-default)). The
 default `direct` strategy makes no LLM calls, so the runtime comes
 online for an empty company. A selected `agent` strategy that cannot
 be satisfied (no provider or no model) degrades to `direct` with a
 warning rather than failing boot.
 
-### Real work-entry path
+### Client-intake work-entry path (benchmark door, off by default)
 
-`POST /requests/{id}/approve` is the real (non-simulated) work-entry
-path. On approval the request is walked to `APPROVED` and a
+`POST /requests/{id}/approve` is the synthetic-client intake
+work-entry path. It role-plays external customers filing work, so it
+is a **benchmark surface, not a standing production front door**, and
+is gated off by default behind `simulations.client_intake_enabled`
+(the always-on operator work-entry path is `POST /objectives`). When
+the flag is off the endpoint returns `503` pointing at the setting;
+enabling it takes effect on the next request (hot, no restart). On
+approval (flag on) the request is walked to `APPROVED` and a
 background task runs the `IntakeEntryAdapter`
 (`WorkSource.INTAKE`), which maps the `ClientRequest` onto a
 `WorkItem` and drives the work pipeline spine (intake -> projects ->
@@ -266,13 +276,17 @@ or `CANCELLED` state lands asynchronously and is observable via `GET
 `scoping_notes` from a prior `/scope` call are folded into the work
 item's intent body so the manual scope flow is preserved.
 
-The adapter is built once the work pipeline is online
-(`engine.pipeline.entry.boot.wire_real_intake_entry`, called from
-the boot runtime-services hook and the post-setup provider reinit)
-and attached to the `AppState.intake_entry_adapter` seam. When no
-work pipeline is wired (empty company / no provider) approve returns
-`AgentRuntimeNotConfiguredError` rather than minting a task no agent
-will run.
+The adapter is wired only when the door is enabled and the work
+pipeline is online (`engine.pipeline.entry.boot.wire_real_intake_entry`,
+called from the boot runtime-services hook, the post-setup provider
+reinit, and the `SimulationsSettingsSubscriber` on a
+`client_intake_enabled` change) and attached to the
+`AppState.intake_entry_adapter` seam. With the door off, or when no
+work pipeline is wired (empty company / no provider), no adapter is
+wired and no `client-intake` project is seeded, so nothing appears as
+a standing empty project; approve then surfaces the `503`
+feature-disabled (or `AgentRuntimeNotConfiguredError`) response rather
+than minting a task no agent will run.
 
 The `task_board` source is the sibling work-entry path:
 `POST /tasks` routes a board filing through `TaskBoardEntryAdapter`
@@ -292,10 +306,12 @@ attached to the `AppState.task_board_entry_adapter` seam.
 
 The `simulations.intake_default_project` setting (DB > env >
 registered default, hot) names the project the intake strategy files
-tasks into and the adapter stamps on the work item; `wire_real_intake_entry`
-re-reads it live from the settings resolver whenever the adapter is
-(re)wired, and that project is created if absent so the pipeline's
-project-existence check and the created task agree.
+tasks into and the adapter stamps on the work item; when the door is
+enabled `wire_real_intake_entry` re-reads it live from the settings
+resolver whenever the adapter is (re)wired, and that project is
+created then (not at boot) so the pipeline's project-existence check
+and the created task agree. With the door off (the default), no such
+project is seeded.
 
 ---
 

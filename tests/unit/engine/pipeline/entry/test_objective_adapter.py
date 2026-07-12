@@ -1,16 +1,27 @@
 """Unit coverage for :class:`ObjectiveEntryAdapter` and :class:`ObjectiveSubmission`.
 
-The adapter is the thin high-altitude work-entry seam: it maps a
+The adapter is the high-altitude work-entry seam: it maps a
 human-stated objective onto a :class:`WorkItem` with
-``source=OBJECTIVE`` and hands it to the work pipeline spine. It owns
-no persistence, no lifecycle, no decomposition logic.
+``source=OBJECTIVE`` and hands it to the work pipeline spine. Unlike
+the intake adapter it owns a project repository: every objective is
+its own initiative, so the adapter mints a dedicated project per
+submission (idempotent by submission id) rather than filing into a
+shared bucket.
 """
+
+from typing import cast
+from unittest.mock import AsyncMock
+from uuid import UUID, uuid5
 
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.pipeline.entry.objective_adapter import (
+    _PROJECT_NAMESPACE,
     ObjectiveEntryAdapter,
     ObjectiveSubmission,
 )
@@ -25,11 +36,15 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.persistence.project_protocol import ProjectRepository
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
-_DEFAULT_PROJECT = "objectives"
+
+def _expected_project(submission_id: str) -> str:
+    """Return the deterministic per-initiative project id for a submission."""
+    return str(uuid5(_PROJECT_NAMESPACE, f"objective-{submission_id}"))
 
 
 def _submission(**overrides: object) -> ObjectiveSubmission:
@@ -64,10 +79,21 @@ def _result(work_item: WorkItem) -> WorkPipelineResult:
     )
 
 
-def _adapter(pipeline: WorkPipeline) -> ObjectiveEntryAdapter:
+def _repo(*, existing: Project | None = None) -> ProjectRepository:
+    """Return a project repo whose ``get`` yields *existing* (default absent)."""
+    repo = mock_of[ProjectRepository]()
+    repo.get.return_value = existing
+    repo.create.return_value = None
+    return cast(ProjectRepository, repo)
+
+
+def _adapter(
+    pipeline: WorkPipeline,
+    repo: ProjectRepository | None = None,
+) -> ObjectiveEntryAdapter:
     return ObjectiveEntryAdapter(
         work_pipeline=pipeline,
-        default_project=_DEFAULT_PROJECT,
+        project_repo=repo if repo is not None else _repo(),
     )
 
 
@@ -134,7 +160,10 @@ def test_submission_id_defaults_to_uuid() -> None:
         requested_by="r",
     )
     assert one.submission_id != two.submission_id
-    assert len(one.submission_id) >= 32
+    # The auto-generated id must be a real (canonical) UUID, not just a
+    # long string: parsing it and re-stringifying round-trips exactly.
+    assert str(UUID(one.submission_id)) == one.submission_id
+    assert str(UUID(two.submission_id)) == two.submission_id
 
 
 def test_submission_accepts_full_optional_fields() -> None:
@@ -177,7 +206,7 @@ async def test_submit_maps_submission_to_work_item() -> None:
     item = captured["item"]
     assert item.source is WorkSource.OBJECTIVE
     assert item.correlation_id == submission.submission_id
-    assert item.project == _DEFAULT_PROJECT
+    assert item.project == _expected_project(submission.submission_id)
     assert item.title == submission.title
     assert item.raw_intent == submission.description
     assert item.requested_by == submission.requested_by
@@ -208,8 +237,27 @@ async def test_submit_uses_workitem_defaults_when_unspecified() -> None:
     assert item.acceptance_criteria == ()
 
 
-async def test_submit_files_into_default_project_regardless_of_submission() -> None:
-    """The configured boot-time default project is authoritative."""
+async def test_submit_mints_per_initiative_project() -> None:
+    """Each objective stands up its own PLANNING initiative project."""
+    pipeline = mock_of[WorkPipeline]()
+    pipeline.run.side_effect = _result
+    repo = _repo()
+
+    submission = _submission()
+    await _adapter(pipeline, repo).submit(submission)
+
+    create_mock = cast(AsyncMock, repo.create)
+    create_mock.assert_awaited_once()
+    assert create_mock.await_args is not None
+    created: Project = create_mock.await_args.args[0]
+    assert isinstance(created, Project)
+    assert str(created.id) == _expected_project(submission.submission_id)
+    assert created.name == submission.title
+    assert created.status is ProjectStatus.PLANNING
+
+
+async def test_submit_is_idempotent_when_project_exists() -> None:
+    """A resubmitted objective reuses its project instead of re-creating."""
     pipeline = mock_of[WorkPipeline]()
     captured: dict[str, WorkItem] = {}
 
@@ -218,14 +266,65 @@ async def test_submit_files_into_default_project_regardless_of_submission() -> N
         return _result(work_item)
 
     pipeline.run.side_effect = _run
-    adapter = ObjectiveEntryAdapter(
-        work_pipeline=pipeline,
-        default_project="custom-objectives",
+    submission = _submission()
+    existing = Project(
+        id=uuid5(_PROJECT_NAMESPACE, f"objective-{submission.submission_id}"),
+        name=submission.title,
+        status=ProjectStatus.PLANNING,
     )
+    repo = _repo(existing=existing)
 
-    await adapter.submit(_submission())
+    await _adapter(pipeline, repo).submit(submission)
 
-    assert captured["item"].project == "custom-objectives"
+    cast(AsyncMock, repo.create).assert_not_awaited()
+    assert captured["item"].project == _expected_project(submission.submission_id)
+
+
+async def test_submit_swallows_duplicate_record_on_create_race() -> None:
+    """A concurrent winner racing on ``create`` is benign, not a failure.
+
+    Both callers miss the ``get`` fast-path, race on ``create``, and the
+    loser's ``DuplicateRecordError`` is swallowed: the project exists (the
+    post-condition we want), so ``submit`` still succeeds and the work item
+    routes into the deterministic per-initiative project.
+    """
+    pipeline = mock_of[WorkPipeline]()
+    captured: dict[str, WorkItem] = {}
+
+    async def _run(work_item: WorkItem) -> WorkPipelineResult:
+        captured["item"] = work_item
+        return _result(work_item)
+
+    pipeline.run.side_effect = _run
+    submission = _submission()
+    repo = _repo()
+    cast(AsyncMock, repo.create).side_effect = DuplicateRecordError("project exists")
+
+    result = await _adapter(pipeline, repo).submit(submission)
+
+    cast(AsyncMock, repo.create).assert_awaited_once()
+    assert result.task_id == "task-99"
+    assert captured["item"].project == _expected_project(submission.submission_id)
+
+
+async def test_submit_files_distinct_objectives_into_distinct_projects() -> None:
+    """Two different objectives never collide in one shared project."""
+    pipeline = mock_of[WorkPipeline]()
+    seen: list[str] = []
+
+    async def _run(work_item: WorkItem) -> WorkPipelineResult:
+        seen.append(work_item.project)
+        return _result(work_item)
+
+    pipeline.run.side_effect = _run
+    adapter = _adapter(pipeline)
+
+    await adapter.submit(_submission(submission_id="obj-a"))
+    await adapter.submit(_submission(submission_id="obj-b"))
+
+    assert seen[0] != seen[1]
+    assert seen[0] == _expected_project("obj-a")
+    assert seen[1] == _expected_project("obj-b")
 
 
 async def test_submit_propagates_pipeline_error() -> None:

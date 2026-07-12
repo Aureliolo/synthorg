@@ -19,7 +19,7 @@ plain STOP completion for every agent turn.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
+from uuid import uuid4, uuid5
 
 import pytest
 
@@ -37,6 +37,7 @@ from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.pipeline.entry.boot import _project_uuid
 from synthorg.engine.pipeline.entry.objective_adapter import (
+    _PROJECT_NAMESPACE,
     ObjectiveEntryAdapter,
     ObjectiveSubmission,
 )
@@ -226,8 +227,13 @@ async def _build_objective_adapter(
     assert runtime.work_pipeline is not None
     return ObjectiveEntryAdapter(
         work_pipeline=runtime.work_pipeline,
-        default_project=_PROJECT_ID,
+        project_repo=persistence.projects,
     )
+
+
+def _objective_project(submission_id: str) -> str:
+    """Return the per-initiative project id the adapter mints for a submission."""
+    return str(uuid5(_PROJECT_NAMESPACE, f"objective-{submission_id}"))
 
 
 async def test_objective_executes_through_pipeline_under_default_policy(
@@ -250,6 +256,7 @@ async def test_objective_executes_through_pipeline_under_default_policy(
         routing_policy="leaf-threshold",
     )
     submission = ObjectiveSubmission(
+        submission_id="obj-status-endpoint",
         title="Add a status endpoint",
         description="Return a JSON status body from /status.",
         requested_by="human-operator",
@@ -262,7 +269,8 @@ async def test_objective_executes_through_pipeline_under_default_policy(
     persisted = await task_engine.get_task(result.task_id)
     assert persisted is not None
     assert persisted.status is not TaskStatus.CREATED
-    assert persisted.project == _PROJECT_ID
+    # The objective stood up its own per-initiative project.
+    assert persisted.project == _objective_project(submission.submission_id)
 
 
 async def test_objective_decomposes_under_always_team_policy(
@@ -290,6 +298,7 @@ async def test_objective_decomposes_under_always_team_policy(
         routing_policy="always-team",
     )
     submission = ObjectiveSubmission(
+        submission_id="obj-v08-release",
         title="Ship the v0.8 release",
         description="Cut a stable v0.8 release with release notes.",
         requested_by="human-operator",
@@ -308,4 +317,5 @@ async def test_objective_decomposes_under_always_team_policy(
     persisted = await task_engine.get_task(result.task_id)
     assert persisted is not None
     assert persisted.status is not TaskStatus.CREATED
-    assert persisted.project == _PROJECT_ID
+    # The objective stood up its own per-initiative project.
+    assert persisted.project == _objective_project(submission.submission_id)

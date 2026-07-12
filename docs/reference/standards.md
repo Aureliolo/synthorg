@@ -36,6 +36,6 @@ Within a single organisation, agents communicate over the internal message bus. 
 
 ## Chat Completions API Format
 
-The chat completions API format has become the de facto standard for LLM interactions. SynthOrg accesses this format through LiteLLM, which provides a unified interface across <!--RS:providers_via_litellm-->90+<!--/RS--> providers that all speak this format (or are translated to it).
+The chat completions API format has become the de facto standard for LLM interactions. SynthOrg accesses this format through LiteLLM, which provides a unified interface across <!--RS:providers_via_litellm-->95+<!--/RS--> providers that all speak this format (or are translated to it).
 
 This means SynthOrg is not coupled to any single LLM provider. Switching between providers is a configuration change, not a code change. The provider abstraction layer handles request/response mapping, cost tracking, retries, fallbacks, and rate limiting transparently.

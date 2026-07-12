@@ -35,7 +35,6 @@ from synthorg.settings.subscribers import (
     MemoryBridgeSettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
     NotificationsBridgeSettingsSubscriber,
-    ObjectiveEntrySettingsSubscriber,
     ObservabilityBridgeSettingsSubscriber,
     ObservabilitySettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
@@ -123,10 +122,6 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         meta_self_improvement_sub,
         cos_alerts_sub,
         ApiSecurityHeadersSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        ObjectiveEntrySettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),
