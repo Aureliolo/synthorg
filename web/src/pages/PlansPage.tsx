@@ -9,6 +9,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { usePlansData } from '@/hooks/usePlansData'
+import { usePlansStore } from '@/stores/plans'
 
 import { PlanListItem } from './plans/PlanListItem'
 import { PlansSkeleton } from './plans/PlansSkeleton'
@@ -33,6 +34,7 @@ function sortForReview(plans: readonly Plan[]): readonly Plan[] {
 export default function PlansPage() {
   const { filteredPlans, totalPlans, loading, error, wsConnected, wsSetupError } =
     usePlansData()
+  const planTitles = usePlansStore((s) => s.planTitles)
 
   const ordered = useMemo(() => sortForReview(filteredPlans), [filteredPlans])
 
@@ -79,7 +81,7 @@ export default function PlansPage() {
         <>
           <div className="flex flex-col gap-2">
             {paginatedItems.map((plan) => (
-              <PlanListItem key={plan.id} plan={plan} />
+              <PlanListItem key={plan.id} plan={plan} title={planTitles[plan.id]} />
             ))}
           </div>
           <Pagination

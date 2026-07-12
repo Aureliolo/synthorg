@@ -9,6 +9,10 @@ export interface PlansState {
   plans: readonly Plan[]
   listLoading: boolean
   listError: string | null
+  // Human headline per plan id, resolved from each plan's parent objective
+  // task after the list loads. Absent while resolving or when the parent task
+  // is unreachable; the row falls back to the objective id.
+  planTitles: Record<string, string>
 
   // Filter (client-side; the full set is loaded and paged in the browser)
   statusFilter: PlanStatus | null

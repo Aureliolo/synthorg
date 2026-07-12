@@ -6,6 +6,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 import { bumpDetailRequestToken, isStaleListRequest, nextListRequestToken } from './_state'
+import { resolvePlanTitles } from './title-resolution'
 import type { PlansSet } from './types'
 
 const log = createLogger('plans')
@@ -22,7 +23,11 @@ async function fetchPlansImpl(set: PlansSet): Promise<void> {
       listPlans({ cursor, limit: PLANS_PAGE_LIMIT }),
     )
     if (isStaleListRequest(token)) return
-    set({ plans })
+    // Render the list immediately; the human headlines fill in as the parent
+    // objective tasks resolve, so a slow lookup never blocks the inbox.
+    set({ plans, listLoading: false })
+    const planTitles = await resolvePlanTitles(plans)
+    if (!isStaleListRequest(token)) set({ planTitles })
   } catch (err) {
     if (isStaleListRequest(token)) return
     log.error('Failed to fetch plans:', sanitizeForLog(err))

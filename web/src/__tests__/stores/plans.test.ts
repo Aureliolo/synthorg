@@ -13,6 +13,7 @@ function resetStore(): void {
     plans: [],
     listLoading: false,
     listError: null,
+    planTitles: {},
     statusFilter: null,
     selectedPlan: null,
     detailLoading: false,
@@ -43,6 +44,51 @@ describe('usePlansStore', () => {
       await usePlansStore.getState().fetchPlans()
       expect(usePlansStore.getState().plans).toEqual([plan])
       expect(usePlansStore.getState().listError).toBeNull()
+    })
+
+    it('resolves human headlines for the loaded plans', async () => {
+      const plan = makePlan('plan-1', { parent_task_id: 'task-root' })
+      server.use(
+        http.get('/api/v1/plans', () =>
+          HttpResponse.json(
+            paginatedFor<typeof listPlans>({
+              data: [plan],
+              limit: 200,
+              nextCursor: null,
+              hasMore: false,
+              pagination: { limit: 200, next_cursor: null, has_more: false },
+            }),
+          ),
+        ),
+        http.get('/api/v1/tasks/:id', () =>
+          HttpResponse.json(apiSuccess(makeTask('task-root', 'Ship the Tetris game'))),
+        ),
+      )
+      await usePlansStore.getState().fetchPlans()
+      expect(usePlansStore.getState().planTitles['plan-1']).toBe('Ship the Tetris game')
+    })
+
+    it('leaves headlines unresolved when the parent task is gone', async () => {
+      const plan = makePlan('plan-1')
+      server.use(
+        http.get('/api/v1/plans', () =>
+          HttpResponse.json(
+            paginatedFor<typeof listPlans>({
+              data: [plan],
+              limit: 200,
+              nextCursor: null,
+              hasMore: false,
+              pagination: { limit: 200, next_cursor: null, has_more: false },
+            }),
+          ),
+        ),
+        http.get('/api/v1/tasks/:id', () =>
+          HttpResponse.json(apiError('gone'), { status: 404 }),
+        ),
+      )
+      await usePlansStore.getState().fetchPlans()
+      expect(usePlansStore.getState().plans).toEqual([plan])
+      expect(usePlansStore.getState().planTitles['plan-1']).toBeUndefined()
     })
 
     it('records an error message on failure', async () => {

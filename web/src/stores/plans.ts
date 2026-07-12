@@ -11,6 +11,7 @@ export const usePlansStore = create<PlansState>()((set, get) => ({
   plans: [],
   listLoading: false,
   listError: null,
+  planTitles: {},
   statusFilter: null,
   selectedPlan: null,
   detailLoading: false,
