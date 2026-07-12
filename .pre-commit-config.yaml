@@ -748,7 +748,7 @@ repos:
       # Declarative import-layering contracts (import-linter / grimp).
       - id: lint-imports
         name: import-linter layering contracts
-        entry: uv run lint-imports --config .importlinter
+        entry: uv run python scripts/lint_imports.py --config .importlinter
         language: system
         files: ^(src/synthorg/.*\.py|\.importlinter|\.pre-commit-config\.yaml)$
         pass_filenames: false
