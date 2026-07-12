@@ -307,8 +307,11 @@ class TestRequestController:
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The client-intake door is off by default -> honest 503."""
+        # Pin the default-off state regardless of an ambient env override.
+        monkeypatch.delenv("SYNTHORG_SIMULATIONS_CLIENT_INTAKE_ENABLED", raising=False)
         async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
             await client.post(
@@ -355,6 +358,7 @@ class TestRequestController:
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A live settings write opens the door on the same app, no restart.
 
@@ -365,6 +369,8 @@ class TestRequestController:
         per-request feature gate re-reads the flag live, and the injected
         adapter is already wired, so no restart is needed.
         """
+        # Pin the default-off starting state regardless of an ambient override.
+        monkeypatch.delenv("SYNTHORG_SIMULATIONS_CLIENT_INTAKE_ENABLED", raising=False)
         client, sim_state = _build_client_with_adapter(
             fake_persistence,
             fake_message_bus,
