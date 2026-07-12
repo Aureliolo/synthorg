@@ -6,7 +6,7 @@ import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import { usePlansStore } from '@/stores/plans'
 import { server } from '@/test-setup'
 
-import { makePlan } from '../helpers/factories'
+import { makePlan, makeTask } from '../helpers/factories'
 
 function resetStore(): void {
   usePlansStore.setState({
@@ -17,6 +17,7 @@ function resetStore(): void {
     selectedPlan: null,
     detailLoading: false,
     detailError: null,
+    parentTaskTitle: null,
   })
 }
 
@@ -63,6 +64,33 @@ describe('usePlansStore', () => {
       )
       await usePlansStore.getState().fetchPlanDetail('plan-1')
       expect(usePlansStore.getState().selectedPlan).toEqual(plan)
+    })
+
+    it('resolves the human headline from the parent objective task', async () => {
+      const plan = makePlan('plan-1', { parent_task_id: 'task-root' })
+      server.use(
+        http.get('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(plan))),
+        http.get('/api/v1/tasks/:id', () =>
+          HttpResponse.json(
+            apiSuccess(makeTask('task-root', 'Ship the Tetris game')),
+          ),
+        ),
+      )
+      await usePlansStore.getState().fetchPlanDetail('plan-1')
+      expect(usePlansStore.getState().parentTaskTitle).toBe('Ship the Tetris game')
+    })
+
+    it('leaves the headline unresolved when the parent task is gone', async () => {
+      const plan = makePlan('plan-1')
+      server.use(
+        http.get('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(plan))),
+        http.get('/api/v1/tasks/:id', () =>
+          HttpResponse.json(apiError('gone'), { status: 404 }),
+        ),
+      )
+      await usePlansStore.getState().fetchPlanDetail('plan-1')
+      expect(usePlansStore.getState().selectedPlan).toEqual(plan)
+      expect(usePlansStore.getState().parentTaskTitle).toBeNull()
     })
   })
 

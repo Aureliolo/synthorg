@@ -17,6 +17,10 @@ export interface PlansState {
   selectedPlan: Plan | null
   detailLoading: boolean
   detailError: string | null
+  // Human headline for the selected plan, resolved from its parent objective
+  // task (the plan itself carries only ids). Best-effort: null while loading or
+  // when the parent task cannot be resolved.
+  parentTaskTitle: string | null
 
   // Actions. Mutations follow the canonical store error contract:
   // log + error toast + return sentinel (`null`) on failure.

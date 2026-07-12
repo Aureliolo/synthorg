@@ -34,7 +34,12 @@ async function fetchPlansImpl(set: PlansSet): Promise<void> {
 
 function clearDetailImpl(set: PlansSet): void {
   bumpDetailRequestToken()
-  set({ selectedPlan: null, detailLoading: false, detailError: null })
+  set({
+    selectedPlan: null,
+    detailLoading: false,
+    detailError: null,
+    parentTaskTitle: null,
+  })
 }
 
 export function createListActions(set: PlansSet) {
