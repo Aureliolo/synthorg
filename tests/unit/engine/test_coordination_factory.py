@@ -1,6 +1,7 @@
 """Tests for build_coordinator factory."""
 
-from unittest.mock import AsyncMock, MagicMock
+from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -22,11 +23,12 @@ from synthorg.engine.shutdown import ShutdownManager
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.providers.protocol import CompletionProvider
+from tests._shared import mock_of
 
 
-def _mock_engine() -> MagicMock:
-    """Create a spec'd mock AgentEngine for the factory."""
-    return MagicMock(spec=AgentEngine)
+def _mock_engine() -> AgentEngine:
+    """Create a typed mock AgentEngine for the factory."""
+    return cast("AgentEngine", mock_of[AgentEngine]())
 
 
 @pytest.mark.unit
@@ -43,7 +45,7 @@ class TestBuildCoordinator:
 
     def test_with_provider_and_model(self) -> None:
         """Provider and model are wired into decomposition strategy."""
-        provider = AsyncMock(spec=CompletionProvider)
+        provider = mock_of[CompletionProvider]()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
@@ -69,7 +71,7 @@ class TestBuildCoordinator:
 
     def test_with_task_engine(self) -> None:
         """task_engine is wired into the coordinator."""
-        task_engine = AsyncMock(spec=TaskEngine)
+        task_engine = mock_of[TaskEngine]()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
@@ -87,7 +89,7 @@ class TestBuildCoordinator:
             WorkspaceIsolationService,
         )
 
-        ws_strategy = MagicMock(spec=WorkspaceIsolationStrategy)
+        ws_strategy = mock_of[WorkspaceIsolationStrategy]()
         ws_config = WorkspaceIsolationConfig()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
@@ -112,7 +114,7 @@ class TestBuildCoordinator:
 
     def test_shutdown_manager_passed_to_executor(self) -> None:
         """shutdown_manager is forwarded to the parallel executor."""
-        shutdown_mgr = MagicMock(spec=ShutdownManager)
+        shutdown_mgr = mock_of[ShutdownManager]()
         engine = _mock_engine()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
@@ -132,7 +134,7 @@ class TestBuildCoordinator:
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
-                provider=AsyncMock(spec=CompletionProvider),
+                provider=mock_of[CompletionProvider](),
             )
 
     def test_model_only_raises_value_error(self) -> None:
@@ -152,7 +154,7 @@ class TestBuildCoordinator:
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
-                workspace_strategy=MagicMock(spec=WorkspaceIsolationStrategy),
+                workspace_strategy=mock_of[WorkspaceIsolationStrategy](),
             )
 
     def test_workspace_config_only_raises_value_error(self) -> None:
@@ -183,7 +185,7 @@ class TestDecompositionStrategySelection:
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
             task_assignment_config=TaskAssignmentConfig(),
-            provider=AsyncMock(spec=CompletionProvider),
+            provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
         )
         strategy = coordinator._decomposition_service._strategy
@@ -196,7 +198,7 @@ class TestDecompositionStrategySelection:
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
             task_assignment_config=TaskAssignmentConfig(),
-            provider=AsyncMock(spec=CompletionProvider),
+            provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
             decomposition_strategy="llm",
         )
@@ -211,7 +213,7 @@ class TestDecompositionStrategySelection:
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
-                provider=AsyncMock(spec=CompletionProvider),
+                provider=mock_of[CompletionProvider](),
                 decomposition_model="test-model-001",
                 decomposition_strategy="nonexistent",
             )

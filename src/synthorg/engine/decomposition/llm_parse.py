@@ -8,6 +8,7 @@ validated :class:`DecompositionPlan`. The prompt-building side lives in
 
 import json
 import re
+from enum import Enum
 from typing import Final
 from uuid import uuid4
 
@@ -44,6 +45,37 @@ _MARKDOWN_FENCE_RE = re.compile(
 )
 
 
+def _enum_or_default[E: Enum](
+    raw_value: object,
+    mapping: dict[str, E],
+    default: E,
+    *,
+    field: str,
+) -> E:
+    """Resolve a lowercased enum value from *mapping*, defaulting on a miss.
+
+    Args:
+        raw_value: The raw value from the LLM response (coerced to a lowercased
+            string for the lookup).
+        mapping: The value-to-member map for the target enum.
+        default: The member returned when *raw_value* is unrecognised.
+        field: The field name, for the warning context.
+
+    Returns:
+        The mapped enum member, or *default* (with a logged warning) on a miss.
+    """
+    resolved = mapping.get(str(raw_value).lower())
+    if resolved is not None:
+        return resolved
+    logger.warning(
+        DECOMPOSITION_LLM_PARSE_ERROR,
+        raw_value=raw_value,
+        default=default.value,
+        error=f"Unknown {field}: {raw_value!r}, defaulting to {default.value}",
+    )
+    return default
+
+
 def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
     """Convert a raw subtask dict into a ``SubtaskDefinition``.
 
@@ -68,16 +100,12 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             )
             raise DecompositionError(msg)
 
-    complexity_str = raw.get("estimated_complexity", "medium")
-    complexity = _COMPLEXITY_MAP.get(str(complexity_str).lower())
-    if complexity is None:
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            raw_value=complexity_str,
-            default="medium",
-            error=f"Unknown complexity value: {complexity_str!r}, defaulting to medium",
-        )
-        complexity = Complexity.MEDIUM
+    complexity = _enum_or_default(
+        raw.get("estimated_complexity", "medium"),
+        _COMPLEXITY_MAP,
+        Complexity.MEDIUM,
+        field="complexity",
+    )
     deps = raw.get("dependencies") or []
     if not isinstance(deps, list):
         msg = "Subtask field 'dependencies' must be an array"
@@ -190,37 +218,38 @@ def _args_to_plan(
             )
             raise DecompositionError(msg)
         id_map[sub.id] = str(uuid4())
+    # A dependency naming a subtask id the model never defined is a
+    # hallucination; reject it here with a correctable error so the
+    # agent-session strategy can resubmit, rather than passing the dangling
+    # id through to fail opaquely at DAG validation.
+    for sub in parsed:
+        for dep in sub.dependencies:
+            if dep not in id_map:
+                msg = f"Subtask {sub.id!r} depends on unknown subtask {dep!r}"
+                logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+                raise DecompositionError(msg)
     subtasks = tuple(
         sub.model_copy(
             update={
                 "id": id_map[sub.id],
-                "dependencies": tuple(id_map.get(dep, dep) for dep in sub.dependencies),
+                "dependencies": tuple(id_map[dep] for dep in sub.dependencies),
             }
         )
         for sub in parsed
     )
 
-    structure_str = args.get("task_structure", "sequential")
-    structure = _TASK_STRUCTURE_MAP.get(str(structure_str).lower())
-    if structure is None:
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            raw_value=structure_str,
-            default="sequential",
-            error=f"Unknown task_structure: {structure_str!r}, using sequential",
-        )
-        structure = TaskStructure.SEQUENTIAL
-
-    topology_str = args.get("coordination_topology", "auto")
-    topology = _TOPOLOGY_MAP.get(str(topology_str).lower())
-    if topology is None:
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            raw_value=topology_str,
-            default="auto",
-            error=f"Unknown topology: {topology_str!r}, defaulting to auto",
-        )
-        topology = CoordinationTopology.AUTO
+    structure = _enum_or_default(
+        args.get("task_structure", "sequential"),
+        _TASK_STRUCTURE_MAP,
+        TaskStructure.SEQUENTIAL,
+        field="task_structure",
+    )
+    topology = _enum_or_default(
+        args.get("coordination_topology", "auto"),
+        _TOPOLOGY_MAP,
+        CoordinationTopology.AUTO,
+        field="coordination_topology",
+    )
 
     return DecompositionPlan(
         parent_task_id=parent_task_id,

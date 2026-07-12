@@ -19,6 +19,11 @@ def expected_artifact_from_spec(spec: NotBlankStr) -> ExpectedArtifact:
     zero-artifact guard has a typed declaration to check against, defaulting to
     ``CODE``.
 
+    Args:
+        spec: The free-text expected-artifact spec (typically a file path or
+            deliverable name); its lowercased form drives the type inference
+            and it is carried through verbatim as the artifact path.
+
     Returns:
         An :class:`ExpectedArtifact` with an inferred type and the spec as its
         path.

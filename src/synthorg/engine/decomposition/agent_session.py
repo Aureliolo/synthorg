@@ -353,7 +353,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             registry,
             permission_checker=None,
             agent_id=str(owner.id),
-            task_id=None,
+            # Tag tool-execution cost with the objective task so planning spend
+            # attributes under the owner + task (matches cost_recording_scope);
+            # this is an attribution label, not a task-lifecycle binding.
+            task_id=str(task.id),
             cost_tracker=self._cost_tracker,
         )
         return invoker, len(planning_tools) + 1

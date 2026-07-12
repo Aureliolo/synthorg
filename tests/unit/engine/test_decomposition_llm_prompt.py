@@ -460,6 +460,27 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="array"):
             parse_tool_call_response(response, "task-1")
 
+    def test_unknown_dependency_raises(self) -> None:
+        """A dependency naming an undefined subtask raises DecompositionError.
+
+        A hallucinated dependency id is rejected at parse time with a
+        correctable error, rather than passing through to fail opaquely at
+        DAG validation.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "Do it",
+                    "dependencies": ["ghost-subtask"],
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="unknown subtask"):
+            parse_tool_call_response(response, "task-1")
+
     def test_non_array_required_skills_raises(self) -> None:
         """Non-array required_skills field raises DecompositionError."""
         args: dict[str, object] = {

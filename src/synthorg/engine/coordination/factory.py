@@ -156,8 +156,9 @@ def build_coordinator(  # noqa: PLR0913
 
     Constructs the dependency tree:
         1. ``TaskStructureClassifier`` (no deps)
-        2. ``DecompositionStrategy`` -- LLM if provider+model provided,
-           otherwise a placeholder that raises at decompose-time
+        2. ``DecompositionStrategy`` -- selected by *decomposition_strategy*
+           (``agent-session`` default, or ``llm``) when provider+model are
+           provided; otherwise a placeholder that raises at decompose-time
         3. ``DecompositionService(strategy, classifier)``
         4. ``AgentTaskScorer`` -- instantiated with
            *routing_scorer_config* (operator-tunable weights resolved
