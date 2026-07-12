@@ -12,6 +12,11 @@ PIPELINE_PHASE_FAILED: Final[str] = "pipeline.phase.failed"
 
 PIPELINE_ROUTING_DECIDED: Final[str] = "pipeline.routing.decided"
 PIPELINE_SOLO_AGENT_SELECTED: Final[str] = "pipeline.solo.agent_selected"
+PIPELINE_PROJECT_OWNER_SELECTED: Final[str] = "pipeline.project.owner_selected"
+"""A single accountable owner was staffed onto a planned initiative."""
+
+PIPELINE_PROJECT_LEAD_STAMPED: Final[str] = "pipeline.project.lead_stamped"
+"""The staffed owner was persisted as the project's durable lead."""
 
 PIPELINE_WORK_INTAKE_REJECTED: Final[str] = "pipeline.work_intake.rejected"
 """Work intake rejected the request (or produced no usable task)."""

@@ -576,11 +576,26 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
 **Pipeline phases:**
 
 1. **Decompose**: `DecompositionService` breaks the parent task into subtasks
-   with a dependency DAG. The LLM-backed decomposer routes task title,
-   description, and acceptance criteria through `wrap_untrusted(TAG_TASK_DATA, ...)`
-   before interpolating them into the prompt; the system prompt appends the
-   canonical `untrusted_content_directive` so the model is told the fenced
-   content is untrusted input. See [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
+   with a dependency DAG via a pluggable `DecompositionStrategy` selected by the
+   `coordination.decomposition_strategy` setting (`StrategyRegistry` in
+   `coordination/factory.py`):
+   - **`agent-session`** (default): a bounded agent session runs AS the staffed
+     project owner (`DecompositionContext.owner_identity`, resolved and stamped
+     onto `Project.lead` in the work pipeline). The owner reasons across turns,
+     may call granted read/research tools (memory recall, project brain, web
+     search when configured), self-reviews, and submits the plan through a
+     terminal `submit_decomposition_plan` tool. With no owner staffed, or if the
+     session submits no usable plan, it degrades to the single-shot strategy so a
+     greenlight is never blocked.
+   - **`llm`**: one structured LLM tool call produces the plan.
+
+   Both strategies emit per-subtask `expected_artifacts` + `acceptance_criteria`,
+   which flow through `plan_mapping` onto the durable `PlanItem`s and dispatched
+   tasks, arming the fail-loud zero-artifact guard. Task title, description, and
+   acceptance criteria are routed through `wrap_untrusted(TAG_TASK_DATA, ...)`
+   before reaching any prompt, and the system prompt appends the canonical
+   `untrusted_content_directive`. See
+   [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
 2. **Route**: `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
 3. **Resolve topology**: reads topology from routing decisions; falls back to

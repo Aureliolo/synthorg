@@ -22,8 +22,10 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.pipeline._owner_selection import select_project_owner
 from synthorg.engine.pipeline._solo_selection import select_solo_agent
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
@@ -59,6 +61,7 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
     PIPELINE_PLAN_REVIEW_REQUESTED,
+    PIPELINE_PROJECT_LEAD_STAMPED,
     PIPELINE_PROJECT_NOT_FOUND,
     PIPELINE_REFINEMENT_REQUESTED,
     PIPELINE_ROUTING_UNDECIDABLE,
@@ -299,7 +302,9 @@ class DefaultWorkPipeline:
                 terminal task state.
         """
         try:
-            await self._phase(phases, _PHASE_PROJECTS, self._resolve_project(work_item))
+            owner = await self._phase(
+                phases, _PHASE_PROJECTS, self._resolve_project(work_item, task)
+            )
             verdict, agents = await self._phase(
                 phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
@@ -310,7 +315,7 @@ class DefaultWorkPipeline:
             if work_item.plan_required:
                 verdict = RoutingVerdict.SPLITTABLE
             outcome = await self._execute_selected_path(
-                work_item, task, agents, verdict, phases
+                work_item, task, agents, verdict, phases, owner
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -345,13 +350,14 @@ class DefaultWorkPipeline:
         await self._try_generate_narrative(work_item, task)
         return result
 
-    async def _execute_selected_path(
+    async def _execute_selected_path(  # noqa: PLR0913 -- one routed dispatch fan-out
         self,
         work_item: WorkItem,
         task: Task,
         agents: tuple[AgentIdentity, ...],
         verdict: RoutingVerdict,
         phases: list[WorkPhaseResult],
+        owner: AgentIdentity | None,
     ) -> _ExecutionOutcome:
         """Run the routed execution path (solo / refine / plan-review / team).
 
@@ -382,16 +388,40 @@ class DefaultWorkPipeline:
             # the plan is approved, at which point the durable plan (with any
             # operator edits) is rebuilt and dispatched.
             plan_handoff = await self._phase(
-                phases, _PHASE_PLAN_REVIEW, self._plan_review(work_item, task, agents)
+                phases,
+                _PHASE_PLAN_REVIEW,
+                self._plan_review(work_item, task, agents, owner),
             )
             return _ExecutionOutcome(
                 ExecutionPath.PLAN_REVIEW, task.status, None, plan_handoff
             )
         final_status = await self._phase(
-            phases, _PHASE_TEAM, self._run_team(work_item, task, agents)
+            phases, _PHASE_TEAM, self._run_team(work_item, task, agents, owner)
         )
         await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
         return _ExecutionOutcome(ExecutionPath.TEAM, final_status, None, None)
+
+    def _coordination_context(
+        self,
+        task: Task,
+        agents: tuple[AgentIdentity, ...],
+        owner: AgentIdentity | None,
+    ) -> CoordinationContext:
+        """Build the coordination context, threading the staffed owner.
+
+        The owner rides on the ``DecompositionContext`` so an agent-session
+        decomposition strategy plans AS the owner; a single-shot strategy
+        simply ignores it.
+
+        Returns:
+            A :class:`CoordinationContext` carrying the owner on its
+            decomposition context.
+        """
+        return CoordinationContext(
+            task=task,
+            available_agents=agents,
+            decomposition_context=DecompositionContext(owner_identity=owner),
+        )
 
     async def _try_generate_narrative(self, work_item: WorkItem, task: Task) -> None:
         """Generate the run narrative, best-effort.
@@ -608,8 +638,20 @@ class DefaultWorkPipeline:
             requested_by=work_item.requested_by,
         )
 
-    async def _resolve_project(self, work_item: WorkItem) -> None:
-        """Bind the work to its project context (existence check).
+    async def _resolve_project(
+        self, work_item: WorkItem, task: Task
+    ) -> AgentIdentity | None:
+        """Bind the work to its project and staff an accountable owner.
+
+        Beyond the existence check, this staffs a single owner for the
+        initiative from the standing roster: a greenlit objective is owned,
+        never run anonymously. The owner is stamped as the project's durable
+        ``lead`` (idempotently: an already-led project keeps its lead) and
+        returned so the planning stage can run AS the owner.
+
+        Returns:
+            The owning :class:`AgentIdentity`, or ``None`` when the roster is
+            empty (the initiative proceeds unowned).
 
         Raises:
             ProjectNotFoundError: If the project referenced by
@@ -623,6 +665,28 @@ class DefaultWorkPipeline:
                 error_type=ProjectNotFoundError.__name__,
             )
             raise ProjectNotFoundError(project_id=work_item.project)
+        # Only a planned initiative (a greenlit objective / charter) is
+        # staffed with an accountable owner. A one-off leaf task landing in an
+        # existing project must never hijack that project's lead.
+        if not work_item.plan_required:
+            return None
+        active = await self._agent_registry.list_active()
+        if project.lead is not None:
+            # An already-led project keeps its durable lead; resolve that
+            # agent from the active pool so planning still runs as the owner.
+            return next((a for a in active if str(a.id) == project.lead), None)
+        owner = select_project_owner(task, active, scorer=self._scorer)
+        if owner is None:
+            return None
+        await self._project_repository.update(
+            project.model_copy(update={"lead": str(owner.id)})
+        )
+        logger.info(
+            PIPELINE_PROJECT_LEAD_STAMPED,
+            project=work_item.project,
+            lead=str(owner.id),
+        )
+        return owner
 
     async def _decompose(
         self,
@@ -702,6 +766,7 @@ class DefaultWorkPipeline:
         work_item: WorkItem,
         task: Task,
         agents: tuple[AgentIdentity, ...],
+        owner: AgentIdentity | None,
     ) -> PlanReviewHandoff:
         """Decompose the plan and park it for human approval.
 
@@ -719,7 +784,7 @@ class DefaultWorkPipeline:
         assert coordinator is not None  # noqa: S101 -- guarded by _should_gate_plan
         assert gate is not None  # noqa: S101 -- guarded by _should_gate_plan
         plan = await coordinator.plan_preview(
-            CoordinationContext(task=task, available_agents=agents)
+            self._coordination_context(task, agents, owner)
         )
         handoff = await gate.request_plan_approval(
             work_item=work_item,
@@ -775,6 +840,7 @@ class DefaultWorkPipeline:
         work_item: WorkItem,
         task: Task,
         agents: tuple[AgentIdentity, ...],
+        owner: AgentIdentity | None,
     ) -> TaskStatus:
         """Hand splittable work to the multi-agent coordinator.
 
@@ -808,7 +874,7 @@ class DefaultWorkPipeline:
             )
             raise WorkRoutingUndecidableError(msg)
         await self._coordinator.coordinate(
-            CoordinationContext(task=task, available_agents=agents)
+            self._coordination_context(task, agents, owner)
         )
         post = await self._task_engine.get_task(str(task.id))
         if post is None:

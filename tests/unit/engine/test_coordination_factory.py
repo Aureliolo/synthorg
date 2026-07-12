@@ -168,6 +168,53 @@ class TestBuildCoordinator:
 
 
 @pytest.mark.unit
+class TestDecompositionStrategySelection:
+    """The decomposition_strategy knob selects the decomposer."""
+
+    def test_defaults_to_agent_session(self) -> None:
+        from synthorg.engine.decomposition.agent_session import (
+            AgentSessionDecompositionStrategy,
+        )
+
+        coordinator = build_coordinator(
+            config=CoordinationSectionConfig(),
+            engine=_mock_engine(),
+            task_assignment_config=TaskAssignmentConfig(),
+            provider=AsyncMock(spec=CompletionProvider),
+            decomposition_model="test-model-001",
+        )
+        strategy = coordinator._decomposition_service._strategy
+        assert isinstance(strategy, AgentSessionDecompositionStrategy)
+
+    def test_llm_selection(self) -> None:
+        from synthorg.engine.decomposition.llm import LlmDecompositionStrategy
+
+        coordinator = build_coordinator(
+            config=CoordinationSectionConfig(),
+            engine=_mock_engine(),
+            task_assignment_config=TaskAssignmentConfig(),
+            provider=AsyncMock(spec=CompletionProvider),
+            decomposition_model="test-model-001",
+            decomposition_strategy="llm",
+        )
+        strategy = coordinator._decomposition_service._strategy
+        assert isinstance(strategy, LlmDecompositionStrategy)
+
+    def test_unknown_strategy_raises(self) -> None:
+        from synthorg.core.registry import StrategyFactoryNotFoundError
+
+        with pytest.raises(StrategyFactoryNotFoundError):
+            build_coordinator(
+                config=CoordinationSectionConfig(),
+                engine=_mock_engine(),
+                task_assignment_config=TaskAssignmentConfig(),
+                provider=AsyncMock(spec=CompletionProvider),
+                decomposition_model="test-model-001",
+                decomposition_strategy="nonexistent",
+            )
+
+
+@pytest.mark.unit
 class TestNoProviderDecompositionStrategy:
     """Placeholder strategy raises clear error."""
 

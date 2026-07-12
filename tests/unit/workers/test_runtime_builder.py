@@ -68,11 +68,14 @@ class _AcceptingIntakeStrategy:
 async def _get_str(_namespace: str, key: str) -> str:
     """Key-aware ``config_resolver.get_str`` stub.
 
-    ``routing_policy`` selects the work pipeline policy; every other
-    key (``decomposition_model``) yields a model id.
+    ``routing_policy`` selects the work pipeline policy and
+    ``decomposition_strategy`` selects the decomposer; every other key
+    (``decomposition_model``) yields a model id.
     """
     if key == "routing_policy":
         return "leaf-threshold"
+    if key == "decomposition_strategy":
+        return "agent-session"
     return "example-medium-001"
 
 

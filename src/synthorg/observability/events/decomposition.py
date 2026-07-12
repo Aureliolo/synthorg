@@ -18,6 +18,12 @@ DECOMPOSITION_LLM_CALL_COMPLETE: Final[str] = "decomposition.llm.call.complete"
 DECOMPOSITION_LLM_PARSE_ERROR: Final[str] = "decomposition.llm.parse.error"
 DECOMPOSITION_LLM_RETRY: Final[str] = "decomposition.llm.retry"
 
+# Agent-session decomposition strategy: the owner-run planning loop.
+DECOMPOSITION_SESSION_STARTED: Final[str] = "decomposition.session.started"
+DECOMPOSITION_SESSION_COMPLETED: Final[str] = "decomposition.session.completed"
+DECOMPOSITION_SESSION_NO_PLAN: Final[str] = "decomposition.session.no_plan"
+DECOMPOSITION_SESSION_FALLBACK: Final[str] = "decomposition.session.fallback"
+
 # Coordination-constraints middleware received an empty plan text from
 # the LLM.  Caller falls back to a default plan; the event preserves the
 # failure mode for triage.

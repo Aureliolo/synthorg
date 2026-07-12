@@ -84,6 +84,15 @@ def _post_task(status: TaskStatus) -> Task:
     return _task(status, assigned_to="agent-1")
 
 
+def _project(*, lead: str | None = None) -> Project:
+    """A real (non-mock) project so owner staffing can read/stamp ``lead``."""
+    return Project(
+        id=as_uuid("proj-1"),
+        name="Beachhead",
+        lead=lead,
+    )
+
+
 def _pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
     *,
     intake_result: IntakeResult,
@@ -130,6 +139,7 @@ def _pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
         "identity": identity,
         "worker": worker,
         "task_engine": task_engine,
+        "project_repo": project_repo,
     }
     return pipeline, handles
 
@@ -342,7 +352,7 @@ class TestPlanRequired:
                 request_id="corr-1", task_id="task-1"
             ),
             task=_task(),
-            project=mock_of[Project](),
+            project=_project(),
             # The router says LEAF; plan_required overrides it to SPLITTABLE.
             verdict=RoutingVerdict.LEAF,
             coordinator=coordinator,
@@ -373,7 +383,7 @@ class TestPlanRequired:
                 request_id="corr-1", task_id="task-1"
             ),
             task=_task(),
-            project=mock_of[Project](),
+            project=_project(),
             verdict=RoutingVerdict.LEAF,
             coordinator=coordinator,
             agents=(make_e2e_identity(),),
@@ -385,6 +395,85 @@ class TestPlanRequired:
         assert result.execution_path is ExecutionPath.TEAM
         coordinator.coordinate.assert_awaited_once()
         cast("AsyncMock", handles["worker"]).execute_once.assert_not_called()
+
+
+class TestOwnerStaffing:
+    """A planned initiative is staffed with an accountable owner.
+
+    The owner is stamped as the project's durable ``lead`` and threaded into
+    the decomposition context so the planning stage runs AS the owner.
+    """
+
+    async def test_plan_required_staffs_and_threads_owner(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(lead=None),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=2,
+                    detail="2 subtasks awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        await pipeline.run(_work_item(plan_required=True))
+
+        # The staffed owner was persisted as the project's durable lead.
+        project_repo = cast("AsyncMock", handles["project_repo"])
+        project_repo.update.assert_awaited_once()
+        stamped = project_repo.update.await_args.args[0]
+        owner = cast("AgentIdentity", handles["identity"])
+        assert stamped.lead == str(owner.id)
+        # And the owner rides the decomposition context into planning.
+        ctx = coordinator.plan_preview.await_args.args[0]
+        assert ctx.decomposition_context.owner_identity is not None
+        assert ctx.decomposition_context.owner_identity.id == owner.id
+
+    async def test_already_led_project_keeps_its_lead(self) -> None:
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.return_value = object()
+        owner = make_e2e_identity()
+        pipeline, handles = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(lead=str(owner.id)),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(owner,),
+        )
+        gate = mock_of[PlanReviewGate](
+            request_plan_approval=AsyncMock(
+                return_value=PlanReviewHandoff(
+                    approval_id="appr-1",
+                    subtask_count=1,
+                    detail="1 subtask awaiting approval",
+                )
+            )
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        await pipeline.run(_work_item(plan_required=True))
+
+        # An already-led project is not re-stamped, and the existing lead is
+        # resolved from the roster and threaded into planning.
+        cast("AsyncMock", handles["project_repo"]).update.assert_not_awaited()
+        ctx = coordinator.plan_preview.await_args.args[0]
+        assert ctx.decomposition_context.owner_identity is not None
+        assert ctx.decomposition_context.owner_identity.id == owner.id
 
 
 class TestIntakeSplit:

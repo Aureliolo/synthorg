@@ -6,6 +6,7 @@ dependency tree from config and runtime services.
 
 from typing import TYPE_CHECKING, override
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.section_config import (
@@ -19,6 +20,7 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
@@ -98,28 +100,86 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
         raise DecompositionError(msg)
 
 
+def _build_llm_strategy(
+    *,
+    provider: CompletionProvider,
+    decomposition_model: str,
+    tool_provider: DecompositionToolProvider | None = None,
+) -> DecompositionStrategy:
+    """Build the single-shot LLM decomposition strategy.
+
+    Returns:
+        An :class:`LlmDecompositionStrategy` over *provider* + *model*.
+    """
+    del tool_provider
+    from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
+        LlmDecompositionStrategy,
+    )
+
+    return LlmDecompositionStrategy(provider=provider, model=decomposition_model)
+
+
+def _build_agent_session_strategy(
+    *,
+    provider: CompletionProvider,
+    decomposition_model: str,
+    tool_provider: DecompositionToolProvider | None = None,
+) -> DecompositionStrategy:
+    """Build the owner-run agent-session strategy over an LLM fallback.
+
+    Returns:
+        An :class:`AgentSessionDecompositionStrategy` whose fallback is the
+        single-shot LLM strategy over the same *provider* + *model*.
+    """
+    from synthorg.engine.decomposition.agent_session import (  # noqa: PLC0415
+        AgentSessionDecompositionStrategy,
+    )
+    from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
+        LlmDecompositionStrategy,
+    )
+
+    return AgentSessionDecompositionStrategy(
+        provider=provider,
+        fallback=LlmDecompositionStrategy(provider=provider, model=decomposition_model),
+        tool_provider=tool_provider,
+    )
+
+
+_DECOMPOSITION_STRATEGY_REGISTRY: StrategyRegistry[DecompositionStrategy] = (
+    StrategyRegistry(
+        {
+            "agent-session": _build_agent_session_strategy,
+            "llm": _build_llm_strategy,
+        },
+        kind="decomposition_strategy",
+    )
+)
+
+
 def _build_decomposition_strategy(
     provider: CompletionProvider | None,
     decomposition_model: str | None,
+    *,
+    strategy_name: str,
+    tool_provider: DecompositionToolProvider | None,
 ) -> DecompositionStrategy:
-    """Select the decomposition strategy based on available deps.
+    """Select the decomposition strategy from config and available deps.
 
     Returns:
-        An :class:`LlmDecompositionStrategy` when both deps are
+        The named strategy (agent-session or llm) when both provider deps are
         wired; the no-provider placeholder when neither is.
 
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
             is supplied -- both or neither must be given.
+        StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:
-        from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
-            LlmDecompositionStrategy,
-        )
-
-        return LlmDecompositionStrategy(
+        return _DECOMPOSITION_STRATEGY_REGISTRY.build(
+            strategy_name,
             provider=provider,
-            model=decomposition_model,
+            decomposition_model=decomposition_model,
+            tool_provider=tool_provider,
         )
     if (provider is None) != (decomposition_model is None):
         given = "provider" if provider is not None else "decomposition_model"
@@ -218,6 +278,8 @@ def build_coordinator(  # noqa: PLR0913
     task_assignment_config: TaskAssignmentConfig,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
+    decomposition_strategy: str = "agent-session",
+    decomposition_tool_provider: DecompositionToolProvider | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
@@ -255,6 +317,12 @@ def build_coordinator(  # noqa: PLR0913
             fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
+        decomposition_strategy: Which decomposer to build -- ``"agent-session"``
+            (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
+            from ``coordination.decomposition_strategy`` at boot.
+        decomposition_tool_provider: Optional builder of the read/research
+            tools granted to the agent-session planner; ``None`` runs the
+            session with only its terminal submit tool.
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
@@ -293,7 +361,12 @@ def build_coordinator(  # noqa: PLR0913
         A fully constructed ``MultiAgentCoordinator``.
     """
     classifier = TaskStructureClassifier()
-    strategy = _build_decomposition_strategy(provider, decomposition_model)
+    strategy = _build_decomposition_strategy(
+        provider,
+        decomposition_model,
+        strategy_name=decomposition_strategy,
+        tool_provider=decomposition_tool_provider,
+    )
     decomposition_service = DecompositionService(strategy, classifier)
 
     if scorer is None:

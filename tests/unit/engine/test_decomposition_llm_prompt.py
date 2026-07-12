@@ -158,6 +158,28 @@ class TestBuildDecompositionTool:
         assert "coordination_topology" in props
         assert "enum" in cast("dict[str, object]", props["coordination_topology"])
 
+    @pytest.mark.unit
+    def test_subtask_schema_requires_artifacts_and_acceptance(self) -> None:
+        """Subtask schema declares expected_artifacts + acceptance_criteria.
+
+        Both are required in the schema so the guard is armed: the model is
+        instructed to always emit concrete deliverables and criteria per
+        subtask, feeding the fail-loud zero-artifact guard downstream.
+        """
+        tool = build_decomposition_tool()
+        schema = cast("dict[str, object]", tool.parameters_schema)
+        props = cast("dict[str, object]", schema["properties"])
+        subtask_schema = cast(
+            "dict[str, object]",
+            cast("dict[str, object]", props["subtasks"])["items"],
+        )
+        sub_props = cast("dict[str, object]", subtask_schema["properties"])
+        assert "expected_artifacts" in sub_props
+        assert "acceptance_criteria" in sub_props
+        required = cast("list[str]", subtask_schema["required"])
+        assert "expected_artifacts" in required
+        assert "acceptance_criteria" in required
+
 
 class TestBuildSystemMessage:
     """Tests for build_system_message."""
@@ -373,8 +395,52 @@ class TestParseToolCallResponse:
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
         assert plan.subtasks[0].required_skills == ()
         assert plan.subtasks[0].required_role is None
+        assert plan.subtasks[0].expected_artifacts == ()
+        assert plan.subtasks[0].acceptance_criteria == ()
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
+
+    @pytest.mark.unit
+    def test_artifacts_and_acceptance_threaded(self) -> None:
+        """expected_artifacts + acceptance_criteria parse onto the subtask."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build board renderer",
+                    "description": "Render the Tetris grid",
+                    "expected_artifacts": ["src/board.tsx", "tests/board.test.tsx"],
+                    "acceptance_criteria": ["grid renders 10x20", "cells recolour"],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].expected_artifacts == (
+            "src/board.tsx",
+            "tests/board.test.tsx",
+        )
+        assert plan.subtasks[0].acceptance_criteria == (
+            "grid renders 10x20",
+            "cells recolour",
+        )
+
+    @pytest.mark.unit
+    def test_non_array_expected_artifacts_raises(self) -> None:
+        """Non-array expected_artifacts field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "expected_artifacts": "src/board.tsx",
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
 
     @pytest.mark.unit
     def test_missing_required_subtask_field_raises(self) -> None:

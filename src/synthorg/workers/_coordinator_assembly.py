@@ -60,6 +60,7 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
+_DECOMPOSITION_STRATEGY_KEY: str = "decomposition_strategy"
 _MIDDLEWARE_KEY: str = "enable_coordination_middleware"
 _ROUTING_POLICY_KEY: str = "routing_policy"
 _LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
@@ -155,21 +156,22 @@ async def _resolve_coordinator_dependencies(
     app_state: AppState,
 ) -> tuple[
     str,
+    str,
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
     bool,
 ]:
-    """Resolve decomposition model, scorer, workspace, and middleware concurrently.
+    """Resolve decomposition model/strategy, scorer, workspace, middleware.
 
-    The four resolution steps are independent, so they run under a
+    The resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The middleware-enabled
     flag is resolved here too so every remote read happens in one group
     rather than a serial tail read at the build site.
 
     Returns:
-        A ``(decomposition_model, routing_scorer_config, (workspace_strategy,
-        workspace_config), middleware_enabled)`` tuple.
+        A ``(decomposition_model, decomposition_strategy, routing_scorer_config,
+        (workspace_strategy, workspace_config), middleware_enabled)`` tuple.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -177,6 +179,12 @@ async def _resolve_coordinator_dependencies(
                 config_resolver_of(app_state).get_str(
                     _DECOMPOSITION_NS,
                     _DECOMPOSITION_KEY,
+                )
+            )
+            strategy_task = tg.create_task(
+                config_resolver_of(app_state).get_str(
+                    _DECOMPOSITION_NS,
+                    _DECOMPOSITION_STRATEGY_KEY,
                 )
             )
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
@@ -200,6 +208,7 @@ async def _resolve_coordinator_dependencies(
         raise
     return (
         model_task.result(),
+        strategy_task.result(),
         scorer_task.result(),
         workspace_task.result(),
         middleware_task.result(),
@@ -307,6 +316,7 @@ async def _build_runtime_coordinator(
     """
     (
         raw_decomposition_ref,
+        decomposition_strategy,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
         middleware_enabled,
@@ -363,6 +373,7 @@ async def _build_runtime_coordinator(
         task_assignment_config=app_state.config.task_assignment,
         provider=decomp_provider,
         decomposition_model=decomposition_model,
+        decomposition_strategy=decomposition_strategy,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,

@@ -1,0 +1,392 @@
+# module-kind: adapter
+"""Agent-session task decomposition strategy.
+
+Plans an objective by running a real, bounded agent session AS the staffed
+owner rather than a single LLM call: the owner reasons across turns, may call
+read/research tools when granted (memory recall, project brain, web search if
+configured), self-critiques, and finally calls the terminal
+``submit_decomposition_plan`` tool. The submitted plan carries per-subtask
+``expected_artifacts`` + ``acceptance_criteria``, so the durable plan arms the
+fail-loud zero-artifact guard downstream.
+
+This is the default decomposer. It degrades gracefully: with no staffed owner,
+or if the session ends without submitting a usable plan, it falls back to the
+single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
+"""
+
+from typing import cast, override
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.context import AgentContext
+from synthorg.engine.decomposition.llm_prompt import (
+    args_to_decomposition_plan,
+    build_decomposition_tool,
+)
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionPlan,
+)
+from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.loop_protocol import BudgetChecker
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.react_loop import ReactLoop
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_SESSION_COMPLETED,
+    DECOMPOSITION_SESSION_FALLBACK,
+    DECOMPOSITION_SESSION_NO_PLAN,
+    DECOMPOSITION_SESSION_STARTED,
+    DECOMPOSITION_VALIDATION_ERROR,
+)
+from synthorg.providers.cost_recording import cost_recording_scope
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
+
+logger = get_logger(__name__)
+
+_STRATEGY_NAME = "agent-session"
+
+
+class AgentSessionDecompositionConfig(BaseModel):
+    """Configuration for the agent-session decomposition strategy.
+
+    Attributes:
+        max_turns: Hard turn cap for the planning session.
+        temperature: Sampling temperature for the planning turns.
+        cost_ceiling: Per-session spend ceiling (base currency); the session
+            halts once accumulated cost reaches it.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    max_turns: int = Field(default=12, ge=1, le=50, description="Planning turn cap")
+    temperature: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature",
+    )
+    cost_ceiling: float = Field(
+        default=2.0,
+        gt=0.0,
+        description="Per-session spend ceiling in the base currency",
+    )
+
+
+class _PlanCapture:
+    """Mutable holder for the plan a session submits via the terminal tool."""
+
+    __slots__ = ("plan",)
+
+    def __init__(self) -> None:
+        self.plan: DecompositionPlan | None = None
+
+
+class SubmitDecompositionPlanTool(BaseTool):
+    """Terminal planning tool: the session submits its final plan through it.
+
+    The schema mirrors the single-shot decomposition tool (so each subtask
+    carries ``expected_artifacts`` + ``acceptance_criteria``); the parsed,
+    id-remapped plan is captured for the strategy to return. A malformed
+    submission surfaces as a tool error so the agent can correct and resubmit
+    within the same session.
+    """
+
+    def __init__(self, *, parent_task_id: str, capture: _PlanCapture) -> None:
+        super().__init__(
+            name="submit_decomposition_plan",
+            description=(
+                "Submit the final decomposition plan. Provide every subtask "
+                "with its dependencies, expected_artifacts (concrete "
+                "deliverables), and acceptance_criteria. Call this exactly "
+                "once, last, after you have researched and self-reviewed."
+            ),
+            parameters_schema=build_decomposition_tool().parameters_schema,
+            category=ToolCategory.OTHER,
+        )
+        self._parent_task_id = parent_task_id
+        self._capture = capture
+
+    @override
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, object],
+    ) -> ToolExecutionResult:
+        """Parse + capture the submitted plan, or report a correctable error.
+
+        Returns:
+            A success result naming the accepted subtask count, or an error
+            result describing why the plan was rejected so the agent retries.
+        """
+        try:
+            plan = args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", arguments),
+                self._parent_task_id,
+            )
+        except DecompositionError as exc:
+            return ToolExecutionResult(
+                content=(
+                    f"Plan rejected: {safe_error_description(exc)}. "
+                    "Fix the issue and call submit_decomposition_plan again."
+                ),
+                is_error=True,
+            )
+        self._capture.plan = plan
+        return ToolExecutionResult(
+            content=(
+                f"Plan accepted with {len(plan.subtasks)} subtasks. You may stop now."
+            ),
+        )
+
+
+class AgentSessionDecompositionStrategy(DecompositionStrategy):
+    """Decomposition strategy that plans via a bounded owner-run agent session.
+
+    Runs a governed-free, read-and-submit planning loop as the staffed owner,
+    then returns the plan the owner submitted through the terminal tool.
+    """
+
+    __slots__ = ("_config", "_cost_tracker", "_fallback", "_provider", "_tool_provider")
+
+    def __init__(
+        self,
+        *,
+        provider: CompletionProvider,
+        fallback: DecompositionStrategy,
+        tool_provider: DecompositionToolProvider | None = None,
+        config: AgentSessionDecompositionConfig | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
+    ) -> None:
+        """Initialise the agent-session decomposition strategy.
+
+        Args:
+            provider: LLM completion provider driving the planning loop.
+            fallback: Single-shot strategy used when no owner is staffed or
+                the session submits no usable plan (a greenlight is never
+                blocked on the session).
+            tool_provider: Optional builder of the owner's read/research
+                planning tools; ``None`` runs the session with only the
+                terminal submit tool.
+            config: Optional session configuration (turn cap, temperature,
+                cost ceiling). Uses defaults when omitted.
+            cost_tracker: Optional cost tracker; when wired the session's
+                provider calls record against it under the owner + task.
+        """
+        self._provider = provider
+        self._fallback = fallback
+        self._tool_provider = tool_provider
+        self._config = config or AgentSessionDecompositionConfig()
+        self._cost_tracker = cost_tracker
+
+    @override
+    def get_strategy_name(self) -> str:
+        """Return the strategy name."""
+        return _STRATEGY_NAME
+
+    @override
+    async def decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        """Plan the task via an owner-run agent session, or fall back.
+
+        Returns:
+            The decomposition plan the owner submitted, or the fallback
+            strategy's plan when no owner is staffed / no plan was submitted.
+
+        Raises:
+            DecompositionDepthError: If the current depth meets or exceeds the
+                configured max depth.
+            DecompositionError: If both the session and the fallback fail.
+        """
+        self._check_depth(context)
+        owner = context.owner_identity
+        if owner is None:
+            logger.info(
+                DECOMPOSITION_SESSION_FALLBACK,
+                task_id=str(task.id),
+                reason="no_owner_staffed",
+            )
+            return await self._fallback.decompose(task, context)
+
+        capture = _PlanCapture()
+        result_reason = await self._run_session(task, context, owner, capture)
+        plan = capture.plan
+        if plan is not None and len(plan.subtasks) <= context.max_subtasks:
+            logger.info(
+                DECOMPOSITION_SESSION_COMPLETED,
+                task_id=str(task.id),
+                owner_id=str(owner.id),
+                subtask_count=len(plan.subtasks),
+                termination=result_reason,
+            )
+            return plan
+        logger.warning(
+            DECOMPOSITION_SESSION_NO_PLAN,
+            task_id=str(task.id),
+            owner_id=str(owner.id),
+            termination=result_reason,
+            over_limit=plan is not None,
+        )
+        return await self._fallback.decompose(task, context)
+
+    async def _run_session(
+        self,
+        task: Task,
+        context: DecompositionContext,
+        owner: AgentIdentity,
+        capture: _PlanCapture,
+    ) -> str:
+        """Run the bounded planning loop as *owner*, capturing the plan.
+
+        Returns:
+            The loop's termination reason (for observability).
+        """
+        submit_tool = SubmitDecompositionPlanTool(
+            parent_task_id=str(task.id),
+            capture=capture,
+        )
+        extra_tools = (
+            self._tool_provider.build_tools(
+                owner_id=str(owner.id),
+                project_id=task.project,
+            )
+            if self._tool_provider is not None
+            else ()
+        )
+        registry = ToolRegistry([submit_tool, *extra_tools])
+        invoker = ToolInvoker(
+            registry,
+            permission_checker=None,
+            agent_id=str(owner.id),
+            task_id=None,
+            cost_tracker=self._cost_tracker,
+        )
+        ctx = self._build_context(task, context, owner)
+        logger.info(
+            DECOMPOSITION_SESSION_STARTED,
+            task_id=str(task.id),
+            owner_id=str(owner.id),
+            granted_tools=len(extra_tools) + 1,
+            max_turns=self._config.max_turns,
+        )
+        loop = ReactLoop(approval_gate=None)
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr(str(owner.id)),
+            task_id=str(task.id),
+            # Owner-run planning session, not a registered system prompt class.
+            purpose=None,
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            result = await loop.execute(
+                context=ctx,
+                provider=self._provider,
+                tool_invoker=invoker,
+                budget_checker=self._budget_checker(),
+                completion_config=CompletionConfig(
+                    temperature=self._config.temperature
+                ),
+            )
+        return result.termination_reason.value
+
+    def _build_context(
+        self,
+        task: Task,
+        context: DecompositionContext,
+        owner: AgentIdentity,
+    ) -> AgentContext:
+        """Build the owner-persona planning context for the session.
+
+        Returns:
+            An :class:`AgentContext` carrying the owner persona and the
+            fenced planning brief.
+        """
+        ctx = AgentContext.from_identity(owner, max_turns=self._config.max_turns)
+        ctx = ctx.with_message(
+            ChatMessage(
+                role=MessageRole.SYSTEM,
+                content=render_agent_system_prompt(owner),
+            ),
+        )
+        return ctx.with_message(
+            ChatMessage(
+                role=MessageRole.USER,
+                content=self._planning_brief(task, context),
+            ),
+        )
+
+    def _planning_brief(self, task: Task, context: DecompositionContext) -> str:
+        """Compose the planning instruction with the fenced objective.
+
+        The objective text originates from operator/charter input and is
+        attacker-controllable, so it is fenced via ``wrap_untrusted``; the
+        instructions and numeric constraints sit outside the fence.
+
+        Returns:
+            The user-message brief driving the planning session.
+        """
+        inner = [f"Title: {task.title}", f"Description: {task.description}"]
+        if task.acceptance_criteria:
+            inner.append("Acceptance criteria:")
+            inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
+        return "\n".join(
+            [
+                "You are the accountable owner planning this objective. Break it",
+                "into a dependency-ordered set of subtasks a team can execute.",
+                "First research what you need using any tools you have (recall",
+                "prior work, search the project brain, look up unknowns). For",
+                "every subtask, state concrete expected_artifacts (the files,",
+                "docs, or test suites it must produce) and verifiable",
+                "acceptance_criteria. Then critically review your own plan for",
+                "gaps and missing deliverables. Finally, call",
+                "submit_decomposition_plan exactly once with the complete plan.",
+                "",
+                wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),
+                "",
+                "Constraints:",
+                f"  max_subtasks: {context.max_subtasks}",
+            ]
+        )
+
+    def _budget_checker(self) -> BudgetChecker:
+        """Build the per-session spend-ceiling checker.
+
+        Returns:
+            A checker that halts the loop once accumulated cost reaches the
+            configured ceiling.
+        """
+        ceiling = self._config.cost_ceiling
+        return lambda ctx: ctx.accumulated_cost.cost >= ceiling
+
+    @staticmethod
+    def _check_depth(context: DecompositionContext) -> None:
+        """Raise if the recursion depth limit is reached.
+
+        Raises:
+            DecompositionDepthError: If current depth meets or exceeds max
+                depth.
+        """
+        if context.current_depth >= context.max_depth:
+            msg = (
+                f"Decomposition depth {context.current_depth} "
+                f"meets or exceeds max depth {context.max_depth}"
+            )
+            logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
+            raise DecompositionDepthError(msg)

@@ -97,8 +97,28 @@ def build_decomposition_tool() -> ToolDefinition:
                 "type": ["string", "null"],
                 "description": "Optional role for routing",
             },
+            "expected_artifacts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Concrete deliverables this subtask must produce "
+                    "(file paths, docs, or test suites). Non-empty so the "
+                    "fail-loud zero-artifact guard engages when it runs."
+                ),
+            },
+            "acceptance_criteria": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Verifiable criteria that define done for this subtask",
+            },
         },
-        "required": ["id", "title", "description"],
+        "required": [
+            "id",
+            "title",
+            "description",
+            "expected_artifacts",
+            "acceptance_criteria",
+        ],
     }
     schema: dict[str, JsonValue] = {
         "type": "object",
@@ -152,6 +172,10 @@ def build_system_message() -> ChatMessage:
         "needed.\n"
         "- Estimate complexity for each subtask "
         "(simple, medium, complex, epic).\n"
+        "- For each subtask, list the concrete deliverables it must "
+        "produce as expected_artifacts (file paths, docs, or test "
+        "suites) and the verifiable acceptance_criteria that define "
+        "when it is done. Never leave these empty.\n"
         "- Classify the overall task structure "
         "(sequential, parallel, mixed).\n"
         "- Choose an appropriate coordination topology.\n"
@@ -274,6 +298,8 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             error=msg,
         )
         raise DecompositionError(msg)
+    artifacts = _string_array(raw, "expected_artifacts")
+    acceptance = _string_array(raw, "acceptance_criteria")
     return SubtaskDefinition.model_validate(
         {
             "id": raw["id"],
@@ -283,8 +309,31 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             "estimated_complexity": complexity,
             "required_skills": tuple(skills),
             "required_role": raw.get("required_role"),
+            "expected_artifacts": artifacts,
+            "acceptance_criteria": acceptance,
         }
     )
+
+
+def _string_array(raw: dict[str, JsonValue], field: str) -> tuple[str, ...]:
+    """Coerce an optional LLM string-array field into a tuple.
+
+    Args:
+        raw: The raw subtask dict from tool call arguments.
+        field: The array-valued field name to read.
+
+    Returns:
+        A tuple of the array's entries (empty when the field is absent).
+
+    Raises:
+        DecompositionError: When the field is present but is not an array.
+    """
+    values = raw.get(field) or []
+    if not isinstance(values, list):
+        msg = f"Subtask field {field!r} must be an array"
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+        raise DecompositionError(msg)
+    return tuple(str(v) for v in values)
 
 
 def _args_to_plan(
@@ -381,6 +430,30 @@ def _args_to_plan(
         task_structure=structure,
         coordination_topology=topology,
     )
+
+
+def args_to_decomposition_plan(
+    args: dict[str, JsonValue],
+    parent_task_id: str,
+) -> DecompositionPlan:
+    """Parse raw submit-plan arguments into a validated ``DecompositionPlan``.
+
+    The public entry over the shared parser: the single-shot strategy's
+    response parser and the agent-session strategy's terminal submit tool both
+    route through it, so subtask-id remapping and the armed
+    ``expected_artifacts`` / ``acceptance_criteria`` threading stay identical.
+
+    Args:
+        args: The submit-plan tool-call arguments (or equivalent JSON).
+        parent_task_id: ID of the parent task the plan decomposes.
+
+    Returns:
+        A validated ``DecompositionPlan``.
+
+    Raises:
+        DecompositionError: If the arguments are invalid.
+    """
+    return _args_to_plan(args, parent_task_id)
 
 
 def parse_tool_call_response(

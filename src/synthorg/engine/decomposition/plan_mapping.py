@@ -52,7 +52,9 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
 
     Returns:
         A :class:`PlanItem` carrying the subtask's identity, dependency
-        edges, routing complexity/stakes, and owning role.
+        edges, routing complexity/stakes, owning role, and the per-item
+        acceptance criteria and expected artifacts that arm the fail-loud
+        zero-artifact guard on the dispatched task.
     """
     return PlanItem(
         id=subtask.id,
@@ -60,6 +62,8 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         description=subtask.description,
         dependencies=subtask.dependencies,
         owner=subtask.required_role,
+        acceptance_criteria=subtask.acceptance_criteria,
+        expected_artifacts=subtask.expected_artifacts,
         required_skills=subtask.required_skills,
         required_tags=subtask.required_tags,
         estimated_complexity=subtask.estimated_complexity,
@@ -111,8 +115,9 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
 def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     """Project a durable plan item back onto a decomposition subtask.
 
-    Routing hints the plan does not carry (skills, tags) default to empty; the
-    item's ``owner`` maps back to the subtask's ``required_role``.
+    The item's ``owner`` maps back to the subtask's ``required_role``, and the
+    per-item acceptance criteria and expected artifacts round-trip so a
+    re-decomposition off a durable plan keeps the guard armed.
 
     Returns:
         A :class:`SubtaskDefinition` mirroring the plan item.
@@ -127,6 +132,8 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
         required_skills=item.required_skills,
         required_tags=item.required_tags,
         required_role=item.owner,
+        expected_artifacts=item.expected_artifacts,
+        acceptance_criteria=item.acceptance_criteria,
     )
 
 

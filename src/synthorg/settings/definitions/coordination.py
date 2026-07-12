@@ -77,6 +77,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_strategy",
+        type=SettingType.ENUM,
+        default="agent-session",
+        enum_values=("agent-session", "llm"),
+        description=(
+            "How the coordinator turns a greenlit objective into a plan."
+            " 'agent-session' (default) runs a bounded planning session as the"
+            " staffed owner: the owner researches with any granted tools,"
+            " drafts subtasks with per-item expected artifacts and acceptance"
+            " criteria, self-reviews, then submits the plan (falling back to a"
+            " single LLM call when no owner is staffed). 'llm' uses one"
+            " structured LLM call. Resolved at boot; a runtime change applies"
+            " on the next coordinator rebuild (provider re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="routing_policy",
         type=SettingType.ENUM,
         default="llm-judged",

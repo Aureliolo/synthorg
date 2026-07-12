@@ -506,6 +506,8 @@ gitignored
 gitleaks
 glibc
 govulncheck
+greenlight
+greenlit
 greppable
 grimp
 gzipped

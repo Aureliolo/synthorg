@@ -39,6 +39,13 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # parameters_schema mirrors a remote MCP server's tools/list
         # response, so the shape is not known until runtime.
         "synthorg.tools.mcp.bridge_tool.MCPBridgeTool",
+        # Reuses the decomposition tool's hand-rolled JSON schema and the
+        # lenient, self-correcting ``args_to_decomposition_plan`` parser
+        # (the single source of truth the single-shot strategy also uses,
+        # which remaps subtask ids). A strict typed args model would both
+        # duplicate that schema and reject the retry-friendly partial
+        # submissions the parser is designed to accept and correct.
+        "synthorg.engine.decomposition.agent_session.SubmitDecompositionPlanTool",
     }
 )
 
