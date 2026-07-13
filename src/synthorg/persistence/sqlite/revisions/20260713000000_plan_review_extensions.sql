@@ -21,7 +21,8 @@ ALTER TABLE plans ADD COLUMN version_history TEXT NOT NULL DEFAULT '[]';
 
 -- Backfill any pre-existing plan's title from its objective id (no human title
 -- was captured before this migration); new plans always carry a real title.
-UPDATE plans SET objective_title = objective_id WHERE objective_title = '';
+UPDATE plans SET objective_title = objective_id
+WHERE objective_title = '';
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

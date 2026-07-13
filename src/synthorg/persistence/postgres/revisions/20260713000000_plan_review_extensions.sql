@@ -13,16 +13,17 @@
 -- a comment never conflicts with a plan rework.
 
 ALTER TABLE plans
-    ADD COLUMN objective_title TEXT NOT NULL DEFAULT '',
-    ADD COLUMN review JSONB,
-    ADD COLUMN open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
-    ADD COLUMN assumptions JSONB NOT NULL DEFAULT '[]'::JSONB,
-    ADD COLUMN objective_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
-    ADD COLUMN version_history JSONB NOT NULL DEFAULT '[]'::JSONB;
+ADD COLUMN objective_title TEXT NOT NULL DEFAULT '',
+ADD COLUMN review JSONB,
+ADD COLUMN open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
+ADD COLUMN assumptions JSONB NOT NULL DEFAULT '[]'::JSONB,
+ADD COLUMN objective_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
+ADD COLUMN version_history JSONB NOT NULL DEFAULT '[]'::JSONB;
 
 -- Backfill any pre-existing plan's title from its objective id (no human title
 -- was captured before this migration); new plans always carry a real title.
-UPDATE plans SET objective_title = objective_id WHERE objective_title = '';
+UPDATE plans SET objective_title = objective_id
+WHERE objective_title = '';
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
