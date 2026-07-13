@@ -1282,44 +1282,6 @@ class _FakePrincipleOverrideRepository:
         return ()
 
 
-class _FakeTrustStateRepository:
-    """Minimal TrustStateRepository conforming to the protocol shape."""
-
-    async def save(self, entity: object, /) -> None:
-        del entity
-
-    async def get(self, entity_id: NotBlankStr, /) -> object | None:
-        del entity_id
-        return None
-
-    async def delete(self, entity_id: NotBlankStr, /) -> bool:
-        del entity_id
-        return False
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del limit, offset
-        return ()
-
-    async def query(
-        self,
-        filter_spec: object,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del filter_spec, limit, offset
-        return ()
-
-    async def purge_before(self, threshold: object, /) -> int:
-        del threshold
-        return 0
-
-
 class _FakeAppendOnlyRepository:
     """Minimal AppendOnlyRepository conforming to the protocol shape."""
 
@@ -1716,17 +1678,6 @@ class _FakeBackend:
     @property
     def principle_overrides(self) -> _FakePrincipleOverrideRepository:
         return _FakePrincipleOverrideRepository()
-
-    @property
-    def trust_states(self) -> _FakeTrustStateRepository:
-        # Return a concrete repo-shaped fake (not bare ``object()``) so a
-        # backend that wires the wrong shape for these accessors is caught
-        # here, mirroring ``seen_claims`` / ``principle_overrides``.
-        return _FakeTrustStateRepository()
-
-    @property
-    def trust_change_history(self) -> _FakeAppendOnlyRepository:
-        return _FakeAppendOnlyRepository()
 
     @property
     def hiring_requests(self) -> _FakeHiringRequestRepository:

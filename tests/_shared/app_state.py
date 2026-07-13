@@ -153,7 +153,6 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "agent_workspace_root": (WorkspaceStateSlice, "agent_workspace_root"),
         "notification_dispatcher": (NotificationsStateSlice, "dispatcher"),
         "audit_log": (SecurityStateSlice, "audit_log"),
-        "trust_service": (SecurityStateSlice, "trust_service"),
         "autonomy_change_strategy": (SecurityStateSlice, "autonomy_change_strategy"),
         "coordination_metrics_store": (CoordinationStateSlice, "metrics_store"),
         "connection_catalog": (IntegrationsStateSlice, "connection_catalog"),

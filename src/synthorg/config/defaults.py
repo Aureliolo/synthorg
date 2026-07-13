@@ -37,7 +37,6 @@ def default_config_dict() -> dict[str, object]:
         "sandboxing": {},
         "mcp": {},
         "security": {},
-        "trust": {},
         "performance": {},
         "training": {},
         "evolution": {},

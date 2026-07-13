@@ -57,11 +57,10 @@ def _build_policy_engine_or_none(deps: ConstructionDeps) -> PolicyEngine | None:
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
-    """Populate the security slice (audit log, trust, autonomy, policy)."""
+    """Populate the security slice (audit log, autonomy, policy)."""
     app_state.swap_slice(
         SecurityStateSlice.model_construct(
             audit_log=deps.audit_log,
-            trust_service=deps.trust_service,
             autonomy_change_strategy=deps.autonomy_change_strategy,
             policy_engine=_build_policy_engine_or_none(deps),
         )

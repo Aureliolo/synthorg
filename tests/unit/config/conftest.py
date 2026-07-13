@@ -37,7 +37,6 @@ from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
-from synthorg.security.trust.config import TrustConfig
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
@@ -116,7 +115,6 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     sandboxing = SandboxingConfig()
     mcp = MCPConfig()
     security = SecurityConfig()
-    trust = TrustConfig()
     performance = PerformanceConfig()
     # Pinned to the valid default: polyfactory would otherwise synthesise an
     # EvolutionConfig whose nested ShadowEvaluationConfig fails its cross-field

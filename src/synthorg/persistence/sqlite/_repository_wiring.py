@@ -214,10 +214,6 @@ from synthorg.persistence.sqlite.training_plan_repo import (
 from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
 )
-from synthorg.persistence.sqlite.trust_repo import (
-    SQLiteTrustChangeHistoryRepository,
-    SQLiteTrustStateRepository,
-)
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -332,8 +328,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._connection_secrets = None
         self._oauth_states = None
         self._webhook_receipts = None
-        self._trust_states = None
-        self._trust_change_history = None
         self._hiring_requests = None
         self._agent_contributions = None
         self._audit_chain_entries = None
@@ -639,14 +633,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._webhook_receipts = SQLiteWebhookReceiptRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._trust_states = SQLiteTrustStateRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._trust_change_history = SQLiteTrustChangeHistoryRepository(
             self._db,
             write_context=self.write_context,
         )

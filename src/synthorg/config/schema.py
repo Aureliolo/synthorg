@@ -14,7 +14,6 @@ from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
 from synthorg.config._schema_validators import (
     collect_model_refs,
-    validate_milestone_clean_history_windows,
     validate_unique_agent_names,
     validate_unique_department_names,
 )
@@ -60,7 +59,6 @@ from synthorg.ontology.config import OntologyConfig
 from synthorg.organization.enums import CompanyType
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
-from synthorg.security.trust.config import TrustConfig
 from synthorg.telemetry.config import TelemetryConfig
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.communication.config import CommunicationToolsConfig
@@ -119,8 +117,6 @@ class RootConfig(BaseModel):
         sandboxing: Sandboxing backend configuration.
         mcp: MCP bridge configuration.
         security: Security subsystem configuration.
-        trust: Progressive trust configuration.
-        promotion: Promotion/demotion configuration.
         performance: Performance tracking configuration (quality judge,
             CI/LLM weights, trend thresholds).
         training: Training pipeline configuration.
@@ -259,10 +255,6 @@ class RootConfig(BaseModel):
         default_factory=SecurityConfig,
         description="Security subsystem configuration",
     )
-    trust: TrustConfig = Field(
-        default_factory=TrustConfig,
-        description="Progressive trust configuration",
-    )
     performance: PerformanceConfig = Field(
         default_factory=PerformanceConfig,
         description="Performance tracking configuration",
@@ -387,16 +379,6 @@ class RootConfig(BaseModel):
             The validated model instance (``self``), unchanged.
         """
         validate_unique_department_names(self)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_milestone_clean_history_windows(self) -> Self:
-        """Reject a milestone clean-history span no perf window covers.
-
-        Returns:
-            The validated model instance (``self``), unchanged.
-        """
-        validate_milestone_clean_history_windows(self)
         return self
 
     @model_validator(mode="after")

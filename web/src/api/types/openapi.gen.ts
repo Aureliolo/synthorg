@@ -6228,7 +6228,6 @@ export type components = {
             readonly last_active_at: string | null;
             readonly lifecycle_status: components["schemas"]["AgentStatus"];
             readonly performance: components["schemas"]["PerformanceSummary"] | null;
-            readonly trust: components["schemas"]["TrustSummary"] | null;
         };
         /**
          * AgentIdentity
@@ -17577,16 +17576,6 @@ export type components = {
             };
             /** @description Event trigger name */
             readonly event_name: string;
-        };
-        /** TrustSummary */
-        readonly TrustSummary: {
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly last_evaluated_at: string | null;
-            readonly level: components["schemas"]["ToolAccessLevel"];
-            readonly score: number | null;
         };
         /**
          * TunnelCredentialKind

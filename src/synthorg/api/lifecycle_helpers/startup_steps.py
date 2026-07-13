@@ -18,7 +18,6 @@ from synthorg.api._app_wiring import (
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
 from synthorg.api.lifecycle_helpers.durability_wiring import (
     _try_wire_audit_chain_persistence,
-    _try_wire_trust_persistence,
 )
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
@@ -202,9 +201,6 @@ async def install_runtime_services(
     # backend is connected; a restart otherwise discards all recorded
     # task/collaboration performance metrics.
     _try_wire_performance_persistence(app_state)
-    # Attach durable trust repos + hydrate now the backend is connected;
-    # a restart otherwise discards all trust state and its audit trail.
-    await _try_wire_trust_persistence(app_state)
     # Make the audit hash chain durable: hydrate from storage + drain new
     # appends; a restart otherwise loses the tamper-evident chain.
     await _try_wire_audit_chain_persistence(app_state)

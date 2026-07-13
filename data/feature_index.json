@@ -1200,7 +1200,6 @@
       "depends_on": [],
       "directory": "src/synthorg/security",
       "ghost_wired_symbols": [
-        "TrustService",
         "build_autonomy_change_strategy",
         "build_red_team_runtime",
         "RedTeamGateService",
@@ -1229,7 +1228,6 @@
       "settings_namespace": "security",
       "state_slice_fields": [
         "audit_log",
-        "trust_service",
         "autonomy_change_strategy",
         "red_team_reports",
         "policy_engine",
@@ -1378,6 +1376,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-13T21:47:14.723422Z",
+  "generated_at": "2026-07-13T22:29:57.169325Z",
   "schema_version": 1
 }

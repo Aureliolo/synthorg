@@ -2462,46 +2462,6 @@ CREATE TABLE org_alerts (
 CREATE INDEX idx_org_alerts_emitted ON org_alerts (emitted_at DESC);
 CREATE INDEX idx_org_alerts_severity ON org_alerts (severity, emitted_at DESC);
 CREATE INDEX idx_org_alerts_type ON org_alerts (alert_type, emitted_at DESC);
-CREATE TABLE trust_states (
-    agent_id TEXT PRIMARY KEY CHECK (LENGTH(TRIM(agent_id)) > 0),
-    global_level TEXT NOT NULL CHECK (LENGTH(TRIM(global_level)) > 0),
-    created_at TEXT CHECK (
-        created_at IS NULL
-        OR created_at LIKE '%+00:00'
-        OR created_at LIKE '%Z'
-    ),
-    category_levels TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(category_levels)),
-    trust_score REAL CHECK (trust_score IS NULL OR (trust_score >= 0 AND trust_score <= 1)),
-    last_evaluated_at TEXT CHECK (
-        last_evaluated_at IS NULL
-        OR last_evaluated_at LIKE '%+00:00'
-        OR last_evaluated_at LIKE '%Z'
-    ),
-    last_promoted_at TEXT CHECK (
-        last_promoted_at IS NULL
-        OR last_promoted_at LIKE '%+00:00'
-        OR last_promoted_at LIKE '%Z'
-    ),
-    last_decay_check_at TEXT CHECK (
-        last_decay_check_at IS NULL
-        OR last_decay_check_at LIKE '%+00:00'
-        OR last_decay_check_at LIKE '%Z'
-    ),
-    milestone_progress TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(milestone_progress))
-);
-CREATE TABLE trust_change_history (
-    id TEXT PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
-    old_level TEXT NOT NULL CHECK (LENGTH(TRIM(old_level)) > 0),
-    new_level TEXT NOT NULL CHECK (LENGTH(TRIM(new_level)) > 0),
-    category TEXT CHECK (category IS NULL OR LENGTH(TRIM(category)) > 0),
-    reason TEXT NOT NULL CHECK (LENGTH(TRIM(reason)) > 0),
-    timestamp TEXT NOT NULL CHECK (timestamp LIKE '%+00:00' OR timestamp LIKE '%Z'),
-    approval_id TEXT CHECK (approval_id IS NULL OR LENGTH(TRIM(approval_id)) > 0),
-    details TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX idx_trust_change_history_agent
-ON trust_change_history (agent_id, timestamp DESC);
 CREATE TABLE audit_chain_entries (
     chain_position INTEGER PRIMARY KEY CHECK (chain_position >= 0),
     event_hash TEXT NOT NULL CHECK (LENGTH(TRIM(event_hash)) > 0),

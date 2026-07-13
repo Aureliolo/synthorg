@@ -148,10 +148,6 @@ from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
 )
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
-)
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
@@ -246,8 +242,6 @@ class _BackendRepositoryAccessors:
     _org_facts: OrgFactRepository | None
     _ontology_entities: OntologyEntityRepository | None
     _ontology_drift: OntologyDriftReportRepository | None
-    _trust_states: TrustStateRepository | None
-    _trust_change_history: TrustChangeHistoryRepository | None
     _hiring_requests: HiringRequestRepository | None
     _agent_contributions: AgentContributionRepository | None
     _audit_chain_entries: AuditChainRepository | None
@@ -767,22 +761,6 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._ontology_drift,
             "ontology_drift",
-        )
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        return self._require_connected(
-            self._trust_states,
-            "trust_states",
-        )
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
-        return self._require_connected(
-            self._trust_change_history,
-            "trust_change_history",
         )
 
     @property

@@ -2,7 +2,7 @@
 """Security feature manifest.
 
 Declares the security feature's surface: its settings namespace, state slice
-(audit log + trust service + autonomy-change strategy), and the audit /
+(audit log + autonomy-change strategy), and the audit /
 autonomy REST controllers. The services are constructed at app build time. The
 feature has no MCP domain, but it does carry ghost-wired symbols for the
 red-team runtime and the vision-verifier gate (wired at runtime startup rather
@@ -56,7 +56,6 @@ FEATURE: FeatureModule = FeatureManifest(
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
     ghost_wired_symbols=(
-        "TrustService",
         "build_autonomy_change_strategy",
         "build_red_team_runtime",
         "RedTeamGateService",

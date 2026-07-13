@@ -47,7 +47,6 @@ from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
-from synthorg.security.trust.service import TrustService
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
@@ -86,7 +85,6 @@ class ConstructionDeps:
     settings_service: SettingsService | None = None
     auth_service: AuthService | None = None
     audit_log: AuditLog | None = None
-    trust_service: TrustService | None = None
     coordination_metrics_store: CoordinationMetricsStore | None = None
     performance_tracker: PerformanceTracker | None = None
     agent_registry: AgentRegistryService | None = None

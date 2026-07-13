@@ -178,10 +178,6 @@ from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
 )
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
-)
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
@@ -742,16 +738,6 @@ class PersistenceBackend(Protocol):
     @property
     def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
-        ...
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        ...
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
         ...
 
     @property

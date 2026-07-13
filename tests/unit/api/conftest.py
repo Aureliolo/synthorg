@@ -49,8 +49,6 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
-from synthorg.security.trust.config import TrustConfig
-from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
@@ -62,7 +60,6 @@ from tests._shared import (
 from tests._shared import (
     build_test_app as create_app,
 )
-from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.api.fakes import (
     FakeArtifactStorage,
     FakeMessageBus,
@@ -406,14 +403,6 @@ def audit_log() -> AuditLog:
 
 
 @pytest.fixture(scope="session")
-def trust_service() -> TrustService:
-    return TrustService(
-        strategy=NoOpTrustStrategy(),
-        config=TrustConfig(),
-    )
-
-
-@pytest.fixture(scope="session")
 def coordination_metrics_store() -> CoordinationMetricsStore:
     return CoordinationMetricsStore()
 
@@ -460,7 +449,6 @@ def _shared_app(  # noqa: PLR0913
     tool_invocation_tracker: ToolInvocationTracker,
     delegation_record_store: DelegationRecordStore,
     audit_log: AuditLog,
-    trust_service: TrustService,
     coordination_metrics_store: CoordinationMetricsStore,
     event_stream_hub: EventStreamHub,
     interrupt_store: InterruptStore,
@@ -498,7 +486,6 @@ def _shared_app(  # noqa: PLR0913
         delegation_record_store=delegation_record_store,
         artifact_storage=FakeArtifactStorage(),
         audit_log=audit_log,
-        trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
         event_stream_hub=event_stream_hub,
         interrupt_store=interrupt_store,

@@ -21,7 +21,6 @@ from litestar.types import Middleware
 from synthorg.api._comms_conflict_wiring import wire_conflict_resolution_service
 from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
-    _build_configured_trust_service,
     _build_performance_tracker,
 )
 from synthorg.api.app_helpers import (
@@ -398,9 +397,6 @@ def build_construction_services(
         coordination_metrics_store = CoordinationMetricsStore(
             max_entries=resolve_budget_int("coordination_metrics_max_entries"),
         )
-    trust_service = overrides.trust_service
-    if trust_service is None:
-        trust_service = _build_configured_trust_service(effective_config.trust)
     autonomy_change_strategy = _build_configured_autonomy_change_strategy(
         effective_config.config.autonomy,
     )
@@ -471,7 +467,6 @@ def build_construction_services(
         settings_service=overrides.settings_service,
         auth_service=overrides.auth_service,
         audit_log=audit_log,
-        trust_service=trust_service,
         coordination_metrics_store=coordination_metrics_store,
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,

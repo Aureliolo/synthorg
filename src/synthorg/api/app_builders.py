@@ -53,8 +53,6 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.autonomy.models import AutonomyConfig
     from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
-    from synthorg.security.trust.config import TrustConfig
-    from synthorg.security.trust.service import TrustService
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -279,27 +277,6 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         config_resolver=config_resolver,
         master_enabled=master_enabled,
     )
-
-
-def _build_configured_trust_service(
-    trust_config: TrustConfig,
-) -> TrustService | None:
-    """Construct a TrustService when trust is enabled, else return None.
-
-    Returns ``None`` for the DISABLED strategy so callers skip the
-    orchestrator entirely; controllers already treat
-    ``trust_service`` as optional via ``AppState.has_trust_service``.
-
-    Returns:
-        The ``TrustService`` value when present, ``None`` otherwise.
-    """
-    from synthorg.security.trust.factory import build_trust_strategy  # noqa: PLC0415
-    from synthorg.security.trust.service import TrustService  # noqa: PLC0415
-
-    strategy = build_trust_strategy(trust_config)
-    if strategy is None:
-        return None
-    return TrustService(strategy=strategy, config=trust_config)
 
 
 def _build_configured_autonomy_change_strategy(

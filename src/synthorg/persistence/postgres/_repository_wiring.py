@@ -196,10 +196,6 @@ from synthorg.persistence.postgres.training_plan_repo import (
 from synthorg.persistence.postgres.training_result_repo import (
     PostgresTrainingResultRepository,
 )
-from synthorg.persistence.postgres.trust_repo import (
-    PostgresTrustChangeHistoryRepository,
-    PostgresTrustStateRepository,
-)
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
     PostgresUserRepository,
@@ -300,8 +296,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._connection_secrets = None
         self._oauth_states = None
         self._webhook_receipts = None
-        self._trust_states = None
-        self._trust_change_history = None
         self._hiring_requests = None
         self._agent_contributions = None
         self._audit_chain_entries = None
@@ -421,8 +415,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._connection_secrets = PostgresConnectionSecretRepository(pool)
         self._oauth_states = PostgresOAuthStateRepository(pool)
         self._webhook_receipts = PostgresWebhookReceiptRepository(pool)
-        self._trust_states = PostgresTrustStateRepository(pool)
-        self._trust_change_history = PostgresTrustChangeHistoryRepository(pool)
         self._hiring_requests = PostgresHiringRequestRepository(pool)
         self._agent_contributions = PostgresAgentContributionRepository(pool)
         self._audit_chain_entries = PostgresAuditChainRepository(pool)

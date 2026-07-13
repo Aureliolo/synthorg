@@ -26,7 +26,6 @@ from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.state import SecurityStateSlice
-from synthorg.security.trust.service import TrustService
 from tests._shared import FakeClock, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -110,7 +109,6 @@ def test_publishing_red_team_reports_preserves_other_security_fields() -> None:
     """
     app_state = make_app_state(
         audit_log=mock_of[AuditLog](),
-        trust_service=mock_of[TrustService](),
         autonomy_change_strategy=mock_of[AutonomyChangeStrategy](),
     )
     repo = InMemoryRedTeamReportRepository()
@@ -120,5 +118,4 @@ def test_publishing_red_team_reports_preserves_other_security_fields() -> None:
     security = app_state.slice(SecurityStateSlice)
     assert security.red_team_reports is repo
     assert security.audit_log is not None
-    assert security.trust_service is not None
     assert security.autonomy_change_strategy is not None

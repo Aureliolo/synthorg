@@ -1977,13 +1977,6 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 ErrorCategory.INTERNAL,
             ),
             (
-                "synthorg.security.trust.errors",
-                "TrustError",
-                500,
-                ErrorCode.INTERNAL_ERROR,
-                ErrorCategory.INTERNAL,
-            ),
-            (
                 "synthorg.settings.errors",
                 "SettingNotFoundError",
                 404,

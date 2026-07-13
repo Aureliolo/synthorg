@@ -177,10 +177,6 @@ from synthorg.persistence.postgres.training_plan_repo import (
 from synthorg.persistence.postgres.training_result_repo import (
     PostgresTrainingResultRepository,
 )
-from synthorg.persistence.postgres.trust_repo import (
-    PostgresTrustChangeHistoryRepository,
-    PostgresTrustStateRepository,
-)
 from synthorg.persistence.postgres.webhook_receipt_repo import (
     PostgresWebhookReceiptRepository,
 )
@@ -220,10 +216,6 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
-)
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
@@ -317,8 +309,6 @@ class _PostgresBackendRepositoryAccessors:
     _connection_secrets: PostgresConnectionSecretRepository | None
     _oauth_states: PostgresOAuthStateRepository | None
     _webhook_receipts: PostgresWebhookReceiptRepository | None
-    _trust_states: PostgresTrustStateRepository | None
-    _trust_change_history: PostgresTrustChangeHistoryRepository | None
     _hiring_requests: PostgresHiringRequestRepository | None
     _agent_contributions: PostgresAgentContributionRepository | None
     _audit_chain_entries: PostgresAuditChainRepository | None
@@ -795,22 +785,6 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._ontology_drift,
             "ontology_drift",
-        )
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        return self._require_connected(
-            self._trust_states,
-            "trust_states",
-        )
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
-        return self._require_connected(
-            self._trust_change_history,
-            "trust_change_history",
         )
 
     @property

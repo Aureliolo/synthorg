@@ -142,7 +142,6 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
-    from synthorg.security.trust.service import TrustService
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
@@ -213,7 +212,6 @@ class AgentEngine(
         parked_context_repo: ParkedContextRepository | None = None,
         cost_forecast_repo: CostForecastRepository | None = None,
         approval_gate: ApprovalGate | None = None,
-        trust_service: TrustService | None = None,
         mcp_self_consumer: MCPSelfConsumerProvider | None = None,
         task_engine: TaskEngine | None = None,
         checkpoint_repo: CheckpointRepository | None = None,
@@ -295,11 +293,6 @@ class AgentEngine(
         # same gate. When absent (standalone / legacy callers) the
         # factory builds a gate from the engine's own collaborators.
         self._injected_approval_gate = approval_gate
-        # Progressive trust: when wired, the tool-invoker factory
-        # narrows an agent's effective tool access to the more
-        # restrictive of its identity level and its earned trust
-        # level. ``None`` (trust strategy DISABLED) is a no-op.
-        self._trust_service = trust_service
         # Agent -> SynthOrg-MCP self-consumer: when wired, the
         # tool-invoker factory adds trust-scoped SynthOrg MCP tools to
         # the agent's registry. ``None`` (mode DISABLED) is a no-op.
