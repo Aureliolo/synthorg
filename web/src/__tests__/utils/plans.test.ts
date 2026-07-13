@@ -12,6 +12,7 @@ import {
   itemFlags,
   itemNeedsAttention,
   planDetailPath,
+  planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
 
@@ -187,5 +188,23 @@ describe('dependency resolution', () => {
 describe('planDetailPath', () => {
   it('encodes the plan id into the detail route', () => {
     expect(planDetailPath('plan 1')).toBe('/plans/plan%201')
+  })
+})
+
+describe('planItemToPayload', () => {
+  it('round-trips a decision item, preserving its options and chosen pick', () => {
+    const item = makePlanItem('decide-1', {
+      kind: 'decision',
+      chosen_option_id: 'opt-a',
+      options: [
+        { id: 'opt-a', title: 'A', summary: 'Tradeoffs A.', recommended: true },
+        { id: 'opt-b', title: 'B', summary: 'Tradeoffs B.', recommended: false },
+      ],
+    })
+    const payload = planItemToPayload(item)
+    expect(payload.id).toBe('decide-1')
+    expect(payload.kind).toBe('decision')
+    expect(payload.chosen_option_id).toBe('opt-a')
+    expect(payload.options).toHaveLength(2)
   })
 })

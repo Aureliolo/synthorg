@@ -125,6 +125,25 @@ class TestDecisionItem:
                 chosen_option_id="ghost",
             )
 
+    def test_resolved_option_prefers_the_chosen_pick(self) -> None:
+        item = _decision_item(
+            "a",
+            options=(_opt("o1", recommended=True), _opt("o2")),
+            chosen_option_id="o2",
+        )
+        resolved = item.resolved_option()
+        assert resolved is not None
+        assert resolved.id == "o2"
+
+    def test_resolved_option_falls_back_to_recommended(self) -> None:
+        item = _decision_item("a", options=(_opt("o1"), _opt("o2", recommended=True)))
+        resolved = item.resolved_option()
+        assert resolved is not None
+        assert resolved.id == "o2"
+
+    def test_resolved_option_is_none_for_work_item(self) -> None:
+        assert _item("a").resolved_option() is None
+
 
 class TestPlanInvariants:
     def test_rejects_empty_items(self) -> None:

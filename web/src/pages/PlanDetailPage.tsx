@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { ArrowLeft, ListTree, MessageSquare, PencilLine, Radio } from 'lucide-react'
 import { Link, useParams } from 'react-router'
@@ -12,10 +12,12 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
+import { usePlansStore } from '@/stores/plans'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import {
   criticalPathFor,
   derivePlanStats,
+  planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
 
@@ -123,6 +125,21 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
     [plan.items, criticalPath],
   )
   const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
+  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const chooseOption = useCallback(
+    (itemId: string, optionId: string) => {
+      // Record the pick by round-tripping the whole item list through the
+      // wholesale edit endpoint, touching only the target decision's choice.
+      void usePlansStore.getState().editPlan(plan.id, {
+        items: plan.items.map((item) =>
+          item.id === itemId
+            ? { ...planItemToPayload(item), chosen_option_id: optionId }
+            : planItemToPayload(item),
+        ),
+      })
+    },
+    [plan.id, plan.items],
+  )
   return (
     <>
       <PlanReviewToolbar
@@ -143,6 +160,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
               index={index}
               onCriticalPath={criticalPath.has(item.id)}
               titleById={titleById}
+              {...(editable ? { onChooseOption: chooseOption } : {})}
             />
           ))}
         </div>

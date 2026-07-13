@@ -12,6 +12,7 @@ resume flows.
 """
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
+from synthorg.api.controllers._plan_decision_record import record_plan_decisions
 from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
@@ -132,6 +133,11 @@ async def _dispatch_approved_plan(
         )
         return
     try:
+        # Record the plan's decision-items (chosen or recommended-by-default
+        # option) into the brain before dispatch, so the company's shaping
+        # choices survive the strip-decisions step in ``decomposition_from_plan``
+        # rather than vanishing when only work items build.
+        await record_plan_decisions(app_state, plan, decided_by=decided_by)
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).

@@ -209,6 +209,24 @@ class PlanItem(BaseModel):
             chosen_option_id=self.chosen_option_id,
         )
 
+    def resolved_option(self) -> PlanOption | None:
+        """The option this decision resolves to: the chosen one, else recommended.
+
+        A reviewer's explicit ``chosen_option_id`` wins; absent a pick, the
+        decision falls back to the owner's recommended option (the validator
+        guarantees a DECISION always has exactly one), so an approved decision
+        always resolves to a concrete outcome rather than dispatching unresolved.
+
+        Returns:
+            The resolved :class:`PlanOption`, or ``None`` for a WORK item (which
+            carries no options).
+        """
+        if self.kind is not PlanItemKind.DECISION:
+            return None
+        if self.chosen_option_id is not None:
+            return next(o for o in self.options if o.id == self.chosen_option_id)
+        return next(o for o in self.options if o.recommended)
+
 
 class PlanVersionSnapshot(BaseModel):
     """A frozen snapshot of a plan's items at a prior version, for diffing.

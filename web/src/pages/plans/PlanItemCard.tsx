@@ -1,6 +1,7 @@
 import { CircleCheck, GitBranch, Package, Scale, Sparkles, UserRound } from 'lucide-react'
 
 import type { PlanItem } from '@/api/types/plans'
+import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
 import {
@@ -17,6 +18,12 @@ export interface PlanItemCardProps {
   index: number
   onCriticalPath: boolean
   titleById: ReadonlyMap<string, string>
+  /**
+   * Record a reviewer's option choice on a decision item. Absent (read-only)
+   * when the plan is no longer under review, so a decided plan shows the pick
+   * without an affordance to change it.
+   */
+  onChooseOption?: (itemId: string, optionId: string) => void
   className?: string
 }
 
@@ -77,7 +84,13 @@ function AcceptanceCriteria({ criteria }: { criteria: readonly string[] }) {
   )
 }
 
-function DecisionOptions({ item }: { item: PlanItem }) {
+function DecisionOptions({
+  item,
+  onChooseOption,
+}: {
+  item: PlanItem
+  onChooseOption: ((itemId: string, optionId: string) => void) | undefined
+}) {
   if (item.kind !== 'decision') return null
   return (
     <div className="space-y-1.5">
@@ -106,6 +119,16 @@ function DecisionOptions({ item }: { item: PlanItem }) {
                   </StatusPill>
                 )}
                 {chosen && <StatusPill tone="success">Chosen</StatusPill>}
+                {onChooseOption !== undefined && !chosen && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="ml-auto"
+                    onClick={() => onChooseOption(item.id, option.id)}
+                  >
+                    Choose
+                  </Button>
+                )}
               </div>
               <p className="mt-1 text-xs text-text-secondary">{option.summary}</p>
             </li>
@@ -150,6 +173,7 @@ export function PlanItemCard({
   index,
   onCriticalPath,
   titleById,
+  onChooseOption,
   className,
 }: PlanItemCardProps) {
   const deps = dependencyTitles(item, titleById)
@@ -172,7 +196,7 @@ export function PlanItemCard({
       </div>
       <ItemPills item={item} onCriticalPath={onCriticalPath} />
       <p className="text-sm text-text-secondary">{item.description}</p>
-      <DecisionOptions item={item} />
+      <DecisionOptions item={item} onChooseOption={onChooseOption} />
       <AcceptanceCriteria criteria={item.acceptance_criteria} />
       <ChipRow label="Delivers" icon={Package} values={item.expected_artifacts} />
       <ChipRow label="Needs skills" icon={UserRound} values={item.required_skills} />

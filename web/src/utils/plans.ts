@@ -7,13 +7,37 @@
  */
 
 import type { Complexity, Stakes, TaskStructure } from '@/api/types/enum-values.gen'
-import type { PlanItem } from '@/api/types/plans'
+import type { PlanItem, PlanItemPayload } from '@/api/types/plans'
 import type { StatusPillTone } from '@/components/ui/status-pill'
 import { ROUTES } from '@/router/routes'
 
 /** Deep-link to a plan's review workspace. */
 export function planDetailPath(planId: string): string {
   return ROUTES.PLAN_DETAIL.replace(':planId', encodeURIComponent(planId))
+}
+
+/**
+ * Project a durable plan item back onto its edit payload, so a targeted change
+ * (e.g. recording a decision's chosen option) can round-trip the untouched
+ * items through the wholesale edit endpoint without the editor's form state.
+ */
+export function planItemToPayload(item: PlanItem): PlanItemPayload {
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    owner: item.owner,
+    dependencies: item.dependencies,
+    acceptance_criteria: item.acceptance_criteria,
+    expected_artifacts: item.expected_artifacts,
+    required_skills: item.required_skills,
+    required_tags: item.required_tags,
+    estimated_complexity: item.estimated_complexity,
+    stakes: item.stakes,
+    kind: item.kind,
+    options: item.options,
+    chosen_option_id: item.chosen_option_id,
+  }
 }
 
 /** Stable DOM id for a plan item's card, so the attention panel can jump to it. */
