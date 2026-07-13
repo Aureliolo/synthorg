@@ -213,6 +213,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # plans (durable plan-review revision)
     "plans.edit": (30, 60),
     "plans.request_changes": (20, 60),
+    "plans.comment": (60, 60),
     # projects
     "projects.create": (10, 60),
     "projects.delete": (5, 60),

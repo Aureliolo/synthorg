@@ -3,13 +3,18 @@ import { describe, expect, it } from 'vitest'
 import { makePlanItem } from '@/__tests__/helpers/factories'
 import {
   computeCriticalPath,
+  computeWaves,
+  criticalPathFor,
   dependencyTitles,
   derivePlanStats,
   isHighComplexity,
   isHighStakes,
   itemFlags,
+  derivePlanCoverage,
+  derivePlanStaffing,
   itemNeedsAttention,
   planDetailPath,
+  planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
 
@@ -79,6 +84,63 @@ describe('computeCriticalPath', () => {
   })
 })
 
+describe('criticalPathFor', () => {
+  const branching = [
+    makePlanItem('a', { dependencies: [] }),
+    makePlanItem('b', { dependencies: ['a'] }),
+    makePlanItem('c', { dependencies: ['b'] }),
+    makePlanItem('d', { dependencies: ['a'] }),
+  ]
+
+  it('suppresses the critical path on a sequential plan (no signal)', () => {
+    expect(criticalPathFor(branching, 'sequential').size).toBe(0)
+  })
+
+  it('surfaces the path on a branching non-sequential plan', () => {
+    expect([...criticalPathFor(branching, 'mixed')].sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('suppresses the path when the chain spans every item', () => {
+    // A fully linear graph classified parallel: the "path" is everything, so
+    // there is nothing to single out.
+    const linear = [
+      makePlanItem('a', { dependencies: [] }),
+      makePlanItem('b', { dependencies: ['a'] }),
+      makePlanItem('c', { dependencies: ['b'] }),
+    ]
+    expect(criticalPathFor(linear, 'parallel').size).toBe(0)
+  })
+})
+
+describe('computeWaves', () => {
+  it('groups items into dependency-depth waves, parallel within a wave', () => {
+    // a gates b and d (which run in parallel); c follows b.
+    const items = [
+      makePlanItem('a', { dependencies: [] }),
+      makePlanItem('b', { dependencies: ['a'] }),
+      makePlanItem('c', { dependencies: ['b'] }),
+      makePlanItem('d', { dependencies: ['a'] }),
+    ]
+    const waves = computeWaves(items)
+    expect(waves.map((w) => w.index)).toEqual([0, 1, 2])
+    expect(waves[0]?.items.map((i) => i.id)).toEqual(['a'])
+    expect(
+      waves[1]?.items
+        .map((i) => i.id)
+        .slice()
+        .sort(),
+    ).toEqual(['b', 'd'])
+    expect(waves[2]?.items.map((i) => i.id)).toEqual(['c'])
+  })
+
+  it('puts independent items in a single wave', () => {
+    const items = [makePlanItem('a'), makePlanItem('b'), makePlanItem('c')]
+    const waves = computeWaves(items)
+    expect(waves).toHaveLength(1)
+    expect(waves[0]?.items).toHaveLength(3)
+  })
+})
+
 describe('derivePlanStats', () => {
   it('aggregates every review signal', () => {
     const items = [
@@ -128,5 +190,75 @@ describe('dependency resolution', () => {
 describe('planDetailPath', () => {
   it('encodes the plan id into the detail route', () => {
     expect(planDetailPath('plan 1')).toBe('/plans/plan%201')
+  })
+})
+
+describe('derivePlanCoverage', () => {
+  it('maps each criterion to the items that advance it and flags gaps', () => {
+    const items = [
+      makePlanItem('a', { title: 'Board', satisfies: ['Playable board'] }),
+      makePlanItem('b', { title: 'Score', satisfies: ['playable board'] }),
+    ]
+    const coverage = derivePlanCoverage(['Playable board', 'Score tracking'], items)
+    expect(coverage.total).toBe(2)
+    expect(coverage.covered).toBe(1)
+    expect(coverage.uncovered).toEqual(['Score tracking'])
+    // Case-insensitive match unions both items under the first criterion.
+    expect(coverage.entries[0]?.coveredBy).toEqual(['Board', 'Score'])
+    expect(coverage.entries[1]?.coveredBy).toEqual([])
+  })
+
+  it('returns empty coverage when the objective declared no criteria', () => {
+    const coverage = derivePlanCoverage([], [makePlanItem('a')])
+    expect(coverage.total).toBe(0)
+    expect(coverage.uncovered).toEqual([])
+  })
+})
+
+describe('derivePlanStaffing', () => {
+  it('summarises owner load, high-stakes, unassigned, and bottlenecks', () => {
+    const items = [
+      makePlanItem('a', { owner: 'Backend', stakes: 'critical' }),
+      makePlanItem('b', { owner: 'Backend' }),
+      makePlanItem('c', { owner: 'Backend' }),
+      makePlanItem('d', { owner: 'Design' }),
+      makePlanItem('e', { owner: null }),
+    ]
+    const staffing = derivePlanStaffing(items)
+    expect(staffing.totalOwners).toBe(2)
+    expect(staffing.unassigned).toBe(1)
+    // Busiest owner first; Backend owns 3 of 5 (>= ceil(5/2)) so it is a bottleneck.
+    expect(staffing.roles[0]?.owner).toBe('Backend')
+    expect(staffing.roles[0]?.itemCount).toBe(3)
+    expect(staffing.roles[0]?.highStakesCount).toBe(1)
+    expect(staffing.roles[0]?.overloaded).toBe(true)
+    expect(staffing.roles[1]?.overloaded).toBe(false)
+  })
+
+  it('never flags a bottleneck when a single owner holds everything', () => {
+    const staffing = derivePlanStaffing([
+      makePlanItem('a', { owner: 'Solo' }),
+      makePlanItem('b', { owner: 'Solo' }),
+      makePlanItem('c', { owner: 'Solo' }),
+    ])
+    expect(staffing.roles[0]?.overloaded).toBe(false)
+  })
+})
+
+describe('planItemToPayload', () => {
+  it('round-trips a decision item, preserving its options and chosen pick', () => {
+    const item = makePlanItem('decide-1', {
+      kind: 'decision',
+      chosen_option_id: 'opt-a',
+      options: [
+        { id: 'opt-a', title: 'A', summary: 'Tradeoffs A.', recommended: true },
+        { id: 'opt-b', title: 'B', summary: 'Tradeoffs B.', recommended: false },
+      ],
+    })
+    const payload = planItemToPayload(item)
+    expect(payload.id).toBe('decide-1')
+    expect(payload.kind).toBe('decision')
+    expect(payload.chosen_option_id).toBe('opt-a')
+    expect(payload.options).toHaveLength(2)
   })
 })

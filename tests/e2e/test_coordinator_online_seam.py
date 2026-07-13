@@ -117,12 +117,18 @@ class _DecompositionAwareStrategy:
                                     "title": "Research the data sources",
                                     "description": "Investigate inputs.",
                                     "required_skills": [_RESEARCH_SKILL],
+                                    "acceptance_criteria": [
+                                        "Data sources are catalogued.",
+                                    ],
                                 },
                                 {
                                     "id": "sub-analysis",
                                     "title": "Analyse the findings",
                                     "description": "Synthesise results.",
                                     "required_skills": [_ANALYSIS_SKILL],
+                                    "acceptance_criteria": [
+                                        "Findings are summarised.",
+                                    ],
                                 },
                             ],
                         },

@@ -24,6 +24,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     deadline: null,
     budget: 0,
     status: 'planning',
+    version: 1,
     ...overrides,
   }
 }

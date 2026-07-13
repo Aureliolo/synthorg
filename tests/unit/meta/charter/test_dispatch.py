@@ -208,7 +208,9 @@ class _FakeProjectRepo:
         self.items[str(project.id)] = project
         self.created.append(project)
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         raise NotImplementedError
 
     async def save(self, entity: Project) -> None:
@@ -254,6 +256,9 @@ class _FakeWorkPipeline:
         raise NotImplementedError
 
     def attach_plan_review_gate(self, gate: object) -> None:
+        raise NotImplementedError
+
+    def attach_plan_review_panel(self, panel: object) -> None:
         raise NotImplementedError
 
 
@@ -518,6 +523,9 @@ class TestApprove:
                 raise NotImplementedError
 
             def attach_plan_review_gate(self, gate: object) -> None:
+                raise NotImplementedError
+
+            def attach_plan_review_panel(self, panel: object) -> None:
                 raise NotImplementedError
 
         charter_repo = _FakeCharterRepo(_charter())

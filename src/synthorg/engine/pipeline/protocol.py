@@ -10,6 +10,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.task import Task
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 
@@ -99,5 +100,15 @@ class WorkPipeline(Protocol):
         only after persistence is available, so the startup hook attaches
         it to the already-built pipeline. Absent, splittable team work
         dispatches straight to the coordinator (no human plan gate).
+        """
+        ...
+
+    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
+        """Attach the stakeholder plan-review panel for gated plans.
+
+        Late-bind seam: the panel wraps a completion provider, which wires
+        only after a provider is available, so the startup hook attaches it
+        to the already-built pipeline. Absent, a gated plan is parked for
+        human approval with no panel review.
         """
         ...

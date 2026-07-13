@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -60,9 +62,9 @@ class PlanItemPayload(BaseModel):
         default=None, description="Role or agent that owns this item"
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
-        default=(),
+        min_length=1,
         max_length=_MAX_CRITERIA,
-        description="Per-item criteria that define done",
+        description="Per-item criteria that define done (never empty)",
     )
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -84,6 +86,23 @@ class PlanItemPayload(BaseModel):
     )
     stakes: Stakes = Field(
         default=Stakes.NORMAL, description="Stakes level for routing"
+    )
+    kind: PlanItemKind = Field(
+        default=PlanItemKind.WORK,
+        description="Whether this item is work to execute or a decision point",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="For a DECISION item, the options to choose among",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None, description="The option a reviewer chose (DECISION items)"
+    )
+    satisfies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="Objective success criteria this item advances",
     )
 
     @model_validator(mode="after")
@@ -117,6 +136,12 @@ class PlanItemPayload(BaseModel):
             dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
             msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
+        validate_decision_options(
+            entity_id=self.id,
+            kind=self.kind,
+            options=self.options,
+            chosen_option_id=self.chosen_option_id,
+        )
         return self
 
 
@@ -162,3 +187,16 @@ class RequestPlanChangesRequest(BaseModel):
     note: NotBlankStr = Field(
         max_length=8192, description="What the operator wants changed"
     )
+
+
+class PlanCommentPayload(BaseModel):
+    """Payload posting a comment on a plan item's discussion thread.
+
+    Attributes:
+        body: The comment text. The author is taken from the authenticated
+            user, never the request body.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    body: NotBlankStr = Field(max_length=8192, description="The comment text")

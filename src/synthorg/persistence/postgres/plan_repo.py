@@ -15,8 +15,9 @@ from synthorg.core.persistence_errors import (
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -38,6 +39,21 @@ logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: Final[int] = 10_000
 
+_COLUMNS = (
+    "id, project, objective_id, objective_title, parent_task_id, items, "
+    "task_structure, coordination_topology, status, forecast_id, review, "
+    "open_questions, assumptions, objective_criteria, version_history, version, "
+    "created_at, updated_at"
+)
+_COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
+# Derive placeholders + SET clauses from the single column list so the arity can
+# never drift from ``_row_params`` (the sqlite repo drift-proofs the same way).
+_INSERT_PLACEHOLDERS = "(" + ", ".join("%s" for _ in _COLUMN_NAMES) + ")"
+_UPDATE_SET = ", ".join(f"{name}=%s" for name in _COLUMN_NAMES if name != "id")
+_UPSERT_SET = ", ".join(
+    f"{name}=EXCLUDED.{name}" for name in _COLUMN_NAMES if name != "id"
+)
+
 
 def _row_to_plan(row: DictRow) -> Plan:
     """Reconstruct a ``Plan`` from a Postgres dict_row.
@@ -56,6 +72,15 @@ def _row_to_plan(row: DictRow) -> Plan:
     row["status"] = PlanStatus(row["status"])
     forecast_id = row["forecast_id"]
     row["forecast_id"] = UUID(forecast_id) if forecast_id else None
+    review = row["review"]
+    row["review"] = PlanReview.model_validate(review) if review else None
+    row["open_questions"] = tuple(row["open_questions"] or [])
+    row["assumptions"] = tuple(row["assumptions"] or [])
+    row["objective_criteria"] = tuple(row["objective_criteria"] or [])
+    row["version_history"] = tuple(
+        PlanVersionSnapshot.model_validate(snapshot)
+        for snapshot in (row["version_history"] or [])
+    )
     row["created_at"] = coerce_row_timestamp(row["created_at"])
     row["updated_at"] = coerce_row_timestamp(row["updated_at"])
     return Plan.model_validate(row)
@@ -82,12 +107,18 @@ class PostgresPlanRepository:
             str(plan.id),
             plan.project,
             plan.objective_id,
+            plan.objective_title,
             plan.parent_task_id,
             Jsonb([item.model_dump(mode="json") for item in plan.items]),
             plan.task_structure.value,
             plan.coordination_topology.value,
             plan.status.value,
             str(plan.forecast_id) if plan.forecast_id is not None else None,
+            Jsonb(plan.review.model_dump(mode="json")) if plan.review else None,
+            Jsonb(list(plan.open_questions)),
+            Jsonb(list(plan.assumptions)),
+            Jsonb(list(plan.objective_criteria)),
+            Jsonb([snap.model_dump(mode="json") for snap in plan.version_history]),
             plan.version,
             plan.created_at,
             plan.updated_at,
@@ -103,13 +134,8 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    INSERT INTO plans (id, project, objective_id, parent_task_id,
-                                       items, task_structure, coordination_topology,
-                                       status, forecast_id, version, created_at,
-                                       updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
+                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- fixed columns
+                    f"VALUES {_INSERT_PLACEHOLDERS}",
                     self._row_params(plan),
                 )
                 await conn.commit()
@@ -149,21 +175,8 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    f"""
-                    UPDATE plans SET
-                        project=%s,
-                        objective_id=%s,
-                        parent_task_id=%s,
-                        items=%s,
-                        task_structure=%s,
-                        coordination_topology=%s,
-                        status=%s,
-                        forecast_id=%s,
-                        version=%s,
-                        created_at=%s,
-                        updated_at=%s
-                    WHERE id=%s{guard}
-                    """,  # noqa: S608 -- guard is a fixed literal, values parameterized
+                    # ``_UPDATE_SET`` + guard are fixed literals; values parameterized.
+                    f"UPDATE plans SET {_UPDATE_SET} WHERE id=%s{guard}",  # noqa: S608
                     params,
                 )
                 rowcount = cur.rowcount
@@ -237,25 +250,10 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    INSERT INTO plans (id, project, objective_id, parent_task_id,
-                                       items, task_structure, coordination_topology,
-                                       status, forecast_id, version, created_at,
-                                       updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT(id) DO UPDATE SET
-                        project=EXCLUDED.project,
-                        objective_id=EXCLUDED.objective_id,
-                        parent_task_id=EXCLUDED.parent_task_id,
-                        items=EXCLUDED.items,
-                        task_structure=EXCLUDED.task_structure,
-                        coordination_topology=EXCLUDED.coordination_topology,
-                        status=EXCLUDED.status,
-                        forecast_id=EXCLUDED.forecast_id,
-                        version=EXCLUDED.version,
-                        created_at=EXCLUDED.created_at,
-                        updated_at=EXCLUDED.updated_at
-                    """,
+                    # Fixed columns + derived SET; values fully parameterized.
+                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
+                    f"VALUES {_INSERT_PLACEHOLDERS} "
+                    f"ON CONFLICT(id) DO UPDATE SET {_UPSERT_SET}",
                     self._row_params(plan),
                 )
                 await conn.commit()

@@ -87,6 +87,14 @@ class DecompositionDepthError(DecompositionError):
     """Raised when decomposition exceeds the maximum nesting depth."""
 
 
+class PlanReviewError(EngineError):
+    """Base exception for stakeholder plan-review failures."""
+
+
+class PlanReviewParseError(PlanReviewError):
+    """Raised when a panellist's submitted review cannot be parsed."""
+
+
 class TaskRoutingError(EngineError):
     """Raised when task routing to an agent fails."""
 

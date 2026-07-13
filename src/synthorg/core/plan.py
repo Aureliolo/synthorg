@@ -9,12 +9,13 @@ the two are projected onto each other by ``engine.decomposition.plan_mapping``.
 """
 
 from collections import Counter
-from typing import Self
+from typing import Final, Self
 from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -22,6 +23,70 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr
+
+
+class PlanOption(BaseModel):
+    """One option a ``DECISION`` plan item offers a reviewer to choose among.
+
+    Attributes:
+        id: Stable option identifier within the decision item.
+        title: Short option title.
+        summary: The option's tradeoffs and rationale, so a reviewer can choose.
+        recommended: Whether the owner recommends this option.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Stable option identifier within the item")
+    title: NotBlankStr = Field(description="Short option title")
+    summary: NotBlankStr = Field(description="The option's tradeoffs and rationale")
+    recommended: bool = Field(
+        default=False,
+        description="Whether the owner recommends this option",
+    )
+
+
+_MIN_DECISION_OPTIONS: Final[int] = 2
+_MAX_DECISION_OPTIONS: Final[int] = 50
+MAX_PLAN_VERSION_HISTORY: Final[int] = 20
+
+
+def validate_decision_options(
+    *,
+    entity_id: str,
+    kind: PlanItemKind,
+    options: tuple[PlanOption, ...],
+    chosen_option_id: str | None = None,
+) -> None:
+    """Enforce the WORK-vs-DECISION option invariants shared by items/subtasks.
+
+    A ``WORK`` unit carries no options; a ``DECISION`` offers at least two
+    options with unique ids and exactly one recommended, and any recorded
+    ``chosen_option_id`` must name one of them.
+
+    Raises:
+        ValueError: When a work unit carries options, a decision has fewer than
+            two options / not exactly one recommended / duplicate option ids, or
+            the chosen option is unknown.
+    """
+    if kind is PlanItemKind.WORK:
+        if options or chosen_option_id is not None:
+            msg = f"{entity_id!r} is WORK but carries decision options"
+            raise ValueError(msg)
+        return
+    if len(options) < _MIN_DECISION_OPTIONS:
+        msg = f"Decision {entity_id!r} must offer at least two options"
+        raise ValueError(msg)
+    option_ids = [option.id for option in options]
+    if len(option_ids) != len(set(option_ids)):
+        msg = f"Decision {entity_id!r} has duplicate option ids"
+        raise ValueError(msg)
+    if sum(option.recommended for option in options) != 1:
+        msg = f"Decision {entity_id!r} needs exactly one recommended option"
+        raise ValueError(msg)
+    if chosen_option_id is not None and chosen_option_id not in option_ids:
+        msg = f"Decision {entity_id!r} chose an unknown option"
+        raise ValueError(msg)
 
 
 class PlanItem(BaseModel):
@@ -56,8 +121,8 @@ class PlanItem(BaseModel):
         description="Role or agent that owns this item",
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Per-item criteria that define done",
+        min_length=1,
+        description="Per-item criteria that define done (never empty)",
     )
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -78,6 +143,25 @@ class PlanItem(BaseModel):
     stakes: Stakes = Field(
         default=Stakes.NORMAL,
         description="Stakes level for stakes-aware model routing",
+    )
+    kind: PlanItemKind = Field(
+        default=PlanItemKind.WORK,
+        description="Whether this item is work to execute or a decision point",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        max_length=_MAX_DECISION_OPTIONS,
+        description="For a DECISION item, the options to choose among",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None,
+        description="The option a reviewer chose (DECISION items only)",
+    )
+    satisfies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Advisory tags naming the objective criteria this item "
+        "advances; matched leniently for the coverage map, not enforced to "
+        "name an entry of the plan's objective_criteria",
     )
 
     @model_validator(mode="after")
@@ -113,7 +197,73 @@ class PlanItem(BaseModel):
             dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
             msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
+        self._validate_decision()
         return self
+
+    def _validate_decision(self) -> None:
+        """Enforce the decision-vs-work option invariants for this item.
+
+        Raises:
+            ValueError: When the WORK/DECISION option shape is invalid (see
+                :func:`validate_decision_options`).
+        """
+        validate_decision_options(
+            entity_id=self.id,
+            kind=self.kind,
+            options=self.options,
+            chosen_option_id=self.chosen_option_id,
+        )
+
+    def resolved_option(self) -> PlanOption | None:
+        """The option this decision resolves to: the chosen one, else recommended.
+
+        A reviewer's explicit ``chosen_option_id`` wins; absent a pick, the
+        decision falls back to the owner's recommended option (the validator
+        guarantees a DECISION always has exactly one), so an approved decision
+        always resolves to a concrete outcome rather than dispatching unresolved.
+
+        Returns:
+            The resolved :class:`PlanOption`, or ``None`` for a WORK item (which
+            carries no options).
+
+        Raises:
+            ValueError: The decision has no resolvable option (its construction
+                invariant was bypassed, e.g. a raw-SQL backfill).
+        """
+        if self.kind is not PlanItemKind.DECISION:
+            return None
+        if self.chosen_option_id is not None:
+            match = next(
+                (o for o in self.options if o.id == self.chosen_option_id), None
+            )
+        else:
+            match = next((o for o in self.options if o.recommended), None)
+        if match is None:
+            msg = f"Decision item {self.id!r} has no resolvable option"
+            raise ValueError(msg)
+        return match
+
+
+class PlanVersionSnapshot(BaseModel):
+    """A frozen snapshot of a plan's items at a prior version, for diffing.
+
+    Attributes:
+        version: The plan version this snapshot captures.
+        items: The plan items as they stood at that version.
+        task_structure: The classified structure at that version.
+        captured_at: When the snapshot was taken (tz-aware UTC).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    version: int = Field(ge=1, description="The plan version this snapshot captures")
+    items: tuple[PlanItem, ...] = Field(description="Plan items at that version")
+    task_structure: TaskStructure = Field(
+        description="Classified structure at that version",
+    )
+    captured_at: AwareDatetime = Field(
+        description="When the snapshot was taken (tz-aware UTC)",
+    )
 
 
 class Plan(BaseModel):
@@ -123,12 +273,19 @@ class Plan(BaseModel):
         id: Plan identifier (entity primary key).
         project: Project the plan belongs to.
         objective_id: Charter/objective this plan serves.
+        objective_title: Human title of the objective, denormalised at creation
+            so the review surface never has to resolve (and never falls back to)
+            a raw id.
         parent_task_id: Objective task the plan decomposes.
         items: Ordered plan items forming a validated dependency DAG.
         task_structure: Classified structure of the item graph.
         coordination_topology: Selected coordination topology.
         status: Plan lifecycle status.
         forecast_id: Cost forecast released alongside the plan, if any.
+        review: The consolidated stakeholder-panel review, once reviewed.
+        open_questions: Unresolved questions the owner surfaced for the human.
+        assumptions: Assumptions the plan rests on.
+        version_history: Snapshots of prior submitted versions, for diffing.
         version: Revision number, bumped on each operator edit / re-plan.
         created_at: Creation timestamp (tz-aware UTC).
         updated_at: Last-revision timestamp (tz-aware UTC).
@@ -139,6 +296,9 @@ class Plan(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Plan identifier")
     project: NotBlankStr = Field(description="Project the plan belongs to")
     objective_id: NotBlankStr = Field(description="Charter/objective the plan serves")
+    objective_title: NotBlankStr = Field(
+        description="Human title of the objective this plan serves",
+    )
     parent_task_id: NotBlankStr = Field(
         description="Objective task the plan decomposes",
     )
@@ -158,6 +318,29 @@ class Plan(BaseModel):
     forecast_id: UUID | None = Field(
         default=None,
         description="Cost forecast released alongside the plan",
+    )
+    review: PlanReview | None = Field(
+        default=None,
+        description="The consolidated stakeholder-panel review, once reviewed",
+    )
+    open_questions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Unresolved questions the owner surfaced for the human",
+    )
+    assumptions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Assumptions the plan rests on",
+    )
+    objective_criteria: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="The objective's acceptance criteria, denormalised so the "
+        "coverage map can flag any criterion no item advances",
+    )
+    version_history: tuple[PlanVersionSnapshot, ...] = Field(
+        default=(),
+        max_length=MAX_PLAN_VERSION_HISTORY,
+        description="Snapshots of prior submitted versions, for diffing "
+        f"(oldest dropped past {MAX_PLAN_VERSION_HISTORY})",
     )
     version: int = Field(
         default=1,

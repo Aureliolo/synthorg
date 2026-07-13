@@ -20,7 +20,12 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import (
+    MAX_PLAN_VERSION_HISTORY,
+    Plan,
+    PlanItem,
+    PlanVersionSnapshot,
+)
 from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -39,6 +44,21 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
+
+
+def _snapshot(plan: Plan) -> PlanVersionSnapshot:
+    """Freeze a plan's current items as a diffable version snapshot.
+
+    Returns:
+        A :class:`PlanVersionSnapshot` capturing *plan*'s version, items, and
+        classified structure at its current ``updated_at``.
+    """
+    return PlanVersionSnapshot(
+        version=plan.version,
+        items=plan.items,
+        task_structure=plan.task_structure,
+        captured_at=plan.updated_at,
+    )
 
 
 class PlanService:
@@ -150,11 +170,17 @@ class PlanService:
             QueryError: Repository write failure (logged before propagating).
         """
         self._require_reworkable(existing)
+        # Snapshot the pre-edit version so a reviewer can diff the rework against
+        # what the panel saw, capped so the JSON column cannot grow unbounded.
+        history = (*existing.version_history, _snapshot(existing))[
+            -MAX_PLAN_VERSION_HISTORY:
+        ]
         try:
             revised = Plan(
                 id=existing.id,
                 project=existing.project,
                 objective_id=existing.objective_id,
+                objective_title=existing.objective_title,
                 parent_task_id=existing.parent_task_id,
                 items=items,
                 task_structure=task_structure or existing.task_structure,
@@ -163,6 +189,14 @@ class PlanService:
                 ),
                 status=PlanStatus.PENDING_REVIEW,
                 forecast_id=existing.forecast_id,
+                # A revision invalidates the prior panel's findings (they
+                # reference the pre-edit items); the plan re-enters review with
+                # no stale verdict shown against the new version.
+                review=None,
+                open_questions=existing.open_questions,
+                assumptions=existing.assumptions,
+                objective_criteria=existing.objective_criteria,
+                version_history=history,
                 version=existing.version + 1,
                 created_at=existing.created_at,
                 updated_at=self._clock.now(),

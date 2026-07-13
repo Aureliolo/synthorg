@@ -60,6 +60,7 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
 )
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
+from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
@@ -118,6 +119,7 @@ if TYPE_CHECKING:
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.plan import Plan
+    from synthorg.core.plan_comment import PlanItemComment
     from synthorg.core.project import Project
     from synthorg.core.project_environment import ProjectEnvironment
     from synthorg.core.project_workspace import ProjectWorkspace
@@ -762,7 +764,9 @@ class _FakeProjectRepository:
     async def create(self, project: Project) -> None:
         pass
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         pass
 
     async def save(self, entity: Project) -> None:
@@ -840,6 +844,25 @@ class _FakePlanRepository:
     async def delete(self, entity_id: NotBlankStr) -> bool:
         del entity_id
         return False
+
+
+class _FakePlanItemCommentRepository:
+    async def append(self, event: PlanItemComment) -> None:
+        del event
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[PlanItemComment, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        del threshold
+        return 0
 
 
 class _FakeSsrfViolationRepository:
@@ -1489,6 +1512,10 @@ class _FakeBackend:
         return _FakePlanRepository()
 
     @property
+    def plan_comments(self) -> _FakePlanItemCommentRepository:
+        return _FakePlanItemCommentRepository()
+
+    @property
     def project_workspaces(self) -> _FakeProjectWorkspaceRepository:
         return _FakeProjectWorkspaceRepository()
 
@@ -1783,6 +1810,11 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(backend.plans, PlanRepository)
         assert isinstance(_FakePlanRepository(), PlanRepository)
+
+    def test_fake_plan_comment_repo_is_plan_comment_repository(self) -> None:
+        backend = _FakeBackend()
+        assert isinstance(backend.plan_comments, PlanItemCommentRepository)
+        assert isinstance(_FakePlanItemCommentRepository(), PlanItemCommentRepository)
 
     def test_fake_cost_repo_is_cost_record_repository(self) -> None:
         assert isinstance(_FakeCostRecordRepository(), CostRecordRepository)

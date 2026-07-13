@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -96,6 +97,7 @@ class SQLiteProjectRepository:
             project.deadline,
             project.budget,
             project.status.value,
+            project.version,
         )
 
     async def create(self, project: Project) -> None:
@@ -113,8 +115,8 @@ class SQLiteProjectRepository:
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      task_ids, deadline, budget, status, version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._row_params(project),
                 )
                 await self._db.commit()
@@ -172,43 +174,47 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 rollback_failed=True,
             )
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         """Update an existing project, failing if no row matched.
 
         Args:
             project: Project model to update.  ``project.id`` selects
                 the row.
+            expected_version: When set, the write only lands if the stored
+                version still matches (optimistic concurrency).
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No project with this id exists.
             QueryError: If the database operation fails.
         """
+        params: list[object] = [
+            project.name,
+            project.description,
+            json.dumps(list(project.team)),
+            project.lead,
+            json.dumps(list(project.task_ids)),
+            project.deadline,
+            project.budget,
+            project.status.value,
+            project.version,
+            str(project.id),
+        ]
+        guard = ""
+        if expected_version is not None:
+            guard = " AND version=?"
+            params.append(expected_version)
+        query = (
+            "UPDATE projects SET name=?, description=?, team=?, lead=?, "  # noqa: S608
+            "task_ids=?, deadline=?, budget=?, status=?, version=? "
+            f"WHERE id=?{guard}"
+        )
         async with self._write_context():
             try:
-                async with self._db.execute(
-                    """\
-UPDATE projects SET
-    name=?,
-    description=?,
-    team=?,
-    lead=?,
-    task_ids=?,
-    deadline=?,
-    budget=?,
-    status=?
-WHERE id=?""",
-                    (
-                        project.name,
-                        project.description,
-                        json.dumps(list(project.team)),
-                        project.lead,
-                        json.dumps(list(project.task_ids)),
-                        project.deadline,
-                        project.budget,
-                        project.status.value,
-                        str(project.id),
-                    ),
-                ) as cursor:
+                async with self._db.execute(query, params) as cursor:
                     await self._db.commit()
                     _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -222,14 +228,36 @@ WHERE id=?""",
                 )
                 raise QueryError(msg) from exc
             if _db_rowcount == 0:
-                logger.warning(
-                    PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=str(project.id),
-                    error_type="RecordNotFoundError",
-                    error="No project with matching id",
-                )
-                msg = f"No project with id {project.id!r}"
-                raise RecordNotFoundError(msg)
+                await self._raise_update_miss(project, expected_version)
+
+    async def _raise_update_miss(
+        self, project: Project, expected_version: int | None
+    ) -> None:
+        """Classify a zero-rowcount update as a version conflict or a miss.
+
+        Raises:
+            PersistenceVersionConflictError: The row exists but its version
+                moved (only distinguishable when ``expected_version`` is set).
+            RecordNotFoundError: No project with this id exists at all.
+        """
+        exists = await self.get(NotBlankStr(str(project.id)))
+        if expected_version is not None and exists is not None:
+            logger.warning(
+                PERSISTENCE_PROJECT_SAVE_FAILED,
+                project_id=str(project.id),
+                error_type="PersistenceVersionConflictError",
+                reason="version_conflict",
+            )
+            msg = f"Project {project.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
+        logger.warning(
+            PERSISTENCE_PROJECT_SAVE_FAILED,
+            project_id=str(project.id),
+            error_type="RecordNotFoundError",
+            error="No project with matching id",
+        )
+        msg = f"No project with id {project.id!r}"
+        raise RecordNotFoundError(msg)
 
     async def save(self, project: Project) -> None:
         """Persist a project via upsert (migration / import paths).
@@ -245,8 +273,8 @@ WHERE id=?""",
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      task_ids, deadline, budget, status, version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
@@ -255,7 +283,8 @@ ON CONFLICT(id) DO UPDATE SET
     task_ids=excluded.task_ids,
     deadline=excluded.deadline,
     budget=excluded.budget,
-    status=excluded.status""",
+    status=excluded.status,
+    version=excluded.version""",
                     self._row_params(project),
                 )
                 await self._db.commit()

@@ -46,6 +46,13 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # duplicate that schema and reject the retry-friendly partial
         # submissions the parser is designed to accept and correct.
         "synthorg.engine.decomposition.agent_session.SubmitDecompositionPlanTool",
+        # Terminal submit tool for a plan-review panellist. Reuses the
+        # hand-rolled ``build_review_tool_schema`` and the lenient
+        # ``parse_reviewer_verdict`` parser (which coerces / defaults a
+        # partial verdict), mirroring the decomposition submit tool above; a
+        # strict typed args model would duplicate that schema and reject the
+        # retry-friendly partial submissions the parser is designed to accept.
+        "synthorg.engine.plan_review.review_tool.SubmitPlanReviewTool",
     }
 )
 

@@ -123,6 +123,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import (
     PresetOverrideRepo,
@@ -525,6 +526,11 @@ class PersistenceBackend(Protocol):
     @property
     def plans(self) -> PlanRepository:
         """Repository for durable Plan persistence (reviewable decompositions)."""
+        ...
+
+    @property
+    def plan_comments(self) -> PlanItemCommentRepository:
+        """Repository for per-item plan comment threads."""
         ...
 
     @property

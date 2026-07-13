@@ -10,7 +10,11 @@ import pytest
 import structlog
 
 from synthorg.api.services.project_service import ProjectService
-from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
@@ -39,10 +43,19 @@ class _FakeProjectRepo:
             raise DuplicateRecordError(msg)
         self._rows[str(project.id)] = project
 
-    async def update(self, project: Project) -> None:
-        if str(project.id) not in self._rows:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
+        stored = self._rows.get(str(project.id))
+        if stored is None:
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
+        if expected_version is not None and stored.version != expected_version:
+            msg = (
+                f"Project {project.id!r} stored version {stored.version} "
+                f"!= expected {expected_version}"
+            )
+            raise PersistenceVersionConflictError(msg)
         self._rows[str(project.id)] = project
 
     async def save(self, project: Project) -> None:
@@ -100,6 +113,25 @@ def _make_project(
         deadline=None,
         budget=0.0,
     )
+
+
+async def test_fake_repo_rejects_stale_version_guarded_update() -> None:
+    """The fake honours the optimistic-concurrency guard.
+
+    A mismatched ``expected_version`` raises rather than clobbering the row, so
+    service tests built on this fake catch a lost-update regression instead of
+    silently accepting a stale write.
+    """
+    repo = _FakeProjectRepo()
+    project = _make_project()
+    await repo.create(project)
+
+    with pytest.raises(PersistenceVersionConflictError):
+        await repo.update(
+            project.model_copy(update={"lead": NotBlankStr("other")}),
+            expected_version=project.version + 1,
+        )
+    await repo.update(project, expected_version=project.version)
 
 
 async def test_create_persists_and_emits_api_project_created() -> None:

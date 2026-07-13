@@ -11,15 +11,7 @@ import { server } from '@/test-setup'
 import { makePlan, makePlanItem } from '../../helpers/factories'
 
 function resetStore(): void {
-  usePlansStore.setState({
-    plans: [],
-    listLoading: false,
-    listError: null,
-    statusFilter: null,
-    selectedPlan: null,
-    detailLoading: false,
-    detailError: null,
-  })
+  usePlansStore.getState().reset()
 }
 
 const plan = makePlan('plan-1', {
@@ -47,6 +39,27 @@ describe('PlanEditor', () => {
 
     const titleInput = screen.getByDisplayValue('Scaffold')
     await user.clear(titleInput)
+    expect(screen.getByRole('button', { name: /Save revision/ })).toBeDisabled()
+  })
+
+  it('disables save when an item has no acceptance criterion', async () => {
+    resetStore()
+    const user = userEvent.setup()
+    const withCriterion = makePlan('plan-1', {
+      items: [
+        makePlanItem('i1', {
+          title: 'Scaffold',
+          description: 'Board',
+          acceptance_criteria: ['board renders'],
+        }),
+      ],
+    })
+    render(<PlanEditor plan={withCriterion} onDone={vi.fn()} />)
+
+    // The backend requires at least one acceptance criterion per item, so
+    // clearing the last one disables save rather than round-tripping to a 422.
+    expect(screen.getByRole('button', { name: /Save revision/ })).toBeEnabled()
+    await user.clear(screen.getByDisplayValue('board renders'))
     expect(screen.getByRole('button', { name: /Save revision/ })).toBeDisabled()
   })
 

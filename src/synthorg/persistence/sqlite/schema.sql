@@ -508,7 +508,8 @@ CREATE TABLE projects (
     task_ids TEXT NOT NULL DEFAULT '[]',
     deadline TEXT,
     budget REAL NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
-    status TEXT NOT NULL DEFAULT 'planning'
+    status TEXT NOT NULL DEFAULT 'planning',
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
 );
 
 CREATE INDEX idx_projects_status ON projects (status);
@@ -2595,6 +2596,7 @@ CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     project TEXT NOT NULL CHECK (LENGTH(TRIM(project)) > 0),
     objective_id TEXT NOT NULL CHECK (LENGTH(TRIM(objective_id)) > 0),
+    objective_title TEXT NOT NULL CHECK (LENGTH(TRIM(objective_title)) > 0),
     parent_task_id TEXT NOT NULL CHECK (LENGTH(TRIM(parent_task_id)) > 0),
     items TEXT NOT NULL
     CHECK (JSON_VALID(items) AND JSON_TYPE(items) = 'array' AND JSON_ARRAY_LENGTH(items) > 0),
@@ -2603,6 +2605,11 @@ CREATE TABLE plans (
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected', 'superseded')),
     forecast_id TEXT,
+    review TEXT,
+    open_questions TEXT NOT NULL DEFAULT '[]',
+    assumptions TEXT NOT NULL DEFAULT '[]',
+    objective_criteria TEXT NOT NULL DEFAULT '[]',
+    version_history TEXT NOT NULL DEFAULT '[]',
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -2611,3 +2618,14 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
+
+CREATE TABLE plan_item_comments (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    plan_id TEXT NOT NULL CHECK (LENGTH(TRIM(plan_id)) > 0),
+    item_id TEXT NOT NULL CHECK (LENGTH(TRIM(item_id)) > 0),
+    author TEXT NOT NULL CHECK (LENGTH(TRIM(author)) > 0),
+    body TEXT NOT NULL CHECK (LENGTH(TRIM(body)) > 0),
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_plan_item_comments_plan_item
+ON plan_item_comments (plan_id, item_id, created_at);

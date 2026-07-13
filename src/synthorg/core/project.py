@@ -30,6 +30,9 @@ class Project(BaseModel):
         deadline: Optional deadline (ISO 8601 string or ``None``).
         budget: Total budget in base currency (configurable, defaults to EUR).
         status: Current project status.
+        version: Optimistic-concurrency revision, bumped on each persisted
+            edit so a version-guarded write cannot silently clobber a
+            concurrent update (e.g. two workers staffing the same lead).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -64,6 +67,11 @@ class Project(BaseModel):
     status: ProjectStatus = Field(
         default=ProjectStatus.PLANNING,
         description="Current project status",
+    )
+    version: int = Field(
+        default=1,
+        ge=1,
+        description="Optimistic-concurrency revision, bumped on each edit",
     )
 
     @model_validator(mode="after")

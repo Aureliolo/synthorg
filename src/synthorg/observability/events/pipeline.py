@@ -21,6 +21,9 @@ PIPELINE_PROJECT_LEAD_STAMPED: Final[str] = "pipeline.project.lead_stamped"
 PIPELINE_PROJECT_LEAD_ORPHANED: Final[str] = "pipeline.project.lead_orphaned"
 """A project's durable lead no longer resolves to a known agent."""
 
+PIPELINE_PROJECT_LEAD_CONTENDED: Final[str] = "pipeline.project.lead_contended"
+"""A concurrent write won the lead-stamp race; re-reading the durable lead."""
+
 PIPELINE_PROJECT_ROSTER_EMPTY: Final[str] = "pipeline.project.roster_empty"
 """No agents exist to staff as the initiative's owner."""
 
@@ -44,6 +47,9 @@ PIPELINE_REFINEMENT_REQUESTED: Final[str] = "pipeline.refinement.requested"
 
 PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 """A decomposed plan was parked for human approval before team dispatch."""
+
+PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
+"""The stakeholder plan-review panel was attached to the work pipeline."""
 
 PIPELINE_ENTRY_UNKNOWN_SOURCE: Final[str] = "pipeline.entry.unknown_source"
 """No work-entry adapter is wired for the requested work source."""

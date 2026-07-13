@@ -144,6 +144,9 @@ class _MixedStakesStrategy:
                                     "description": "Adjust logger output spacing.",
                                     "estimated_complexity": "simple",
                                     "required_skills": [_DEBUG_SKILL],
+                                    "acceptance_criteria": [
+                                        "Log lines align consistently.",
+                                    ],
                                 },
                                 {
                                     "id": "sub-critical",
@@ -154,6 +157,9 @@ class _MixedStakesStrategy:
                                     ),
                                     "estimated_complexity": "complex",
                                     "required_skills": [_DATABASE_SKILL],
+                                    "acceptance_criteria": [
+                                        "The schema migrates without data loss.",
+                                    ],
                                 },
                             ],
                         },

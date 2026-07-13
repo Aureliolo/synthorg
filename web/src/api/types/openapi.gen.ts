@@ -3490,6 +3490,40 @@ export type paths = {
         readonly patch: operations["ApiV1PlansPlanIdEditPlan"];
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/comments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListComments */
+        readonly get: operations["ApiV1PlansPlanIdCommentsListComments"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/plans/{plan_id}/comments/items/{item_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** AddComment */
+        readonly post: operations["ApiV1PlansPlanIdCommentsItemsItemIdAddComment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/request-changes": {
         readonly parameters: {
             readonly query?: never;
@@ -7049,6 +7083,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[list[PlanItemComment]] */
+        readonly ApiResponse_list_PlanItemComment_: {
+            readonly data: readonly components["schemas"]["PlanItemComment"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[RiskOverrideResponse]] */
         readonly ApiResponse_list_RiskOverrideResponse_: {
             readonly data: readonly components["schemas"]["RiskOverrideResponse"][] | null;
@@ -7164,6 +7206,14 @@ export type components = {
         /** ApiResponse[Plan] */
         readonly ApiResponse_Plan_: {
             readonly data: components["schemas"]["Plan"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PlanItemComment] */
+        readonly ApiResponse_PlanItemComment_: {
+            readonly data: components["schemas"]["PlanItemComment"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -10217,7 +10267,17 @@ export type components = {
          * @description Executed decomposition plan
          */
         readonly DecompositionPlan: {
+            /**
+             * @description Assumptions the plan rests on
+             * @default []
+             */
+            readonly assumptions: readonly string[];
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * @description Unresolved questions the planner surfaced for the human
+             * @default []
+             */
+            readonly open_questions: readonly string[];
             /** @description ID of the task being decomposed */
             readonly parent_task_id: string;
             /** @description Ordered subtask definitions */
@@ -14026,6 +14086,11 @@ export type components = {
         };
         /** Plan */
         readonly Plan: {
+            /**
+             * @description Assumptions the plan rests on
+             * @default []
+             */
+            readonly assumptions: readonly string[];
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
             /**
              * Format: date-time
@@ -14044,12 +14109,26 @@ export type components = {
             readonly id: string;
             /** @description Ordered plan items */
             readonly items: readonly components["schemas"]["PlanItem"][];
+            /**
+             * @description The objective's acceptance criteria, denormalised so the coverage map can flag any criterion no item advances
+             * @default []
+             */
+            readonly objective_criteria: readonly string[];
             /** @description Charter/objective the plan serves */
             readonly objective_id: string;
+            /** @description Human title of the objective this plan serves */
+            readonly objective_title: string;
+            /**
+             * @description Unresolved questions the owner surfaced for the human
+             * @default []
+             */
+            readonly open_questions: readonly string[];
             /** @description Objective task the plan decomposes */
             readonly parent_task_id: string;
             /** @description Project the plan belongs to */
             readonly project: string;
+            /** @description The consolidated stakeholder-panel review, once reviewed */
+            readonly review: components["schemas"]["PlanReview"] | null;
             readonly status: components["schemas"]["PlanStatus"];
             readonly task_structure: components["schemas"]["TaskStructure"];
             /**
@@ -14062,14 +14141,23 @@ export type components = {
              * @default 1
              */
             readonly version: number;
+            /**
+             * @description Snapshots of prior submitted versions, for diffing (oldest dropped past 20)
+             * @default []
+             */
+            readonly version_history: readonly components["schemas"]["PlanVersionSnapshot"][];
+        };
+        /** PlanCommentPayload */
+        readonly PlanCommentPayload: {
+            /** @description The comment text */
+            readonly body: string;
         };
         /** PlanItem */
         readonly PlanItem: {
-            /**
-             * @description Per-item criteria that define done
-             * @default []
-             */
+            /** @description Per-item criteria that define done (never empty) */
             readonly acceptance_criteria: readonly string[];
+            /** @description The option a reviewer chose (DECISION items only) */
+            readonly chosen_option_id: string | null;
             /**
              * @description IDs of items this one depends on
              * @default []
@@ -14085,6 +14173,12 @@ export type components = {
             readonly expected_artifacts: readonly string[];
             /** @description Unique item identifier within the plan */
             readonly id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION item, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner: string | null;
             /**
@@ -14097,17 +14191,53 @@ export type components = {
              * @default []
              */
             readonly required_tags: readonly string[];
+            /**
+             * @description Advisory tags naming the objective criteria this item advances; matched leniently for the coverage map, not enforced to name an entry of the plan's objective_criteria
+             * @default []
+             */
+            readonly satisfies: readonly string[];
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
         };
+        /** PlanItemComment */
+        readonly PlanItemComment: {
+            /** @description Who wrote the comment */
+            readonly author: string;
+            /** @description The comment text */
+            readonly body: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /**
+             * Format: uuid
+             * @description Comment identifier
+             */
+            readonly id: string;
+            /** @description Plan item this comment is attached to */
+            readonly item_id: string;
+            /** @description Plan the commented item belongs to */
+            readonly plan_id: string;
+        };
+        /**
+         * PlanItemKind
+         * @description What a plan item represents.
+         *
+         *     A ``WORK`` item is a unit of work a team executes. A ``DECISION`` item is a
+         *     choice the plan surfaces for a reviewer: it carries options rather than
+         *     dispatching a build task, and it is "done" once the decision is recorded.
+         * @default work
+         * @enum {string}
+         */
+        readonly PlanItemKind: "work" | "decision";
         /** PlanItemPayload */
         readonly PlanItemPayload: {
-            /**
-             * @description Per-item criteria that define done
-             * @default []
-             */
+            /** @description Per-item criteria that define done (never empty) */
             readonly acceptance_criteria: readonly string[];
+            /** @description The option a reviewer chose (DECISION items) */
+            readonly chosen_option_id?: string | null;
             /**
              * @description IDs of items this one depends on
              * @default []
@@ -14123,6 +14253,12 @@ export type components = {
             readonly expected_artifacts: readonly string[];
             /** @description Stable item identifier within the plan */
             readonly id: string;
+            readonly kind?: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION item, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner?: string | null;
             /**
@@ -14135,10 +14271,81 @@ export type components = {
              * @default []
              */
             readonly required_tags: readonly string[];
+            /**
+             * @description Objective success criteria this item advances
+             * @default []
+             */
+            readonly satisfies: readonly string[];
             readonly stakes?: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
         };
+        /** PlanOption */
+        readonly PlanOption: {
+            /** @description Stable option identifier within the item */
+            readonly id: string;
+            /**
+             * @description Whether the owner recommends this option
+             * @default false
+             */
+            readonly recommended: boolean;
+            /** @description The option's tradeoffs and rationale */
+            readonly summary: string;
+            /** @description Short option title */
+            readonly title: string;
+        };
+        /** PlanReview */
+        readonly PlanReview: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly reviewed_at: string;
+            /** @description Each panellist's verdict and findings */
+            readonly reviewers: readonly components["schemas"]["PlanReviewerVerdict"][];
+            /** @description Short synthesis of the panel's position */
+            readonly summary: string | null;
+            readonly verdict: components["schemas"]["PlanReviewVerdict"];
+        };
+        /** PlanReviewerVerdict */
+        readonly PlanReviewerVerdict: {
+            /**
+             * @description Concerns this reviewer raised
+             * @default []
+             */
+            readonly findings: readonly components["schemas"]["PlanReviewFinding"][];
+            /** @description The reviewing agent's identifier */
+            readonly reviewer_id: string;
+            /** @description Role the reviewer reviews as */
+            readonly reviewer_role: string;
+            readonly verdict: components["schemas"]["PlanReviewVerdict"];
+        };
+        /** PlanReviewFinding */
+        readonly PlanReviewFinding: {
+            readonly category: components["schemas"]["PlanReviewFindingCategory"];
+            /** @description Human-readable description of the concern */
+            readonly detail: string;
+            /** @description The plan item this finding concerns, or None if plan-level */
+            readonly item_id: string | null;
+        };
+        /**
+         * PlanReviewFindingCategory
+         * @description The kind of gap a plan-review finding flags.
+         * @enum {string}
+         */
+        readonly PlanReviewFindingCategory: "gap" | "missing_owner" | "miscalibrated_stakes" | "risky_decision" | "budget_concern" | "other";
+        /**
+         * PlanReviewVerdict
+         * @description A reviewer's (or the panel's synthesised) verdict on a plan.
+         *
+         *     ``ENDORSED`` means the reviewer backs the plan as-is. ``CONCERNS`` means the
+         *     reviewer raised findings the owner should address. ``REVISION_REQUESTED``
+         *     sends the plan back to the owner to revise; a panellist may pick it
+         *     directly, and it is also the synthesised overall verdict when any panellist
+         *     requests one.
+         * @enum {string}
+         */
+        readonly PlanReviewVerdict: "endorsed" | "concerns" | "revision_requested";
         /** PlanRevisionPayload */
         readonly PlanRevisionPayload: {
             /**
@@ -14166,6 +14373,19 @@ export type components = {
          * @enum {string}
          */
         readonly PlanStatus: "draft" | "pending_review" | "approved" | "rejected" | "superseded";
+        /** PlanVersionSnapshot */
+        readonly PlanVersionSnapshot: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly captured_at: string;
+            /** @description Plan items at that version */
+            readonly items: readonly components["schemas"]["PlanItem"][];
+            readonly task_structure: components["schemas"]["TaskStructure"];
+            /** @description The plan version this snapshot captures */
+            readonly version: number;
+        };
         /**
          * PolicyFieldOrigin
          * @description Origin level for a resolved ceremony policy field.
@@ -14442,6 +14662,11 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+            /**
+             * @description Optimistic-concurrency revision, bumped on each edit
+             * @default 1
+             */
+            readonly version: number;
         };
         /** Citation */
         readonly project_brain_models_Citation: {
@@ -16821,6 +17046,12 @@ export type components = {
             readonly expected_artifacts: readonly string[];
             /** @description Unique subtask identifier */
             readonly id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION subtask, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Optional role name for routing */
             readonly required_role: string | null;
             /**
@@ -16833,6 +17064,11 @@ export type components = {
              * @default []
              */
             readonly required_tags: readonly string[];
+            /**
+             * @description Objective success criteria this subtask advances
+             * @default []
+             */
+            readonly satisfies: readonly string[];
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short subtask title */
             readonly title: string;
@@ -26356,6 +26592,76 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdCommentsListComments: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Narrow the thread to a single plan item */
+                readonly item_id?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_PlanItemComment_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdCommentsItemsItemIdAddComment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly item_id: string;
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PlanCommentPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanItemComment_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

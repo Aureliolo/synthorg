@@ -11,11 +11,15 @@ persisted :attr:`ApprovalItem.source` discriminator, matching the sibling
 resume flows.
 """
 
+from typing import Final
+
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
+from synthorg.api.controllers._plan_decision_record import record_plan_decisions
 from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.coordination.models import CoordinationContext
@@ -28,13 +32,20 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_RESUME_FAILED,
+    APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+    APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+    APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
+
+# Bounded compare-and-swap retries when the durable plan is reworked concurrently
+# with its approval sync, so a losing status write re-reads and reapplies rather
+# than leaving the plan's status permanently diverged from the recorded decision.
+_MAX_STATUS_SYNC_ATTEMPTS: Final[int] = 3
 
 
 async def try_plan_review_resume(
@@ -132,6 +143,11 @@ async def _dispatch_approved_plan(
         )
         return
     try:
+        # Record the plan's decision-items (chosen or recommended-by-default
+        # option) into the brain before dispatch, so the company's shaping
+        # choices survive the strip-decisions step in ``decomposition_from_plan``
+        # rather than vanishing when only work items build.
+        await record_plan_decisions(app_state, plan, decided_by=decided_by)
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
@@ -147,7 +163,7 @@ async def _dispatch_approved_plan(
         reraise_critical(exc)
         log_exception_redacted(
             logger,
-            APPROVAL_GATE_RESUME_FAILED,
+            APPROVAL_GATE_PLAN_DISPATCH_FAILED,
             exc,
             approval_id=approval_id,
             note="approved plan could not be resumed; marking task failed",
@@ -176,7 +192,7 @@ async def _fail_dispatch(
     stays re-runnable (FAILED -> ASSIGNED is valid).
     """
     logger.error(
-        APPROVAL_GATE_RESUME_FAILED,
+        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
         approval_id=approval_id,
         note=f"approved plan cannot dispatch: {why}",
     )
@@ -232,7 +248,7 @@ async def _mark_task(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
-            APPROVAL_GATE_RESUME_FAILED,
+            APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
             task_id=task_id,
             target_status=target.value,
             error_type=type(exc).__name__,
@@ -249,32 +265,50 @@ async def _sync_plan_status(
     """Reflect an approval decision onto the durable plan's status.
 
     Routed through :class:`PlanService` so the decision transition gets the
-    same ``API_PLAN_*`` audit coverage as an operator edit. Best-effort: the
-    decision is already persisted on the approval, so a failure here (plan
-    gone, write error, concurrent edit) is logged, not raised. Keeps the
-    ``/plans`` view honest without ever mislabelling a recorded decision.
+    same ``API_PLAN_*`` audit coverage as an operator edit. The decision is
+    already persisted on the approval, so a failure here is logged, not raised.
+    A concurrent rework (version conflict) is retried after a re-read, up to
+    ``_MAX_STATUS_SYNC_ATTEMPTS``, so a lost CAS write does not leave the
+    ``/plans`` status permanently diverged from the recorded decision; a
+    persistent conflict is escalated to ERROR (the divergence is not transient).
     """
     if not plan_id:
         return
     service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
-    try:
-        plan = await service.get(plan_id)
-        if plan is None:
-            logger.warning(
-                APPROVAL_GATE_RESUME_FAILED,
+    for attempt in range(1, _MAX_STATUS_SYNC_ATTEMPTS + 1):
+        try:
+            plan = await service.get(plan_id)
+            if plan is None:
+                logger.warning(
+                    APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+                    plan_id=plan_id,
+                    target_status=status.value,
+                    note="plan-status sync skipped: durable plan not found",
+                )
+                return
+            await service.sync_status(plan, status)
+        except VersionConflictError:
+            if attempt < _MAX_STATUS_SYNC_ATTEMPTS:
+                continue
+            logger.error(
+                APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
                 plan_id=plan_id,
                 target_status=status.value,
-                note="plan-status sync skipped: durable plan not found",
+                attempts=attempt,
+                note="plan-status sync lost repeated version conflicts; "
+                "/plans status diverges from the recorded decision",
             )
             return
-        await service.sync_status(plan, status)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
-            plan_id=plan_id,
-            target_status=status.value,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="plan-status sync failed; /plans status may lag the decision",
-        )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+                plan_id=plan_id,
+                target_status=status.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="plan-status sync failed; /plans status may lag the decision",
+            )
+            return
+        else:
+            return

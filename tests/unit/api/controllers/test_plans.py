@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
@@ -30,18 +30,21 @@ def _plan(
         id=as_uuid(plan_id),
         project=NotBlankStr(project),
         objective_id=NotBlankStr(objective_id),
+        objective_title=NotBlankStr("Ship the Tetris game"),
         parent_task_id=NotBlankStr("task-root"),
         items=(
             PlanItem(
                 id=NotBlankStr(_I1),
                 title=NotBlankStr("Scaffold"),
                 description=NotBlankStr("Set up the board"),
+                acceptance_criteria=(NotBlankStr("board scaffolded"),),
             ),
             PlanItem(
                 id=NotBlankStr(_I2),
                 title=NotBlankStr("Movement"),
                 description=NotBlankStr("Drop + rotate"),
                 dependencies=(NotBlankStr(_I1),),
+                acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
             ),
         ),
         status=status,
@@ -146,6 +149,7 @@ class TestPlanController:
                         "title": "Reworked scaffold",
                         "description": "New scope for the board",
                         "owner": "engineering",
+                        "acceptance_criteria": ["board scaffolded"],
                     },
                 ],
             },
@@ -158,6 +162,108 @@ class TestPlanController:
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "Reworked scaffold"
         assert data["items"][0]["owner"] == "engineering"
+        # The pre-edit version is snapshotted so a reviewer can diff the rework.
+        assert len(data["version_history"]) == 1
+        snapshot = data["version_history"][0]
+        assert snapshot["version"] == 1
+        assert [item["id"] for item in snapshot["items"]] == [_I1, _I2]
+
+    async def test_version_history_is_bounded(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # Reworking a plan many times must not grow version_history without
+        # bound: it is capped at MAX_PLAN_VERSION_HISTORY, oldest dropping first.
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+        payload = {
+            "items": [
+                {
+                    "id": _I1,
+                    "title": "Slice",
+                    "description": "One slice",
+                    "acceptance_criteria": ["it runs"],
+                }
+            ]
+        }
+        data = {}
+        for _ in range(MAX_PLAN_VERSION_HISTORY + 2):
+            resp = await async_test_client.patch(
+                f"/api/v1/plans/{plan_id}",
+                json=payload,
+                headers=make_auth_headers("ceo"),
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+        assert len(data["version_history"]) == MAX_PLAN_VERSION_HISTORY
+        versions = [snap["version"] for snap in data["version_history"]]
+        # Strictly increasing and the oldest (version 1) has dropped off.
+        assert versions == sorted(versions)
+        assert versions[0] > 1
+
+    async def test_edit_accepts_a_decision_item(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Choose the stack",
+                        "description": "React or Svelte",
+                        "acceptance_criteria": ["decision recorded"],
+                        "kind": "decision",
+                        "options": [
+                            {
+                                "id": "react",
+                                "title": "React",
+                                "summary": "Mature, larger bundle",
+                                "recommended": True,
+                            },
+                            {
+                                "id": "svelte",
+                                "title": "Svelte",
+                                "summary": "Lean, smaller ecosystem",
+                                "recommended": False,
+                            },
+                        ],
+                    }
+                ]
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        item = resp.json()["data"]["items"][0]
+        assert item["kind"] == "decision"
+        assert [o["id"] for o in item["options"]] == ["react", "svelte"]
+
+    async def test_edit_rejects_decision_without_recommended(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Choose the stack",
+                        "description": "React or Svelte",
+                        "acceptance_criteria": ["decision recorded"],
+                        "kind": "decision",
+                        "options": [
+                            {"id": "react", "title": "React", "summary": "A"},
+                            {"id": "svelte", "title": "Svelte", "summary": "B"},
+                        ],
+                    }
+                ]
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
 
     async def test_edit_rejects_unresolvable_dependency(
         self, async_test_client: LoopAsyncClient
@@ -174,6 +280,7 @@ class TestPlanController:
                         "title": "Broken",
                         "description": "Depends on a ghost",
                         "dependencies": [sid("ghost")],
+                        "acceptance_criteria": ["done"],
                     },
                 ],
             },
@@ -197,12 +304,14 @@ class TestPlanController:
                         "title": "A",
                         "description": "depends on B",
                         "dependencies": [_I2],
+                        "acceptance_criteria": ["a done"],
                     },
                     {
                         "id": _I2,
                         "title": "B",
                         "description": "depends on A",
                         "dependencies": [_I1],
+                        "acceptance_criteria": ["b done"],
                     },
                 ],
             },
@@ -219,7 +328,16 @@ class TestPlanController:
 
         resp = await async_test_client.patch(
             f"/api/v1/plans/{plan_id}",
-            json={"items": [{"id": "not-a-uuid", "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": "not-a-uuid",
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         # A malformed item payload is rejected at the request boundary (400),
@@ -251,7 +369,16 @@ class TestPlanController:
 
         resp = await async_test_client.patch(
             f"/api/v1/plans/{plan_id}",
-            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
@@ -262,7 +389,16 @@ class TestPlanController:
     ) -> None:
         resp = await async_test_client.patch(
             "/api/v1/plans/ghost",
-            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

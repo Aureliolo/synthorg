@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -73,6 +74,7 @@ class PostgresProjectRepository:
             project.deadline,
             project.budget,
             project.status.value,
+            project.version,
         )
 
     async def create(self, project: Project) -> None:
@@ -87,8 +89,9 @@ class PostgresProjectRepository:
                 await cur.execute(
                     """
                     INSERT INTO projects (id, name, description, team, lead,
-                                          task_ids, deadline, budget, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          task_ids, deadline, budget, status,
+                                          version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     self._row_params(project),
                 )
@@ -112,40 +115,47 @@ class PostgresProjectRepository:
             )
             raise QueryError(msg) from exc
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         """Update an existing project, failing if no row matched.
 
+        Args:
+            project: Project model to update.  ``project.id`` selects the row.
+            expected_version: When set, the write only lands if the stored
+                version still matches (optimistic concurrency).
+
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No project with this id exists.
             QueryError: If the database operation fails.
         """
+        params: list[object] = [
+            project.name,
+            project.description,
+            Jsonb(list(project.team)),
+            project.lead,
+            Jsonb(list(project.task_ids)),
+            project.deadline,
+            project.budget,
+            project.status.value,
+            project.version,
+            str(project.id),
+        ]
+        guard = ""
+        if expected_version is not None:
+            guard = " AND version=%s"
+            params.append(expected_version)
+        # Fixed columns + guard literal; values fully parameterized.
+        query = (
+            "UPDATE projects SET name=%s, description=%s, team=%s, lead=%s, "  # noqa: S608
+            "task_ids=%s, deadline=%s, budget=%s, status=%s, version=%s "
+            f"WHERE id=%s{guard}"
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    UPDATE projects SET
-                        name=%s,
-                        description=%s,
-                        team=%s,
-                        lead=%s,
-                        task_ids=%s,
-                        deadline=%s,
-                        budget=%s,
-                        status=%s
-                    WHERE id=%s
-                    """,
-                    (
-                        project.name,
-                        project.description,
-                        Jsonb(list(project.team)),
-                        project.lead,
-                        Jsonb(list(project.task_ids)),
-                        project.deadline,
-                        project.budget,
-                        project.status.value,
-                        str(project.id),
-                    ),
-                )
+                await cur.execute(query, params)
                 rowcount = cur.rowcount
                 await conn.commit()
         except psycopg.Error as exc:
@@ -158,14 +168,36 @@ class PostgresProjectRepository:
             )
             raise QueryError(msg) from exc
         if rowcount == 0:
+            await self._raise_update_miss(project, expected_version)
+
+    async def _raise_update_miss(
+        self, project: Project, expected_version: int | None
+    ) -> None:
+        """Classify a zero-rowcount update as a version conflict or a miss.
+
+        Raises:
+            PersistenceVersionConflictError: The row exists but its version
+                moved (only distinguishable when ``expected_version`` is set).
+            RecordNotFoundError: No project with this id exists at all.
+        """
+        exists = await self.get(NotBlankStr(str(project.id)))
+        if expected_version is not None and exists is not None:
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
                 project_id=str(project.id),
-                error_type="RecordNotFoundError",
-                error="No project with matching id",
+                error_type="PersistenceVersionConflictError",
+                reason="version_conflict",
             )
-            msg = f"No project with id {project.id!r}"
-            raise RecordNotFoundError(msg)
+            msg = f"Project {project.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
+        logger.warning(
+            PERSISTENCE_PROJECT_SAVE_FAILED,
+            project_id=str(project.id),
+            error_type="RecordNotFoundError",
+            error="No project with matching id",
+        )
+        msg = f"No project with id {project.id!r}"
+        raise RecordNotFoundError(msg)
 
     async def save(self, project: Project) -> None:
         """Persist a project via upsert.
@@ -178,8 +210,9 @@ class PostgresProjectRepository:
                 await cur.execute(
                     """
                     INSERT INTO projects (id, name, description, team, lead,
-                                          task_ids, deadline, budget, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          task_ids, deadline, budget, status,
+                                          version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
                         name=EXCLUDED.name,
                         description=EXCLUDED.description,
@@ -188,7 +221,8 @@ class PostgresProjectRepository:
                         task_ids=EXCLUDED.task_ids,
                         deadline=EXCLUDED.deadline,
                         budget=EXCLUDED.budget,
-                        status=EXCLUDED.status
+                        status=EXCLUDED.status,
+                        version=EXCLUDED.version
                     """,
                     self._row_params(project),
                 )

@@ -62,6 +62,7 @@ def _durable_plan(parent_label: str) -> Plan:
             id=NotBlankStr(sub_id),
             title=NotBlankStr(f"Subtask {n}"),
             description=NotBlankStr(f"Do part {n}"),
+            acceptance_criteria=(NotBlankStr(f"part {n} done"),),
         )
         for n, sub_id in enumerate(_SUB_IDS)
     )
@@ -69,6 +70,7 @@ def _durable_plan(parent_label: str) -> Plan:
         id=as_uuid(_PLAN_ID),
         project=NotBlankStr("proj-1"),
         objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid(parent_label))),
         items=items,
         task_structure=TaskStructure.PARALLEL,

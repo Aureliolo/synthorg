@@ -9,11 +9,13 @@ time so an operator-edited plan is the one that actually builds. This module
 owns both directions so the gate, the API, and the resume path stay in step.
 """
 
-from datetime import datetime
 from uuid import UUID
 
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
 from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -24,6 +26,53 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+
+
+class PlanProvenance(BaseModel):
+    """The plan-level provenance a durable ``Plan`` carries beyond its items.
+
+    Bundles the objective/project identity, timing, lifecycle, and denormalised
+    review context so :func:`plan_from_decomposition` takes one typed argument
+    rather than a long provenance parameter list.
+
+    Attributes:
+        project: Project the plan belongs to.
+        objective_id: Charter/objective the plan serves.
+        objective_title: Human title of the objective, denormalised onto the
+            plan so the review surface never shows a raw id.
+        parent_task_id: The objective task that was decomposed.
+        created_at: Timestamp stamped on both ``created_at`` and ``updated_at``
+            (a freshly built plan has never been revised).
+        status: Initial lifecycle status (defaults to pending review).
+        forecast_id: Cost forecast released alongside the plan, if any.
+        review: The consolidated stakeholder-panel review, if a panel ran.
+        objective_criteria: The objective's acceptance criteria, denormalised
+            onto the plan so the coverage map can flag any uncovered criterion.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    project: NotBlankStr = Field(description="Project the plan belongs to")
+    objective_id: NotBlankStr = Field(description="Charter/objective the plan serves")
+    objective_title: NotBlankStr = Field(description="Human title of the objective")
+    parent_task_id: NotBlankStr = Field(description="Objective task decomposed")
+    created_at: AwareDatetime = Field(description="Creation timestamp (tz-aware UTC)")
+    status: PlanStatus = Field(
+        default=PlanStatus.PENDING_REVIEW,
+        description="Initial lifecycle status",
+    )
+    forecast_id: UUID | None = Field(
+        default=None,
+        description="Cost forecast released alongside the plan",
+    )
+    review: PlanReview | None = Field(
+        default=None,
+        description="The consolidated stakeholder-panel review, if a panel ran",
+    )
+    objective_criteria: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="The objective's acceptance criteria, denormalised",
+    )
 
 
 def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
@@ -47,47 +96,43 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         required_tags=subtask.required_tags,
         estimated_complexity=subtask.estimated_complexity,
         stakes=subtask.stakes,
+        kind=subtask.kind,
+        options=subtask.options,
+        satisfies=subtask.satisfies,
     )
 
 
-def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance fields
+def plan_from_decomposition(
     result: DecompositionResult,
-    *,
-    project: NotBlankStr,
-    objective_id: NotBlankStr,
-    parent_task_id: NotBlankStr,
-    created_at: datetime,
-    status: PlanStatus = PlanStatus.PENDING_REVIEW,
-    forecast_id: UUID | None = None,
+    provenance: PlanProvenance,
 ) -> Plan:
     """Build a durable ``Plan`` from an executed ``DecompositionResult``.
 
     Args:
         result: The decomposition whose subtask tree becomes the plan items.
-        project: Project the plan belongs to.
-        objective_id: Charter/objective the plan serves.
-        parent_task_id: The objective task that was decomposed.
-        created_at: Timestamp stamped on both ``created_at`` and
-            ``updated_at`` (a freshly built plan has never been revised).
-        status: Initial lifecycle status (defaults to pending review, since
-            a plan is built to be reviewed).
-        forecast_id: Cost forecast released alongside the plan, if any.
+        provenance: The plan-level identity, timing, lifecycle, and review
+            context to stamp onto the plan (see :class:`PlanProvenance`).
 
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
     """
     items = tuple(_item_from_subtask(subtask) for subtask in result.plan.subtasks)
     return Plan(
-        project=project,
-        objective_id=objective_id,
-        parent_task_id=parent_task_id,
+        project=provenance.project,
+        objective_id=provenance.objective_id,
+        objective_title=provenance.objective_title,
+        parent_task_id=provenance.parent_task_id,
         items=items,
         task_structure=result.plan.task_structure,
         coordination_topology=result.plan.coordination_topology,
-        status=status,
-        forecast_id=forecast_id,
-        created_at=created_at,
-        updated_at=created_at,
+        status=provenance.status,
+        forecast_id=provenance.forecast_id,
+        review=provenance.review,
+        objective_criteria=provenance.objective_criteria,
+        open_questions=result.plan.open_questions,
+        assumptions=result.plan.assumptions,
+        created_at=provenance.created_at,
+        updated_at=provenance.created_at,
     )
 
 
@@ -113,6 +158,9 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
         required_role=item.owner,
         expected_artifacts=item.expected_artifacts,
         acceptance_criteria=item.acceptance_criteria,
+        kind=item.kind,
+        options=item.options,
+        satisfies=item.satisfies,
     )
 
 
@@ -172,11 +220,28 @@ def decomposition_from_plan(
         A validated :class:`DecompositionResult` ready for
         ``coordinate(precomputed_plan=...)``.
     """
-    subtasks = tuple(_subtask_from_item(item) for item in plan.items)
-    created_tasks = tuple(
-        _task_from_item(item, parent_task=parent_task) for item in plan.items
+    # Decision items are resolved by the reviewer's choice, not executed, so they
+    # never dispatch; their ids are stripped from remaining items' dependencies
+    # (the decision is already made by approval time), leaving a work-only DAG.
+    decision_ids = frozenset(
+        item.id for item in plan.items if item.kind is PlanItemKind.DECISION
     )
-    edges = tuple((dep, item.id) for item in plan.items for dep in item.dependencies)
+    dispatchable = tuple(
+        item.model_copy(
+            update={
+                "dependencies": tuple(
+                    dep for dep in item.dependencies if dep not in decision_ids
+                )
+            }
+        )
+        for item in plan.items
+        if item.kind is PlanItemKind.WORK
+    )
+    subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
+    created_tasks = tuple(
+        _task_from_item(item, parent_task=parent_task) for item in dispatchable
+    )
+    edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)
     decomposition_plan = DecompositionPlan(
         parent_task_id=str(parent_task.id),
         subtasks=subtasks,

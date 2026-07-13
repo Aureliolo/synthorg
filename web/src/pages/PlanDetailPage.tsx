@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ArrowLeft, ListTree, MessageSquare, PencilLine, Radio } from 'lucide-react'
 import { Link, useParams } from 'react-router'
@@ -10,20 +10,31 @@ import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-gr
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
+import type { PlanItemComment } from '@/api/types/plans'
 import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
+import { usePlanCommentsStore } from '@/stores/planComments'
+import { usePlansStore } from '@/stores/plans'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import {
-  computeCriticalPath,
+  criticalPathFor,
   derivePlanStats,
+  planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
 
 import { PlanAttentionPanel } from './plans/PlanAttentionPanel'
+import { PlanCoveragePanel } from './plans/PlanCoveragePanel'
 import { PlanEditor } from './plans/PlanEditor'
+import { PlanForecastPanel } from './plans/PlanForecastPanel'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
+import { PlanOpenQuestionsPanel } from './plans/PlanOpenQuestionsPanel'
+import { PlanStaffingPanel } from './plans/PlanStaffingPanel'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
+import { PlanReviewPanel } from './plans/PlanReviewPanel'
+import { PlanTimeline } from './plans/PlanTimeline'
+import { PlanVersionDiff } from './plans/PlanVersionDiff'
 
 type Mode = 'view' | 'edit' | 'request-changes'
 
@@ -44,8 +55,9 @@ function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => voi
 }
 
 function planMetadataItems(plan: Plan): MetadataGridItem[] {
-  const items: MetadataGridItem[] = [
-    { label: 'Objective', value: plan.objective_id },
+  // The forecast is surfaced meaningfully by PlanForecastPanel, so the raw
+  // forecast_id UUID is deliberately not shown here (never a UUID on the surface).
+  return [
     { label: 'Project', value: plan.project },
     { label: 'Revision', value: `v${String(plan.version)}` },
     { label: 'Structure', value: plan.task_structure },
@@ -53,20 +65,9 @@ function planMetadataItems(plan: Plan): MetadataGridItem[] {
     { label: 'Proposed', value: formatDateTime(plan.created_at) },
     { label: 'Updated', value: formatRelativeTime(plan.updated_at) },
   ]
-  if (plan.forecast_id !== null) {
-    items.push({ label: 'Forecast', value: plan.forecast_id })
-  }
-  return items
 }
 
-function PlanDetailHeader({
-  plan,
-  parentTaskTitle,
-}: {
-  plan: Plan
-  parentTaskTitle: string | null
-}) {
-  const headline = parentTaskTitle ?? plan.objective_id
+function PlanDetailHeader({ plan }: { plan: Plan }) {
   return (
     <div className="space-y-3">
       <Link
@@ -78,7 +79,7 @@ function PlanDetailHeader({
       </Link>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-balance text-lg font-semibold text-foreground">
-          {headline}
+          {plan.objective_title}
         </h1>
         <PlanStatusBadge status={plan.status} />
       </div>
@@ -120,12 +121,51 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
 }
 
 function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
-  const criticalPath = useMemo(() => computeCriticalPath(plan.items), [plan.items])
+  const criticalPath = useMemo(
+    () => criticalPathFor(plan.items, plan.task_structure),
+    [plan.items, plan.task_structure],
+  )
   const stats = useMemo(
     () => derivePlanStats(plan.items, criticalPath),
     [plan.items, criticalPath],
   )
   const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
+  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const comments = usePlanCommentsStore((s) => s.comments)
+  useEffect(() => {
+    void usePlanCommentsStore.getState().fetchComments(plan.id)
+    return () => {
+      usePlanCommentsStore.getState().reset()
+    }
+  }, [plan.id])
+  const commentsByItem = useMemo(() => {
+    const map = new Map<string, PlanItemComment[]>()
+    for (const comment of comments) {
+      const bucket = map.get(comment.item_id) ?? []
+      bucket.push(comment)
+      map.set(comment.item_id, bucket)
+    }
+    return map
+  }, [comments])
+  const addComment = useCallback(
+    (itemId: string, body: string) =>
+      usePlanCommentsStore.getState().addComment(plan.id, itemId, body),
+    [plan.id],
+  )
+  const chooseOption = useCallback(
+    (itemId: string, optionId: string) =>
+      // Record the pick by round-tripping the whole item list through the
+      // wholesale edit endpoint, touching only the target decision's choice.
+      // Returned so the option button can reflect the in-flight write.
+      usePlansStore.getState().editPlan(plan.id, {
+        items: plan.items.map((item) =>
+          item.id === itemId
+            ? { ...planItemToPayload(item), chosen_option_id: optionId }
+            : planItemToPayload(item),
+        ),
+      }),
+    [plan.id, plan.items],
+  )
   return (
     <>
       <PlanReviewToolbar
@@ -133,8 +173,15 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
         onEdit={() => setMode('edit')}
         onRequestChanges={() => setMode('request-changes')}
       />
-      <PlanMetricsHeader stats={stats} />
+      <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
+      <PlanOpenQuestionsPanel plan={plan} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
+      <PlanForecastPanel forecastId={plan.forecast_id} />
+      <PlanStaffingPanel plan={plan} />
+      <PlanCoveragePanel plan={plan} />
+      <PlanReviewPanel review={plan.review} />
+      <PlanVersionDiff plan={plan} />
+      <PlanTimeline items={plan.items} />
       <SectionCard title="Plan items" icon={ListTree}>
         <div className="flex flex-col gap-2">
           {plan.items.map((item, index) => (
@@ -144,6 +191,9 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
               index={index}
               onCriticalPath={criticalPath.has(item.id)}
               titleById={titleById}
+              comments={commentsByItem.get(item.id) ?? []}
+              onAddComment={addComment}
+              {...(editable ? { onChooseOption: chooseOption } : {})}
             />
           ))}
         </div>
@@ -170,7 +220,7 @@ function PlanDetailBody({ plan, mode, setMode }: {
 
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
-  const { plan, parentTaskTitle, loading, error, wsConnected, wsSetupError } =
+  const { plan, loading, error, wsConnected, wsSetupError } =
     usePlanDetailData(planId)
   const [mode, setMode] = usePlanViewMode(planId)
 
@@ -197,7 +247,7 @@ export default function PlanDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <PlanDetailHeader plan={plan} parentTaskTitle={parentTaskTitle} />
+      <PlanDetailHeader plan={plan} />
       {!wsConnected && (
         <ErrorBanner
           variant="offline"

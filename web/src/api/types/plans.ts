@@ -6,8 +6,15 @@ export type { PlanStatus } from './enum-values.gen'
 export type {
   EditPlanRequest,
   Plan,
+  PlanCommentPayload,
   PlanItem,
+  PlanItemComment,
   PlanItemPayload,
+  PlanOption,
+  PlanReview,
+  PlanReviewerVerdict,
+  PlanReviewFinding,
+  PlanVersionSnapshot,
   RequestPlanChangesRequest,
 } from './dtos.gen'
 

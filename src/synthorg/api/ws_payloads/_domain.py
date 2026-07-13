@@ -145,6 +145,22 @@ class WsPlanChangesRequestedPayload(BaseModel):
     note: NotBlankStr
 
 
+class WsPlanCommentAddedPayload(BaseModel):
+    """Payload for ``plan.comment_added``.
+
+    Emitted by ``api/controllers/plan_comments.py`` when a reviewer posts a
+    comment on a plan item, so an open workspace refreshes that item's thread.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PLAN_COMMENT_ADDED] = WsEventType.PLAN_COMMENT_ADDED
+    plan_id: NotBlankStr
+    item_id: NotBlankStr
+    comment_id: NotBlankStr
+    author: NotBlankStr
+
+
 class WsWorkflowExecutionStatusChangedPayload(BaseModel):
     """Payload for ``workflow_execution.status_changed``.
 

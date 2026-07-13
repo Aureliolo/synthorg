@@ -279,12 +279,14 @@ class TestProjectController:
             id=as_uuid("plan-cascade"),
             project=NotBlankStr(project_id),
             objective_id=NotBlankStr("obj-cascade"),
+            objective_title=NotBlankStr("Cascade objective"),
             parent_task_id=NotBlankStr("task-root"),
             items=(
                 PlanItem(
                     id=NotBlankStr(sid("item-1")),
                     title=NotBlankStr("Scaffold"),
                     description=NotBlankStr("Set up the board"),
+                    acceptance_criteria=(NotBlankStr("board scaffolded"),),
                 ),
             ),
             status=PlanStatus.PENDING_REVIEW,

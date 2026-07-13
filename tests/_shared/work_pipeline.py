@@ -17,6 +17,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 
@@ -77,6 +78,7 @@ class StubWorkPipeline:
         self.narrator: RunNarrator | None = None
         self.refinement_router: WorkRefinementRouter | None = None
         self.plan_review_gate: PlanReviewGate | None = None
+        self.plan_review_panel: PlanReviewPanel | None = None
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         self.calls.append(work_item)
@@ -106,3 +108,6 @@ class StubWorkPipeline:
 
     def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
         self.plan_review_gate = gate
+
+    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
+        self.plan_review_panel = panel

@@ -3,7 +3,6 @@ import {
   getPlan,
   requestPlanChanges as requestPlanChangesApi,
 } from '@/api/endpoints/plans'
-import { getTask } from '@/api/endpoints/tasks'
 import type { EditPlanRequest, Plan } from '@/api/types/plans'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -30,40 +29,13 @@ function upsertPlan(set: PlansSet, plan: Plan): void {
   }))
 }
 
-/**
- * Resolve the plan's human headline from its parent objective task. Purely
- * decorative: the review surface falls back to the objective id, so a missing
- * or unreachable task is swallowed (logged at debug) rather than surfaced.
- */
-async function resolveParentTaskTitle(
-  set: PlansSet,
-  token: number,
-  parentTaskId: string,
-): Promise<void> {
-  try {
-    const task = await getTask(parentTaskId)
-    if (isStaleDetailRequest(token)) return
-    set({ parentTaskTitle: task.title })
-  } catch (err) {
-    log.debug('Parent task title unresolved:', sanitizeForLog(err))
-  }
-}
-
 async function fetchPlanDetailImpl(set: PlansSet, id: string): Promise<void> {
   const token = nextDetailRequestToken()
-  set({
-    detailLoading: true,
-    detailError: null,
-    selectedPlan: null,
-    parentTaskTitle: null,
-  })
+  set({ detailLoading: true, detailError: null, selectedPlan: null })
   try {
     const plan = await getPlan(id)
     if (isStaleDetailRequest(token)) return
-    // Render the detail immediately; the decorative headline fills in after,
-    // so the page never blocks its loading state on the parent-task lookup.
-    set({ selectedPlan: plan, detailLoading: false })
-    await resolveParentTaskTitle(set, token, plan.parent_task_id)
+    set({ selectedPlan: plan })
   } catch (err) {
     if (isStaleDetailRequest(token)) return
     set({ detailError: getErrorMessage(err) })

@@ -6,24 +6,12 @@ import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import { usePlansStore } from '@/stores/plans'
 import { server } from '@/test-setup'
 
-import { makePlan, makeTask } from '../helpers/factories'
-
-function resetStore(): void {
-  usePlansStore.setState({
-    plans: [],
-    listLoading: false,
-    listError: null,
-    planTitles: {},
-    statusFilter: null,
-    selectedPlan: null,
-    detailLoading: false,
-    detailError: null,
-    parentTaskTitle: null,
-  })
-}
+import { makePlan } from '../helpers/factories'
 
 describe('usePlansStore', () => {
-  beforeEach(resetStore)
+  beforeEach(() => {
+    usePlansStore.getState().reset()
+  })
 
   describe('fetchPlans', () => {
     it('populates plans on success', async () => {
@@ -44,92 +32,6 @@ describe('usePlansStore', () => {
       await usePlansStore.getState().fetchPlans()
       expect(usePlansStore.getState().plans).toEqual([plan])
       expect(usePlansStore.getState().listError).toBeNull()
-    })
-
-    it('resolves human headlines for the loaded plans', async () => {
-      const plan = makePlan('plan-1', { parent_task_id: 'task-root' })
-      server.use(
-        http.get('/api/v1/plans', () =>
-          HttpResponse.json(
-            paginatedFor<typeof listPlans>({
-              data: [plan],
-              limit: 200,
-              nextCursor: null,
-              hasMore: false,
-              pagination: { limit: 200, next_cursor: null, has_more: false },
-            }),
-          ),
-        ),
-        http.get('/api/v1/tasks/:id', () =>
-          HttpResponse.json(apiSuccess(makeTask('task-root', 'Ship the Tetris game'))),
-        ),
-      )
-      await usePlansStore.getState().fetchPlans()
-      expect(usePlansStore.getState().planTitles['plan-1']).toBe('Ship the Tetris game')
-    })
-
-    it('leaves headlines unresolved when the parent task is gone', async () => {
-      const plan = makePlan('plan-1')
-      server.use(
-        http.get('/api/v1/plans', () =>
-          HttpResponse.json(
-            paginatedFor<typeof listPlans>({
-              data: [plan],
-              limit: 200,
-              nextCursor: null,
-              hasMore: false,
-              pagination: { limit: 200, next_cursor: null, has_more: false },
-            }),
-          ),
-        ),
-        http.get('/api/v1/tasks/:id', () =>
-          HttpResponse.json(apiError('gone'), { status: 404 }),
-        ),
-      )
-      await usePlansStore.getState().fetchPlans()
-      expect(usePlansStore.getState().plans).toEqual([plan])
-      expect(usePlansStore.getState().planTitles['plan-1']).toBeUndefined()
-    })
-
-    it('reuses cached headlines and prunes departed plans on refetch', async () => {
-      const plansPage = (plans: ReturnType<typeof makePlan>[]) =>
-        HttpResponse.json(
-          paginatedFor<typeof listPlans>({
-            data: plans,
-            limit: 200,
-            nextCursor: null,
-            hasMore: false,
-            pagination: { limit: 200, next_cursor: null, has_more: false },
-          }),
-        )
-      let taskCalls = 0
-      const plan1 = makePlan('plan-1', { parent_task_id: 'task-a' })
-      server.use(
-        http.get('/api/v1/plans', () => plansPage([plan1])),
-        http.get('/api/v1/tasks/:id', () => {
-          taskCalls += 1
-          return HttpResponse.json(apiSuccess(makeTask('task-a', 'First title')))
-        }),
-      )
-      await usePlansStore.getState().fetchPlans()
-      expect(usePlansStore.getState().planTitles['plan-1']).toBe('First title')
-      expect(taskCalls).toBe(1)
-
-      // Refetch the same plan: the cached headline is reused, not re-fetched.
-      await usePlansStore.getState().fetchPlans()
-      expect(taskCalls).toBe(1)
-
-      // A refetch without plan-1 prunes its cached headline.
-      const plan2 = makePlan('plan-2', { parent_task_id: 'task-b' })
-      server.use(
-        http.get('/api/v1/plans', () => plansPage([plan2])),
-        http.get('/api/v1/tasks/:id', () =>
-          HttpResponse.json(apiSuccess(makeTask('task-b', 'Second title'))),
-        ),
-      )
-      await usePlansStore.getState().fetchPlans()
-      expect(usePlansStore.getState().planTitles['plan-1']).toBeUndefined()
-      expect(usePlansStore.getState().planTitles['plan-2']).toBe('Second title')
     })
 
     it('records an error message on failure', async () => {
@@ -153,31 +55,15 @@ describe('usePlansStore', () => {
       expect(usePlansStore.getState().selectedPlan).toEqual(plan)
     })
 
-    it('resolves the human headline from the parent objective task', async () => {
-      const plan = makePlan('plan-1', { parent_task_id: 'task-root' })
+    it('records an error when the plan is gone', async () => {
       server.use(
-        http.get('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(plan))),
-        http.get('/api/v1/tasks/:id', () =>
-          HttpResponse.json(
-            apiSuccess(makeTask('task-root', 'Ship the Tetris game')),
-          ),
-        ),
-      )
-      await usePlansStore.getState().fetchPlanDetail('plan-1')
-      expect(usePlansStore.getState().parentTaskTitle).toBe('Ship the Tetris game')
-    })
-
-    it('leaves the headline unresolved when the parent task is gone', async () => {
-      const plan = makePlan('plan-1')
-      server.use(
-        http.get('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(plan))),
-        http.get('/api/v1/tasks/:id', () =>
+        http.get('/api/v1/plans/:id', () =>
           HttpResponse.json(apiError('gone'), { status: 404 }),
         ),
       )
       await usePlansStore.getState().fetchPlanDetail('plan-1')
-      expect(usePlansStore.getState().selectedPlan).toEqual(plan)
-      expect(usePlansStore.getState().parentTaskTitle).toBeNull()
+      expect(usePlansStore.getState().selectedPlan).toBeNull()
+      expect(usePlansStore.getState().detailError).not.toBeNull()
     })
   })
 
@@ -196,10 +82,12 @@ describe('usePlansStore', () => {
             title: 'X',
             description: 'Y',
             dependencies: [],
-            acceptance_criteria: [],
+            acceptance_criteria: ['done'],
             expected_artifacts: [],
             required_skills: [],
             required_tags: [],
+            options: [],
+            satisfies: [],
           },
         ],
       })
@@ -223,13 +111,18 @@ describe('usePlansStore', () => {
   describe('requestPlanChanges', () => {
     it('drafts the plan and returns it', async () => {
       const drafted = makePlan('plan-1', { status: 'draft' })
-      usePlansStore.setState({ plans: [makePlan('plan-1')], selectedPlan: makePlan('plan-1') })
+      usePlansStore.setState({
+        plans: [makePlan('plan-1')],
+        selectedPlan: makePlan('plan-1'),
+      })
       server.use(
         http.post('/api/v1/plans/:id/request-changes', () =>
           HttpResponse.json(apiSuccess(drafted)),
         ),
       )
-      const result = await usePlansStore.getState().requestPlanChanges('plan-1', 'please revise')
+      const result = await usePlansStore
+        .getState()
+        .requestPlanChanges('plan-1', 'please revise')
       expect(result?.status).toBe('draft')
       expect(usePlansStore.getState().selectedPlan?.status).toBe('draft')
     })

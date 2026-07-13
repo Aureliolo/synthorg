@@ -4,6 +4,7 @@ import pytest
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
@@ -139,6 +140,36 @@ class TestProjectRepository:
     async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
         with pytest.raises(RecordNotFoundError):
             await backend.projects.update(_project(project_id="p-ghost"))
+
+    async def test_version_round_trips(self, backend: PersistenceBackend) -> None:
+        stamped = _project(project_id="p-ver").model_copy(update={"version": 3})
+        await backend.projects.create(stamped)
+
+        fetched = await backend.projects.get(NotBlankStr(sid("p-ver")))
+        assert fetched is not None
+        assert fetched.version == 3
+
+    async def test_version_guarded_update_conflict(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A stale writer whose expected_version no longer matches the stored
+        # row is rejected rather than clobbering the concurrent update.
+        original = _project(project_id="p-cas")
+        await backend.projects.create(original)
+
+        winner = original.model_copy(
+            update={"lead": NotBlankStr("alice"), "version": 2}
+        )
+        await backend.projects.update(winner, expected_version=1)
+
+        loser = original.model_copy(update={"lead": NotBlankStr("bob"), "version": 2})
+        with pytest.raises(PersistenceVersionConflictError):
+            await backend.projects.update(loser, expected_version=1)
+
+        fetched = await backend.projects.get(NotBlankStr(sid("p-cas")))
+        assert fetched is not None
+        assert fetched.lead == "alice"
+        assert fetched.version == winner.version
 
     async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.list_items() == ()

@@ -68,12 +68,18 @@ def _decomposition() -> DecompositionResult:
     plan = DecompositionPlan(
         parent_task_id=sid("root"),
         subtasks=(
-            SubtaskDefinition(id=sid("sub-1"), title="A", description="Board grid"),
+            SubtaskDefinition(
+                id=sid("sub-1"),
+                title="A",
+                description="Board grid",
+                acceptance_criteria=(NotBlankStr("board renders"),),
+            ),
             SubtaskDefinition(
                 id=sid("sub-2"),
                 title="B",
                 description="Movement",
                 dependencies=(sid("sub-1"),),
+                acceptance_criteria=(NotBlankStr("pieces move"),),
             ),
         ),
     )

@@ -632,6 +632,29 @@ export const ORG_ROLE_VALUES = [
 ] as const
 export type OrgRole = (typeof ORG_ROLE_VALUES)[number]
 
+export const PLAN_ITEM_KIND_VALUES = [
+    'work',
+    'decision',
+] as const
+export type PlanItemKind = (typeof PLAN_ITEM_KIND_VALUES)[number]
+
+export const PLAN_REVIEW_FINDING_CATEGORY_VALUES = [
+    'gap',
+    'missing_owner',
+    'miscalibrated_stakes',
+    'risky_decision',
+    'budget_concern',
+    'other',
+] as const
+export type PlanReviewFindingCategory = (typeof PLAN_REVIEW_FINDING_CATEGORY_VALUES)[number]
+
+export const PLAN_REVIEW_VERDICT_VALUES = [
+    'endorsed',
+    'concerns',
+    'revision_requested',
+] as const
+export type PlanReviewVerdict = (typeof PLAN_REVIEW_VERDICT_VALUES)[number]
+
 export const PLAN_STATUS_VALUES = [
     'draft',
     'pending_review',

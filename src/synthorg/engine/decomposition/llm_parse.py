@@ -14,7 +14,13 @@ from uuid import uuid4
 
 from pydantic import JsonValue
 
-from synthorg.core.task_enums import Complexity, CoordinationTopology, TaskStructure
+from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.task_enums import (
+    Complexity,
+    CoordinationTopology,
+    Stakes,
+    TaskStructure,
+)
 from synthorg.engine.decomposition.llm_prompt import TOOL_NAME
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
@@ -30,6 +36,10 @@ from synthorg.providers.models import CompletionResponse
 logger = get_logger(__name__)
 
 _COMPLEXITY_MAP: Final[dict[str, Complexity]] = {c.value: c for c in Complexity}
+
+_STAKES_MAP: Final[dict[str, Stakes]] = {s.value: s for s in Stakes}
+
+_PLAN_ITEM_KIND_MAP: Final[dict[str, PlanItemKind]] = {k.value: k for k in PlanItemKind}
 
 _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
     s.value: s for s in TaskStructure
@@ -106,6 +116,18 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
         Complexity.MEDIUM,
         field="complexity",
     )
+    stakes = _enum_or_default(
+        raw.get("stakes", "normal"),
+        _STAKES_MAP,
+        Stakes.NORMAL,
+        field="stakes",
+    )
+    kind = _enum_or_default(
+        raw.get("kind", "work"),
+        _PLAN_ITEM_KIND_MAP,
+        PlanItemKind.WORK,
+        field="kind",
+    )
     deps = raw.get("dependencies") or []
     if not isinstance(deps, list):
         msg = "Subtask field 'dependencies' must be an array"
@@ -124,6 +146,13 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
         raise DecompositionError(msg)
     artifacts = _string_array(raw, "expected_artifacts")
     acceptance = _string_array(raw, "acceptance_criteria")
+    if not acceptance:
+        msg = (
+            f"Subtask {raw['id']!r} has no acceptance_criteria; every plan item "
+            "must state a verifiable definition of done"
+        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+        raise DecompositionError(msg)
     return SubtaskDefinition.model_validate(
         {
             "id": raw["id"],
@@ -131,10 +160,14 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             "description": raw["description"],
             "dependencies": tuple(deps),
             "estimated_complexity": complexity,
+            "stakes": stakes,
+            "kind": kind,
+            "options": raw.get("options") or (),
             "required_skills": tuple(skills),
             "required_role": raw.get("required_role"),
             "expected_artifacts": artifacts,
             "acceptance_criteria": acceptance,
+            "satisfies": _string_array(raw, "satisfies"),
         }
     )
 
@@ -260,6 +293,8 @@ def _args_to_plan(
         subtasks=subtasks,
         task_structure=structure,
         coordination_topology=topology,
+        open_questions=_string_array(args, "open_questions"),
+        assumptions=_string_array(args, "assumptions"),
     )
 
 
