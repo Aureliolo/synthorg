@@ -172,9 +172,6 @@ from synthorg.persistence.sqlite.project_repo import (
 from synthorg.persistence.sqlite.project_workspace_repo import (
     SQLiteProjectWorkspaceRepository,
 )
-from synthorg.persistence.sqlite.promotion_history_repo import (
-    SQLitePromotionHistoryRepository,
-)
 from synthorg.persistence.sqlite.provider_audit_repo import (
     SQLiteProviderAuditRepo,
 )
@@ -337,7 +334,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._webhook_receipts = None
         self._trust_states = None
         self._trust_change_history = None
-        self._promotion_history = None
         self._hiring_requests = None
         self._agent_contributions = None
         self._audit_chain_entries = None
@@ -651,10 +647,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._trust_change_history = SQLiteTrustChangeHistoryRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._promotion_history = SQLitePromotionHistoryRepository(
             self._db,
             write_context=self.write_context,
         )

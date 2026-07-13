@@ -76,13 +76,6 @@ assert _lifecycle_values <= _activity_values, (  # noqa: S101
 )
 
 
-class PromotionDirection(StrEnum):
-    """Direction of a seniority level change."""
-
-    PROMOTION = "promotion"
-    DEMOTION = "demotion"
-
-
 class TrendDirection(StrEnum):
     """Direction of a performance metric trend."""
 

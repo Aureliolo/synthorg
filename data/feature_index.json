@@ -646,7 +646,6 @@
         "ActivityController",
         "PersonalityPresetController",
         "ScalingController",
-        "PromotionController",
         "TrainingController",
         "QualityController",
         "CollaborationController"
@@ -654,7 +653,6 @@
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [
-        "build_promotion_service",
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
@@ -703,8 +701,6 @@
         "agent_health_service",
         "scaling_service",
         "scaling_decision_service",
-        "promotion_service",
-        "promotion_cycle_scheduler",
         "pruning_service",
         "eval_loop_coordinator",
         "eval_loop_cycle_scheduler"
@@ -1382,6 +1378,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-13T17:35:06.885913Z",
+  "generated_at": "2026-07-13T21:47:14.723422Z",
   "schema_version": 1
 }

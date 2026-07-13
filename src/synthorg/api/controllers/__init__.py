@@ -112,7 +112,6 @@ from synthorg.api.controllers.project_knowledge import (
     ProjectKnowledgeController,
 )
 from synthorg.api.controllers.projects import ProjectController
-from synthorg.api.controllers.promotion import PromotionController
 from synthorg.api.controllers.providers.allowlists import (
     ProviderAllowlistsController,
 )
@@ -299,7 +298,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ClientController,
     ReviewController,
     ScalingController,
-    PromotionController,
     TrainingController,
     MetaController,
     MetaEvolutionController,
@@ -437,7 +435,6 @@ __all__ = [
     "ProjectController",
     "ProjectDocsController",
     "ProjectKnowledgeController",
-    "PromotionController",
     "ProviderAllowlistsController",
     "ProviderAuditController",
     "ProviderCapabilitiesController",

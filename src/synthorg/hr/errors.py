@@ -125,31 +125,6 @@ class InsufficientDataError(PerformanceError):
     """Not enough data points for a meaningful computation."""
 
 
-# ── Promotion ───────────────────────────────────────────────────
-
-
-class PromotionError(HRError):
-    """Error during the promotion/demotion process."""
-
-
-class PromotionCooldownError(PromotionError):
-    """Promotion is blocked by the cooldown period."""
-
-    default_message: ClassVar[str] = "Promotion blocked by cooldown"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROMOTION_COOLDOWN_ACTIVE
-    status_code: ClassVar[int] = 409
-
-
-class PromotionApprovalRequiredError(PromotionError):
-    """Promotion requires human approval before proceeding."""
-
-    default_message: ClassVar[str] = "Promotion requires approval"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROMOTION_APPROVAL_REQUIRED
-    status_code: ClassVar[int] = 409
-
-
 # ── Pruning ────────────────────────────────────────────────────
 
 

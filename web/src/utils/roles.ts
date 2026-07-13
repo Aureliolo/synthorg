@@ -2,7 +2,7 @@ import type { HumanRole } from '@/api/types/enum-values.gen'
 
 /**
  * Roles permitted to perform privileged mutations that the backend gates on a
- * senior role (promotion apply / cycle, SSRF-violation allow/deny). These are
+ * senior role (SSRF-violation allow/deny). These are
  * UI-gating only; the server is the real authority. Kept as one constant so a
  * future role addition cannot be missed at one of the call sites.
  */

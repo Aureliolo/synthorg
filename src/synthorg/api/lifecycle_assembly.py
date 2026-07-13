@@ -306,15 +306,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_tool_call_feedback]
 
-    async def _wire_promotion() -> None:
-        from synthorg.api.lifecycle_helpers.promotion_wiring import (  # noqa: PLC0415
-            wire_promotion,
-        )
-
-        await wire_promotion(app_state, config=effective_config.promotion)
-
-    startup = [*startup, _wire_promotion]
-
     async def _wire_eval_loop() -> None:
         from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
             wire_eval_loop,

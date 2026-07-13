@@ -148,9 +148,6 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
-from synthorg.persistence.promotion_history_protocol import (
-    PromotionHistoryRepository,
-)
 from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
 )
@@ -755,11 +752,6 @@ class PersistenceBackend(Protocol):
     @property
     def trust_change_history(self) -> TrustChangeHistoryRepository:
         """Repository for the trust-level change audit trail."""
-        ...
-
-    @property
-    def promotion_history(self) -> PromotionHistoryRepository:
-        """Repository for the append-only promotion/demotion history."""
         ...
 
     @property

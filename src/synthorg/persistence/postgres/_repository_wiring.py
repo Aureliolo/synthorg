@@ -156,9 +156,6 @@ from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.postgres.project_workspace_repo import (
     PostgresProjectWorkspaceRepository,
 )
-from synthorg.persistence.postgres.promotion_history_repo import (
-    PostgresPromotionHistoryRepository,
-)
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
@@ -305,7 +302,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._webhook_receipts = None
         self._trust_states = None
         self._trust_change_history = None
-        self._promotion_history = None
         self._hiring_requests = None
         self._agent_contributions = None
         self._audit_chain_entries = None
@@ -427,7 +423,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._webhook_receipts = PostgresWebhookReceiptRepository(pool)
         self._trust_states = PostgresTrustStateRepository(pool)
         self._trust_change_history = PostgresTrustChangeHistoryRepository(pool)
-        self._promotion_history = PostgresPromotionHistoryRepository(pool)
         self._hiring_requests = PostgresHiringRequestRepository(pool)
         self._agent_contributions = PostgresAgentContributionRepository(pool)
         self._audit_chain_entries = PostgresAuditChainRepository(pool)

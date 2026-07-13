@@ -5,14 +5,14 @@ from datetime import date
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
 from synthorg.core.tool_constraints import ToolAccessLevel, ToolSubConstraints
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import MODEL_TIER_LADDER, ModelTier, NotBlankStr
 from synthorg.hr.enums import (
     AgentStatus,
     CollaborationPreference,
@@ -228,6 +228,31 @@ class ModelConfig(BaseModel):
         default=None,
         description="Model capability tier (large/medium/small)",
     )
+
+    @field_validator("model_id", "fallback_model")
+    @classmethod
+    def _reject_tier_literal_as_model(cls, value: str | None) -> str | None:
+        """Reject a capability-tier literal used as a concrete model id.
+
+        A tier (``"small"``/``"medium"``/``"large"``) is a routing input, not
+        a registered model; if one lands in ``model_id`` it is sent verbatim
+        to the provider driver and never resolves. ``model_tier`` is the field
+        that carries a tier, so the bad state is caught at construction rather
+        than surfacing as a completion-time failure downstream.
+
+        Returns:
+            The unchanged *value* once confirmed not to be a bare tier literal.
+
+        Raises:
+            ValueError: If *value* is exactly a ``ModelTier`` literal.
+        """
+        if value is not None and value in MODEL_TIER_LADDER:
+            msg = (
+                f"must be a concrete registered model, not the capability tier "
+                f"{value!r}; set model_tier for the tier and a real model_id"
+            )
+            raise ValueError(msg)
+        return value
 
 
 class AgentRetentionRule(BaseModel):

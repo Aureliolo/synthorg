@@ -3815,74 +3815,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/promotion/{agent_id}/apply": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Apply */
-        readonly post: operations["ApiV1PromotionAgentIdApplyApply"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/promotion/{agent_id}/evaluate": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Evaluate */
-        readonly get: operations["ApiV1PromotionAgentIdEvaluateEvaluate"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/promotion/{agent_id}/history": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** History */
-        readonly get: operations["ApiV1PromotionAgentIdHistoryHistory"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/promotion/cycle": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** TriggerCycle */
-        readonly post: operations["ApiV1PromotionCycleTriggerCycle"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/providers": {
         readonly parameters: {
             readonly query?: never;
@@ -7267,22 +7199,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[PromotionApplyResultDTO] */
-        readonly ApiResponse_PromotionApplyResultDTO_: {
-            readonly data: components["schemas"]["PromotionApplyResultDTO"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[PromotionEvaluationDTO] */
-        readonly ApiResponse_PromotionEvaluationDTO_: {
-            readonly data: components["schemas"]["PromotionEvaluationDTO"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[PromptClassBreakdown] */
         readonly ApiResponse_PromptClassBreakdown_: {
             readonly data: components["schemas"]["PromptClassBreakdown"] | null;
@@ -7750,14 +7666,6 @@ export type components = {
         /** ApiResponse[tuple[PackInfoResponse, ...]] */
         readonly "ApiResponse_tuple_PackInfoResponse_..._": {
             readonly data: readonly components["schemas"]["PackInfoResponse"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[tuple[PromotionRecordDTO, ...]] */
-        readonly "ApiResponse_tuple_PromotionRecordDTO_..._": {
-            readonly data: readonly components["schemas"]["PromotionRecordDTO"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -10182,19 +10090,6 @@ export type components = {
          * @enum {string}
          */
         readonly CreativityLevel: "low" | "medium" | "high";
-        /** CriterionResultDTO */
-        readonly CriterionResultDTO: {
-            /** @description Agent's current value for the criterion */
-            readonly current_value: number;
-            /** @description Whether the criterion was met */
-            readonly met: boolean;
-            /** @description Criterion name */
-            readonly name: string;
-            /** @description Required threshold value */
-            readonly threshold: number;
-            /** @description Weight of this criterion, when weighted */
-            readonly weight: number | null;
-        };
         /** DailySummary */
         readonly DailySummary: {
             /**
@@ -10822,7 +10717,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -13473,21 +13368,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[PromotionRecordDTO] */
-        readonly PaginatedResponse_PromotionRecordDTO_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["PromotionRecordDTO"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** PaginatedResponse[ProviderAuditEvent] */
         readonly PaginatedResponse_ProviderAuditEvent_: {
             /** @default [] */
@@ -14726,119 +14606,6 @@ export type components = {
          * @enum {string}
          */
         readonly ProjectStatus: "planning" | "active" | "on_hold" | "completed" | "cancelled";
-        /** PromotionApplyResultDTO */
-        readonly PromotionApplyResultDTO: {
-            /** @description The applied record when auto-approved, else null */
-            readonly applied: components["schemas"]["PromotionRecordDTO"] | null;
-            readonly request: components["schemas"]["PromotionRequestDTO"];
-        };
-        /**
-         * PromotionDirection
-         * @description Direction of a seniority level change.
-         * @default promotion
-         * @enum {string}
-         */
-        readonly PromotionDirection: "promotion" | "demotion";
-        /** PromotionEvaluationDTO */
-        readonly PromotionEvaluationDTO: {
-            /** @description Agent that was evaluated */
-            readonly agent_id: string;
-            /** @description Number of criteria that were met */
-            readonly criteria_met_count: number;
-            /**
-             * @description Individual criterion outcomes
-             * @default []
-             */
-            readonly criteria_results: readonly components["schemas"]["CriterionResultDTO"][];
-            /** @description Current seniority level */
-            readonly current_level: string;
-            /**
-             * @description Either 'promotion' or 'demotion'
-             * @enum {string}
-             */
-            readonly direction: "promotion" | "demotion";
-            /** @description Whether the agent qualifies for the change */
-            readonly eligible: boolean;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly evaluated_at: string;
-            /** @description Whether all required criteria were met */
-            readonly required_criteria_met: boolean;
-            /** @description Strategy that produced the evaluation */
-            readonly strategy_name: string;
-            /** @description Target seniority level */
-            readonly target_level: string;
-        };
-        /** PromotionRecordDTO */
-        readonly PromotionRecordDTO: {
-            /** @description Agent that was promoted or demoted */
-            readonly agent_id: string;
-            /** @description Agent display name */
-            readonly agent_name: string;
-            /** @description Approval item identifier when human-approved */
-            readonly approval_id: string | null;
-            /** @description Who approved the change ('auto' or 'human') */
-            readonly approved_by: string | null;
-            /**
-             * @description Either 'promotion' or 'demotion'
-             * @enum {string}
-             */
-            readonly direction: "promotion" | "demotion";
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly effective_at: string;
-            /** @description Unique record identifier */
-            readonly id: string;
-            /** @description Who initiated the change */
-            readonly initiated_by: string;
-            /** @description Whether the agent's model changed */
-            readonly model_changed: boolean;
-            /** @description New seniority level */
-            readonly new_level: string;
-            /** @description New model identifier, when changed */
-            readonly new_model_id: string | null;
-            /** @description Previous seniority level */
-            readonly old_level: string;
-            /** @description Previous model identifier, when changed */
-            readonly old_model_id: string | null;
-        };
-        /**
-         * PromotionRequestDTO
-         * @description The promotion request
-         */
-        readonly PromotionRequestDTO: {
-            /** @description Agent being promoted or demoted */
-            readonly agent_id: string;
-            /** @description Agent display name */
-            readonly agent_name: string;
-            /** @description Linked approval item identifier, when human-gated */
-            readonly approval_id: string | null;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly created_at: string;
-            /** @description Current seniority level */
-            readonly current_level: string;
-            /**
-             * @description Either 'promotion' or 'demotion'
-             * @enum {string}
-             */
-            readonly direction: "promotion" | "demotion";
-            /** @description Unique request identifier */
-            readonly id: string;
-            /**
-             * @description Current approval status
-             * @enum {string}
-             */
-            readonly status: "pending" | "approved" | "rejected" | "expired";
-            /** @description Target seniority level */
-            readonly target_level: string;
-        };
         /**
          * PromptClassAlertConfig
          * @description Per-prompt-purpose cost / latency alert thresholds.
@@ -27319,135 +27086,6 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PromotionAgentIdApplyApply: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Whether to apply a promotion or demotion. */
-                readonly direction?: components["schemas"]["PromotionDirection"];
-            };
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly agent_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_PromotionApplyResultDTO_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PromotionAgentIdEvaluateEvaluate: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Whether to apply a promotion or demotion. */
-                readonly direction?: components["schemas"]["PromotionDirection"];
-            };
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly agent_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_PromotionEvaluationDTO_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PromotionAgentIdHistoryHistory: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly agent_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_PromotionRecordDTO_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PromotionCycleTriggerCycle: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_PromotionRecordDTO_..._"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

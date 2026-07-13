@@ -23,7 +23,6 @@ from synthorg.api.controllers.agents.observability import (
 )
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.personalities import PersonalityPresetController
-from synthorg.api.controllers.promotion import PromotionController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.training import TrainingController
@@ -69,7 +68,6 @@ FEATURE: FeatureModule = FeatureManifest(
         ActivityController,
         PersonalityPresetController,
         ScalingController,
-        PromotionController,
         TrainingController,
         QualityController,
         CollaborationController,
@@ -89,7 +87,6 @@ FEATURE: FeatureModule = FeatureManifest(
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
     ghost_wired_symbols=(
-        "build_promotion_service",
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",

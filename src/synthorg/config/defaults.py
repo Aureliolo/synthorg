@@ -38,7 +38,6 @@ def default_config_dict() -> dict[str, object]:
         "mcp": {},
         "security": {},
         "trust": {},
-        "promotion": {},
         "performance": {},
         "training": {},
         "evolution": {},

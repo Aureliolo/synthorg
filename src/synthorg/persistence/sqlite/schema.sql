@@ -2510,16 +2510,6 @@ CREATE TABLE audit_chain_entries (
     signature BLOB NOT NULL,
     timestamp TEXT NOT NULL CHECK (timestamp LIKE '%+00:00' OR timestamp LIKE '%Z')
 );
-CREATE TABLE promotion_history (
-    id TEXT PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
-    direction TEXT NOT NULL CHECK (LENGTH(TRIM(direction)) > 0),
-    effective_at TEXT NOT NULL
-    CHECK (effective_at LIKE '%+00:00' OR effective_at LIKE '%Z'),
-    payload TEXT NOT NULL CHECK (JSON_VALID(payload))
-);
-CREATE INDEX idx_promotion_history_agent
-ON promotion_history (agent_id, effective_at DESC);
 CREATE TABLE hiring_requests (
     id TEXT PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     status TEXT NOT NULL CHECK (LENGTH(TRIM(status)) > 0),

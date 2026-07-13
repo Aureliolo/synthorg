@@ -1957,13 +1957,6 @@ class TestDomainErrorFamilyClassVarHttpMapping:
             ),
             (
                 "synthorg.hr.errors",
-                "PromotionCooldownError",
-                409,
-                ErrorCode.PROMOTION_COOLDOWN_ACTIVE,
-                ErrorCategory.CONFLICT,
-            ),
-            (
-                "synthorg.hr.errors",
                 "HRError",
                 500,
                 ErrorCode.INTERNAL_ERROR,

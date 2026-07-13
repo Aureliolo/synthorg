@@ -1729,10 +1729,6 @@ class _FakeBackend:
         return _FakeAppendOnlyRepository()
 
     @property
-    def promotion_history(self) -> _FakeAppendOnlyRepository:
-        return _FakeAppendOnlyRepository()
-
-    @property
     def hiring_requests(self) -> _FakeHiringRequestRepository:
         return _FakeHiringRequestRepository()
 

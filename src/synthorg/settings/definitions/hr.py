@@ -27,56 +27,6 @@ _r.register(
     )
 )
 
-# ── Promotion cycle kill switch ──────────────────────────────────
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.HR,
-        key="promotion_cycle_paused",
-        type=SettingType.BOOLEAN,
-        default="false",
-        description=(
-            "Pause flag for the automatic promotion cycle. When True the"
-            " periodic scheduler stays resident but every tick"
-            " short-circuits, so the org stops re-evaluating agent"
-            " seniority without a restart."
-        ),
-        group="Promotion",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-# ── Evaluation metric granular toggles ───────────────────────────
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.HR,
-        key="promotion_cycle_interval_seconds",
-        type=SettingType.FLOAT,
-        default="3600.0",
-        description=(
-            "Cadence between automatic promotion-cycle scans. The"
-            " scheduler floors this at 60 seconds."
-        ),
-        group="Promotion",
-        level=SettingLevel.ADVANCED,
-        min_value=60.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.HR,
-        key="promotion_cooldown_hours",
-        type=SettingType.INTEGER,
-        default="24",
-        description="Hours between consecutive promotions/demotions for an agent.",
-        group="Promotion",
-        level=SettingLevel.ADVANCED,
-        min_value=0,
-    )
-)
-
 # ── Closed-loop evaluation cycle scheduler ───────────────────────
 
 _r.register(

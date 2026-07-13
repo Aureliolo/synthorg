@@ -18,8 +18,6 @@ from synthorg.hr.errors import (
     OffboardingError,
     OnboardingError,
     PerformanceError,
-    PromotionApprovalRequiredError,
-    PromotionCooldownError,
     PruningUnrestartableError,
     TaskReassignmentError,
 )
@@ -83,8 +81,6 @@ class TestErrorCodes:
             (HiringApprovalRequiredError, ErrorCode.HIRING_APPROVAL_REQUIRED),
             (HiringRejectedError, ErrorCode.HIRING_REJECTED),
             (AgentAlreadyRegisteredError, ErrorCode.AGENT_ALREADY_REGISTERED),
-            (PromotionCooldownError, ErrorCode.PROMOTION_COOLDOWN_ACTIVE),
-            (PromotionApprovalRequiredError, ErrorCode.PROMOTION_APPROVAL_REQUIRED),
             (PruningUnrestartableError, ErrorCode.PRUNING_UNRESTARTABLE),
         ],
     )

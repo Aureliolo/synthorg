@@ -33,7 +33,6 @@ from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.persistence.config import PersistenceConfig
@@ -118,7 +117,6 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     mcp = MCPConfig()
     security = SecurityConfig()
     trust = TrustConfig()
-    promotion = PromotionConfig()
     performance = PerformanceConfig()
     # Pinned to the valid default: polyfactory would otherwise synthesise an
     # EvolutionConfig whose nested ShadowEvaluationConfig fails its cross-field

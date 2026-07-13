@@ -20,8 +20,6 @@ from synthorg.hr.health.service import AgentHealthService
 from synthorg.hr.identity.version_service import AgentVersionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.personalities.service import PersonalityService
-from synthorg.hr.promotion.cycle_scheduler import PromotionCycleScheduler
-from synthorg.hr.promotion.service import PromotionService
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.decision_service import (
@@ -47,8 +45,6 @@ class HrStateSlice(BaseFeatureStateSlice):
     agent_health_service: AgentHealthService | None = None
     scaling_service: ScalingService | None = None
     scaling_decision_service: ScalingDecisionService | None = None
-    promotion_service: PromotionService | None = None
-    promotion_cycle_scheduler: PromotionCycleScheduler | None = None
     pruning_service: PruningService | None = None
     eval_loop_coordinator: EvalLoopCoordinator | None = None
     eval_loop_cycle_scheduler: EvalLoopCycleScheduler | None = None
@@ -142,15 +138,4 @@ def scaling_decision_service_of(
     return require_service(
         app_state.slice(HrStateSlice).scaling_decision_service,
         "Scaling Decision Service",
-    )
-
-
-def promotion_service_of(app_state: AppStateSliceMixin) -> PromotionService:
-    """Resolve the promotion service from its slice, or raise 503.
-
-    Returns:
-        The wired promotion service.
-    """
-    return require_service(
-        app_state.slice(HrStateSlice).promotion_service, "Promotion Service"
     )

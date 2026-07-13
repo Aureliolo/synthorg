@@ -46,7 +46,6 @@ from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
 from synthorg.knowledge.config import KnowledgeConfig
@@ -263,10 +262,6 @@ class RootConfig(BaseModel):
     trust: TrustConfig = Field(
         default_factory=TrustConfig,
         description="Progressive trust configuration",
-    )
-    promotion: PromotionConfig = Field(
-        default_factory=PromotionConfig,
-        description="Promotion/demotion configuration",
     )
     performance: PerformanceConfig = Field(
         default_factory=PerformanceConfig,
