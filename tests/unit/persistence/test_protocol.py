@@ -119,6 +119,7 @@ if TYPE_CHECKING:
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.plan import Plan
+    from synthorg.core.plan_comment import PlanItemComment
     from synthorg.core.project import Project
     from synthorg.core.project_environment import ProjectEnvironment
     from synthorg.core.project_workspace import ProjectWorkspace
@@ -844,7 +845,7 @@ class _FakePlanRepository:
 
 
 class _FakePlanItemCommentRepository:
-    async def append(self, event: object) -> None:
+    async def append(self, event: PlanItemComment) -> None:
         del event
 
     async def query(
@@ -853,11 +854,11 @@ class _FakePlanItemCommentRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[object, ...]:
+    ) -> tuple[PlanItemComment, ...]:
         del filter_spec, limit, offset
         return ()
 
-    async def purge_before(self, threshold: object) -> int:
+    async def purge_before(self, threshold: AwareDatetime) -> int:
         del threshold
         return 0
 
