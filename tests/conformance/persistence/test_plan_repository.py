@@ -34,6 +34,7 @@ def _plan(
         id=as_uuid(plan_id),
         project=NotBlankStr(project),
         objective_id=NotBlankStr(objective_id),
+        objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr("task-root"),
         items=(
             PlanItem(

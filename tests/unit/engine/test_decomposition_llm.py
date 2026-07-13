@@ -81,6 +81,7 @@ def _valid_plan_args(
             "dependencies": [] if i == 0 else [f"sub-{i - 1}"],
             "estimated_complexity": "medium",
             "required_skills": ["python"],
+            "acceptance_criteria": [f"step {i} verified"],
         }
         for i in range(subtask_count)
     ]

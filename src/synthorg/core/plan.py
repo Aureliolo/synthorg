@@ -14,7 +14,8 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -22,6 +23,27 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr
+
+
+class PlanOption(BaseModel):
+    """One option a ``DECISION`` plan item offers a reviewer to choose among.
+
+    Attributes:
+        id: Stable option identifier within the decision item.
+        title: Short option title.
+        summary: The option's tradeoffs and rationale, so a reviewer can choose.
+        recommended: Whether the owner recommends this option.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Stable option identifier within the item")
+    title: NotBlankStr = Field(description="Short option title")
+    summary: NotBlankStr = Field(description="The option's tradeoffs and rationale")
+    recommended: bool = Field(
+        default=False,
+        description="Whether the owner recommends this option",
+    )
 
 
 class PlanItem(BaseModel):
@@ -79,6 +101,22 @@ class PlanItem(BaseModel):
         default=Stakes.NORMAL,
         description="Stakes level for stakes-aware model routing",
     )
+    kind: PlanItemKind = Field(
+        default=PlanItemKind.WORK,
+        description="Whether this item is work to execute or a decision point",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        description="For a DECISION item, the options to choose among",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None,
+        description="The option a reviewer chose (DECISION items only)",
+    )
+    satisfies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Objective success criteria this item advances",
+    )
 
     @model_validator(mode="after")
     def _validate_item(self) -> Self:
@@ -113,7 +151,64 @@ class PlanItem(BaseModel):
             dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
             msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
+        self._validate_decision()
         return self
+
+    def _validate_decision(self) -> None:
+        """Enforce the decision-vs-work option invariants.
+
+        A ``WORK`` item carries no options; a ``DECISION`` item offers at least
+        two options with unique ids and a single recommended one, and any
+        recorded ``chosen_option_id`` must name one of them.
+
+        Raises:
+            ValueError: When a work item carries options, a decision item has
+                fewer than two options / no or many recommended / duplicate
+                option ids, or the chosen option is unknown.
+        """
+        if self.kind is PlanItemKind.WORK:
+            if self.options or self.chosen_option_id is not None:
+                msg = f"Plan item {self.id!r} is WORK but carries decision options"
+                raise ValueError(msg)
+            return
+        if len(self.options) < 2:  # noqa: PLR2004 -- a decision needs >=2 options
+            msg = f"Decision item {self.id!r} must offer at least two options"
+            raise ValueError(msg)
+        option_ids = [option.id for option in self.options]
+        if len(option_ids) != len(set(option_ids)):
+            msg = f"Decision item {self.id!r} has duplicate option ids"
+            raise ValueError(msg)
+        if sum(option.recommended for option in self.options) != 1:
+            msg = f"Decision item {self.id!r} needs exactly one recommended option"
+            raise ValueError(msg)
+        if (
+            self.chosen_option_id is not None
+            and self.chosen_option_id not in option_ids
+        ):
+            msg = f"Decision item {self.id!r} chose an unknown option"
+            raise ValueError(msg)
+
+
+class PlanVersionSnapshot(BaseModel):
+    """A frozen snapshot of a plan's items at a prior version, for diffing.
+
+    Attributes:
+        version: The plan version this snapshot captures.
+        items: The plan items as they stood at that version.
+        task_structure: The classified structure at that version.
+        captured_at: When the snapshot was taken (tz-aware UTC).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    version: int = Field(ge=1, description="The plan version this snapshot captures")
+    items: tuple[PlanItem, ...] = Field(description="Plan items at that version")
+    task_structure: TaskStructure = Field(
+        description="Classified structure at that version",
+    )
+    captured_at: AwareDatetime = Field(
+        description="When the snapshot was taken (tz-aware UTC)",
+    )
 
 
 class Plan(BaseModel):
@@ -123,12 +218,19 @@ class Plan(BaseModel):
         id: Plan identifier (entity primary key).
         project: Project the plan belongs to.
         objective_id: Charter/objective this plan serves.
+        objective_title: Human title of the objective, denormalised at creation
+            so the review surface never has to resolve (and never falls back to)
+            a raw id.
         parent_task_id: Objective task the plan decomposes.
         items: Ordered plan items forming a validated dependency DAG.
         task_structure: Classified structure of the item graph.
         coordination_topology: Selected coordination topology.
         status: Plan lifecycle status.
         forecast_id: Cost forecast released alongside the plan, if any.
+        review: The consolidated stakeholder-panel review, once reviewed.
+        open_questions: Unresolved questions the owner surfaced for the human.
+        assumptions: Assumptions the plan rests on.
+        version_history: Snapshots of prior submitted versions, for diffing.
         version: Revision number, bumped on each operator edit / re-plan.
         created_at: Creation timestamp (tz-aware UTC).
         updated_at: Last-revision timestamp (tz-aware UTC).
@@ -139,6 +241,9 @@ class Plan(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Plan identifier")
     project: NotBlankStr = Field(description="Project the plan belongs to")
     objective_id: NotBlankStr = Field(description="Charter/objective the plan serves")
+    objective_title: NotBlankStr = Field(
+        description="Human title of the objective this plan serves",
+    )
     parent_task_id: NotBlankStr = Field(
         description="Objective task the plan decomposes",
     )
@@ -158,6 +263,22 @@ class Plan(BaseModel):
     forecast_id: UUID | None = Field(
         default=None,
         description="Cost forecast released alongside the plan",
+    )
+    review: PlanReview | None = Field(
+        default=None,
+        description="The consolidated stakeholder-panel review, once reviewed",
+    )
+    open_questions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Unresolved questions the owner surfaced for the human",
+    )
+    assumptions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Assumptions the plan rests on",
+    )
+    version_history: tuple[PlanVersionSnapshot, ...] = Field(
+        default=(),
+        description="Snapshots of prior submitted versions, for diffing",
     )
     version: int = Field(
         default=1,

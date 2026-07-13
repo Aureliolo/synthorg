@@ -14,8 +14,9 @@ from synthorg.core.persistence_errors import (
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -42,9 +43,12 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: Final[int] = 10_000
 
 _COLUMNS = (
-    "id, project, objective_id, parent_task_id, items, task_structure, "
-    "coordination_topology, status, forecast_id, version, created_at, updated_at"
+    "id, project, objective_id, objective_title, parent_task_id, items, "
+    "task_structure, coordination_topology, status, forecast_id, review, "
+    "open_questions, assumptions, version_history, version, created_at, updated_at"
 )
+
+_INSERT_PLACEHOLDERS = "(" + ", ".join("?" for _ in _COLUMNS.split(", ")) + ")"
 
 
 def _row_to_plan(row: aiosqlite.Row) -> Plan:
@@ -62,6 +66,14 @@ def _row_to_plan(row: aiosqlite.Row) -> Plan:
     data["status"] = PlanStatus(data["status"])
     forecast_id = data["forecast_id"]
     data["forecast_id"] = UUID(forecast_id) if forecast_id else None
+    review = data["review"]
+    data["review"] = PlanReview.model_validate(json.loads(review)) if review else None
+    data["open_questions"] = tuple(json.loads(data["open_questions"]))
+    data["assumptions"] = tuple(json.loads(data["assumptions"]))
+    data["version_history"] = tuple(
+        PlanVersionSnapshot.model_validate(snapshot)
+        for snapshot in json.loads(data["version_history"])
+    )
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return Plan.model_validate(data)
@@ -97,12 +109,17 @@ class SQLitePlanRepository:
             str(plan.id),
             plan.project,
             plan.objective_id,
+            plan.objective_title,
             plan.parent_task_id,
             json.dumps([item.model_dump(mode="json") for item in plan.items]),
             plan.task_structure.value,
             plan.coordination_topology.value,
             plan.status.value,
             str(plan.forecast_id) if plan.forecast_id is not None else None,
+            json.dumps(plan.review.model_dump(mode="json")) if plan.review else None,
+            json.dumps(list(plan.open_questions)),
+            json.dumps(list(plan.assumptions)),
+            json.dumps([snap.model_dump(mode="json") for snap in plan.version_history]),
             plan.version,
             format_iso_utc(plan.created_at),
             format_iso_utc(plan.updated_at),
@@ -119,7 +136,7 @@ class SQLitePlanRepository:
             try:
                 await self._db.execute(
                     f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    f"VALUES {_INSERT_PLACEHOLDERS}",
                     self._row_params(plan),
                 )
                 await self._db.commit()
@@ -184,12 +201,17 @@ class SQLitePlanRepository:
 UPDATE plans SET
     project=?,
     objective_id=?,
+    objective_title=?,
     parent_task_id=?,
     items=?,
     task_structure=?,
     coordination_topology=?,
     status=?,
     forecast_id=?,
+    review=?,
+    open_questions=?,
+    assumptions=?,
+    version_history=?,
     version=?,
     created_at=?,
     updated_at=?
@@ -264,16 +286,21 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
             try:
                 await self._db.execute(
                     f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    f"VALUES {_INSERT_PLACEHOLDERS} "
                     "ON CONFLICT(id) DO UPDATE SET "
                     "project=excluded.project, "
                     "objective_id=excluded.objective_id, "
+                    "objective_title=excluded.objective_title, "
                     "parent_task_id=excluded.parent_task_id, "
                     "items=excluded.items, "
                     "task_structure=excluded.task_structure, "
                     "coordination_topology=excluded.coordination_topology, "
                     "status=excluded.status, "
                     "forecast_id=excluded.forecast_id, "
+                    "review=excluded.review, "
+                    "open_questions=excluded.open_questions, "
+                    "assumptions=excluded.assumptions, "
+                    "version_history=excluded.version_history, "
                     "version=excluded.version, "
                     "created_at=excluded.created_at, "
                     "updated_at=excluded.updated_at",

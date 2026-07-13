@@ -124,6 +124,7 @@ class PlanReviewApprovalGate:
             plan,
             project=work_item.project,
             objective_id=work_item.correlation_id,
+            objective_title=NotBlankStr(task.title),
             parent_task_id=NotBlankStr(str(task.id)),
             created_at=now,
             forecast_id=work_item.forecast_id,

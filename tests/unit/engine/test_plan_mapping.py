@@ -81,6 +81,7 @@ class TestPlanFromDecomposition:
             _decomposition(),
             project="beachhead",
             objective_id="obj-1",
+            objective_title="Ship the game",
             parent_task_id=sid("root"),
             created_at=_CREATED_AT,
         )
@@ -100,6 +101,7 @@ class TestPlanFromDecomposition:
             _decomposition(),
             project="beachhead",
             objective_id="obj-1",
+            objective_title="Ship the game",
             parent_task_id=sid("root"),
             created_at=_CREATED_AT,
         )
@@ -117,6 +119,7 @@ class TestPlanFromDecomposition:
             _decomposition(),
             project="beachhead",
             objective_id="obj-1",
+            objective_title="Ship the game",
             parent_task_id=sid("root"),
             created_at=_CREATED_AT,
             status=PlanStatus.DRAFT,
@@ -149,6 +152,7 @@ class TestPlanFromDecomposition:
             decomposition,
             project="beachhead",
             objective_id="obj-1",
+            objective_title="Ship the game",
             parent_task_id=sid("root"),
             created_at=_CREATED_AT,
         )
@@ -179,6 +183,7 @@ def _durable_plan() -> Plan:
         id=as_uuid("plan-1"),
         project=NotBlankStr("beachhead"),
         objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid("root"))),
         items=(
             PlanItem(
@@ -239,6 +244,7 @@ class TestDecompositionFromPlan:
             _decomposition(),
             project="beachhead",
             objective_id="obj-1",
+            objective_title="Ship the game",
             parent_task_id=sid("root"),
             created_at=_CREATED_AT,
         )
@@ -254,6 +260,7 @@ class TestDecompositionFromPlan:
             id=as_uuid("plan-2"),
             project=NotBlankStr("beachhead"),
             objective_id=NotBlankStr("obj-1"),
+            objective_title=NotBlankStr("Ship the game"),
             parent_task_id=NotBlankStr(str(as_uuid("root"))),
             items=(
                 PlanItem(

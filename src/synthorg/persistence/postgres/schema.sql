@@ -2471,6 +2471,7 @@ CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
     project TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(project)) > 0),
     objective_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(objective_id)) > 0),
+    objective_title TEXT NOT NULL DEFAULT '',
     parent_task_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(parent_task_id)) > 0),
     items JSONB NOT NULL
     CHECK (JSONB_TYPEOF(items) = 'array' AND JSONB_ARRAY_LENGTH(items) > 0),
@@ -2479,6 +2480,10 @@ CREATE TABLE plans (
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected', 'superseded')),
     forecast_id TEXT,
+    review JSONB,
+    open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
+    assumptions JSONB NOT NULL DEFAULT '[]'::JSONB,
+    version_history JSONB NOT NULL DEFAULT '[]'::JSONB,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
@@ -2487,3 +2492,15 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
+
+CREATE TABLE plan_item_comments (
+    id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
+    plan_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(plan_id)) > 0),
+    item_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(item_id)) > 0),
+    author TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(author)) > 0),
+    body TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(body)) > 0),
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_plan_item_comments_plan ON plan_item_comments (plan_id);
+CREATE INDEX idx_plan_item_comments_plan_item
+ON plan_item_comments (plan_id, item_id, created_at);

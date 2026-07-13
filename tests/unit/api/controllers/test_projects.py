@@ -279,6 +279,7 @@ class TestProjectController:
             id=as_uuid("plan-cascade"),
             project=NotBlankStr(project_id),
             objective_id=NotBlankStr("obj-cascade"),
+            objective_title=NotBlankStr("Cascade objective"),
             parent_task_id=NotBlankStr("task-root"),
             items=(
                 PlanItem(

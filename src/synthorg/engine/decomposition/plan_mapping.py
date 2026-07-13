@@ -55,6 +55,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
     *,
     project: NotBlankStr,
     objective_id: NotBlankStr,
+    objective_title: NotBlankStr,
     parent_task_id: NotBlankStr,
     created_at: datetime,
     status: PlanStatus = PlanStatus.PENDING_REVIEW,
@@ -66,6 +67,8 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         result: The decomposition whose subtask tree becomes the plan items.
         project: Project the plan belongs to.
         objective_id: Charter/objective the plan serves.
+        objective_title: Human title of the objective, denormalised onto the
+            plan so the review surface never shows a raw id.
         parent_task_id: The objective task that was decomposed.
         created_at: Timestamp stamped on both ``created_at`` and
             ``updated_at`` (a freshly built plan has never been revised).
@@ -80,6 +83,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
     return Plan(
         project=project,
         objective_id=objective_id,
+        objective_title=objective_title,
         parent_task_id=parent_task_id,
         items=items,
         task_structure=result.plan.task_structure,

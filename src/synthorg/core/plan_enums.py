@@ -36,3 +36,39 @@ REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
 TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.APPROVED, PlanStatus.REJECTED, PlanStatus.SUPERSEDED}
 )
+
+
+class PlanItemKind(StrEnum):
+    """What a plan item represents.
+
+    A ``WORK`` item is a unit of work a team executes. A ``DECISION`` item is a
+    choice the plan surfaces for a reviewer: it carries options rather than
+    dispatching a build task, and it is "done" once the decision is recorded.
+    """
+
+    WORK = "work"
+    DECISION = "decision"
+
+
+class PlanReviewVerdict(StrEnum):
+    """A reviewer's (or the panel's synthesised) verdict on a plan.
+
+    ``ENDORSED`` means the reviewer backs the plan as-is. ``CONCERNS`` means the
+    reviewer raised findings the owner should address; the synthesised
+    ``REVISION_REQUESTED`` sends the plan back to the owner to revise.
+    """
+
+    ENDORSED = "endorsed"
+    CONCERNS = "concerns"
+    REVISION_REQUESTED = "revision_requested"
+
+
+class PlanReviewFindingCategory(StrEnum):
+    """The kind of gap a plan-review finding flags."""
+
+    GAP = "gap"
+    MISSING_OWNER = "missing_owner"
+    MISCALIBRATED_STAKES = "miscalibrated_stakes"
+    RISKY_DECISION = "risky_decision"
+    BUDGET_CONCERN = "budget_concern"
+    OTHER = "other"

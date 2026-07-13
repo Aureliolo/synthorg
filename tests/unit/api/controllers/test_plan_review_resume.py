@@ -70,6 +70,7 @@ def _durable_plan(parent_label: str) -> Plan:
         id=as_uuid(_PLAN_ID),
         project=NotBlankStr("proj-1"),
         objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid(parent_label))),
         items=items,
         task_structure=TaskStructure.PARALLEL,

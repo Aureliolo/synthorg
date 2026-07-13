@@ -28,6 +28,7 @@ def _plan(items: tuple[PlanItem, ...]) -> Plan:
         id=as_uuid("plan"),
         project=NotBlankStr("beachhead"),
         objective_id=NotBlankStr("obj"),
+        objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr("root"),
         items=items,
         created_at=_CREATED_AT,
