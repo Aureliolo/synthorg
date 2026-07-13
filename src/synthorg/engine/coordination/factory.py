@@ -4,22 +4,21 @@ Constructs the decomposition, routing, execution, and workspace
 dependency tree from config and runtime services.
 """
 
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 
-from synthorg.core.task import Task
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
+from synthorg.engine.coordination.decomposition_strategy_factory import (
+    build_decomposition_strategy,
+)
 from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
-from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing.service import TaskRoutingService
@@ -30,9 +29,6 @@ from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
-)
-from synthorg.observability.events.decomposition import (
-    DECOMPOSITION_FAILED,
 )
 from synthorg.providers.protocol import CompletionProvider
 
@@ -57,85 +53,6 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
-
-
-class _NoProviderDecompositionStrategy(DecompositionStrategy):
-    """Placeholder strategy that raises when no LLM provider is available.
-
-    Used when the factory is called without a provider, so that the
-    coordinator can still be constructed (e.g. for manual decomposition
-    tests). Attempting to actually decompose will raise a clear error.
-    """
-
-    @override
-    def get_strategy_name(self) -> str:
-        """Return placeholder strategy name."""
-        return "no-provider-placeholder"
-
-    @override
-    async def decompose(
-        self,
-        task: Task,
-        context: DecompositionContext,
-    ) -> DecompositionPlan:
-        """Raise DecompositionError -- no provider configured.
-
-        Raises:
-            DecompositionError: Always; this placeholder exists so
-                the coordinator can be constructed without a
-                provider, but attempting to decompose must fail with
-                a clear error.
-        """
-        msg = (
-            "No LLM provider configured for decomposition. "
-            "Provide a CompletionProvider and decomposition_model "
-            "to enable LLM-based task decomposition."
-        )
-        logger.warning(
-            DECOMPOSITION_FAILED,
-            note="Decomposition attempted without LLM provider",
-        )
-        raise DecompositionError(msg)
-
-
-def _build_decomposition_strategy(
-    provider: CompletionProvider | None,
-    decomposition_model: str | None,
-) -> DecompositionStrategy:
-    """Select the decomposition strategy based on available deps.
-
-    Returns:
-        An :class:`LlmDecompositionStrategy` when both deps are
-        wired; the no-provider placeholder when neither is.
-
-    Raises:
-        ValueError: If exactly one of *provider* / *decomposition_model*
-            is supplied -- both or neither must be given.
-    """
-    if provider is not None and decomposition_model is not None:
-        from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
-            LlmDecompositionStrategy,
-        )
-
-        return LlmDecompositionStrategy(
-            provider=provider,
-            model=decomposition_model,
-        )
-    if (provider is None) != (decomposition_model is None):
-        given = "provider" if provider is not None else "decomposition_model"
-        missing = "decomposition_model" if provider is not None else "provider"
-        msg = (
-            f"Decomposition requires both provider and decomposition_model, "
-            f"but only {given} was supplied (missing {missing})"
-        )
-        logger.warning(
-            DECOMPOSITION_FAILED,
-            note="Mismatched decomposition dependencies",
-            given=given,
-            missing=missing,
-        )
-        raise ValueError(msg)
-    return _NoProviderDecompositionStrategy()
 
 
 def _build_workspace_service(
@@ -218,6 +135,11 @@ def build_coordinator(  # noqa: PLR0913
     task_assignment_config: TaskAssignmentConfig,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
+    decomposition_strategy: str = "agent-session",
+    decomposition_tool_provider: DecompositionToolProvider | None = None,
+    decomposition_cost_tracker: CostTrackerProtocol | None = None,
+    agent_session_max_turns: int | None = None,
+    agent_session_cost_ceiling: float | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
@@ -234,8 +156,9 @@ def build_coordinator(  # noqa: PLR0913
 
     Constructs the dependency tree:
         1. ``TaskStructureClassifier`` (no deps)
-        2. ``DecompositionStrategy`` -- LLM if provider+model provided,
-           otherwise a placeholder that raises at decompose-time
+        2. ``DecompositionStrategy`` -- selected by *decomposition_strategy*
+           (``agent-session`` default, or ``llm``) when provider+model are
+           provided; otherwise a placeholder that raises at decompose-time
         3. ``DecompositionService(strategy, classifier)``
         4. ``AgentTaskScorer`` -- instantiated with
            *routing_scorer_config* (operator-tunable weights resolved
@@ -255,6 +178,24 @@ def build_coordinator(  # noqa: PLR0913
             fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
+        decomposition_strategy: Which decomposer to build -- ``"agent-session"``
+            (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
+            from ``coordination.decomposition_strategy`` at boot.
+        decomposition_tool_provider: Optional builder of the read/research
+            tools granted to the agent-session planner; ``None`` runs the
+            session with only its terminal submit tool. Any non-read-only
+            tool the provider returns is dropped before the session runs.
+        decomposition_cost_tracker: Optional cost tracker; when wired, the
+            agent-session planner records its provider spend against it under
+            the owner + objective task.
+        agent_session_max_turns: Optional operator-tuned turn cap for the
+            agent-session planning loop (``coordination
+            .decomposition_agent_max_turns``); ``None`` uses the strategy
+            default.
+        agent_session_cost_ceiling: Optional operator-tuned per-session spend
+            ceiling for the agent-session planning loop (``coordination
+            .decomposition_agent_cost_ceiling``); ``None`` uses the strategy
+            default.
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
@@ -293,7 +234,22 @@ def build_coordinator(  # noqa: PLR0913
         A fully constructed ``MultiAgentCoordinator``.
     """
     classifier = TaskStructureClassifier()
-    strategy = _build_decomposition_strategy(provider, decomposition_model)
+    # The agent-session planner halts at a turn boundary when a graceful
+    # shutdown begins; the coordinator already holds the manager for the
+    # executor, so derive the loop's checker from it here.
+    session_shutdown_checker: ShutdownChecker | None = (
+        shutdown_manager.is_shutting_down if shutdown_manager is not None else None
+    )
+    strategy = build_decomposition_strategy(
+        provider,
+        decomposition_model,
+        strategy_name=decomposition_strategy,
+        tool_provider=decomposition_tool_provider,
+        cost_tracker=decomposition_cost_tracker,
+        shutdown_checker=session_shutdown_checker,
+        agent_session_max_turns=agent_session_max_turns,
+        agent_session_cost_ceiling=agent_session_cost_ceiling,
+    )
     decomposition_service = DecompositionService(strategy, classifier)
 
     if scorer is None:

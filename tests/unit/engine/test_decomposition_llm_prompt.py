@@ -16,13 +16,15 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.engine.decomposition.llm_parse import (
+    parse_content_response,
+    parse_tool_call_response,
+)
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
     build_retry_message,
     build_system_message,
     build_task_message,
-    parse_content_response,
-    parse_tool_call_response,
 )
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -36,6 +38,8 @@ from synthorg.providers.models import (
     ToolCall,
 )
 from tests._shared import as_uuid
+
+pytestmark = pytest.mark.unit
 
 
 def _make_task(
@@ -138,13 +142,11 @@ def _valid_plan_args(
 class TestBuildDecompositionTool:
     """Tests for build_decomposition_tool."""
 
-    @pytest.mark.unit
     def test_tool_name(self) -> None:
         """Tool definition has correct name."""
         tool = build_decomposition_tool()
         assert tool.name == "submit_decomposition_plan"
 
-    @pytest.mark.unit
     def test_tool_schema_structure(self) -> None:
         """Tool schema contains subtasks array and enum fields."""
         tool = build_decomposition_tool()
@@ -158,11 +160,31 @@ class TestBuildDecompositionTool:
         assert "coordination_topology" in props
         assert "enum" in cast("dict[str, object]", props["coordination_topology"])
 
+    def test_subtask_schema_requires_artifacts_and_acceptance(self) -> None:
+        """Subtask schema declares expected_artifacts + acceptance_criteria.
+
+        Both are required in the schema so the guard is armed: the model is
+        instructed to always emit concrete deliverables and criteria per
+        subtask, feeding the fail-loud zero-artifact guard downstream.
+        """
+        tool = build_decomposition_tool()
+        schema = cast("dict[str, object]", tool.parameters_schema)
+        props = cast("dict[str, object]", schema["properties"])
+        subtask_schema = cast(
+            "dict[str, object]",
+            cast("dict[str, object]", props["subtasks"])["items"],
+        )
+        sub_props = cast("dict[str, object]", subtask_schema["properties"])
+        assert "expected_artifacts" in sub_props
+        assert "acceptance_criteria" in sub_props
+        required = cast("list[str]", subtask_schema["required"])
+        assert "expected_artifacts" in required
+        assert "acceptance_criteria" in required
+
 
 class TestBuildSystemMessage:
     """Tests for build_system_message."""
 
-    @pytest.mark.unit
     def test_system_role(self) -> None:
         """System message has SYSTEM role."""
         msg = build_system_message()
@@ -170,13 +192,11 @@ class TestBuildSystemMessage:
         assert msg.content is not None
         assert len(msg.content) > 0
 
-    @pytest.mark.unit
     def test_system_includes_canonical_untrusted_directive(self) -> None:
         """System message carries the canonical directive for <task-data>.
 
-        Replaces the prior hand-rolled warning string. The directive
-        is sourced from :func:`untrusted_content_directive` so a
-        single edit to the helper keeps every call site in sync.
+        The directive is sourced from :func:`untrusted_content_directive`
+        so a single edit to the helper keeps every call site in sync.
         """
         from synthorg.engine.prompt_safety import (
             TAG_TASK_DATA,
@@ -192,7 +212,6 @@ class TestBuildSystemMessage:
 class TestBuildTaskMessage:
     """Tests for build_task_message."""
 
-    @pytest.mark.unit
     def test_includes_constraints_and_task_details(self) -> None:
         """Task message includes constraints and task details."""
         task = _make_task(
@@ -224,7 +243,6 @@ class TestBuildTaskMessage:
         assert "3" in msg.content  # max_depth
 
 
-@pytest.mark.unit
 class TestBuildTaskMessageInjectionDefense:
     """Prompt-injection defenses for ``build_task_message``."""
 
@@ -294,7 +312,6 @@ class TestBuildTaskMessageInjectionDefense:
 class TestBuildRetryMessage:
     """Tests for build_retry_message."""
 
-    @pytest.mark.unit
     def test_retry_message_includes_error(self) -> None:
         """Retry message includes the error string."""
         error_text = "Invalid subtask IDs found"
@@ -307,7 +324,6 @@ class TestBuildRetryMessage:
 class TestParseToolCallResponse:
     """Tests for parse_tool_call_response."""
 
-    @pytest.mark.unit
     def test_valid_tool_call(self) -> None:
         """Parse valid tool call arguments into DecompositionPlan."""
         args = _valid_plan_args()
@@ -325,14 +341,12 @@ class TestParseToolCallResponse:
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
 
-    @pytest.mark.unit
     def test_no_tool_calls_raises(self) -> None:
         """Response with no tool calls raises DecompositionError."""
         response = _make_content_response("some text")
         with pytest.raises(DecompositionError, match="No tool call"):
             parse_tool_call_response(response, "task-llm-1")
 
-    @pytest.mark.unit
     def test_complexity_mapping(self) -> None:
         """String complexity values map to Complexity enum."""
         args = _valid_plan_args(subtask_count=1)
@@ -343,7 +357,6 @@ class TestParseToolCallResponse:
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].estimated_complexity is Complexity.SIMPLE
 
-    @pytest.mark.unit
     def test_unrecognized_complexity_defaults_medium(self) -> None:
         """Unrecognized complexity string defaults to MEDIUM."""
         args = _valid_plan_args(subtask_count=1)
@@ -354,7 +367,6 @@ class TestParseToolCallResponse:
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
 
-    @pytest.mark.unit
     def test_optional_fields_use_defaults(self) -> None:
         """Missing optional fields use sensible defaults."""
         args: dict[str, object] = {
@@ -373,10 +385,51 @@ class TestParseToolCallResponse:
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
         assert plan.subtasks[0].required_skills == ()
         assert plan.subtasks[0].required_role is None
+        assert plan.subtasks[0].expected_artifacts == ()
+        assert plan.subtasks[0].acceptance_criteria == ()
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
 
-    @pytest.mark.unit
+    def test_artifacts_and_acceptance_threaded(self) -> None:
+        """expected_artifacts + acceptance_criteria parse onto the subtask."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build board renderer",
+                    "description": "Render the Tetris grid",
+                    "expected_artifacts": ["src/board.tsx", "tests/board.test.tsx"],
+                    "acceptance_criteria": ["grid renders 10x20", "cells recolour"],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].expected_artifacts == (
+            "src/board.tsx",
+            "tests/board.test.tsx",
+        )
+        assert plan.subtasks[0].acceptance_criteria == (
+            "grid renders 10x20",
+            "cells recolour",
+        )
+
+    def test_non_array_expected_artifacts_raises(self) -> None:
+        """Non-array expected_artifacts field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "expected_artifacts": "src/board.tsx",
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
     def test_missing_required_subtask_field_raises(self) -> None:
         """Subtask missing a required field raises DecompositionError."""
         args: dict[str, object] = {
@@ -391,7 +444,6 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="missing required field"):
             parse_tool_call_response(response, "task-1")
 
-    @pytest.mark.unit
     def test_non_array_dependencies_raises(self) -> None:
         """Non-array dependencies field raises DecompositionError."""
         args: dict[str, object] = {
@@ -408,7 +460,27 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="array"):
             parse_tool_call_response(response, "task-1")
 
-    @pytest.mark.unit
+    def test_unknown_dependency_raises(self) -> None:
+        """A dependency naming an undefined subtask raises DecompositionError.
+
+        A hallucinated dependency id is rejected at parse time with a
+        correctable error, rather than passing through to fail opaquely at
+        DAG validation.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "Do it",
+                    "dependencies": ["ghost-subtask"],
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="unknown subtask"):
+            parse_tool_call_response(response, "task-1")
+
     def test_non_array_required_skills_raises(self) -> None:
         """Non-array required_skills field raises DecompositionError."""
         args: dict[str, object] = {
@@ -425,7 +497,6 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="array"):
             parse_tool_call_response(response, "task-1")
 
-    @pytest.mark.unit
     def test_subtasks_not_list_raises(self) -> None:
         """Non-array subtasks field raises DecompositionError."""
         args: dict[str, object] = {
@@ -435,7 +506,6 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="array"):
             parse_tool_call_response(response, "task-1")
 
-    @pytest.mark.unit
     def test_subtask_not_dict_raises(self) -> None:
         """Non-object subtask entry raises DecompositionError."""
         args: dict[str, object] = {
@@ -445,7 +515,6 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="object"):
             parse_tool_call_response(response, "task-1")
 
-    @pytest.mark.unit
     def test_duplicate_subtask_id_raises(self) -> None:
         """Duplicate LLM subtask ids raise rather than collapse to one UUID."""
         args: dict[str, object] = {
@@ -474,7 +543,6 @@ class TestParseToolCallResponse:
 class TestParseContentResponse:
     """Tests for parse_content_response."""
 
-    @pytest.mark.unit
     def test_valid_json_content(self) -> None:
         """Parse valid JSON from content into DecompositionPlan."""
         args = _valid_plan_args()
@@ -486,7 +554,6 @@ class TestParseContentResponse:
         assert plan.parent_task_id == "task-1"
         assert len(plan.subtasks) == 2
 
-    @pytest.mark.unit
     def test_json_in_markdown_fence(self) -> None:
         """Parse JSON wrapped in markdown code fence."""
         args = _valid_plan_args(subtask_count=1)
@@ -497,14 +564,12 @@ class TestParseContentResponse:
         assert isinstance(plan, DecompositionPlan)
         assert len(plan.subtasks) == 1
 
-    @pytest.mark.unit
     def test_malformed_json_raises(self) -> None:
         """Malformed JSON content raises DecompositionError."""
         response = _make_content_response("{invalid json")
         with pytest.raises(DecompositionError, match="parse"):
             parse_content_response(response, "task-1")
 
-    @pytest.mark.unit
     def test_no_content_raises(self) -> None:
         """Response with None content raises DecompositionError."""
         response = CompletionResponse(

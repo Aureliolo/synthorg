@@ -1,18 +1,28 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { ArrowLeft, MessageSquare, PencilLine, Radio } from 'lucide-react'
+import { ArrowLeft, ListTree, MessageSquare, PencilLine, Radio } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 
-import type { Plan } from '@/api/types'
+import type { Plan } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
+import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
+import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import {
+  computeCriticalPath,
+  derivePlanStats,
+  planItemTitleMap,
+} from '@/utils/plans'
 
+import { PlanAttentionPanel } from './plans/PlanAttentionPanel'
 import { PlanEditor } from './plans/PlanEditor'
 import { PlanItemCard } from './plans/PlanItemCard'
+import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
 
 type Mode = 'view' | 'edit' | 'request-changes'
@@ -33,9 +43,32 @@ function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => voi
   return [mode, setMode]
 }
 
-function PlanDetailHeader({ plan }: { plan: Plan }) {
+function planMetadataItems(plan: Plan): MetadataGridItem[] {
+  const items: MetadataGridItem[] = [
+    { label: 'Objective', value: plan.objective_id },
+    { label: 'Project', value: plan.project },
+    { label: 'Revision', value: `v${String(plan.version)}` },
+    { label: 'Structure', value: plan.task_structure },
+    { label: 'Coordination', value: plan.coordination_topology },
+    { label: 'Proposed', value: formatDateTime(plan.created_at) },
+    { label: 'Updated', value: formatRelativeTime(plan.updated_at) },
+  ]
+  if (plan.forecast_id !== null) {
+    items.push({ label: 'Forecast', value: plan.forecast_id })
+  }
+  return items
+}
+
+function PlanDetailHeader({
+  plan,
+  parentTaskTitle,
+}: {
+  plan: Plan
+  parentTaskTitle: string | null
+}) {
+  const headline = parentTaskTitle ?? plan.objective_id
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <Link
         to={ROUTES.PLANS}
         className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
@@ -44,13 +77,12 @@ function PlanDetailHeader({ plan }: { plan: Plan }) {
         Plan Review
       </Link>
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold text-foreground">{plan.objective_id}</h1>
+        <h1 className="text-balance text-lg font-semibold text-foreground">
+          {headline}
+        </h1>
         <PlanStatusBadge status={plan.status} />
-        <span className="text-xs text-text-secondary">
-          {plan.project} · v{plan.version} · {plan.items.length} item
-          {plan.items.length === 1 ? '' : 's'}
-        </span>
       </div>
+      <MetadataGrid columns={4} items={planMetadataItems(plan)} />
     </div>
   )
 }
@@ -87,6 +119,39 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   )
 }
 
+function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
+  const criticalPath = useMemo(() => computeCriticalPath(plan.items), [plan.items])
+  const stats = useMemo(
+    () => derivePlanStats(plan.items, criticalPath),
+    [plan.items, criticalPath],
+  )
+  const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
+  return (
+    <>
+      <PlanReviewToolbar
+        plan={plan}
+        onEdit={() => setMode('edit')}
+        onRequestChanges={() => setMode('request-changes')}
+      />
+      <PlanMetricsHeader stats={stats} />
+      <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
+      <SectionCard title="Plan items" icon={ListTree}>
+        <div className="flex flex-col gap-2">
+          {plan.items.map((item, index) => (
+            <PlanItemCard
+              key={item.id}
+              item={item}
+              index={index}
+              onCriticalPath={criticalPath.has(item.id)}
+              titleById={titleById}
+            />
+          ))}
+        </div>
+      </SectionCard>
+    </>
+  )
+}
+
 function PlanDetailBody({ plan, mode, setMode }: {
   plan: Plan
   mode: Mode
@@ -100,25 +165,13 @@ function PlanDetailBody({ plan, mode, setMode }: {
       <PlanRequestChanges planId={plan.id} onDone={() => setMode('view')} />
     )
   }
-  return (
-    <>
-      <PlanReviewToolbar
-        plan={plan}
-        onEdit={() => setMode('edit')}
-        onRequestChanges={() => setMode('request-changes')}
-      />
-      <div className="flex flex-col gap-2">
-        {plan.items.map((item, index) => (
-          <PlanItemCard key={item.id} item={item} index={index} />
-        ))}
-      </div>
-    </>
-  )
+  return <PlanReviewView plan={plan} setMode={setMode} />
 }
 
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
-  const { plan, loading, error, wsConnected, wsSetupError } = usePlanDetailData(planId)
+  const { plan, parentTaskTitle, loading, error, wsConnected, wsSetupError } =
+    usePlanDetailData(planId)
   const [mode, setMode] = usePlanViewMode(planId)
 
   if (loading && !plan) {
@@ -144,7 +197,7 @@ export default function PlanDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <PlanDetailHeader plan={plan} />
+      <PlanDetailHeader plan={plan} parentTaskTitle={parentTaskTitle} />
       {!wsConnected && (
         <ErrorBanner
           variant="offline"

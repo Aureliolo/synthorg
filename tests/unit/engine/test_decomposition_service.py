@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.artifact import ArtifactType
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
@@ -87,6 +88,45 @@ class TestDecompositionService:
             assert child_task.assigned_to is None
             assert child_task.project == task.project
             assert child_task.created_by == task.created_by
+
+    @pytest.mark.unit
+    async def test_decompose_arms_guard_with_artifacts_and_criteria(self) -> None:
+        """Child tasks carry the subtask artifacts + criteria, arming the guard.
+
+        The direct (no-gate) dispatch path must project the subtask-level
+        ``expected_artifacts`` + ``acceptance_criteria`` onto the child
+        ``Task``, or the fail-loud zero-artifact guard never engages.
+        """
+        task = _make_task()
+        plan = DecompositionPlan(
+            parent_task_id=sid("task-svc-1"),
+            subtasks=(
+                SubtaskDefinition(
+                    id=sid("sub-1"),
+                    title="Board",
+                    description="Render the grid",
+                    expected_artifacts=("src/board.py", "tests/board_test.py"),
+                    acceptance_criteria=("grid renders",),
+                ),
+            ),
+        )
+        service = DecompositionService(
+            ManualDecompositionStrategy(plan), TaskStructureClassifier()
+        )
+
+        result = await service.decompose_task(task, DecompositionContext())
+
+        child = result.created_tasks[0]
+        assert tuple(a.path for a in child.artifacts_expected) == (
+            "src/board.py",
+            "tests/board_test.py",
+        )
+        # Type is inferred from the path so the guard has a typed declaration.
+        assert child.artifacts_expected[0].type is ArtifactType.CODE
+        assert child.artifacts_expected[1].type is ArtifactType.TESTS
+        assert tuple(c.description for c in child.acceptance_criteria) == (
+            "grid renders",
+        )
 
     @pytest.mark.unit
     async def test_decompose_non_uuid_subtask_id_raises(self) -> None:

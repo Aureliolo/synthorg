@@ -9,6 +9,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -36,6 +37,11 @@ class SubtaskDefinition(BaseModel):
             matched-skill tags cover every required tag.  Empty tuple
             disables the tag-match tier.
         required_role: Optional role name for routing.
+        expected_artifacts: Deliverables this subtask must produce.  When
+            non-empty, these project onto the dispatched task's
+            ``artifacts_expected`` and arm the fail-loud zero-artifact guard,
+            so the subtask cannot terminate a success having produced nothing.
+        acceptance_criteria: Per-subtask criteria that define "done" for it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -66,6 +72,14 @@ class SubtaskDefinition(BaseModel):
     required_role: NotBlankStr | None = Field(
         default=None,
         description="Optional role name for routing",
+    )
+    expected_artifacts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Deliverables this subtask must produce",
+    )
+    acceptance_criteria: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Per-subtask criteria that define done",
     )
 
     @model_validator(mode="after")
@@ -321,6 +335,10 @@ class DecompositionContext(BaseModel):
         max_subtasks: Maximum number of subtasks allowed.
         max_depth: Maximum nesting depth for recursive decomposition.
         current_depth: Current nesting depth.
+        owner_identity: The accountable owner staffed for this initiative,
+            or ``None`` when the initiative is unowned. An agent-session
+            decomposition strategy plans AS this owner (its persona, tools,
+            and memory); a single-shot strategy ignores it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -339,4 +357,8 @@ class DecompositionContext(BaseModel):
         default=0,
         ge=0,
         description="Current nesting depth",
+    )
+    owner_identity: AgentIdentity | None = Field(
+        default=None,
+        description="Accountable owner the planning agent-session runs as",
     )

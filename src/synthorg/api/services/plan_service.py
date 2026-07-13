@@ -232,7 +232,14 @@ class PlanService:
         self._log_transition(existing.status, drafted)
         return drafted
 
-    async def sync_status(self, existing: Plan, status: PlanStatus) -> Plan:
+    async def sync_status(
+        self,
+        existing: Plan,
+        status: PlanStatus,
+        *,
+        requested_by: str | None = None,
+        reason: str | None = None,
+    ) -> Plan:
         """Reflect an approval decision onto the plan (status -> approved/rejected).
 
         The single audited write path for the decision transition, so the
@@ -242,6 +249,11 @@ class PlanService:
         Args:
             existing: The plan being decided (already fetched by the caller).
             status: The decision status to record.
+            requested_by: Identity driving the transition, recorded on the
+                audit log so a cascade supersede keeps the same actor context
+                a task transition retains.
+            reason: Why the transition happened (e.g. a project teardown),
+                recorded on the audit log alongside ``requested_by``.
 
         Returns:
             The persisted, decided plan.
@@ -263,7 +275,9 @@ class PlanService:
             expected_version=existing.version,
             failure_event=API_PLAN_UPDATE_FAILED,
         )
-        self._log_transition(existing.status, decided)
+        self._log_transition(
+            existing.status, decided, requested_by=requested_by, reason=reason
+        )
         return decided
 
     def _require_reworkable(self, plan: Plan) -> None:
@@ -287,16 +301,29 @@ class PlanService:
         )
         raise ConflictError(msg)
 
-    def _log_transition(self, from_status: PlanStatus, plan: Plan) -> None:
+    def _log_transition(
+        self,
+        from_status: PlanStatus,
+        plan: Plan,
+        *,
+        requested_by: str | None = None,
+        reason: str | None = None,
+    ) -> None:
         """Log a plan status transition after the persistence write succeeds."""
         if from_status == plan.status:
             return
+        context: dict[str, str] = {}
+        if requested_by is not None:
+            context["requested_by"] = requested_by
+        if reason is not None:
+            context["reason"] = reason
         logger.info(
             API_PLAN_STATUS_TRANSITIONED,
             plan_id=str(plan.id),
             from_status=from_status.value,
             to_status=plan.status.value,
             version=plan.version,
+            **context,
         )
 
     async def _persist_update(

@@ -68,11 +68,14 @@ class _AcceptingIntakeStrategy:
 async def _get_str(_namespace: str, key: str) -> str:
     """Key-aware ``config_resolver.get_str`` stub.
 
-    ``routing_policy`` selects the work pipeline policy; every other
-    key (``decomposition_model``) yields a model id.
+    ``routing_policy`` selects the work pipeline policy and
+    ``decomposition_strategy`` selects the decomposer; every other key
+    (``decomposition_model``) yields a model id.
     """
     if key == "routing_policy":
         return "leaf-threshold"
+    if key == "decomposition_strategy":
+        return "agent-session"
     return "example-medium-001"
 
 
@@ -144,8 +147,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
         task_engine=mock_of[TaskEngine](),
         agent_registry=AgentRegistryService(),
         # A real store: the engine builder's ``require_service`` needs a
-        # wired approval store. The old ``mock_of[AppState]`` auto-filled
-        # the slice read, masking that requirement with ``approval_store=None``.
+        # wired approval store, so the slice read must resolve to a real one.
         approval_store=ApprovalStore(),
         client_simulation_state=(
             mock_of[ClientSimulationState](

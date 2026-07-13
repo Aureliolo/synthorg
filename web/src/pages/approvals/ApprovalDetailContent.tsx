@@ -1,9 +1,11 @@
 import { Link } from 'react-router'
 import {
   Calendar,
+  ChevronRight,
   FolderKanban,
   Hourglass,
   ListChecks,
+  ListTree,
   Package,
   Shield,
   Tag,
@@ -26,6 +28,7 @@ import {
   isFailedApproval,
 } from '@/utils/approvals'
 import { formatDateTime, formatFileSize } from '@/utils/format'
+import { planDetailPath } from '@/utils/plans'
 import type { ApprovalArtifactRef, ApprovalResponse } from '@/api/types/approvals'
 
 const TOOL_CREATION_ACTION_TYPE = 'proposal:tool_creation'
@@ -80,6 +83,33 @@ function LiveProgressSection({ approval }: { approval: ApprovalResponse }) {
         className="mt-2"
       />
     </div>
+  )
+}
+
+/**
+ * Deep-link into the full plan-review workspace for a plan-approval gate. The
+ * decision buttons approve or reject in place, but the operator often wants to
+ * read the whole plan (items, stakes, critical path) first; the backend stamps
+ * the durable plan id into the approval metadata for exactly this jump.
+ */
+function PlanReviewLinkSection({ approval }: { approval: ApprovalResponse }) {
+  if (approval.source !== 'plan_review') return null
+  const planId = approval.metadata['plan_id']
+  if (!planId) return null
+  return (
+    <Link
+      to={planDetailPath(planId)}
+      className="flex items-center justify-between gap-2 rounded-lg border border-accent/40 bg-accent/[0.04] p-card transition-colors hover:bg-accent/[0.08]"
+    >
+      <span className="flex min-w-0 items-center gap-2 text-sm">
+        <ListTree className="size-4 shrink-0 text-accent" aria-hidden="true" />
+        <span className="font-medium text-foreground">Open the full plan</span>
+        <span className="truncate text-text-secondary">
+          Review every item, its stakes, and the critical path before deciding.
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </Link>
   )
 }
 
@@ -396,6 +426,7 @@ export function ApprovalDetailContent({
           accumulated progress instead of showing the prior task's stages for a
           frame while the new stream connects. */}
       <LiveProgressSection key={approval.task?.id ?? 'no-task'} approval={approval} />
+      <PlanReviewLinkSection approval={approval} />
       {Boolean(approval.description || approval.metadata['stripped_description']) && (
         <DescriptionSection approval={approval} />
       )}

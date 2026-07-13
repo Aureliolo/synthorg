@@ -146,7 +146,7 @@ always winning:
 opens no `cost_recording_scope` and has no registered system-prompt purpose (the
 engine post-execution recorder owns it, by design). The `$0.00` symptom is fixed by
 real pricing, not by fabricating a purpose. Calls that *do* carry a registered
-purpose (the tier-classifier LLM call, decomposition, judging, etc.) attribute
+purpose (the tier-classifier LLM call, judging, etc.) attribute
 `prompt_class_id` normally.
 
 ## Cassette Record / Replay

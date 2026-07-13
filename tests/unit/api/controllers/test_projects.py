@@ -1,12 +1,18 @@
 """Tests for project controller."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
 import structlog.testing
 
-from tests._shared import JsonDict, LoopAsyncClient
-from tests.unit.api.conftest import make_auth_headers
+from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.state import persistence_of
+from tests._shared import JsonDict, LoopAsyncClient, as_uuid, sid
+from tests.unit.api.conftest import make_auth_headers, make_task
 
 
 @pytest.mark.unit
@@ -248,3 +254,90 @@ class TestProjectController:
             f"{[log['event'] for log in logs]}"
         )
         assert deleted_audit[0]["project_id"] == project_id
+
+    async def test_delete_project_cascade_supersedes_children(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Deleting a project must resolve its live plans and open tasks.
+
+        A project delete cannot orphan children: every non-terminal plan is
+        superseded (a review decision that will now never come) and every
+        non-terminal task is driven to a terminal state through its audited
+        lifecycle transition. This covers the three transition shapes the
+        cascade handles: a ``CREATED`` task rejects, a running task cancels,
+        and a stuck task hops through ``ASSIGNED`` before cancelling.
+        """
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Has children"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+
+        backend = persistence_of(async_test_client.app.state.app_state)
+        plan = Plan(
+            id=as_uuid("plan-cascade"),
+            project=NotBlankStr(project_id),
+            objective_id=NotBlankStr("obj-cascade"),
+            parent_task_id=NotBlankStr("task-root"),
+            items=(
+                PlanItem(
+                    id=NotBlankStr(sid("item-1")),
+                    title=NotBlankStr("Scaffold"),
+                    description=NotBlankStr("Set up the board"),
+                ),
+            ),
+            status=PlanStatus.PENDING_REVIEW,
+            created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        )
+        await backend.plans.save(plan)
+
+        created_task = make_task(
+            task_id="t-created", project=project_id, status=TaskStatus.CREATED
+        )
+        running_task = make_task(
+            task_id="t-running",
+            project=project_id,
+            status=TaskStatus.ASSIGNED,
+            assigned_to="alice",
+        )
+        stuck_task = make_task(
+            task_id="t-stuck",
+            project=project_id,
+            status=TaskStatus.BLOCKED,
+            assigned_to="alice",
+        )
+        for task in (created_task, running_task, stuck_task):
+            await backend.tasks.save(task)
+
+        with structlog.testing.capture_logs() as logs:
+            delete_resp = await async_test_client.delete(
+                f"/api/v1/projects/{project_id}",
+                headers=make_auth_headers("ceo"),
+            )
+        assert delete_resp.status_code == 204
+
+        superseded = await backend.plans.get(str(plan.id))
+        assert superseded is not None
+        assert superseded.status is PlanStatus.SUPERSEDED
+
+        # The supersede must keep the initiating actor + reason on its audit
+        # log, matching the context a task transition records.
+        transitions = [
+            log for log in logs if log["event"] == "api.plan.status_transitioned"
+        ]
+        assert len(transitions) == 1
+        assert transitions[0]["reason"] == "project deleted"
+        # No auth middleware in the unit harness, so the requester resolves to
+        # the documented "api" fallback; the point is the context flows through.
+        assert transitions[0]["requested_by"] == "api"
+
+        async def _reloaded_status(task_id: str) -> TaskStatus:
+            reloaded = await backend.tasks.get(task_id)
+            assert reloaded is not None
+            return reloaded.status
+
+        assert await _reloaded_status(str(created_task.id)) is TaskStatus.REJECTED
+        assert await _reloaded_status(str(running_task.id)) is TaskStatus.CANCELLED
+        assert await _reloaded_status(str(stuck_task.id)) is TaskStatus.CANCELLED

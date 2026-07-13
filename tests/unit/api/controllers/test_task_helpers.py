@@ -3,7 +3,7 @@
 import pytest
 from litestar.datastructures import State
 
-from synthorg.api.controllers.tasks import _extract_requester
+from synthorg.api.controllers._requester import extract_requester
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
@@ -14,7 +14,7 @@ from synthorg.engine.errors import (
     TaskVersionConflictError,
 )
 
-# ── _extract_requester ───────────────────────────────────────
+# ── extract_requester ────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -28,17 +28,17 @@ class TestExtractRequester:
             user_id = "user-123"
 
         state = State({"_connection_user": FakeUser()})
-        assert _extract_requester(state) == "user-123"
+        assert extract_requester(state) == "user-123"
 
     def test_returns_api_fallback_when_no_user(self) -> None:
-        assert _extract_requester(State({})) == "api"
+        assert extract_requester(State({})) == "api"
 
     def test_returns_api_when_user_has_no_user_id(self) -> None:
         class FakeUser:
             pass
 
         state = State({"_connection_user": FakeUser()})
-        assert _extract_requester(state) == "api"
+        assert extract_requester(state) == "api"
 
 
 # ── TaskEngine error HTTP metadata (replaces the deleted mapper) ─────

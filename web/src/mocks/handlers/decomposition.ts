@@ -22,6 +22,8 @@ export const decompositionHandlers = [
               required_skills: [],
               required_tags: [],
               required_role: null,
+              expected_artifacts: [],
+              acceptance_criteria: [],
             },
           ],
           task_structure: 'sequential',

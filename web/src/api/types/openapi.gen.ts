@@ -16802,6 +16802,11 @@ export type components = {
         /** SubtaskDefinition */
         readonly SubtaskDefinition: {
             /**
+             * @description Per-subtask criteria that define done
+             * @default []
+             */
+            readonly acceptance_criteria: readonly string[];
+            /**
              * @description IDs of subtasks this one depends on
              * @default []
              */
@@ -16809,6 +16814,11 @@ export type components = {
             /** @description Detailed subtask description */
             readonly description: string;
             readonly estimated_complexity: components["schemas"]["Complexity"];
+            /**
+             * @description Deliverables this subtask must produce
+             * @default []
+             */
+            readonly expected_artifacts: readonly string[];
             /** @description Unique subtask identifier */
             readonly id: string;
             /** @description Optional role name for routing */

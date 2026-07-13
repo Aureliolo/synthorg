@@ -121,6 +121,44 @@ class TestPlanFromDecomposition:
         )
         assert plan.status is PlanStatus.DRAFT
 
+    def test_artifacts_and_criteria_projected_from_subtask(self) -> None:
+        # The subtask-level expected_artifacts + acceptance_criteria must land
+        # on the plan item so the durable plan (and every task built from it)
+        # arms the fail-loud zero-artifact guard.
+        decomposition = DecompositionResult(
+            plan=DecompositionPlan(
+                parent_task_id=sid("root"),
+                subtasks=(
+                    SubtaskDefinition(
+                        id=sid("sub-1"),
+                        title="Board",
+                        description="Grid + rendering",
+                        expected_artifacts=(
+                            NotBlankStr("src/board.tsx"),
+                            NotBlankStr("tests/board.test.tsx"),
+                        ),
+                        acceptance_criteria=(NotBlankStr("renders a 10x20 grid"),),
+                    ),
+                ),
+            ),
+            created_tasks=(_result_task("sub-1"),),
+        )
+        plan = plan_from_decomposition(
+            decomposition,
+            project="beachhead",
+            objective_id="obj-1",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+        )
+        item = plan.items[0]
+        assert item.expected_artifacts == ("src/board.tsx", "tests/board.test.tsx")
+        assert item.acceptance_criteria == ("renders a 10x20 grid",)
+        # And the reverse projection round-trips them back onto the subtask.
+        rebuilt = decomposition_from_plan(plan, parent_task=_parent_task())
+        subtask = rebuilt.plan.subtasks[0]
+        assert subtask.expected_artifacts == ("src/board.tsx", "tests/board.test.tsx")
+        assert subtask.acceptance_criteria == ("renders a 10x20 grid",)
+
 
 def _parent_task() -> Task:
     return Task(
