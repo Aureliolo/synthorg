@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { makePlanItem } from '@/__tests__/helpers/factories'
 import {
   computeCriticalPath,
+  criticalPathFor,
   dependencyTitles,
   derivePlanStats,
   isHighComplexity,
@@ -76,6 +77,34 @@ describe('computeCriticalPath', () => {
       makePlanItem('b', { dependencies: ['a'] }),
     ]
     expect(() => computeCriticalPath(items)).not.toThrow()
+  })
+})
+
+describe('criticalPathFor', () => {
+  const branching = [
+    makePlanItem('a', { dependencies: [] }),
+    makePlanItem('b', { dependencies: ['a'] }),
+    makePlanItem('c', { dependencies: ['b'] }),
+    makePlanItem('d', { dependencies: ['a'] }),
+  ]
+
+  it('suppresses the critical path on a sequential plan (no signal)', () => {
+    expect(criticalPathFor(branching, 'sequential').size).toBe(0)
+  })
+
+  it('surfaces the path on a branching non-sequential plan', () => {
+    expect([...criticalPathFor(branching, 'mixed')].sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('suppresses the path when the chain spans every item', () => {
+    // A fully linear graph classified parallel: the "path" is everything, so
+    // there is nothing to single out.
+    const linear = [
+      makePlanItem('a', { dependencies: [] }),
+      makePlanItem('b', { dependencies: ['a'] }),
+      makePlanItem('c', { dependencies: ['b'] }),
+    ]
+    expect(criticalPathFor(linear, 'parallel').size).toBe(0)
   })
 })
 

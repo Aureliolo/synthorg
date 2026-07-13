@@ -14,7 +14,7 @@ import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import {
-  computeCriticalPath,
+  criticalPathFor,
   derivePlanStats,
   planItemTitleMap,
 } from '@/utils/plans'
@@ -45,7 +45,6 @@ function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => voi
 
 function planMetadataItems(plan: Plan): MetadataGridItem[] {
   const items: MetadataGridItem[] = [
-    { label: 'Objective', value: plan.objective_id },
     { label: 'Project', value: plan.project },
     { label: 'Revision', value: `v${String(plan.version)}` },
     { label: 'Structure', value: plan.task_structure },
@@ -59,14 +58,7 @@ function planMetadataItems(plan: Plan): MetadataGridItem[] {
   return items
 }
 
-function PlanDetailHeader({
-  plan,
-  parentTaskTitle,
-}: {
-  plan: Plan
-  parentTaskTitle: string | null
-}) {
-  const headline = parentTaskTitle ?? plan.objective_id
+function PlanDetailHeader({ plan }: { plan: Plan }) {
   return (
     <div className="space-y-3">
       <Link
@@ -78,7 +70,7 @@ function PlanDetailHeader({
       </Link>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-balance text-lg font-semibold text-foreground">
-          {headline}
+          {plan.objective_title}
         </h1>
         <PlanStatusBadge status={plan.status} />
       </div>
@@ -120,7 +112,10 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
 }
 
 function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
-  const criticalPath = useMemo(() => computeCriticalPath(plan.items), [plan.items])
+  const criticalPath = useMemo(
+    () => criticalPathFor(plan.items, plan.task_structure),
+    [plan.items, plan.task_structure],
+  )
   const stats = useMemo(
     () => derivePlanStats(plan.items, criticalPath),
     [plan.items, criticalPath],
@@ -133,7 +128,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
         onEdit={() => setMode('edit')}
         onRequestChanges={() => setMode('request-changes')}
       />
-      <PlanMetricsHeader stats={stats} />
+      <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
       <SectionCard title="Plan items" icon={ListTree}>
         <div className="flex flex-col gap-2">
@@ -170,7 +165,7 @@ function PlanDetailBody({ plan, mode, setMode }: {
 
 export default function PlanDetailPage() {
   const { planId } = useParams<{ planId: string }>()
-  const { plan, parentTaskTitle, loading, error, wsConnected, wsSetupError } =
+  const { plan, loading, error, wsConnected, wsSetupError } =
     usePlanDetailData(planId)
   const [mode, setMode] = usePlanViewMode(planId)
 
@@ -197,7 +192,7 @@ export default function PlanDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <PlanDetailHeader plan={plan} parentTaskTitle={parentTaskTitle} />
+      <PlanDetailHeader plan={plan} />
       {!wsConnected && (
         <ErrorBanner
           variant="offline"

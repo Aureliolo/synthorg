@@ -15,15 +15,13 @@ const NO_CRITICAL_PATH: ReadonlySet<string> = new Set()
 
 export interface PlanListItemProps {
   plan: Plan
-  /** Human headline resolved from the parent objective task, if available. */
-  title?: string | undefined
   className?: string
 }
 
 /** A single plan row in the review inbox, linking to its detail workspace. */
-export function PlanListItem({ plan, title, className }: PlanListItemProps) {
+export function PlanListItem({ plan, className }: PlanListItemProps) {
   const itemCount = plan.items.length
-  const headline = title ?? plan.objective_id
+  const headline = plan.objective_title
   const stats = useMemo(
     () => derivePlanStats(plan.items, NO_CRITICAL_PATH),
     [plan.items],

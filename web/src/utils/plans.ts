@@ -6,7 +6,7 @@
  * the review surfaces stay declarative and the logic is unit-testable.
  */
 
-import type { Complexity, Stakes } from '@/api/types/enum-values.gen'
+import type { Complexity, Stakes, TaskStructure } from '@/api/types/enum-values.gen'
 import type { PlanItem } from '@/api/types/plans'
 import type { StatusPillTone } from '@/components/ui/status-pill'
 import { ROUTES } from '@/router/routes'
@@ -206,6 +206,22 @@ export function computeCriticalPath(items: readonly PlanItem[]): ReadonlySet<str
     cursor = predecessor.get(cursor) ?? null
   }
   return path
+}
+
+/**
+ * The critical path only carries information when the plan actually branches: on
+ * a sequential plan the "path" is every item (zero signal), and even on a
+ * classified-parallel plan a chain that spans the whole set says nothing. Return
+ * the path only when it is a strict subset of a non-sequential plan; otherwise
+ * an empty set, so the surface suppresses the (degenerate) critical-path signal.
+ */
+export function criticalPathFor(
+  items: readonly PlanItem[],
+  taskStructure: TaskStructure,
+): ReadonlySet<string> {
+  if (taskStructure === 'sequential') return new Set<string>()
+  const path = computeCriticalPath(items)
+  return path.size < items.length ? path : new Set<string>()
 }
 
 // ── Whole-plan summary stats ───────────────────────────────────────────────

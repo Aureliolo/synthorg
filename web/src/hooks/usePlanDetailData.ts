@@ -9,7 +9,6 @@ const PLAN_CHANNELS = ['plans'] as const satisfies readonly WsChannel[]
 
 export interface UsePlanDetailDataReturn {
   plan: Plan | null
-  parentTaskTitle: string | null
   loading: boolean
   error: string | null
   wsConnected: boolean
@@ -18,7 +17,6 @@ export interface UsePlanDetailDataReturn {
 
 export function usePlanDetailData(planId: string | undefined): UsePlanDetailDataReturn {
   const plan = usePlansStore((s) => s.selectedPlan)
-  const parentTaskTitle = usePlansStore((s) => s.parentTaskTitle)
   const loading = usePlansStore((s) => s.detailLoading)
   const error = usePlansStore((s) => s.detailError)
 
@@ -42,5 +40,5 @@ export function usePlanDetailData(planId: string | undefined): UsePlanDetailData
   )
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
 
-  return { plan, parentTaskTitle, loading, error, wsConnected, wsSetupError }
+  return { plan, loading, error, wsConnected, wsSetupError }
 }
