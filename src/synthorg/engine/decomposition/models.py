@@ -148,6 +148,14 @@ class DecompositionPlan(BaseModel):
         default=CoordinationTopology.AUTO,
         description="Selected coordination topology",
     )
+    open_questions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Unresolved questions the planner surfaced for the human",
+    )
+    assumptions: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Assumptions the plan rests on",
+    )
 
     @model_validator(mode="after")
     def _validate_subtasks(self) -> Self:

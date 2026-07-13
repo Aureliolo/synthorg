@@ -10217,7 +10217,17 @@ export type components = {
          * @description Executed decomposition plan
          */
         readonly DecompositionPlan: {
+            /**
+             * @description Assumptions the plan rests on
+             * @default []
+             */
+            readonly assumptions: readonly string[];
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * @description Unresolved questions the planner surfaced for the human
+             * @default []
+             */
+            readonly open_questions: readonly string[];
             /** @description ID of the task being decomposed */
             readonly parent_task_id: string;
             /** @description Ordered subtask definitions */

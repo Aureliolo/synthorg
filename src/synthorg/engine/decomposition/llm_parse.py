@@ -293,6 +293,8 @@ def _args_to_plan(
         subtasks=subtasks,
         task_structure=structure,
         coordination_topology=topology,
+        open_questions=_string_array(args, "open_questions"),
+        assumptions=_string_array(args, "assumptions"),
     )
 
 

@@ -29,6 +29,8 @@ export const decompositionHandlers = [
               options: [],
             },
           ],
+          open_questions: [],
+          assumptions: [],
           task_structure: 'sequential',
           coordination_topology: 'auto',
         },

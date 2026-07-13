@@ -176,6 +176,23 @@ def build_decomposition_tool() -> ToolDefinition:
                 "enum": [t.value for t in CoordinationTopology],
                 "description": "Coordination topology",
             },
+            "open_questions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Questions you could not resolve that need the human's input "
+                    "before the plan is approved (e.g. an ambiguous requirement or "
+                    "an external dependency). Omit when nothing is open."
+                ),
+            },
+            "assumptions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Load-bearing assumptions the plan rests on, so the human can "
+                    "correct a wrong one before approving. Omit when none."
+                ),
+            },
         },
         "required": ["subtasks"],
     }
@@ -227,6 +244,9 @@ def build_system_message() -> ChatMessage:
         "is recorded with a rationale.\n"
         "- Classify the overall task_structure and choose a coordination "
         "topology.\n"
+        "- Surface any open_questions you could not resolve and the load-bearing "
+        "assumptions the plan rests on, so the human can answer or correct them "
+        "before approving rather than discovering them mid-build.\n"
         "- Before submitting, self-review: is it genuinely parallel where it "
         "can be, is every item owned, are stakes calibrated (not all high), and "
         "does every item define done?\n"

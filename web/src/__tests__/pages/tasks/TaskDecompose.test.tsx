@@ -87,6 +87,8 @@ describe('TaskDecomposeResult', () => {
             options: [],
           },
         ],
+        open_questions: [],
+        assumptions: [],
         task_structure: 'sequential',
         coordination_topology: 'auto',
       },

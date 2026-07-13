@@ -485,6 +485,25 @@ class TestParseToolCallResponse:
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].satisfies == ()
 
+    def test_open_questions_and_assumptions_parse_onto_the_plan(self) -> None:
+        """Plan-level open_questions + assumptions parse off the tool arguments."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build",
+                    "description": "Do it",
+                    "acceptance_criteria": ["done"],
+                }
+            ],
+            "open_questions": ["Which backend?"],
+            "assumptions": ["Single-player only"],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.open_questions == ("Which backend?",)
+        assert plan.assumptions == ("Single-player only",)
+
     def test_non_array_expected_artifacts_raises(self) -> None:
         """Non-array expected_artifacts field raises DecompositionError."""
         args: dict[str, object] = {

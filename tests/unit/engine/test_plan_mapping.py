@@ -179,6 +179,34 @@ class TestPlanFromDecomposition:
         )
         assert plan.review is None
 
+    def test_open_questions_and_assumptions_carry_from_the_decomposition(self) -> None:
+        decomposition = DecompositionResult(
+            plan=DecompositionPlan(
+                parent_task_id=sid("root"),
+                subtasks=(
+                    SubtaskDefinition(
+                        id=sid("sub-1"),
+                        title="Board",
+                        description="Grid",
+                        acceptance_criteria=(NotBlankStr("board renders"),),
+                    ),
+                ),
+                open_questions=(NotBlankStr("Which backend?"),),
+                assumptions=(NotBlankStr("Single-player only"),),
+            ),
+            created_tasks=(_result_task("sub-1"),),
+        )
+        plan = plan_from_decomposition(
+            decomposition,
+            project="beachhead",
+            objective_id="obj-1",
+            objective_title="Ship the game",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+        )
+        assert plan.open_questions == ("Which backend?",)
+        assert plan.assumptions == ("Single-player only",)
+
     def test_objective_criteria_are_denormalised_onto_the_plan(self) -> None:
         plan = plan_from_decomposition(
             _decomposition(),

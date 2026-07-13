@@ -103,6 +103,8 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         forecast_id=forecast_id,
         review=review,
         objective_criteria=objective_criteria,
+        open_questions=result.plan.open_questions,
+        assumptions=result.plan.assumptions,
         created_at=created_at,
         updated_at=created_at,
     )
