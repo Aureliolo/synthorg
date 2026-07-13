@@ -593,13 +593,20 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      strategy so a greenlight is never blocked.
    - **`llm`**: one structured LLM tool call produces the plan.
 
-   Both strategies emit per-subtask `expected_artifacts` + `acceptance_criteria`,
-   which flow through `plan_mapping` onto the durable `PlanItem`s and dispatched
-   tasks, arming the fail-loud zero-artifact guard. Task title, description, and
+   Both strategies emit, per subtask, `expected_artifacts` + `acceptance_criteria`
+   (arming the fail-loud zero-artifact guard), an owning `required_role`, calibrated
+   `stakes`, the objective criteria the item `satisfies`, and, where a real choice
+   exists, a `decision` item with options; plan-level `open_questions` and
+   `assumptions` surface what the planner could not resolve. These flow through
+   `plan_mapping` onto the durable `Plan`/`PlanItem`s. Task title, description, and
    acceptance criteria are routed through `wrap_untrusted(TAG_TASK_DATA, ...)`
    before reaching any prompt, and the system prompt appends the canonical
    `untrusted_content_directive`. See
-   [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
+   [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md). When the plan-approval
+   gate is enabled, a bounded **stakeholder review panel** (sized to the plan within
+   the group-size bounds below, excluding the owner) reviews the decomposed plan
+   between decompose and the human gate and attaches its consolidated verdict to the
+   durable plan. See [Plan Review](plan-review.md).
 2. **Route**: `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
 3. **Resolve topology**: reads topology from routing decisions; falls back to
