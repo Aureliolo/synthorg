@@ -8,6 +8,7 @@ import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
 import { useConversationsStore } from '@/stores/conversations'
 import { resetMessageIds } from '@/pages/chat/message-id'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { usePlanForecastStore } from '@/stores/planForecast'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
 // NOTE: meetings, approvals, scaling stores are intentionally NOT
@@ -314,6 +315,9 @@ afterEach(() => {
   // Dashboard prefs store is backend-sourced; reset its in-memory singleton
   // so a test's toggles do not bleed into the next test in the same worker.
   resetDashboardPrefs()
+  // Plan-forecast store holds a per-view forecast + request token; clear it so
+  // a prior test's forecast does not bleed into the next in the same worker.
+  usePlanForecastStore.getState().clear()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.

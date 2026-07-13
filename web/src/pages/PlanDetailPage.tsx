@@ -23,6 +23,7 @@ import {
 
 import { PlanAttentionPanel } from './plans/PlanAttentionPanel'
 import { PlanEditor } from './plans/PlanEditor'
+import { PlanForecastPanel } from './plans/PlanForecastPanel'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
@@ -48,7 +49,9 @@ function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => voi
 }
 
 function planMetadataItems(plan: Plan): MetadataGridItem[] {
-  const items: MetadataGridItem[] = [
+  // The forecast is surfaced meaningfully by PlanForecastPanel, so the raw
+  // forecast_id UUID is deliberately not shown here (never a UUID on the surface).
+  return [
     { label: 'Project', value: plan.project },
     { label: 'Revision', value: `v${String(plan.version)}` },
     { label: 'Structure', value: plan.task_structure },
@@ -56,10 +59,6 @@ function planMetadataItems(plan: Plan): MetadataGridItem[] {
     { label: 'Proposed', value: formatDateTime(plan.created_at) },
     { label: 'Updated', value: formatRelativeTime(plan.updated_at) },
   ]
-  if (plan.forecast_id !== null) {
-    items.push({ label: 'Forecast', value: plan.forecast_id })
-  }
-  return items
 }
 
 function PlanDetailHeader({ plan }: { plan: Plan }) {
@@ -149,6 +148,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
+      <PlanForecastPanel forecastId={plan.forecast_id} />
       <PlanReviewPanel review={plan.review} />
       <PlanTimeline items={plan.items} />
       <SectionCard title="Plan items" icon={ListTree}>
