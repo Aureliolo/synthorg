@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.artifact import ArtifactType
-from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan import Plan, PlanItem, PlanOption
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -230,6 +230,55 @@ class TestDecompositionFromPlan:
         assert result.dependency_edges == (
             (str(as_uuid("sub-1")), str(as_uuid("sub-2"))),
         )
+
+    def test_decision_items_are_excluded_from_dispatch(self) -> None:
+        # A decision item is resolved by the reviewer's choice, not executed, so
+        # it never becomes a dispatched task, and a work item's dependency on it
+        # is stripped (the decision is made by approval time).
+        plan = Plan(
+            id=as_uuid("plan-dec"),
+            project=NotBlankStr("beachhead"),
+            objective_id=NotBlankStr("obj-1"),
+            objective_title=NotBlankStr("Ship the game"),
+            parent_task_id=NotBlankStr(str(as_uuid("root"))),
+            items=(
+                PlanItem(
+                    id=NotBlankStr(str(as_uuid("decide-stack"))),
+                    title=NotBlankStr("Choose the stack"),
+                    description=NotBlankStr("React or Svelte"),
+                    acceptance_criteria=(NotBlankStr("decision recorded"),),
+                    kind=PlanItemKind.DECISION,
+                    options=(
+                        PlanOption(
+                            id=NotBlankStr("react"),
+                            title=NotBlankStr("React"),
+                            summary=NotBlankStr("Mature, larger bundle"),
+                            recommended=True,
+                        ),
+                        PlanOption(
+                            id=NotBlankStr("svelte"),
+                            title=NotBlankStr("Svelte"),
+                            summary=NotBlankStr("Lean, smaller ecosystem"),
+                        ),
+                    ),
+                ),
+                PlanItem(
+                    id=NotBlankStr(str(as_uuid("build-ui"))),
+                    title=NotBlankStr("Build the UI"),
+                    description=NotBlankStr("Render the board"),
+                    dependencies=(NotBlankStr(str(as_uuid("decide-stack"))),),
+                    acceptance_criteria=(NotBlankStr("board renders"),),
+                ),
+            ),
+            created_at=_CREATED_AT,
+            updated_at=_CREATED_AT,
+        )
+        result = decomposition_from_plan(plan, parent_task=_parent_task())
+        assert {s.id for s in result.plan.subtasks} == {str(as_uuid("build-ui"))}
+        assert {str(t.id) for t in result.created_tasks} == {str(as_uuid("build-ui"))}
+        # The dependency on the decision item is stripped, so no dangling edge.
+        assert result.dependency_edges == ()
+        assert result.plan.subtasks[0].dependencies == ()
 
     def test_routing_hints_survive_round_trip(self) -> None:
         result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())

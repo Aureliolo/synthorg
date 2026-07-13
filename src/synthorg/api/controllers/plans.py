@@ -77,6 +77,9 @@ def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
         required_tags=payload.required_tags,
         estimated_complexity=payload.estimated_complexity,
         stakes=payload.stakes,
+        kind=payload.kind,
+        options=payload.options,
+        chosen_option_id=payload.chosen_option_id,
     )
 
 

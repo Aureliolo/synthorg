@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanOption
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, sid
 
@@ -62,6 +63,67 @@ class TestPlanItemInvariants:
     def test_rejects_duplicate_dependencies(self) -> None:
         with pytest.raises(ValueError, match="duplicate dependencies"):
             _item("a", dependencies=(sid("b"), sid("b")))
+
+
+def _decision_item(
+    label: str,
+    *,
+    options: tuple[PlanOption, ...],
+    chosen_option_id: str | None = None,
+) -> PlanItem:
+    return PlanItem(
+        id=NotBlankStr(sid(label)),
+        title=NotBlankStr(f"Decide {label}"),
+        description=NotBlankStr(f"Choice for {label}"),
+        acceptance_criteria=(NotBlankStr("decision recorded"),),
+        kind=PlanItemKind.DECISION,
+        options=options,
+        chosen_option_id=chosen_option_id,
+    )
+
+
+def _opt(oid: str, *, recommended: bool = False) -> PlanOption:
+    return PlanOption(
+        id=NotBlankStr(oid),
+        title=NotBlankStr(f"Option {oid}"),
+        summary=NotBlankStr(f"Tradeoffs for {oid}"),
+        recommended=recommended,
+    )
+
+
+class TestDecisionItem:
+    def test_accepts_a_well_formed_decision(self) -> None:
+        item = _decision_item(
+            "a", options=(_opt("react", recommended=True), _opt("svelte"))
+        )
+        assert item.kind is PlanItemKind.DECISION
+        assert len(item.options) == 2
+
+    def test_work_item_rejects_options(self) -> None:
+        with pytest.raises(ValueError, match="WORK but carries decision options"):
+            PlanItem(
+                id=NotBlankStr(sid("a")),
+                title=NotBlankStr("X"),
+                description=NotBlankStr("Y"),
+                acceptance_criteria=(NotBlankStr("done"),),
+                options=(_opt("o1", recommended=True), _opt("o2")),
+            )
+
+    def test_decision_needs_two_options(self) -> None:
+        with pytest.raises(ValueError, match="at least two options"):
+            _decision_item("a", options=(_opt("only", recommended=True),))
+
+    def test_decision_needs_exactly_one_recommended(self) -> None:
+        with pytest.raises(ValueError, match="exactly one recommended"):
+            _decision_item("a", options=(_opt("o1"), _opt("o2")))
+
+    def test_decision_rejects_unknown_chosen_option(self) -> None:
+        with pytest.raises(ValueError, match="chose an unknown option"):
+            _decision_item(
+                "a",
+                options=(_opt("o1", recommended=True), _opt("o2")),
+                chosen_option_id="ghost",
+            )
 
 
 class TestPlanInvariants:

@@ -9,7 +9,7 @@ the two are projected onto each other by ``engine.decomposition.plan_mapping``.
 """
 
 from collections import Counter
-from typing import Self
+from typing import Final, Self
 from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -44,6 +44,47 @@ class PlanOption(BaseModel):
         default=False,
         description="Whether the owner recommends this option",
     )
+
+
+_MIN_DECISION_OPTIONS: Final[int] = 2
+
+
+def validate_decision_options(
+    *,
+    entity_id: str,
+    kind: PlanItemKind,
+    options: tuple[PlanOption, ...],
+    chosen_option_id: str | None = None,
+) -> None:
+    """Enforce the WORK-vs-DECISION option invariants shared by items/subtasks.
+
+    A ``WORK`` unit carries no options; a ``DECISION`` offers at least two
+    options with unique ids and exactly one recommended, and any recorded
+    ``chosen_option_id`` must name one of them.
+
+    Raises:
+        ValueError: When a work unit carries options, a decision has fewer than
+            two options / not exactly one recommended / duplicate option ids, or
+            the chosen option is unknown.
+    """
+    if kind is PlanItemKind.WORK:
+        if options or chosen_option_id is not None:
+            msg = f"{entity_id!r} is WORK but carries decision options"
+            raise ValueError(msg)
+        return
+    if len(options) < _MIN_DECISION_OPTIONS:
+        msg = f"Decision {entity_id!r} must offer at least two options"
+        raise ValueError(msg)
+    option_ids = [option.id for option in options]
+    if len(option_ids) != len(set(option_ids)):
+        msg = f"Decision {entity_id!r} has duplicate option ids"
+        raise ValueError(msg)
+    if sum(option.recommended for option in options) != 1:
+        msg = f"Decision {entity_id!r} needs exactly one recommended option"
+        raise ValueError(msg)
+    if chosen_option_id is not None and chosen_option_id not in option_ids:
+        msg = f"Decision {entity_id!r} chose an unknown option"
+        raise ValueError(msg)
 
 
 class PlanItem(BaseModel):
@@ -155,38 +196,18 @@ class PlanItem(BaseModel):
         return self
 
     def _validate_decision(self) -> None:
-        """Enforce the decision-vs-work option invariants.
-
-        A ``WORK`` item carries no options; a ``DECISION`` item offers at least
-        two options with unique ids and a single recommended one, and any
-        recorded ``chosen_option_id`` must name one of them.
+        """Enforce the decision-vs-work option invariants for this item.
 
         Raises:
-            ValueError: When a work item carries options, a decision item has
-                fewer than two options / no or many recommended / duplicate
-                option ids, or the chosen option is unknown.
+            ValueError: When the WORK/DECISION option shape is invalid (see
+                :func:`validate_decision_options`).
         """
-        if self.kind is PlanItemKind.WORK:
-            if self.options or self.chosen_option_id is not None:
-                msg = f"Plan item {self.id!r} is WORK but carries decision options"
-                raise ValueError(msg)
-            return
-        if len(self.options) < 2:  # noqa: PLR2004 -- a decision needs >=2 options
-            msg = f"Decision item {self.id!r} must offer at least two options"
-            raise ValueError(msg)
-        option_ids = [option.id for option in self.options]
-        if len(option_ids) != len(set(option_ids)):
-            msg = f"Decision item {self.id!r} has duplicate option ids"
-            raise ValueError(msg)
-        if sum(option.recommended for option in self.options) != 1:
-            msg = f"Decision item {self.id!r} needs exactly one recommended option"
-            raise ValueError(msg)
-        if (
-            self.chosen_option_id is not None
-            and self.chosen_option_id not in option_ids
-        ):
-            msg = f"Decision item {self.id!r} chose an unknown option"
-            raise ValueError(msg)
+        validate_decision_options(
+            entity_id=self.id,
+            kind=self.kind,
+            options=self.options,
+            chosen_option_id=self.chosen_option_id,
+        )
 
 
 class PlanVersionSnapshot(BaseModel):

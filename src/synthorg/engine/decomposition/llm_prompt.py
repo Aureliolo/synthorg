@@ -7,6 +7,7 @@ Pure functions that construct the system/user messages and the
 
 from pydantic import JsonValue
 
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -100,6 +101,38 @@ def build_decomposition_tool() -> ToolDefinition:
                 "items": {"type": "string"},
                 "description": "Verifiable criteria that define done for this subtask",
             },
+            "kind": {
+                "type": "string",
+                "enum": [k.value for k in PlanItemKind],
+                "description": (
+                    "'work' for a unit of work, or 'decision' for a real choice "
+                    "the reviewer must make (e.g. stack/architecture). A decision "
+                    "carries options and records the choice rather than building."
+                ),
+            },
+            "options": {
+                "type": "array",
+                "description": (
+                    "For a 'decision' subtask only: 2-4 options to choose among, "
+                    "exactly one marked recommended."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string", "description": "Stable option id"},
+                        "title": {"type": "string", "description": "Option title"},
+                        "summary": {
+                            "type": "string",
+                            "description": "The option's tradeoffs and rationale",
+                        },
+                        "recommended": {
+                            "type": "boolean",
+                            "description": "Whether the owner recommends this option",
+                        },
+                    },
+                    "required": ["id", "title", "summary"],
+                },
+            },
         },
         "required": [
             "id",
@@ -175,6 +208,10 @@ def build_system_message() -> ChatMessage:
         "- For each item, list concrete expected_artifacts (file paths, docs, "
         "or test suites) and verifiable acceptance_criteria that define when it "
         "is done. Never leave these empty.\n"
+        "- Where the plan hinges on a real choice (stack, architecture), surface "
+        "a decision item (kind 'decision') with 2-4 options and a recommended "
+        "one, rather than silently deciding; its criterion is that the decision "
+        "is recorded with a rationale.\n"
         "- Classify the overall task_structure and choose a coordination "
         "topology.\n"
         "- Before submitting, self-review: is it genuinely parallel where it "

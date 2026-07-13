@@ -14145,6 +14145,8 @@ export type components = {
         readonly PlanItemPayload: {
             /** @description Per-item criteria that define done (never empty) */
             readonly acceptance_criteria: readonly string[];
+            /** @description The option a reviewer chose (DECISION items) */
+            readonly chosen_option_id?: string | null;
             /**
              * @description IDs of items this one depends on
              * @default []
@@ -14160,6 +14162,12 @@ export type components = {
             readonly expected_artifacts: readonly string[];
             /** @description Stable item identifier within the plan */
             readonly id: string;
+            readonly kind?: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION item, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner?: string | null;
             /**
@@ -16935,6 +16943,12 @@ export type components = {
             readonly expected_artifacts: readonly string[];
             /** @description Unique subtask identifier */
             readonly id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description For a DECISION subtask, the options to choose among
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Optional role name for routing */
             readonly required_role: string | null;
             /**

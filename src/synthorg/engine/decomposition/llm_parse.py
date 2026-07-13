@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from pydantic import JsonValue
 
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -37,6 +38,8 @@ logger = get_logger(__name__)
 _COMPLEXITY_MAP: Final[dict[str, Complexity]] = {c.value: c for c in Complexity}
 
 _STAKES_MAP: Final[dict[str, Stakes]] = {s.value: s for s in Stakes}
+
+_PLAN_ITEM_KIND_MAP: Final[dict[str, PlanItemKind]] = {k.value: k for k in PlanItemKind}
 
 _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
     s.value: s for s in TaskStructure
@@ -119,6 +122,12 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
         Stakes.NORMAL,
         field="stakes",
     )
+    kind = _enum_or_default(
+        raw.get("kind", "work"),
+        _PLAN_ITEM_KIND_MAP,
+        PlanItemKind.WORK,
+        field="kind",
+    )
     deps = raw.get("dependencies") or []
     if not isinstance(deps, list):
         msg = "Subtask field 'dependencies' must be an array"
@@ -152,6 +161,8 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             "dependencies": tuple(deps),
             "estimated_complexity": complexity,
             "stakes": stakes,
+            "kind": kind,
+            "options": raw.get("options") or (),
             "required_skills": tuple(skills),
             "required_role": raw.get("required_role"),
             "expected_artifacts": artifacts,

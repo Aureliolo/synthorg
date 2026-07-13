@@ -10,6 +10,8 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -81,21 +83,33 @@ class SubtaskDefinition(BaseModel):
         default=(),
         description="Per-subtask criteria that define done",
     )
+    kind: PlanItemKind = Field(
+        default=PlanItemKind.WORK,
+        description="Whether this subtask is work to execute or a decision point",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        description="For a DECISION subtask, the options to choose among",
+    )
 
     @model_validator(mode="after")
-    def _validate_no_self_dependency(self) -> Self:
-        """Ensure subtask does not depend on itself.
+    def _validate_subtask(self) -> Self:
+        """Reject a self-dependency and enforce the decision-option shape.
 
         Returns:
-            ``self`` unchanged when no self-cycle exists.
+            ``self`` unchanged when the subtask does not depend on itself and
+            its WORK/DECISION option shape is valid.
 
         Raises:
-            ValueError: When the subtask's id appears in its
-                ``dependencies`` tuple.
+            ValueError: When the subtask depends on itself, or its option shape
+                is invalid (see :func:`validate_decision_options`).
         """
         if self.id in self.dependencies:
             msg = f"Subtask {self.id!r} cannot depend on itself"
             raise ValueError(msg)
+        validate_decision_options(
+            entity_id=self.id, kind=self.kind, options=self.options
+        )
         return self
 
 

@@ -13,7 +13,7 @@ from datetime import datetime
 from uuid import UUID
 
 from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -47,6 +47,8 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         required_tags=subtask.required_tags,
         estimated_complexity=subtask.estimated_complexity,
         stakes=subtask.stakes,
+        kind=subtask.kind,
+        options=subtask.options,
     )
 
 
@@ -117,6 +119,8 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
         required_role=item.owner,
         expected_artifacts=item.expected_artifacts,
         acceptance_criteria=item.acceptance_criteria,
+        kind=item.kind,
+        options=item.options,
     )
 
 
@@ -176,11 +180,28 @@ def decomposition_from_plan(
         A validated :class:`DecompositionResult` ready for
         ``coordinate(precomputed_plan=...)``.
     """
-    subtasks = tuple(_subtask_from_item(item) for item in plan.items)
-    created_tasks = tuple(
-        _task_from_item(item, parent_task=parent_task) for item in plan.items
+    # Decision items are resolved by the reviewer's choice, not executed, so they
+    # never dispatch; their ids are stripped from remaining items' dependencies
+    # (the decision is already made by approval time), leaving a work-only DAG.
+    decision_ids = frozenset(
+        item.id for item in plan.items if item.kind is PlanItemKind.DECISION
     )
-    edges = tuple((dep, item.id) for item in plan.items for dep in item.dependencies)
+    dispatchable = tuple(
+        item.model_copy(
+            update={
+                "dependencies": tuple(
+                    dep for dep in item.dependencies if dep not in decision_ids
+                )
+            }
+        )
+        for item in plan.items
+        if item.kind is PlanItemKind.WORK
+    )
+    subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
+    created_tasks = tuple(
+        _task_from_item(item, parent_task=parent_task) for item in dispatchable
+    )
+    edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)
     decomposition_plan = DecompositionPlan(
         parent_task_id=str(parent_task.id),
         subtasks=subtasks,

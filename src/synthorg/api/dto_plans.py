@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -85,6 +87,18 @@ class PlanItemPayload(BaseModel):
     stakes: Stakes = Field(
         default=Stakes.NORMAL, description="Stakes level for routing"
     )
+    kind: PlanItemKind = Field(
+        default=PlanItemKind.WORK,
+        description="Whether this item is work to execute or a decision point",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="For a DECISION item, the options to choose among",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None, description="The option a reviewer chose (DECISION items)"
+    )
 
     @model_validator(mode="after")
     def _validate_item(self) -> Self:
@@ -117,6 +131,12 @@ class PlanItemPayload(BaseModel):
             dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
             msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
+        validate_decision_options(
+            entity_id=self.id,
+            kind=self.kind,
+            options=self.options,
+            chosen_option_id=self.chosen_option_id,
+        )
         return self
 
 
