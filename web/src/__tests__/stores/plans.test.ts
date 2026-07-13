@@ -96,6 +96,7 @@ describe('usePlansStore', () => {
             expected_artifacts: [],
             required_skills: [],
             required_tags: [],
+            options: [],
           },
         ],
       })

@@ -24,6 +24,11 @@ interface DraftItem {
   requiredTags: readonly string[]
   complexity: PlanItem['estimated_complexity']
   stakes: PlanItem['stakes']
+  // Preserved verbatim so editing a plan that holds a decision item does not
+  // strip its options and fail the decision validator on save.
+  kind: PlanItem['kind']
+  options: PlanItem['options']
+  chosenOptionId: PlanItem['chosen_option_id']
 }
 
 function toDraft(item: PlanItem): DraftItem {
@@ -39,6 +44,9 @@ function toDraft(item: PlanItem): DraftItem {
     requiredTags: item.required_tags,
     complexity: item.estimated_complexity,
     stakes: item.stakes,
+    kind: item.kind,
+    options: item.options,
+    chosenOptionId: item.chosen_option_id,
   }
 }
 
@@ -56,6 +64,9 @@ function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     required_tags: draft.requiredTags,
     estimated_complexity: draft.complexity,
     stakes: draft.stakes,
+    kind: draft.kind,
+    options: draft.options,
+    chosen_option_id: draft.chosenOptionId,
   }
 }
 
@@ -72,6 +83,9 @@ function newDraft(): DraftItem {
     requiredTags: [],
     complexity: 'medium',
     stakes: 'normal',
+    kind: 'work',
+    options: [],
+    chosenOptionId: null,
   }
 }
 

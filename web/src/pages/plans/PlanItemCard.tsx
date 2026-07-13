@@ -1,4 +1,4 @@
-import { CircleCheck, GitBranch, Package, UserRound } from 'lucide-react'
+import { CircleCheck, GitBranch, Package, Scale, Sparkles, UserRound } from 'lucide-react'
 
 import type { PlanItem } from '@/api/types/plans'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -23,6 +23,11 @@ export interface PlanItemCardProps {
 function ItemPills({ item, onCriticalPath }: { item: PlanItem; onCriticalPath: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {item.kind === 'decision' && (
+        <StatusPill tone="accent" icon={Scale}>
+          Decision
+        </StatusPill>
+      )}
       <StatusPill tone={COMPLEXITY_TONE[item.estimated_complexity]}>
         {COMPLEXITY_LABEL[item.estimated_complexity]} effort
       </StatusPill>
@@ -67,6 +72,45 @@ function AcceptanceCriteria({ criteria }: { criteria: readonly string[] }) {
             <span>{line}</span>
           </li>
         ))}
+      </ul>
+    </div>
+  )
+}
+
+function DecisionOptions({ item }: { item: PlanItem }) {
+  if (item.kind !== 'decision') return null
+  return (
+    <div className="space-y-1.5">
+      <span className="inline-flex items-center gap-1 text-micro uppercase tracking-wide text-muted-foreground">
+        <Scale className="size-3.5" aria-hidden="true" />
+        Options
+      </span>
+      <ul className="space-y-1.5">
+        {item.options.map((option) => {
+          const chosen = item.chosen_option_id === option.id
+          return (
+            <li
+              key={option.id}
+              className={cn(
+                'rounded-md border p-2',
+                chosen ? 'border-accent/50 bg-accent/[0.04]' : 'border-border',
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  {option.title}
+                </span>
+                {option.recommended && (
+                  <StatusPill tone="accent" icon={Sparkles}>
+                    Recommended
+                  </StatusPill>
+                )}
+                {chosen && <StatusPill tone="success">Chosen</StatusPill>}
+              </div>
+              <p className="mt-1 text-xs text-text-secondary">{option.summary}</p>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
@@ -128,6 +172,7 @@ export function PlanItemCard({
       </div>
       <ItemPills item={item} onCriticalPath={onCriticalPath} />
       <p className="text-sm text-text-secondary">{item.description}</p>
+      <DecisionOptions item={item} />
       <AcceptanceCriteria criteria={item.acceptance_criteria} />
       <ChipRow label="Delivers" icon={Package} values={item.expected_artifacts} />
       <ChipRow label="Needs skills" icon={UserRound} values={item.required_skills} />
