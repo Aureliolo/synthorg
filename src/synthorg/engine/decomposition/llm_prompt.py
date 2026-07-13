@@ -8,7 +8,12 @@ Pure functions that construct the system/user messages and the
 from pydantic import JsonValue
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Complexity, CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import (
+    Complexity,
+    CoordinationTopology,
+    Stakes,
+    TaskStructure,
+)
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -55,16 +60,31 @@ def build_decomposition_tool() -> ToolDefinition:
             "estimated_complexity": {
                 "type": "string",
                 "enum": [c.value for c in Complexity],
-                "description": "Complexity estimate",
+                "description": (
+                    "Effort/uncertainty estimate. Reserve 'epic' for a whole "
+                    "workstream that should itself be broken down further."
+                ),
+            },
+            "stakes": {
+                "type": "string",
+                "enum": [s.value for s in Stakes],
+                "description": (
+                    "How consequential this item is if done wrong. Most items "
+                    "are 'normal'; reserve 'high'/'critical' for irreversible "
+                    "or high-blast-radius work (a handful, not most)."
+                ),
+            },
+            "required_role": {
+                "type": ["string", "null"],
+                "description": (
+                    "The role accountable for this item (e.g. 'Backend "
+                    "Engineer', 'CTO'). Assign an owner to every item."
+                ),
             },
             "required_skills": {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Skills needed for this subtask",
-            },
-            "required_role": {
-                "type": ["string", "null"],
-                "description": "Optional role for routing",
             },
             "expected_artifacts": {
                 "type": "array",
@@ -85,6 +105,8 @@ def build_decomposition_tool() -> ToolDefinition:
             "id",
             "title",
             "description",
+            "stakes",
+            "required_role",
             "expected_artifacts",
             "acceptance_criteria",
         ],
@@ -100,7 +122,11 @@ def build_decomposition_tool() -> ToolDefinition:
             "task_structure": {
                 "type": "string",
                 "enum": [s.value for s in TaskStructure],
-                "description": "Overall task structure",
+                "description": (
+                    "Overall structure: 'parallel'/'mixed' when independent "
+                    "workstreams can run at once, 'sequential' only when every "
+                    "item genuinely depends on the previous one."
+                ),
             },
             "coordination_topology": {
                 "type": "string",
@@ -131,28 +157,32 @@ def build_system_message() -> ChatMessage:
         A ``ChatMessage`` with ``MessageRole.SYSTEM``.
     """
     content = (
-        "You are a task decomposition expert. Your job is to "
-        "break down a complex task into smaller, well-defined "
-        "subtasks.\n\n"
+        "You are a planning lead breaking a greenlit objective into a plan a "
+        "team would actually execute, not a flat checklist.\n\n"
         "Guidelines:\n"
-        "- Each subtask must have a unique ID, clear title, "
-        "and detailed description.\n"
-        "- Specify dependencies between subtasks where "
-        "needed.\n"
-        "- Estimate complexity for each subtask "
-        "(simple, medium, complex, epic).\n"
-        "- For each subtask, list the concrete deliverables it must "
-        "produce as expected_artifacts (file paths, docs, or test "
-        "suites) and the verifiable acceptance_criteria that define "
-        "when it is done. Never leave these empty.\n"
-        "- Classify the overall task structure "
-        "(sequential, parallel, mixed).\n"
-        "- Choose an appropriate coordination topology.\n"
-        "- Use the submit_decomposition_plan tool to provide "
-        "your answer.\n"
-        "- If a tool call is not possible, respond with a "
-        "JSON object in the same schema.\n\n"
-        + untrusted_content_directive((TAG_TASK_DATA,))
+        "- Each subtask has a unique ID, a clear title, and a detailed "
+        "description.\n"
+        "- Model real structure: chain a dependency ONLY when one item "
+        "genuinely cannot start until another finishes. Independent "
+        "workstreams must run in parallel, so most plans are 'mixed' or "
+        "'parallel', not 'sequential'.\n"
+        "- Assign an accountable owning role (required_role) to every item; no "
+        "item is left unowned.\n"
+        "- Estimate complexity per item; reserve 'epic' for a whole workstream "
+        "that should be broken down further.\n"
+        "- Calibrate stakes: most items are 'normal'. Reserve 'high'/'critical' "
+        "for irreversible or high-blast-radius work, a handful, not most.\n"
+        "- For each item, list concrete expected_artifacts (file paths, docs, "
+        "or test suites) and verifiable acceptance_criteria that define when it "
+        "is done. Never leave these empty.\n"
+        "- Classify the overall task_structure and choose a coordination "
+        "topology.\n"
+        "- Before submitting, self-review: is it genuinely parallel where it "
+        "can be, is every item owned, are stakes calibrated (not all high), and "
+        "does every item define done?\n"
+        "- Use the submit_decomposition_plan tool to provide your answer.\n"
+        "- If a tool call is not possible, respond with a JSON object in the "
+        "same schema.\n\n" + untrusted_content_directive((TAG_TASK_DATA,))
     )
     return ChatMessage(role=MessageRole.SYSTEM, content=content)
 

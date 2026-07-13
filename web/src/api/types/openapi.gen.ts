@@ -14065,10 +14065,7 @@ export type components = {
         };
         /** PlanItem */
         readonly PlanItem: {
-            /**
-             * @description Per-item criteria that define done
-             * @default []
-             */
+            /** @description Per-item criteria that define done (never empty) */
             readonly acceptance_criteria: readonly string[];
             /**
              * @description IDs of items this one depends on
@@ -14103,10 +14100,7 @@ export type components = {
         };
         /** PlanItemPayload */
         readonly PlanItemPayload: {
-            /**
-             * @description Per-item criteria that define done
-             * @default []
-             */
+            /** @description Per-item criteria that define done (never empty) */
             readonly acceptance_criteria: readonly string[];
             /**
              * @description IDs of items this one depends on

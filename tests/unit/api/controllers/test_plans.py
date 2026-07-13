@@ -36,12 +36,14 @@ def _plan(
                 id=NotBlankStr(_I1),
                 title=NotBlankStr("Scaffold"),
                 description=NotBlankStr("Set up the board"),
+                acceptance_criteria=(NotBlankStr("board scaffolded"),),
             ),
             PlanItem(
                 id=NotBlankStr(_I2),
                 title=NotBlankStr("Movement"),
                 description=NotBlankStr("Drop + rotate"),
                 dependencies=(NotBlankStr(_I1),),
+                acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
             ),
         ),
         status=status,
@@ -146,6 +148,7 @@ class TestPlanController:
                         "title": "Reworked scaffold",
                         "description": "New scope for the board",
                         "owner": "engineering",
+                        "acceptance_criteria": ["board scaffolded"],
                     },
                 ],
             },
@@ -174,6 +177,7 @@ class TestPlanController:
                         "title": "Broken",
                         "description": "Depends on a ghost",
                         "dependencies": [sid("ghost")],
+                        "acceptance_criteria": ["done"],
                     },
                 ],
             },
@@ -197,12 +201,14 @@ class TestPlanController:
                         "title": "A",
                         "description": "depends on B",
                         "dependencies": [_I2],
+                        "acceptance_criteria": ["a done"],
                     },
                     {
                         "id": _I2,
                         "title": "B",
                         "description": "depends on A",
                         "dependencies": [_I1],
+                        "acceptance_criteria": ["b done"],
                     },
                 ],
             },
@@ -219,7 +225,16 @@ class TestPlanController:
 
         resp = await async_test_client.patch(
             f"/api/v1/plans/{plan_id}",
-            json={"items": [{"id": "not-a-uuid", "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": "not-a-uuid",
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         # A malformed item payload is rejected at the request boundary (400),
@@ -251,7 +266,16 @@ class TestPlanController:
 
         resp = await async_test_client.patch(
             f"/api/v1/plans/{plan_id}",
-            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
@@ -262,7 +286,16 @@ class TestPlanController:
     ) -> None:
         resp = await async_test_client.patch(
             "/api/v1/plans/ghost",
-            json={"items": [{"id": _I1, "title": "X", "description": "Y"}]},
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "X",
+                        "description": "Y",
+                        "acceptance_criteria": ["done"],
+                    }
+                ]
+            },
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

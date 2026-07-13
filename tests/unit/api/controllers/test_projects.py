@@ -285,6 +285,7 @@ class TestProjectController:
                     id=NotBlankStr(sid("item-1")),
                     title=NotBlankStr("Scaffold"),
                     description=NotBlankStr("Set up the board"),
+                    acceptance_criteria=(NotBlankStr("board scaffolded"),),
                 ),
             ),
             status=PlanStatus.PENDING_REVIEW,

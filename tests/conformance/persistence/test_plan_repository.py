@@ -41,6 +41,7 @@ def _plan(
                 title=NotBlankStr("Scaffold board"),
                 description=NotBlankStr("Set up the game board grid"),
                 estimated_complexity=Complexity.MEDIUM,
+                acceptance_criteria=(NotBlankStr("board grid renders"),),
             ),
             PlanItem(
                 id=NotBlankStr(sid("item-2")),
@@ -48,6 +49,7 @@ def _plan(
                 description=NotBlankStr("Implement piece drop + rotation"),
                 dependencies=(NotBlankStr(sid("item-1")),),
                 owner=NotBlankStr("engineering"),
+                acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
             ),
         ),
         task_structure=TaskStructure.SEQUENTIAL,

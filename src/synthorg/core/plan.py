@@ -56,8 +56,8 @@ class PlanItem(BaseModel):
         description="Role or agent that owns this item",
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Per-item criteria that define done",
+        min_length=1,
+        description="Per-item criteria that define done (never empty)",
     )
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),

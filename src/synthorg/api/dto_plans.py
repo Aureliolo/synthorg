@@ -60,9 +60,9 @@ class PlanItemPayload(BaseModel):
         default=None, description="Role or agent that owns this item"
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
-        default=(),
+        min_length=1,
         max_length=_MAX_CRITERIA,
-        description="Per-item criteria that define done",
+        description="Per-item criteria that define done (never empty)",
     )
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),

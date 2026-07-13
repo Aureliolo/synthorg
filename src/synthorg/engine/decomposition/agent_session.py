@@ -130,9 +130,10 @@ class SubmitDecompositionPlanTool(BaseTool):
         super().__init__(
             name="submit_decomposition_plan",
             description=(
-                "Submit the final decomposition plan. Provide every subtask "
-                "with its dependencies, expected_artifacts (concrete "
-                "deliverables), and acceptance_criteria. Call this exactly "
+                "Submit the final plan. Provide every item with its "
+                "dependencies (only genuine ones, so independent work runs in "
+                "parallel), an accountable owning role, calibrated stakes, "
+                "expected_artifacts, and acceptance_criteria. Call this exactly "
                 "once, last, after you have researched and self-reviewed."
             ),
             parameters_schema=build_decomposition_tool().parameters_schema,
@@ -435,14 +436,24 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
         return "\n".join(
             [
-                "You are the accountable owner planning this objective. Break it",
-                "into a dependency-ordered set of subtasks a team can execute.",
+                "You are the accountable owner planning this objective. Produce",
+                "a plan a team would execute, not a flat checklist.",
                 "First research what you need using any tools you have (recall",
-                "prior work, search the project brain, look up unknowns). For",
-                "every subtask, state concrete expected_artifacts (the files,",
-                "docs, or test suites it must produce) and verifiable",
-                "acceptance_criteria. Then critically review your own plan for",
-                "gaps and missing deliverables. Finally, call",
+                "prior work, search the project brain, look up unknowns).",
+                "Then build the plan:",
+                "- Model real structure: add a dependency ONLY when one item",
+                "  genuinely cannot start until another finishes; independent",
+                "  workstreams must run in parallel (task_structure mixed or",
+                "  parallel, not a single sequential chain).",
+                "- Assign an accountable owning role to every item; leave none",
+                "  unowned.",
+                "- Calibrate: most items are normal stakes; reserve high or",
+                "  critical for irreversible or high-blast-radius work.",
+                "- Give every item concrete expected_artifacts and verifiable",
+                "  acceptance_criteria (never empty).",
+                "Then critically self-review: is it genuinely parallel where it",
+                "can be, is every item owned, are stakes calibrated (not all",
+                "high), does every item define done? Finally, call",
                 "submit_decomposition_plan exactly once with the complete plan.",
                 "",
                 wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),

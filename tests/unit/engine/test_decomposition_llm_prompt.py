@@ -13,6 +13,7 @@ from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,
+    Stakes,
     TaskStructure,
     TaskType,
 )
@@ -128,7 +129,9 @@ def _valid_plan_args(
             "dependencies": [] if i == 0 else [f"sub-{i - 1}"],
             "estimated_complexity": "medium",
             "required_skills": ["python"],
-            "required_role": None,
+            "required_role": "Backend Engineer",
+            "expected_artifacts": [f"src/step_{i}.py"],
+            "acceptance_criteria": [f"step {i} verified"],
         }
         for i in range(subtask_count)
     ]
@@ -368,13 +371,18 @@ class TestParseToolCallResponse:
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
 
     def test_optional_fields_use_defaults(self) -> None:
-        """Missing optional fields use sensible defaults."""
+        """Missing optional fields use sensible defaults.
+
+        ``acceptance_criteria`` is not optional (every item must define done),
+        so it is supplied; the genuinely optional fields still default.
+        """
         args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-0",
                     "title": "Only subtask",
                     "description": "Minimal fields",
+                    "acceptance_criteria": ["it works"],
                 }
             ],
         }
@@ -383,12 +391,42 @@ class TestParseToolCallResponse:
 
         assert plan.subtasks[0].dependencies == ()
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
+        assert plan.subtasks[0].stakes is Stakes.NORMAL
         assert plan.subtasks[0].required_skills == ()
         assert plan.subtasks[0].required_role is None
         assert plan.subtasks[0].expected_artifacts == ()
-        assert plan.subtasks[0].acceptance_criteria == ()
+        assert plan.subtasks[0].acceptance_criteria == ("it works",)
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
+
+    def test_missing_acceptance_criteria_raises(self) -> None:
+        """A subtask with no acceptance_criteria is rejected, not defaulted.
+
+        Every plan item must state a verifiable definition of done, so an
+        empty (or absent) ``acceptance_criteria`` is a correctable error the
+        planning session can resubmit against, not a silent empty tuple.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "No criteria supplied",
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="acceptance_criteria"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_stakes_mapping(self) -> None:
+        """String stakes values map to the Stakes enum; unknown defaults."""
+        args = _valid_plan_args(subtask_count=1)
+        subtasks = cast("list[dict[str, object]]", args["subtasks"])
+        subtasks[0]["stakes"] = "critical"
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].stakes is Stakes.CRITICAL
 
     def test_artifacts_and_acceptance_threaded(self) -> None:
         """expected_artifacts + acceptance_criteria parse onto the subtask."""
@@ -474,6 +512,7 @@ class TestParseToolCallResponse:
                     "title": "Only subtask",
                     "description": "Do it",
                     "dependencies": ["ghost-subtask"],
+                    "acceptance_criteria": ["done"],
                 },
             ],
         }
@@ -524,12 +563,14 @@ class TestParseToolCallResponse:
                     "title": "First",
                     "description": "Do step 1",
                     "dependencies": [],
+                    "acceptance_criteria": ["done 1"],
                 },
                 {
                     "id": "sub-dup",
                     "title": "Second",
                     "description": "Do step 2",
                     "dependencies": [],
+                    "acceptance_criteria": ["done 2"],
                 },
             ],
             "task_structure": "sequential",

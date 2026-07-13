@@ -19,6 +19,7 @@ def _item(label: str, *, dependencies: tuple[str, ...] = ()) -> PlanItem:
         title=NotBlankStr(f"Item {label}"),
         description=NotBlankStr(f"Description for {label}"),
         dependencies=tuple(NotBlankStr(d) for d in dependencies),
+        acceptance_criteria=(NotBlankStr(f"{label} is done"),),
     )
 
 
@@ -41,6 +42,16 @@ class TestPlanItemInvariants:
                 id=NotBlankStr("not-a-uuid"),
                 title=NotBlankStr("X"),
                 description=NotBlankStr("Y"),
+                acceptance_criteria=(NotBlankStr("done"),),
+            )
+
+    def test_rejects_empty_acceptance_criteria(self) -> None:
+        with pytest.raises(ValueError, match="acceptance_criteria"):
+            PlanItem(
+                id=NotBlankStr(sid("a")),
+                title=NotBlankStr("X"),
+                description=NotBlankStr("Y"),
+                acceptance_criteria=(),
             )
 
     def test_rejects_self_dependency(self) -> None:
