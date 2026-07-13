@@ -28,7 +28,7 @@ export interface PlanItemCardProps {
   /** This item's discussion thread (omitted renders no discussion section). */
   comments?: readonly PlanItemComment[]
   /** Post a comment on this item; enables the discussion compose box. */
-  onAddComment?: (itemId: string, body: string) => Promise<unknown>
+  onAddComment?: (itemId: string, body: string) => Promise<PlanItemComment | null>
   className?: string
 }
 

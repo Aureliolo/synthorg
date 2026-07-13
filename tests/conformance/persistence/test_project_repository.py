@@ -169,6 +169,7 @@ class TestProjectRepository:
         fetched = await backend.projects.get(NotBlankStr(sid("p-cas")))
         assert fetched is not None
         assert fetched.lead == "alice"
+        assert fetched.version == winner.version
 
     async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.list_items() == ()

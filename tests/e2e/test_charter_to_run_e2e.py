@@ -140,12 +140,18 @@ class _DecompositionAwareStrategy:
                                     "title": "Research the recall baseline",
                                     "description": "Investigate the incumbent.",
                                     "required_skills": [_RESEARCH_SKILL],
+                                    "acceptance_criteria": [
+                                        "The recall baseline is documented.",
+                                    ],
                                 },
                                 {
                                     "id": "sub-analysis",
                                     "title": "Analyse the retrieval design",
                                     "description": "Synthesise the approach.",
                                     "required_skills": [_ANALYSIS_SKILL],
+                                    "acceptance_criteria": [
+                                        "The retrieval design is chosen.",
+                                    ],
                                 },
                             ],
                         },

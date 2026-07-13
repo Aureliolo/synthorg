@@ -18,13 +18,17 @@ function buildComment(overrides: Partial<PlanItemComment> = {}): PlanItemComment
 }
 
 export const planCommentsHandlers = [
-  http.get('/api/v1/plans/:planId/comments', ({ params }) =>
-    HttpResponse.json(
+  http.get('/api/v1/plans/:planId/comments', ({ params, request }) => {
+    const itemId = new URL(request.url).searchParams.get('item_id')
+    return HttpResponse.json(
       successFor<typeof listPlanComments>([
-        buildComment({ plan_id: String(params['planId']) }),
+        buildComment({
+          plan_id: String(params['planId']),
+          item_id: itemId ?? 'item-1',
+        }),
       ]),
-    ),
-  ),
+    )
+  }),
   http.post(
     '/api/v1/plans/:planId/comments/items/:itemId',
     async ({ params, request }) => {

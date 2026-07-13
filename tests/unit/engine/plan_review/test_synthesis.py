@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.plan_review import PlanReviewerVerdict, PlanReviewFinding
@@ -75,12 +76,12 @@ class TestSynthesiseReview:
         )
         assert review.reviewed_at == _NOW
 
-    def test_naive_datetime_is_coerced_to_utc(self) -> None:
+    def test_naive_datetime_is_rejected(self) -> None:
         naive = datetime(2026, 4, 1, 12, 0)  # noqa: DTZ001 -- exercising the guard
-        review = synthesise_review(
-            (_reviewer("CTO", PlanReviewVerdict.ENDORSED),), now=naive
-        )
-        assert review.reviewed_at.tzinfo is not None
+        with pytest.raises(ValidationError):
+            synthesise_review(
+                (_reviewer("CTO", PlanReviewVerdict.ENDORSED),), now=naive
+            )
 
     def test_empty_reviewers_raises(self) -> None:
         with pytest.raises(ValueError, match="no reviewers"):

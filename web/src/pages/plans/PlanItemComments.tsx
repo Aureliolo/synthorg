@@ -29,8 +29,11 @@ function CommentRow({ comment }: { comment: PlanItemComment }) {
 
 export interface PlanItemCommentsProps {
   comments: readonly PlanItemComment[]
-  /** Post a comment on this item; resolves once the write lands (or fails). */
-  onSubmit: (body: string) => Promise<unknown>
+  /**
+   * Post a comment on this item; resolves to the created comment, or `null`
+   * when the write fails (the store owns the error toast).
+   */
+  onSubmit: (body: string) => Promise<PlanItemComment | null>
 }
 
 /**
@@ -46,9 +49,16 @@ export function PlanItemComments({ comments, onSubmit }: PlanItemCommentsProps) 
     const body = draft.trim()
     if (body === '') return
     setSaving(true)
-    const result = await onSubmit(body)
-    setSaving(false)
-    if (result !== null) setDraft('')
+    try {
+      const result = await onSubmit(body)
+      // Only clear the box if the submitted text is still what's there, so a
+      // draft typed while the write was in flight isn't wiped.
+      if (result !== null) {
+        setDraft((current) => (current.trim() === body ? '' : current))
+      }
+    } finally {
+      setSaving(false)
+    }
   }, [draft, onSubmit])
 
   return (

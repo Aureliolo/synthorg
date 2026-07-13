@@ -8,7 +8,7 @@ makes the consolidation cheap, testable, and free of a second cost-attributed
 call, while the reviewers' own findings carry the substance.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from synthorg.core.plan_enums import PlanReviewVerdict
 from synthorg.core.plan_review import PlanReview, PlanReviewerVerdict
@@ -52,12 +52,11 @@ def synthesise_review(
         1 for r in reviewers if r.verdict is not PlanReviewVerdict.ENDORSED
     )
     summary = _summary(len(reviewers), concern_count, finding_count)
-    reviewed_at = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
     return PlanReview(
         verdict=overall,
         reviewers=reviewers,
         summary=NotBlankStr(summary),
-        reviewed_at=reviewed_at,
+        reviewed_at=now,
     )
 
 

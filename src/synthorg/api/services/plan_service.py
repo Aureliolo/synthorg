@@ -189,7 +189,10 @@ class PlanService:
                 ),
                 status=PlanStatus.PENDING_REVIEW,
                 forecast_id=existing.forecast_id,
-                review=existing.review,
+                # A revision invalidates the prior panel's findings (they
+                # reference the pre-edit items); the plan re-enters review with
+                # no stale verdict shown against the new version.
+                review=None,
                 open_questions=existing.open_questions,
                 assumptions=existing.assumptions,
                 objective_criteria=existing.objective_criteria,

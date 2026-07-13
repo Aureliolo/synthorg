@@ -49,7 +49,14 @@ _COLUMNS = (
     "created_at, updated_at"
 )
 
-_INSERT_PLACEHOLDERS = "(" + ", ".join("?" for _ in _COLUMNS.split(", ")) + ")"
+_COLUMN_NAMES = tuple(_COLUMNS.split(", "))
+_INSERT_PLACEHOLDERS = "(" + ", ".join("?" for _ in _COLUMN_NAMES) + ")"
+#: Every column except the ``id`` primary key, in ``_COLUMNS`` order. The UPDATE
+#: binds ``_row_params(plan)[1:]`` in this same order, so the two stay aligned
+#: from one list instead of three hand-maintained column enumerations.
+_WRITABLE_COLUMNS = tuple(col for col in _COLUMN_NAMES if col != "id")
+_UPDATE_SET = ", ".join(f"{col}=?" for col in _WRITABLE_COLUMNS)
+_UPSERT_SET = ", ".join(f"{col}=excluded.{col}" for col in _WRITABLE_COLUMNS)
 
 
 def _row_to_plan(row: aiosqlite.Row) -> Plan:
@@ -200,26 +207,7 @@ class SQLitePlanRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(
-                    f"""\
-UPDATE plans SET
-    project=?,
-    objective_id=?,
-    objective_title=?,
-    parent_task_id=?,
-    items=?,
-    task_structure=?,
-    coordination_topology=?,
-    status=?,
-    forecast_id=?,
-    review=?,
-    open_questions=?,
-    assumptions=?,
-    objective_criteria=?,
-    version_history=?,
-    version=?,
-    created_at=?,
-    updated_at=?
-WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values parameterized
+                    f"UPDATE plans SET {_UPDATE_SET} WHERE id=?{guard}",  # noqa: S608 -- clauses are fixed literals, values parameterized
                     params,
                 ) as cursor:
                     await self._db.commit()
@@ -289,26 +277,9 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
         async with self._write_context():
             try:
                 await self._db.execute(
-                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
+                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- clauses are fixed literals, values parameterized
                     f"VALUES {_INSERT_PLACEHOLDERS} "
-                    "ON CONFLICT(id) DO UPDATE SET "
-                    "project=excluded.project, "
-                    "objective_id=excluded.objective_id, "
-                    "objective_title=excluded.objective_title, "
-                    "parent_task_id=excluded.parent_task_id, "
-                    "items=excluded.items, "
-                    "task_structure=excluded.task_structure, "
-                    "coordination_topology=excluded.coordination_topology, "
-                    "status=excluded.status, "
-                    "forecast_id=excluded.forecast_id, "
-                    "review=excluded.review, "
-                    "open_questions=excluded.open_questions, "
-                    "assumptions=excluded.assumptions, "
-                    "objective_criteria=excluded.objective_criteria, "
-                    "version_history=excluded.version_history, "
-                    "version=excluded.version, "
-                    "created_at=excluded.created_at, "
-                    "updated_at=excluded.updated_at",
+                    f"ON CONFLICT(id) DO UPDATE SET {_UPSERT_SET}",
                     self._row_params(plan),
                 )
                 await self._db.commit()

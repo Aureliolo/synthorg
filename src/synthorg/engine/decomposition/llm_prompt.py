@@ -76,10 +76,10 @@ def build_decomposition_tool() -> ToolDefinition:
                 ),
             },
             "required_role": {
-                "type": ["string", "null"],
+                "type": "string",
                 "description": (
                     "The role accountable for this item (e.g. 'Backend "
-                    "Engineer', 'CTO'). Assign an owner to every item."
+                    "Engineer', 'CTO'). Every item must name an owner."
                 ),
             },
             "required_skills": {

@@ -40,7 +40,7 @@ async function fetchCommentsImpl(set: PcSet, planId: string): Promise<void> {
   } catch (err) {
     if (token !== requestToken) return
     const message = getErrorMessage(err)
-    log.warn('Fetch plan comments failed', message)
+    log.warn('Fetch plan comments failed', sanitizeForLog(err))
     set({ loading: false, error: message })
   }
 }
@@ -58,6 +58,7 @@ async function addCommentImpl(
     if (!get().comments.some((c) => c.id === comment.id)) {
       set({ comments: [...get().comments, comment] })
     }
+    useToastStore.getState().add({ variant: 'success', title: 'Comment added' })
     return comment
   } catch (err) {
     log.error('Add plan comment failed:', sanitizeForLog(err))

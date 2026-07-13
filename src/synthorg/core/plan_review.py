@@ -12,7 +12,9 @@ Findings reference plan items by id (a plain string) rather than importing
 a cycle.
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from datetime import UTC, datetime
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.types import NotBlankStr
@@ -84,3 +86,17 @@ class PlanReview(BaseModel):
     reviewed_at: AwareDatetime = Field(
         description="When the panel review was consolidated (tz-aware UTC)",
     )
+
+    @field_validator("reviewed_at")
+    @classmethod
+    def _normalize_reviewed_at(cls, value: datetime) -> datetime:
+        """Convert the aware timestamp to UTC so the field honours its contract.
+
+        ``AwareDatetime`` already rejects naive input; this collapses any
+        non-UTC offset to UTC so a persisted review time cannot contradict the
+        model's stated UTC invariant.
+
+        Returns:
+            The same instant expressed in UTC.
+        """
+        return value.astimezone(UTC)

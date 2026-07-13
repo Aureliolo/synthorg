@@ -117,6 +117,9 @@ def parse_reviewer_verdict(
         raise PlanReviewParseError(msg)
     verdict = _VERDICT_MAP[raw_verdict.lower()]
     findings = _parse_findings(arguments.get("findings"))
+    if verdict is not PlanReviewVerdict.ENDORSED and not findings:
+        msg = "findings are required unless the verdict is endorsed"
+        raise PlanReviewParseError(msg)
     try:
         return PlanReviewerVerdict(
             reviewer_role=reviewer_role,
@@ -169,11 +172,13 @@ def _parse_finding(entry: dict[str, JsonValue]) -> PlanReviewFinding:
         msg = "finding detail must be a non-empty string"
         raise PlanReviewParseError(msg)
     raw_item = entry.get("item_id")
-    item_id = (
-        NotBlankStr(raw_item)
-        if isinstance(raw_item, str) and raw_item.strip()
-        else None
-    )
+    if raw_item is None:
+        item_id = None
+    elif isinstance(raw_item, str) and raw_item.strip():
+        item_id = NotBlankStr(raw_item)
+    else:
+        msg = f"finding item_id must be a non-blank string or omitted, got {raw_item!r}"
+        raise PlanReviewParseError(msg)
     return PlanReviewFinding(
         category=_CATEGORY_MAP[raw_category.lower()],
         detail=NotBlankStr(raw_detail),
@@ -253,13 +258,20 @@ class SubmitPlanReviewTool(BaseTool):
                 is_error=True,
             )
         if self._capture.verdict is not None:
-            # The tool is instructed to be called once; a second successful
-            # call overwrites the earlier verdict, so surface it rather than
-            # silently replacing it.
+            # The tool is instructed to be called once; a second call must not
+            # replace the verdict the session later consolidates, so reject it
+            # and keep the first submission.
             logger.warning(
                 PLAN_REVIEW_REVIEWER_DUPLICATE_SUBMIT,
                 reviewer_id=self._reviewer_id,
                 reviewer_role=self._reviewer_role,
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Review already submitted; the first verdict stands. "
+                    "Stop now rather than resubmitting."
+                ),
+                is_error=True,
             )
         self._capture.verdict = verdict
         logger.debug(

@@ -159,6 +159,9 @@ class PostgresPlanItemCommentRepository:
         Raises:
             QueryError: If the operation fails.
         """
+        if threshold.tzinfo is None:
+            msg = "purge_before threshold must be timezone-aware"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -29,9 +29,14 @@ WHERE objective_title = '';
 -- The transient '' default (needed to add the NOT NULL column to existing rows)
 -- is dropped now the backfill guarantees every row is non-blank.
 ALTER TABLE plans ALTER COLUMN objective_title DROP DEFAULT;
+-- Add the constraint NOT VALID, then validate separately: the backfill above
+-- already guarantees non-blank values, so a full-table validating scan under
+-- the ALTER's lock is avoidable. VALIDATE takes only a SHARE UPDATE EXCLUSIVE
+-- lock, so concurrent reads/writes on a hot plans table are not blocked.
 ALTER TABLE plans
 ADD CONSTRAINT plans_objective_title_check
-CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0);
+CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0) NOT VALID;
+ALTER TABLE plans VALIDATE CONSTRAINT plans_objective_title_check;
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),

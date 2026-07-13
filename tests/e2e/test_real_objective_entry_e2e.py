@@ -116,6 +116,9 @@ class _StopStrategy:
                                         "Investigate the work the objective describes."
                                     ),
                                     "required_skills": [_RESEARCH_SKILL],
+                                    "acceptance_criteria": [
+                                        "The release scope is documented.",
+                                    ],
                                 },
                             ],
                         },

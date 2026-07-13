@@ -158,7 +158,7 @@ class SQLitePlanItemCommentRepository:
             raise QueryError(msg) from exc
         try:
             return tuple(_row_to_comment(row) for row in rows)
-        except (ValueError, ValidationError, KeyError) as exc:
+        except (ValueError, ValidationError, KeyError, IndexError, TypeError) as exc:
             logger.warning(
                 PERSISTENCE_PLAN_COMMENT_DESERIALIZE_FAILED,
                 plan_id=filter_spec.plan_id,
@@ -177,6 +177,9 @@ class SQLitePlanItemCommentRepository:
         Raises:
             QueryError: If the operation fails.
         """
+        if threshold.tzinfo is None:
+            msg = "purge_before threshold must be timezone-aware"
+            raise QueryError(msg)
         cutoff = format_iso_utc(normalize_utc(threshold))
         async with self._write_context():
             try:

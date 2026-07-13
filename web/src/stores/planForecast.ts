@@ -5,6 +5,7 @@ import { getForecast } from '@/api/endpoints/budget'
 import type { Forecast } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('plan-forecast')
 
@@ -32,7 +33,7 @@ async function fetchForecastImpl(set: PfSet, forecastId: string): Promise<void> 
   } catch (err) {
     if (token !== requestToken) return
     const message = getErrorMessage(err)
-    log.warn('Fetch plan forecast failed', message)
+    log.warn('Fetch plan forecast failed', sanitizeForLog(err))
     set({ loading: false, error: message })
   }
 }

@@ -1,7 +1,6 @@
 import { CircleAlert, Wallet } from 'lucide-react'
 
-import type { Forecast } from '@/api/types'
-import type { ForecastDecision } from '@/api/types/enum-values.gen'
+import type { Forecast, ForecastDecision } from '@/api/types'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusPill } from '@/components/ui/status-pill'
